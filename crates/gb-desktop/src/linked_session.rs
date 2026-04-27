@@ -3,7 +3,7 @@ use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
 use gb_core::LinkedTopologyKind;
 use gb_core::{
     ConsoleModel, Dmg07Participant, Dmg07Port, LinkedMachines, LinkedMachinesError, Machine,
-    MachineConfig, MachineStepObserver, StartupMode, TraceSummaryBuffer,
+    MachineConfig, MachineFrameStepResult, MachineStepObserver, StartupMode, TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -172,6 +172,10 @@ impl DesktopEmulationSession {
         matches!(self, Self::LinkedDmg07 { .. })
     }
 
+    pub const fn is_single(&self) -> bool {
+        matches!(self, Self::Single(_))
+    }
+
     pub fn attach_secondary_dmg04(
         &mut self,
         secondary_machine: Machine<TraceSummaryBuffer>,
@@ -249,6 +253,13 @@ impl DesktopEmulationSession {
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle_with_observer(observer);
             }
+        }
+    }
+
+    pub fn step_primary_until_frame_origin_crossing(&mut self) -> Option<MachineFrameStepResult> {
+        match self {
+            Self::Single(machine) => Some(machine.step_until_frame_origin_crossing()),
+            Self::LinkedDmg04TwoPlayer(_) | Self::LinkedDmg07 { .. } => None,
         }
     }
 

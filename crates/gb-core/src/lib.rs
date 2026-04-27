@@ -80,7 +80,8 @@ pub use link::{
     LinkedTopologyKind,
 };
 pub use machine::{
-    Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
+    Machine, MachineFrameStepResult, MachineParts, MachineStepObserver, MachineStepRegion,
+    NoopMachineStepObserver,
 };
 pub use model::{
     CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy,

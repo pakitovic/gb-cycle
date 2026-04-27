@@ -9,7 +9,9 @@ use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion};
-use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
+use crate::rewind::{
+    DMG_T_CYCLES_PER_FRAME, MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence,
+};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
 
@@ -225,6 +227,81 @@ fn step_t_cycle_advances_exactly_one_cycle_per_call() {
     assert_eq!(first.t_cycle(), TCycle::new(0));
     assert_eq!(second.t_cycle(), TCycle::new(1));
     assert_eq!(machine.next_t_cycle(), TCycle::new(2));
+}
+
+fn manual_step_until_frame_origin_crossing(machine: &mut Machine) -> (usize, u8, u16, u8, u16) {
+    let start_ly = machine.ppu().ly();
+    let start_dot = machine.ppu().line_dot();
+    let mut at_frame_origin = start_ly == 0 && start_dot == 0;
+
+    for stepped_t_cycles in 1..=(DMG_T_CYCLES_PER_FRAME * 2) as usize {
+        machine.step_t_cycle();
+        let end_ly = machine.ppu().ly();
+        let end_dot = machine.ppu().line_dot();
+        let now_at_frame_origin = end_ly == 0 && end_dot == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            return (stepped_t_cycles, start_ly, start_dot, end_ly, end_dot);
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    panic!("test machine did not reach a frame-origin crossing");
+}
+
+fn frame_step_test_machine() -> Machine {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0xAF, // xor a
+            0xE0, 0x26, // ldh ($26), a ; disable APU power for a stable lightweight loop
+            0x00, // loop: nop
+            0x18, 0xFD, // jr loop
+        ]))
+        .expect("frame-step test ROM should load");
+    machine
+}
+
+#[test]
+fn step_until_frame_origin_crossing_matches_manual_t_cycle_stepping() {
+    let mut machine = frame_step_test_machine();
+    let mut manual = machine.clone();
+
+    let result = machine.step_until_frame_origin_crossing();
+    let (stepped_t_cycles, start_ly, start_dot, end_ly, end_dot) =
+        manual_step_until_frame_origin_crossing(&mut manual);
+
+    assert_eq!(result.start_ly, start_ly);
+    assert_eq!(result.start_dot, start_dot);
+    assert_eq!(result.end_ly, end_ly);
+    assert_eq!(result.end_dot, end_dot);
+    assert_eq!(result.stepped_t_cycles, stepped_t_cycles);
+    assert_eq!(result.frame_origin_crossings, 1);
+    assert_eq!(machine.next_t_cycle(), manual.next_t_cycle());
+    assert_eq!(machine.capture_save_state(), manual.capture_save_state());
+}
+
+#[test]
+fn step_frame_origin_crossings_matches_repeated_single_crossings() {
+    let mut batched = frame_step_test_machine();
+    let mut repeated = batched.clone();
+
+    let batched_result = batched.step_frame_origin_crossings(4);
+    let mut repeated_t_cycles = 0usize;
+    for _ in 0..4 {
+        repeated_t_cycles = repeated_t_cycles
+            .saturating_add(repeated.step_until_frame_origin_crossing().stepped_t_cycles);
+    }
+
+    assert_eq!(batched_result.start_ly, 0);
+    assert_eq!(batched_result.start_dot, 0);
+    assert_eq!(batched_result.end_ly, 0);
+    assert_eq!(batched_result.end_dot, 0);
+    assert_eq!(batched_result.frame_origin_crossings, 4);
+    assert_eq!(batched_result.stepped_t_cycles, repeated_t_cycles);
+    assert_eq!(batched.next_t_cycle(), repeated.next_t_cycle());
+    assert_eq!(batched.capture_save_state(), repeated.capture_save_state());
 }
 
 #[derive(Default)]

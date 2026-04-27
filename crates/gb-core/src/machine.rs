@@ -176,6 +176,16 @@ pub enum MachineStepRegion {
     Interrupts,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MachineFrameStepResult {
+    pub start_ly: u8,
+    pub start_dot: u16,
+    pub end_ly: u8,
+    pub end_dot: u16,
+    pub stepped_t_cycles: usize,
+    pub frame_origin_crossings: usize,
+}
+
 pub trait MachineStepObserver {
     fn begin_region(&mut self, _region: MachineStepRegion) {}
 

@@ -1,5 +1,6 @@
 use super::{
-    Machine, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver, PendingExternalEvents,
+    Machine, MachineFrameStepResult, MachineStepObserver, MachineStepRegion,
+    NoopMachineStepObserver, PendingExternalEvents,
 };
 use crate::apu::Apu;
 use crate::boot::BootController;
@@ -724,5 +725,46 @@ impl<S: TraceSink> Machine<S> {
             });
             runner.step_phase(context, tracer, observer);
         })
+    }
+
+    #[inline]
+    pub fn step_until_frame_origin_crossing(&mut self) -> MachineFrameStepResult {
+        self.step_frame_origin_crossings(1)
+    }
+
+    #[inline]
+    pub fn step_frame_origin_crossings(
+        &mut self,
+        target_frame_origin_crossings: usize,
+    ) -> MachineFrameStepResult {
+        let target_frame_origin_crossings = target_frame_origin_crossings.max(1);
+        let start_ly = self.ppu.ly();
+        let start_dot = self.ppu.line_dot();
+        let mut at_frame_origin = start_ly == 0 && start_dot == 0;
+        let mut stepped_t_cycles = 0usize;
+        let mut frame_origin_crossings = 0usize;
+
+        loop {
+            self.step_t_cycle();
+            stepped_t_cycles = stepped_t_cycles.saturating_add(1);
+
+            let end_ly = self.ppu.ly();
+            let end_dot = self.ppu.line_dot();
+            let now_at_frame_origin = end_ly == 0 && end_dot == 0;
+            if now_at_frame_origin && !at_frame_origin {
+                frame_origin_crossings = frame_origin_crossings.saturating_add(1);
+                if frame_origin_crossings >= target_frame_origin_crossings {
+                    return MachineFrameStepResult {
+                        start_ly,
+                        start_dot,
+                        end_ly,
+                        end_dot,
+                        stepped_t_cycles,
+                        frame_origin_crossings,
+                    };
+                }
+            }
+            at_frame_origin = now_at_frame_origin;
+        }
     }
 }

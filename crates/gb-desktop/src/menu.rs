@@ -2,9 +2,9 @@ use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
-    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    MenuKeyboardBindings, RewindOptions,
+    DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
+    GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
+    HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
 };
 use std::time::{Duration, Instant};
 
@@ -39,6 +39,7 @@ const HUD_TEXT_X: usize = HUD_PANEL_X + 5;
 const HUD_TEXT_Y: usize = HUD_PANEL_Y + 5;
 const HUD_LINE_HEIGHT: usize = GLYPH_HEIGHT + 2;
 const REWIND_INDICATOR_TEXT: &str = "<< REW";
+const FAST_FORWARD_INDICATOR_TEXT: &str = "FF >>";
 const REWIND_INDICATOR_MARGIN: usize = 4;
 const REWIND_INDICATOR_PADDING_X: usize = 4;
 const REWIND_INDICATOR_PADDING_Y: usize = 4;
@@ -163,7 +164,7 @@ const KEYBOARD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::KeyboardMenuCancel,
     MenuItem::Return,
 ];
-const HOTKEYS_MENU_ITEMS: [MenuItem; 13] = [
+const HOTKEYS_MENU_ITEMS: [MenuItem; 14] = [
     MenuItem::HotkeyPause,
     MenuItem::HotkeySaveState,
     MenuItem::HotkeyLoadState,
@@ -172,13 +173,14 @@ const HOTKEYS_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::HotkeyStateSlot3,
     MenuItem::HotkeyStateSlot4,
     MenuItem::HotkeyRewind,
+    MenuItem::HotkeyFastForward,
     MenuItem::HotkeySaveBattery,
     MenuItem::HotkeyReset,
     MenuItem::HotkeyFullscreen,
     MenuItem::HotkeyPerformanceHud,
     MenuItem::Return,
 ];
-const GAMEPAD_MENU_ITEMS: [MenuItem; 11] = [
+const GAMEPAD_MENU_ITEMS: [MenuItem; 15] = [
     MenuItem::GamepadActive,
     MenuItem::GamepadPreferred,
     MenuItem::GamepadUp,
@@ -189,6 +191,10 @@ const GAMEPAD_MENU_ITEMS: [MenuItem; 11] = [
     MenuItem::GamepadB,
     MenuItem::GamepadSelect,
     MenuItem::GamepadStart,
+    MenuItem::GamepadSaveState,
+    MenuItem::GamepadLoadState,
+    MenuItem::GamepadRewind,
+    MenuItem::GamepadFastForward,
     MenuItem::Return,
 ];
 const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
@@ -198,13 +204,14 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 8] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::ConsoleModel,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
     MenuItem::BootRomMenu,
     MenuItem::SaveMenu,
     MenuItem::RewindMenu,
+    MenuItem::FastForwardMenu,
     MenuItem::Reset,
     MenuItem::Return,
 ];
@@ -215,6 +222,12 @@ const REWIND_MENU_ITEMS: [MenuItem; 7] = [
     MenuItem::RewindSpeed,
     MenuItem::RewindMemory,
     MenuItem::RewindDefaults,
+    MenuItem::Return,
+];
+const FAST_FORWARD_MENU_ITEMS: [MenuItem; 4] = [
+    MenuItem::FastForwardEnabled,
+    MenuItem::FastForwardSpeed,
+    MenuItem::FastForwardDefaults,
     MenuItem::Return,
 ];
 const BOOT_ROM_MENU_ITEMS: [MenuItem; 5] = [
@@ -269,6 +282,9 @@ pub enum MenuAction {
     CycleRewindSpeed,
     CycleRewindMemory,
     ResetRewindDefaults,
+    ToggleFastForwardEnabled,
+    CycleFastForwardSpeed,
+    ResetFastForwardDefaults,
     ClearBootRomPath,
     SelectBootRomFilePath,
     SelectBootRomDirectoryPath,
@@ -301,6 +317,7 @@ pub enum MenuAction {
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
     SetGamepadBinding(GamepadBindingTarget, GamepadButtonBinding),
+    SetGamepadActionBinding(GamepadActionBindingTarget, GamepadButtonBinding),
     SetGamepadMenuBinding(GamepadMenuBindingTarget, GamepadButtonBinding),
     Reset,
     Quit,
@@ -405,6 +422,7 @@ pub enum KeyboardBindingTarget {
     StateSlot4,
     Reset,
     Rewind,
+    FastForward,
     ToggleFullscreen,
     TogglePerformanceHud,
     SaveBattery,
@@ -431,6 +449,14 @@ pub enum GamepadBindingTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GamepadActionBindingTarget {
+    SaveState,
+    LoadState,
+    Rewind,
+    FastForward,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamepadMenuBindingTarget {
     Up,
     Down,
@@ -443,6 +469,7 @@ enum PendingBindingCapture {
     Keyboard(KeyboardBindingTarget),
     KeyboardMenu(KeyboardMenuBindingTarget),
     Gamepad(GamepadBindingTarget),
+    GamepadAction(GamepadActionBindingTarget),
     GamepadMenu(GamepadMenuBindingTarget),
 }
 
@@ -523,6 +550,7 @@ pub struct MenuPresentation {
     pub machine_state_autoload_slot: Option<u8>,
     pub rewind_supported: bool,
     pub rewind_options: RewindOptions,
+    pub fast_forward_options: FastForwardOptions,
     pub rewind_available: bool,
     pub any_dialog_pending: bool,
     pub cartridge_pocket_camera_supported: bool,
@@ -531,6 +559,7 @@ pub struct MenuPresentation {
     pub gamepad_directional_source: GamepadDirectionalSource,
     pub gamepad_rumble_mode: GamepadRumbleMode,
     pub gamepad_bindings: GamepadButtonBindings,
+    pub gamepad_action_bindings: GamepadActionBindings,
     pub gamepad_menu_bindings: GamepadMenuBindings,
     pub active_gamepad_connected: bool,
     pub cartridge_rumble_supported: bool,
@@ -637,6 +666,10 @@ impl MenuPresentation {
             | MenuItem::GamepadB
             | MenuItem::GamepadSelect
             | MenuItem::GamepadStart
+            | MenuItem::GamepadSaveState
+            | MenuItem::GamepadLoadState
+            | MenuItem::GamepadRewind
+            | MenuItem::GamepadFastForward
             | MenuItem::GamepadMenuUp
             | MenuItem::GamepadMenuDown
             | MenuItem::GamepadMenuConfirm
@@ -665,6 +698,7 @@ impl MenuPresentation {
             | MenuItem::HotkeyStateSlot4
             | MenuItem::HotkeyReset
             | MenuItem::HotkeyRewind
+            | MenuItem::HotkeyFastForward
             | MenuItem::HotkeyFullscreen
             | MenuItem::HotkeyPerformanceHud
             | MenuItem::HotkeySaveBattery
@@ -675,6 +709,7 @@ impl MenuPresentation {
             | MenuItem::BootRomMenu
             | MenuItem::SaveMenu
             | MenuItem::RewindMenu
+            | MenuItem::FastForwardMenu
             | MenuItem::ConsoleModel
             | MenuItem::StartupMode
             | MenuItem::ExecutionMode
@@ -684,6 +719,9 @@ impl MenuPresentation {
             | MenuItem::RewindSpeed
             | MenuItem::RewindMemory
             | MenuItem::RewindDefaults
+            | MenuItem::FastForwardEnabled
+            | MenuItem::FastForwardSpeed
+            | MenuItem::FastForwardDefaults
             | MenuItem::BootRomDefaultPath
             | MenuItem::BootRomVerify
             | MenuItem::SavesEnabled
@@ -768,6 +806,7 @@ impl MenuPresentation {
             MenuItem::SystemMenu => "SYSTEM".to_string(),
             MenuItem::BootRomMenu => "BOOT ROM".to_string(),
             MenuItem::RewindMenu => "REWIND".to_string(),
+            MenuItem::FastForwardMenu => "F-FORWARD".to_string(),
             MenuItem::ConsoleModel => match self.console_model {
                 DesktopConsoleModel::Dmg0 => "MODEL DMG0".to_string(),
                 DesktopConsoleModel::Dmg => "MODEL DMG".to_string(),
@@ -806,6 +845,20 @@ impl MenuPresentation {
                 format!("MEMORY {}M", self.rewind_options.max_memory_mib.max(1))
             }
             MenuItem::RewindDefaults => "DEFAULTS".to_string(),
+            MenuItem::FastForwardEnabled => {
+                if self.fast_forward_options.enabled {
+                    "F-FORWARD ON".to_string()
+                } else {
+                    "F-FORWARD OFF".to_string()
+                }
+            }
+            MenuItem::FastForwardSpeed => {
+                format!(
+                    "SPEED {}X",
+                    self.fast_forward_options.speed_multiplier.max(1)
+                )
+            }
+            MenuItem::FastForwardDefaults => "DEFAULTS".to_string(),
             MenuItem::BootRomDefaultPath => {
                 if self.boot_rom_uses_default_path {
                     "BOOT AUTO ON".to_string()
@@ -1027,6 +1080,30 @@ impl MenuPresentation {
                     gamepad_binding_label(self.gamepad_bindings.start)
                 )
             }
+            MenuItem::GamepadSaveState => {
+                format!(
+                    "SAVE STATE {}",
+                    optional_gamepad_binding_label(self.gamepad_action_bindings.save_state)
+                )
+            }
+            MenuItem::GamepadLoadState => {
+                format!(
+                    "LOAD STATE {}",
+                    optional_gamepad_binding_label(self.gamepad_action_bindings.load_state)
+                )
+            }
+            MenuItem::GamepadRewind => {
+                format!(
+                    "REWIND {}",
+                    optional_gamepad_binding_label(self.gamepad_action_bindings.rewind)
+                )
+            }
+            MenuItem::GamepadFastForward => {
+                format!(
+                    "F-FORWARD {}",
+                    optional_gamepad_binding_label(self.gamepad_action_bindings.fast_forward)
+                )
+            }
             MenuItem::GamepadMenuUp => {
                 format!(
                     "UP {}",
@@ -1138,6 +1215,12 @@ impl MenuPresentation {
             MenuItem::HotkeyRewind => {
                 format!("REWIND {}", desktop_key_label(self.hotkey_bindings.rewind))
             }
+            MenuItem::HotkeyFastForward => {
+                format!(
+                    "F-FORWARD {}",
+                    desktop_key_label(self.hotkey_bindings.fast_forward)
+                )
+            }
             MenuItem::HotkeyFullscreen => {
                 format!(
                     "FULLSCREEN {}",
@@ -1181,6 +1264,7 @@ enum MenuScreen {
     BootRom,
     Save,
     Rewind,
+    FastForward,
 }
 
 impl MenuScreen {
@@ -1208,6 +1292,7 @@ impl MenuScreen {
             Self::BootRom => "BOOT ROM",
             Self::Save => "SAVE",
             Self::Rewind => "REWIND",
+            Self::FastForward => "F-FORWARD",
         }
     }
 }
@@ -1250,6 +1335,7 @@ enum MenuItem {
     BootRomMenu,
     SaveMenu,
     RewindMenu,
+    FastForwardMenu,
     ConsoleModel,
     StartupMode,
     ExecutionMode,
@@ -1269,6 +1355,9 @@ enum MenuItem {
     RewindSpeed,
     RewindMemory,
     RewindDefaults,
+    FastForwardEnabled,
+    FastForwardSpeed,
+    FastForwardDefaults,
     Fullscreen,
     Vsync,
     WindowScale,
@@ -1308,6 +1397,10 @@ enum MenuItem {
     GamepadB,
     GamepadSelect,
     GamepadStart,
+    GamepadSaveState,
+    GamepadLoadState,
+    GamepadRewind,
+    GamepadFastForward,
     KeyboardUp,
     KeyboardDown,
     KeyboardLeft,
@@ -1329,6 +1422,7 @@ enum MenuItem {
     HotkeyStateSlot4,
     HotkeyReset,
     HotkeyRewind,
+    HotkeyFastForward,
     HotkeyFullscreen,
     HotkeyPerformanceHud,
     HotkeySaveBattery,
@@ -1524,7 +1618,29 @@ pub fn render_performance_hud(
 }
 
 pub fn render_rewind_indicator(rgb_frame: &mut [u8], frame_width: usize, frame_height: usize) {
-    let text_width = text_width(REWIND_INDICATOR_TEXT, 1);
+    render_corner_indicator(rgb_frame, frame_width, frame_height, REWIND_INDICATOR_TEXT);
+}
+
+pub fn render_fast_forward_indicator(
+    rgb_frame: &mut [u8],
+    frame_width: usize,
+    frame_height: usize,
+) {
+    render_corner_indicator(
+        rgb_frame,
+        frame_width,
+        frame_height,
+        FAST_FORWARD_INDICATOR_TEXT,
+    );
+}
+
+fn render_corner_indicator(
+    rgb_frame: &mut [u8],
+    frame_width: usize,
+    frame_height: usize,
+    text: &str,
+) {
+    let text_width = text_width(text, 1);
     let width = text_width + REWIND_INDICATOR_PADDING_X * 2;
     let height = GLYPH_HEIGHT + REWIND_INDICATOR_PADDING_Y * 2;
     let x = frame_width
@@ -1545,7 +1661,7 @@ pub fn render_rewind_indicator(rgb_frame: &mut [u8], frame_width: usize, frame_h
     canvas.draw_text(
         x + REWIND_INDICATOR_PADDING_X,
         y + REWIND_INDICATOR_PADDING_Y,
-        REWIND_INDICATOR_TEXT,
+        text,
         TEXT_COLOR,
         1,
     );
@@ -1572,6 +1688,7 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::Keyboard(target)) => Some(target),
             Some(PendingBindingCapture::KeyboardMenu(_))
             | Some(PendingBindingCapture::Gamepad(_))
+            | Some(PendingBindingCapture::GamepadAction(_))
             | Some(PendingBindingCapture::GamepadMenu(_))
             | None => None,
         }
@@ -1582,6 +1699,7 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::KeyboardMenu(target)) => Some(target),
             Some(PendingBindingCapture::Keyboard(_))
             | Some(PendingBindingCapture::Gamepad(_))
+            | Some(PendingBindingCapture::GamepadAction(_))
             | Some(PendingBindingCapture::GamepadMenu(_))
             | None => None,
         }
@@ -1592,6 +1710,18 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::Gamepad(target)) => Some(target),
             Some(PendingBindingCapture::Keyboard(_))
             | Some(PendingBindingCapture::KeyboardMenu(_))
+            | Some(PendingBindingCapture::GamepadAction(_))
+            | Some(PendingBindingCapture::GamepadMenu(_))
+            | None => None,
+        }
+    }
+
+    pub fn pending_gamepad_action_binding_target(&self) -> Option<GamepadActionBindingTarget> {
+        match self.pending_binding_capture {
+            Some(PendingBindingCapture::GamepadAction(target)) => Some(target),
+            Some(PendingBindingCapture::Keyboard(_))
+            | Some(PendingBindingCapture::KeyboardMenu(_))
+            | Some(PendingBindingCapture::Gamepad(_))
             | Some(PendingBindingCapture::GamepadMenu(_))
             | None => None,
         }
@@ -1603,6 +1733,7 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::Keyboard(_))
             | Some(PendingBindingCapture::KeyboardMenu(_))
             | Some(PendingBindingCapture::Gamepad(_))
+            | Some(PendingBindingCapture::GamepadAction(_))
             | None => None,
         }
     }
@@ -1635,7 +1766,9 @@ impl OverlayMenuState {
             PendingBindingCapture::KeyboardMenu(target) => {
                 Some(MenuAction::SetKeyboardMenuBinding(target, key))
             }
-            PendingBindingCapture::Gamepad(_) | PendingBindingCapture::GamepadMenu(_) => None,
+            PendingBindingCapture::Gamepad(_)
+            | PendingBindingCapture::GamepadAction(_)
+            | PendingBindingCapture::GamepadMenu(_) => None,
         }
     }
 
@@ -1646,6 +1779,9 @@ impl OverlayMenuState {
         match self.pending_binding_capture.take()? {
             PendingBindingCapture::Gamepad(target) => {
                 Some(MenuAction::SetGamepadBinding(target, binding))
+            }
+            PendingBindingCapture::GamepadAction(target) => {
+                Some(MenuAction::SetGamepadActionBinding(target, binding))
             }
             PendingBindingCapture::GamepadMenu(target) => {
                 Some(MenuAction::SetGamepadMenuBinding(target, binding))
@@ -1913,6 +2049,10 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::Rewind, presentation);
                 None
             }
+            MenuItem::FastForwardMenu => {
+                self.push_screen(MenuScreen::FastForward, presentation);
+                None
+            }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
@@ -1922,6 +2062,9 @@ impl OverlayMenuState {
             MenuItem::RewindSpeed => Some(MenuAction::CycleRewindSpeed),
             MenuItem::RewindMemory => Some(MenuAction::CycleRewindMemory),
             MenuItem::RewindDefaults => Some(MenuAction::ResetRewindDefaults),
+            MenuItem::FastForwardEnabled => Some(MenuAction::ToggleFastForwardEnabled),
+            MenuItem::FastForwardSpeed => Some(MenuAction::CycleFastForwardSpeed),
+            MenuItem::FastForwardDefaults => Some(MenuAction::ResetFastForwardDefaults),
             MenuItem::BootRomDefaultPath => Some(MenuAction::ClearBootRomPath),
             MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
             MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
@@ -2103,6 +2246,12 @@ impl OverlayMenuState {
                 ));
                 None
             }
+            MenuItem::HotkeyFastForward => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::FastForward,
+                ));
+                None
+            }
             MenuItem::HotkeyFullscreen => {
                 self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
                     KeyboardBindingTarget::ToggleFullscreen,
@@ -2159,6 +2308,30 @@ impl OverlayMenuState {
             MenuItem::GamepadStart => {
                 self.pending_binding_capture =
                     Some(PendingBindingCapture::Gamepad(GamepadBindingTarget::Start));
+                None
+            }
+            MenuItem::GamepadSaveState => {
+                self.pending_binding_capture = Some(PendingBindingCapture::GamepadAction(
+                    GamepadActionBindingTarget::SaveState,
+                ));
+                None
+            }
+            MenuItem::GamepadLoadState => {
+                self.pending_binding_capture = Some(PendingBindingCapture::GamepadAction(
+                    GamepadActionBindingTarget::LoadState,
+                ));
+                None
+            }
+            MenuItem::GamepadRewind => {
+                self.pending_binding_capture = Some(PendingBindingCapture::GamepadAction(
+                    GamepadActionBindingTarget::Rewind,
+                ));
+                None
+            }
+            MenuItem::GamepadFastForward => {
+                self.pending_binding_capture = Some(PendingBindingCapture::GamepadAction(
+                    GamepadActionBindingTarget::FastForward,
+                ));
                 None
             }
             MenuItem::GamepadMenuUp => {
@@ -2259,6 +2432,9 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::Rewind)) => {
                 Some(MenuItem::HotkeyRewind)
             }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::FastForward)) => {
+                Some(MenuItem::HotkeyFastForward)
+            }
             Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::ToggleFullscreen)) => {
                 Some(MenuItem::HotkeyFullscreen)
             }
@@ -2291,6 +2467,18 @@ impl OverlayMenuState {
             }
             Some(PendingBindingCapture::Gamepad(GamepadBindingTarget::Start)) => {
                 Some(MenuItem::GamepadStart)
+            }
+            Some(PendingBindingCapture::GamepadAction(GamepadActionBindingTarget::SaveState)) => {
+                Some(MenuItem::GamepadSaveState)
+            }
+            Some(PendingBindingCapture::GamepadAction(GamepadActionBindingTarget::LoadState)) => {
+                Some(MenuItem::GamepadLoadState)
+            }
+            Some(PendingBindingCapture::GamepadAction(GamepadActionBindingTarget::Rewind)) => {
+                Some(MenuItem::GamepadRewind)
+            }
+            Some(PendingBindingCapture::GamepadAction(GamepadActionBindingTarget::FastForward)) => {
+                Some(MenuItem::GamepadFastForward)
             }
             Some(PendingBindingCapture::GamepadMenu(GamepadMenuBindingTarget::Up)) => {
                 Some(MenuItem::GamepadMenuUp)
@@ -2391,6 +2579,13 @@ impl OverlayMenuState {
     pub(crate) fn begin_gamepad_binding_capture_for_tests(&mut self, target: GamepadBindingTarget) {
         self.pending_binding_capture = Some(PendingBindingCapture::Gamepad(target));
     }
+
+    pub(crate) fn begin_gamepad_action_binding_capture_for_tests(
+        &mut self,
+        target: GamepadActionBindingTarget,
+    ) {
+        self.pending_binding_capture = Some(PendingBindingCapture::GamepadAction(target));
+    }
 }
 
 fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
@@ -2411,6 +2606,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::BootRom => &BOOT_ROM_MENU_ITEMS,
         MenuScreen::Save => &SAVE_MENU_ITEMS,
         MenuScreen::Rewind => &REWIND_MENU_ITEMS,
+        MenuScreen::FastForward => &FAST_FORWARD_MENU_ITEMS,
     }
 }
 
@@ -2526,6 +2722,10 @@ fn gamepad_binding_label(binding: GamepadButtonBinding) -> &'static str {
         GamepadButtonBinding::DPadRight => "D RIGHT",
         GamepadButtonBinding::Misc1 => "MISC1",
     }
+}
+
+fn optional_gamepad_binding_label(binding: Option<GamepadButtonBinding>) -> &'static str {
+    binding.map(gamepad_binding_label).unwrap_or("NONE")
 }
 
 fn recent_rom_item_label(label: CompactRecentRomLabel) -> String {
@@ -2906,6 +3106,9 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
         '<' => [
             0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010,
         ],
+        '>' => [
+            0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000,
+        ],
         ' ' => [0, 0, 0, 0, 0, 0, 0],
         _ => [0, 0, 0, 0, 0, 0, 0],
     }
@@ -2915,7 +3118,8 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 mod tests {
     use super::{
         AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel,
-        EXT_PORT_MENU_ITEMS, GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadBindingTarget,
+        EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAMEPAD_MENU_CONTROL_ITEMS,
+        GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget, GamepadBindingTarget,
         GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
         KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
         KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem,
@@ -2923,17 +3127,17 @@ mod tests {
         RECENT_ROM_MENU_CAPACITY, REWIND_MENU_ITEMS, ROOT_MENU_ITEMS, RewindHudSnapshot,
         SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
         desktop_key_label, gamepad_binding_label, glyph_rows, normalized_selected_index,
-        performance_hud_lines, previous_enabled_index, render_performance_hud,
-        render_rewind_indicator, rendered_recent_rom_item_label, scroll_indicator_rows,
-        viewport_start_index, visible_item_at, visible_item_count,
+        performance_hud_lines, previous_enabled_index, render_fast_forward_indicator,
+        render_performance_hud, render_rewind_indicator, rendered_recent_rom_item_label,
+        scroll_indicator_rows, viewport_start_index, visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
-        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
-        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-        JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+        DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
+        GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
+        HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
     };
     use std::time::Duration;
 
@@ -2977,6 +3181,7 @@ mod tests {
             machine_state_autoload_slot: None,
             rewind_supported: true,
             rewind_options: RewindOptions::default(),
+            fast_forward_options: FastForwardOptions::default(),
             rewind_available: true,
             any_dialog_pending: false,
             cartridge_pocket_camera_supported: false,
@@ -2985,6 +3190,7 @@ mod tests {
             gamepad_directional_source: GamepadDirectionalSource::DpadAndLeftStick,
             gamepad_rumble_mode: GamepadRumbleMode::Strong,
             gamepad_bindings: GamepadButtonBindings::default(),
+            gamepad_action_bindings: GamepadActionBindings::default(),
             gamepad_menu_bindings: GamepadMenuBindings::default(),
             active_gamepad_connected: false,
             cartridge_rumble_supported: false,
@@ -4038,9 +4244,15 @@ mod tests {
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[0], MenuItem::KeyboardMenuUp);
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
         assert_eq!(HOTKEYS_MENU_ITEMS[0], MenuItem::HotkeyPause);
-        assert_eq!(HOTKEYS_MENU_ITEMS[12], MenuItem::Return);
+        assert_eq!(HOTKEYS_MENU_ITEMS[7], MenuItem::HotkeyRewind);
+        assert_eq!(HOTKEYS_MENU_ITEMS[8], MenuItem::HotkeyFastForward);
+        assert_eq!(HOTKEYS_MENU_ITEMS[13], MenuItem::Return);
         assert_eq!(GAMEPAD_MENU_ITEMS[0], MenuItem::GamepadActive);
-        assert_eq!(GAMEPAD_MENU_ITEMS[10], MenuItem::Return);
+        assert_eq!(GAMEPAD_MENU_ITEMS[10], MenuItem::GamepadSaveState);
+        assert_eq!(GAMEPAD_MENU_ITEMS[11], MenuItem::GamepadLoadState);
+        assert_eq!(GAMEPAD_MENU_ITEMS[12], MenuItem::GamepadRewind);
+        assert_eq!(GAMEPAD_MENU_ITEMS[13], MenuItem::GamepadFastForward);
+        assert_eq!(GAMEPAD_MENU_ITEMS[14], MenuItem::Return);
         assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[0], MenuItem::GamepadMenuUp);
         assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
 
@@ -4050,8 +4262,9 @@ mod tests {
         assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::BootRomMenu);
         assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::SaveMenu);
         assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::RewindMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::Reset);
-        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::Return);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::FastForwardMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::Return);
         assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(REWIND_MENU_ITEMS[0], MenuItem::RewindEnabled);
@@ -4061,6 +4274,11 @@ mod tests {
         assert_eq!(REWIND_MENU_ITEMS[4], MenuItem::RewindMemory);
         assert_eq!(REWIND_MENU_ITEMS[5], MenuItem::RewindDefaults);
         assert_eq!(REWIND_MENU_ITEMS[6], MenuItem::Return);
+
+        assert_eq!(FAST_FORWARD_MENU_ITEMS[0], MenuItem::FastForwardEnabled);
+        assert_eq!(FAST_FORWARD_MENU_ITEMS[1], MenuItem::FastForwardSpeed);
+        assert_eq!(FAST_FORWARD_MENU_ITEMS[2], MenuItem::FastForwardDefaults);
+        assert_eq!(FAST_FORWARD_MENU_ITEMS[3], MenuItem::Return);
 
         assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDefaultPath);
         assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomFilePath);
@@ -4184,6 +4402,10 @@ mod tests {
         assert_eq!(presentation.item_label(MenuItem::SaveMenu), "SAVE");
         assert_eq!(presentation.item_label(MenuItem::RewindMenu), "REWIND");
         assert_eq!(
+            presentation.item_label(MenuItem::FastForwardMenu),
+            "F-FORWARD"
+        );
+        assert_eq!(
             presentation.item_label(MenuItem::RewindEnabled),
             "REWIND ON"
         );
@@ -4202,6 +4424,18 @@ mod tests {
         );
         assert_eq!(
             presentation.item_label(MenuItem::RewindDefaults),
+            "DEFAULTS"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FastForwardEnabled),
+            "F-FORWARD ON"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FastForwardSpeed),
+            "SPEED 2X"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FastForwardDefaults),
             "DEFAULTS"
         );
         presentation.rewind_options.enabled = false;
@@ -4225,6 +4459,16 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::RewindMemory),
             "MEMORY 128M"
+        );
+        presentation.fast_forward_options.enabled = false;
+        presentation.fast_forward_options.speed_multiplier = 4;
+        assert_eq!(
+            presentation.item_label(MenuItem::FastForwardEnabled),
+            "F-FORWARD OFF"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FastForwardSpeed),
+            "SPEED 4X"
         );
         assert_eq!(presentation.item_label(MenuItem::ExportSave), "EXPORT SAVE");
         assert_eq!(presentation.item_label(MenuItem::ImportSave), "IMPORT SAVE");
@@ -4455,6 +4699,44 @@ mod tests {
             presentation.item_label(MenuItem::GamepadStart),
             "START GUIDE"
         );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadSaveState),
+            "SAVE STATE NONE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadLoadState),
+            "LOAD STATE NONE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRewind),
+            "REWIND NONE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadFastForward),
+            "F-FORWARD NONE"
+        );
+        presentation.gamepad_action_bindings = GamepadActionBindings {
+            save_state: Some(GamepadButtonBinding::LeftShoulder),
+            load_state: Some(GamepadButtonBinding::RightShoulder),
+            rewind: Some(GamepadButtonBinding::LeftStickClick),
+            fast_forward: Some(GamepadButtonBinding::RightStickClick),
+        };
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadSaveState),
+            "SAVE STATE L1"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadLoadState),
+            "LOAD STATE R1"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRewind),
+            "REWIND LSTICK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadFastForward),
+            "F-FORWARD RSTICK"
+        );
 
         presentation.gamepad_menu_bindings = GamepadMenuBindings {
             up: GamepadButtonBinding::LeftShoulder,
@@ -4534,6 +4816,7 @@ mod tests {
             state_slot_4: DesktopKey::Digit4,
             reset: DesktopKey::Space,
             rewind: DesktopKey::LeftShift,
+            fast_forward: DesktopKey::RightShift,
             toggle_fullscreen: DesktopKey::F11,
             toggle_performance_hud: DesktopKey::F10,
             save_battery: DesktopKey::F9,
@@ -4562,6 +4845,10 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::HotkeyRewind),
             "REWIND L SHIFT"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyFastForward),
+            "F-FORWARD R SHIFT"
         );
         assert_eq!(
             presentation.item_label(MenuItem::HotkeyFullscreen),
@@ -4636,6 +4923,7 @@ mod tests {
         assert_eq!(MenuScreen::BootRom.title(presentation), "BOOT ROM");
         assert_eq!(MenuScreen::Save.title(presentation), "SAVE");
         assert_eq!(MenuScreen::Rewind.title(presentation), "REWIND");
+        assert_eq!(MenuScreen::FastForward.title(presentation), "F-FORWARD");
 
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
@@ -4766,6 +5054,28 @@ mod tests {
             menu.apply_item_action(MenuItem::RewindDefaults, presentation),
             Some(MenuAction::ResetRewindDefaults)
         );
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SystemMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FastForwardMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::FastForward);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FastForwardEnabled, presentation),
+            Some(MenuAction::ToggleFastForwardEnabled)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FastForwardSpeed, presentation),
+            Some(MenuAction::CycleFastForwardSpeed)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FastForwardDefaults, presentation),
+            Some(MenuAction::ResetFastForwardDefaults)
+        );
         assert_eq!(
             menu.apply_item_action(MenuItem::CameraImage, presentation),
             Some(MenuAction::SelectCameraImage)
@@ -4821,6 +5131,7 @@ mod tests {
             (MenuItem::HotkeyStateSlot4, MenuItem::HotkeyStateSlot4),
             (MenuItem::HotkeyReset, MenuItem::HotkeyReset),
             (MenuItem::HotkeyRewind, MenuItem::HotkeyRewind),
+            (MenuItem::HotkeyFastForward, MenuItem::HotkeyFastForward),
             (MenuItem::HotkeyFullscreen, MenuItem::HotkeyFullscreen),
             (
                 MenuItem::HotkeyPerformanceHud,
@@ -4835,6 +5146,10 @@ mod tests {
             (MenuItem::GamepadB, MenuItem::GamepadB),
             (MenuItem::GamepadSelect, MenuItem::GamepadSelect),
             (MenuItem::GamepadStart, MenuItem::GamepadStart),
+            (MenuItem::GamepadSaveState, MenuItem::GamepadSaveState),
+            (MenuItem::GamepadLoadState, MenuItem::GamepadLoadState),
+            (MenuItem::GamepadRewind, MenuItem::GamepadRewind),
+            (MenuItem::GamepadFastForward, MenuItem::GamepadFastForward),
             (MenuItem::GamepadMenuUp, MenuItem::GamepadMenuUp),
             (MenuItem::GamepadMenuDown, MenuItem::GamepadMenuDown),
             (MenuItem::GamepadMenuConfirm, MenuItem::GamepadMenuConfirm),
@@ -4844,6 +5159,40 @@ mod tests {
             assert_eq!(menu.apply_item_action(item, presentation), None);
             assert_eq!(menu.pending_binding_item(), Some(expected));
         }
+    }
+
+    #[test]
+    fn gamepad_action_binding_capture_emits_host_action_targets() {
+        let mut menu = OverlayMenuState::default();
+
+        menu.begin_gamepad_action_binding_capture_for_tests(GamepadActionBindingTarget::SaveState);
+        assert_eq!(
+            menu.pending_gamepad_action_binding_target(),
+            Some(GamepadActionBindingTarget::SaveState)
+        );
+        assert_eq!(
+            menu.handle_gamepad_binding_capture(GamepadButtonBinding::LeftShoulder),
+            Some(MenuAction::SetGamepadActionBinding(
+                GamepadActionBindingTarget::SaveState,
+                GamepadButtonBinding::LeftShoulder
+            ))
+        );
+        assert_eq!(menu.pending_gamepad_action_binding_target(), None);
+
+        menu.begin_gamepad_action_binding_capture_for_tests(
+            GamepadActionBindingTarget::FastForward,
+        );
+        assert_eq!(
+            menu.pending_binding_item(),
+            Some(MenuItem::GamepadFastForward)
+        );
+        assert_eq!(
+            menu.handle_gamepad_binding_capture(GamepadButtonBinding::RightShoulder),
+            Some(MenuAction::SetGamepadActionBinding(
+                GamepadActionBindingTarget::FastForward,
+                GamepadButtonBinding::RightShoulder
+            ))
+        );
     }
 
     #[test]
@@ -4890,6 +5239,28 @@ mod tests {
                 0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010,
             ],
             "rewind indicator text requires the left chevron glyph"
+        );
+    }
+
+    #[test]
+    fn fast_forward_indicator_renderer_draws_into_the_top_right_corner() {
+        let mut frame = vec![255_u8; 160 * 144 * 3];
+        render_fast_forward_indicator(&mut frame, 160, 144);
+
+        let top_right_region_start = 4 * 160 * 3 + 112 * 3;
+        let top_right_region_end = 24 * 160 * 3;
+        assert!(
+            frame[top_right_region_start..top_right_region_end]
+                .iter()
+                .any(|component| *component != 255),
+            "fast-forward indicator should modify the top-right framebuffer region"
+        );
+        assert_eq!(
+            glyph_rows('>'),
+            [
+                0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000,
+            ],
+            "fast-forward indicator text requires the right chevron glyph"
         );
     }
 }
