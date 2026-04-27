@@ -19,7 +19,3 @@ harness = false
 [[bench]]
 name = "ppu_phase6"
 harness = false
-
-[[bench]]
-name = "frame_throughput"
-harness = false

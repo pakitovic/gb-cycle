@@ -263,33 +263,6 @@ impl EmulationProfileSessionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmulationPlaybackMode {
-    Normal,
-    Rewind,
-    FastForward,
-    Mixed,
-}
-
-impl EmulationPlaybackMode {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "normal",
-            Self::Rewind => "rewind",
-            Self::FastForward => "fast-forward",
-            Self::Mixed => "mixed",
-        }
-    }
-
-    const fn merge(self, other: Self) -> Self {
-        match (self, other) {
-            (Self::Mixed, _) | (_, Self::Mixed) => Self::Mixed,
-            (left, right) if left as u8 == right as u8 => left,
-            _ => Self::Mixed,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HotkeyAction {
     None,
     ManualSave,
@@ -1199,10 +1172,6 @@ impl DesktopWatchTraceCapture {
         })
     }
 
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some()
-    }
-
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
         if self.output_path.is_none() {
             return;
@@ -1297,10 +1266,6 @@ impl DesktopPcWatchTraceCapture {
         })
     }
 
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some()
-    }
-
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
         if self.output_path.is_none() {
             return;
@@ -1393,10 +1358,6 @@ impl DesktopEdgeTraceCapture {
         })
     }
 
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some()
-    }
-
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
         if self.output_path.is_none() {
             return;
@@ -1480,10 +1441,6 @@ impl DesktopCh4Nr43TraceCapture {
         })
     }
 
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some()
-    }
-
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
         if self.output_path.is_none() {
             return;
@@ -1539,10 +1496,6 @@ impl DesktopCh4StartupTraceCapture {
             records: Vec::new(),
             last_ch4: None,
         })
-    }
-
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some()
     }
 
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
@@ -1617,10 +1570,6 @@ impl DesktopCpuWindowTraceCapture {
             active: false,
             finished: false,
         }
-    }
-
-    fn is_enabled(&self) -> bool {
-        self.output_path.is_some() && !self.finished
     }
 
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
@@ -2587,7 +2536,6 @@ fn audio_queue_pacing_correction_with_policy(
 #[derive(Debug)]
 struct FramePerformanceSample {
     session_kind: EmulationProfileSessionKind,
-    playback_mode: EmulationPlaybackMode,
     emulation_duration: Duration,
     emulation_profile_request: Option<EmulationProfileRequest>,
     render_duration: Duration,
@@ -2654,7 +2602,6 @@ struct PerformanceCounter {
     emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
     emulation_profile_request_in_flight: bool,
     sample_session_kind: EmulationProfileSessionKind,
-    sample_playback_mode: EmulationPlaybackMode,
     presented_frames_total: u64,
     sample_started_at: Instant,
     frames_in_sample: u32,
@@ -2787,7 +2734,6 @@ impl PerformanceCounter {
                 .then(AsyncEmulationProfileWorker::new),
             emulation_profile_request_in_flight: false,
             sample_session_kind: EmulationProfileSessionKind::Single,
-            sample_playback_mode: EmulationPlaybackMode::Normal,
             presented_frames_total: 0,
             sample_started_at: Instant::now(),
             frames_in_sample: 0,
@@ -2917,11 +2863,6 @@ impl PerformanceCounter {
         );
 
         self.sample_session_kind = sample.session_kind;
-        self.sample_playback_mode = if self.frames_in_sample == 0 {
-            sample.playback_mode
-        } else {
-            self.sample_playback_mode.merge(sample.playback_mode)
-        };
         self.frames_in_sample += 1;
         self.sample_emulation_duration += sample.emulation_duration;
         self.sample_render_duration += sample.render_duration;
@@ -3183,16 +3124,10 @@ impl PerformanceCounter {
         let frames_f64 = f64::from(frames);
         let elapsed_secs = elapsed.as_secs_f64().max(f64::EPSILON);
         let fps = frames_f64 / elapsed_secs;
-        let emulated_frames = if self.sample_frame_origin_crossings_observations > 0 {
-            self.sample_frame_origin_crossings as f64
-        } else {
-            frames_f64
-        };
-        let emulated_fps = emulated_frames / elapsed_secs;
 
         PerformanceHudSnapshot {
             fps,
-            speed_percent: emulated_fps / target_frame_rate_hz() * 100.0,
+            speed_percent: fps / target_frame_rate_hz() * 100.0,
             frame_time_ms: elapsed_secs * 1_000.0 / frames_f64,
             emulation_time_ms: self.sample_emulation_duration.as_secs_f64() * 1_000.0 / frames_f64,
             render_time_ms: self.sample_render_duration.as_secs_f64() * 1_000.0 / frames_f64,
@@ -3687,14 +3622,12 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile session={} mode={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} render_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             self.sample_session_kind.label(),
-            self.sample_playback_mode.label(),
             snapshot.fps,
             snapshot.speed_percent,
             snapshot.frame_time_ms,
             snapshot.emulation_time_ms,
-            snapshot.render_time_ms,
             self.sample_profiled_frames,
             sample_every_frames,
             scaled_average_duration_ms(
@@ -3821,7 +3754,6 @@ impl PerformanceCounter {
     fn reset_sample(&mut self) {
         self.sample_started_at = Instant::now();
         self.frames_in_sample = 0;
-        self.sample_playback_mode = EmulationPlaybackMode::Normal;
         self.sample_emulation_duration = Duration::ZERO;
         self.sample_profiled_frames = 0;
         self.sample_profiled_emulation_duration = Duration::ZERO;
@@ -4117,20 +4049,6 @@ fn emulation_profile_session_kind(
         EmulationProfileSessionKind::LinkedDmg04TwoPlayer
     } else {
         EmulationProfileSessionKind::Single
-    }
-}
-
-fn emulation_playback_mode(
-    rewound_this_frame: bool,
-    fast_forwarded_this_frame: bool,
-    fast_forward_still_active: bool,
-) -> EmulationPlaybackMode {
-    if rewound_this_frame {
-        EmulationPlaybackMode::Rewind
-    } else if fast_forwarded_this_frame || fast_forward_still_active {
-        EmulationPlaybackMode::FastForward
-    } else {
-        EmulationPlaybackMode::Normal
     }
 }
 
@@ -4678,11 +4596,6 @@ fn run_desktop_with_startup_fallback_persistence(
             canvas.window_mut(),
             FramePerformanceSample {
                 session_kind: emulation_profile_session_kind(&machine),
-                playback_mode: emulation_playback_mode(
-                    rewound_this_frame,
-                    fast_forwarded_this_frame,
-                    fast_forward_still_active,
-                ),
                 emulation_duration,
                 emulation_profile_request: step_result.emulation_profile_request,
                 render_duration,
@@ -5857,8 +5770,6 @@ fn process_events(
         return Ok(LoopSignal::Continue);
     }
 
-    sync_host_hold_hotkey_state(event_pump, runtime);
-
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.poll_active_gamepad_state(
             runtime.player_inputs.input_mut(PlayerSlot::P1),
@@ -5872,86 +5783,6 @@ fn process_events(
     Ok(LoopSignal::Continue)
 }
 
-fn sync_host_hold_hotkey_state(event_pump: &sdl3::EventPump, runtime: &mut FrontendRuntime) {
-    let keyboard_state = event_pump.keyboard_state();
-    if keyboard_state.is_scancode_pressed(desktop_key_scancode(
-        runtime.keyboard_bindings.hotkeys.rewind,
-    )) {
-        runtime.rewind_hotkey_active = true;
-    }
-    if keyboard_state.is_scancode_pressed(desktop_key_scancode(
-        runtime.keyboard_bindings.hotkeys.fast_forward,
-    )) {
-        runtime.fast_forward_hotkey_active = true;
-    }
-}
-
-fn basic_frame_loop_telemetry(
-    start_ly: u8,
-    start_dot: u16,
-    end_ly: u8,
-    end_dot: u16,
-    stepped_t_cycles: usize,
-    frame_origin_crossings: usize,
-) -> FrameLoopTelemetry {
-    FrameLoopTelemetry {
-        start_ly,
-        start_dot,
-        end_ly,
-        end_dot,
-        stepped_t_cycles,
-        frame_origin_crossings: frame_origin_crossings.min(usize::from(u8::MAX)) as u8,
-        ..Default::default()
-    }
-}
-
-fn basic_frame_loop_telemetry_from_machine(
-    machine: &DesktopEmulationSession,
-    start_ly: u8,
-    start_dot: u16,
-    stepped_t_cycles: usize,
-    frame_origin_crossings: usize,
-) -> FrameLoopTelemetry {
-    basic_frame_loop_telemetry(
-        start_ly,
-        start_dot,
-        machine.ppu().ly(),
-        machine.ppu().line_dot(),
-        stepped_t_cycles,
-        frame_origin_crossings,
-    )
-}
-
-fn fast_forward_lean_path_available(
-    session: &DesktopSession,
-    runtime: &FrontendRuntime,
-    machine: &DesktopEmulationSession,
-    performance_counter: &PerformanceCounter,
-) -> bool {
-    machine.is_single()
-        && !performance_counter.emulation_profile_enabled()
-        && runtime.audio_recorder.is_none()
-        && session.external_port_selection != DesktopExternalPortSelection::Printer
-        && !runtime.trace_capture.is_enabled()
-        && !runtime.watch_trace.is_enabled()
-        && !runtime.pc_watch_trace.is_enabled()
-        && !runtime.edge_trace.is_enabled()
-        && !runtime.ch4_nr43_trace.is_enabled()
-        && !runtime.ch4_startup_trace.is_enabled()
-        && !runtime.cpu_window_trace.is_enabled()
-        && !fast_forward_rumble_observer_needed(runtime, machine)
-}
-
-fn fast_forward_rumble_observer_needed(
-    runtime: &FrontendRuntime,
-    machine: &DesktopEmulationSession,
-) -> bool {
-    runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-        manager.has_active_rumble_effect()
-            || (machine.cartridge().has_rumble() && manager.can_deliver_rumble())
-    })
-}
-
 fn step_fast_forward_frames(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -5960,138 +5791,25 @@ fn step_fast_forward_frames(
     sync_fast_forward_audio_state(context.runtime, true)?;
     let frame_budget =
         fast_forward_frame_budget(context.session.config.fast_forward.speed_multiplier);
-    let lean_path_available = fast_forward_lean_path_available(
-        context.session,
-        context.runtime,
-        context.machine,
-        context.performance_counter,
-    );
-    if lean_path_available {
-        return step_fast_forward_frames_lean(event_pump, canvas, context, frame_budget);
-    }
-    step_until_frame_origin_crossings(event_pump, canvas, context, frame_budget, true)
-}
-
-fn step_fast_forward_frames_lean(
-    event_pump: &mut sdl3::EventPump,
-    canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_>,
-    target_frame_origin_crossings: usize,
-) -> Result<(StepUntilNextFrameResult, usize), String> {
-    let target_frame_origin_crossings = target_frame_origin_crossings.max(1);
-    let mut observed_frame_origin_crossings = 0usize;
-    let frame_start_ly = context.machine.ppu().ly();
-    let frame_start_dot = context.machine.ppu().line_dot();
-    let mut stepped_t_cycles = 0usize;
-
-    loop {
-        match process_events(event_pump, canvas, context)? {
-            LoopSignal::Continue => {}
-            LoopSignal::Quit => {
-                return Ok((
-                    StepUntilNextFrameResult {
-                        signal: LoopSignal::Quit,
-                        emulation_profile_request: None,
-                        frame_loop_telemetry: basic_frame_loop_telemetry_from_machine(
-                            context.machine,
-                            frame_start_ly,
-                            frame_start_dot,
-                            stepped_t_cycles,
-                            observed_frame_origin_crossings,
-                        ),
-                    },
-                    observed_frame_origin_crossings,
-                ));
-            }
-        }
-        if emulation_paused(context.machine, context.runtime) {
-            return Ok((
-                StepUntilNextFrameResult {
-                    signal: LoopSignal::Continue,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: basic_frame_loop_telemetry_from_machine(
-                        context.machine,
-                        frame_start_ly,
-                        frame_start_dot,
-                        stepped_t_cycles,
-                        observed_frame_origin_crossings,
-                    ),
-                },
-                observed_frame_origin_crossings,
-            ));
-        }
-
-        let Some(frame_step) = context.machine.step_primary_until_frame_origin_crossing() else {
-            return step_until_frame_origin_crossings(
-                event_pump,
-                canvas,
-                context,
-                target_frame_origin_crossings.saturating_sub(observed_frame_origin_crossings),
-                true,
-            );
-        };
-        stepped_t_cycles = stepped_t_cycles.saturating_add(frame_step.stepped_t_cycles);
-        observed_frame_origin_crossings =
-            observed_frame_origin_crossings.saturating_add(frame_step.frame_origin_crossings);
-        maybe_flush_runtime_save_sessions_at_frame_boundary(
-            context.runtime,
-            context.machine,
-            Instant::now(),
-        )?;
-        let fast_forward_released =
-            !fast_forward_active(context.runtime, context.session, context.machine);
-        if observed_frame_origin_crossings >= target_frame_origin_crossings || fast_forward_released
-        {
-            let clamped_frame_origin_crossings =
-                observed_frame_origin_crossings.min(usize::from(u8::MAX));
-            return Ok((
-                StepUntilNextFrameResult {
-                    signal: LoopSignal::Continue,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: basic_frame_loop_telemetry(
-                        frame_start_ly,
-                        frame_start_dot,
-                        frame_step.end_ly,
-                        frame_step.end_dot,
-                        stepped_t_cycles,
-                        clamped_frame_origin_crossings,
-                    ),
-                },
-                clamped_frame_origin_crossings,
-            ));
-        }
-    }
-}
-
-#[cfg(test)]
-fn step_fast_forward_frame_sequence<F>(
-    speed_multiplier: u8,
-    mut step_frame: F,
-) -> Result<(StepUntilNextFrameResult, usize), String>
-where
-    F: FnMut() -> Result<(StepUntilNextFrameResult, bool), String>,
-{
-    let speed_multiplier = fast_forward_frame_budget(speed_multiplier);
     let mut fast_forwarded_frames = 0usize;
-    let mut final_step_result = StepUntilNextFrameResult {
+    let mut final_result = StepUntilNextFrameResult {
         signal: LoopSignal::Continue,
         emulation_profile_request: None,
         frame_loop_telemetry: FrameLoopTelemetry::default(),
     };
 
-    for step_index in 0..speed_multiplier {
-        let (step_result, fast_forward_still_active) = step_frame()?;
-        final_step_result = step_result;
+    for _ in 0..frame_budget {
+        final_result = step_until_next_frame(event_pump, canvas, context)?;
+        if !matches!(final_result.signal, LoopSignal::Continue) {
+            break;
+        }
         fast_forwarded_frames = fast_forwarded_frames.saturating_add(1);
-        if !matches!(final_step_result.signal, LoopSignal::Continue)
-            || !fast_forward_still_active
-            || step_index + 1 >= speed_multiplier
-        {
+        if !fast_forward_active(context.runtime, context.session, context.machine) {
             break;
         }
     }
 
-    Ok((final_step_result, fast_forwarded_frames))
+    Ok((final_result, fast_forwarded_frames))
 }
 
 fn fast_forward_frame_budget(speed_multiplier: u8) -> usize {
@@ -6103,19 +5821,6 @@ fn step_until_next_frame(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<StepUntilNextFrameResult, String> {
-    step_until_frame_origin_crossings(event_pump, canvas, context, 1, false)
-        .map(|(result, _)| result)
-}
-
-fn step_until_frame_origin_crossings(
-    event_pump: &mut sdl3::EventPump,
-    canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_>,
-    target_frame_origin_crossings: usize,
-    stop_when_fast_forward_released: bool,
-) -> Result<(StepUntilNextFrameResult, usize), String> {
-    let target_frame_origin_crossings = target_frame_origin_crossings.max(1);
-    let mut observed_frame_origin_crossings = 0usize;
     let collect_frame_telemetry = context.performance_counter.emulation_profile_enabled();
     let frame_start_ly = context.machine.ppu().ly();
     let frame_start_dot = context.machine.ppu().line_dot();
@@ -6186,25 +5891,19 @@ fn step_until_frame_origin_crossings(
         match loop_signal {
             LoopSignal::Continue => {}
             LoopSignal::Quit => {
-                return Ok((
-                    StepUntilNextFrameResult {
-                        signal: LoopSignal::Quit,
-                        emulation_profile_request: None,
-                        frame_loop_telemetry: FrameLoopTelemetry::default(),
-                    },
-                    observed_frame_origin_crossings,
-                ));
+                return Ok(StepUntilNextFrameResult {
+                    signal: LoopSignal::Quit,
+                    emulation_profile_request: None,
+                    frame_loop_telemetry: FrameLoopTelemetry::default(),
+                });
             }
         }
         if emulation_paused(context.machine, context.runtime) {
-            return Ok((
-                StepUntilNextFrameResult {
-                    signal: LoopSignal::Continue,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: FrameLoopTelemetry::default(),
-                },
-                observed_frame_origin_crossings,
-            ));
+            return Ok(StepUntilNextFrameResult {
+                signal: LoopSignal::Continue,
+                emulation_profile_request: None,
+                frame_loop_telemetry: FrameLoopTelemetry::default(),
+            });
         }
         if profile_this_frame && profile_request.is_none() {
             let mut request = EmulationProfileRequest::new(context.machine.clone());
@@ -6212,9 +5911,6 @@ fn step_until_frame_origin_crossings(
             profile_request = Some(request);
             pending_event_poll_duration = Duration::ZERO;
         }
-
-        let fast_forward_runtime_active =
-            fast_forward_active(context.runtime, context.session, context.machine);
 
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
@@ -6256,9 +5952,7 @@ fn step_until_frame_origin_crossings(
                 .cpu_window_trace
                 .record_t_cycle(audio_source_machine(context.machine));
 
-            if !fast_forward_runtime_active
-                && let Some(audio_output) = &mut context.runtime.audio_output
-            {
+            if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
             }
             if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
@@ -6271,9 +5965,7 @@ fn step_until_frame_origin_crossings(
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
-            if !fast_forward_runtime_active {
-                record_desktop_rewind_point(context.session, context.machine, context.runtime);
-            }
+            record_desktop_rewind_point(context.session, context.machine, context.runtime);
             if collect_frame_telemetry {
                 let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
                 let current_access_mode = context.machine.ppu().access_mode();
@@ -6423,7 +6115,6 @@ fn step_until_frame_origin_crossings(
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             if now_at_frame_origin && !at_frame_origin {
-                observed_frame_origin_crossings = observed_frame_origin_crossings.saturating_add(1);
                 if collect_frame_telemetry {
                     frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 }
@@ -6431,11 +6122,7 @@ fn step_until_frame_origin_crossings(
                     || context.runtime.audio_recorder.is_some()
                 {
                     let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
-                    let fast_forward_audio_suppressed =
-                        fast_forward_active(context.runtime, context.session, context.machine);
-                    if fast_forward_audio_suppressed {
-                        sync_fast_forward_audio_state(context.runtime, true)?;
-                    } else if let Some(audio_output) = &mut context.runtime.audio_output {
+                    if let Some(audio_output) = &mut context.runtime.audio_output {
                         audio_output.submit_captured_samples()?;
                     }
                     if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
@@ -6460,77 +6147,58 @@ fn step_until_frame_origin_crossings(
                     profile_request
                         .record_host_save_flush_duration(save_flush_started_at.elapsed());
                 }
-                let fast_forward_released = stop_when_fast_forward_released
-                    && !fast_forward_active(context.runtime, context.session, context.machine);
-                if observed_frame_origin_crossings >= target_frame_origin_crossings
-                    || fast_forward_released
-                {
-                    let observed_frame_origin_crossings =
-                        observed_frame_origin_crossings.min(usize::from(u8::MAX)) as u8;
-                    return Ok((
-                        StepUntilNextFrameResult {
-                            signal: LoopSignal::Continue,
-                            emulation_profile_request: profile_request,
-                            frame_loop_telemetry: if collect_frame_telemetry {
-                                FrameLoopTelemetry {
-                                    start_ly: frame_start_ly,
-                                    start_dot: frame_start_dot,
-                                    end_ly: current_ly,
-                                    end_dot: current_dot,
-                                    stepped_t_cycles,
-                                    frame_origin_crossings: observed_frame_origin_crossings,
-                                    scanline_transitions,
-                                    scanlines_over_456,
-                                    max_scanline_t_cycles,
-                                    max_scanline_ly,
-                                    max_mode0_start_dot,
-                                    max_mode0_start_dot_ly,
-                                    ly_153_to_0_transitions,
-                                    ly_153_to_0_startup_mode0,
-                                    ly_153_to_0_blank_frame,
-                                    ly_0_self_wraps,
-                                    ly_0_self_wrap_startup_mode0,
-                                    ly_0_self_wrap_blank_frame,
-                                    ly_0_to_1_transitions,
-                                    ly_0_scanline_t_cycles,
-                                    ly_0_max_mode0_start_dot,
-                                    ly_0_stall_t_cycles,
-                                    ly_0_stall_hblank_t_cycles,
-                                    ly_0_stall_oam_t_cycles,
-                                    ly_0_stall_drawing_t_cycles,
-                                    ly_0_stall_startup_mode0_t_cycles,
-                                    ly_0_stall_blank_frame_t_cycles,
-                                    ly_0_stall_runs,
-                                    ly_0_max_stall_run_t_cycles,
-                                    ly_0_max_stall_dot,
-                                    ly_0_max_stall_mode_dot,
-                                    cpu_stop_t_cycles,
-                                    cpu_zombie_stop_t_cycles,
-                                    ly_0_cpu_stop_t_cycles,
-                                    ly_0_cpu_zombie_stop_t_cycles,
-                                    ly_0_stall_cpu_stop_t_cycles,
-                                    ly_0_stall_cpu_zombie_stop_t_cycles,
-                                    lcd_disabled_t_cycles,
-                                    lcd_disable_transitions,
-                                    lcd_enable_transitions,
-                                    ly_0_lcd_disabled_t_cycles,
-                                    ly_0_stall_lcd_disabled_t_cycles,
-                                }
-                            } else {
-                                FrameLoopTelemetry {
-                                    start_ly: frame_start_ly,
-                                    start_dot: frame_start_dot,
-                                    end_ly: current_ly,
-                                    end_dot: current_dot,
-                                    stepped_t_cycles,
-                                    frame_origin_crossings: observed_frame_origin_crossings,
-                                    ..Default::default()
-                                }
-                            },
-                        },
-                        usize::from(observed_frame_origin_crossings),
-                    ));
-                }
+                return Ok(StepUntilNextFrameResult {
+                    signal: LoopSignal::Continue,
+                    emulation_profile_request: profile_request,
+                    frame_loop_telemetry: if collect_frame_telemetry {
+                        FrameLoopTelemetry {
+                            start_ly: frame_start_ly,
+                            start_dot: frame_start_dot,
+                            end_ly: current_ly,
+                            end_dot: current_dot,
+                            stepped_t_cycles,
+                            frame_origin_crossings,
+                            scanline_transitions,
+                            scanlines_over_456,
+                            max_scanline_t_cycles,
+                            max_scanline_ly,
+                            max_mode0_start_dot,
+                            max_mode0_start_dot_ly,
+                            ly_153_to_0_transitions,
+                            ly_153_to_0_startup_mode0,
+                            ly_153_to_0_blank_frame,
+                            ly_0_self_wraps,
+                            ly_0_self_wrap_startup_mode0,
+                            ly_0_self_wrap_blank_frame,
+                            ly_0_to_1_transitions,
+                            ly_0_scanline_t_cycles,
+                            ly_0_max_mode0_start_dot,
+                            ly_0_stall_t_cycles,
+                            ly_0_stall_hblank_t_cycles,
+                            ly_0_stall_oam_t_cycles,
+                            ly_0_stall_drawing_t_cycles,
+                            ly_0_stall_startup_mode0_t_cycles,
+                            ly_0_stall_blank_frame_t_cycles,
+                            ly_0_stall_runs,
+                            ly_0_max_stall_run_t_cycles,
+                            ly_0_max_stall_dot,
+                            ly_0_max_stall_mode_dot,
+                            cpu_stop_t_cycles,
+                            cpu_zombie_stop_t_cycles,
+                            ly_0_cpu_stop_t_cycles,
+                            ly_0_cpu_zombie_stop_t_cycles,
+                            ly_0_stall_cpu_stop_t_cycles,
+                            ly_0_stall_cpu_zombie_stop_t_cycles,
+                            lcd_disabled_t_cycles,
+                            lcd_disable_transitions,
+                            lcd_enable_transitions,
+                            ly_0_lcd_disabled_t_cycles,
+                            ly_0_stall_lcd_disabled_t_cycles,
+                        }
+                    } else {
+                        FrameLoopTelemetry::default()
+                    },
+                });
             }
             at_frame_origin = now_at_frame_origin;
         }
@@ -12338,19 +12006,6 @@ mod tests {
     }
 
     #[test]
-    fn performance_snapshot_reports_emulated_speed_from_frame_origin_crossings() {
-        let mut counter = super::PerformanceCounter::new("gb-desktop | speed".to_string());
-        counter.frames_in_sample = 1;
-        counter.sample_frame_origin_crossings = 4;
-        counter.sample_frame_origin_crossings_observations = 1;
-
-        let snapshot = counter.snapshot_from_elapsed(super::FRAME_DURATION);
-
-        assert!((snapshot.fps - super::target_frame_rate_hz()).abs() < 0.01);
-        assert!((snapshot.speed_percent - 400.0).abs() < 0.01);
-    }
-
-    #[test]
     fn audio_queue_pacing_correction_ignores_nominal_latency_and_caps_large_backlogs() {
         assert_eq!(
             super::audio_queue_pacing_correction_with_policy(None, true),
@@ -12595,9 +12250,7 @@ mod tests {
             .expect("summary mode should render a profile line");
 
         assert!(summary.contains("session=single"));
-        assert!(summary.contains("mode=normal"));
         assert!(summary.contains("emu_ms=11.00"));
-        assert!(summary.contains("render_ms=0.00"));
         assert!(summary.contains("sampled_frames=2"));
         assert!(summary.contains(&format!(
             "sample_every={}",
@@ -12965,7 +12618,6 @@ mod tests {
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
                     session_kind: super::EmulationProfileSessionKind::Single,
-                    playback_mode: super::EmulationPlaybackMode::FastForward,
                     emulation_duration: Duration::from_millis(12),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -13202,13 +12854,10 @@ mod tests {
             .expect("stepping should still succeed without emulation profiling");
         assert_eq!(result.signal, super::LoopSignal::Continue);
         assert!(result.emulation_profile_request.is_none());
-        assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 1);
-        assert!(
-            result.frame_loop_telemetry.stepped_t_cycles > 0,
-            "basic telemetry should keep emulated-frame accounting without profiling"
+        assert_eq!(
+            result.frame_loop_telemetry,
+            super::FrameLoopTelemetry::default()
         );
-        assert_eq!(result.frame_loop_telemetry.scanline_transitions, 0);
-        assert_eq!(result.frame_loop_telemetry.max_scanline_t_cycles, 0);
     }
 
     #[test]
@@ -16509,7 +16158,6 @@ mod tests {
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
                     session_kind: super::EmulationProfileSessionKind::Single,
-                    playback_mode: super::EmulationPlaybackMode::Normal,
                     emulation_duration: Duration::from_millis(10),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -17574,7 +17222,7 @@ mod tests {
     }
 
     #[test]
-    fn fast_forward_helpers_cover_hold_state_indicator_and_playback_modes() {
+    fn fast_forward_helpers_cover_hold_state_and_indicator() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("fast-forward-helpers", true, false, false);
 
@@ -17626,23 +17274,6 @@ mod tests {
             &harness.machine,
             true,
         ));
-
-        assert_eq!(
-            super::emulation_playback_mode(false, false, false),
-            super::EmulationPlaybackMode::Normal
-        );
-        assert_eq!(
-            super::emulation_playback_mode(true, true, true),
-            super::EmulationPlaybackMode::Rewind
-        );
-        assert_eq!(
-            super::emulation_playback_mode(false, true, false),
-            super::EmulationPlaybackMode::FastForward
-        );
-        assert_eq!(
-            super::emulation_playback_mode(false, false, true),
-            super::EmulationPlaybackMode::FastForward
-        );
     }
 
     #[test]
@@ -17666,218 +17297,11 @@ mod tests {
     }
 
     #[test]
-    fn fast_forward_lean_path_returns_when_paused_or_quit_before_stepping() {
-        let _guard = crate::lock_sdl_test();
-        let mut paused_harness =
-            FrontendHarness::new("fast-forward-lean-paused", true, false, false);
-        paused_harness.runtime.paused = true;
-        let before_t_cycle = paused_harness
-            .machine
-            .primary_machine()
-            .next_t_cycle()
-            .get();
-        let (paused_result, paused_frames) = {
-            let FrontendHarness {
-                event_pump,
-                canvas,
-                session,
-                machine,
-                runtime,
-                settings_store,
-                performance_counter,
-                frame_pacer,
-                ..
-            } = &mut paused_harness;
-            let mut context = super::FrontendActionContext {
-                session,
-                machine,
-                runtime,
-                performance_counter,
-                frame_pacer,
-                settings_store,
-            };
-            super::step_fast_forward_frames_lean(event_pump, canvas, &mut context, 4)
-                .expect("paused Fast Forward lean step should return without advancing")
-        };
-        assert_eq!(paused_result.signal, super::LoopSignal::Continue);
-        assert_eq!(paused_frames, 0);
-        assert_eq!(paused_result.frame_loop_telemetry.stepped_t_cycles, 0);
-        assert_eq!(
-            paused_harness
-                .machine
-                .primary_machine()
-                .next_t_cycle()
-                .get(),
-            before_t_cycle
-        );
-        drop(paused_harness);
-
-        let mut quit_harness = FrontendHarness::new("fast-forward-lean-quit", true, false, false);
-        quit_harness
-            .sdl
-            .event()
-            .expect("FF quit-path event subsystem")
-            .push_event(Event::Quit { timestamp: 0 })
-            .expect("quit event should be pushable");
-        let (quit_result, quit_frames) = {
-            let FrontendHarness {
-                event_pump,
-                canvas,
-                session,
-                machine,
-                runtime,
-                settings_store,
-                performance_counter,
-                frame_pacer,
-                ..
-            } = &mut quit_harness;
-            let mut context = super::FrontendActionContext {
-                session,
-                machine,
-                runtime,
-                performance_counter,
-                frame_pacer,
-                settings_store,
-            };
-            super::step_fast_forward_frames_lean(event_pump, canvas, &mut context, 4)
-                .expect("quit Fast Forward lean step should return without advancing")
-        };
-        assert_eq!(quit_result.signal, super::LoopSignal::Quit);
-        assert_eq!(quit_frames, 0);
-        assert_eq!(quit_result.frame_loop_telemetry.stepped_t_cycles, 0);
-    }
-
-    #[test]
-    fn fast_forward_step_sequence_uses_speed_multiplier_as_frame_budget() {
-        let mut calls = 0usize;
-        let (result, fast_forwarded_frames) = super::step_fast_forward_frame_sequence(4, || {
-            calls = calls.saturating_add(1);
-            Ok((
-                super::StepUntilNextFrameResult {
-                    signal: super::LoopSignal::Continue,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: super::FrameLoopTelemetry::default(),
-                },
-                true,
-            ))
-        })
-        .expect("synthetic Fast Forward stepping should succeed");
-
-        assert_eq!(result.signal, super::LoopSignal::Continue);
-        assert_eq!(calls, 4);
-        assert_eq!(
-            fast_forwarded_frames, 4,
-            "4x Fast Forward should step four emulated frames before the next presentation"
-        );
+    fn fast_forward_frame_budget_uses_speed_multiplier() {
         assert_eq!(super::fast_forward_frame_budget(0), 1);
         assert_eq!(super::fast_forward_frame_budget(1), 1);
         assert_eq!(super::fast_forward_frame_budget(2), 2);
         assert_eq!(super::fast_forward_frame_budget(4), 4);
-    }
-
-    #[test]
-    fn fast_forward_step_sequence_stops_when_hold_is_released() {
-        let mut calls = 0usize;
-        let (_result, fast_forwarded_frames) = super::step_fast_forward_frame_sequence(4, || {
-            calls = calls.saturating_add(1);
-            Ok((
-                super::StepUntilNextFrameResult {
-                    signal: super::LoopSignal::Continue,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: super::FrameLoopTelemetry::default(),
-                },
-                false,
-            ))
-        })
-        .expect("synthetic Fast Forward stepping should succeed");
-
-        assert_eq!(calls, 1);
-        assert_eq!(fast_forwarded_frames, 1);
-    }
-
-    #[test]
-    fn fast_forward_lean_path_availability_tracks_host_observers() {
-        let _guard = crate::lock_sdl_test();
-        let mut harness = FrontendHarness::new("fast-forward-lean-path", true, false, false);
-        assert!(super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-
-        let profiled_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
-            "gb-desktop | profiled".to_string(),
-            super::EmulationProfileMode::SampledSummary {
-                sample_every_frames: 1,
-            },
-        );
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &profiled_counter,
-        ));
-
-        harness.session.external_port_selection = DesktopExternalPortSelection::Printer;
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-        harness.session.external_port_selection = DesktopExternalPortSelection::None;
-
-        harness.runtime.trace_capture.enabled = true;
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-        harness.runtime.trace_capture.enabled = false;
-
-        harness.runtime.watch_trace.output_path = Some(harness.root.join("watch.trace"));
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-        harness.runtime.watch_trace.output_path = None;
-
-        harness.runtime.audio_recording_mode = super::DesktopAudioRecordingMode::Automatic;
-        harness.runtime.audio_recorder = super::create_audio_recorder(
-            &harness.runtime.audio_recording_mode,
-            harness.runtime.audio_channel_mask,
-            &harness.session,
-            &harness.machine,
-        )
-        .expect("automatic recorder should be available for FF lean eligibility test");
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-        super::finish_audio_recorder(&mut harness.runtime.audio_recorder)
-            .expect("recorder cleanup should succeed after FF lean eligibility test");
-        harness.runtime.audio_recording_mode = super::DesktopAudioRecordingMode::Disabled;
-
-        harness.runtime.cpu_window_trace.output_path = Some(harness.root.join("cpu-window.trace"));
-        assert!(!super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
-        harness.runtime.cpu_window_trace.finished = true;
-        assert!(super::fast_forward_lean_path_available(
-            &harness.session,
-            &harness.runtime,
-            &harness.machine,
-            &harness.performance_counter,
-        ));
     }
 
     #[test]
@@ -17902,15 +17326,6 @@ mod tests {
         harness.session.config.fast_forward.enabled = true;
         harness.session.config.fast_forward.speed_multiplier = 4;
         harness.runtime.fast_forward_hotkey_active = true;
-        assert!(
-            super::fast_forward_lean_path_available(
-                &harness.session,
-                &harness.runtime,
-                &harness.machine,
-                &harness.performance_counter,
-            ),
-            "default Fast Forward runtime test should use the lean path"
-        );
 
         let before_t_cycle = harness.machine.primary_machine().next_t_cycle().get();
         let (result, fast_forwarded_frames) = {
@@ -17938,49 +17353,29 @@ mod tests {
 
         assert_eq!(result.signal, super::LoopSignal::Continue);
         assert_eq!(fast_forwarded_frames, 4);
-        assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 4);
         assert!(
             advanced_t_cycles >= gb_core::DMG_T_CYCLES_PER_FRAME.saturating_mul(4),
             "4x Fast Forward advanced only {advanced_t_cycles} T-cycles"
         );
         assert!(
             harness.runtime.rewind_buffer.is_empty(),
-            "Fast Forward should not spend host time populating rewind history"
+            "Fast Forward should not populate rewind history while held"
         );
     }
 
     #[test]
-    fn fast_forward_fallback_path_suppresses_audio_and_uses_frame_budget() {
+    fn fast_forward_runtime_step_stops_before_counting_quit_frame() {
         let _guard = crate::lock_sdl_test();
-        let mut harness = FrontendHarness::new("fast-forward-fallback-step", true, true, false);
-        let mut stable_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
-        stable_rom[ENTRY_POINT_START..ENTRY_POINT_START + 2].copy_from_slice(&[0x18, 0xFE]);
-        harness.session.loaded_rom = Some(super::LoadedRom {
-            path: harness.root.join("fast-forward-fallback-step.gb"),
-            bytes: stable_rom.clone(),
-        });
-        harness.machine = super::DesktopEmulationSession::new_single(
-            super::load_machine_for_rom(
-                &harness.session.config,
-                &harness.session.current_dir,
-                &stable_rom,
-            )
-            .expect("stable ROM should load for Fast Forward fallback test")
-            .machine,
-        );
-        harness.session.external_port_selection = DesktopExternalPortSelection::Printer;
-        harness.session.config.fast_forward.speed_multiplier = 2;
+        let mut harness = FrontendHarness::new("fast-forward-runtime-quit", true, true, false);
+        harness.session.config.fast_forward.speed_multiplier = 4;
         harness.runtime.fast_forward_hotkey_active = true;
+        harness
+            .sdl
+            .event()
+            .expect("FF quit event subsystem")
+            .push_event(Event::Quit { timestamp: 0 })
+            .expect("quit event should be pushable");
 
-        assert!(
-            !super::fast_forward_lean_path_available(
-                &harness.session,
-                &harness.runtime,
-                &harness.machine,
-                &harness.performance_counter,
-            ),
-            "printer observer should force the conservative fallback path"
-        );
         let (result, fast_forwarded_frames) = {
             let mut context = super::FrontendActionContext {
                 session: &mut harness.session,
@@ -17995,16 +17390,57 @@ mod tests {
                 &mut harness.canvas,
                 &mut context,
             )
-            .expect("fallback Fast Forward stepping should advance runtime frames")
+            .expect("Fast Forward quit stepping should return cleanly")
+        };
+
+        assert_eq!(result.signal, super::LoopSignal::Quit);
+        assert_eq!(fast_forwarded_frames, 0);
+    }
+
+    #[test]
+    fn fast_forward_runtime_step_stops_after_hold_release() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-runtime-release", true, true, false);
+        let mut stable_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        stable_rom[ENTRY_POINT_START..ENTRY_POINT_START + 2].copy_from_slice(&[0x18, 0xFE]);
+        harness.session.loaded_rom = Some(super::LoadedRom {
+            path: harness.root.join("fast-forward-runtime-release.gb"),
+            bytes: stable_rom.clone(),
+        });
+        harness.machine = super::DesktopEmulationSession::new_single(
+            super::load_machine_for_rom(
+                &harness.session.config,
+                &harness.session.current_dir,
+                &stable_rom,
+            )
+            .expect("stable ROM should load for Fast Forward release test")
+            .machine,
+        );
+        harness.session.config.fast_forward.enabled = true;
+        harness.session.config.fast_forward.speed_multiplier = 4;
+        harness.runtime.fast_forward_hotkey_active = true;
+        harness.push_key(Keycode::RShift, false);
+
+        let (result, fast_forwarded_frames) = {
+            let mut context = super::FrontendActionContext {
+                session: &mut harness.session,
+                machine: &mut harness.machine,
+                runtime: &mut harness.runtime,
+                performance_counter: &mut harness.performance_counter,
+                frame_pacer: &mut harness.frame_pacer,
+                settings_store: &mut harness.settings_store,
+            };
+            super::step_fast_forward_frames(
+                &mut harness.event_pump,
+                &mut harness.canvas,
+                &mut context,
+            )
+            .expect("Fast Forward release stepping should return cleanly")
         };
 
         assert_eq!(result.signal, super::LoopSignal::Continue);
-        assert_eq!(fast_forwarded_frames, 2);
-        assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 2);
-        assert!(
-            harness.runtime.fast_forward_audio_suppressed,
-            "Fast Forward fallback should suppress host audio output while active"
-        );
+        assert_eq!(fast_forwarded_frames, 1);
+        assert!(!harness.runtime.fast_forward_hotkey_active);
     }
 
     #[test]
@@ -18699,15 +18135,6 @@ mod tests {
         assert_eq!(
             super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer.label(),
             "linked-dmg04-2p"
-        );
-        assert_eq!(super::EmulationPlaybackMode::Normal.label(), "normal");
-        assert_eq!(
-            super::EmulationPlaybackMode::FastForward.label(),
-            "fast-forward"
-        );
-        assert_eq!(
-            super::EmulationPlaybackMode::Normal.merge(super::EmulationPlaybackMode::Rewind),
-            super::EmulationPlaybackMode::Mixed
         );
         assert!(super::key_matches(DesktopKey::Escape, Keycode::Escape));
         assert!(!super::key_matches(DesktopKey::Escape, Keycode::A));
