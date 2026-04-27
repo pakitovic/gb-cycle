@@ -10,7 +10,7 @@ DMG only. CGB-specific features (double speed, VRAM/WRAM banking, CGB palettes, 
 
 ## Authority boundaries
 
-This roadmap sequences work but is not the behavioral source of truth. For subsystem behavior, layout, timing, and validation policy, follow the owning `docs/` file — see [index.md](index.md) for the full authority map. If roadmap prose drifts from those documents, update the roadmap.
+This roadmap sequences work but is not the behavioral source of truth. It defines the recommended implementation order and phase dependencies, not necessarily the exact merge order when work happens in parallel. For subsystem behavior, layout, timing, and validation policy, follow the owning `docs/` file — see [index.md](index.md) for the full authority map. If roadmap prose drifts from those documents, update the roadmap.
 
 ## Cross-cutting workstreams
 
@@ -31,20 +31,3 @@ Two workstreams span multiple phases:
 - [Phase 7 — Audio](roadmap/07-audio.md)
 - [Phase 8 — Full emulator save states and global serialization strategy](roadmap/08-save-states.md)
 - [Phase 9 — Final DMG hardening, differential validation, and closure](roadmap/09-hardening.md)
-
-## Final notes
-
-- Current Phase `6` follow-up after the Pocket Camera V1 baseline:
-  - `gb-core` now supports the official `0xFC` Pocket Camera cartridge as dedicated cartridge-local hardware with static host-frame injection and SRAM persistence.
-  - `gb-desktop` now exposes a session-scoped PNG-based `CAM IMAGE` / `CAM RESET` workflow plus SDL3-backed `CAM LIVE` live-frame injection for that hardware.
-  - Manual acceptance covers `Game Boy Camera (USA, Europe) (SGB Enhanced)`, `Game Boy Camera Gold (USA) (SGB Enhanced)`, and `Pocket Camera (Japan) (Rev 1) (SGB Enhanced)` for boot, still-image capture, SRAM photo save / reload, and reset-to-placeholder behavior.
-  - Deferred work remains for richer live-camera UX, higher-fidelity analog sensor behavior, and broader oracle validation for printer-facing flows / lower-level capture observables.
-- External `.sav` conversion now covers the shared SameBoy/mGBA layouts for
-  linear RAM, `MBC2`, and `MBC3` RTC-backed saves at the `gb-persistence`
-  boundary. Deferred work remains for any mapper that lacks a confirmed shared
-  external layout, especially HuC3/TAMA-style cartridges, and those cases should
-  continue to fail explicitly until a compatibility contract is documented.
-- This document defines the recommended implementation order, not necessarily the exact merge order if work happens in parallel.
-- Whenever a later block requires additional observability, the `debugger/` infrastructure should be expanded incrementally without changing its transversal role.
-- Any local simplification that contradicts the T-cycle model or the dot-by-dot PPU must be treated as explicit and documented technical debt.
-- If a conflict appears between ease of implementation and temporal fidelity, this roadmap prioritizes temporal fidelity as long as the design remains maintainable.

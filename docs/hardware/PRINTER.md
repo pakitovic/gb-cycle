@@ -2,22 +2,14 @@
 
 ## Scope
 
-Own the Game Boy Printer protocol state that lives on the far side of the
-handheld external port. This includes packet parsing, printer-visible status
-bits, buffered image data, packet timeout behavior, and typed printed-page
-artifacts. Do not own `SB` / `SC`, serial bit shifting, or frontend image
-encoding.
+Own the Game Boy Printer protocol state that lives on the far side of the handheld external port. This includes packet parsing, printer-visible status bits, buffered image data, packet timeout behavior, and typed printed-page artifacts. Do not own `SB` / `SC`, serial bit shifting, or frontend image encoding.
 
 ## Layering
 
-- `serial` owns per-console transfer timing, `SB` / `SC`, bit shifting, and the
-  narrow serial-endpoint boundary.
-- `external_port` owns whether a printer attachment is present and routes
-  completed serial bytes into the printer protocol state.
-- `printer` owns packet-level protocol semantics, printer status, image-buffer
-  management, and typed printed-page output.
-- frontends own PNG export, previews, save dialogs, and other presentation
-  policy.
+- `serial` owns per-console transfer timing, `SB` / `SC`, bit shifting, and the narrow serial-endpoint boundary.
+- `external_port` owns whether a printer attachment is present and routes completed serial bytes into the printer protocol state.
+- `printer` owns packet-level protocol semantics, printer status, image-buffer management, and typed printed-page output.
+- frontends own PNG export, previews, save dialogs, and other presentation policy.
 
 ## Responsibilities
 
@@ -39,8 +31,7 @@ encoding.
 - packet checksum validation is implemented
 - an empty `DATA` packet must be observed before `PRINT` is accepted
 - packet timeout resets the printer back to its initialized state
-- compression flag `1` is currently rejected as packet error; compressed data is
-  not implemented yet
+- compression flag `1` is currently rejected as packet error; compressed data is not implemented yet
 - printed output is exposed as typed page data, not frontend image files
 - current status progression is explicit and deterministic:
   - buffered-but-unprinted data reports `0x08`
@@ -49,9 +40,7 @@ encoding.
 
 ## Typed output contract
 
-The core should expose printed output as typed page/raster data suitable for
-desktop, CLI, tests, or web hosts. The core must not encode PNG, write files,
-or assume any one presentation backend.
+The core should expose printed output as typed page/raster data suitable for desktop, CLI, tests, or web hosts. The core must not encode PNG, write files, or assume any one presentation backend.
 
 ## Dependencies
 
@@ -75,6 +64,5 @@ or assume any one presentation backend.
 ## Known deferred work
 
 - compressed data packets
-- more detailed printer-busy timing than the current deterministic status-poll
-  progression
+- more detailed printer-busy timing than the current deterministic status-poll progression
 - printer-specific hardware error bits beyond packet/checksum handling

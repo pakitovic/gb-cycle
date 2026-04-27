@@ -9,8 +9,7 @@
 
 #### Goal
 
-Extend `cartridge/` from the closed No MBC baseline to banked commercial cartridge families and generalized cartridge-local persistence without contaminating the rest of the core.
-This phase closes cartridge-local persistence only; whole-machine save states remain dedicated Phase `8` work.
+Extend `cartridge/` from the closed No MBC baseline to banked commercial cartridge families and generalized cartridge-local persistence without contaminating the rest of the core. This phase closes cartridge-local persistence only; whole-machine save states remain dedicated Phase `8` work.
 
 #### Modules involved
 
@@ -170,10 +169,10 @@ Within the current DMG-only but CGB-ready project plan, execute the special-cart
 4. `HuC1` runtime support — in scope before CGB
 5. `HuC-3` runtime support — in scope before CGB
 6. `M161` runtime support — in scope before CGB
-7. base CGB bring-up gate — deferred to `TODO.md`
-8. `MBC30` runtime support — deferred to `TODO.md` until point `7` is closed
-9. `MBC7` runtime support — deferred to `TODO.md` until point `7` is closed
-10. `MBC6` runtime support — deferred to `TODO.md` until point `7` is closed
+7. base CGB bring-up gate — outside Phase `6`; see `docs/hardware/CGB.md`
+8. `MBC30` runtime support — after point `7`; see `docs/hardware/CGB.md` and `docs/hardware/CARTRIDGES-MBC.md`
+9. `MBC7` runtime support — after point `7`; see `docs/hardware/CGB.md` and `docs/hardware/CARTRIDGES-MBC.md`
+10. `MBC6` runtime support — after point `7`; see `docs/hardware/CGB.md` and `docs/hardware/CARTRIDGES-MBC.md`
 
 The purpose of that split is to close the remaining DMG-relevant special-cartridge work first while keeping CGB-only specials explicit, typed, and impossible to misclassify. Before point `7` is closed, `MBC30`, `MBC7`, and `MBC6` may grow diagnostics, validation hooks, persistence shapes, or device skeletons, but they must not be counted as functionally supported runtime targets.
 

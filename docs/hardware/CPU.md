@@ -8,9 +8,7 @@ Own the SM83 CPU execution model: registers, instruction flow, interrupt accepta
 
 Model opcode fetch, decode, and execute as explicit phases. Keep instruction semantics separate from timing/accounting decisions so timing refinements do not require rewriting instruction meaning.
 
-For this project, the CPU timing model should be expressed in T-cycles as the fundamental unit. M-cycles may still be useful as a descriptive grouping, but not as the core execution granularity.
-Interrupt acceptance, `EI` delay, `DI`, `HALT`, `HALT` bug, `RETI`, and `STOP` should be treated as explicit CPU control-flow states, not as ad hoc patches attached to unrelated bus or interrupt code.
-The source of truth should not be "execute opcode, mutate registers, then report an aggregate duration". The source of truth should be an in-flight instruction model made of ordered fetch, read, write, stack, branch, and internal steps that stay synchronized with the shared system timeline.
+For this project, the CPU timing model should be expressed in T-cycles as the fundamental unit. M-cycles may still be useful as a descriptive grouping, but not as the core execution granularity. Interrupt acceptance, `EI` delay, `DI`, `HALT`, `HALT` bug, `RETI`, and `STOP` should be treated as explicit CPU control-flow states, not as ad hoc patches attached to unrelated bus or interrupt code. The source of truth should not be "execute opcode, mutate registers, then report an aggregate duration". The source of truth should be an in-flight instruction model made of ordered fetch, read, write, stack, branch, and internal steps that stay synchronized with the shared system timeline.
 
 ## Responsibilities
 
@@ -56,11 +54,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - The architecture must allow `STOP` to be released by an explicit hardware-originated wake path owned by the relevant subsystem, with joypad as the current DMG-family baseline owner, rather than by a frontend-only shortcut.
 - The CPU must consume that documented subsystem-owned `STOP` wake policy; it must not define a second local wake rule in parallel.
 - For the current repo baseline, the CPU should consume two distinct joypad-owned `STOP` signals derived from the live `JOYP` matrix after row selection has been applied: the current `WAKE` line level sampled while executing `STOP`, and a later visible `High -> Low` wake event used only when the CPU is already in the explicit `Stopped` state.
-- For the current DMG-family baseline in this repo, a `STOP` path with `IME = 0` must follow the documented four-way entry matrix instead of one blanket `10 00` rule:
-  `WAKE = 0` and no pending maskable interrupt enters a real 2-byte `STOP`,
-  `WAKE = 0` with a pending maskable interrupt enters a 1-byte zombie `STOP`,
-  `WAKE = 1` with no pending maskable interrupt behaves HALT-like while still appearing as 2 bytes,
-  and `WAKE = 1` with a pending maskable interrupt behaves NOP-like and appears as 1 byte.
+- For the current DMG-family baseline in this repo, a `STOP` path with `IME = 0` must follow the documented four-way entry matrix instead of one blanket `10 00` rule: `WAKE = 0` and no pending maskable interrupt enters a real 2-byte `STOP`, `WAKE = 0` with a pending maskable interrupt enters a 1-byte zombie `STOP`, `WAKE = 1` with no pending maskable interrupt behaves HALT-like while still appearing as 2 bytes, and `WAKE = 1` with a pending maskable interrupt behaves NOP-like and appears as 1 byte.
 - In the current repo baseline, that 1-byte zombie branch is an explicit CPU sleep state distinct from ordinary `Stopped`: it keeps `PC` at the post-opcode position with no padding-byte fetch and waits for the same joypad-owned wake event as real `STOP`.
 - The hardware literature also calls that branch "high power usage", but the current repo baseline treats that as an electrical/power distinction rather than a separate software-visible scheduler mode. In practice the emulator keeps the same shared stop gate as ordinary `Stopped` unless a future hardware-backed oracle demonstrates a different externally visible clocking contract.
 - For the current DMG-family baseline in this repo, the simpler `IME = 1` entry rule follows the base STOP description used by Pan Docs and SonoSooS: if the current joypad-owned `WAKE` line is already asserted when opcode `0x10` is fetched, `STOP` behaves as a 1-byte NOP-like path and must complete on that fetch M-cycle; otherwise it enters the ordinary 2-byte visible stopped path.
@@ -176,19 +170,9 @@ Priority order:
 - In the current Phase `4` baseline for this repo, the fetched opcode, decoded base/CB instruction kind, and operand latches should live in one internal in-flight instruction record so debugger and scheduler snapshots can derive `current_opcode` from a single source of truth instead of a parallel shadow field.
 - In the current Phase `6` performance baseline for this repo, any cached execute-dispatch classification should also live in that in-flight record as a pure derivation of the decoded instruction kind so repeated machine-cycle dispatch can stay cheap without introducing a second semantic source of truth.
 - In the current post-Phase `5` cleanup baseline for this repo, `CpuExecutionState::Execute` should no longer shadow that opcode a second time; the in-flight instruction record remains the sole opcode source while execute state tracks only phase progression.
-- Keep the configured direct-boot startup snapshot separate from the live CPU
-  register file so tests, debugger snapshots, and real execution can compare
-  the handoff state against the current in-flight machine state explicitly.
-- Prefer decode-time completion for instructions that truly end on the opcode
-  fetch machine cycle, and reserve explicit execute steps for instructions that
-  need extra immediate fetches, indirect memory traffic, or distinct read and
-  write phases, so register-only and `(HL)` forms cannot accidentally collapse
-  onto one fake timing path.
-- In the current post-Phase `6` cleanup baseline for this repo, fetched-opcode
-  decode should stay pure even for fetch-completing instructions: the decoder
-  returns a fetch-completion descriptor, and the fetch-phase engine applies the
-  semantic effect on that same M-cycle without making decode itself mutate CPU
-  state.
+- Keep the configured direct-boot startup snapshot separate from the live CPU register file so tests, debugger snapshots, and real execution can compare the handoff state against the current in-flight machine state explicitly.
+- Prefer decode-time completion for instructions that truly end on the opcode fetch machine cycle, and reserve explicit execute steps for instructions that need extra immediate fetches, indirect memory traffic, or distinct read and write phases, so register-only and `(HL)` forms cannot accidentally collapse onto one fake timing path.
+- In the current post-Phase `6` cleanup baseline for this repo, fetched-opcode decode should stay pure even for fetch-completing instructions: the decoder returns a fetch-completion descriptor, and the fetch-phase engine applies the semantic effect on that same M-cycle without making decode itself mutate CPU state.
 - A shape like `FetchOpcode`, `ExecuteMicroOp`, `ServiceInterrupt`, `Halted`, and `Stopped` is a good conceptual fit even if final enum names differ.
 - Expose either a `tick_tcycle()`-style API or a micro-step API that expands explicitly into visible T-cycle progress; the scheduler should never need to wait for a whole instruction to retire before other hardware advances.
 - Decode and execution should stay distinct enough that base opcodes and CB-prefixed opcodes can reuse the same execution machinery without collapsing their separate fetches.
@@ -203,36 +187,13 @@ Priority order:
 - `RETI` should be implemented as a real instruction with return plus interrupt re-enable semantics, not as `RET` plus an informal external patch.
 - Prefer micro-op metadata or callbacks that let the bus/PPU observe "read", "write", and address-bearing `inc/dec` events without hard-coding an opcode blacklist for the OAM corruption bug.
 - Keep implicit `HL`, `SP`, and `PC` updates explicit enough that the IDU path can be observed as part of the same T-cycle-accurate CPU model.
-- In the current Phase `2.8` baseline for this repo, the scheduler-aligned CPU
-  trace should expose `PC`, execution state, `IME`, delayed-`IME` state, and
-  the last phase-`5` bus activity for the current T-cycle, distinguishing at
-  least opcode fetches from operand and data accesses. Phase `9` should also
-  emit a post-wake/post-accept CPU trace so interrupt acceptance is visible on
-  the same timeline as the already-visible `IF` state.
-- In the current diagnostic baseline for this repo, any invalid non-ISA opcode
-  hole (the Pan Docs / RGBDS set `$D3`, `$DB`, `$DD`, `$E3`, `$E4`, `$EB`,
-  `$EC`, `$ED`, `$F4`, `$FC`, `$FD`) enters one explicit
-  `DiagnosticTrap::InvalidOpcode { opcode, address }` state immediately
-  after the real opcode-fetch bus read retires. That trap leaves `PC` at the
-  post-fetch position, keeps the fetched opcode visible, and avoids the
-  previous silent non-retiring execute-loop placeholder. All documented legal
-  base opcodes and all `$CB`-prefixed opcodes are otherwise implemented, so
-  there is no parallel CB-diagnostic fallback path. This diagnostic name is a
-  statement about invalid opcode holes in the ISA, not about missing support
-  for documented instructions.
-- In the current pre-`4.8` interleave baseline for this repo, the CPU also
-  exposes one address-bearing event for the current T-cycle when relevant:
-  opcode and operand fetch publish `read + inc` with the post-fetch `PC`,
-  `[hli]` / `[hld]` publish `read/write + inc/dec`, `inc rr` / `dec rr`
-  publish pure address-bearing `inc/dec`, and stack/control-flow plus
-  interrupt-service paths reuse that same combined access-plus-IDU event model
-  instead of leaving those updates implicit.
+- In the current Phase `2.8` baseline for this repo, the scheduler-aligned CPU trace should expose `PC`, execution state, `IME`, delayed-`IME` state, and the last phase-`5` bus activity for the current T-cycle, distinguishing at least opcode fetches from operand and data accesses. Phase `9` should also emit a post-wake/post-accept CPU trace so interrupt acceptance is visible on the same timeline as the already-visible `IF` state.
+- In the current diagnostic baseline for this repo, any invalid non-ISA opcode hole (the Pan Docs / RGBDS set `$D3`, `$DB`, `$DD`, `$E3`, `$E4`, `$EB`, `$EC`, `$ED`, `$F4`, `$FC`, `$FD`) enters one explicit `DiagnosticTrap::InvalidOpcode { opcode, address }` state immediately after the real opcode-fetch bus read retires. That trap leaves `PC` at the post-fetch position, keeps the fetched opcode visible, and avoids the previous silent non-retiring execute-loop placeholder. All documented legal base opcodes and all `$CB`-prefixed opcodes are otherwise implemented, so there is no parallel CB-diagnostic fallback path. This diagnostic name is a statement about invalid opcode holes in the ISA, not about missing support for documented instructions.
+- In the current pre-`4.8` interleave baseline for this repo, the CPU also exposes one address-bearing event for the current T-cycle when relevant: opcode and operand fetch publish `read + inc` with the post-fetch `PC`, `[hli]` / `[hld]` publish `read/write + inc/dec`, `inc rr` / `dec rr` publish pure address-bearing `inc/dec`, and stack/control-flow plus interrupt-service paths reuse that same combined access-plus-IDU event model instead of leaving those updates implicit.
 
 ## Real-boot prerequisite matrix
 
-Before the first `RealBoot` execution attempt in Phase `2.4`, treat the DMG
-boot path as blocked until this minimum opcode matrix is satisfied or an
-explicit narrower boot target is documented.
+Before the first `RealBoot` execution attempt in Phase `2.4`, treat the DMG boot path as blocked until this minimum opcode matrix is satisfied or an explicit narrower boot target is documented.
 
 | Status | Group | Minimum expectation |
 | --- | --- | --- |
@@ -244,16 +205,9 @@ explicit narrower boot target is documented.
 | Landed during Phase `4` interleave | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and the shared address-event publication that Phase `4.8` also consumes |
 | Closed in the current DMG-family boot baseline | end-to-end real-boot validation | repo-local ignored regressions run verified `dmg0`, `dmg`, and `mgb` boot ROM assets under `RealBoot`, assert the real `FF50` handoff and `0x0100` cartridge fetch, compare entry state against the centralized direct-boot snapshot (`BootController::direct_boot_state()`), and keep DMG invalid-logo / invalid-checksum / FF-filled-header cases in the no-handoff path without requiring CI-hosted firmware dumps |
 
-Keep this matrix explicit in roadmap and change reports. Real boot should not
-quietly start "just to see what happens" while the remaining pending rows stay
-unresolved.
+Keep this matrix explicit in roadmap and change reports. Real boot should not quietly start "just to see what happens" while the remaining pending rows stay unresolved.
 
-The synthetic DMG boot ROM from Phase `2.4` remains useful as a narrow,
-deterministic `gb-core` integration target, but it is no longer the sole boot
-closure criterion. Production DMG-family closure in this repo is defined by the
-repo-local verified-boot-ROM regression matrix in `gb-test-runner`, and any
-remaining differential-oracle or replay work now belongs to Phase `9`
-hardening rather than to a functional CPU/boot gap.
+The synthetic DMG boot ROM from Phase `2.4` remains useful as a narrow, deterministic `gb-core` integration target, but it is no longer the sole boot closure criterion. Production DMG-family closure in this repo is defined by the repo-local verified-boot-ROM regression matrix in `gb-test-runner`, and any remaining differential-oracle or replay work now belongs to Phase `9` hardening rather than to a functional CPU/boot gap.
 
 ## Recommended implementation order
 

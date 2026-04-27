@@ -25,11 +25,8 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - base APU architecture
 - separate implementation of each channel
 - functional frame sequencer
-- a repo-managed full `blargg-dmg-curated` family that includes Blargg
-  `dmg_sound 01..12` as the Phase `7` external bring-up lane
-- an explicitly temporary repo-gated non-APU Blargg subset during early audio
-  bring-up, followed by promotion of the full Blargg DMG family once the APU
-  lane is green
+- a repo-managed full `blargg-dmg-curated` family that includes Blargg `dmg_sound 01..12` as the Phase `7` external bring-up lane
+- an explicitly temporary repo-gated non-APU Blargg subset during early audio bring-up, followed by promotion of the full Blargg DMG family once the APU lane is green
 - direct-boot APU startup synthesis documented coherently with the visible post-boot audio snapshot, with any remaining hidden-state gaps tracked explicitly
 - final mixing
 - DAC control
@@ -40,170 +37,36 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 #### Phase 7 subphase plan
 
 1. `Phase 7.0` — Validation lane and harness
-   Scope: land the full curated DMG Blargg sound slice in the repo-managed
-   Blargg family, keep a temporary repo-gated non-APU subset callable from CI
-   and local automation until later promotion, and define the
-   unit/integration plus external-ROM targets that every later audio subphase
-   must satisfy.
-   Done criteria: the built-in full `blargg-dmg-curated` family includes the
-   upstream individual `dmg_sound 01..12` ROMs from `GBEmulatorShootout`, the
-   temporary repo-gated non-APU Blargg subset remains green during bring-up,
-   and the early hardening checklist plus docs name APU explicitly as an
-   active bring-up lane.
+   Scope: land the full curated DMG Blargg sound slice in the repo-managed Blargg family, keep a temporary repo-gated non-APU subset callable from CI and local automation until later promotion, and define the unit/integration plus external-ROM targets that every later audio subphase must satisfy.
+   Done criteria: the built-in full `blargg-dmg-curated` family includes the upstream individual `dmg_sound 01..12` ROMs from `GBEmulatorShootout`, the temporary repo-gated non-APU Blargg subset remains green during bring-up, and the early hardening checklist plus docs name APU explicitly as an active bring-up lane.
 2. `Phase 7.1` — Master APU MMIO, power, and ownership
-   Scope: `NR50` / `NR51` / `NR52`, powered state, wave-RAM persistence across
-   power-off, explicit `dac_enabled` versus `channel_active`, and one coherent
-   APU-owned state shape.
-   Done criteria: unit tests cover MMIO readback policy, power-off behavior,
-   wave-RAM persistence, and trigger-versus-DAC semantics before channel timing
-   work starts depending on them.
-   Status: done in the current branch baseline. `gb-core` now keeps master
-   APU control separate from per-channel register and runtime ownership,
-   exposes explicit DAC-versus-active masks through the snapshot, treats
-   powered-off startup state as the same observable contract as `NR52`
-   power-off, and covers the resulting MMIO / power / trigger semantics with
-   unit plus machine-integration tests.
+   Scope: `NR50` / `NR51` / `NR52`, powered state, wave-RAM persistence across power-off, explicit `dac_enabled` versus `channel_active`, and one coherent APU-owned state shape.
+   Done criteria: unit tests cover MMIO readback policy, power-off behavior, wave-RAM persistence, and trigger-versus-DAC semantics before channel timing work starts depending on them.
+   Status: done in the current branch baseline. `gb-core` now keeps master APU control separate from per-channel register and runtime ownership, exposes explicit DAC-versus-active masks through the snapshot, treats powered-off startup state as the same observable contract as `NR52` power-off, and covers the resulting MMIO / power / trigger semantics with unit plus machine-integration tests.
 3. `Phase 7.2` — `DIV-APU` and frame sequencer
-   Scope: `DIV`-derived falling-edge timing, direct-boot `div_apu` entry,
-   length/envelope/sweep slow clocks, and the scheduler contract for ordered
-   audio inputs each T-cycle.
-   Done criteria: unit tests plus integration coverage lock the `DIV`-write
-   extra-tick behavior, the shared-divider ownership split, and the no-free-
-   running-audio-timer rule.
-   Status: done in the current branch baseline. The timer now publishes
-   `DIV`-derived edge information from the shared system counter, the APU
-   consumes frame-sequencer edges on the scheduler timeline while also
-   responding immediately to `DIV` reset writes that produce the same falling
-   edge, and `SkipBoot` now seeds `div_apu` from the same hidden divider phase
-   as the timer instead of restarting audio from an unrelated zero phase.
+   Scope: `DIV`-derived falling-edge timing, direct-boot `div_apu` entry, length/envelope/sweep slow clocks, and the scheduler contract for ordered audio inputs each T-cycle.
+   Done criteria: unit tests plus integration coverage lock the `DIV`-write extra-tick behavior, the shared-divider ownership split, and the no-free-running-audio-timer rule.
+   Status: done in the current branch baseline. The timer now publishes `DIV`-derived edge information from the shared system counter, the APU consumes frame-sequencer edges on the scheduler timeline while also responding immediately to `DIV` reset writes that produce the same falling edge, and `SkipBoot` now seeds `div_apu` from the same hidden divider phase as the timer instead of restarting audio from an unrelated zero phase.
 4. `Phase 7.3` — Pulse channels (`CH1`, then `CH2`)
-   Scope: explicit pulse-channel state, period timers, duty stepping, envelope,
-   length, CH1 sweep, and shared pulse quirks without collapsing CH2 into a
-   fake sweep-bearing copy of CH1.
-   Done criteria: channel-local unit tests cover MMIO ownership and the key
-   pulse quirks, while integration tests tie the pulse channels back to frame-
-   sequencer clocks and `NR52` live-active bits.
-   Status: done in the current branch baseline. `CH1` now owns an explicit
-   pulse-plus-sweep state block, `CH2` reuses the shared pulse core without
-   fake sweep state, the APU clocks both channels from the shared T-cycle plus
-   frame-sequencer timeline, and unit plus machine-level integration tests now
-   cover trigger reloads, duty-step persistence across retrigger, period-write
-   delay, envelope/length behavior, CH1 second-overflow sweep handling,
-   trigger-time extra-length and envelope `+1` quirks, preserved low timer
-   bits on trigger, `NR52` power-on frame-sequencer reset plus the preserved-
-   divider-phase power-on behavior, and `NR52` live-bit clearing on length
-   expiry or sweep
-   overflow. External evidence has also moved the remaining sweep-specific
-   pulse ROMs out of the red set: `dmg_sound 03-trigger`, `04-sweep`, and
-   `05-sweep_details` now pass alongside `dmg_sound 07-len sweep period sync`
-   in the current branch baseline. Local pulse coverage now also closes the
-   last documented hidden-state follow-up from this slice: the first
-   post-power-on trigger on `CH1` / `CH2` suppresses the initial duty output
-   until the first real duty-step advance, and `NR52` power cycles rearm that
-   latch explicitly. The remaining cross-model caveat in this lane is the
-   documented `CGB-02` extra-length-clocking exception, which remains deferred
-   until the model surface can distinguish CGB revisions.
+   Scope: explicit pulse-channel state, period timers, duty stepping, envelope, length, CH1 sweep, and shared pulse quirks without collapsing CH2 into a fake sweep-bearing copy of CH1.
+   Done criteria: channel-local unit tests cover MMIO ownership and the key pulse quirks, while integration tests tie the pulse channels back to frame-sequencer clocks and `NR52` live-active bits.
+   Status: done in the current branch baseline. `CH1` now owns an explicit pulse-plus-sweep state block, `CH2` reuses the shared pulse core without fake sweep state, the APU clocks both channels from the shared T-cycle plus frame-sequencer timeline, and unit plus machine-level integration tests now cover trigger reloads, duty-step persistence across retrigger, period-write delay, envelope/length behavior, CH1 second-overflow sweep handling, trigger-time extra-length and envelope `+1` quirks, preserved low timer bits on trigger, `NR52` power-on frame-sequencer reset plus the preserved-divider-phase power-on behavior, and `NR52` live-bit clearing on length expiry or sweep overflow. External evidence has also moved the remaining sweep-specific pulse ROMs out of the red set: `dmg_sound 03-trigger`, `04-sweep`, and `05-sweep_details` now pass alongside `dmg_sound 07-len sweep period sync` in the current branch baseline. Local pulse coverage now also closes the last documented hidden-state follow-up from this slice: the first post-power-on trigger on `CH1` / `CH2` suppresses the initial duty output until the first real duty-step advance, and `NR52` power cycles rearm that latch explicitly. The remaining cross-model caveat in this lane is the documented `CGB-02` extra-length-clocking exception, which remains deferred until the model surface can distinguish CGB revisions.
 5. `Phase 7.4` — Wave channel (`CH3`)
-   Scope: wave RAM ownership, sample buffer and sample index, output-level
-   rules, active-wave-RAM policy, and the documented DMG retrigger-corruption
-   lane.
-   Done criteria: CH3 unit tests cover the buffered-read model and period-write
-   delay, and integration tests cover power-off preservation plus frame-
-   sequencer-coupled length behavior.
-   Status: done in the current branch baseline. `CH3` now owns explicit wave
-   RAM plus sample-buffer/sample-index state, period timer, output-level
-   control, and `256`-step length state; the APU clocks that wave path on the
-   shared T-cycle timeline and on the shared frame-sequencer length clock
-   without collapsing it into the pulse-channel helpers. Unit tests now cover
-   buffered reads, period-write delay, immediate `NR32` attenuation, the DMG
-   active-wave-RAM access window, the `NR34` extra-length / trigger-with-
-   length-0 seam, and the DMG retrigger-corruption seam keyed to the internal
-   byte position exactly `2` T-cycles before the next fetch, while
-   machine-level integration tests cover wave-RAM
-   preservation across `NR52` power-off and CH3 length expiry through `NR52`
-   bit `2`. External ROM evidence is now green on the CH3 quirk lane on top
-   of that baseline: `dmg_sound 03-trigger`, `09-wave read while on`,
-   `10-wave trigger while on`, and `12-wave write while on` pass in the
-   current branch.
+   Scope: wave RAM ownership, sample buffer and sample index, output-level rules, active-wave-RAM policy, and the documented DMG retrigger-corruption lane.
+   Done criteria: CH3 unit tests cover the buffered-read model and period-write delay, and integration tests cover power-off preservation plus frame-sequencer-coupled length behavior.
+   Status: done in the current branch baseline. `CH3` now owns explicit wave RAM plus sample-buffer/sample-index state, period timer, output-level control, and `256`-step length state; the APU clocks that wave path on the shared T-cycle timeline and on the shared frame-sequencer length clock without collapsing it into the pulse-channel helpers. Unit tests now cover buffered reads, period-write delay, immediate `NR32` attenuation, the DMG active-wave-RAM access window, the `NR34` extra-length / trigger-with-length-0 seam, and the DMG retrigger-corruption seam keyed to the internal byte position exactly `2` T-cycles before the next fetch, while machine-level integration tests cover wave-RAM preservation across `NR52` power-off and CH3 length expiry through `NR52` bit `2`. External ROM evidence is now green on the CH3 quirk lane on top of that baseline: `dmg_sound 03-trigger`, `09-wave read while on`, `10-wave trigger while on`, and `12-wave write while on` pass in the current branch.
 6. `Phase 7.5` — Noise channel (`CH4`)
-   Scope: decoded `NR43`, live LFSR progression,
-   envelope/length wiring, and width-mode / lock-up behavior.
-   Done criteria: CH4 unit tests cover `NR43` decode, active-state semantics,
-   and retrigger recovery from lock-up; integration tests cover length/envelope
-   clocks on the shared timeline.
-   Status: closed in the current branch baseline for the DMG-facing scope.
-   `CH4` now owns explicit `NR43` decode, `lfsr_state`,
-   envelope runtime, trigger-time timer/envelope/LFSR reload, shared
-   extra-length-clock handling, and `NR52` bit `3` clearing on length expiry;
-   unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs
-   zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger
-   recovery from that lock-up, explicit timer hand-off into / out of the
-   shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
-   for CH1 sweep and CH1 / CH2 / CH4 envelopes, DMG-oriented hidden-noise-counter
-   phase tracking plus a dedicated live-`NR43` resolver block and a
-   conservative DMG-oriented live-write subset that covers one
-   reload-seam step, an explicit SameBoy-guided `old -> FF` then `FF -> new`
-   write path, and an explicit per-pass trace seam recorded in CH4 traces/debug
-   snapshots. The current branch now exports every staged pass (`old_to_ff`,
-   `ff_to_glitch_1`, optional `glitch_1_to_glitch_2`, `glitch_to_new`, and
-   optional `low_shift_followup`) together with its value/bit/shift transition
-   and LFSR before/after state, and it has deliberately removed the old
-   repo-local Zelda-tail suppression guards so remaining audio differences come
-   from the staged pass model itself. The current DMG/CGB-C-oriented subset
-   now also ports SameBoy's hidden-counter start and tick state more literally:
-   triggers preserve the running counter/alignment, recompute the hidden
-   countdown with the SameBoy-guided start helper, honor the DMG delayed-start
-   seam when `alignment & 3 != 0`, gate hidden counting through explicit
-   `counter_active` / `background_counting` state, and let the preserved hidden
-   counter drive ordinary CH4 LFSR stepping instead of relying on a second
-   independent repo-local noise clock. The current pre-`CGB-D` subset still
-   has to translate SameBoy's `2 MHz` alignment/delayed-start bookkeeping into
-   this repo's `T-cycle` domain explicitly (`alignment` advances every other
-   `T`, delayed-start lasts `12 T`), otherwise the preserved `effective_counter`
-   drifts and Zelda's final CH4 staircase stops matching the oracle pass map.
-   uses the SameBoy-guided primary-action rule (`Category1` inert, `Category2`
-   plain step, `!old_bit && new_bit` forced-short, low-shift
-   follow-up/corruption on the SameBoy-style conditions), while the richer
-   revision-specific FF-write / multi-intermediate matrix remains deferred
-   until stronger hardware-backed evidence exists, and DMG powered-off `NR41`
-   length writes, while machine
-   integration coverage
-   includes DMG `NR41` length persistence through an `NR52` power cycle.
+   Scope: decoded `NR43`, live LFSR progression, envelope/length wiring, and width-mode / lock-up behavior.
+   Done criteria: CH4 unit tests cover `NR43` decode, active-state semantics, and retrigger recovery from lock-up; integration tests cover length/envelope clocks on the shared timeline.
+   Status: closed in the current branch baseline for the DMG-facing scope. `CH4` now owns explicit `NR43` decode, `lfsr_state`, envelope runtime, trigger-time timer/envelope/LFSR reload, shared extra-length-clock handling, and `NR52` bit `3` clearing on length expiry; unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger recovery from that lock-up, explicit timer hand-off into / out of the shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking for CH1 sweep and CH1 / CH2 / CH4 envelopes, DMG-oriented hidden-noise-counter phase tracking plus a dedicated live-`NR43` resolver block and a conservative DMG-oriented live-write subset that covers one reload-seam step, an explicit SameBoy-guided `old -> FF` then `FF -> new` write path, and an explicit per-pass trace seam recorded in CH4 traces/debug snapshots. The current branch now exports every staged pass (`old_to_ff`, `ff_to_glitch_1`, optional `glitch_1_to_glitch_2`, `glitch_to_new`, and optional `low_shift_followup`) together with its value/bit/shift transition and LFSR before/after state, and it has deliberately removed the old repo-local Zelda-tail suppression guards so remaining audio differences come from the staged pass model itself. The current DMG/CGB-C-oriented subset now also ports SameBoy's hidden-counter start and tick state more literally: triggers preserve the running counter/alignment, recompute the hidden countdown with the SameBoy-guided start helper, honor the DMG delayed-start seam when `alignment & 3 != 0`, gate hidden counting through explicit `counter_active` / `background_counting` state, and let the preserved hidden counter drive ordinary CH4 LFSR stepping instead of relying on a second independent repo-local noise clock. The current pre-`CGB-D` subset still has to translate SameBoy's `2 MHz` alignment/delayed-start bookkeeping into this repo's `T-cycle` domain explicitly (`alignment` advances every other `T`, delayed-start lasts `12 T`), otherwise the preserved `effective_counter` drifts and Zelda's final CH4 staircase stops matching the oracle pass map. uses the SameBoy-guided primary-action rule (`Category1` inert, `Category2` plain step, `!old_bit && new_bit` forced-short, low-shift follow-up/corruption on the SameBoy-style conditions), while the richer revision-specific FF-write / multi-intermediate matrix remains deferred until stronger hardware-backed evidence exists, and DMG powered-off `NR41` length writes, while machine integration coverage includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
-   Scope: channel digital-output ownership, per-channel DAC conversion,
-   `NR51` routing, `NR50` scaling, HPF state, DC-offset / pop behavior, and the
-   boundary between the T-cycle-accurate core and host-facing sample capture.
-   Done criteria: unit tests cover `DAC -> mixer -> NR50 -> HPF`, and
-   integration tests verify that sample-rate or buffer-size changes do not
-   change core hardware semantics.
-   Status: done in the current branch baseline for the core-owned boundary.
-   `ApuSnapshot` now exposes an explicit output-path snapshot with per-channel
-   digital output, per-channel DAC output, stereo mixer output, stereo
-   master-volume output, post-HPF output, and persistent left/right HPF state.
-   The core-facing host boundary is now also explicit as typed post-HPF stereo
-   samples plus `ApuSampleCapture`, so frontends choose output cadence and
-   final sample-format conversion without pulling SDL, browser, or libretro
-   concerns into `gb-core`.
-   Unit coverage now fixes DAC-enabled inactive versus DAC-off behavior,
-   independent `NR51` routing, documented `NR50` factor semantics, HPF
-   persistence, and immediate routing-driven pop-visible changes, while
-   machine-level integration coverage fixes the current host-facing contract:
-   bus writes retarget the live analog mix immediately, and host-side snapshot
-   capture cadence stays non-intrusive instead of feeding back into APU timing
-   or output semantics.
+   Scope: channel digital-output ownership, per-channel DAC conversion, `NR51` routing, `NR50` scaling, HPF state, DC-offset / pop behavior, and the boundary between the T-cycle-accurate core and host-facing sample capture.
+   Done criteria: unit tests cover `DAC -> mixer -> NR50 -> HPF`, and integration tests verify that sample-rate or buffer-size changes do not change core hardware semantics.
+   Status: done in the current branch baseline for the core-owned boundary. `ApuSnapshot` now exposes an explicit output-path snapshot with per-channel digital output, per-channel DAC output, stereo mixer output, stereo master-volume output, post-HPF output, and persistent left/right HPF state. The core-facing host boundary is now also explicit as typed post-HPF stereo samples plus `ApuSampleCapture`, so frontends choose output cadence and final sample-format conversion without pulling SDL, browser, or libretro concerns into `gb-core`. Unit coverage now fixes DAC-enabled inactive versus DAC-off behavior, independent `NR51` routing, documented `NR50` factor semantics, HPF persistence, and immediate routing-driven pop-visible changes, while machine-level integration coverage fixes the current host-facing contract: bus writes retarget the live analog mix immediately, and host-side snapshot capture cadence stays non-intrusive instead of feeding back into APU timing or output semantics.
 8. `Phase 7.7` — External closure and promotion
-   Scope: drive the full DMG `dmg_sound` slice to green, promote it from the
-   bring-up lane into the repo-gated subset, and record any remaining gaps
-   explicitly if promotion is still blocked.
-   Done criteria: the full DMG `dmg_sound 01..12` slice passes under the
-   intended execution mode, retained failure artifacts remain useful, and the
-   roadmap/testing docs are updated to reflect the newly promoted external
-   evidence.
-   Status: done in the current branch baseline. The full DMG `dmg_sound 01..12`
-   slice is now promoted into the repo-gated Blargg DMG family, the built-in
-   repo-gated suite no longer filters `blargg/dmg_sound`, and the
-   roadmap/testing/fixture docs now describe that promoted external evidence
-   explicitly instead of keeping a separate non-APU green lane alive.
+   Scope: drive the full DMG `dmg_sound` slice to green, promote it from the bring-up lane into the repo-gated subset, and record any remaining gaps explicitly if promotion is still blocked.
+   Done criteria: the full DMG `dmg_sound 01..12` slice passes under the intended execution mode, retained failure artifacts remain useful, and the roadmap/testing docs are updated to reflect the newly promoted external evidence.
+   Status: done in the current branch baseline. The full DMG `dmg_sound 01..12` slice is now promoted into the repo-gated Blargg DMG family, the built-in repo-gated suite no longer filters `blargg/dmg_sound`, and the roadmap/testing/fixture docs now describe that promoted external evidence explicitly instead of keeping a separate non-APU green lane alive.
 
 #### Base APU / frame sequencer sequencing inside Phase 7
 

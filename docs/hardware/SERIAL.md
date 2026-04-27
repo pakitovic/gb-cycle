@@ -6,28 +6,20 @@ Own serial transfer registers, bit-level transfer state, clocking behavior, link
 
 ## External-port layering baseline
 
-Keep these layers distinct even when the current implementation only exposes a
-small serial-peer surface:
+Keep these layers distinct:
 
-- `serial hardware`: the per-console controller that owns `SB`, `SC`,
-  transfer state, bit shifting, and serial IRQ timing
-- `external-port attachment`: what is physically connected to one console's
-  port, such as nothing, a printer, a `DMG-04` cable endpoint, or a
-  `DMG-07` adapter uplink
-- `serial endpoint`: the immediate per-console signal boundary that provides
-  incoming bits, external slave clocks, and disconnected/open-line behavior to
-  the serial controller
-- `linked session`: any owner that must coordinate multiple `Machine`
-  instances and cable / adapter topology on one shared T-cycle timeline
+- `serial hardware`: the per-console controller that owns `SB`, `SC`, transfer state, bit shifting, and serial IRQ timing
+- `external-port attachment`: what is physically connected to one console's port, such as nothing, a printer, a `DMG-04` cable endpoint, or a `DMG-07` adapter uplink
+- `serial endpoint`: the immediate per-console signal boundary that provides incoming bits, external slave clocks, and disconnected/open-line behavior to the serial controller
+- `linked session`: any owner that must coordinate multiple `Machine` instances and cable / adapter topology on one shared T-cycle timeline
 
-The serial subsystem only owns the first layer and consumes the third. It must
-not silently absorb the second or fourth into ad hoc local state.
+The serial subsystem only owns the first layer and consumes the third. It must not silently absorb the second or fourth into ad hoc local state.
+
+The default external-port attachment is `None` / disconnected. Printer, `DMG-04`, and `DMG-07` attachment must be selected explicitly by a frontend, harness, or tool.
 
 ## Hardware model
 
-Keep hardware serial state explicit even if link support is stubbed initially.
-Model the serial port as a peripheral that shifts one bit per serial clock rather than as an atomic byte send/receive helper.
-Keep these concerns distinct:
+Keep hardware serial state explicit even if link support is stubbed initially. Model the serial port as a peripheral that shifts one bit per serial clock rather than as an atomic byte send/receive helper. Keep these concerns distinct:
 
 - the outgoing byte currently staged for transmission
 - the incoming bits accumulated so far
@@ -41,8 +33,7 @@ Keep these concerns distinct:
 - `SB` and `SC` behavior
 - transfer progress state
 - bit-level shifting state and clocking
-- serial-endpoint boundary toward the active external-port attachment or linked
-  session
+- serial-endpoint boundary toward the active external-port attachment or linked session
 - interrupt signaling at transfer completion
 
 ## Registers / MMIO
@@ -70,9 +61,7 @@ Keep these concerns distinct:
 - `SB` should therefore evolve during the transfer as the shift register content changes bit by bit.
 - After the eighth shift, `SB` should contain the fully received byte.
 - If a connected peer has not loaded a new outgoing byte before the next transfer begins, the peer side should be able to resend whatever byte it still had staged; the controller should not assume every transfer starts with a freshly provided peer byte.
-- That resend rule should depend on the serial-owned staged-outgoing byte, not on
-  the post-transfer visible contents of `SB`, because `SB` contains the received
-  byte after the previous exchange completes.
+- That resend rule should depend on the serial-owned staged-outgoing byte, not on the post-transfer visible contents of `SB`, because `SB` contains the received byte after the previous exchange completes.
 
 ## Master and slave clock baseline
 
@@ -91,14 +80,8 @@ Keep these concerns distinct:
 - The serial core should remain separate from whatever lives on the other side of the cable.
 - Use an explicit peer or link-endpoint abstraction for incoming bits, external clock pulses, and disconnected-state behavior.
 - The serial controller must not assume a second emulated Game Boy is always connected.
-- The immediate serial-endpoint boundary is narrower than attachment ownership:
-  printer protocol state, `DMG-04` cable routing, `DMG-07` adapter state, and
-  future multi-machine session scheduling belong outside the local serial
-  controller even if they ultimately drive this boundary.
-- A future `DMG-07` adapter should reach serial only as externally supplied
-  slave-clock pulses and staged incoming bits. Ping packets, status tracking,
-  transmission buffering, and adapter-port identity belong to the link
-  topology, not to `SB` / `SC` logic.
+- The immediate serial-endpoint boundary is narrower than attachment ownership: printer protocol state, `DMG-04` cable routing, `DMG-07` adapter state, and multi-machine session scheduling belong outside the local serial controller even if they ultimately drive this boundary.
+- A `DMG-07` adapter reaches serial only as externally supplied slave-clock pulses and staged incoming bits. Ping packets, status tracking, transmission buffering, and adapter-port identity belong to the link topology, not to `SB` / `SC` logic.
 - The peer boundary should support at least:
   - disconnected state
   - loopback or echo-style testing
@@ -143,8 +126,7 @@ Keep these concerns distinct:
 - bus/MMIO wiring
 - interrupt controller
 - T-cycle scheduler or clock source
-- serial-endpoint boundary supplied by an external-port attachment or linked
-  session owner
+- serial-endpoint boundary supplied by an external-port attachment or linked session owner
 
 ## Primary references
 
@@ -171,47 +153,27 @@ Keep these concerns distinct:
 
 ## Implementation notes for this repo
 
-- Keep the hardware serial model separate from any eventual link backend.
+- Keep the hardware serial model separate from link backends.
 - Let bus/MMIO wiring expose `SB` and `SC` at their mapped addresses while the serial subsystem owns transfer semantics.
 - Keep one explicit serial-owned source of truth for:
   - `SB`
   - `SC`
   - transfer-active or transfer-requested state
   - selected clock mode
-  - bits shifted, even in the current pre-shift baseline where an armed
-    transfer is only exposed as `bits_shifted = 0`
+  - bits shifted
   - outgoing and incoming shift state or equivalent
   - master-clock timing state for DMG internal clock mode
   - optional connected peer or endpoint
-- Keep the serial-owned staged outgoing byte explicit across transfer
-  boundaries so a later transfer can resend the previous byte if software has
-  not written a new one yet, even though visible `SB` has already been replaced
-  by the last received byte.
+- Keep the serial-owned staged outgoing byte explicit across transfer boundaries so a later transfer can resend the previous byte if software has not written a new one yet, even though visible `SB` has already been replaced by the last received byte.
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
 - Direct-boot should also seed serial's hidden free-running clock phase explicitly instead of deriving it from the timer's `DIV` phase or from the moment a transfer is armed.
 - Keep disconnected, loopback, scripted, and future transport-backed peers behind one narrow serial-peer boundary so the core stays transport-agnostic.
-- Keep printer protocol state, `DMG-04` / `DMG-07` topology state, and any
-  future linked multi-console scheduler outside the serial subsystem; those
-  owners should drive the narrow serial-endpoint boundary instead of being
-  folded into `SB` / `SC` logic.
-- When the `DMG-07` adapter lands, the serial subsystem should still treat it
-  like any other external-clock endpoint: the adapter owns protocol phase,
-  packet layout, and clock cadence, while serial only shifts on pulses that
-  cross the scheduler ingress boundary while the console is armed in slave
-  mode.
-- In the current Phase `4` `DMG-04` baseline, the `link` session owns passive
-  cable routing and shared-clock propagation, while each console's
-  `external_port` attachment owns the per-console staged incoming-byte view that
-  the serial controller consumes on the next shift boundary.
-- That same `link` owner also decides when no valid cable exchange exists
-  (for example, the current baseline's unsupported double-master case) and must
-  surface open-line input rather than inventing a second valid byte-exchange
-  path inside the serial controller.
-- In the current baseline, the peer boundary is already explicit enough to
-  distinguish disconnected input from loopback and to queue external slave-mode
-  clock pulses on the shared timeline, while fuller scripted peers can land
-  later without reopening MMIO ownership or transfer timing.
+- Keep printer protocol state, `DMG-04` / `DMG-07` topology state, and linked multi-console scheduler ownership outside the serial subsystem; those owners should drive the narrow serial-endpoint boundary instead of being folded into `SB` / `SC` logic.
+- The `DMG-07` adapter should still look like an external-clock endpoint from serial's point of view: the adapter owns protocol phase, packet layout, and clock cadence, while serial only shifts on pulses that cross the scheduler ingress boundary while the console is armed in slave mode.
+- For `DMG-04`, the `link` session owns passive cable routing and shared-clock propagation, while each console's `external_port` attachment owns the per-console staged incoming-byte view that the serial controller consumes on the next shift boundary.
+- That same `link` owner also decides when no valid cable exchange exists, for example the unsupported double-master case, and must surface open-line input rather than inventing a second valid byte-exchange path inside the serial controller.
+- The peer boundary is explicit enough to distinguish disconnected input from loopback and to queue external slave-mode clock pulses on the shared timeline, while fuller scripted peers can land later without reopening MMIO ownership or transfer timing.
 
 ## Known pitfalls
 

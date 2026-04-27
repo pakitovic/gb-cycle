@@ -55,7 +55,7 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 cargo run --release -p gb-desktop -- [path/to/rom.gb]
 ```
 
-See [docs/CLI.md](docs/CLI.md) and [docs/DESKTOP.md](docs/DESKTOP.md) for full usage details.
+See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.md](docs/frontends/DESKTOP.md) for full usage details.
 
 ### Requirements
 
@@ -107,7 +107,7 @@ make coverage
 
 ### External ROM suites
 
-See [docs/ROM-SUITES.md](docs/ROM-SUITES.md) for the full external ROM suite workflow: fetching, running, differential oracles, and commercial ROM testing.
+See [docs/testing/ROM-SUITES.md](docs/testing/ROM-SUITES.md) for the full external ROM suite workflow: fetching, running, differential oracles, and commercial ROM testing.
 
 ## Documentation
 

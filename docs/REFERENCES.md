@@ -14,16 +14,20 @@ Primary documentation should be consulted before using emulator source code as g
 - gb-research — https://github.com/Gekkio/gb-research
 - gb-schematics — https://github.com/Gekkio/gb-schematics
 - Game Boy Hardware Database — https://gbhwdb.gekkio.fi/
+- Game Boy Hardware Database cartridge catalog — https://gbhwdb.gekkio.fi/cartridges/gb.html
+- Dan Docs — https://shonumi.github.io/dandocs.html
 
 ## Test ROMs and executable references
 
 - blargg test ROMs
 - retrio/gb-test-roms — https://github.com/retrio/gb-test-roms
+- GB Emulator Shootout test ROM catalog and results — https://gbdev.io/GBEmulatorShootout/
 - dmg-acid2 — https://github.com/mattcurrie/dmg-acid2
 - cgb-acid2 — https://github.com/mattcurrie/cgb-acid2
 - mealybug-tearoom-tests — https://github.com/mattcurrie/mealybug-tearoom-tests
 - Mooneye GB test suite — https://github.com/Gekkio/mooneye-gb
 - SameSuite — https://github.com/LIJI32/SameSuite
+- docboy-test-suite — https://github.com/Docheinstein/docboy-test-suite/
 - GB Accuracy Tests — see the awesome-gbdev testing section below
 - 144p Test Suite — see the awesome-gbdev testing section below
 - MBC3 RTC test ROMs — see the awesome-gbdev testing section below
@@ -32,8 +36,14 @@ Primary documentation should be consulted before using emulator source code as g
 
 - gbdev resources — https://gbdev.io/resources/
 - awesome-gbdev — https://github.com/gbdev/awesome-gbdev
-- GB Emulator Shootout — https://gbdev.io/GBEmulatorShootout/
 - use the awesome-gbdev testing section to discover and cross-check broader external DMG-closure suites that are not listed above directly
+
+## Reference usage notes
+
+- Treat the Game Boy Hardware Database cartridge catalog as hardware evidence for cartridge boards, mapper labels, ROM IDs, and submitted PCB photos; use it to support cartridge-family research, not as a replacement for the header parser's documented compatibility rules.
+- Treat Dan Docs as the strongest broad reference for obscure accessories and special hardware such as the Barcode Boy, DMG-07 4-Player Adapter, GBC infrared, Pocket Sonar, Mobile Adapter GB, sewing-machine adapters, and other link-port or cartridge-adjacent devices not covered well by Pan Docs.
+- Treat GB Emulator Shootout as the project-wide external ROM catalog and maturity signal for curated suite selection; do not use it as a hardware behavior source by itself.
+- Treat docboy-test-suite as a high-precision executable reference for T-cycle-sensitive DMG/GBC behavior after the ordinary Blargg and Mooneye acceptance coverage is already mostly green.
 
 ## Audio references
 
@@ -47,8 +57,7 @@ Primary documentation should be consulted before using emulator source code as g
 
 ## Open-source emulator consultation tier
 
-Use this order when implementation examples or behavioral cross-checks are needed and no subsystem-specific handbook names a stronger oracle.
-This default order balances coverage, maintainability, and accessibility; it is not a literal accuracy ranking for every subsystem.
+Use this order when implementation examples or behavioral cross-checks are needed and no subsystem-specific handbook names a stronger oracle. This default order balances current `GBEmulatorShootout` maturity signals, implementation coverage, maintainability, source readability, and the oracle workflows this repo actually supports; it is not a literal static accuracy ranking for every subsystem.
 
 1. SameBoy — https://github.com/LIJI32/SameBoy
 2. docboy — https://github.com/Docheinstein/docboy
@@ -62,7 +71,7 @@ This default order balances coverage, maintainability, and accessibility; it is 
 ## How to use the consultation tier
 
 - Do not copy code blindly.
-- Use this order as the consultation priority when several approaches exist.
+- Use `GBEmulatorShootout` first for the current broad test-ROM maturity picture, then use this tier plus subsystem handbooks to choose which implementation is worth reading for the concrete behavior under study.
 - If references disagree, prefer the best documented behavior first.
 - Prefer the strongest subsystem-specific reference, then explain the choice.
 - Treat emulator code as a comparison aid, not as absolute truth.
@@ -77,3 +86,8 @@ This default order balances coverage, maintainability, and accessibility; it is 
 - Mooneye GB: strong documentary and edge-case reasoning reference.
 - Danger Boy: useful smaller codebase for DMG timing study.
 - Gambatte: historical high-accuracy reference and a useful corroborating implementation perspective for practical accuracy and corner cases, but not a repo-supported automated differential oracle path in the current project.
+
+## Retained source-level cross-check notes
+
+- SameBoy source-level timing cross-checks previously used by this repo remain useful around `Core/timing.c`, `Core/memory.c`, and `Core/sm83_cpu.c`: timer bit selection and falling-edge TIMA behavior, explicit `DIV` / `TAC` glitch handling, delayed timer interrupt visibility through a reload state, `FF50` boot-overlay disable behavior, immediate `DI`, delayed `EI`, immediate `RETI` re-enable, and bytewise stack operations for call/return/interrupt paths.
+- SameBoy's public SDL frontend should not be treated as a documented headless oracle runner. The supported repo-local oracle workflows are the imported `sameboy-tester` framebuffer layout and the `case-bundle` layout documented in `docs/testing/ROM-SUITES.md`.

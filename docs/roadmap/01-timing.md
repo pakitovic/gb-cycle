@@ -102,11 +102,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 
 #### Recommended subphase breakdown
 
-Phase `1` should be delivered in five subphases.
-The intent is to close one hardware-facing boundary at a time, with focused
-tests and local done criteria before moving on.
-Do not merge two adjacent subphases together unless the later one is blocked on
-purely mechanical wiring that does not widen hardware scope.
+Phase `1` should be delivered in five subphases. The intent is to close one hardware-facing boundary at a time, with focused tests and local done criteria before moving on. Do not merge two adjacent subphases together unless the later one is blocked on purely mechanical wiring that does not widen hardware scope.
 
 1. **Phase 1A — Bus skeleton and DMG region ownership**
    Goal: replace the current stub bus with a real DMG region-decode and storage baseline while preserving the Phase `0` scheduler contract.
@@ -118,8 +114,7 @@ purely mechanical wiring that does not widen hardware scope.
    Done criteria:
    - every address resolves through one central decode path with an explicit region owner
    - WRAM, HRAM, and echo RAM behave through bus-owned routing rather than direct ad hoc storage access
-   - unusable-space, MMIO, and cartridge ranges already have explicit routed placeholders instead of accidental generic RAM behavior
-   Validation gate:
+   - unusable-space, MMIO, and cartridge ranges already have explicit routed placeholders instead of accidental generic RAM behavior Validation gate:
    - unit tests cover each DMG region boundary and decode result
    - integration tests prove echo-RAM aliasing in both directions
    - smoke tests prove memory traffic enters `bus/` rather than bypassing it
@@ -137,12 +132,10 @@ purely mechanical wiring that does not widen hardware scope.
    - decode/ownership and access-policy layers are distinct in both code and tests
    - CPU and a synthetic DMA requester already exercise the same arbitration entry point
    - the code structure can evolve toward domain-oriented handlers or controllers without changing the shared T-cycle scheduler contract
-   - blocked accesses have explicit observable results rather than falling through to normal storage semantics
-   Validation gate:
+   - blocked accesses have explicit observable results rather than falling through to normal storage semantics Validation gate:
    - focused tests cover requester-specific arbitration through one common path
    - tests cover VRAM, OAM, unusable-space, and HRAM policy decisions through injected hardware state
-   - trace or snapshot tests lock the ordering between scheduler bus-arbitration phase and evaluated access policy
-   Current implementation note:
+   - trace or snapshot tests lock the ordering between scheduler bus-arbitration phase and evaluated access policy Current implementation note:
   - the current repo baseline already has a pure router plus explicit `state`, `dispatch`, `meta`, `IoHram`, `Wram`, `Oam`, and `Vram` helpers, bus-originated PPU-facing video views, scheduler-visible video ownership synchronization, and a dedicated bus child module for DMG OAM-corruption trigger routing
    - remaining follow-up in this subphase is structural, not conceptual: continue shrinking `bus.rs` by moving more region-local policy into domain helpers where it improves clarity, while keeping one central arbitration entry point and without mixing in future CGB behavior yet
 3. **Phase 1C — Cartridge foundation and No MBC closed baseline**
@@ -155,8 +148,7 @@ purely mechanical wiring that does not widen hardware scope.
    Done criteria:
    - cartridge implementation selection comes from `0x0147` through one central factory
    - declared ROM and RAM metadata are validated explicitly against the loaded image
-   - `No MBC` closes linear `32 KiB` ROM, optional linear `8 KiB` RAM, and ignored ROM-space writes with no hidden bank state
-   Validation gate:
+   - `No MBC` closes linear `32 KiB` ROM, optional linear `8 KiB` RAM, and ignored ROM-space writes with no hidden bank state Validation gate:
    - unit tests cover header parsing, size validation, and unsupported-type diagnostics
    - integration tests prove the bus reaches cartridge ROM and external-RAM ranges only through the cartridge interface
    - `No MBC` tests cover `0x0100-0x014F` visibility, optional RAM presence, and ignored ROM-space writes
@@ -171,8 +163,7 @@ purely mechanical wiring that does not widen hardware scope.
    Done criteria:
    - every MMIO address resolves to an explicit owner, register identity, and access contract
    - mixed registers preserve per-field behavior in the owning subsystem rather than as coarse masked byte storage
-   - immediate MMIO side effects are visible on the routed access path rather than in deferred cleanup code
-   Validation gate:
+   - immediate MMIO side effects are visible on the routed access path rather than in deferred cleanup code Validation gate:
    - completeness tests fail if any MMIO address falls back to generic storage
    - unit tests cover per-address MMIO descriptor accuracy plus representative mixed-register readback and write masking behavior
    - integration tests cover immediate side effects for `FF46` and `FF50` plus DMG `0xFF` readback on unavailable CGB-only registers
@@ -188,8 +179,7 @@ purely mechanical wiring that does not widen hardware scope.
    - boot-ROM overlay versus cartridge visibility is observable through the ordinary bus route before and after `FF50`
    - real-boot overlay bytes come from configured boot-ROM assets or an explicit "missing asset reads as `0xFF`" path, never from synthetic placeholder firmware
    - direct-boot visible state includes the published DMG-family audio-register snapshot, while wave RAM stays under an explicit startup policy rather than pretending to be a published hardware constant
-   - the infrastructure is ready for Phase `2` real-boot execution without introducing a hidden "skip mode" routing path
-   Validation gate:
+   - the infrastructure is ready for Phase `2` real-boot execution without introducing a hidden "skip mode" routing path Validation gate:
    - integration tests cover pre- and post-`FF50` visibility at `0x0000`, `0x0100`, and cartridge-owned ranges
    - snapshot and startup tests cover model-aware post-boot visible state
    - trace tests lock the handoff ordering relative to MMIO side-effect commit
@@ -205,8 +195,7 @@ Every Phase `1` subphase should end with:
 
 #### MMIO contract sequencing
 
-These steps define register-contract groundwork only.
-They do not move full joypad, serial, audio, or timing-complete PPU implementation out of their later dedicated phases; those later phases still own complete functional behavior on top of the earlier MMIO contract baseline.
+These steps define register-contract groundwork only. They do not move full joypad, serial, audio, or timing-complete PPU implementation out of their later dedicated phases; those later phases still own complete functional behavior on top of the earlier MMIO contract baseline.
 
 1. Define the central MMIO metadata table.
    Acceptance criteria: every address in `0xFF00-0xFF7F` and `0xFFFF` resolves to an explicit descriptor or dedicated handler, the descriptor identifies the concrete register at that address, and no MMIO address falls back to accidental generic RAM behavior.
@@ -255,11 +244,7 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 
 #### Compatibility-policy sequencing across cartridge bring-up
 
-This subsection operationalizes the cartridge-specific decision matrix defined
-authoritatively in `docs/hardware/CARTRIDGES-MBC.md` on top of the Phase `1`
-policy foundation above. `docs/ARCHITECTURE.md` remains the source of truth for
-the policy shape and supported-hardware invariant, and `docs/TESTING.md` remains
-the source of truth for CI/oracle usage of execution modes.
+This subsection operationalizes the cartridge-specific decision matrix defined authoritatively in `docs/hardware/CARTRIDGES-MBC.md` on top of the Phase `1` policy foundation above. `docs/ARCHITECTURE.md` remains the source of truth for the policy shape and supported-hardware invariant, and `docs/TESTING.md` remains the source of truth for CI/oracle usage of execution modes.
 
 1. Centralize the category-by-mode decision table.
    Scope: resolve `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode` through one shared matrix driven by typed cartridge classification.

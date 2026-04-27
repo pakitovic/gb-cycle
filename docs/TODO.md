@@ -1,7 +1,6 @@
 # Open TODOs
 
-Concrete remaining work extracted from the DMG roadmap.
-See [ROADMAP.md](ROADMAP.md) for phase context and implementation order.
+Concrete remaining work extracted from the DMG roadmap. See [ROADMAP.md](ROADMAP.md) for phase context and implementation order.
 
 ## Guidelines
 
@@ -31,10 +30,6 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - [CARTRIDGE][MBC3-LATCH-RELATCH-POLICY] MBC3 currently keeps a deliberate compatibility deviation for `cpp/latch-rtc-test.gb`: the first RTC latch still requires `0x00 -> 0x01`, but follow-up non-zero writes are also accepted once a valid snapshot exists because instrumentation of that ROM showed repeated non-zero relatch commands without re-arming zeros. Revisit that legacy relatch rule if curated oracle policy moves back toward the stricter `Pan Docs` model.
 - [CARTRIDGE][MBC3-RTC-INVALID-BANKS] MBC3 keeps `0x04..=0x07` as explicit reserved selectors instead of widening standard SRAM banking to `$00-$07`. Current `Pan Docs` wording says `$00-$07` are RAM-bank selectors, but the retained curated `cpp/rtc-invalid-banks-test.gb` oracle only stays green when those selectors remain invalid. Revisit only if stronger hardware evidence or a better oracle closes that source conflict.
 - [CARTRIDGE][MBC3-RTC-ACCESS-SPACING] MBC3 records the recommended RTC access-spacing state as `rtc_access_ready_at` on timed RTC-register reads and writes, but the emulator still treats that state as advisory only. `Pan Docs` recommends `4 us` spacing without defining an early-access penalty, and the current `SameBoy` cross-check does not expose one either. Keep enforcement deferred until a stronger dedicated oracle or hardware evidence exists.
-- [CARTRIDGE][HEADER-CGB-TITLE-DISCRIMINATOR] The cartridge-header parser now preserves `0x013F-0x0142` separately but still decodes CGB-era titles conservatively as `15` visible characters. `Pan Docs` documents an additional `11`-character layout when those bytes are really a manufacturer code, but the raw header does not provide a reliable discriminator. Revisit only if stronger hardware evidence or a clearly scoped per-ROM metadata rule can separate the two layouts without truncating valid `15`-character titles.
-- [CARTRIDGE][MBC30-AFTER-CGB] `MBC30` is still planned-variant work only: `MBC3 + 64 KiB SRAM` already classifies explicitly, but functional banking, persistence, and software validation remain open. Evidence already in hand: the loader reserves explicit `MBC30` variant space and standard `MBC3` validation already rejects the `64 KiB` SRAM case instead of silently accepting it. Do not fold `MBC30` into ordinary `MBC3` before the CGB gate closes. Highest-value next step after CGB bring-up: validate one explicit `MBC30` device against a real CGB software oracle.
-- [CARTRIDGE][MBC7-AFTER-CGB] `MBC7` remains classification-only until CGB exists; EEPROM register semantics, accelerometer plumbing, and end-to-end software validation are still open. Evidence already in hand: header code `0x22` is already diagnosed explicitly and no fallback to `MBC5` remains. Do not start from `MBC5 + rumble + RAM` shortcuts. Highest-value next step after CGB bring-up: design a cartridge-local EEPROM + accelerometer device contract and validate it against a CGB-only title.
-- [CARTRIDGE][MBC6-AFTER-CGB] `MBC6` remains classification-only until CGB exists; split ROM/RAM windows, flash semantics, and end-to-end software validation are still open. Evidence already in hand: header code `0x20` is already diagnosed explicitly and the loader never falls back to `MBC3` or `MBC5`. Do not start by coercing it into ordinary banked ROM / SRAM logic. Highest-value next step after CGB bring-up: model one explicit `MBC6` cartridge device with split-window and flash state before attempting title-specific behavior.
 
 ### Phase 7 — Audio
 

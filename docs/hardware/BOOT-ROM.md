@@ -8,11 +8,7 @@ Own boot ROM assets, boot-ROM enable/disable state, power-up sequencing, direct-
 
 Distinguish clearly between running through boot ROM code and starting from an already initialized state. DMG and CGB must not share assumed initial state without evidence.
 
-Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` into one generic startup model if observable differences matter.
-For DMG-family support, prefer one shared hardware core with different boot ROM images rather than separate emulator implementations per model.
-When CGB support arrives, treat its boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes.
-The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses.
-Real boot should start CPU execution at `0x0000` with the internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. Skip-boot should be a separate explicit initialization path rather than a partially executed or silently shortened boot ROM flow.
+Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` into one generic startup model if observable differences matter. For DMG-family support, prefer one shared hardware core with different boot ROM images rather than separate emulator implementations per model. When CGB support arrives, treat its boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes. The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses. Real boot should start CPU execution at `0x0000` with the internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. Skip-boot should be a separate explicit initialization path rather than a partially executed or silently shortened boot ROM flow.
 
 ## Responsibilities
 
@@ -215,10 +211,7 @@ Priority order:
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
 - Keep the bus-facing boot mapping state aligned with that split-layout requirement: the contract should stay able to express multiple active windows even while the current functional target is still DMG-only.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
-- In the current Phase `2.8` baseline for this repo, the boot trace should make
-  the `FF50` mapping state visible at phase `6` on the same timeline as the
-  preceding CPU write and the following cartridge fetch, so handoff ordering can
-  be debugged without a separate boot-only trace path.
+- In the current Phase `2.8` baseline for this repo, the boot trace should make the `FF50` mapping state visible at phase `6` on the same timeline as the preceding CPU write and the following cartridge fetch, so handoff ordering can be debugged without a separate boot-only trace path.
 
 ## Known pitfalls
 

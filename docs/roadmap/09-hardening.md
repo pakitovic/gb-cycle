@@ -1,61 +1,19 @@
 # Phase 9 — Final DMG hardening, differential validation, and closure
 
-This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility.
-It assumes the dedicated save-state and serialization infrastructure from Phase 8 already exists and uses it as part of closure evidence.
+This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility. It assumes the dedicated save-state and serialization infrastructure from Phase 8 already exists and uses it as part of closure evidence.
 
-Status note (`2026-03-22`): the repo now starts a narrow early hardening lane
-from this phase before APU work. The current early deliverables are:
+Status note (`2026-03-22`): the repo now starts a narrow early hardening lane from this phase before APU work. The current early deliverables are:
 
-- one explicit partial subsystem checklist in `docs/TESTING.md` that distinguishes
-  repo-gated external evidence from internal-only evidence for the already-landed
-  DMG subsystems
-- one `gb-test-runner` catalog path,
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed`, that
-  exposes the built-in suite set together with oracle channel, capture, and
-  retained-artifact policy
-- one `gb-test-runner` checklist path,
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist`, that
-  exposes the current early hardening status per subsystem together with the
-  evidence already landed and the still-open closure gaps
-- one repo-gated PPU framebuffer-oracle suite,
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated`,
-  sourced from `GBEmulatorShootout` and now part of the supported external DMG
-  block used by `make test-roms` and the GitHub `test-roms` workflow
-- one workflow-managed PPU framebuffer-oracle suite,
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`,
-  which uses a curated DMG subset from `GBEmulatorShootout` and the same
-  committed-PNG oracle contract as `dmg-acid2`
-- one workflow-managed DMG acceptance suite,
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`,
-  which follows the active `GBEmulatorShootout` `testroms/mooneye.py`
-  acceptance list, uses the upstream `mooneye` breakpoint/register result
-  protocol instead of framebuffer fixtures, and provides broad hardening
-  evidence without replacing later differential, replay, or save/load
-  determinism closure
-- one narrow differential end-of-test path,
-  `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
-  which compares the built-in suite's required-capture artifact against an
-  imported oracle artifact bundle, enforces `Strict`, and archives local
-  context plus the compared oracle artifact on divergence. The current path
-  also reports the first differing byte or pixel inside the compared final
-  artifact, even though full instruction-level or short-window first-divergence
-  tooling is still deferred. The current `sameboy-tester` layout support is
-  intentionally framebuffer-only and is aimed at PPU/image-oracle cases such as
-  `dmg-acid2`. When the oracle root is omitted, the repo-local default is
-  `/.oracles/<oracle>/<layout>/`
-- one SameBoy Tester materialization path,
-  `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`,
-  which stages ROMs under the oracle root, runs SameBoy's internal `tester`
-  target, and produces `.bmp` / `.tga` plus `.log` artifacts in the exact
-  `sameboy-tester` layout consumed by `run_differential`. The repo-local
-  default for this path is `/.oracles/sameboy/sameboy-tester/` for oracle
-  outputs, and the wrapper intentionally leaves SameBoy's own boot-ROM path
-  under SameBoy's control instead of trying to share local firmware selection
-  with `gb-test-runner`
+- one explicit partial subsystem checklist in `docs/TESTING.md` that distinguishes repo-gated external evidence from internal-only evidence for the already-landed DMG subsystems
+- one `gb-test-runner` catalog path, `cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed`, that exposes the built-in suite set together with oracle channel, capture, and retained-artifact policy
+- one `gb-test-runner` checklist path, `cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist`, that exposes the current early hardening status per subsystem together with the evidence already landed and the still-open closure gaps
+- one repo-gated PPU framebuffer-oracle suite, `cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated`, sourced from `GBEmulatorShootout` and now part of the supported external DMG block used by `make test-roms` and the GitHub `test-roms` workflow
+- one workflow-managed PPU framebuffer-oracle suite, `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`, which uses a curated DMG subset from `GBEmulatorShootout` and the same committed-PNG oracle contract as `dmg-acid2`
+- one workflow-managed DMG acceptance suite, `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`, which follows the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list, uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer fixtures, and provides broad hardening evidence without replacing later differential, replay, or save/load determinism closure
+- one narrow differential end-of-test path, `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`, which compares the built-in suite's required-capture artifact against an imported oracle artifact bundle, enforces `Strict`, and archives local context plus the compared oracle artifact on divergence. The current path also reports the first differing byte or pixel inside the compared final artifact, even though full instruction-level or short-window first-divergence tooling is still deferred. The current `sameboy-tester` layout support is intentionally framebuffer-only and is aimed at PPU/image-oracle cases such as `dmg-acid2`. When the oracle root is omitted, the repo-local default is `/.oracles/<oracle>/<layout>/`
+- one SameBoy Tester materialization path, `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`, which stages ROMs under the oracle root, runs SameBoy's internal `tester` target, and produces `.bmp` / `.tga` plus `.log` artifacts in the exact `sameboy-tester` layout consumed by `run_differential`. The repo-local default for this path is `/.oracles/sameboy/sameboy-tester/` for oracle outputs, and the wrapper intentionally leaves SameBoy's own boot-ROM path under SameBoy's control instead of trying to share local firmware selection with `gb-test-runner`
 
-This does not count as closing Phase `9.2` or `9.3`; fuller SameBoy
-differential launch automation, first-divergence windows, save/load determinism,
-and the final DMG matrix still remain Phase `7/8/9` work.
+This does not count as closing Phase `9.2` or `9.3`; fuller SameBoy differential launch automation, first-divergence windows, save/load determinism, and the final DMG matrix still remain Phase `7/8/9` work.
 
 #### Goal
 
@@ -105,9 +63,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 - deterministic replay and save/load determinism are green under `Strict`, with execution-mode metadata recorded in the relevant artifacts
 - no severe open correctness bugs remain in `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, or `Mbc5`
 - the project has an explicit DMG closure checklist instead of relying on a general compatibility impression
-- the repo-owned coverage gate follows `docs/TESTING.md`; this roadmap must not
-  duplicate concrete per-crate percentages. The single primary source for the
-  active `--fail-under-*` thresholds is `.cargo/config.toml`.
+- the repo-owned coverage gate follows `docs/TESTING.md`; this roadmap must not duplicate concrete per-crate percentages. The single primary source for the active `--fail-under-*` thresholds is `.cargo/config.toml`.
 
 #### Risks if omitted or overly simplified
 

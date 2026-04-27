@@ -8,8 +8,7 @@ Own Color Game Boy-specific behavior: double speed, VRAM banks, WRAM banks, pale
 
 Design interfaces today that do not block CGB tomorrow. Separate DMG-only, shared, and CGB-only behavior explicitly.
 
-CGB should extend the shared core through model-aware behavior and capabilities, not by introducing a parallel emulator architecture.
-Until CGB work starts, avoid premature complexity in DMG-family subsystems; only preserve the extension seams that prevent large future refactors.
+CGB should extend the shared core through model-aware behavior and capabilities, not by introducing a parallel emulator architecture. Until CGB work starts, avoid premature complexity in DMG-family subsystems; only preserve the extension seams that prevent large future refactors.
 
 ## Responsibilities
 

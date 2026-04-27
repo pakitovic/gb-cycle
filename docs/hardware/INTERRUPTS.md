@@ -144,11 +144,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Let the PPU own the generation rules for LCD STAT requests, including rising-edge detection and DMG STAT-write quirks; the interrupt controller should only observe the resulting request events.
 - Let the joypad subsystem own the `P1` visibility comparison that decides whether a joypad request happened; the interrupt controller should consume the resulting request event, not re-derive it from raw button state.
 - Let the serial subsystem own the transfer-complete detection that decides whether a serial request happened; the interrupt controller should consume the resulting request event, not infer completion from raw `SB` or `SC` bytes.
-- In the current Phase `2.8` baseline for this repo, traces should show the
-  interrupt controller after phase `8` aggregation and again after phase `9`
-  CPU wake/accept evaluation, so `IF` / `IE` visibility and later service-side
-  clear remain observable as separate ordered events on the same T-cycle
-  timeline.
+- In the current Phase `2.8` baseline for this repo, traces should show the interrupt controller after phase `8` aggregation and again after phase `9` CPU wake/accept evaluation, so `IF` / `IE` visibility and later service-side clear remain observable as separate ordered events on the same T-cycle timeline.
 
 ## Known pitfalls
 

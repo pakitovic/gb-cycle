@@ -100,21 +100,21 @@ Curated `cpp` MBC3 subset; exercised by the GitHub `test-roms` workflow.
 
 ### Daid
 
-Exploratory DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and one informational framebuffer capture case `rom_and_ram.gb`.
+Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and one informational framebuffer capture case `rom_and_ram.gb`.
 
 ### Mealybug-tearoom
 
-Exploratory DMG subset; remains outside the GitHub `test-roms` workflow because it still diverges from upstream framebuffer fixtures under `Strict`.
+Workflow-managed DMG subset using committed framebuffer fixtures for the curated green cases from `GBEmulatorShootout`; exercised by the GitHub `test-roms` workflow.
 
 ### Mooneye
 
-Exploratory DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles. Stays outside the GitHub `test-roms` workflow until remaining failures are triaged.
+Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence, not a substitute for differential, replay, or save/load determinism closure.
 
 ## CI integration
 
 - `make ci` stays as the fast local pre-push gate and does not fetch or run external ROM suites; it includes the Rust checks plus the coverage threshold gate through `cargo cov-check`.
 - `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG suites currently wired in `Makefile`: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and `mooneye`.
-- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg`, `hacktix`, and `cpp`.
+- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mooneye`, and `mealybug-tearoom-tests`.
 
 ## Commercial ROM testing
 

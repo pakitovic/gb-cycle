@@ -8,8 +8,7 @@ Own LCD/PPU mode progression, rendering state, VRAM/OAM access rules, STAT behav
 
 Model PPU modes explicitly. Separate fetcher/FIFO logic when it improves clarity and timing fidelity.
 
-Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM interpretation or a renderer that only understands four grayscale outputs.
-For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle`.
+Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM interpretation or a renderer that only understands four grayscale outputs. For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle`.
 
 ## Evidence policy
 
@@ -21,8 +20,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 The sections from `Responsibilities` through `Tests` define the hardware-facing contract for a new implementation.
 
-Use those sections first when designing or reimplementing the PPU.
-Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need to preserve current repo behavior or stage a migration without reopening already-closed tests.
+Use those sections first when designing or reimplementing the PPU. Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need to preserve current repo behavior or stage a migration without reopening already-closed tests.
 
 ## Responsibilities
 
@@ -518,18 +516,9 @@ The following DMG ROMs are the PPU no-regression catalog for the already-closed 
 
 Project-owned regression intent:
 
-The external ROM table above is the main no-regression catalog. Repo-owned unit,
-integration, and synthetic-ROM tests should stay focused on the local invariants
-that make those ROM outcomes explainable: variable `Mode 3`, BG/window/OBJ
-fetch arbitration, STAT/LY/LYC chronology, LCD on/off restart behavior,
-VRAM/OAM blocking, DMG OAM corruption, panel/live-palette seams, and
-`SkipBoot` continuity.
+The external ROM table above is the main no-regression catalog. Repo-owned unit, integration, and synthetic-ROM tests should stay focused on the local invariants that make those ROM outcomes explainable: variable `Mode 3`, BG/window/OBJ fetch arbitration, STAT/LY/LYC chronology, LCD on/off restart behavior, VRAM/OAM blocking, DMG OAM corruption, panel/live-palette seams, and `SkipBoot` continuity.
 
-If one of those areas is rewritten, keep or add a direct project-owned test for
-the specific invariant instead of relying only on an external framebuffer or
-serial result. Concrete open project-owned gaps are tracked in
-[TODO.md](../TODO.md); do not duplicate a historical covered/partial checklist
-here.
+If one of those areas is rewritten, keep or add a direct project-owned test for the specific invariant instead of relying only on an external framebuffer or serial result. Concrete open project-owned gaps are tracked in [TODO.md](../TODO.md); do not duplicate a historical covered/partial checklist here.
 
 ## Known pitfalls
 
