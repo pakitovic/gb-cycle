@@ -1,6 +1,7 @@
 use crate::model::ExecutionMode;
 use crate::save_state::SaveStateByteFingerprint;
 use crate::scheduler::TCycle;
+use std::mem;
 
 mod classify;
 mod device;
@@ -565,6 +566,15 @@ pub struct CartridgeRuntimeSaveState {
     device: Option<CartridgeDeviceSaveState>,
 }
 
+impl CartridgeRuntimeSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.device
+            .as_ref()
+            .map(CartridgeDeviceSaveState::dynamic_payload_bytes)
+            .unwrap_or(0)
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum CartridgeDeviceSaveState {
@@ -580,6 +590,31 @@ enum CartridgeDeviceSaveState {
     PocketCamera(PocketCameraCartridgeSaveState),
 }
 
+impl CartridgeDeviceSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        match self {
+            Self::NoMbc(state) => state.dynamic_payload_bytes(),
+            Self::Mmm01(state) => state.dynamic_payload_bytes(),
+            Self::M161(state) => state.dynamic_payload_bytes(),
+            Self::Huc1(state) => state.dynamic_payload_bytes(),
+            Self::Huc3(state) => state.dynamic_payload_bytes(),
+            Self::Mbc1(state) => state.dynamic_payload_bytes(),
+            Self::Mbc2(state) => state.dynamic_payload_bytes(),
+            Self::Mbc3(state) => state.dynamic_payload_bytes(),
+            Self::Mbc5(state) => state.dynamic_payload_bytes(),
+            Self::PocketCamera(state) => state.dynamic_payload_bytes(),
+        }
+    }
+}
+
+fn cartridge_header_dynamic_payload_bytes(header: &CartridgeHeader) -> usize {
+    header.title.len()
+}
+
+fn optional_bytes_len(bytes: &Option<Vec<u8>>) -> usize {
+    bytes.as_ref().map(Vec::len).unwrap_or(0)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct NoMbcCartridgeSaveState {
     rom: Vec<u8>,
@@ -587,6 +622,15 @@ struct NoMbcCartridgeSaveState {
     has_battery: bool,
     header: CartridgeHeader,
     classification: CartridgeClassification,
+}
+
+impl NoMbcCartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -610,6 +654,15 @@ struct Mmm01CartridgeSaveState {
     multiplex_enabled: bool,
 }
 
+impl Mmm01CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct M161CartridgeSaveState {
     rom: Vec<u8>,
@@ -618,6 +671,14 @@ struct M161CartridgeSaveState {
     selected_bank: u8,
     bank_switch_locked: bool,
     last_bank_write: Option<u8>,
+}
+
+impl M161CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -632,6 +693,15 @@ struct Huc1CartridgeSaveState {
     ram_bank: u8,
     ir_emitter_on: bool,
     ir_light_detected: bool,
+}
+
+impl Huc1CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -656,6 +726,15 @@ struct Huc3CartridgeSaveState {
     last_unsupported_argument: Option<u8>,
 }
 
+impl Huc3CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(self.ram.len())
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc1CartridgeSaveState {
     rom: Vec<u8>,
@@ -671,6 +750,15 @@ struct Mbc1CartridgeSaveState {
     banking_mode: u8,
 }
 
+impl Mbc1CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc2CartridgeSaveState {
     rom: Vec<u8>,
@@ -681,6 +769,14 @@ struct Mbc2CartridgeSaveState {
     classification: CartridgeClassification,
     ram_enabled: bool,
     rom_bank_low4: u8,
+}
+
+impl Mbc2CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -702,6 +798,15 @@ struct Mbc3CartridgeSaveState {
     rtc_access_ready_at: Option<TCycle>,
 }
 
+impl Mbc3CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc5CartridgeSaveState {
     rom: Vec<u8>,
@@ -718,6 +823,15 @@ struct Mbc5CartridgeSaveState {
     rumble_on: bool,
 }
 
+impl Mbc5CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(optional_bytes_len(&self.ram))
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PocketCameraCartridgeSaveState {
     rom: Vec<u8>,
@@ -731,6 +845,33 @@ struct PocketCameraCartridgeSaveState {
     registers: [u8; POCKET_CAMERA_REGISTER_COUNT],
     host_frame: Vec<u8>,
     capture_state: PocketCameraCaptureState,
+}
+
+impl PocketCameraCartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.rom
+            .len()
+            .saturating_add(self.ram.len())
+            .saturating_add(self.host_frame.len())
+            .saturating_add(cartridge_header_dynamic_payload_bytes(&self.header))
+            .saturating_add(self.capture_state.dynamic_payload_bytes())
+    }
+}
+
+impl PocketCameraCaptureState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        match self {
+            Self::Idle => 0,
+            Self::Working {
+                ready_at: _,
+                staged_tiles,
+            }
+            | Self::Paused {
+                remaining_t_cycles: _,
+                staged_tiles,
+            } => staged_tiles.len().saturating_mul(mem::size_of::<u8>()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

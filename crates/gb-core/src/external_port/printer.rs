@@ -4,7 +4,7 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem};
 
 const PRINTER_MAGIC_0: u8 = 0x88;
 const PRINTER_MAGIC_1: u8 = 0x33;
@@ -133,4 +133,25 @@ pub(super) struct PrinterDevice {
     status: PrinterStatusBits,
     packet_timeout_t_cycles: u32,
     print_armed: bool,
+}
+
+impl PrinterDevice {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.response_queue
+            .len()
+            .saturating_mul(mem::size_of::<u8>())
+            .saturating_add(self.image_buffer.len())
+            .saturating_add(self.packet_data.len())
+            .saturating_add(
+                self.printed_pages
+                    .len()
+                    .saturating_mul(mem::size_of::<PrintedPage>()),
+            )
+            .saturating_add(
+                self.printed_pages
+                    .iter()
+                    .map(|page| page.pixels.len())
+                    .sum::<usize>(),
+            )
+    }
 }

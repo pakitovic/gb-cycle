@@ -111,6 +111,12 @@ pub struct SerialSaveState {
     completed_output_bytes: Vec<u8>,
 }
 
+impl SerialSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.completed_output_bytes.len()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerialSnapshot {
     pub console_model: ConsoleModel,

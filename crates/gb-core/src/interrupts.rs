@@ -31,6 +31,12 @@ pub struct InterruptSaveState {
     interrupt_enable: u8,
 }
 
+impl InterruptSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptControllerSnapshot {
     pub console_model: ConsoleModel,

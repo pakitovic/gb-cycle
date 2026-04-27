@@ -224,6 +224,12 @@ pub struct CpuSaveState {
     stop_div_reset_requested: bool,
 }
 
+impl CpuSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 impl CpuCore {
     pub(crate) fn capture_save_state(&self) -> CpuSaveState {
         CpuSaveState {

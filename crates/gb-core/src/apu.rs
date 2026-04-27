@@ -260,6 +260,12 @@ pub struct ApuSaveState {
     wave_ram_startup_policy: WaveRamStartupPolicy,
 }
 
+impl ApuSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSnapshot {
     pub console_model: ConsoleModel,

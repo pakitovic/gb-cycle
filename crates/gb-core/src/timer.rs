@@ -44,6 +44,12 @@ pub struct TimerSaveState {
     reloaded_this_t_cycle: bool,
 }
 
+impl TimerSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimerSnapshot {
     pub console_model: ConsoleModel,

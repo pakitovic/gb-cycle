@@ -48,6 +48,12 @@ pub struct JoypadSaveState {
     stop_wake_pending: bool,
 }
 
+impl JoypadSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JoypadSnapshot {
     pub console_model: ConsoleModel,

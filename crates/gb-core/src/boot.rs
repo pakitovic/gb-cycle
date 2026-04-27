@@ -191,6 +191,13 @@ impl BootRomAssets {
             .map(SaveStateByteFingerprint::from_bytes)
     }
 
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.dmg0.as_ref().map(Vec::len).unwrap_or(0)
+            + self.dmg.as_ref().map(Vec::len).unwrap_or(0)
+            + self.mgb.as_ref().map(Vec::len).unwrap_or(0)
+            + self.cgb.as_ref().map(Vec::len).unwrap_or(0)
+    }
+
     fn bytes_for(&self, kind: BootRomKind) -> Option<&[u8]> {
         match kind {
             BootRomKind::Dmg0 => self.dmg0.as_deref(),
@@ -347,6 +354,12 @@ pub struct BootSaveState {
     boot_rom_kind: BootRomKind,
     boot_rom_mapped: bool,
     boot_rom_assets: BootRomAssets,
+}
+
+impl BootSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.boot_rom_assets.dynamic_payload_bytes()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

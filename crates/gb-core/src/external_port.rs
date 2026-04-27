@@ -40,6 +40,12 @@ pub struct ExternalPortSaveState {
     reset_policy: ExternalPortResetPolicy,
 }
 
+impl ExternalPortSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.attachment.dynamic_payload_bytes()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalPortSnapshot {
     pub reset_policy: ExternalPortResetPolicy,
@@ -231,6 +237,16 @@ impl ExternalPortAttachment {
             Self::Printer(_) => ExternalPortAttachmentKind::Printer,
             Self::GameLinkDmg04(_) => ExternalPortAttachmentKind::GameLinkDmg04,
             Self::FourPlayerAdapterDmg07(_) => ExternalPortAttachmentKind::FourPlayerAdapterDmg07,
+        }
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        match self {
+            Self::Printer(printer) => printer.dynamic_payload_bytes(),
+            Self::None
+            | Self::Loopback(_)
+            | Self::GameLinkDmg04(_)
+            | Self::FourPlayerAdapterDmg07(_) => 0,
         }
     }
 

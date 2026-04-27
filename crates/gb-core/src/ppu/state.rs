@@ -408,6 +408,12 @@ impl BgFifo {
         self.entries.clear();
     }
 
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.entries
+            .len()
+            .saturating_mul(std::mem::size_of::<BgFifoPixel>())
+    }
+
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -552,6 +558,12 @@ pub(super) struct BgPipelineState {
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
     pub(super) dmg_window_restart: DmgWindowRestartState,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
+}
+
+impl BgPipelineState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.fifo.dynamic_payload_bytes()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1120,6 +1132,15 @@ pub(super) struct DmgBgpCpuCommitState {
 }
 
 impl DmgBgpCpuCommitState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.current_line_writes
+            .len()
+            .saturating_add(self.previous_line_writes.len())
+            .saturating_mul(std::mem::size_of::<PpuDmgBgpCpuCommitWrite>())
+    }
+}
+
+impl DmgBgpCpuCommitState {
     pub(super) fn reset_for_startup(&mut self, bgp: u8) {
         self.output_palette_override = None;
         self.output_delay_pixels_remaining = 0;
@@ -1150,6 +1171,16 @@ pub(super) struct DmgPanelLiveWriteState {
     pub(super) lcdc2: DmgLcdc2ObjSizeLiveWriteState,
     pub(super) bgp_cpu_commit: DmgBgpCpuCommitState,
     pub(super) recent_panel_dots: VecDeque<PpuRecentPanelDot>,
+}
+
+impl DmgPanelLiveWriteState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.bgp_cpu_commit.dynamic_payload_bytes().saturating_add(
+            self.recent_panel_dots
+                .len()
+                .saturating_mul(std::mem::size_of::<PpuRecentPanelDot>()),
+        )
+    }
 }
 
 impl DmgPanelLiveWriteState {
@@ -3014,6 +3045,19 @@ pub(super) struct ObjPipelineState {
     pub(super) pending_match_x: Option<u8>,
     pub(super) late_metadata_word: Option<(u8, u8)>,
     pub(super) fetch: ObjFetchState,
+}
+
+impl ObjPipelineState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.fifo
+            .len()
+            .saturating_mul(std::mem::size_of::<ObjPixel>())
+            .saturating_add(
+                self.pending_sprite_slots
+                    .len()
+                    .saturating_mul(std::mem::size_of::<u8>()),
+            )
+    }
 }
 
 impl ObjPipelineState {

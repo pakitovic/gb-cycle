@@ -59,6 +59,12 @@ pub struct BusSaveState {
     iohram: IoHramDomain,
 }
 
+impl BusSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 impl Bus {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {

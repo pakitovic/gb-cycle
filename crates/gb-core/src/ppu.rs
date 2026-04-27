@@ -2,6 +2,7 @@ use crate::bus::{BusMaster, OamBusView, VramBusView};
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
+use std::mem;
 use std::ops::{Deref, DerefMut};
 
 mod api;
@@ -408,6 +409,28 @@ impl Default for PpuPanelState {
     }
 }
 
+impl PpuPanelState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.dmg_panel_live_write_state
+            .dynamic_payload_bytes()
+            .saturating_add(self.framebuffer.len())
+            .saturating_add(
+                self.framebuffer_layer_sources
+                    .len()
+                    .saturating_mul(mem::size_of::<PpuFramebufferLayerSource>()),
+            )
+            .saturating_add(self.framebuffer_bgwin_colors.len())
+            .saturating_add(self.framebuffer_bgwin_forced_white.len())
+            .saturating_add(self.framebuffer_bgwin_panel_shades.len())
+            .saturating_add(self.framebuffer_backdrop_panel_shades.len())
+            .saturating_add(
+                self.framebuffer_bgwin_layer_sources
+                    .len()
+                    .saturating_mul(mem::size_of::<PpuFramebufferLayerSource>()),
+            )
+    }
+}
+
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuRuntimeState {
@@ -572,6 +595,21 @@ pub struct PpuSaveState {
     wx: u8,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,
+}
+
+impl PpuSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.runtime.dynamic_payload_bytes()
+    }
+}
+
+impl PpuRuntimeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bg_pipeline_state
+            .dynamic_payload_bytes()
+            .saturating_add(self.obj_pipeline_state.dynamic_payload_bytes())
+            .saturating_add(self.panel.dynamic_payload_bytes())
+    }
 }
 
 impl Ppu {

@@ -94,11 +94,11 @@ pub use ppu::{
 };
 pub use rewind::{
     DEFAULT_REWIND_HISTORY_FRAMES, DEFAULT_REWIND_HISTORY_T_CYCLES,
-    DEFAULT_REWIND_MAX_ESTIMATED_BYTES, DMG_T_CYCLES_PER_FRAME, MachineRewindBuffer,
-    MachineRewindCaptureKind, MachineRewindConfig, MachineRewindFrameBoundaryTracker,
-    MachineRewindFramePosition, MachineRewindRestore, MachineRewindRestoreError,
-    MachineRewindStats, MachineRewindSubframeCadence, machine_is_rewind_frame_boundary,
-    machine_rewind_frame_position,
+    DEFAULT_REWIND_MAX_ESTIMATED_BYTES, DMG_T_CYCLES_PER_FRAME, DMG_T_CYCLES_PER_SECOND,
+    MachineRewindBuffer, MachineRewindCaptureKind, MachineRewindConfig,
+    MachineRewindFrameBoundaryTracker, MachineRewindFramePosition, MachineRewindRestore,
+    MachineRewindRestoreError, MachineRewindStats, MachineRewindSubframeCadence,
+    machine_is_rewind_frame_boundary, machine_rewind_frame_position,
 };
 pub use save_state::{
     ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState, CpuSaveState,

@@ -24,8 +24,8 @@ use gb_core::{
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
     CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind,
     CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
-    CpuSnapshot, ExecutionMode, InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine,
-    MachineConfig, MachineRewindBuffer, MachineRewindConfig, MachineRewindFrameBoundaryTracker,
+    CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode, InterruptControllerSnapshot, JoypadButton,
+    JoypadSnapshot, Machine, MachineConfig, MachineRewindBuffer, MachineRewindFrameBoundaryTracker,
     MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuAccessMode,
     PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
@@ -34,7 +34,7 @@ use gb_desktop::{
     DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
     GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
     HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings,
-    PreferredGamepadIdentity, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -53,7 +53,8 @@ use linked_session::DesktopEmulationSession;
 use menu::{
     CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
-    OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
+    OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, RewindHudSnapshot,
+    render_performance_hud, render_rewind_indicator,
 };
 use player_slots::{
     DesktopDmg07PlayerCount, DesktopPlayerSessionKind, PLAYER_SLOT_COUNT, PlayerInputStates,
@@ -111,6 +112,10 @@ const DEFAULT_PC_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_EDGE_TRACE_EVENTS: usize = 4_096;
 const MACHINE_STATE_SLOT_COUNT: u8 = 4;
 const DEFAULT_MACHINE_STATE_SLOT: u8 = 1;
+const REWIND_HISTORY_SECONDS_OPTIONS: [u16; 5] = [5, 10, 20, 30, 60];
+const REWIND_SUBFRAMES_PER_FRAME_OPTIONS: [u8; 4] = [0, 1, 2, 4];
+const REWIND_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [1, 2, 4];
+const REWIND_MAX_MEMORY_MIB_OPTIONS: [u16; 4] = [64, 128, 256, 512];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
     width: u32,
@@ -130,6 +135,12 @@ struct FramebufferPanelInput<'a> {
 struct FramebufferRenderInput<'a> {
     dimensions: FramebufferDimensions,
     panels: [Option<FramebufferPanelInput<'a>>; PLAYER_SLOT_COUNT],
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RenderHudInput {
+    performance: Option<PerformanceHudSnapshot>,
+    rewind_indicator: bool,
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
@@ -3115,6 +3126,7 @@ impl PerformanceCounter {
                 self.sample_audio_queue_after_pacing_ms
                     / f64::from(self.sample_audio_queue_after_pacing_observations),
             ),
+            rewind: RewindHudSnapshot::default(),
         }
     }
 
@@ -4254,7 +4266,7 @@ fn run_desktop_with_startup_fallback_persistence(
         gamepad_manager,
         save_sessions,
         machine_state_slot: DEFAULT_MACHINE_STATE_SLOT,
-        rewind_buffer: MachineRewindBuffer::new(MachineRewindConfig::default()),
+        rewind_buffer: MachineRewindBuffer::new(session.config.rewind.machine_rewind_config()),
         rewind_frame_tracker: MachineRewindFrameBoundaryTracker::new(),
         rewind_hotkey_active: false,
         rtc_sync: HostRtcSync::from_host_clock(),
@@ -4315,7 +4327,7 @@ fn run_desktop_with_startup_fallback_persistence(
         framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
         &runtime.video_options,
         initial_menu_presentation,
-        None,
+        RenderHudInput::default(),
     )?;
 
     'running: loop {
@@ -4377,7 +4389,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
                     &runtime.video_options,
                     menu_presentation,
-                    None,
+                    RenderHudInput::default(),
                 )?;
             }
             thread::sleep(Duration::from_millis(8));
@@ -4388,6 +4400,8 @@ fn run_desktop_with_startup_fallback_persistence(
         let mut rewound_this_frame = false;
         let step_result =
             if runtime.rewind_hotkey_active && rewind_actions_available(&session, &machine) {
+                let rewind_steps =
+                    rewind_restore_steps_for_speed(session.config.rewind.speed_multiplier);
                 let rewind_result = {
                     let context = FrontendActionContext {
                         session: &mut session,
@@ -4397,11 +4411,12 @@ fn run_desktop_with_startup_fallback_persistence(
                         frame_pacer: &mut frame_pacer,
                         settings_store: &mut settings_store,
                     };
-                    rewind_desktop_session_once(
+                    rewind_desktop_session_steps(
                         context.session,
                         context.machine,
                         context.runtime,
                         context.frame_pacer,
+                        rewind_steps,
                     )
                 };
                 match rewind_result {
@@ -4477,7 +4492,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
                     &runtime.video_options,
                     menu_presentation,
-                    None,
+                    RenderHudInput::default(),
                 )?;
             }
             thread::sleep(Duration::from_millis(8));
@@ -4501,7 +4516,20 @@ fn run_desktop_with_startup_fallback_persistence(
             framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
             &runtime.video_options,
             None,
-            performance_counter.hud_snapshot(),
+            RenderHudInput {
+                performance: current_performance_hud_snapshot(
+                    performance_counter.hud_snapshot(),
+                    &runtime,
+                    &session,
+                    &machine,
+                ),
+                rewind_indicator: rewind_indicator_visible(
+                    &runtime,
+                    &session,
+                    &machine,
+                    rewound_this_frame,
+                ),
+            },
         )?;
         let render_duration = render_started_at.elapsed();
         let audio_queue_ms_before_pacing = runtime
@@ -7048,6 +7076,21 @@ fn open_selected_rom(
     }
     context.runtime.save_sessions = next_save_sessions;
     context.runtime.rtc_sync.resync_to_host_clock();
+    match autoload_machine_state_slot_if_available(
+        context.session,
+        context.machine,
+        context.runtime,
+        context.frame_pacer,
+    ) {
+        Ok(Some(path)) => {
+            eprintln!("info: autoloaded state from {}", path.display());
+        }
+        Ok(None) => {}
+        Err(error) => {
+            show_warning_message(Some(canvas.window()), "Autoload State", &error);
+            eprintln!("warning: {error}");
+        }
+    }
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
         window_title(context.session, &context.session.config),
@@ -7320,6 +7363,14 @@ fn next_machine_state_slot(slot: u8) -> u8 {
     }
 }
 
+fn next_machine_state_autoload_slot(slot: Option<u8>) -> Option<u8> {
+    match slot {
+        None => Some(1),
+        Some(current) if current < MACHINE_STATE_SLOT_COUNT => Some(current.saturating_add(1)),
+        Some(_) => None,
+    }
+}
+
 fn machine_state_actions_available(
     session: &DesktopSession,
     machine: &DesktopEmulationSession,
@@ -7331,6 +7382,10 @@ fn machine_state_actions_available(
 }
 
 fn rewind_actions_available(session: &DesktopSession, machine: &DesktopEmulationSession) -> bool {
+    session.config.rewind.enabled && rewind_session_supported(session, machine)
+}
+
+fn rewind_session_supported(session: &DesktopSession, machine: &DesktopEmulationSession) -> bool {
     session.has_loaded_rom()
         && !machine.primary_machine().cartridge().is_empty()
         && !machine.is_linked_dmg04_two_player()
@@ -7341,6 +7396,83 @@ fn reset_rewind_state(runtime: &mut FrontendRuntime) {
     runtime.rewind_buffer.clear();
     runtime.rewind_frame_tracker.reset();
     runtime.rewind_hotkey_active = false;
+}
+
+fn rebuild_rewind_state(runtime: &mut FrontendRuntime, options: RewindOptions) {
+    runtime.rewind_buffer = MachineRewindBuffer::new(options.machine_rewind_config());
+    runtime.rewind_frame_tracker.reset();
+    runtime.rewind_hotkey_active = false;
+}
+
+fn apply_rewind_options(
+    context: &mut FrontendActionContext<'_>,
+    options: RewindOptions,
+) -> Result<(), String> {
+    let previous = context.session.config.rewind;
+    if previous == options {
+        return Ok(());
+    }
+
+    context.session.config.rewind = options;
+    context.settings_store.set_rewind_options(options)?;
+    if previous.enabled != options.enabled
+        || previous.machine_rewind_config() != options.machine_rewind_config()
+    {
+        rebuild_rewind_state(context.runtime, options);
+    }
+    Ok(())
+}
+
+fn rewind_history_seconds_from_stats(stats: gb_core::MachineRewindStats) -> f64 {
+    match (stats.oldest_next_t_cycle, stats.newest_next_t_cycle) {
+        (Some(oldest), Some(newest)) => {
+            newest.get().saturating_sub(oldest.get()) as f64 / DMG_T_CYCLES_PER_SECOND as f64
+        }
+        _ => 0.0,
+    }
+}
+
+fn current_rewind_hud_snapshot(
+    runtime: &FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> RewindHudSnapshot {
+    let stats = runtime.rewind_buffer.stats();
+    RewindHudSnapshot {
+        supported: rewind_session_supported(session, machine),
+        enabled: session.config.rewind.enabled,
+        rewinding: runtime.rewind_hotkey_active && rewind_actions_available(session, machine),
+        snapshot_count: stats.len,
+        history_seconds: rewind_history_seconds_from_stats(stats),
+        accounted_bytes: stats.estimated_bytes,
+        max_bytes: runtime.rewind_buffer.config().max_estimated_bytes,
+    }
+}
+
+fn rewind_indicator_visible(
+    runtime: &FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    rewound_this_frame: bool,
+) -> bool {
+    rewind_actions_available(session, machine)
+        && (runtime.rewind_hotkey_active || rewound_this_frame)
+}
+
+fn rewind_restore_steps_for_speed(speed_multiplier: u8) -> usize {
+    usize::from(speed_multiplier.max(1)).saturating_mul(2)
+}
+
+fn current_performance_hud_snapshot(
+    snapshot: Option<PerformanceHudSnapshot>,
+    runtime: &FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> Option<PerformanceHudSnapshot> {
+    snapshot.map(|mut snapshot| {
+        snapshot.rewind = current_rewind_hud_snapshot(runtime, session, machine);
+        snapshot
+    })
 }
 
 fn reset_host_state_after_machine_restore(
@@ -7378,26 +7510,68 @@ fn record_desktop_rewind_point(
     }
 }
 
+#[cfg(test)]
 fn rewind_desktop_session_once(
     session: &DesktopSession,
     machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
     frame_pacer: &mut FramePacer,
 ) -> Result<bool, String> {
+    rewind_desktop_session_steps(session, machine, runtime, frame_pacer, 1)
+}
+
+fn rewind_desktop_session_steps(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+    steps: usize,
+) -> Result<bool, String> {
     if !rewind_actions_available(session, machine) {
         return Err("rewind is only available for single-machine sessions".to_string());
     }
 
-    let Some(_restored) = runtime
-        .rewind_buffer
-        .rewind_one(machine.primary_machine_mut())
-        .map_err(|error| format!("failed to restore rewind snapshot: {error}"))?
-    else {
+    let mut restored_any = false;
+    for _ in 0..steps.max(1) {
+        let Some(_restored) = runtime
+            .rewind_buffer
+            .rewind_one(machine.primary_machine_mut())
+            .map_err(|error| format!("failed to restore rewind snapshot: {error}"))?
+        else {
+            break;
+        };
+        restored_any = true;
+    }
+
+    if !restored_any {
         return Ok(false);
-    };
+    }
 
     reset_host_state_after_machine_restore(machine, runtime, frame_pacer)?;
     Ok(true)
+}
+
+fn autoload_machine_state_slot_if_available(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+) -> Result<Option<PathBuf>, String> {
+    let Some(slot) = session
+        .config
+        .machine_state
+        .normalized_autoload_slot(MACHINE_STATE_SLOT_COUNT)
+    else {
+        return Ok(None);
+    };
+    if !machine_state_actions_available(session, machine) {
+        return Ok(None);
+    }
+    if !machine_state_slot_path(session, slot).is_ok_and(|path| path.is_file()) {
+        return Ok(None);
+    }
+
+    load_machine_state_slot(session, machine, runtime, frame_pacer, slot).map(Some)
 }
 
 fn machine_state_slot_load_available(
@@ -7595,6 +7769,41 @@ fn execute_menu_action(
             })?;
             Ok(None)
         }
+        MenuAction::ToggleRewindEnabled => {
+            let mut rewind = context.session.config.rewind;
+            rewind.enabled = !rewind.enabled;
+            apply_rewind_options(context, rewind)?;
+            Ok(None)
+        }
+        MenuAction::CycleRewindHistory => {
+            let mut rewind = context.session.config.rewind;
+            rewind.history_seconds = next_rewind_history_seconds(rewind.history_seconds);
+            apply_rewind_options(context, rewind)?;
+            Ok(None)
+        }
+        MenuAction::CycleRewindSubframes => {
+            let mut rewind = context.session.config.rewind;
+            rewind.subframes_per_frame =
+                next_rewind_subframes_per_frame(rewind.subframes_per_frame);
+            apply_rewind_options(context, rewind)?;
+            Ok(None)
+        }
+        MenuAction::CycleRewindSpeed => {
+            let mut rewind = context.session.config.rewind;
+            rewind.speed_multiplier = next_rewind_speed_multiplier(rewind.speed_multiplier);
+            apply_rewind_options(context, rewind)?;
+            Ok(None)
+        }
+        MenuAction::CycleRewindMemory => {
+            let mut rewind = context.session.config.rewind;
+            rewind.max_memory_mib = next_rewind_max_memory_mib(rewind.max_memory_mib);
+            apply_rewind_options(context, rewind)?;
+            Ok(None)
+        }
+        MenuAction::ResetRewindDefaults => {
+            apply_rewind_options(context, RewindOptions::default())?;
+            Ok(None)
+        }
         MenuAction::ClearSaveDirectoryPath => {
             apply_machine_settings_change(canvas, context, "Save directory", |config| {
                 config.saves.directory_policy = SaveDirectoryPolicy::RomFolderSavesSubdir;
@@ -7677,27 +7886,18 @@ fn execute_menu_action(
             }
             Ok(None)
         }
-        MenuAction::Rewind => {
-            match rewind_desktop_session_once(
-                context.session,
-                context.machine,
-                context.runtime,
-                context.frame_pacer,
-            ) {
-                Ok(true) => {
-                    sync_audio_playback_state(context.machine, context.runtime)?;
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    show_warning_message(Some(canvas.window()), "Rewind", &error);
-                    eprintln!("warning: {error}");
-                }
-            }
-            Ok(None)
-        }
         MenuAction::CycleStateSlot => {
             context.runtime.machine_state_slot =
                 next_machine_state_slot(context.runtime.machine_state_slot);
+            Ok(None)
+        }
+        MenuAction::CycleStateAutoloadSlot => {
+            context.session.config.machine_state.autoload_slot = next_machine_state_autoload_slot(
+                context.session.config.machine_state.autoload_slot,
+            );
+            context
+                .settings_store
+                .set_machine_state_options(context.session.config.machine_state)?;
             Ok(None)
         }
         MenuAction::SaveBattery => {
@@ -8198,6 +8398,7 @@ fn current_menu_presentation(
     let machine_state_available = machine_state_actions_available(session, machine);
     let machine_state_load_available =
         machine_state_slot_load_available(session, machine, runtime.machine_state_slot);
+    let rewind_supported = rewind_session_supported(session, machine);
     let rewind_available =
         rewind_actions_available(session, machine) && !runtime.rewind_buffer.is_empty();
     let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
@@ -8274,6 +8475,12 @@ fn current_menu_presentation(
         machine_state_available,
         machine_state_load_available,
         machine_state_slot: runtime.machine_state_slot,
+        machine_state_autoload_slot: session
+            .config
+            .machine_state
+            .normalized_autoload_slot(MACHINE_STATE_SLOT_COUNT),
+        rewind_supported,
+        rewind_options: session.config.rewind,
         rewind_available,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
@@ -8353,6 +8560,38 @@ fn next_save_flush_policy(flush_policy: DesktopSaveFlushPolicy) -> DesktopSaveFl
         DesktopSaveFlushPolicy::OnWrite => DesktopSaveFlushPolicy::Debounced,
         DesktopSaveFlushPolicy::Debounced => DesktopSaveFlushPolicy::Manual,
     }
+}
+
+fn next_rewind_history_seconds(current: u16) -> u16 {
+    next_rewind_option(current, &REWIND_HISTORY_SECONDS_OPTIONS)
+}
+
+fn next_rewind_subframes_per_frame(current: u8) -> u8 {
+    next_rewind_option(current, &REWIND_SUBFRAMES_PER_FRAME_OPTIONS)
+}
+
+fn next_rewind_speed_multiplier(current: u8) -> u8 {
+    next_rewind_option(current, &REWIND_SPEED_MULTIPLIER_OPTIONS)
+}
+
+fn next_rewind_max_memory_mib(current: u16) -> u16 {
+    next_rewind_option(current, &REWIND_MAX_MEMORY_MIB_OPTIONS)
+}
+
+fn next_rewind_option<T>(current: T, options: &[T]) -> T
+where
+    T: Copy + Ord,
+{
+    options
+        .iter()
+        .copied()
+        .find(|option| *option > current)
+        .unwrap_or_else(|| {
+            options
+                .first()
+                .copied()
+                .expect("rewind option tables must not be empty")
+        })
 }
 
 fn next_gamepad_directional_source(
@@ -9510,7 +9749,7 @@ fn render_frame(
     framebuffer: FramebufferRenderInput<'_>,
     video_options: &VideoOptions,
     menu_state: Option<(&OverlayMenuState, MenuPresentation)>,
-    performance_hud: Option<PerformanceHudSnapshot>,
+    hud: RenderHudInput,
 ) -> Result<Duration, String> {
     apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
     sync_framebuffer_texture_video_options(texture, video_options);
@@ -9541,13 +9780,20 @@ fn render_frame(
     }
     if menu_state.is_none()
         && video_options.show_performance_hud
-        && let Some(snapshot) = performance_hud
+        && let Some(snapshot) = hud.performance
     {
         render_performance_hud(
             rgb_frame,
             framebuffer.dimensions.width as usize,
             framebuffer.dimensions.height as usize,
             snapshot,
+        );
+    }
+    if menu_state.is_none() && hud.rewind_indicator {
+        render_rewind_indicator(
+            rgb_frame,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
         );
     }
 
@@ -9904,7 +10150,7 @@ mod tests {
         BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR,
         DesktopRunOptions, DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
         HostRtcSync, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
-        PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding,
+        PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_binding,
         assign_gamepad_menu_binding, assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_key_event,
         assignable_key_for_binding_target_from_keycode,
@@ -9942,7 +10188,7 @@ mod tests {
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
         DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings, SaveKeyPolicy,
+        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
     };
     use gb_persistence::{
         CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
@@ -11118,7 +11364,7 @@ mod tests {
                 save_sessions,
                 machine_state_slot: super::DEFAULT_MACHINE_STATE_SLOT,
                 rewind_buffer: super::MachineRewindBuffer::new(
-                    super::MachineRewindConfig::default(),
+                    config.rewind.machine_rewind_config(),
                 ),
                 rewind_frame_tracker: super::MachineRewindFrameBoundaryTracker::new(),
                 rewind_hotkey_active: false,
@@ -11361,6 +11607,7 @@ mod tests {
                     render_time_ms: 4.1,
                     pacing_time_ms: 9.2,
                     audio_queue_ms: Some(18.4),
+                    rewind: RewindHudSnapshot::default(),
                 }
             ),
             "gb-desktop | drmario.gb | dmg | real-boot | strict | 14.8 FPS | 67.50 ms | 25% speed | emu 54.20 | render 4.10 | pacing 9.20 | audio 18.4 ms"
@@ -11708,6 +11955,7 @@ mod tests {
                     render_time_ms: 1.0,
                     pacing_time_ms: 5.0,
                     audio_queue_ms: None,
+                    rewind: RewindHudSnapshot::default(),
                 },
             )
             .expect("summary mode should render a profile line without audio");
@@ -11730,6 +11978,7 @@ mod tests {
                         render_time_ms: 1.0,
                         pacing_time_ms: 5.0,
                         audio_queue_ms: Some(18.0),
+                        rewind: RewindHudSnapshot::default(),
                     },
                 )
                 .is_none()
@@ -12103,6 +12352,7 @@ mod tests {
                         render_time_ms: 1.0,
                         pacing_time_ms: 2.0,
                         audio_queue_ms: None,
+                        rewind: RewindHudSnapshot::default(),
                     },
                 )
                 .is_none()
@@ -16017,6 +16267,49 @@ mod tests {
     }
 
     #[test]
+    fn state_slot_autoload_restores_existing_slot_and_ignores_missing_slot_on_rom_load() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-autoload", true, false, false);
+        let rom_path = harness
+            .session
+            .rom_path()
+            .expect("harness should start with ROM")
+            .to_path_buf();
+
+        harness.machine.write_bus(0xC000, 0x42);
+        let slot_path = save_machine_state_slot(&harness.session, &harness.machine, 2)
+            .expect("autoload slot should save");
+        assert!(slot_path.is_file());
+
+        harness.session.config.machine_state.autoload_slot = Some(2);
+        harness.machine.write_bus(0xC000, 0x99);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(rom_path.clone()))
+            .expect("autoload ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("autoload ROM should load");
+        assert_eq!(harness.machine.read_bus(0xC000), 0x42);
+        assert!(harness.runtime.rewind_buffer.is_empty());
+
+        harness.session.config.machine_state.autoload_slot = Some(3);
+        harness.machine.write_bus(0xC000, 0x55);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(rom_path))
+            .expect("missing autoload ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("missing autoload slot should not fail ROM load");
+        assert_ne!(harness.machine.read_bus(0xC000), 0x55);
+    }
+
+    #[test]
     fn state_slot_hotkeys_save_load_and_select_slots() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("state-slot-hotkeys", true, false, false);
@@ -16088,7 +16381,16 @@ mod tests {
             &harness.session,
         );
         assert!(!initial_presentation.rewind_available);
+        assert!(initial_presentation.rewind_supported);
         assert!(harness.runtime.rewind_buffer.is_empty());
+        let empty_hud = super::current_rewind_hud_snapshot(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+        );
+        assert!(empty_hud.supported);
+        assert!(empty_hud.enabled);
+        assert_eq!(empty_hud.snapshot_count, 0);
 
         for _ in 0..16 {
             harness.machine.step_t_cycle();
@@ -16106,6 +16408,17 @@ mod tests {
             &harness.session,
         );
         assert!(recorded_presentation.rewind_available);
+        let recorded_hud = super::current_rewind_hud_snapshot(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+        );
+        assert!(recorded_hud.snapshot_count > 0);
+        assert!(recorded_hud.accounted_bytes > 0);
+        assert_eq!(
+            recorded_hud.max_bytes,
+            harness.runtime.rewind_buffer.config().max_estimated_bytes
+        );
 
         let primary = harness.machine.primary_machine().clone();
         let secondary = primary.clone();
@@ -16129,10 +16442,17 @@ mod tests {
             &harness.session,
         );
         assert!(!linked_presentation.rewind_available);
+        assert!(!linked_presentation.rewind_supported);
+        let linked_hud = super::current_rewind_hud_snapshot(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+        );
+        assert!(!linked_hud.supported);
     }
 
     #[test]
-    fn rewind_menu_action_restores_snapshot_and_resets_host_timeline_state() {
+    fn rewind_restore_once_resets_host_timeline_state() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("rewind-menu-restore", true, false, false);
 
@@ -16156,9 +16476,14 @@ mod tests {
         assert_ne!(harness.machine.capture_save_state(), target_state);
         harness.frame_pacer.next_frame_start = Instant::now() + Duration::from_secs(60);
 
-        harness
-            .execute_action(super::MenuAction::Rewind)
-            .expect("rewind action should execute");
+        let restored = super::rewind_desktop_session_once(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+        )
+        .expect("rewind restore should execute");
+        assert!(restored, "rewind restore should consume a snapshot");
 
         assert_eq!(harness.machine.capture_save_state(), target_state);
         assert!(harness.runtime.rewind_buffer.is_empty());
@@ -16166,6 +16491,56 @@ mod tests {
         assert!(
             harness.frame_pacer.next_frame_start <= Instant::now() + Duration::from_millis(100)
         );
+    }
+
+    #[test]
+    fn rewind_speed_presets_map_to_retuned_restore_steps() {
+        assert_eq!(super::rewind_restore_steps_for_speed(1), 2);
+        assert_eq!(super::rewind_restore_steps_for_speed(2), 4);
+        assert_eq!(super::rewind_restore_steps_for_speed(4), 8);
+        assert_eq!(
+            super::rewind_restore_steps_for_speed(0),
+            2,
+            "invalid persisted zero speed should fall back to the slowest retuned preset"
+        );
+    }
+
+    #[test]
+    fn rewind_speed_consumes_multiple_snapshots_per_restore_frame() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-speed-steps", true, false, false);
+        let mut captured_states = Vec::new();
+
+        for _ in 0..3 {
+            for _ in 0..8 {
+                harness.machine.step_t_cycle();
+            }
+            captured_states.push(harness.machine.capture_save_state());
+            assert!(
+                harness
+                    .runtime
+                    .rewind_buffer
+                    .record_frame_boundary(harness.machine.primary_machine())
+            );
+        }
+
+        for _ in 0..8 {
+            harness.machine.step_t_cycle();
+        }
+        assert_ne!(harness.machine.capture_save_state(), captured_states[1]);
+
+        let restored = super::rewind_desktop_session_steps(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+            2,
+        )
+        .expect("multi-step rewind should execute");
+
+        assert!(restored);
+        assert_eq!(harness.machine.capture_save_state(), captured_states[1]);
+        assert_eq!(harness.runtime.rewind_buffer.stats().len, 1);
     }
 
     #[test]
@@ -16209,9 +16584,14 @@ mod tests {
             0
         );
 
-        harness
-            .execute_action(super::MenuAction::Rewind)
-            .expect("rewind action should execute");
+        let restored = super::rewind_desktop_session_once(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+        )
+        .expect("rewind restore should execute");
+        assert!(restored, "rewind restore should consume a snapshot");
         harness.machine.step_t_cycle();
 
         assert_eq!(
@@ -16241,6 +16621,25 @@ mod tests {
             .process_events()
             .expect("rewind keyup should process");
         assert!(!harness.runtime.rewind_hotkey_active);
+    }
+
+    #[test]
+    fn rewind_empty_history_reports_no_restore_without_mutating_machine() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-empty-history", true, false, false);
+        let before = harness.machine.capture_save_state();
+
+        let restored = super::rewind_desktop_session_once(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+        )
+        .expect("empty rewind should not surface a modal-worthy restore error");
+
+        assert!(!restored);
+        assert_eq!(harness.machine.capture_save_state(), before);
+        assert!(harness.runtime.rewind_buffer.is_empty());
     }
 
     #[test]
@@ -17468,7 +17867,7 @@ mod tests {
             },
             &harness.runtime.video_options,
             Some((&harness.runtime.menu_state, open_menu_presentation)),
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("overlay frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
@@ -17508,18 +17907,91 @@ mod tests {
             },
             &harness.runtime.video_options,
             None,
-            Some(PerformanceHudSnapshot {
-                fps: 59.7,
-                speed_percent: 100.0,
-                frame_time_ms: 16.7,
-                emulation_time_ms: 10.0,
-                render_time_ms: 2.0,
-                pacing_time_ms: 4.0,
-                audio_queue_ms: Some(12.5),
-            }),
+            super::RenderHudInput {
+                performance: Some(PerformanceHudSnapshot {
+                    fps: 59.7,
+                    speed_percent: 100.0,
+                    frame_time_ms: 16.7,
+                    emulation_time_ms: 10.0,
+                    render_time_ms: 2.0,
+                    pacing_time_ms: 4.0,
+                    audio_queue_ms: Some(12.5),
+                    rewind: RewindHudSnapshot::default(),
+                }),
+                rewind_indicator: false,
+            },
         )
         .expect("HUD frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn render_frame_draws_rewind_indicator_without_stats_hud() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-indicator-render", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let mut baseline_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+        let mut indicator_frame = baseline_frame.clone();
+        let panel_len = (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize;
+        let framebuffer = vec![0_u8; panel_len];
+        let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
+        let render_input = || super::FramebufferRenderInput {
+            dimensions: super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            },
+            panels: [
+                Some(super::FramebufferPanelInput {
+                    framebuffer: &framebuffer,
+                    framebuffer_layer_sources: &layer_sources,
+                    bgwin_framebuffer: &framebuffer,
+                    backdrop_framebuffer: &framebuffer,
+                    bgwin_framebuffer_layer_sources: &layer_sources,
+                }),
+                None,
+                None,
+                None,
+            ],
+        };
+        let mut video_options = harness.runtime.video_options.clone();
+        video_options.show_performance_hud = false;
+
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut baseline_frame,
+            render_input(),
+            &video_options,
+            None,
+            super::RenderHudInput::default(),
+        )
+        .expect("baseline frame should render");
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut indicator_frame,
+            render_input(),
+            &video_options,
+            None,
+            super::RenderHudInput {
+                performance: None,
+                rewind_indicator: true,
+            },
+        )
+        .expect("rewind indicator frame should render");
+
+        assert_ne!(
+            indicator_frame, baseline_frame,
+            "rewind indicator should render independently from the stats HUD"
+        );
     }
 
     #[test]
@@ -17853,7 +18325,7 @@ mod tests {
             },
             &harness.runtime.video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("linked frame should render");
 
@@ -17948,7 +18420,7 @@ mod tests {
             },
             &harness.runtime.video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("DMG-07 grid frame should render");
 
@@ -18019,7 +18491,7 @@ mod tests {
             },
             &video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("layer-masked frame should render");
 
@@ -18079,7 +18551,7 @@ mod tests {
             },
             &video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("OBJ-only frame should render with a dynamic backdrop");
 
@@ -18133,7 +18605,7 @@ mod tests {
             framebuffer,
             &video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("nearest-neighbor frame should render");
         assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Nearest);
@@ -18146,7 +18618,7 @@ mod tests {
             framebuffer,
             &video_options,
             None,
-            None,
+            super::RenderHudInput::default(),
         )
         .expect("filtered frame should render");
         assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Linear);
@@ -18776,6 +19248,91 @@ mod tests {
             harness.session.config.saves.flush_policy,
             DesktopSaveFlushPolicy::Manual
         );
+        assert_eq!(harness.session.config.machine_state.autoload_slot, None);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStateAutoloadSlot)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.machine_state.autoload_slot, Some(1));
+        assert_eq!(
+            harness
+                .settings_store
+                .base_config()
+                .machine_state
+                .autoload_slot,
+            Some(1)
+        );
+        assert!(
+            harness
+                .runtime
+                .rewind_buffer
+                .record_frame_boundary(harness.machine.primary_machine())
+        );
+        assert!(!harness.runtime.rewind_buffer.is_empty());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleRewindEnabled)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.session.config.rewind.enabled);
+        assert!(harness.runtime.rewind_buffer.is_empty());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleRewindHistory)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.rewind.history_seconds, 20);
+        assert_eq!(
+            harness
+                .runtime
+                .rewind_buffer
+                .config()
+                .target_history_t_cycles,
+            20 * super::DMG_T_CYCLES_PER_SECOND
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleRewindSubframes)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.rewind.subframes_per_frame, 2);
+        assert!(
+            harness
+                .runtime
+                .rewind_buffer
+                .record_frame_boundary(harness.machine.primary_machine())
+        );
+        assert!(!harness.runtime.rewind_buffer.is_empty());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleRewindSpeed)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.rewind.speed_multiplier, 4);
+        assert!(
+            !harness.runtime.rewind_buffer.is_empty(),
+            "playback speed changes must not discard existing rewind history"
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleRewindMemory)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.rewind.max_memory_mib, 512);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetRewindDefaults)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.rewind, RewindOptions::default());
         harness.session.config.saves.directory_policy =
             gb_desktop::SaveDirectoryPolicy::Custom(harness.root.join("manual-saves"));
         assert!(

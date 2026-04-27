@@ -1,6 +1,6 @@
 use gb_core::{
     BootRomAssetError, BootRomAssets, BootRomKind, CompatibilityPolicy, ConsoleModel,
-    ExecutionMode, MachineConfig, StartupMode,
+    ExecutionMode, MachineConfig, MachineRewindConfig, MachineRewindSubframeCadence, StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,10 @@ pub const DEFAULT_WINDOW_SCALE: u8 = 4;
 pub const DEFAULT_AUDIO_SAMPLE_RATE_HZ: u32 = 48_000;
 pub const DEFAULT_AUDIO_BUFFER_FRAMES: u16 = 512;
 pub const DEFAULT_SAVE_FLUSH_DEBOUNCE: Duration = Duration::from_secs(2);
+pub const DEFAULT_REWIND_HISTORY_SECONDS: u16 = 10;
+pub const DEFAULT_REWIND_SUBFRAMES_PER_FRAME: u8 = 1;
+pub const DEFAULT_REWIND_MAX_MEMORY_MIB: u16 = 256;
+pub const DEFAULT_REWIND_SPEED_MULTIPLIER: u8 = 2;
 const DEFAULT_SAVE_SUBDIRECTORY: &str = "saves";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -21,6 +25,8 @@ pub struct DesktopConfig {
     pub launch: LaunchOptions,
     pub boot_rom: BootRomOptions,
     pub saves: SaveOptions,
+    pub machine_state: MachineStateOptions,
+    pub rewind: RewindOptions,
     pub video: VideoOptions,
     pub audio: AudioOptions,
     pub input: InputOptions,
@@ -249,6 +255,61 @@ pub enum DesktopSaveFlushPolicy {
     #[default]
     #[serde(rename = "debounced")]
     Debounced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MachineStateOptions {
+    pub autoload_slot: Option<u8>,
+}
+
+impl MachineStateOptions {
+    pub fn normalized_autoload_slot(self, max_slot: u8) -> Option<u8> {
+        self.autoload_slot
+            .filter(|slot| (1..=max_slot.max(1)).contains(slot))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RewindOptions {
+    pub enabled: bool,
+    pub history_seconds: u16,
+    pub subframes_per_frame: u8,
+    pub max_memory_mib: u16,
+    pub speed_multiplier: u8,
+}
+
+impl RewindOptions {
+    pub fn machine_rewind_config(self) -> MachineRewindConfig {
+        MachineRewindConfig::default()
+            .with_target_history_t_cycles(
+                u64::from(self.history_seconds.max(1))
+                    .saturating_mul(gb_core::DMG_T_CYCLES_PER_SECOND),
+            )
+            .with_max_estimated_bytes(
+                usize::from(self.max_memory_mib.max(1)).saturating_mul(1024 * 1024),
+            )
+            .with_subframe_cadence(if self.subframes_per_frame == 0 {
+                MachineRewindSubframeCadence::Disabled
+            } else {
+                MachineRewindSubframeCadence::FixedPerFrame {
+                    captures_per_frame: u16::from(self.subframes_per_frame),
+                }
+            })
+    }
+}
+
+impl Default for RewindOptions {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            history_seconds: DEFAULT_REWIND_HISTORY_SECONDS,
+            subframes_per_frame: DEFAULT_REWIND_SUBFRAMES_PER_FRAME,
+            max_memory_mib: DEFAULT_REWIND_MAX_MEMORY_MIB,
+            speed_multiplier: DEFAULT_REWIND_SPEED_MULTIPLIER,
+        }
+    }
 }
 
 impl DesktopSaveFlushPolicy {
@@ -738,6 +799,72 @@ mod tests {
         assert_eq!(
             config.input.gamepad.preferred_device,
             PreferredGamepadIdentity::default()
+        );
+        assert_eq!(config.machine_state, MachineStateOptions::default());
+        assert_eq!(config.machine_state.normalized_autoload_slot(4), None);
+        assert_eq!(config.rewind, RewindOptions::default());
+        assert!(config.rewind.enabled);
+        assert_eq!(
+            config.rewind.history_seconds,
+            DEFAULT_REWIND_HISTORY_SECONDS
+        );
+        assert_eq!(
+            config.rewind.subframes_per_frame,
+            DEFAULT_REWIND_SUBFRAMES_PER_FRAME
+        );
+        assert_eq!(config.rewind.max_memory_mib, DEFAULT_REWIND_MAX_MEMORY_MIB);
+        assert_eq!(
+            config.rewind.speed_multiplier,
+            DEFAULT_REWIND_SPEED_MULTIPLIER
+        );
+    }
+
+    #[test]
+    fn rewind_options_map_to_core_rewind_config() {
+        let options = RewindOptions::default();
+        let config = options.machine_rewind_config();
+
+        assert_eq!(
+            config.target_history_t_cycles,
+            u64::from(DEFAULT_REWIND_HISTORY_SECONDS) * gb_core::DMG_T_CYCLES_PER_SECOND
+        );
+        assert_eq!(
+            config.max_estimated_bytes,
+            usize::from(DEFAULT_REWIND_MAX_MEMORY_MIB) * 1024 * 1024
+        );
+        assert_eq!(
+            config.subframe_cadence,
+            MachineRewindSubframeCadence::FixedPerFrame {
+                captures_per_frame: u16::from(DEFAULT_REWIND_SUBFRAMES_PER_FRAME),
+            }
+        );
+
+        let disabled_subframes = RewindOptions {
+            subframes_per_frame: 0,
+            ..RewindOptions::default()
+        }
+        .machine_rewind_config();
+        assert_eq!(
+            disabled_subframes.subframe_cadence,
+            MachineRewindSubframeCadence::Disabled
+        );
+    }
+
+    #[test]
+    fn machine_state_options_normalize_autoload_slots_against_the_desktop_slot_count() {
+        assert_eq!(
+            MachineStateOptions {
+                autoload_slot: Some(3),
+            }
+            .normalized_autoload_slot(4),
+            Some(3)
+        );
+        assert_eq!(
+            MachineStateOptions {
+                autoload_slot: Some(5),
+            }
+            .normalized_autoload_slot(4),
+            None
         );
     }
 

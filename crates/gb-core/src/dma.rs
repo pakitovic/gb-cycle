@@ -478,6 +478,12 @@ pub struct DmaSaveState {
     pending_restart: Option<DmaTransferProgress>,
 }
 
+impl DmaSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DmaSnapshot {
     pub console_model: ConsoleModel,

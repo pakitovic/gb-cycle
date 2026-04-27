@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, mem};
 
 pub use crate::apu::ApuSaveState;
 use crate::boot::BootRomKind;
@@ -115,8 +115,36 @@ impl MachineSaveState {
         &self.metadata
     }
 
+    /// Returns the rewind memory-accounting size for this snapshot.
+    ///
+    /// This is a deterministic deep-size of the save-state DTO payload: inline
+    /// struct storage plus the bytes owned by dynamic containers inside the
+    /// snapshot. It intentionally excludes allocator/bookkeeping overhead and
+    /// host process RSS so frontends can use it as a stable budget signal.
+    pub fn deep_size_bytes(&self) -> usize {
+        mem::size_of_val(self).saturating_add(self.core.dynamic_payload_bytes())
+    }
+
     pub(crate) const fn core(&self) -> &MachineCoreSaveState {
         &self.core
+    }
+}
+
+impl MachineCoreSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bus
+            .dynamic_payload_bytes()
+            .saturating_add(self.cpu.dynamic_payload_bytes())
+            .saturating_add(self.apu.dynamic_payload_bytes())
+            .saturating_add(self.ppu.dynamic_payload_bytes())
+            .saturating_add(self.dma.dynamic_payload_bytes())
+            .saturating_add(self.timer.dynamic_payload_bytes())
+            .saturating_add(self.serial.dynamic_payload_bytes())
+            .saturating_add(self.external_port.dynamic_payload_bytes())
+            .saturating_add(self.boot.dynamic_payload_bytes())
+            .saturating_add(self.interrupts.dynamic_payload_bytes())
+            .saturating_add(self.joypad.dynamic_payload_bytes())
+            .saturating_add(self.cartridge.dynamic_payload_bytes())
     }
 }
 

@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fmt;
-use std::mem;
 
 use crate::debugger::TraceSink;
 use crate::machine::Machine;
@@ -8,11 +7,11 @@ use crate::save_state::{MachineSaveState, MachineSaveStateRestoreError};
 use crate::scheduler::TCycle;
 
 pub const DMG_T_CYCLES_PER_FRAME: u64 = 456 * 154;
+pub const DMG_T_CYCLES_PER_SECOND: u64 = 4_194_304;
 pub const DEFAULT_REWIND_HISTORY_FRAMES: u64 = 600;
 pub const DEFAULT_REWIND_HISTORY_T_CYCLES: u64 =
     DMG_T_CYCLES_PER_FRAME * DEFAULT_REWIND_HISTORY_FRAMES;
 pub const DEFAULT_REWIND_MAX_ESTIMATED_BYTES: usize = 256 * 1024 * 1024;
-const REWIND_SAVE_STATE_DYNAMIC_BASELINE_BYTES: usize = 192 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MachineRewindCaptureKind {
@@ -467,26 +466,13 @@ pub fn machine_is_rewind_frame_boundary<S: TraceSink>(machine: &Machine<S>) -> b
 }
 
 fn estimate_machine_save_state_bytes(state: &MachineSaveState) -> usize {
-    mem::size_of_val(state)
-        .saturating_add(REWIND_SAVE_STATE_DYNAMIC_BASELINE_BYTES)
-        .saturating_add(
-            state
-                .metadata()
-                .cartridge
-                .rom_fingerprint
-                .map(|fingerprint| saturating_usize_from_u64(fingerprint.len))
-                .unwrap_or(0),
-        )
-}
-
-fn saturating_usize_from_u64(value: u64) -> usize {
-    value.try_into().unwrap_or(usize::MAX)
+    state.deep_size_bytes()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ConsoleModel, MachineConfig, StartupMode};
+    use crate::model::{ConsoleModel, ExecutionMode, MachineConfig, StartupMode};
 
     const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
@@ -501,6 +487,26 @@ mod tests {
         rom
     }
 
+    fn build_banked_test_rom(
+        rom_len: usize,
+        cartridge_type: u8,
+        rom_size_code: u8,
+        ram_size_code: u8,
+    ) -> Vec<u8> {
+        let mut rom = vec![0xFF; rom_len.max(HEADER_MINIMUM_ROM_LEN)];
+        rom[0x0100..0x0104].copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+        rom[0x0134..0x013C].copy_from_slice(b"REWINDGB");
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = rom_size_code;
+        rom[0x0149] = ram_size_code;
+        for bank in 0..(rom.len() / 0x4000).max(1) {
+            let start = bank * 0x4000;
+            rom[start] = bank as u8;
+            rom[start + 0x0100] = bank as u8;
+        }
+        rom
+    }
+
     fn test_machine() -> Machine {
         let mut machine = Machine::new(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -508,6 +514,16 @@ mod tests {
         machine
             .load_cartridge(build_test_rom(&[0x00]))
             .expect("NoMBC test ROM should load");
+        machine
+    }
+
+    fn test_machine_with_rom(rom: Vec<u8>) -> Machine {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_execution_mode(ExecutionMode::Permissive),
+        );
+        machine.load_cartridge(rom).expect("test ROM should load");
         machine
     }
 
@@ -568,6 +584,26 @@ mod tests {
             byte_buffer.stats().estimated_bytes > byte_buffer.config().max_estimated_bytes,
             "a single oversized full snapshot is retained even when it exceeds the byte budget"
         );
+    }
+
+    #[test]
+    fn rewind_memory_accounting_tracks_save_state_dynamic_payloads() {
+        let small_machine =
+            test_machine_with_rom(build_banked_test_rom(32 * 1024, 0x00, 0x00, 0x00));
+        let large_machine =
+            test_machine_with_rom(build_banked_test_rom(128 * 1024, 0x03, 0x02, 0x03));
+
+        let small_state_bytes = small_machine.capture_save_state().deep_size_bytes();
+        let large_state_bytes = large_machine.capture_save_state().deep_size_bytes();
+
+        assert!(
+            large_state_bytes > small_state_bytes + 96 * 1024,
+            "larger ROM/RAM payloads must be reflected in rewind memory accounting"
+        );
+
+        let mut buffer = MachineRewindBuffer::default();
+        assert!(buffer.record_frame_boundary(&large_machine));
+        assert_eq!(buffer.stats().estimated_bytes, large_state_bytes);
     }
 
     #[test]
