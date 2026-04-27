@@ -438,6 +438,7 @@ impl<S: TraceSink> Machine<S> {
         self.validate_save_state_metadata(state.metadata())?;
 
         let core = state.core();
+        self.cartridge.validate_save_state(&core.cartridge)?;
         self.scheduler.set_next_t_cycle(core.scheduler.next_t_cycle);
         self.cpu.restore_save_state(&core.cpu);
         self.bus.restore_save_state(&core.bus);

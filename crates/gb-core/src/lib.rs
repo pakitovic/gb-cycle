@@ -101,11 +101,12 @@ pub use rewind::{
     machine_is_rewind_frame_boundary, machine_rewind_frame_position,
 };
 pub use save_state::{
-    ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState, CpuSaveState,
-    DmaSaveState, ExternalPortSaveState, InterruptSaveState, JoypadSaveState,
-    MachineBootSaveStateMetadata, MachineCartridgeSaveStateMetadata, MachineSaveState,
-    MachineSaveStateMetadata, MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint,
-    SchedulerSaveState, SerialSaveState, TimerSaveState,
+    ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState,
+    CartridgeRuntimeSaveStateError, CpuSaveState, DmaSaveState, ExternalPortSaveState,
+    InterruptSaveState, JoypadSaveState, MachineBootSaveStateMetadata,
+    MachineCartridgeSaveStateMetadata, MachineSaveState, MachineSaveStateMetadata,
+    MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint, SchedulerSaveState,
+    SerialSaveState, TimerSaveState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,

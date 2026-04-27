@@ -588,22 +588,29 @@ mod tests {
 
     #[test]
     fn rewind_memory_accounting_tracks_save_state_dynamic_payloads() {
-        let small_machine =
-            test_machine_with_rom(build_banked_test_rom(32 * 1024, 0x00, 0x00, 0x00));
-        let large_machine =
-            test_machine_with_rom(build_banked_test_rom(128 * 1024, 0x03, 0x02, 0x03));
+        let small_rom_machine =
+            test_machine_with_rom(build_banked_test_rom(512 * 1024, 0x1B, 0x04, 0x04));
+        let large_rom_machine =
+            test_machine_with_rom(build_banked_test_rom(8 * 1024 * 1024, 0x1B, 0x08, 0x04));
+        let small_ram_machine =
+            test_machine_with_rom(build_banked_test_rom(512 * 1024, 0x1B, 0x04, 0x02));
 
-        let small_state_bytes = small_machine.capture_save_state().deep_size_bytes();
-        let large_state_bytes = large_machine.capture_save_state().deep_size_bytes();
+        let small_rom_state_bytes = small_rom_machine.capture_save_state().deep_size_bytes();
+        let large_rom_state_bytes = large_rom_machine.capture_save_state().deep_size_bytes();
+        let small_ram_state_bytes = small_ram_machine.capture_save_state().deep_size_bytes();
 
         assert!(
-            large_state_bytes > small_state_bytes + 96 * 1024,
-            "larger ROM/RAM payloads must be reflected in rewind memory accounting"
+            large_rom_state_bytes.abs_diff(small_rom_state_bytes) < 8 * 1024,
+            "rewind accounting must not scale with immutable cartridge ROM bytes"
+        );
+        assert!(
+            small_rom_state_bytes > small_ram_state_bytes + 96 * 1024,
+            "larger cartridge RAM payloads must still be reflected in rewind memory accounting"
         );
 
         let mut buffer = MachineRewindBuffer::default();
-        assert!(buffer.record_frame_boundary(&large_machine));
-        assert_eq!(buffer.stats().estimated_bytes, large_state_bytes);
+        assert!(buffer.record_frame_boundary(&large_rom_machine));
+        assert_eq!(buffer.stats().estimated_bytes, large_rom_state_bytes);
     }
 
     #[test]

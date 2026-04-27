@@ -32,8 +32,181 @@ impl CartridgeSlot {
         }
     }
 
+    pub(crate) fn validate_save_state(
+        &self,
+        state: &CartridgeRuntimeSaveState,
+    ) -> Result<(), CartridgeRuntimeSaveStateError> {
+        let expected = self.state();
+        let actual = state.slot_state();
+        if expected != actual {
+            return Err(CartridgeRuntimeSaveStateError::SlotStateMismatch { expected, actual });
+        }
+
+        match (&self.device, &state.device) {
+            (None, None) => Ok(()),
+            (
+                Some(CartridgeDevice::NoMbc(current)),
+                Some(CartridgeDeviceSaveState::NoMbc(saved)),
+            ) => validate_optional_ram_shape("NoMBC RAM", &current.ram, &saved.ram),
+            (
+                Some(CartridgeDevice::Mmm01(current)),
+                Some(CartridgeDeviceSaveState::Mmm01(saved)),
+            ) => validate_optional_ram_shape("MMM01 RAM", &current.ram, &saved.ram),
+            (Some(CartridgeDevice::M161(_)), Some(CartridgeDeviceSaveState::M161(_))) => Ok(()),
+            (Some(CartridgeDevice::Huc1(current)), Some(CartridgeDeviceSaveState::Huc1(saved))) => {
+                validate_optional_ram_shape("HuC-1 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Huc3(current)), Some(CartridgeDeviceSaveState::Huc3(saved))) => {
+                validate_ram_shape("HuC-3 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Mbc1(current)), Some(CartridgeDeviceSaveState::Mbc1(saved))) => {
+                validate_optional_ram_shape("MBC1 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Mbc2(_)), Some(CartridgeDeviceSaveState::Mbc2(_))) => Ok(()),
+            (Some(CartridgeDevice::Mbc3(current)), Some(CartridgeDeviceSaveState::Mbc3(saved))) => {
+                validate_optional_ram_shape("MBC3 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Mbc5(current)), Some(CartridgeDeviceSaveState::Mbc5(saved))) => {
+                validate_optional_ram_shape("MBC5 RAM", &current.ram, &saved.ram)
+            }
+            (
+                Some(CartridgeDevice::PocketCamera(current)),
+                Some(CartridgeDeviceSaveState::PocketCamera(saved)),
+            ) => {
+                validate_ram_shape("Pocket Camera RAM", &current.ram, &saved.ram)?;
+                validate_ram_shape(
+                    "Pocket Camera host frame",
+                    &current.host_frame,
+                    &saved.host_frame,
+                )
+            }
+            _ => unreachable!("slot state precheck should cover cartridge variant mismatches"),
+        }
+    }
+
     pub(crate) fn restore_save_state(&mut self, state: &CartridgeRuntimeSaveState) {
-        self.device = state.device.as_ref().map(CartridgeDevice::from);
+        debug_assert!(self.validate_save_state(state).is_ok());
+
+        match (&mut self.device, &state.device) {
+            (None, None) => {}
+            (
+                Some(CartridgeDevice::NoMbc(cartridge)),
+                Some(CartridgeDeviceSaveState::NoMbc(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+            }
+            (
+                Some(CartridgeDevice::Mmm01(cartridge)),
+                Some(CartridgeDeviceSaveState::Mmm01(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.mapped = state.mapped;
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.ram_bank_mask = state.ram_bank_mask;
+                cartridge.rom_bank_low = state.rom_bank_low;
+                cartridge.rom_bank_mid = state.rom_bank_mid;
+                cartridge.ram_bank_low = state.ram_bank_low;
+                cartridge.ram_bank_high = state.ram_bank_high;
+                cartridge.rom_bank_high = state.rom_bank_high;
+                cartridge.mode_write_disable = state.mode_write_disable;
+                cartridge.banking_mode = state.banking_mode;
+                cartridge.rom_bank_mask = state.rom_bank_mask;
+                cartridge.multiplex_enabled = state.multiplex_enabled;
+            }
+            (
+                Some(CartridgeDevice::M161(cartridge)),
+                Some(CartridgeDeviceSaveState::M161(state)),
+            ) => {
+                cartridge.selected_bank = state.selected_bank;
+                cartridge.bank_switch_locked = state.bank_switch_locked;
+                cartridge.last_bank_write = state.last_bank_write;
+            }
+            (
+                Some(CartridgeDevice::Huc1(cartridge)),
+                Some(CartridgeDeviceSaveState::Huc1(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.io_mode = state.io_mode;
+                cartridge.rom_bank = state.rom_bank;
+                cartridge.ram_bank = state.ram_bank;
+                cartridge.ir_emitter_on = state.ir_emitter_on;
+                cartridge.ir_light_detected = state.ir_light_detected;
+            }
+            (
+                Some(CartridgeDevice::Huc3(cartridge)),
+                Some(CartridgeDeviceSaveState::Huc3(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.select_mode = state.select_mode;
+                cartridge.rom_bank = state.rom_bank;
+                cartridge.ram_bank = state.ram_bank;
+                cartridge.access_address = state.access_address;
+                cartridge.mailbox = state.mailbox;
+                cartridge.mcu_ram = state.mcu_ram;
+                cartridge.rtc = state.rtc;
+                cartridge.ir_emitter_on = state.ir_emitter_on;
+                cartridge.ir_light_detected = state.ir_light_detected;
+                cartridge.last_control_write = state.last_control_write;
+                cartridge.last_unsupported_command = state.last_unsupported_command;
+                cartridge.last_unsupported_argument = state.last_unsupported_argument;
+            }
+            (
+                Some(CartridgeDevice::Mbc1(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc1(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.rom_bank_low5 = state.rom_bank_low5;
+                cartridge.secondary_bank = state.secondary_bank;
+                cartridge.banking_mode = state.banking_mode;
+            }
+            (
+                Some(CartridgeDevice::Mbc2(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc2(state)),
+            ) => {
+                cartridge.ram_nibbles = state.ram_nibbles;
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.rom_bank_low4 = state.rom_bank_low4;
+            }
+            (
+                Some(CartridgeDevice::Mbc3(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc3(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.ram_rtc_enabled = state.ram_rtc_enabled;
+                cartridge.rom_bank = state.rom_bank;
+                cartridge.ram_or_rtc_select = state.ram_or_rtc_select;
+                cartridge.rtc_live = state.rtc_live;
+                cartridge.rtc_latched = state.rtc_latched;
+                cartridge.rtc_latched_valid = state.rtc_latched_valid;
+                cartridge.rtc_latch_armed = state.rtc_latch_armed;
+                cartridge.rtc_access_ready_at = state.rtc_access_ready_at;
+            }
+            (
+                Some(CartridgeDevice::Mbc5(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc5(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.rom_bank_low8 = state.rom_bank_low8;
+                cartridge.rom_bank_high1 = state.rom_bank_high1;
+                cartridge.ram_bank_raw = state.ram_bank_raw;
+                cartridge.rumble_on = state.rumble_on;
+            }
+            (
+                Some(CartridgeDevice::PocketCamera(cartridge)),
+                Some(CartridgeDeviceSaveState::PocketCamera(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.rom_bank = state.rom_bank;
+                cartridge.ram_bank_or_register_select = state.ram_bank_or_register_select;
+                cartridge.registers = state.registers;
+                cartridge.host_frame.clone_from(&state.host_frame);
+                cartridge.capture_state.clone_from(&state.capture_state);
+            }
+            _ => unreachable!("validated cartridge save-state should match loaded cartridge"),
+        }
     }
 
     pub fn load(
@@ -571,18 +744,10 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
     fn from(device: &CartridgeDevice) -> Self {
         match device {
             CartridgeDevice::NoMbc(cartridge) => Self::NoMbc(NoMbcCartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
             }),
             CartridgeDevice::Mmm01(cartridge) => Self::Mmm01(Mmm01CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
                 mapped: cartridge.mapped,
                 ram_enabled: cartridge.ram_enabled,
                 ram_bank_mask: cartridge.ram_bank_mask,
@@ -597,19 +762,12 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 multiplex_enabled: cartridge.multiplex_enabled,
             }),
             CartridgeDevice::M161(cartridge) => Self::M161(M161CartridgeSaveState {
-                rom: cartridge.rom.clone(),
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
                 selected_bank: cartridge.selected_bank,
                 bank_switch_locked: cartridge.bank_switch_locked,
                 last_bank_write: cartridge.last_bank_write,
             }),
             CartridgeDevice::Huc1(cartridge) => Self::Huc1(Huc1CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
                 io_mode: cartridge.io_mode,
                 rom_bank: cartridge.rom_bank,
                 ram_bank: cartridge.ram_bank,
@@ -617,11 +775,7 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 ir_light_detected: cartridge.ir_light_detected,
             }),
             CartridgeDevice::Huc3(cartridge) => Self::Huc3(Huc3CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
                 select_mode: cartridge.select_mode,
                 rom_bank: cartridge.rom_bank,
                 ram_bank: cartridge.ram_bank,
@@ -636,35 +790,19 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 last_unsupported_argument: cartridge.last_unsupported_argument,
             }),
             CartridgeDevice::Mbc1(cartridge) => Self::Mbc1(Mbc1CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
-                variant: cartridge.variant,
-                wiring: cartridge.wiring,
                 ram_enabled: cartridge.ram_enabled,
                 rom_bank_low5: cartridge.rom_bank_low5,
                 secondary_bank: cartridge.secondary_bank,
                 banking_mode: cartridge.banking_mode,
             }),
             CartridgeDevice::Mbc2(cartridge) => Self::Mbc2(Mbc2CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram_nibbles: cartridge.ram_nibbles,
-                has_battery: cartridge.has_battery,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
                 ram_enabled: cartridge.ram_enabled,
                 rom_bank_low4: cartridge.rom_bank_low4,
             }),
             CartridgeDevice::Mbc3(cartridge) => Self::Mbc3(Mbc3CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                has_rtc: cartridge.has_rtc,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
-                variant: cartridge.variant,
                 ram_rtc_enabled: cartridge.ram_rtc_enabled,
                 rom_bank: cartridge.rom_bank,
                 ram_or_rtc_select: cartridge.ram_or_rtc_select,
@@ -675,13 +813,7 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 rtc_access_ready_at: cartridge.rtc_access_ready_at,
             }),
             CartridgeDevice::Mbc5(cartridge) => Self::Mbc5(Mbc5CartridgeSaveState {
-                rom: cartridge.rom.clone(),
                 ram: cartridge.ram.clone(),
-                has_battery: cartridge.has_battery,
-                has_rumble: cartridge.has_rumble,
-                header: cartridge.header.clone(),
-                classification: cartridge.classification,
-                variant: cartridge.variant,
                 ram_enabled: cartridge.ram_enabled,
                 rom_bank_low8: cartridge.rom_bank_low8,
                 rom_bank_high1: cartridge.rom_bank_high1,
@@ -690,155 +822,13 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
             }),
             CartridgeDevice::PocketCamera(cartridge) => {
                 Self::PocketCamera(PocketCameraCartridgeSaveState {
-                    rom: cartridge.rom.clone(),
                     ram: cartridge.ram.clone(),
-                    header: cartridge.header.clone(),
-                    classification: cartridge.classification,
                     ram_enabled: cartridge.ram_enabled,
                     rom_bank: cartridge.rom_bank,
                     ram_bank_or_register_select: cartridge.ram_bank_or_register_select,
                     registers: cartridge.registers,
                     host_frame: cartridge.host_frame.clone(),
                     capture_state: cartridge.capture_state.clone(),
-                })
-            }
-        }
-    }
-}
-
-impl From<&CartridgeDeviceSaveState> for CartridgeDevice {
-    fn from(state: &CartridgeDeviceSaveState) -> Self {
-        match state {
-            CartridgeDeviceSaveState::NoMbc(state) => Self::NoMbc(NoMbcCartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-            }),
-            CartridgeDeviceSaveState::Mmm01(state) => Self::Mmm01(Mmm01Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-                mapped: state.mapped,
-                ram_enabled: state.ram_enabled,
-                ram_bank_mask: state.ram_bank_mask,
-                rom_bank_low: state.rom_bank_low,
-                rom_bank_mid: state.rom_bank_mid,
-                ram_bank_low: state.ram_bank_low,
-                ram_bank_high: state.ram_bank_high,
-                rom_bank_high: state.rom_bank_high,
-                mode_write_disable: state.mode_write_disable,
-                banking_mode: state.banking_mode,
-                rom_bank_mask: state.rom_bank_mask,
-                multiplex_enabled: state.multiplex_enabled,
-            }),
-            CartridgeDeviceSaveState::M161(state) => Self::M161(M161Cartridge {
-                rom: state.rom.clone(),
-                header: state.header.clone(),
-                classification: state.classification,
-                selected_bank: state.selected_bank,
-                bank_switch_locked: state.bank_switch_locked,
-                last_bank_write: state.last_bank_write,
-            }),
-            CartridgeDeviceSaveState::Huc1(state) => Self::Huc1(Huc1Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-                io_mode: state.io_mode,
-                rom_bank: state.rom_bank,
-                ram_bank: state.ram_bank,
-                ir_emitter_on: state.ir_emitter_on,
-                ir_light_detected: state.ir_light_detected,
-            }),
-            CartridgeDeviceSaveState::Huc3(state) => Self::Huc3(Huc3Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-                select_mode: state.select_mode,
-                rom_bank: state.rom_bank,
-                ram_bank: state.ram_bank,
-                access_address: state.access_address,
-                mailbox: state.mailbox,
-                mcu_ram: state.mcu_ram,
-                rtc: state.rtc,
-                ir_emitter_on: state.ir_emitter_on,
-                ir_light_detected: state.ir_light_detected,
-                last_control_write: state.last_control_write,
-                last_unsupported_command: state.last_unsupported_command,
-                last_unsupported_argument: state.last_unsupported_argument,
-            }),
-            CartridgeDeviceSaveState::Mbc1(state) => Self::Mbc1(Mbc1Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-                variant: state.variant,
-                wiring: state.wiring,
-                ram_enabled: state.ram_enabled,
-                rom_bank_low5: state.rom_bank_low5,
-                secondary_bank: state.secondary_bank,
-                banking_mode: state.banking_mode,
-            }),
-            CartridgeDeviceSaveState::Mbc2(state) => Self::Mbc2(Mbc2Cartridge {
-                rom: state.rom.clone(),
-                ram_nibbles: state.ram_nibbles,
-                has_battery: state.has_battery,
-                header: state.header.clone(),
-                classification: state.classification,
-                ram_enabled: state.ram_enabled,
-                rom_bank_low4: state.rom_bank_low4,
-            }),
-            CartridgeDeviceSaveState::Mbc3(state) => Self::Mbc3(Mbc3Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                has_rtc: state.has_rtc,
-                header: state.header.clone(),
-                classification: state.classification,
-                variant: state.variant,
-                ram_rtc_enabled: state.ram_rtc_enabled,
-                rom_bank: state.rom_bank,
-                ram_or_rtc_select: state.ram_or_rtc_select,
-                rtc_live: state.rtc_live,
-                rtc_latched: state.rtc_latched,
-                rtc_latched_valid: state.rtc_latched_valid,
-                rtc_latch_armed: state.rtc_latch_armed,
-                rtc_access_ready_at: state.rtc_access_ready_at,
-            }),
-            CartridgeDeviceSaveState::Mbc5(state) => Self::Mbc5(Mbc5Cartridge {
-                rom: state.rom.clone(),
-                ram: state.ram.clone(),
-                has_battery: state.has_battery,
-                has_rumble: state.has_rumble,
-                header: state.header.clone(),
-                classification: state.classification,
-                variant: state.variant,
-                ram_enabled: state.ram_enabled,
-                rom_bank_low8: state.rom_bank_low8,
-                rom_bank_high1: state.rom_bank_high1,
-                ram_bank_raw: state.ram_bank_raw,
-                rumble_on: state.rumble_on,
-            }),
-            CartridgeDeviceSaveState::PocketCamera(state) => {
-                Self::PocketCamera(PocketCameraCartridge {
-                    rom: state.rom.clone(),
-                    ram: state.ram.clone(),
-                    header: state.header.clone(),
-                    classification: state.classification,
-                    ram_enabled: state.ram_enabled,
-                    rom_bank: state.rom_bank,
-                    ram_bank_or_register_select: state.ram_bank_or_register_select,
-                    registers: state.registers,
-                    host_frame: state.host_frame.clone(),
-                    capture_state: state.capture_state.clone(),
                 })
             }
         }

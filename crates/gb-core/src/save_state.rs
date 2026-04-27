@@ -4,8 +4,8 @@ pub use crate::apu::ApuSaveState;
 use crate::boot::BootRomKind;
 pub use crate::boot::BootSaveState;
 pub use crate::bus::BusSaveState;
-pub use crate::cartridge::CartridgeRuntimeSaveState;
 use crate::cartridge::CartridgeSlotState;
+pub use crate::cartridge::{CartridgeRuntimeSaveState, CartridgeRuntimeSaveStateError};
 pub use crate::cpu::CpuSaveState;
 pub use crate::dma::DmaSaveState;
 pub use crate::external_port::ExternalPortSaveState;
@@ -175,6 +175,7 @@ pub enum MachineSaveStateRestoreError {
         expected: MachineBootSaveStateMetadata,
         actual: MachineBootSaveStateMetadata,
     },
+    CartridgeRuntime(CartridgeRuntimeSaveStateError),
 }
 
 impl fmt::Display for MachineSaveStateRestoreError {
@@ -211,15 +212,60 @@ impl fmt::Display for MachineSaveStateRestoreError {
                 "save-state boot ROM mismatch: expected {:?}, got {:?}",
                 expected, actual
             ),
+            Self::CartridgeRuntime(error) => write!(f, "{error}"),
         }
     }
 }
 
-impl std::error::Error for MachineSaveStateRestoreError {}
+impl std::error::Error for MachineSaveStateRestoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CartridgeRuntime(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<CartridgeRuntimeSaveStateError> for MachineSaveStateRestoreError {
+    fn from(error: CartridgeRuntimeSaveStateError) -> Self {
+        Self::CartridgeRuntime(error)
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+
+    fn build_banked_test_rom(cartridge_type: u8, rom_size: u8, ram_size: u8) -> Vec<u8> {
+        let rom_len = match rom_size {
+            0x00 => 32 * 1024,
+            0x01 => 64 * 1024,
+            0x02 => 128 * 1024,
+            0x03 => 256 * 1024,
+            0x04 => 512 * 1024,
+            0x05 => 1024 * 1024,
+            _ => 32 * 1024,
+        };
+        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(rom_len)];
+        rom[0x0100] = 0x00;
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = rom_size;
+        rom[0x0149] = ram_size;
+        rom
+    }
+
+    fn machine_with_cartridge(cartridge_type: u8, rom_size: u8, ram_size: u8) -> crate::Machine {
+        let mut machine = crate::Machine::new(
+            crate::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_banked_test_rom(cartridge_type, rom_size, ram_size))
+            .expect("test ROM should load");
+        machine.step_t_cycle();
+        machine
+    }
 
     fn cartridge_metadata() -> MachineCartridgeSaveStateMetadata {
         MachineCartridgeSaveStateMetadata {
@@ -319,6 +365,19 @@ mod tests {
             assert!(error.to_string().contains(expected_message));
             assert!(std::error::Error::source(&error).is_none());
         }
+
+        let cartridge_runtime_error = MachineSaveStateRestoreError::CartridgeRuntime(
+            CartridgeRuntimeSaveStateError::SlotStateMismatch {
+                expected: CartridgeSlotState::Mbc1,
+                actual: CartridgeSlotState::Mbc5,
+            },
+        );
+        assert!(
+            cartridge_runtime_error
+                .to_string()
+                .contains("cartridge runtime state mismatch")
+        );
+        assert!(std::error::Error::source(&cartridge_runtime_error).is_some());
     }
 
     #[test]
@@ -331,6 +390,55 @@ mod tests {
 
         assert_eq!(state.metadata(), &metadata);
         assert_eq!(state.core().scheduler.next_t_cycle, metadata.next_t_cycle);
+    }
+
+    #[test]
+    fn restore_prevalidates_cartridge_mapper_payload_before_mutating() {
+        let mut target = machine_with_cartridge(0x1B, 0x04, 0x04);
+        let before = target.capture_save_state();
+        let source = machine_with_cartridge(0x03, 0x03, 0x03);
+        let mut corrupt = target.capture_save_state();
+        corrupt.core.cartridge = source.capture_save_state().core.cartridge;
+
+        let error = target
+            .restore_save_state(&corrupt)
+            .expect_err("corrupt cartridge DTO must be rejected before restore");
+
+        assert!(matches!(
+            error,
+            MachineSaveStateRestoreError::CartridgeRuntime(
+                CartridgeRuntimeSaveStateError::SlotStateMismatch {
+                    expected: CartridgeSlotState::Mbc5,
+                    actual: CartridgeSlotState::Mbc1,
+                }
+            )
+        ));
+        assert_eq!(target.capture_save_state(), before);
+    }
+
+    #[test]
+    fn restore_prevalidates_cartridge_ram_shape_before_mutating() {
+        let mut target = machine_with_cartridge(0x1B, 0x04, 0x04);
+        let before = target.capture_save_state();
+        let source = machine_with_cartridge(0x1B, 0x04, 0x02);
+        let mut corrupt = target.capture_save_state();
+        corrupt.core.cartridge = source.capture_save_state().core.cartridge;
+
+        let error = target
+            .restore_save_state(&corrupt)
+            .expect_err("corrupt cartridge RAM payload must be rejected before restore");
+
+        assert!(matches!(
+            error,
+            MachineSaveStateRestoreError::CartridgeRuntime(
+                CartridgeRuntimeSaveStateError::RamShapeMismatch {
+                    field: "MBC5 RAM",
+                    expected,
+                    actual,
+                }
+            ) if expected == Some(128 * 1024) && actual == Some(8 * 1024)
+        ));
+        assert_eq!(target.capture_save_state(), before);
     }
 
     #[test]
@@ -379,6 +487,20 @@ mod tests {
                 "pub struct CartridgeRuntimeSaveState {\n    cartridge",
                 ": ",
                 "CartridgeSlot"
+            ),
+            concat!("struct NoMbcCartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Mmm01CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct M161CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Huc1CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Huc3CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Mbc1CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Mbc2CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Mbc3CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!("struct Mbc5CartridgeSaveState {\n    rom", ": ", "Vec<u8>"),
+            concat!(
+                "struct PocketCameraCartridgeSaveState {\n    rom",
+                ": ",
+                "Vec<u8>"
             ),
         ];
 
