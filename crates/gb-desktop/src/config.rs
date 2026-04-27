@@ -18,6 +18,7 @@ pub const DEFAULT_REWIND_HISTORY_SECONDS: u16 = 10;
 pub const DEFAULT_REWIND_SUBFRAMES_PER_FRAME: u8 = 1;
 pub const DEFAULT_REWIND_MAX_MEMORY_MIB: u16 = 256;
 pub const DEFAULT_REWIND_SPEED_MULTIPLIER: u8 = 2;
+pub const DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER: u8 = 2;
 const DEFAULT_SAVE_SUBDIRECTORY: &str = "saves";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -27,6 +28,7 @@ pub struct DesktopConfig {
     pub saves: SaveOptions,
     pub machine_state: MachineStateOptions,
     pub rewind: RewindOptions,
+    pub fast_forward: FastForwardOptions,
     pub video: VideoOptions,
     pub audio: AudioOptions,
     pub input: InputOptions,
@@ -312,6 +314,22 @@ impl Default for RewindOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FastForwardOptions {
+    pub enabled: bool,
+    pub speed_multiplier: u8,
+}
+
+impl Default for FastForwardOptions {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            speed_multiplier: DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER,
+        }
+    }
+}
+
 impl DesktopSaveFlushPolicy {
     pub fn flush_on_close(self) -> bool {
         !matches!(self, Self::Manual)
@@ -486,6 +504,7 @@ pub struct HotkeyBindings {
     pub state_slot_4: DesktopKey,
     pub reset: DesktopKey,
     pub rewind: DesktopKey,
+    pub fast_forward: DesktopKey,
     pub toggle_fullscreen: DesktopKey,
     pub toggle_performance_hud: DesktopKey,
     pub save_battery: DesktopKey,
@@ -503,6 +522,7 @@ impl Default for HotkeyBindings {
             state_slot_4: DesktopKey::Digit4,
             reset: DesktopKey::F12,
             rewind: DesktopKey::LeftShift,
+            fast_forward: DesktopKey::RightShift,
             toggle_fullscreen: DesktopKey::F11,
             toggle_performance_hud: DesktopKey::F10,
             save_battery: DesktopKey::F9,
@@ -517,6 +537,7 @@ pub struct GamepadOptions {
     pub directional_source: GamepadDirectionalSource,
     pub rumble_mode: GamepadRumbleMode,
     pub bindings: GamepadButtonBindings,
+    pub actions: GamepadActionBindings,
     pub menu: GamepadMenuBindings,
     pub preferred_device: PreferredGamepadIdentity,
 }
@@ -528,6 +549,7 @@ impl Default for GamepadOptions {
             directional_source: GamepadDirectionalSource::default(),
             rumble_mode: GamepadRumbleMode::default(),
             bindings: GamepadButtonBindings::default(),
+            actions: GamepadActionBindings::default(),
             menu: GamepadMenuBindings::default(),
             preferred_device: PreferredGamepadIdentity::default(),
         }
@@ -568,6 +590,15 @@ impl Default for GamepadButtonBindings {
             start: GamepadButtonBinding::Start,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GamepadActionBindings {
+    pub save_state: Option<GamepadButtonBinding>,
+    pub load_state: Option<GamepadButtonBinding>,
+    pub rewind: Option<GamepadButtonBinding>,
+    pub fast_forward: Option<GamepadButtonBinding>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -795,6 +826,10 @@ mod tests {
             config.input.gamepad.bindings,
             GamepadButtonBindings::default()
         );
+        assert_eq!(
+            config.input.gamepad.actions,
+            GamepadActionBindings::default()
+        );
         assert_eq!(config.input.gamepad.menu, GamepadMenuBindings::default());
         assert_eq!(
             config.input.gamepad.preferred_device,
@@ -816,6 +851,12 @@ mod tests {
         assert_eq!(
             config.rewind.speed_multiplier,
             DEFAULT_REWIND_SPEED_MULTIPLIER
+        );
+        assert_eq!(config.fast_forward, FastForwardOptions::default());
+        assert!(config.fast_forward.enabled);
+        assert_eq!(
+            config.fast_forward.speed_multiplier,
+            DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER
         );
     }
 
@@ -940,6 +981,7 @@ mod tests {
         assert_eq!(keyboard.hotkeys.state_slot_4, DesktopKey::Digit4);
         assert_eq!(keyboard.hotkeys.reset, DesktopKey::F12);
         assert_eq!(keyboard.hotkeys.rewind, DesktopKey::LeftShift);
+        assert_eq!(keyboard.hotkeys.fast_forward, DesktopKey::RightShift);
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
         assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
         assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F9);

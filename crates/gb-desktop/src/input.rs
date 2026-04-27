@@ -1,7 +1,7 @@
 use gb_core::{JoypadButton, Machine, TraceSummaryBuffer};
 use gb_desktop::{
-    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    GamepadOptions, GamepadRumbleMode, PreferredGamepadIdentity,
+    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, GamepadOptions, GamepadRumbleMode, PreferredGamepadIdentity,
 };
 use sdl3::GamepadSubsystem;
 use sdl3::event::Event;
@@ -438,6 +438,10 @@ impl GamepadManager {
         self.active == Some(joystick_id)
     }
 
+    pub fn active_gamepad_joystick_id(&self) -> Option<JoystickId> {
+        self.active
+    }
+
     pub fn has_connected_gamepad(&self) -> bool {
         self.active.is_some()
     }
@@ -477,6 +481,10 @@ impl GamepadManager {
 
     pub fn button_bindings(&self) -> GamepadButtonBindings {
         self.options.bindings
+    }
+
+    pub fn action_bindings(&self) -> GamepadActionBindings {
+        self.options.actions
     }
 
     pub fn menu_bindings(&self) -> GamepadMenuBindings {
@@ -523,6 +531,10 @@ impl GamepadManager {
 
         self.options.bindings = bindings;
         self.sync_active_gamepad_state(input_state, machine);
+    }
+
+    pub fn set_action_bindings(&mut self, bindings: GamepadActionBindings) {
+        self.options.actions = bindings;
     }
 
     pub fn set_menu_bindings(&mut self, bindings: GamepadMenuBindings) {

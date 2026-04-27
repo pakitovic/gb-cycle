@@ -1,9 +1,10 @@
 use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
-    JoypadKeyboardBindings, MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity,
-    RewindOptions, SaveDirectoryPolicy, VideoOptions,
+    AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+    GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
+    GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings, MachineStateOptions,
+    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
+    VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -173,6 +174,18 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_fast_forward_options(
+        &mut self,
+        fast_forward: FastForwardOptions,
+    ) -> Result<(), String> {
+        if self.settings.fast_forward == fast_forward {
+            return Ok(());
+        }
+
+        self.settings.fast_forward = fast_forward;
+        self.save()
+    }
+
     pub fn set_machine_state_options(
         &mut self,
         machine_state: MachineStateOptions,
@@ -295,6 +308,18 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_gamepad_action_bindings(
+        &mut self,
+        bindings: GamepadActionBindings,
+    ) -> Result<(), String> {
+        if self.settings.input.gamepad.actions == bindings {
+            return Ok(());
+        }
+
+        self.settings.input.gamepad.actions = bindings;
+        self.save()
+    }
+
     pub fn set_gamepad_menu_bindings(
         &mut self,
         bindings: GamepadMenuBindings,
@@ -390,6 +415,7 @@ struct PersistedDesktopSettings {
     saves: PersistedSaveSettings,
     machine_state: MachineStateOptions,
     rewind: RewindOptions,
+    fast_forward: FastForwardOptions,
     video: VideoOptions,
     audio: PersistedAudioSettings,
     input: InputOptions,
@@ -476,6 +502,7 @@ impl PersistedDesktopSettings {
         self.saves.apply_to_config(config);
         config.machine_state = self.machine_state;
         config.rewind = self.rewind;
+        config.fast_forward = self.fast_forward;
         config.video = self.video.clone();
         config.audio = self.audio.audio_options();
         config.input = self.input.clone();
@@ -491,6 +518,7 @@ impl Default for PersistedDesktopSettings {
             saves: PersistedSaveSettings::default(),
             machine_state: MachineStateOptions::default(),
             rewind: RewindOptions::default(),
+            fast_forward: FastForwardOptions::default(),
             video: VideoOptions::default(),
             audio: PersistedAudioSettings::default(),
             input: InputOptions::default(),

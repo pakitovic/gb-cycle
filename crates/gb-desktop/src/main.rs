@@ -31,10 +31,11 @@ use gb_core::{
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
-    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-    GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
-    HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings,
-    PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -51,9 +52,10 @@ use input::{
 };
 use linked_session::DesktopEmulationSession;
 use menu::{
-    CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
-    KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
-    OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, RewindHudSnapshot,
+    CompactMenuLabel, CompactRecentRomLabel, GamepadActionBindingTarget, GamepadBindingTarget,
+    GamepadMenuBindingTarget, KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction,
+    MenuInput, MenuPresentation, OverlayMenuState, PerformanceHudSnapshot,
+    RECENT_ROM_MENU_CAPACITY, RewindHudSnapshot, render_fast_forward_indicator,
     render_performance_hud, render_rewind_indicator,
 };
 use player_slots::{
@@ -116,6 +118,7 @@ const REWIND_HISTORY_SECONDS_OPTIONS: [u16; 5] = [5, 10, 20, 30, 60];
 const REWIND_SUBFRAMES_PER_FRAME_OPTIONS: [u8; 4] = [0, 1, 2, 4];
 const REWIND_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [1, 2, 4];
 const REWIND_MAX_MEMORY_MIB_OPTIONS: [u16; 4] = [64, 128, 256, 512];
+const FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [1, 2, 4];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
     width: u32,
@@ -141,6 +144,7 @@ struct FramebufferRenderInput<'a> {
 struct RenderHudInput {
     performance: Option<PerformanceHudSnapshot>,
     rewind_indicator: bool,
+    fast_forward_indicator: bool,
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
@@ -258,6 +262,7 @@ impl EmulationProfileSessionKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HotkeyAction {
     None,
     ManualSave,
@@ -266,6 +271,7 @@ enum HotkeyAction {
     SelectStateSlot(u8),
     Reset,
     Rewind,
+    FastForward,
     ToggleFullscreen,
     TogglePerformanceHud,
 }
@@ -287,6 +293,10 @@ struct FrontendRuntime {
     rewind_buffer: MachineRewindBuffer,
     rewind_frame_tracker: MachineRewindFrameBoundaryTracker,
     rewind_hotkey_active: bool,
+    rewind_gamepad_active: bool,
+    fast_forward_hotkey_active: bool,
+    fast_forward_gamepad_active: bool,
+    fast_forward_audio_suppressed: bool,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
@@ -4269,6 +4279,10 @@ fn run_desktop_with_startup_fallback_persistence(
         rewind_buffer: MachineRewindBuffer::new(session.config.rewind.machine_rewind_config()),
         rewind_frame_tracker: MachineRewindFrameBoundaryTracker::new(),
         rewind_hotkey_active: false,
+        rewind_gamepad_active: false,
+        fast_forward_hotkey_active: false,
+        fast_forward_gamepad_active: false,
+        fast_forward_audio_suppressed: false,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
@@ -4398,8 +4412,9 @@ fn run_desktop_with_startup_fallback_persistence(
 
         let emulation_started_at = Instant::now();
         let mut rewound_this_frame = false;
+        let mut fast_forwarded_this_frame = false;
         let step_result =
-            if runtime.rewind_hotkey_active && rewind_actions_available(&session, &machine) {
+            if rewind_hold_active(&runtime) && rewind_actions_available(&session, &machine) {
                 let rewind_steps =
                     rewind_restore_steps_for_speed(session.config.rewind.speed_multiplier);
                 let rewind_result = {
@@ -4438,6 +4453,7 @@ fn run_desktop_with_startup_fallback_persistence(
                         show_warning_message(Some(canvas.window()), "Rewind", &error);
                         eprintln!("warning: {error}");
                         runtime.rewind_hotkey_active = false;
+                        runtime.rewind_gamepad_active = false;
                         StepUntilNextFrameResult {
                             signal: LoopSignal::Continue,
                             emulation_profile_request: None,
@@ -4445,7 +4461,21 @@ fn run_desktop_with_startup_fallback_persistence(
                         }
                     }
                 }
+            } else if fast_forward_active(&runtime, &session, &machine) {
+                let mut context = FrontendActionContext {
+                    session: &mut session,
+                    machine: &mut machine,
+                    runtime: &mut runtime,
+                    performance_counter: &mut performance_counter,
+                    frame_pacer: &mut frame_pacer,
+                    settings_store: &mut settings_store,
+                };
+                let (step_result, fast_forwarded_frames) =
+                    step_fast_forward_frames(&mut event_pump, &mut canvas, &mut context)?;
+                fast_forwarded_this_frame = fast_forwarded_frames > 0;
+                step_result
             } else {
+                sync_fast_forward_audio_state(&mut runtime, false)?;
                 let mut context = FrontendActionContext {
                     session: &mut session,
                     machine: &mut machine,
@@ -4461,7 +4491,9 @@ fn run_desktop_with_startup_fallback_persistence(
             LoopSignal::Quit => break 'running,
         }
         let emulation_duration = emulation_started_at.elapsed();
-        let audio_submit_telemetry = (!rewound_this_frame)
+        let fast_forward_still_active = fast_forward_active(&runtime, &session, &machine);
+        sync_fast_forward_audio_state(&mut runtime, fast_forward_still_active)?;
+        let audio_submit_telemetry = (!rewound_this_frame && !fast_forwarded_this_frame)
             .then(|| {
                 runtime
                     .audio_output
@@ -4524,6 +4556,17 @@ fn run_desktop_with_startup_fallback_persistence(
                     &machine,
                 ),
                 rewind_indicator: rewind_indicator_visible(
+                    &runtime,
+                    &session,
+                    &machine,
+                    rewound_this_frame,
+                ),
+                fast_forward_indicator: fast_forward_indicator_visible(
+                    &runtime,
+                    &session,
+                    &machine,
+                    fast_forwarded_this_frame,
+                ) && !rewind_indicator_visible(
                     &runtime,
                     &session,
                     &machine,
@@ -5322,7 +5365,9 @@ fn process_events(
     let settings_store = &mut *context.settings_store;
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
+        let mut clear_gamepad_hold_latches_after_event = false;
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
+            let active_gamepad_before_event = gamepad_manager.active_gamepad_joystick_id();
             gamepad_manager.handle_event(
                 &event,
                 runtime.player_inputs.input_mut(PlayerSlot::P1),
@@ -5330,15 +5375,23 @@ fn process_events(
                     .machine_for_player_slot_mut(PlayerSlot::P1)
                     .expect("P1 should always map to an active desktop machine"),
             )?;
-            if let Event::ControllerButtonDown { which, .. } = &event {
-                gamepad_manager.activate_gamepad_from_input(
+            if active_gamepad_before_event != gamepad_manager.active_gamepad_joystick_id() {
+                clear_gamepad_hold_latches_after_event = true;
+            }
+            if let Event::ControllerButtonDown { which, .. } = &event
+                && gamepad_manager.activate_gamepad_from_input(
                     gamepad_event_joystick_id(*which),
                     runtime.player_inputs.input_mut(PlayerSlot::P1),
                     machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
                         .expect("P1 should always map to an active desktop machine"),
-                );
+                )
+            {
+                clear_gamepad_hold_latches_after_event = true;
             }
+        }
+        if clear_gamepad_hold_latches_after_event {
+            clear_gamepad_hold_latches(runtime);
         }
 
         if runtime.printer_output.handle_event(&event)? {
@@ -5404,10 +5457,14 @@ fn process_events(
                         manager.is_active_gamepad(gamepad_event_joystick_id(*which))
                     }) =>
                 {
-                    if runtime
+                    if (runtime
                         .menu_state
                         .pending_gamepad_binding_target()
                         .is_some()
+                        || runtime
+                            .menu_state
+                            .pending_gamepad_action_binding_target()
+                            .is_some())
                         && let Some(binding) = gamepad_button_binding_from_sdl_button(*button)
                         && let Some(action) =
                             runtime.menu_state.handle_gamepad_binding_capture(binding)
@@ -5595,6 +5652,9 @@ fn process_events(
                         HotkeyAction::Rewind => {
                             runtime.rewind_hotkey_active = true;
                         }
+                        HotkeyAction::FastForward => {
+                            runtime.fast_forward_hotkey_active = true;
+                        }
                         HotkeyAction::ToggleFullscreen => {
                             toggle_fullscreen(canvas.window_mut())?;
                             runtime.video_options.fullscreen =
@@ -5630,7 +5690,86 @@ fn process_events(
                 if key_event_matches(runtime.keyboard_bindings.hotkeys.rewind, keycode, scancode) {
                     runtime.rewind_hotkey_active = false;
                 }
+                if key_event_matches(
+                    runtime.keyboard_bindings.hotkeys.fast_forward,
+                    keycode,
+                    scancode,
+                ) {
+                    runtime.fast_forward_hotkey_active = false;
+                }
                 apply_keyboard_event_to_player_slots(runtime, machine, keycode, scancode, false);
+            }
+            Event::ControllerButtonDown { which, button, .. }
+                if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
+                    manager.is_active_gamepad(gamepad_event_joystick_id(which))
+                }) =>
+            {
+                let action = runtime
+                    .gamepad_manager
+                    .as_ref()
+                    .map(GamepadManager::action_bindings)
+                    .map(|bindings| gamepad_action_for_button(bindings, button))
+                    .unwrap_or(HotkeyAction::None);
+                match action {
+                    HotkeyAction::SaveState => {
+                        match save_machine_state_slot(session, machine, runtime.machine_state_slot)
+                        {
+                            Ok(path) => eprintln!("info: state saved to {}", path.display()),
+                            Err(error) => {
+                                show_warning_message(Some(canvas.window()), "Save State", &error);
+                                eprintln!("warning: {error}");
+                            }
+                        }
+                    }
+                    HotkeyAction::LoadState => {
+                        let slot = runtime.machine_state_slot;
+                        match load_machine_state_slot(session, machine, runtime, frame_pacer, slot)
+                        {
+                            Ok(path) => {
+                                eprintln!("info: state loaded from {}", path.display());
+                                sync_audio_playback_state(machine, runtime)?;
+                                performance_counter.reset_base_title(
+                                    canvas.window_mut(),
+                                    window_title(session, &session.config),
+                                )?;
+                            }
+                            Err(error) => {
+                                show_warning_message(Some(canvas.window()), "Load State", &error);
+                                eprintln!("warning: {error}");
+                            }
+                        }
+                    }
+                    HotkeyAction::Rewind => {
+                        runtime.rewind_gamepad_active = true;
+                    }
+                    HotkeyAction::FastForward => {
+                        runtime.fast_forward_gamepad_active = true;
+                    }
+                    HotkeyAction::None
+                    | HotkeyAction::ManualSave
+                    | HotkeyAction::SelectStateSlot(_)
+                    | HotkeyAction::Reset
+                    | HotkeyAction::ToggleFullscreen
+                    | HotkeyAction::TogglePerformanceHud => {}
+                }
+            }
+            Event::ControllerButtonUp { which, button, .. }
+                if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
+                    manager.is_active_gamepad(gamepad_event_joystick_id(which))
+                }) =>
+            {
+                let action = runtime
+                    .gamepad_manager
+                    .as_ref()
+                    .map(GamepadManager::action_bindings)
+                    .map(|bindings| gamepad_action_for_button(bindings, button))
+                    .unwrap_or(HotkeyAction::None);
+                if matches!(action, HotkeyAction::Rewind) {
+                    runtime.rewind_gamepad_active = false;
+                }
+                if matches!(action, HotkeyAction::FastForward) {
+                    runtime.fast_forward_gamepad_active = false;
+                }
             }
             _ => {}
         }
@@ -5652,6 +5791,39 @@ fn process_events(
     sync_gamepad_rumble(runtime, machine, Instant::now())?;
 
     Ok(LoopSignal::Continue)
+}
+
+fn step_fast_forward_frames(
+    event_pump: &mut sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(StepUntilNextFrameResult, usize), String> {
+    sync_fast_forward_audio_state(context.runtime, true)?;
+    let frame_budget =
+        fast_forward_frame_budget(context.session.config.fast_forward.speed_multiplier);
+    let mut fast_forwarded_frames = 0usize;
+    let mut final_result = StepUntilNextFrameResult {
+        signal: LoopSignal::Continue,
+        emulation_profile_request: None,
+        frame_loop_telemetry: FrameLoopTelemetry::default(),
+    };
+
+    for _ in 0..frame_budget {
+        final_result = step_until_next_frame(event_pump, canvas, context)?;
+        if !matches!(final_result.signal, LoopSignal::Continue) {
+            break;
+        }
+        fast_forwarded_frames = fast_forwarded_frames.saturating_add(1);
+        if !fast_forward_active(context.runtime, context.session, context.machine) {
+            break;
+        }
+    }
+
+    Ok((final_result, fast_forwarded_frames))
+}
+
+fn fast_forward_frame_budget(speed_multiplier: u8) -> usize {
+    usize::from(speed_multiplier.max(1))
 }
 
 fn step_until_next_frame(
@@ -7340,6 +7512,10 @@ fn open_menu(
         .menu_state
         .open(current_menu_presentation(window, runtime, machine, session));
     runtime.rewind_hotkey_active = false;
+    runtime.rewind_gamepad_active = false;
+    runtime.fast_forward_hotkey_active = false;
+    runtime.fast_forward_gamepad_active = false;
+    sync_fast_forward_audio_state(runtime, false)?;
     clear_live_input_state(machine, runtime);
     sync_audio_playback_state(machine, runtime)
 }
@@ -7396,12 +7572,14 @@ fn reset_rewind_state(runtime: &mut FrontendRuntime) {
     runtime.rewind_buffer.clear();
     runtime.rewind_frame_tracker.reset();
     runtime.rewind_hotkey_active = false;
+    runtime.rewind_gamepad_active = false;
 }
 
 fn rebuild_rewind_state(runtime: &mut FrontendRuntime, options: RewindOptions) {
     runtime.rewind_buffer = MachineRewindBuffer::new(options.machine_rewind_config());
     runtime.rewind_frame_tracker.reset();
     runtime.rewind_hotkey_active = false;
+    runtime.rewind_gamepad_active = false;
 }
 
 fn apply_rewind_options(
@@ -7419,6 +7597,22 @@ fn apply_rewind_options(
         || previous.machine_rewind_config() != options.machine_rewind_config()
     {
         rebuild_rewind_state(context.runtime, options);
+    }
+    Ok(())
+}
+
+fn apply_fast_forward_options(
+    context: &mut FrontendActionContext<'_>,
+    options: FastForwardOptions,
+) -> Result<(), String> {
+    if context.session.config.fast_forward == options {
+        return Ok(());
+    }
+
+    context.session.config.fast_forward = options;
+    context.settings_store.set_fast_forward_options(options)?;
+    if !fast_forward_active(context.runtime, context.session, context.machine) {
+        sync_fast_forward_audio_state(context.runtime, false)?;
     }
     Ok(())
 }
@@ -7441,7 +7635,7 @@ fn current_rewind_hud_snapshot(
     RewindHudSnapshot {
         supported: rewind_session_supported(session, machine),
         enabled: session.config.rewind.enabled,
-        rewinding: runtime.rewind_hotkey_active && rewind_actions_available(session, machine),
+        rewinding: rewind_hold_active(runtime) && rewind_actions_available(session, machine),
         snapshot_count: stats.len,
         history_seconds: rewind_history_seconds_from_stats(stats),
         accounted_bytes: stats.estimated_bytes,
@@ -7456,7 +7650,45 @@ fn rewind_indicator_visible(
     rewound_this_frame: bool,
 ) -> bool {
     rewind_actions_available(session, machine)
-        && (runtime.rewind_hotkey_active || rewound_this_frame)
+        && (rewind_hold_active(runtime) || rewound_this_frame)
+}
+
+fn rewind_hold_active(runtime: &FrontendRuntime) -> bool {
+    runtime.rewind_hotkey_active || runtime.rewind_gamepad_active
+}
+
+fn clear_gamepad_hold_latches(runtime: &mut FrontendRuntime) {
+    runtime.rewind_gamepad_active = false;
+    runtime.fast_forward_gamepad_active = false;
+}
+
+fn fast_forward_hold_active(runtime: &FrontendRuntime) -> bool {
+    runtime.fast_forward_hotkey_active || runtime.fast_forward_gamepad_active
+}
+
+fn fast_forward_actions_available(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> bool {
+    session.config.fast_forward.enabled && !machine.cartridge().is_empty()
+}
+
+fn fast_forward_active(
+    runtime: &FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> bool {
+    fast_forward_hold_active(runtime) && fast_forward_actions_available(session, machine)
+}
+
+fn fast_forward_indicator_visible(
+    runtime: &FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    fast_forwarded_this_frame: bool,
+) -> bool {
+    fast_forward_actions_available(session, machine)
+        && (fast_forward_hold_active(runtime) || fast_forwarded_this_frame)
 }
 
 fn rewind_restore_steps_for_speed(speed_multiplier: u8) -> usize {
@@ -7498,7 +7730,10 @@ fn record_desktop_rewind_point(
     machine: &DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) {
-    if !rewind_actions_available(session, machine) || runtime.rewind_hotkey_active {
+    if !rewind_actions_available(session, machine)
+        || rewind_hold_active(runtime)
+        || fast_forward_active(runtime, session, machine)
+    {
         return;
     }
 
@@ -7802,6 +8037,23 @@ fn execute_menu_action(
         }
         MenuAction::ResetRewindDefaults => {
             apply_rewind_options(context, RewindOptions::default())?;
+            Ok(None)
+        }
+        MenuAction::ToggleFastForwardEnabled => {
+            let mut fast_forward = context.session.config.fast_forward;
+            fast_forward.enabled = !fast_forward.enabled;
+            apply_fast_forward_options(context, fast_forward)?;
+            Ok(None)
+        }
+        MenuAction::CycleFastForwardSpeed => {
+            let mut fast_forward = context.session.config.fast_forward;
+            fast_forward.speed_multiplier =
+                next_fast_forward_speed_multiplier(fast_forward.speed_multiplier);
+            apply_fast_forward_options(context, fast_forward)?;
+            Ok(None)
+        }
+        MenuAction::ResetFastForwardDefaults => {
+            apply_fast_forward_options(context, FastForwardOptions::default())?;
             Ok(None)
         }
         MenuAction::ClearSaveDirectoryPath => {
@@ -8282,6 +8534,7 @@ fn execute_menu_action(
                 | KeyboardBindingTarget::StateSlot4
                 | KeyboardBindingTarget::Reset
                 | KeyboardBindingTarget::Rewind
+                | KeyboardBindingTarget::FastForward
                 | KeyboardBindingTarget::ToggleFullscreen
                 | KeyboardBindingTarget::TogglePerformanceHud
                 | KeyboardBindingTarget::SaveBattery => {
@@ -8304,6 +8557,7 @@ fn execute_menu_action(
                         .machine_for_player_slot_mut(PlayerSlot::P1)
                         .expect("P1 should always map to an active desktop machine"),
                 );
+                gamepad_manager.set_action_bindings(defaults.gamepad.actions);
                 gamepad_manager.set_menu_bindings(defaults.gamepad.menu);
                 gamepad_manager.set_directional_source(
                     defaults.gamepad.directional_source,
@@ -8347,6 +8601,17 @@ fn execute_menu_action(
                         .expect("P1 should always map to an active desktop machine"),
                 );
                 context.settings_store.set_gamepad_bindings(bindings)?;
+            }
+            Ok(None)
+        }
+        MenuAction::SetGamepadActionBinding(target, binding) => {
+            if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
+                let mut bindings = gamepad_manager.action_bindings();
+                assign_gamepad_action_binding(&mut bindings, target, binding);
+                gamepad_manager.set_action_bindings(bindings);
+                context
+                    .settings_store
+                    .set_gamepad_action_bindings(bindings)?;
             }
             Ok(None)
         }
@@ -8481,6 +8746,7 @@ fn current_menu_presentation(
             .normalized_autoload_slot(MACHINE_STATE_SLOT_COUNT),
         rewind_supported,
         rewind_options: session.config.rewind,
+        fast_forward_options: session.config.fast_forward,
         rewind_available,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
@@ -8497,6 +8763,10 @@ fn current_menu_presentation(
         gamepad_bindings: runtime.gamepad_manager.as_ref().map_or(
             GamepadButtonBindings::default(),
             GamepadManager::button_bindings,
+        ),
+        gamepad_action_bindings: runtime.gamepad_manager.as_ref().map_or(
+            GamepadActionBindings::default(),
+            GamepadManager::action_bindings,
         ),
         gamepad_menu_bindings: runtime.gamepad_manager.as_ref().map_or(
             GamepadMenuBindings::default(),
@@ -8576,6 +8846,10 @@ fn next_rewind_speed_multiplier(current: u8) -> u8 {
 
 fn next_rewind_max_memory_mib(current: u16) -> u16 {
     next_rewind_option(current, &REWIND_MAX_MEMORY_MIB_OPTIONS)
+}
+
+fn next_fast_forward_speed_multiplier(current: u8) -> u8 {
+    next_rewind_option(current, &FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS)
 }
 
 fn next_rewind_option<T>(current: T, options: &[T]) -> T
@@ -8704,6 +8978,7 @@ fn assign_keyboard_binding(
         | KeyboardBindingTarget::StateSlot4
         | KeyboardBindingTarget::Reset
         | KeyboardBindingTarget::Rewind
+        | KeyboardBindingTarget::FastForward
         | KeyboardBindingTarget::ToggleFullscreen
         | KeyboardBindingTarget::TogglePerformanceHud
         | KeyboardBindingTarget::SaveBattery => {
@@ -8747,6 +9022,22 @@ fn assign_gamepad_binding(
         set_gamepad_binding_value(bindings, other_target, previous_binding);
     }
     set_gamepad_binding_value(bindings, target, binding);
+}
+
+fn assign_gamepad_action_binding(
+    bindings: &mut GamepadActionBindings,
+    target: GamepadActionBindingTarget,
+    binding: GamepadButtonBinding,
+) {
+    let previous_binding = gamepad_action_binding_value(*bindings, target);
+    if previous_binding == Some(binding) {
+        return;
+    }
+
+    if let Some(other_target) = gamepad_action_binding_target_for_binding(*bindings, binding) {
+        set_gamepad_action_binding_value(bindings, other_target, previous_binding);
+    }
+    set_gamepad_action_binding_value(bindings, target, Some(binding));
 }
 
 fn assign_gamepad_menu_binding(
@@ -8797,6 +9088,20 @@ fn gamepad_menu_binding_target_for_binding(
     .find(|target| gamepad_menu_binding_value(bindings, *target) == binding)
 }
 
+fn gamepad_action_binding_target_for_binding(
+    bindings: GamepadActionBindings,
+    binding: GamepadButtonBinding,
+) -> Option<GamepadActionBindingTarget> {
+    [
+        GamepadActionBindingTarget::SaveState,
+        GamepadActionBindingTarget::LoadState,
+        GamepadActionBindingTarget::Rewind,
+        GamepadActionBindingTarget::FastForward,
+    ]
+    .into_iter()
+    .find(|target| gamepad_action_binding_value(bindings, *target) == Some(binding))
+}
+
 fn gamepad_binding_value(
     bindings: GamepadButtonBindings,
     target: GamepadBindingTarget,
@@ -8810,6 +9115,18 @@ fn gamepad_binding_value(
         GamepadBindingTarget::B => bindings.b,
         GamepadBindingTarget::Select => bindings.select,
         GamepadBindingTarget::Start => bindings.start,
+    }
+}
+
+fn gamepad_action_binding_value(
+    bindings: GamepadActionBindings,
+    target: GamepadActionBindingTarget,
+) -> Option<GamepadButtonBinding> {
+    match target {
+        GamepadActionBindingTarget::SaveState => bindings.save_state,
+        GamepadActionBindingTarget::LoadState => bindings.load_state,
+        GamepadActionBindingTarget::Rewind => bindings.rewind,
+        GamepadActionBindingTarget::FastForward => bindings.fast_forward,
     }
 }
 
@@ -8839,6 +9156,19 @@ fn set_gamepad_binding_value(
         GamepadBindingTarget::B => bindings.b = binding,
         GamepadBindingTarget::Select => bindings.select = binding,
         GamepadBindingTarget::Start => bindings.start = binding,
+    }
+}
+
+fn set_gamepad_action_binding_value(
+    bindings: &mut GamepadActionBindings,
+    target: GamepadActionBindingTarget,
+    binding: Option<GamepadButtonBinding>,
+) {
+    match target {
+        GamepadActionBindingTarget::SaveState => bindings.save_state = binding,
+        GamepadActionBindingTarget::LoadState => bindings.load_state = binding,
+        GamepadActionBindingTarget::Rewind => bindings.rewind = binding,
+        GamepadActionBindingTarget::FastForward => bindings.fast_forward = binding,
     }
 }
 
@@ -8909,6 +9239,7 @@ fn hotkey_binding_target_for_key(
         KeyboardBindingTarget::StateSlot4,
         KeyboardBindingTarget::Reset,
         KeyboardBindingTarget::Rewind,
+        KeyboardBindingTarget::FastForward,
         KeyboardBindingTarget::ToggleFullscreen,
         KeyboardBindingTarget::TogglePerformanceHud,
         KeyboardBindingTarget::SaveBattery,
@@ -8956,6 +9287,7 @@ fn keyboard_binding_value(bindings: KeyboardBindings, target: KeyboardBindingTar
         KeyboardBindingTarget::StateSlot4 => bindings.hotkeys.state_slot_4,
         KeyboardBindingTarget::Reset => bindings.hotkeys.reset,
         KeyboardBindingTarget::Rewind => bindings.hotkeys.rewind,
+        KeyboardBindingTarget::FastForward => bindings.hotkeys.fast_forward,
         KeyboardBindingTarget::ToggleFullscreen => bindings.hotkeys.toggle_fullscreen,
         KeyboardBindingTarget::TogglePerformanceHud => bindings.hotkeys.toggle_performance_hud,
         KeyboardBindingTarget::SaveBattery => bindings.hotkeys.save_battery,
@@ -8998,6 +9330,7 @@ fn set_keyboard_binding_value(
         KeyboardBindingTarget::StateSlot4 => bindings.hotkeys.state_slot_4 = key,
         KeyboardBindingTarget::Reset => bindings.hotkeys.reset = key,
         KeyboardBindingTarget::Rewind => bindings.hotkeys.rewind = key,
+        KeyboardBindingTarget::FastForward => bindings.hotkeys.fast_forward = key,
         KeyboardBindingTarget::ToggleFullscreen => bindings.hotkeys.toggle_fullscreen = key,
         KeyboardBindingTarget::TogglePerformanceHud => {
             bindings.hotkeys.toggle_performance_hud = key;
@@ -9568,6 +9901,26 @@ fn sync_audio_playback_state(
     }
 }
 
+fn sync_fast_forward_audio_state(
+    runtime: &mut FrontendRuntime,
+    fast_forward_active: bool,
+) -> Result<(), String> {
+    if fast_forward_active {
+        if !runtime.fast_forward_audio_suppressed {
+            if let Some(audio_output) = &mut runtime.audio_output {
+                audio_output.clear_buffer()?;
+            }
+            runtime.fast_forward_audio_suppressed = true;
+        }
+    } else if runtime.fast_forward_audio_suppressed {
+        if let Some(audio_output) = &mut runtime.audio_output {
+            audio_output.clear_buffer()?;
+        }
+        runtime.fast_forward_audio_suppressed = false;
+    }
+    Ok(())
+}
+
 fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
     FramebufferDimensions {
@@ -9796,6 +10149,13 @@ fn render_frame(
             framebuffer.dimensions.height as usize,
         );
     }
+    if menu_state.is_none() && hud.fast_forward_indicator {
+        render_fast_forward_indicator(
+            rgb_frame,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
+        );
+    }
 
     map_display_result(
         texture.update(
@@ -9895,6 +10255,8 @@ fn hotkey_action_for_key_event(
         HotkeyAction::Reset
     } else if key_event_matches(keyboard_bindings.hotkeys.rewind, keycode, scancode) {
         HotkeyAction::Rewind
+    } else if key_event_matches(keyboard_bindings.hotkeys.fast_forward, keycode, scancode) {
+        HotkeyAction::FastForward
     } else if key_event_matches(
         keyboard_bindings.hotkeys.toggle_fullscreen,
         keycode,
@@ -9907,6 +10269,24 @@ fn hotkey_action_for_key_event(
         scancode,
     ) {
         HotkeyAction::TogglePerformanceHud
+    } else {
+        HotkeyAction::None
+    }
+}
+
+fn gamepad_action_for_button(bindings: GamepadActionBindings, button: Button) -> HotkeyAction {
+    let Some(binding) = gamepad_button_binding_from_sdl_button(button) else {
+        return HotkeyAction::None;
+    };
+
+    if bindings.save_state == Some(binding) {
+        HotkeyAction::SaveState
+    } else if bindings.load_state == Some(binding) {
+        HotkeyAction::LoadState
+    } else if bindings.rewind == Some(binding) {
+        HotkeyAction::Rewind
+    } else if bindings.fast_forward == Some(binding) {
+        HotkeyAction::FastForward
     } else {
         HotkeyAction::None
     }
@@ -9942,6 +10322,20 @@ fn desktop_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
         Keycode::F10 => Some(DesktopKey::F10),
         Keycode::F11 => Some(DesktopKey::F11),
         Keycode::F12 => Some(DesktopKey::F12),
+        Keycode::LShift => Some(DesktopKey::LeftShift),
+        Keycode::RShift => Some(DesktopKey::RightShift),
+        Keycode::LCtrl => Some(DesktopKey::LeftControl),
+        Keycode::RCtrl => Some(DesktopKey::RightControl),
+        Keycode::LAlt => Some(DesktopKey::LeftAlt),
+        Keycode::RAlt => Some(DesktopKey::RightAlt),
+        Keycode::LGui => Some(DesktopKey::LeftGui),
+        Keycode::RGui => Some(DesktopKey::RightGui),
+        _ => None,
+    }
+}
+
+fn desktop_modifier_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
+    match keycode {
         Keycode::LShift => Some(DesktopKey::LeftShift),
         Keycode::RShift => Some(DesktopKey::RightShift),
         Keycode::LCtrl => Some(DesktopKey::LeftControl),
@@ -10000,6 +10394,10 @@ fn desktop_key_from_key_event(
     keycode: Option<Keycode>,
     scancode: Option<Scancode>,
 ) -> Option<DesktopKey> {
+    if let Some(modifier_key) = keycode.and_then(desktop_modifier_key_from_keycode) {
+        return Some(modifier_key);
+    }
+
     match scancode {
         Some(scancode) => desktop_key_from_scancode(scancode),
         None => keycode.and_then(desktop_key_from_keycode),
@@ -10038,6 +10436,7 @@ fn assignable_key_for_binding_target(
         | KeyboardBindingTarget::StateSlot4
         | KeyboardBindingTarget::Reset
         | KeyboardBindingTarget::Rewind
+        | KeyboardBindingTarget::FastForward
         | KeyboardBindingTarget::ToggleFullscreen
         | KeyboardBindingTarget::TogglePerformanceHud
         | KeyboardBindingTarget::SaveBattery => is_hotkey_assignable_key(key).then_some(key),
@@ -10148,23 +10547,26 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 mod tests {
     use super::{
         BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR,
-        DesktopRunOptions, DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
-        HostRtcSync, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
-        PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_binding,
-        assign_gamepad_menu_binding, assign_keyboard_binding, assign_keyboard_menu_binding,
-        assignable_key_for_binding_target_from_key_event,
+        DesktopRunOptions, DesktopSettingsStore, GamepadActionBindingTarget, GamepadBindingTarget,
+        GamepadMenuBindingTarget, HostRtcSync, HotkeyAction, KeyboardBindingTarget,
+        KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
+        ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_action_binding,
+        assign_gamepad_binding, assign_gamepad_menu_binding, assign_keyboard_binding,
+        assign_keyboard_menu_binding, assignable_key_for_binding_target_from_key_event,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_key_event, desktop_key_from_keycode, desktop_key_from_scancode,
-        desktop_key_scancode, entered_pc_ranges, gamepad_binding_target_for_binding,
+        desktop_key_scancode, entered_pc_ranges, gamepad_action_binding_target_for_binding,
+        gamepad_action_for_button, gamepad_binding_target_for_binding,
         gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
         joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
         load_machine_state_slot, machine_state_actions_available,
         machine_state_slot_load_available, machine_state_slot_path, map_path_dialog_result,
         menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
         next_boot_rom_verification_mode, next_console_model, next_execution_mode,
-        next_gamepad_directional_source, next_gamepad_rumble_mode, next_machine_state_slot,
-        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
+        next_fast_forward_speed_multiplier, next_gamepad_directional_source,
+        next_gamepad_rumble_mode, next_machine_state_slot, next_save_flush_policy,
+        next_startup_mode, next_window_scale, parse_edge_trace_addresses,
         parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
         parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
         parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
@@ -11368,6 +11770,10 @@ mod tests {
                 ),
                 rewind_frame_tracker: super::MachineRewindFrameBoundaryTracker::new(),
                 rewind_hotkey_active: false,
+                rewind_gamepad_active: false,
+                fast_forward_hotkey_active: false,
+                fast_forward_gamepad_active: false,
+                fast_forward_audio_suppressed: false,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
@@ -14312,6 +14718,10 @@ mod tests {
             next_gamepad_rumble_mode(GamepadRumbleMode::Weak),
             GamepadRumbleMode::Off
         );
+        assert_eq!(next_fast_forward_speed_multiplier(1), 2);
+        assert_eq!(next_fast_forward_speed_multiplier(2), 4);
+        assert_eq!(next_fast_forward_speed_multiplier(4), 1);
+        assert_eq!(next_fast_forward_speed_multiplier(9), 1);
     }
 
     #[test]
@@ -14435,6 +14845,13 @@ mod tests {
             hotkey_binding_target_for_key(bindings.hotkeys, DesktopKey::F1),
             Some(KeyboardBindingTarget::SaveState)
         );
+        assign_keyboard_binding(
+            &mut bindings,
+            KeyboardBindingTarget::FastForward,
+            DesktopKey::LeftShift,
+        );
+        assert_eq!(bindings.hotkeys.fast_forward, DesktopKey::LeftShift);
+        assert_eq!(bindings.hotkeys.rewind, DesktopKey::RightShift);
     }
 
     #[test]
@@ -14455,6 +14872,60 @@ mod tests {
         assert_eq!(
             gamepad_binding_target_for_binding(bindings, GamepadButtonBinding::East),
             Some(GamepadBindingTarget::B)
+        );
+    }
+
+    #[test]
+    fn gamepad_action_binding_assignment_swaps_existing_buttons_instead_of_creating_duplicates() {
+        let mut bindings = gb_desktop::GamepadActionBindings {
+            save_state: Some(GamepadButtonBinding::LeftShoulder),
+            load_state: Some(GamepadButtonBinding::RightShoulder),
+            rewind: Some(GamepadButtonBinding::Back),
+            fast_forward: Some(GamepadButtonBinding::Start),
+        };
+        assign_gamepad_action_binding(
+            &mut bindings,
+            GamepadActionBindingTarget::FastForward,
+            GamepadButtonBinding::Back,
+        );
+
+        assert_eq!(
+            bindings.save_state,
+            Some(GamepadButtonBinding::LeftShoulder)
+        );
+        assert_eq!(
+            bindings.load_state,
+            Some(GamepadButtonBinding::RightShoulder)
+        );
+        assert_eq!(bindings.rewind, Some(GamepadButtonBinding::Start));
+        assert_eq!(bindings.fast_forward, Some(GamepadButtonBinding::Back));
+        assert_eq!(
+            gamepad_action_binding_target_for_binding(bindings, GamepadButtonBinding::Back),
+            Some(GamepadActionBindingTarget::FastForward)
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::Back),
+            HotkeyAction::FastForward
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::Start),
+            HotkeyAction::Rewind
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::LeftShoulder),
+            HotkeyAction::SaveState
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::RightShoulder),
+            HotkeyAction::LoadState
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::South),
+            HotkeyAction::None
+        );
+        assert_eq!(
+            gamepad_action_for_button(bindings, Button::Misc2),
+            HotkeyAction::None
         );
     }
 
@@ -14715,6 +15186,7 @@ mod tests {
             (KeyboardBindingTarget::StateSlot4, DesktopKey::Digit4),
             (KeyboardBindingTarget::Reset, DesktopKey::F12),
             (KeyboardBindingTarget::Rewind, DesktopKey::LeftShift),
+            (KeyboardBindingTarget::FastForward, DesktopKey::RightShift),
             (KeyboardBindingTarget::ToggleFullscreen, DesktopKey::Z),
             (KeyboardBindingTarget::TogglePerformanceHud, DesktopKey::F10),
             (KeyboardBindingTarget::SaveBattery, DesktopKey::F9),
@@ -14782,6 +15254,46 @@ mod tests {
             gamepad_before.start,
         );
         assert_eq!(gamepad, gamepad_before);
+
+        let mut gamepad_actions = gb_desktop::GamepadActionBindings::default();
+        let gamepad_action_targets = [
+            (
+                GamepadActionBindingTarget::SaveState,
+                GamepadButtonBinding::LeftShoulder,
+            ),
+            (
+                GamepadActionBindingTarget::LoadState,
+                GamepadButtonBinding::RightShoulder,
+            ),
+            (
+                GamepadActionBindingTarget::Rewind,
+                GamepadButtonBinding::Back,
+            ),
+            (
+                GamepadActionBindingTarget::FastForward,
+                GamepadButtonBinding::Start,
+            ),
+        ];
+        for (target, binding) in gamepad_action_targets {
+            super::set_gamepad_action_binding_value(&mut gamepad_actions, target, Some(binding));
+            assert_eq!(
+                super::gamepad_action_binding_value(gamepad_actions, target),
+                Some(binding)
+            );
+            assert_eq!(
+                gamepad_action_binding_target_for_binding(gamepad_actions, binding),
+                Some(target)
+            );
+        }
+        let gamepad_actions_before = gamepad_actions;
+        assign_gamepad_action_binding(
+            &mut gamepad_actions,
+            GamepadActionBindingTarget::FastForward,
+            gamepad_actions_before
+                .fast_forward
+                .expect("binding is configured"),
+        );
+        assert_eq!(gamepad_actions, gamepad_actions_before);
 
         let mut gamepad_menu = GamepadMenuBindings::default();
         let gamepad_menu_targets = [
@@ -14957,6 +15469,28 @@ mod tests {
             Some(DesktopKey::Z)
         );
         assert_eq!(
+            desktop_key_from_key_event(
+                Some(Keycode::RShift),
+                Some(sdl3::keyboard::Scancode::LShift)
+            ),
+            Some(DesktopKey::RightShift)
+        );
+        for (keycode, expected) in [
+            (Keycode::LShift, DesktopKey::LeftShift),
+            (Keycode::RShift, DesktopKey::RightShift),
+            (Keycode::LCtrl, DesktopKey::LeftControl),
+            (Keycode::RCtrl, DesktopKey::RightControl),
+            (Keycode::LAlt, DesktopKey::LeftAlt),
+            (Keycode::RAlt, DesktopKey::RightAlt),
+            (Keycode::LGui, DesktopKey::LeftGui),
+            (Keycode::RGui, DesktopKey::RightGui),
+        ] {
+            assert_eq!(
+                desktop_key_from_key_event(Some(keycode), Some(sdl3::keyboard::Scancode::Z)),
+                Some(expected)
+            );
+        }
+        assert_eq!(
             desktop_key_from_key_event(Some(Keycode::Z), Some(sdl3::keyboard::Scancode::A)),
             None
         );
@@ -14964,6 +15498,16 @@ mod tests {
             DesktopKey::Z,
             Some(Keycode::X),
             Some(sdl3::keyboard::Scancode::Z)
+        ));
+        assert!(super::key_event_matches(
+            DesktopKey::RightShift,
+            Some(Keycode::RShift),
+            Some(sdl3::keyboard::Scancode::LShift)
+        ));
+        assert!(!super::key_event_matches(
+            DesktopKey::LeftShift,
+            Some(Keycode::RShift),
+            Some(sdl3::keyboard::Scancode::LShift)
         ));
         assert!(!super::key_event_matches(
             DesktopKey::Z,
@@ -15062,6 +15606,18 @@ mod tests {
         assert!(matches!(
             super::hotkey_action(&keyboard_bindings, Keycode::LShift),
             super::HotkeyAction::Rewind
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::RShift),
+            super::HotkeyAction::FastForward
+        ));
+        assert!(matches!(
+            super::hotkey_action_for_key_event(
+                &keyboard_bindings,
+                Some(Keycode::RShift),
+                Some(sdl3::keyboard::Scancode::LShift),
+            ),
+            super::HotkeyAction::FastForward
         ));
         assert!(matches!(
             super::hotkey_action(&keyboard_bindings, Keycode::R),
@@ -16606,7 +17162,7 @@ mod tests {
     }
 
     #[test]
-    fn rewind_hotkey_hold_state_tracks_rewind_key_events() {
+    fn host_hold_hotkey_state_tracks_rewind_and_fast_forward_key_events() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("rewind-hotkey", true, false, false);
 
@@ -16621,6 +17177,300 @@ mod tests {
             .process_events()
             .expect("rewind keyup should process");
         assert!(!harness.runtime.rewind_hotkey_active);
+
+        harness.push_key(Keycode::RShift, true);
+        harness
+            .process_events()
+            .expect("fast-forward keydown should process");
+        assert!(harness.runtime.fast_forward_hotkey_active);
+
+        harness.push_key(Keycode::RShift, false);
+        harness
+            .process_events()
+            .expect("fast-forward keyup should process");
+        assert!(!harness.runtime.fast_forward_hotkey_active);
+    }
+
+    #[test]
+    fn fast_forward_enabled_option_gates_momentary_acceleration() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-active", true, false, false);
+
+        assert!(
+            harness.session.config.fast_forward.enabled,
+            "Fast Forward should be available by default"
+        );
+        assert!(!super::fast_forward_active(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine
+        ));
+
+        harness.runtime.fast_forward_hotkey_active = true;
+        assert!(
+            super::fast_forward_active(&harness.runtime, &harness.session, &harness.machine),
+            "momentary hotkey should activate when Fast Forward is available"
+        );
+        harness.runtime.fast_forward_hotkey_active = false;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleFastForwardEnabled)
+                .expect("fast-forward availability should toggle")
+                .is_none()
+        );
+        assert!(!harness.session.config.fast_forward.enabled);
+        harness.runtime.fast_forward_hotkey_active = true;
+        assert!(
+            !super::fast_forward_active(&harness.runtime, &harness.session, &harness.machine),
+            "FAST FORWARD OFF should make the associated button a no-op"
+        );
+        harness.runtime.fast_forward_hotkey_active = false;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleFastForwardSpeed)
+                .expect("fast-forward speed should cycle")
+                .is_none()
+        );
+        assert_eq!(harness.session.config.fast_forward.speed_multiplier, 4);
+    }
+
+    #[test]
+    fn fast_forward_helpers_cover_hold_state_and_indicator() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-helpers", true, false, false);
+
+        assert!(!super::fast_forward_hold_active(&harness.runtime));
+        assert!(!super::fast_forward_active(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine
+        ));
+        assert!(!super::fast_forward_indicator_visible(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+            false,
+        ));
+
+        harness.runtime.fast_forward_gamepad_active = true;
+        assert!(super::fast_forward_hold_active(&harness.runtime));
+        assert!(super::fast_forward_active(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine
+        ));
+        assert!(super::fast_forward_indicator_visible(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+            false,
+        ));
+
+        harness.runtime.fast_forward_gamepad_active = false;
+        assert!(super::fast_forward_indicator_visible(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+            true,
+        ));
+
+        harness.session.config.fast_forward.enabled = false;
+        harness.runtime.fast_forward_hotkey_active = true;
+        assert!(!super::fast_forward_active(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine
+        ));
+        assert!(!super::fast_forward_indicator_visible(
+            &harness.runtime,
+            &harness.session,
+            &harness.machine,
+            true,
+        ));
+    }
+
+    #[test]
+    fn gamepad_hold_latches_clear_together_on_active_device_changes() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("gamepad-hold-latch-clear", true, false, false);
+
+        harness.runtime.rewind_gamepad_active = true;
+        harness.runtime.fast_forward_gamepad_active = true;
+        super::clear_gamepad_hold_latches(&mut harness.runtime);
+
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
+        assert!(!super::rewind_hold_active(&harness.runtime));
+        assert!(!super::fast_forward_hold_active(&harness.runtime));
+    }
+
+    #[test]
+    fn fast_forward_audio_suppression_toggles_host_output() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-audio-suppression", true, true, false);
+
+        assert!(!harness.runtime.fast_forward_audio_suppressed);
+        super::sync_fast_forward_audio_state(&mut harness.runtime, true)
+            .expect("entering Fast Forward should clear audio output");
+        assert!(harness.runtime.fast_forward_audio_suppressed);
+        super::sync_fast_forward_audio_state(&mut harness.runtime, true)
+            .expect("already-suppressed Fast Forward audio state should be idempotent");
+        assert!(harness.runtime.fast_forward_audio_suppressed);
+        super::sync_fast_forward_audio_state(&mut harness.runtime, false)
+            .expect("leaving Fast Forward should clear audio output");
+        assert!(!harness.runtime.fast_forward_audio_suppressed);
+        super::sync_fast_forward_audio_state(&mut harness.runtime, false)
+            .expect("inactive Fast Forward audio state should be idempotent");
+        assert!(!harness.runtime.fast_forward_audio_suppressed);
+    }
+
+    #[test]
+    fn fast_forward_frame_budget_uses_speed_multiplier() {
+        assert_eq!(super::fast_forward_frame_budget(0), 1);
+        assert_eq!(super::fast_forward_frame_budget(1), 1);
+        assert_eq!(super::fast_forward_frame_budget(2), 2);
+        assert_eq!(super::fast_forward_frame_budget(4), 4);
+    }
+
+    #[test]
+    fn fast_forward_runtime_step_advances_multiple_emulated_frames() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-runtime-step", true, true, false);
+        let mut stable_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        stable_rom[ENTRY_POINT_START..ENTRY_POINT_START + 2].copy_from_slice(&[0x18, 0xFE]);
+        harness.session.loaded_rom = Some(super::LoadedRom {
+            path: harness.root.join("fast-forward-runtime-step.gb"),
+            bytes: stable_rom.clone(),
+        });
+        harness.machine = super::DesktopEmulationSession::new_single(
+            super::load_machine_for_rom(
+                &harness.session.config,
+                &harness.session.current_dir,
+                &stable_rom,
+            )
+            .expect("stable ROM should load for Fast Forward runtime test")
+            .machine,
+        );
+        harness.session.config.fast_forward.enabled = true;
+        harness.session.config.fast_forward.speed_multiplier = 4;
+        harness.runtime.fast_forward_hotkey_active = true;
+
+        let before_t_cycle = harness.machine.primary_machine().next_t_cycle().get();
+        let (result, fast_forwarded_frames) = {
+            let mut context = super::FrontendActionContext {
+                session: &mut harness.session,
+                machine: &mut harness.machine,
+                runtime: &mut harness.runtime,
+                performance_counter: &mut harness.performance_counter,
+                frame_pacer: &mut harness.frame_pacer,
+                settings_store: &mut harness.settings_store,
+            };
+            super::step_fast_forward_frames(
+                &mut harness.event_pump,
+                &mut harness.canvas,
+                &mut context,
+            )
+            .expect("Fast Forward stepping should advance runtime frames")
+        };
+        let advanced_t_cycles = harness
+            .machine
+            .primary_machine()
+            .next_t_cycle()
+            .get()
+            .saturating_sub(before_t_cycle);
+
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert_eq!(fast_forwarded_frames, 4);
+        assert!(
+            advanced_t_cycles >= gb_core::DMG_T_CYCLES_PER_FRAME.saturating_mul(4),
+            "4x Fast Forward advanced only {advanced_t_cycles} T-cycles"
+        );
+        assert!(
+            harness.runtime.rewind_buffer.is_empty(),
+            "Fast Forward should not populate rewind history while held"
+        );
+    }
+
+    #[test]
+    fn fast_forward_runtime_step_stops_before_counting_quit_frame() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-runtime-quit", true, true, false);
+        harness.session.config.fast_forward.speed_multiplier = 4;
+        harness.runtime.fast_forward_hotkey_active = true;
+        harness
+            .sdl
+            .event()
+            .expect("FF quit event subsystem")
+            .push_event(Event::Quit { timestamp: 0 })
+            .expect("quit event should be pushable");
+
+        let (result, fast_forwarded_frames) = {
+            let mut context = super::FrontendActionContext {
+                session: &mut harness.session,
+                machine: &mut harness.machine,
+                runtime: &mut harness.runtime,
+                performance_counter: &mut harness.performance_counter,
+                frame_pacer: &mut harness.frame_pacer,
+                settings_store: &mut harness.settings_store,
+            };
+            super::step_fast_forward_frames(
+                &mut harness.event_pump,
+                &mut harness.canvas,
+                &mut context,
+            )
+            .expect("Fast Forward quit stepping should return cleanly")
+        };
+
+        assert_eq!(result.signal, super::LoopSignal::Quit);
+        assert_eq!(fast_forwarded_frames, 0);
+    }
+
+    #[test]
+    fn fast_forward_runtime_step_stops_after_hold_release() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-runtime-release", true, true, false);
+        let mut stable_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        stable_rom[ENTRY_POINT_START..ENTRY_POINT_START + 2].copy_from_slice(&[0x18, 0xFE]);
+        harness.session.loaded_rom = Some(super::LoadedRom {
+            path: harness.root.join("fast-forward-runtime-release.gb"),
+            bytes: stable_rom.clone(),
+        });
+        harness.machine = super::DesktopEmulationSession::new_single(
+            super::load_machine_for_rom(
+                &harness.session.config,
+                &harness.session.current_dir,
+                &stable_rom,
+            )
+            .expect("stable ROM should load for Fast Forward release test")
+            .machine,
+        );
+        harness.session.config.fast_forward.enabled = true;
+        harness.session.config.fast_forward.speed_multiplier = 4;
+        harness.runtime.fast_forward_hotkey_active = true;
+        harness.push_key(Keycode::RShift, false);
+
+        let (result, fast_forwarded_frames) = {
+            let mut context = super::FrontendActionContext {
+                session: &mut harness.session,
+                machine: &mut harness.machine,
+                runtime: &mut harness.runtime,
+                performance_counter: &mut harness.performance_counter,
+                frame_pacer: &mut harness.frame_pacer,
+                settings_store: &mut harness.settings_store,
+            };
+            super::step_fast_forward_frames(
+                &mut harness.event_pump,
+                &mut harness.canvas,
+                &mut context,
+            )
+            .expect("Fast Forward release stepping should return cleanly")
+        };
+
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert_eq!(fast_forwarded_frames, 1);
+        assert!(!harness.runtime.fast_forward_hotkey_active);
     }
 
     #[test]
@@ -17919,6 +18769,7 @@ mod tests {
                     rewind: RewindHudSnapshot::default(),
                 }),
                 rewind_indicator: false,
+                fast_forward_indicator: false,
             },
         )
         .expect("HUD frame should render");
@@ -17926,7 +18777,7 @@ mod tests {
     }
 
     #[test]
-    fn render_frame_draws_rewind_indicator_without_stats_hud() {
+    fn render_frame_draws_corner_indicators_without_stats_hud() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("rewind-indicator-render", true, false, false);
         let texture_creator = harness.canvas.texture_creator();
@@ -17940,6 +18791,7 @@ mod tests {
         let mut baseline_frame =
             vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
         let mut indicator_frame = baseline_frame.clone();
+        let mut fast_forward_indicator_frame = baseline_frame.clone();
         let panel_len = (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize;
         let framebuffer = vec![0_u8; panel_len];
         let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
@@ -17984,6 +18836,7 @@ mod tests {
             super::RenderHudInput {
                 performance: None,
                 rewind_indicator: true,
+                fast_forward_indicator: false,
             },
         )
         .expect("rewind indicator frame should render");
@@ -17991,6 +18844,25 @@ mod tests {
         assert_ne!(
             indicator_frame, baseline_frame,
             "rewind indicator should render independently from the stats HUD"
+        );
+
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut fast_forward_indicator_frame,
+            render_input(),
+            &video_options,
+            None,
+            super::RenderHudInput {
+                performance: None,
+                rewind_indicator: false,
+                fast_forward_indicator: true,
+            },
+        )
+        .expect("fast-forward indicator frame should render");
+        assert_ne!(
+            fast_forward_indicator_frame, baseline_frame,
+            "fast-forward indicator should render independently from the stats HUD"
         );
     }
 
@@ -18744,6 +19616,20 @@ mod tests {
             .process_events()
             .expect("gamepad menu close should process");
         assert!(!harness.runtime.menu_state.is_open());
+
+        harness.runtime.rewind_gamepad_active = true;
+        harness.runtime.fast_forward_gamepad_active = true;
+        events
+            .push_event(Event::ControllerDeviceRemoved {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+            })
+            .expect("gamepad removal event should be pushable");
+        harness
+            .process_events()
+            .expect("gamepad removal should clear hold latches");
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
     }
 
     #[test]
