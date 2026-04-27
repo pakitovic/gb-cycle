@@ -438,6 +438,10 @@ impl GamepadManager {
         self.active == Some(joystick_id)
     }
 
+    pub fn active_gamepad_joystick_id(&self) -> Option<JoystickId> {
+        self.active
+    }
+
     pub fn has_connected_gamepad(&self) -> bool {
         self.active.is_some()
     }

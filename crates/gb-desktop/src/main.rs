@@ -5365,7 +5365,9 @@ fn process_events(
     let settings_store = &mut *context.settings_store;
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
+        let mut clear_gamepad_hold_latches_after_event = false;
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
+            let active_gamepad_before_event = gamepad_manager.active_gamepad_joystick_id();
             gamepad_manager.handle_event(
                 &event,
                 runtime.player_inputs.input_mut(PlayerSlot::P1),
@@ -5373,15 +5375,23 @@ fn process_events(
                     .machine_for_player_slot_mut(PlayerSlot::P1)
                     .expect("P1 should always map to an active desktop machine"),
             )?;
-            if let Event::ControllerButtonDown { which, .. } = &event {
-                gamepad_manager.activate_gamepad_from_input(
+            if active_gamepad_before_event != gamepad_manager.active_gamepad_joystick_id() {
+                clear_gamepad_hold_latches_after_event = true;
+            }
+            if let Event::ControllerButtonDown { which, .. } = &event
+                && gamepad_manager.activate_gamepad_from_input(
                     gamepad_event_joystick_id(*which),
                     runtime.player_inputs.input_mut(PlayerSlot::P1),
                     machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
                         .expect("P1 should always map to an active desktop machine"),
-                );
+                )
+            {
+                clear_gamepad_hold_latches_after_event = true;
             }
+        }
+        if clear_gamepad_hold_latches_after_event {
+            clear_gamepad_hold_latches(runtime);
         }
 
         if runtime.printer_output.handle_event(&event)? {
@@ -7645,6 +7655,11 @@ fn rewind_indicator_visible(
 
 fn rewind_hold_active(runtime: &FrontendRuntime) -> bool {
     runtime.rewind_hotkey_active || runtime.rewind_gamepad_active
+}
+
+fn clear_gamepad_hold_latches(runtime: &mut FrontendRuntime) {
+    runtime.rewind_gamepad_active = false;
+    runtime.fast_forward_gamepad_active = false;
 }
 
 fn fast_forward_hold_active(runtime: &FrontendRuntime) -> bool {
@@ -17277,6 +17292,21 @@ mod tests {
     }
 
     #[test]
+    fn gamepad_hold_latches_clear_together_on_active_device_changes() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("gamepad-hold-latch-clear", true, false, false);
+
+        harness.runtime.rewind_gamepad_active = true;
+        harness.runtime.fast_forward_gamepad_active = true;
+        super::clear_gamepad_hold_latches(&mut harness.runtime);
+
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
+        assert!(!super::rewind_hold_active(&harness.runtime));
+        assert!(!super::fast_forward_hold_active(&harness.runtime));
+    }
+
+    #[test]
     fn fast_forward_audio_suppression_toggles_host_output() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("fast-forward-audio-suppression", true, true, false);
@@ -19586,6 +19616,20 @@ mod tests {
             .process_events()
             .expect("gamepad menu close should process");
         assert!(!harness.runtime.menu_state.is_open());
+
+        harness.runtime.rewind_gamepad_active = true;
+        harness.runtime.fast_forward_gamepad_active = true;
+        events
+            .push_event(Event::ControllerDeviceRemoved {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+            })
+            .expect("gamepad removal event should be pushable");
+        harness
+            .process_events()
+            .expect("gamepad removal should clear hold latches");
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
     }
 
     #[test]
