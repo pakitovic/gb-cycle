@@ -65,12 +65,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - make those other registers read-only until power is restored, except that on DMG-family hardware `NR11`, `NR21`, `NR31`, and `NR41` should still update the internal length counters
   - leave wave RAM accessible
   - leave the `DIV-APU` counter intact rather than resetting it
-- Powering the APU on through `NR52` should reset the frame sequencer so the
-  next step is `0`, while still deriving the timing of that next step from the
-  live shared divider source rather than from a synthetic fresh timer.
-- Because the shared `DIV-APU` source is not reset by `NR52`, the first
-  post-power-on frame-sequencer event should remain a function of the preserved
-  live divider phase rather than of a fixed fresh-delay assumption.
+- Powering the APU on through `NR52` should reset the frame sequencer so the next step is `0`, while still deriving the timing of that next step from the live shared divider source rather than from a synthetic fresh timer.
+- Because the shared `DIV-APU` source is not reset by `NR52`, the first post-power-on frame-sequencer event should remain a function of the preserved live divider phase rather than of a fixed fresh-delay assumption.
 - Applying direct-boot or startup audio state with `powered = false` should converge to that same observable powered-off contract, except for the configured wave-RAM startup contents and the preserved `DIV-APU` phase.
 - `NR52` bits `0..=3` should remain read-only live status bits that report whether each channel's generation circuit is active.
 - The low `NR52` bits must not be treated as DAC-enabled indicators; they report active channels, not DAC state.

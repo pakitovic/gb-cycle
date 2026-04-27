@@ -5,39 +5,42 @@
 - Prioritize hardware-accurate behavior.
 - Keep the core modular enough to evolve from DMG-first to CGB and later SGB support.
 - Keep portability high so the core remains platform-agnostic.
-- Preserve determinism, debuggability, and testability from the start.
+- Preserve determinism, debuggability, and testability across all implementation phases.
 
 ## Recommended high-level layout
 
-Preferred long-term structure:
+Current crate and core-module structure:
 
 ```text
 crates/
   gb-core/
     src/
-      cpu/
-      ppu/
       apu/
-      bus/
-      dma/
-      timer/
-      joypad/
-      serial/
-      cartridge/
       boot/
-      model/
-      scheduler/
+      bus/
+      cartridge/
+      cpu/
       debugger/
+      dma/
+      external_port/
+      interrupts/
+      joypad/
+      link/
+      machine/
+      model/
+      ppu/
+      scheduler/
+      serial/
+      timer/
       lib.rs
+  gb-persistence/
   gb-test-runner/
   gb-cli/
   gb-desktop/
-  gb-web/
-tests/
 docs/
 ```
 
-For an early-stage repo, a simplified equivalent is acceptable as long as these boundaries stay visible.
+Future frontends such as WebAssembly should reuse the same core-facing contracts rather than adding platform-specific APIs inside `gb-core`.
 
 ## Rust module layout policy
 
@@ -59,7 +62,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 
 ## Timing foundation
 
-- The project timing foundation is T-cycle based from the start.
+- The project timing foundation is T-cycle based.
 - M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
 - Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
 - CPU execution on that timeline should be expressed through ordered fetch/read/write/internal steps rather than a black-box opcode plus aggregate duration.
@@ -95,19 +98,18 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 ## Console model policy
 
 - The core must expose an explicit console model concept.
-- At minimum, plan for `DMG0`, `DMG`, `MGB`, and future `CGB`.
-- The current implementation target should behave as a DMG-family core, while still distinguishing observable model differences.
+- The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, but the current functional target remains the DMG-family core.
 - Design the DMG-family core with future CGB integration in mind, but do not introduce CGB implementation complexity before it is needed.
 - The goal is to avoid major later refactors, not to prematurely model every CGB-only path.
 - Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
 - `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
 - CGB must enter as an extension of the shared architecture, not as a second emulator with duplicated subsystems.
 - No critical subsystem should be rigidly tied to a single hardware variant if that would block natural extension to other models.
-- The public model surface should keep three explicit axes instead of collapsing everything into one enum:
+- The public model surface keeps three explicit axes instead of collapsing everything into one enum:
   - `ConsoleModel` for the silicon family / revision baseline
   - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
   - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB1` / `SGB2`
-- The project should also expose one derived `CapabilitySet`-style view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
+- The project also exposes one derived `CapabilitySet` view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
 - `ConsoleModel::Cgb` plus `OperatingMode::CgbCompatibility` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
 - Future `SGB1` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
@@ -124,8 +126,8 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 ## Compatibility-policy architecture
 
 - Compatibility policy is a loader/config contract around the T-cycle core, not a second hardware model.
-- The project should expose a typed execution-mode concept such as `ExecutionMode::{Strict, Permissive, Experimental}` rather than scattered booleans.
-- The project should expose one central `CompatibilityPolicy`-style structure, or an equally explicit equivalent, that at least carries:
+- The project exposes a typed execution-mode concept, `ExecutionMode::{Strict, Permissive, Experimental}`, rather than scattered booleans.
+- The project exposes one central `CompatibilityPolicy` structure that carries:
   - `execution_mode`
   - `validation_policy`
   - `heuristic_policy`
@@ -137,7 +139,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Mode changes are allowed to affect admission, validation severity, heuristic enablement, manual overrides, diagnostics, and access to explicitly experimental implementations.
 - Any temporary exception where a mode changes supported-hardware runtime behavior should be documented as technical debt rather than normalized as ordinary behavior.
 - `Strict` is the oracle and CI mode for official accuracy claims.
-- `Permissive` is the intended tolerant interactive mode for ordinary users once frontends expose mode selection.
+- `Permissive` is the intended tolerant interactive/tooling mode for ordinary users when a frontend or CLI exposes execution-mode selection.
 - `Experimental` is for research, bring-up, and partial hardware paths; it must not be treated as evidence for official accuracy claims.
 - Save states, replays, and official test artifacts must record the execution mode and active overrides that produced them.
 - Restoring or replaying under a different execution mode should fail by default unless a later explicit developer-only conversion workflow is designed on top of the recorded metadata.
@@ -153,16 +155,16 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - DMA: OAM DMA and future HDMA scheduling and blocking rules
 - APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
 - Joypad and serial: hardware-visible registers and signaling
+- External port: attachment identity, attachment reset/startup policy, printer protocol state, and per-console attachment snapshots, but not `SB` / `SC` transfer semantics
+- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, and shared multi-console T-cycle coordination, but not frontend player-slot UX
 - Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
+- Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
 - Model-specific extensions: CGB and later SGB
 
 ## Detailed module responsibility guide
 
-This section complements `Suggested subsystem boundaries` by mapping the
-intended source layout to concrete ownership. The goal is to keep one canonical
-reference for module responsibilities without forcing every early-stage refactor
-to immediately materialize as a separate directory.
+This section complements `Suggested subsystem boundaries` by mapping the source layout to concrete ownership. The goal is to keep one canonical reference for module responsibilities while still allowing behavior-neutral structural migrations to land separately from timing-sensitive fixes.
 
 ### `model/`
 
@@ -201,7 +203,7 @@ to immediately materialize as a separate directory.
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
 - if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so future CGB banking remains visible in the architecture
-- For the current DMG-first repo baseline, a concrete split of `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs` is the preferred shape.
+- The current DMG-first bus split is `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs`.
 - In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so later CGB bankability does not get buried inside an internal bus.
 - Video-domain acquisition or release is scheduler-visible state, not router behavior; ownership changes for `VRAM` and `OAM` should stay synchronized to the shared T-cycle timeline around PPU and DMA ticks rather than being invented inside the router.
 - DMG-family OAM-corruption trigger classification is a good fit for a dedicated bus child module such as `bus/corruption.rs`: the bus still routes address-space and IDU-originated triggers, while the PPU remains the owner of the corruption formulas and live Mode `2` row behavior.
@@ -237,6 +239,15 @@ to immediately materialize as a separate directory.
 - centralized post-boot snapshot data and cartridge-derived startup adjustments
 - coordination of subsystem-owned hidden-state synthesis needed for temporally coherent direct-boot entry
 - startup-visible boot behavior from the system perspective
+
+### `machine/`
+
+- composition of one configured handheld core from scheduler, CPU, bus, PPU, APU, DMA, timer, serial, external port, boot, interrupts, joypad, and cartridge owners
+- public stepping APIs and observer hooks that keep scheduler regions visible without moving subsystem behavior into the facade
+- startup reset and ROM replacement orchestration that rebuilds hardware-owned state through the configured startup path
+- pending host ingress queues for joypad state and external serial clocks before they cross the scheduler ingress boundary
+- narrow host-facing helpers such as cartridge persistence access, Pocket Camera frame injection, printer-page collection, and debug snapshots
+- `MachineParts`-style decomposition for tests and tooling without making frontends owners of subsystem internals
 
 ### `cpu/`
 
@@ -300,21 +311,24 @@ to immediately materialize as a separate directory.
 - separation between emulated serial hardware and any host transport implementation
 - ownership of transfer-complete detection, `SC.7` clear timing, and completion-triggered serial IRQ requests
 
-### external-port attachment / linked-session support
+### `external_port/`
 
-- attachment-kind and attachment-runtime-state ownership for the handheld's
-  external port
-- public seam(s) for selecting attachment kind and attachment reset/startup
-  policy without exposing unrelated serial-internal state
+- attachment-kind and attachment-runtime-state ownership for the handheld's external port
+- public seam(s) for selecting attachment kind and attachment reset/startup policy without exposing unrelated serial-internal state
 - printer protocol state and typed printer output artifacts
+- per-console attachment endpoint state for loopback, printer, `DMG-04`, and `DMG-07` connections
+- conversion between attachment state and the narrow serial-peer or external-clock boundary consumed by `serial/`
+- attachment snapshots for debugger, traces, and tests
+- separation between core attachment ownership and frontend-owned UX such as file export, printer-page presentation, player slots, mute policy, and window/layout policy
+
+### `link/`
+
 - `DMG-04` cable routing and `DMG-07` adapter topology
 - shared multi-console session orchestration on one T-cycle timeline
-- current shared-session staging module: `link/` or an equivalent
-  module outside local `serial/`
-- separation between attachment/topology ownership and the per-console serial
-  controller that consumes only a narrow signal boundary
-- separation between core attachment/session ownership and frontend-owned
-  player-slot UX, mute policy, and window/layout policy
+- linked stepping over two or more `Machine` instances without moving per-console `SB` / `SC` semantics out of `serial/`
+- `DMG-07` participant/port identity, adapter packet routing, and adapter timing state
+- separation between attachment/topology ownership and the per-console serial controller that consumes only a narrow signal boundary
+- separation between core attachment/session ownership and frontend-owned player-slot UX, mute policy, and window/layout policy
 
 ### `cartridge/`
 
@@ -325,11 +339,11 @@ to immediately materialize as a separate directory.
 - central cartridge factory, compatibility-policy consumption, and validation policy
 - typed loader result that separates supported cartridge construction from structured special / unsupported classification, preserving raw `0x0147`, detected name, category, and reason
 - one central load-decision path that combines cartridge classification, compatibility policy, and explicit overrides into admit / warn / reject results
-- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, and `Mbc5Cartridge`
+- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, `Mbc5Cartridge`, `Mmm01Cartridge`, `M161Cartridge`, `Huc1Cartridge`, `Huc3Cartridge`, and `PocketCameraCartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
-- explicit supported-family taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`, plus structured unsupported categories rather than one opaque `Unsupported`
-- reserved typed variant space for close derivatives such as `MBC30` and future `MBC1M`
+- explicit supported-family taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, `MMM01`, `M161`, `HuC1`, `HuC-3`, and `Pocket Camera`, plus structured unsupported categories rather than one opaque `Unsupported`
+- explicit supported signature/variant path for `MBC1M`, plus reserved typed variant space for close derivatives such as `MBC30`
 - separate classification path for special multicarts, documented-but-unsupported mappers, accessory cartridges, experimental heuristics, and unknown codes
 - explicit separation between raw mapper register state, header-derived wiring / variant metadata, mapper-local RAM organization, and helper logic that resolves effective ROM and RAM banks
 - cartridge-visible RAM, whether external or mapper-local to the mapper
@@ -358,10 +372,9 @@ to immediately materialize as a separate directory.
 - watchpoints
 - snapshots
 - state inspection
-- freeze typed breakpoint/watchpoint target categories early enough that `PC`,
-  memory, MMIO, and cartridge-visible state do not need a public API redesign
-  once CPU and bus hooks become real
+- keep typed breakpoint/watchpoint target categories stable so `PC`, memory, MMIO, and cartridge-visible evaluation hooks can grow without public API redesign
 - targeted subsystem viewers or equivalent structured dumps for CPU, scheduler, PPU, DMA, APU, IRQ, and cartridge state
+- expand debugger infrastructure incrementally whenever a later roadmap block requires additional observability, without changing its transversal role across subsystems
 - internal analysis and comparison tools
 - utilities for synchronization and trace-debug workflows
 
@@ -370,9 +383,10 @@ to immediately materialize as a separate directory.
 ### Cartridge persistence
 
 - The powered-on core remains T-cycle driven. Cartridge persistence is a boundary around cartridge-owned state, not a second bus or scheduler path.
-- If the core exposes persistence hooks, keep them narrow and typed, for example through `PersistentCartState` or `CartridgePersistentPayload`, and make the cartridge implementation the owner of payload semantics.
+- The core exposes narrow typed persistence hooks through `PersistentCartState`-style payloads, and the cartridge implementation remains the owner of payload semantics.
 - That contract should be able to represent no persistent storage, persistent RAM only, persistent RTC only, or combined RAM plus RTC without forcing the backend to reverse-engineer mapper details from the visible `0xA000-0xBFFF` window.
 - Storage backends such as disk or in-memory adapters should own serialization format, versioning, file naming, path mapping, timestamps, and atomic replacement policy, not cartridge semantics.
+- The `gb-persistence` crate owns durable `.gbsav` envelopes, safe file replacement, elapsed-time integration, and external `.sav` conversion around the typed `PersistentCartState` payloads exported by `gb-core`.
 - Frontend and tooling layers may decide when to flush, such as on close, on explicit manual save, or via optional auto-flush, but they should do so through the persistence backend rather than through bus hooks or cartridge-local file I/O.
 - Tests and tools must be able to use an in-memory persistence backend so cartridge persistence can be validated without host file I/O.
 
@@ -393,17 +407,9 @@ to immediately materialize as a separate directory.
 
 ## Module mapping notes
 
-- `Memory and MMIO` may remain a dedicated module or stay split across bus-owned
-  storage helpers and subsystem-owned registers, but ownership must stay
-  explicit.
-- `Interrupt controller` may exist as its own module or as a tightly scoped core
-  component, but `IF` / `IE` ownership must remain distinct from CPU-owned
-  `IME`, `halted`, and `stopped` state.
-- `model/`, `scheduler/`, and `debugger/` are architectural modules even if an
-  early repository stage temporarily keeps some of their code in fewer files.
-- future external-port attachment and linked-session support are also
-  architectural modules even if the current repo only exposes the per-console
-  serial baseline and temporary peer helpers.
+- `Memory and MMIO` may remain a dedicated module or stay split across bus-owned storage helpers and subsystem-owned registers, but ownership must stay explicit.
+- `Interrupt controller` may exist as its own module or as a tightly scoped core component, but `IF` / `IE` ownership must remain distinct from CPU-owned `IME`, `halted`, and `stopped` state.
+- `model/`, `scheduler/`, `debugger/`, `machine/`, `external_port/`, and `link/` are architectural modules with current source-level owners; do not fold their responsibilities back into unrelated subsystem facades.
 
 ## Ownership boundary notes
 
@@ -419,14 +425,8 @@ to immediately materialize as a separate directory.
 - The joypad subsystem owns the translation from host-facing button state plus `P1` row selection into visible `JOYP` readback, joypad interrupt requests, and any input-driven `STOP` wake signal.
 - Frontends, test harnesses, and tooling should provide serial peers, scripted bits, loopback, or external clock pulses through a serial-endpoint boundary rather than by writing received bytes directly into `SB`.
 - The serial subsystem owns the translation from MMIO-visible `SB` / `SC` plus peer-provided bits and clocks into live transfer progress, `SB` intermediate state, and serial interrupt requests.
-- External-port attachment ownership belongs outside the local serial
-  controller. Attachment identity, printer protocol state, `DMG-04` cable
-  routing, and `DMG-07` adapter state should not be smuggled into ad hoc
-  serial-only fields.
-- Linked multi-console session ownership also belongs outside the local serial
-  controller. Shared T-cycle coordination across two or more `Machine`
-  instances is a session/topology concern, not a per-console `SB` / `SC`
-  concern.
+- External-port attachment ownership belongs outside the local serial controller. Attachment identity, printer protocol state, `DMG-04` cable routing, and `DMG-07` adapter state should not be smuggled into ad hoc serial-only fields.
+- Linked multi-console session ownership also belongs outside the local serial controller. Shared T-cycle coordination across two or more `Machine` instances is a session/topology concern, not a per-console `SB` / `SC` concern.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus owns central decode, requester arbitration, and blocked-access policy; CPU, DMA, and future transfer engines must not bypass that one policy path with caller-specific memory shortcuts.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
@@ -441,9 +441,7 @@ to immediately materialize as a separate directory.
 - Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
 - Input events must enter that same shared scheduling model as changes to hardware-facing button state; they must not live only on a host video-frame cadence if that would hide `JOYP`, interrupt, or `STOP`-wake ordering.
 - Serial peer activity and external serial clock pulses must enter that same shared scheduling model rather than living on host transport threads or timers that bypass the core timeline.
-- Frontend-facing player-slot abstractions such as `P1..P4`, per-player mute
-  defaults, and per-player host input profiles belong to frontend session UX,
-  not to `gb-core` serial, attachment, or linked-session ownership.
+- Frontend-facing player-slot abstractions such as `P1..P4`, per-player mute defaults, and per-player host input profiles belong to frontend session UX, not to `gb-core` serial, attachment, or linked-session ownership.
 
 ## Boot ROM architecture policy
 
@@ -459,7 +457,16 @@ to immediately materialize as a separate directory.
 - Keep file I/O, audio output, video output, and input outside the core.
 - Use traits or narrow interfaces where frontend services must be injected.
 - The same core should be usable by CLI tools, desktop apps, benchmarks, tests, and WebAssembly.
-- Frontend crates should adapt one shared core-facing session contract while owning host-only concerns such as boot-ROM search paths, battery-save paths and flush policy, video presentation, frame pacing / `vsync` policy, audio backend configuration, frontend-owned settings persistence, preferred host-device selection, remappable input bindings, native file dialogs plus their frontend-owned ROM-selection filters, recent-ROM history, native user-facing error or warning message boxes, compact in-window performance HUDs plus their visibility toggles, and in-window overlay menus or other host UI state outside `gb-core`. Those overlay menus may expose hierarchical frontend-owned settings surfaces such as video, audio, input, system, or recent-ROM launch actions, including frontend-owned interactive binding-capture flows for keyboard joypad bindings, keyboard menu bindings, frontend hotkeys, SDL gamepad button bindings, or SDL gamepad menu bindings, but they must remain host policy rather than leaking UI concepts into the core. Frontend-owned menu controls should remain distinct from emulated joypad bindings so that host UI navigation stays manageable even after the user remaps emulated controls. Frontend-owned video and audio submenu actions should only expose settings that the host frontend can actually apply or persist coherently, such as fullscreen, `vsync`, integer or letterboxed presentation policy, window size, mute, host volume, or performance-HUD visibility, instead of surfacing inert toggles that do not currently affect the running session. Frontend-owned settings menus may also expose explicit reset-to-default actions for host-side video, audio, or input configuration as long as those resets restore frontend defaults without inventing new core state or cartridge semantics. Frontend-side performance HUDs and timing readouts should report host-observed presentation metrics such as emulation, rendering, pacing, or audio-queue behavior rather than inventing new core timing semantics. When a frontend persists host window state such as fullscreen, it should persist the final observed host state on shutdown rather than assuming every state change came through a frontend-owned toggle path. For battery-backed cartridge persistence, frontend-owned flush policy may legitimately include host-timed debounce behavior plus mandatory lifecycle flushes on shutdown or ROM replacement, because those scheduling choices are host UX concerns rather than cartridge hardware semantics. If a frontend exposes a manual cartridge-save action in an overlay menu, it should treat that action as a frontend UX surface tied to the active save policy and may hide it entirely when automatic flush policy already makes the manual action redundant. That session contract may represent "no cartridge loaded" for interactive frontends, and those frontends may keep the root overlay modal as a launcher until a cartridge is selected, but that idle host state should remain a frontend policy instead of becoming a second startup mode inside `gb-core`.
+- Frontend crates should adapt one shared core-facing session contract while owning host-only concerns such as boot-ROM search paths, battery-save paths and flush policy, video presentation, frame pacing / `vsync` policy, audio backend configuration, frontend-owned settings persistence, preferred host-device selection, remappable input bindings, native file dialogs plus their ROM-selection filters, recent-ROM history, user-facing error or warning message boxes, compact performance HUDs, and overlay menus.
+- Frontend-owned overlay menus may expose hierarchical settings surfaces such as video, audio, input, system, and recent-ROM launch actions, including binding-capture flows for keyboard joypad bindings, keyboard menu bindings, frontend hotkeys, SDL gamepad button bindings, or SDL gamepad menu bindings, but they must remain host policy rather than leaking UI concepts into the core.
+- Frontend-owned menu controls should remain distinct from emulated joypad bindings so that host UI navigation stays manageable even after the user remaps emulated controls.
+- Frontend-owned video and audio submenu actions should only expose settings that the host frontend can actually apply or persist coherently, such as fullscreen, `vsync`, integer or letterboxed presentation policy, window size, mute, host volume, or performance-HUD visibility, instead of surfacing inert toggles that do not affect the running session.
+- Frontend-owned settings menus may expose reset-to-default actions for host-side video, audio, or input configuration as long as those resets restore frontend defaults without inventing new core state or cartridge semantics.
+- Frontend-side performance HUDs and timing readouts should report host-observed presentation metrics such as emulation, rendering, pacing, or audio-queue behavior rather than inventing new core timing semantics.
+- When a frontend persists host window state such as fullscreen, it should persist the final observed host state on shutdown rather than assuming every state change came through a frontend-owned toggle path.
+- For battery-backed cartridge persistence, frontend-owned flush policy may include host-timed debounce behavior plus mandatory lifecycle flushes on shutdown or ROM replacement, because those scheduling choices are host UX concerns rather than cartridge hardware semantics.
+- If a frontend exposes a manual cartridge-save action in an overlay menu, it should treat that action as a frontend UX surface tied to the active save policy and may hide it entirely when automatic flush policy already makes the manual action redundant.
+- The shared session contract may represent "no cartridge loaded" for interactive frontends, and those frontends may keep the root overlay modal as a launcher until a cartridge is selected, but that idle host state should remain a frontend policy instead of becoming a second startup mode inside `gb-core`.
 - That same host/core session contract should also keep ROM replacement explicit: replacing the loaded cartridge on an existing `Machine` must restart the emulated hardware and scheduler timeline from the configured startup path rather than injecting a new cartridge into stale boot, timer, or scheduler state, while host-owned controls such as debugger configuration, serial-peer choice, and current effective joypad input may remain outside that hardware reset boundary.
 - Frontend host input adapters may aggregate multiple host sources such as keyboard and SDL gamepad state, and they may refresh host controller state explicitly after pumping host events when that reduces backend-specific latency or event-queue quirks, but they must only publish effective `JoypadButton` transitions into the core rather than bypassing joypad-owned hardware semantics or writing precomposed `JOYP` state. Frontend-owned active-device focus, preferred-device locking, and persisted preferred-controller identity are acceptable host policies as long as they stay entirely on the host side and still reduce to ordinary `JoypadButton` transitions at the core boundary.
 

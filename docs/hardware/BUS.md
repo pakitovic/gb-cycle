@@ -8,8 +8,7 @@ Own address decoding, subsystem routing, and visible memory access ordering.
 
 The bus is not just a convenience table. It is where address ownership, access restrictions, and observable ordering become explicit.
 
-Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM, and MMIO as distinct controlled regions rather than one rigid flat memory block.
-Address alone is not enough: the bus must also consider the current temporal hardware state such as PPU mode, LCD enable state, DMA activity, boot ROM mapping, console model, and later CGB banking or speed mode.
+Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM, and MMIO as distinct controlled regions rather than one rigid flat memory block. Address alone is not enough: the bus must also consider the current temporal hardware state such as PPU mode, LCD enable state, DMA activity, boot ROM mapping, console model, and later CGB banking or speed mode.
 
 ## Responsibilities
 

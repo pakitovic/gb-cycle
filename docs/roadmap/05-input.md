@@ -53,110 +53,26 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 #### Recommended sequencing inside Phase 5
 
-Phase `5` should be executed as narrow subphases. No subphase counts as closed
-unless its local acceptance criteria land together with focused automated
-coverage and preserve the existing scheduler, bus, and interrupt-controller
-contracts instead of reopening them through peripheral-local shortcuts.
+Phase `5` should be executed as narrow subphases. No subphase counts as closed unless its local acceptance criteria land together with focused automated coverage and preserve the existing scheduler, bus, and interrupt-controller contracts instead of reopening them through peripheral-local shortcuts.
 
 1. `Phase 5.1` - Joypad register closure and hardware-facing input boundary.
-   Acceptance criteria: `JOYP` remains joypad-owned as a mixed register, the
-   frontend-facing API only updates hardware-facing button state instead of
-   precomposed `FF00` bytes, bits `7-6` read back high, `0x30` reads back with
-   low nibble `0xF`, and selecting one or both rows resolves the low nibble
-   from one explicit `2x4` matrix rule rather than from row-priority shortcuts.
-   Validation gate: focused unit and MMIO integration tests cover row
-   selection, active-low semantics, simultaneous-row combination, direct-boot
-   startup state, and the guarantee that selection writes affect readback on
-   the same shared machine timeline.
-   Status: done in the current branch baseline for both the core boundary and
-   the desktop host adapter. `gb-desktop` now aggregates keyboard plus SDL3
-   gamepad state on the host side, including active-pad hotplug handoff, while
-   only forwarding effective `JoypadButton` transitions into `gb-core` instead
-   of reintroducing frontend-owned `JOYP` composition.
-2. `Phase 5.2` - Joypad visible-edge interrupt generation through the shared
-   interrupt path.
-   Acceptance criteria: joypad tracks the previously visible low nibble, raises
-   a request only on visible `High -> Low` transitions after row selection is
-   applied, repeated visible transitions can request multiple interrupts, and
-   the request enters `IF` only through the shared interrupt controller.
-   Validation gate: focused unit and integration tests cover selected-row,
-   unselected-row, both-rows-selected, and selection-write-created edge cases,
-   plus machine-level verification that `IF` changes only when the visible
-   `JOYP` low nibble actually transitions.
-   Status: done in the current branch baseline. `Joypad` now owns previous
-   visible-low-nibble tracking, both `FF00` selection writes and hardware-side
-   button transitions feed the same edge detector, and the resulting request is
-   drained into `IF` only during scheduler phase `8` aggregation rather than by
-   direct `FF00` or frontend-side mutation of the interrupt controller.
-3. `Phase 5.3` - Joypad-driven `STOP` wake closure on the shared scheduler
-   timeline.
-   Acceptance criteria: the repo's current DMG-family `STOP` wake policy
-   remains explicit as selection-independent `released -> pressed` wake on any
-   hardware-facing button, that wake originates from the joypad subsystem path
-   rather than from frontend or CPU bypasses, and wake ordering stays distinct
-   from joypad-interrupt generation even when both happen around the same input
-   change.
-   Validation gate: focused CPU/joypad integration tests cover `STOP` wake with
-   no visible joypad IRQ, `STOP` wake plus later interrupt servicing, repeated
-   wake-producing input transitions, and one negative case proving that a
-   non-transition or already-held button does not produce an extra wake event.
-   Status: done in the current branch baseline. `STOP` wake continues to come
-   only from the joypad-owned released-to-pressed path, remains selection
-   independent across the `8` hardware-facing buttons, and stays temporally
-   distinct from any same-input-change joypad interrupt request or later CPU
-   interrupt service.
+   Acceptance criteria: `JOYP` remains joypad-owned as a mixed register, the frontend-facing API only updates hardware-facing button state instead of precomposed `FF00` bytes, bits `7-6` read back high, `0x30` reads back with low nibble `0xF`, and selecting one or both rows resolves the low nibble from one explicit `2x4` matrix rule rather than from row-priority shortcuts. Validation gate: focused unit and MMIO integration tests cover row selection, active-low semantics, simultaneous-row combination, direct-boot startup state, and the guarantee that selection writes affect readback on the same shared machine timeline.
+   Status: done in the current branch baseline for both the core boundary and the desktop host adapter. `gb-desktop` now aggregates keyboard plus SDL3 gamepad state on the host side, including active-pad hotplug handoff, while only forwarding effective `JoypadButton` transitions into `gb-core` instead of reintroducing frontend-owned `JOYP` composition.
+2. `Phase 5.2` - Joypad visible-edge interrupt generation through the shared interrupt path.
+   Acceptance criteria: joypad tracks the previously visible low nibble, raises a request only on visible `High -> Low` transitions after row selection is applied, repeated visible transitions can request multiple interrupts, and the request enters `IF` only through the shared interrupt controller. Validation gate: focused unit and integration tests cover selected-row, unselected-row, both-rows-selected, and selection-write-created edge cases, plus machine-level verification that `IF` changes only when the visible `JOYP` low nibble actually transitions.
+   Status: done in the current branch baseline. `Joypad` now owns previous visible-low-nibble tracking, both `FF00` selection writes and hardware-side button transitions feed the same edge detector, and the resulting request is drained into `IF` only during scheduler phase `8` aggregation rather than by direct `FF00` or frontend-side mutation of the interrupt controller.
+3. `Phase 5.3` - Joypad-driven `STOP` wake closure on the shared scheduler timeline.
+   Acceptance criteria: the repo's current DMG-family `STOP` wake policy remains explicit as selection-independent `released -> pressed` wake on any hardware-facing button, that wake originates from the joypad subsystem path rather than from frontend or CPU bypasses, and wake ordering stays distinct from joypad-interrupt generation even when both happen around the same input change. Validation gate: focused CPU/joypad integration tests cover `STOP` wake with no visible joypad IRQ, `STOP` wake plus later interrupt servicing, repeated wake-producing input transitions, and one negative case proving that a non-transition or already-held button does not produce an extra wake event.
+   Status: done in the current branch baseline. `STOP` wake continues to come only from the joypad-owned released-to-pressed path, remains selection independent across the `8` hardware-facing buttons, and stays temporally distinct from any same-input-change joypad interrupt request or later CPU interrupt service.
 4. `Phase 5.4` - Serial MMIO closure and explicit transfer-state baseline.
-   Acceptance criteria: `SB` and `SC` stay serial-owned, `SC.7` means
-   transfer-requested or in-progress rather than instant completion, DMG
-   non-functional bits still read high, the serial subsystem exposes one
-   explicit in-flight transfer shape with bit count and clock-source state, and
-   startup-state injection continues to come from the centralized boot path.
-   Validation gate: focused unit and MMIO integration tests cover `SB` / `SC`
-   readback, transfer arming without instant completion, internal versus
-   external clock selection, direct-boot startup state, and snapshot/debug
-   visibility of the new transfer state.
-   Status: done in the current branch baseline. `SB` / `SC` remain
-   serial-owned, `SC.7` still means transfer requested rather than completed,
-   and the serial snapshot/debug surface now exposes one explicit pending
-   transfer shape with selected clock mode plus `bits_shifted = 0` ahead of the
-   later bit-level engine work in `Phase 5.5`.
-5. `Phase 5.5` - Bit-level serial engine, peer boundary, and completion-driven
-   IRQ timing.
-   Acceptance criteria: DMG master mode advances one serial shift per internal
-   clock pulse at `8192` Hz on the T-cycle timeline, slave mode does not
-   advance without externally injected clocks, disconnected peers yield incoming
-   `1` bits tending toward `0xFF`, `SB` evolves during transfer rather than
-   jumping at the end, and the serial interrupt is requested only when the
-   eighth shift clears `SC.7`.
-   Validation gate: focused unit and integration tests cover intermediate `SB`
-   states, master-mode timing, slave-mode pending state, disconnected-peer
-   behavior, one loopback or scripted-peer case, and the same-cycle coherence
-   of final `SB`, cleared `SC.7`, and serial `IF` request on transfer
-   completion.
-   Status: done in the current branch baseline. DMG master mode now shifts one
-   bit every `512` T-cycles (`8192` Hz), slave mode remains pending without
-   externally queued clocks, disconnected input tends toward `0xFF`, loopback
-   is explicit through the serial peer boundary, and completion clears `SC.7`
-   while requesting the serial interrupt in the same scheduler-visible cycle.
+   Acceptance criteria: `SB` and `SC` stay serial-owned, `SC.7` means transfer-requested or in-progress rather than instant completion, DMG non-functional bits still read high, the serial subsystem exposes one explicit in-flight transfer shape with bit count and clock-source state, and startup-state injection continues to come from the centralized boot path. Validation gate: focused unit and MMIO integration tests cover `SB` / `SC` readback, transfer arming without instant completion, internal versus external clock selection, direct-boot startup state, and snapshot/debug visibility of the new transfer state.
+   Status: done in the current branch baseline. `SB` / `SC` remain serial-owned, `SC.7` still means transfer requested rather than completed, and the serial snapshot/debug surface now exposes one explicit pending transfer shape with selected clock mode plus `bits_shifted = 0` ahead of the later bit-level engine work in `Phase 5.5`.
+5. `Phase 5.5` - Bit-level serial engine, peer boundary, and completion-driven IRQ timing.
+   Acceptance criteria: DMG master mode advances one serial shift per internal clock pulse at `8192` Hz on the T-cycle timeline, slave mode does not advance without externally injected clocks, disconnected peers yield incoming `1` bits tending toward `0xFF`, `SB` evolves during transfer rather than jumping at the end, and the serial interrupt is requested only when the eighth shift clears `SC.7`. Validation gate: focused unit and integration tests cover intermediate `SB` states, master-mode timing, slave-mode pending state, disconnected-peer behavior, one loopback or scripted-peer case, and the same-cycle coherence of final `SB`, cleared `SC.7`, and serial `IF` request on transfer completion.
+   Status: done in the current branch baseline. DMG master mode now shifts one bit every `512` T-cycles (`8192` Hz), slave mode remains pending without externally queued clocks, disconnected input tends toward `0xFF`, loopback is explicit through the serial peer boundary, and completion clears `SC.7` while requesting the serial interrupt in the same scheduler-visible cycle.
 6. `Phase 5.6` - Traceability, regression assets, and phase closure.
-   Acceptance criteria: scheduler-visible traces expose joypad selection/input
-   edges, joypad IRQ requests, `STOP` wake eligibility, serial start/progress /
-   completion, and peer-driven external-clock events; the phase closes only
-   once the resulting peripheral behavior is covered by targeted unit tests,
-   subsystem integration tests, and retained artifacts where timing visibility
-   matters.
-   Validation gate: phase-level regression tests retain at least one
-   joypad-and-`STOP` timing artifact and one serial timing artifact, and any
-   timing-sensitive open question is either cross-checked against a trusted
-   oracle or recorded immediately as a roadmap TODO instead of being carried
-   informally.
-   Status: done in the current branch baseline. Scheduler-visible traces now
-   expose joypad state during interrupt aggregation and CPU wake evaluation,
-   serial progress during autonomous-peripheral ticks, and retained Phase `5`
-   trace fixtures now lock one joypad-plus-`STOP` chronology and one
-   peer-driven external-clock serial chronology without introducing any new
-   timer-driven open question that would force the deferred Phase `2.7`
-   `TIMA` / `TMA` arbitration work into this phase.
+   Acceptance criteria: scheduler-visible traces expose joypad selection/input edges, joypad IRQ requests, `STOP` wake eligibility, serial start/progress /completion, and peer-driven external-clock events; the phase closes only once the resulting peripheral behavior is covered by targeted unit tests, subsystem integration tests, and retained artifacts where timing visibility matters. Validation gate: phase-level regression tests retain at least one joypad-and-`STOP` timing artifact and one serial timing artifact, and any timing-sensitive open question is either cross-checked against a trusted oracle or recorded immediately as a roadmap TODO instead of being carried informally.
+   Status: done in the current branch baseline. Scheduler-visible traces now expose joypad state during interrupt aggregation and CPU wake evaluation, serial progress during autonomous-peripheral ticks, and retained Phase `5` trace fixtures now lock one joypad-plus-`STOP` chronology and one peer-driven external-clock serial chronology without introducing any new timer-driven open question that would force the deferred Phase `2.7` `TIMA` / `TMA` arbitration work into this phase.
 
 #### Joypad implementation breakdown
 

@@ -8,8 +8,7 @@ Own internal memory regions and the backing storage behind WRAM, HRAM, and their
 
 Memory should reflect distinct hardware regions, not a single flat array with ad hoc exceptions.
 
-DMG may expose only simple WRAM behavior today, but the overall memory architecture should leave room for future bank-selectable regions where the hardware family later requires them.
-VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions, aliasing, and backing storage rather than complex MMIO semantics.
+DMG may expose only simple WRAM behavior today, but the overall memory architecture should leave room for future bank-selectable regions where the hardware family later requires them. VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions, aliasing, and backing storage rather than complex MMIO semantics.
 
 ## Responsibilities
 

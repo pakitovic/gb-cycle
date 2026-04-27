@@ -57,6 +57,13 @@ Read only the `docs/` files relevant to the task at hand. Do not preload documen
 - Separate mutable state from derived logic where practical.
 - Avoid global singletons, implicit temporal logic, circular subsystem dependencies, and premature optimization that hides the hardware model.
 
+## Documentation style
+
+- Do not hard-wrap prose in Markdown docs.
+- Keep each paragraph, bullet item, numbered item, and roadmap field (`Scope:`, `Acceptance criteria:`, `Status:`, etc.) on one physical line.
+- Use blank lines, bullets, or sub-bullets for logical separation.
+- Preserve fenced code blocks, Markdown tables, and intentional standalone formulas.
+
 ## Workflow checklist
 
 - Identify the owning subsystem.

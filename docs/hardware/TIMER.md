@@ -6,8 +6,7 @@ Own `DIV`, `TIMA`, `TMA`, `TAC`, their internal timing state, overflow behavior,
 
 ## Hardware model
 
-Model the timer as edge-sensitive hardware, not as a periodic software counter incremented every few instructions.
-The source of truth should be an internal `16`-bit system counter advanced by the shared master clock, with `DIV` and TIMA-driving events derived from that counter rather than maintained as unrelated software counters.
+Model the timer as edge-sensitive hardware, not as a periodic software counter incremented every few instructions. The source of truth should be an internal `16`-bit system counter advanced by the shared master clock, with `DIV` and TIMA-driving events derived from that counter rather than maintained as unrelated software counters.
 
 ## Responsibilities
 

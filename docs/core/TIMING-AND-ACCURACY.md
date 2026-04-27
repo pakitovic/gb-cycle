@@ -54,6 +54,8 @@ When implementing timing:
 - Make temporal edges visible in code and tests.
 - Do not replace hardware ordering with convenience batching unless the behavior is proven equivalent for the target accuracy.
 - Favor clarity and testability over shortcuts that obscure the phase model.
+- Treat any local simplification that contradicts the T-cycle model or dot-by-dot PPU as explicit documented technical debt, not as a normalized convenience.
+- When implementation ease conflicts with temporal fidelity, preserve temporal fidelity as long as the resulting model remains maintainable and observable.
 - Use T-cycles as the fundamental execution unit for the core timing model.
 - Use dot or T-cycle level reasoning as the baseline timing vocabulary for the core.
 - The shared T-cycle timeline governs powered-on hardware execution; it does not imply that battery-backed off-session progression, such as `MBC3` RTC advance while the console is off, is derived from CPU T-cycles.

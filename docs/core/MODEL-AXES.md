@@ -26,14 +26,10 @@ HostPlatform   = which outer host shell surrounds the shared GB core
 
 Examples:
 
-- `ConsoleModel::Dmg` + `OperatingMode::Dmg` + `HostPlatform::Handheld`
-  = ordinary DMG
-- `ConsoleModel::Cgb` + `OperatingMode::Cgb`
-  = native CGB
-- `ConsoleModel::Cgb` + `OperatingMode::CgbCompatibility`
-  = CGB-family silicon running monochrome software-visible mode
-- `HostPlatform::Sgb1` or `HostPlatform::Sgb2`
-  = future SGB shell around the shared GB core, not a different GB silicon family
+- `ConsoleModel::Dmg` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = ordinary DMG
+- `ConsoleModel::Cgb` + `OperatingMode::Cgb` = native CGB
+- `ConsoleModel::Cgb` + `OperatingMode::CgbCompatibility` = CGB-family silicon running monochrome software-visible mode
+- `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
 
 `CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
 

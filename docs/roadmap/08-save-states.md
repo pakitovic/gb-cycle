@@ -6,8 +6,7 @@
 
 #### Goal
 
-Establish one explicit full-emulator save-state system, separate from cartridge persistence, only after the hardware subsystems already own their live runtime state and before final DMG closure depends on save/load determinism.
-Phase `6` cartridge persistence is intentionally not a substitute for this whole-machine snapshot block.
+Establish one explicit full-emulator save-state system, separate from cartridge persistence, only after the hardware subsystems already own their live runtime state and before final DMG closure depends on save/load determinism. Phase `6` cartridge persistence is intentionally not a substitute for this whole-machine snapshot block.
 
 #### Modules involved
 

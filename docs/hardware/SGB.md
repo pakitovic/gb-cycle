@@ -6,8 +6,7 @@ Track future Super Game Boy and Super Game Boy 2 support boundaries without poll
 
 ## Hardware model
 
-SGB should be treated as a future extension layer with explicit boundaries, not as ad hoc special cases inside unrelated subsystems.
-Model it as a host-shell axis around the shared GB core, not as a second DMG emulator and not as a replacement for the future CGB axis.
+SGB should be treated as a future extension layer with explicit boundaries, not as ad hoc special cases inside unrelated subsystems. Model it as a host-shell axis around the shared GB core, not as a second DMG emulator and not as a replacement for the future CGB axis.
 
 ## Responsibilities
 
