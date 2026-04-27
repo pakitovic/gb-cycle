@@ -12,6 +12,8 @@ pub mod link;
 pub mod machine;
 pub mod model;
 pub mod ppu;
+pub mod rewind;
+pub mod save_state;
 pub mod scheduler;
 pub mod serial;
 pub mod timer;
@@ -89,6 +91,22 @@ pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
     PpuBusState, PpuFramebufferLayerSource, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite,
     PpuSnapshot, PpuStartupState, PpuStatus, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
+};
+pub use rewind::{
+    DEFAULT_REWIND_HISTORY_FRAMES, DEFAULT_REWIND_HISTORY_T_CYCLES,
+    DEFAULT_REWIND_MAX_ESTIMATED_BYTES, DMG_T_CYCLES_PER_FRAME, DMG_T_CYCLES_PER_SECOND,
+    MachineRewindBuffer, MachineRewindCaptureKind, MachineRewindConfig,
+    MachineRewindFrameBoundaryTracker, MachineRewindFramePosition, MachineRewindRestore,
+    MachineRewindRestoreError, MachineRewindStats, MachineRewindSubframeCadence,
+    machine_is_rewind_frame_boundary, machine_rewind_frame_position,
+};
+pub use save_state::{
+    ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState,
+    CartridgeRuntimeSaveStateError, CpuSaveState, DmaSaveState, ExternalPortSaveState,
+    InterruptSaveState, JoypadSaveState, MachineBootSaveStateMetadata,
+    MachineCartridgeSaveStateMetadata, MachineSaveState, MachineSaveStateMetadata,
+    MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint, SchedulerSaveState,
+    SerialSaveState, TimerSaveState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,

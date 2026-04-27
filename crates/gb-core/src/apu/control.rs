@@ -2,7 +2,7 @@ use super::common::{NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT};
 use super::output::OutputPathState;
 use super::{Apu, ApuOutputSnapshot, WaveRamStartupPolicy};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ApuStartupState {
     pub powered: bool,
     pub nr10: u8,
@@ -30,7 +30,7 @@ pub struct ApuStartupState {
     pub wave_ram_startup_policy: WaveRamStartupPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuRegisterWriteObservation {
     pub address: u16,
     pub value: u8,
@@ -38,7 +38,7 @@ pub struct ApuRegisterWriteObservation {
     pub after: ApuRegisterWriteState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuRegisterWriteState {
     pub powered: bool,
     pub nr50: u8,

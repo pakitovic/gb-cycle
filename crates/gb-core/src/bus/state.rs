@@ -3,12 +3,12 @@ use crate::ppu::PpuBusState;
 
 use super::map::BusAddressInfo;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BusStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusRequester {
     Cpu,
     Dma,
@@ -21,13 +21,13 @@ pub enum BusRequester {
 
 pub type BusMaster = BusRequester;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusAccessKind {
     Read,
     Write,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusBlockReason {
     DmaExternalBusConflict,
     DmaVideoBusConflict,
@@ -39,7 +39,7 @@ pub enum BusBlockReason {
     UnusableRegionDuringDmaVideoBusConflict,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusAccessDisposition {
     Allowed,
     BlockedRead { value: u8, reason: BusBlockReason },
@@ -66,7 +66,9 @@ impl BusAccessDisposition {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DmaCpuAccessPolicy {
     #[default]
     Unrestricted,
@@ -74,13 +76,15 @@ pub enum DmaCpuAccessPolicy {
     VideoBusBlocked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DmaMemoryRegionImpact {
     Oam,
     Vram,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct DmaBusState {
     cpu_access_policy: DmaCpuAccessPolicy,
     active_region: Option<DmaMemoryRegionImpact>,
@@ -130,7 +134,9 @@ impl DmaBusState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct BootRomBusState {
     low_window_mapped: bool,
     cgb_upper_window_mapped: bool,
@@ -176,7 +182,9 @@ impl BootRomBusState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct BusArbitrationState {
     pub boot_rom: BootRomBusState,
     pub ppu: PpuBusState,
@@ -200,7 +208,7 @@ impl BusArbitrationState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BusAccessResolution {
     requester: BusRequester,
     kind: BusAccessKind,

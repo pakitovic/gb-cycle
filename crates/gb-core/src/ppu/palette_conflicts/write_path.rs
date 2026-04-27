@@ -1,12 +1,12 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgPaletteWritePlan {
     BgpCpuCommit(DmgBgpCpuCommitWritePlan),
     RetroactiveRecolor(DmgRetroactivePaletteWritePlan),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgRetroactivePaletteWritePlan {
     register: PpuPaletteRegister,
     transient_palette: u8,
@@ -15,7 +15,7 @@ struct DmgRetroactivePaletteWritePlan {
     delay_final_palette: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgBgpCpuCommitWriteContext {
     register: PpuPaletteRegister,
     previous_visible: u8,
@@ -31,7 +31,7 @@ impl DmgBgpCpuCommitWriteContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgBgpCpuCommitWriteCase {
     SingleLeftSpriteSecondWriteTransient {
         transient_start_x: u8,
@@ -46,7 +46,7 @@ enum DmgBgpCpuCommitWriteCase {
     Generic,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgBgpCpuCommitWritePlan {
     SingleLeftSpriteSecondWriteTransient {
         context: DmgBgpCpuCommitWriteContext,
@@ -64,7 +64,7 @@ enum DmgBgpCpuCommitWritePlan {
     Generic(DmgBgpCpuCommitGenericPlan),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgBgpCpuCommitGenericPlan {
     recorded_write: PpuDmgBgpCpuCommitWrite,
     recolor: Option<DmgRetroactivePaletteWritePlan>,
@@ -72,13 +72,13 @@ struct DmgBgpCpuCommitGenericPlan {
     bg_visible_hold: Option<DmgBgpCpuCommitBgVisibleHoldPlan>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgBgpCpuCommitOutputOverridePlan {
     palette_override: Option<u8>,
     pixels_remaining: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgBgpCpuCommitBgVisibleHoldPlan {
     palette: u8,
     bg_visible_pixels: u8,

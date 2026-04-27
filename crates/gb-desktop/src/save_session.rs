@@ -102,6 +102,11 @@ impl DesktopSaveSession {
         self.flush_policy
     }
 
+    pub fn reset_baseline_from_machine(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        self.last_saved_state = machine.cartridge().persistent_state();
+        self.pending_debounced_flush_deadline = None;
+    }
+
     pub fn maybe_flush_at_frame_boundary(
         &mut self,
         machine: &Machine<TraceSummaryBuffer>,

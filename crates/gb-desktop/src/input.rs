@@ -146,6 +146,9 @@ impl FrontendInputState {
     pub fn clear_all(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
         self.clear_keyboard(machine);
         self.clear_gamepad(machine);
+        for button in JOYPAD_BUTTONS {
+            machine.set_joypad_button_pressed(button, false);
+        }
     }
 
     fn set_source_button(
@@ -1164,6 +1167,21 @@ mod tests {
     }
 
     #[test]
+    fn clear_all_forces_machine_buttons_released_after_external_restore() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        machine.set_joypad_button_pressed(JoypadButton::Right, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Right));
+
+        input_state.clear_all(&mut machine);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+        assert!(!input_state.is_effectively_pressed(JoypadButton::Right));
+    }
+
+    #[test]
     fn gamepad_button_helpers_round_trip_supported_buttons() {
         for (binding, button) in [
             (GamepadButtonBinding::South, Button::South),
@@ -1521,7 +1539,8 @@ mod tests {
             &mut machine,
         )
         .expect("gamepad manager");
-        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        let active_before = manager.active.expect("active SDL gamepad");
+        let active_name_before = manager.active_gamepad_name().map(str::to_owned);
 
         let second = VirtualGamepad::attach("Second Pad");
         subsystem.update();
@@ -1537,7 +1556,8 @@ mod tests {
             .expect("added event");
 
         assert!(manager.has_connected_gamepad());
-        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        assert!(manager.is_active_gamepad(active_before));
+        assert_eq!(manager.active_gamepad_name(), active_name_before.as_deref());
         assert!(manager.opened.contains_key(&first.joystick_id));
         assert!(manager.opened.contains_key(&second.joystick_id));
     }
@@ -1559,11 +1579,18 @@ mod tests {
         )
         .expect("gamepad manager");
 
+        let active_before = manager.active.expect("active SDL gamepad");
+        let active_name_before = manager.active_gamepad_name().map(str::to_owned);
+        let unknown_joystick_id = (1..=10_000)
+            .map(joystick_id_from_event)
+            .find(|joystick_id| !manager.opened.contains_key(joystick_id))
+            .expect("unused SDL joystick id");
+
         manager
             .handle_event(
                 &Event::ControllerDeviceRemoved {
                     timestamp: 0,
-                    which: joystick_id_from_event(9_999).0,
+                    which: unknown_joystick_id.0,
                 },
                 &mut input_state,
                 &mut machine,
@@ -1571,8 +1598,9 @@ mod tests {
             .expect("remove event");
 
         assert!(manager.has_connected_gamepad());
-        assert!(manager.is_active_gamepad(first.joystick_id));
-        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        assert!(manager.is_active_gamepad(active_before));
+        assert_eq!(manager.active_gamepad_name(), active_name_before.as_deref());
+        assert!(manager.opened.contains_key(&first.joystick_id));
     }
 
     #[test]

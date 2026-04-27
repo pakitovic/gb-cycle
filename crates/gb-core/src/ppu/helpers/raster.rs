@@ -1,13 +1,15 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) enum PpuLcdRestartPhase {
     #[default]
     Inactive,
     FirstLineAfterEnable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuRasterState {
     Disabled,
     LcdRestartFirstLine {

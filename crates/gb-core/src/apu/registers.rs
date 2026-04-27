@@ -24,7 +24,7 @@ pub(in crate::apu) const NR52_ADDRESS: u16 = 0xFF26;
 pub(in crate::apu) const WAVE_RAM_START_ADDRESS: u16 = 0xFF30;
 pub(in crate::apu) const WAVE_RAM_END_ADDRESS: u16 = 0xFF3F;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ApuRegister {
     Nr10,
     Nr11,
@@ -51,7 +51,7 @@ pub(super) enum ApuRegister {
     Nr52,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Channel1Register {
     Nr10,
     Nr11,
@@ -60,7 +60,7 @@ pub(super) enum Channel1Register {
     Nr14,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Channel2Register {
     Nr21,
     Nr22,
@@ -68,7 +68,7 @@ pub(super) enum Channel2Register {
     Nr24,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Channel3Register {
     Nr30,
     Nr31,
@@ -77,7 +77,7 @@ pub(super) enum Channel3Register {
     Nr34,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Channel4Register {
     Nr41,
     Nr42,
@@ -85,14 +85,14 @@ pub(super) enum Channel4Register {
     Nr44,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum MasterRegister {
     Nr50,
     Nr51,
     Nr52,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ApuRegisterOwner {
     Channel1(Channel1Register),
     Channel2(Channel2Register),
@@ -102,7 +102,7 @@ pub(super) enum ApuRegisterOwner {
     Unused,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ApuMmioRegister {
     Register(ApuRegister),
     WaveRam(usize),

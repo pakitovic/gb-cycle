@@ -14,19 +14,19 @@ const DAC_FADE_FACTOR_ONE: i64 = 1 << 16;
 const DAC_OFF_FADE_T_CYCLES: u16 =
     DMG_FAMILY_APU_CAPTURE_CLOCK_HZ.div_ceil(DAC_FADE_REFERENCE_RATE_HZ) as u16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApuStereoOutputSnapshot {
     pub left: i32,
     pub right: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApuHostSample {
     pub left: i32,
     pub right: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ApuHostDcBlocker {
     charge_factor: f64,
     previous_input_left: f64,
@@ -35,19 +35,19 @@ pub struct ApuHostDcBlocker {
     previous_output_right: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuHostHpf {
     charge_model: HpfChargeModel,
     capacitor: ApuHpfCapacitorSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApuHpfCapacitorSnapshot {
     pub left: i64,
     pub right: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApuOutputSnapshot {
     pub channel_digital_outputs: [u8; CHANNEL_COUNT],
     pub channel_dac_outputs: [i32; CHANNEL_COUNT],
@@ -58,7 +58,7 @@ pub struct ApuOutputSnapshot {
     pub hpf_capacitor: ApuHpfCapacitorSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct MasterControlState {
     pub(super) powered: bool,
     pub(super) nr50: u8,
@@ -66,13 +66,13 @@ pub(super) struct MasterControlState {
     pub(super) vin_input: ApuStereoOutputSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum HpfChargeModel {
     Dmg0Dmg,
     MgbCgb,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct OutputPathState {
     pub(super) hpf_charge_model: HpfChargeModel,
     dac_off_fade_model: DacOffFadeModel,
@@ -85,12 +85,12 @@ pub(super) struct OutputPathState {
     pub(super) current_output: ApuStereoOutputSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DacOffFadeModel {
     duration_t_cycles: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 struct DacChannelState {
     current_output: i32,
     discharge_source_output: i32,

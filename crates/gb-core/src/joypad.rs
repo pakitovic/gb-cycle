@@ -3,12 +3,12 @@ use crate::scheduler::CycleContext;
 
 const SELECT_MASK: u8 = 0x30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum JoypadStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum JoypadButton {
     Right,
     Left,
@@ -20,13 +20,13 @@ pub enum JoypadButton {
     Start,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct JoypadStartupState {
     pub selection_bits: u8,
     pub pressed_mask: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Joypad {
     console_model: ConsoleModel,
     status: JoypadStatus,
@@ -37,7 +37,24 @@ pub struct Joypad {
     stop_wake_pending: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct JoypadSaveState {
+    console_model: ConsoleModel,
+    status: JoypadStatus,
+    selection_bits: u8,
+    pressed_mask: u8,
+    previous_visible_low_nibble: u8,
+    interrupt_request_pending: bool,
+    stop_wake_pending: bool,
+}
+
+impl JoypadSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JoypadSnapshot {
     pub console_model: ConsoleModel,
     pub status: JoypadStatus,
@@ -64,6 +81,28 @@ impl Joypad {
 
     pub fn status(&self) -> JoypadStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> JoypadSaveState {
+        JoypadSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            selection_bits: self.selection_bits,
+            pressed_mask: self.pressed_mask,
+            previous_visible_low_nibble: self.previous_visible_low_nibble,
+            interrupt_request_pending: self.interrupt_request_pending,
+            stop_wake_pending: self.stop_wake_pending,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &JoypadSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.selection_bits = state.selection_bits;
+        self.pressed_mask = state.pressed_mask;
+        self.previous_visible_low_nibble = state.previous_visible_low_nibble;
+        self.interrupt_request_pending = state.interrupt_request_pending;
+        self.stop_wake_pending = state.stop_wake_pending;
     }
 
     pub fn read_p1(&self) -> u8 {

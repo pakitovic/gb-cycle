@@ -4,7 +4,7 @@ use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
     DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
     GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    MenuKeyboardBindings,
+    MenuKeyboardBindings, RewindOptions,
 };
 use std::time::{Duration, Instant};
 
@@ -34,10 +34,14 @@ const MENU_SCROLL_INDICATOR_BOTTOM_Y: usize =
 const HUD_PANEL_X: usize = 4;
 const HUD_PANEL_Y: usize = 4;
 const HUD_PANEL_WIDTH: usize = 82;
-const HUD_PANEL_HEIGHT: usize = 44;
+const HUD_PANEL_HEIGHT: usize = 62;
 const HUD_TEXT_X: usize = HUD_PANEL_X + 5;
 const HUD_TEXT_Y: usize = HUD_PANEL_Y + 5;
 const HUD_LINE_HEIGHT: usize = GLYPH_HEIGHT + 2;
+const REWIND_INDICATOR_TEXT: &str = "<< REW";
+const REWIND_INDICATOR_MARGIN: usize = 4;
+const REWIND_INDICATOR_PADDING_X: usize = 4;
+const REWIND_INDICATOR_PADDING_Y: usize = 4;
 
 const OVERLAY_DIM_FACTOR_NUMERATOR: u16 = 1;
 const OVERLAY_DIM_FACTOR_DENOMINATOR: u16 = 3;
@@ -59,12 +63,16 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 11] = [
+const ROOT_MENU_ITEMS: [MenuItem; 15] = [
     MenuItem::CameraLive,
     MenuItem::CameraImage,
     MenuItem::CameraReset,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
+    MenuItem::SaveState,
+    MenuItem::LoadState,
+    MenuItem::StateSlot,
+    MenuItem::StateAutoloadSlot,
     MenuItem::VideoMenu,
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
@@ -155,12 +163,19 @@ const KEYBOARD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::KeyboardMenuCancel,
     MenuItem::Return,
 ];
-const HOTKEYS_MENU_ITEMS: [MenuItem; 6] = [
+const HOTKEYS_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::HotkeyPause,
+    MenuItem::HotkeySaveState,
+    MenuItem::HotkeyLoadState,
+    MenuItem::HotkeyStateSlot1,
+    MenuItem::HotkeyStateSlot2,
+    MenuItem::HotkeyStateSlot3,
+    MenuItem::HotkeyStateSlot4,
+    MenuItem::HotkeyRewind,
+    MenuItem::HotkeySaveBattery,
     MenuItem::HotkeyReset,
     MenuItem::HotkeyFullscreen,
     MenuItem::HotkeyPerformanceHud,
-    MenuItem::HotkeySaveBattery,
     MenuItem::Return,
 ];
 const GAMEPAD_MENU_ITEMS: [MenuItem; 11] = [
@@ -183,13 +198,23 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 7] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 8] = [
     MenuItem::ConsoleModel,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
     MenuItem::BootRomMenu,
     MenuItem::SaveMenu,
+    MenuItem::RewindMenu,
     MenuItem::Reset,
+    MenuItem::Return,
+];
+const REWIND_MENU_ITEMS: [MenuItem; 7] = [
+    MenuItem::RewindEnabled,
+    MenuItem::RewindHistory,
+    MenuItem::RewindSubframes,
+    MenuItem::RewindSpeed,
+    MenuItem::RewindMemory,
+    MenuItem::RewindDefaults,
     MenuItem::Return,
 ];
 const BOOT_ROM_MENU_ITEMS: [MenuItem; 5] = [
@@ -224,6 +249,10 @@ pub enum MenuAction {
     OpenRom,
     OpenRecentRom(usize),
     ClearRecentList,
+    SaveState,
+    LoadState,
+    CycleStateSlot,
+    CycleStateAutoloadSlot,
     SaveBattery,
     ExportSave,
     ImportSave,
@@ -234,6 +263,12 @@ pub enum MenuAction {
     CycleConsoleModel,
     CycleStartupMode,
     CycleExecutionMode,
+    ToggleRewindEnabled,
+    CycleRewindHistory,
+    CycleRewindSubframes,
+    CycleRewindSpeed,
+    CycleRewindMemory,
+    ResetRewindDefaults,
     ClearBootRomPath,
     SelectBootRomFilePath,
     SelectBootRomDirectoryPath,
@@ -362,7 +397,14 @@ pub enum KeyboardBindingTarget {
     Select,
     Start,
     Pause,
+    SaveState,
+    LoadState,
+    StateSlot1,
+    StateSlot2,
+    StateSlot3,
+    StateSlot4,
     Reset,
+    Rewind,
     ToggleFullscreen,
     TogglePerformanceHud,
     SaveBattery,
@@ -405,6 +447,31 @@ enum PendingBindingCapture {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RewindHudSnapshot {
+    pub supported: bool,
+    pub enabled: bool,
+    pub rewinding: bool,
+    pub snapshot_count: usize,
+    pub history_seconds: f64,
+    pub accounted_bytes: usize,
+    pub max_bytes: usize,
+}
+
+impl Default for RewindHudSnapshot {
+    fn default() -> Self {
+        Self {
+            supported: false,
+            enabled: false,
+            rewinding: false,
+            snapshot_count: 0,
+            history_seconds: 0.0,
+            accounted_bytes: 0,
+            max_bytes: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PerformanceHudSnapshot {
     pub fps: f64,
     pub speed_percent: f64,
@@ -413,6 +480,7 @@ pub struct PerformanceHudSnapshot {
     pub render_time_ms: f64,
     pub pacing_time_ms: f64,
     pub audio_queue_ms: Option<f64>,
+    pub rewind: RewindHudSnapshot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,6 +517,13 @@ pub struct MenuPresentation {
     pub manual_save_available: bool,
     pub external_save_available: bool,
     pub external_save_import_available: bool,
+    pub machine_state_available: bool,
+    pub machine_state_load_available: bool,
+    pub machine_state_slot: u8,
+    pub machine_state_autoload_slot: Option<u8>,
+    pub rewind_supported: bool,
+    pub rewind_options: RewindOptions,
+    pub rewind_available: bool,
     pub any_dialog_pending: bool,
     pub cartridge_pocket_camera_supported: bool,
     pub pocket_camera_live_enabled: bool,
@@ -471,6 +546,10 @@ pub struct MenuPresentation {
 impl MenuPresentation {
     fn item_visible(self, item: MenuItem) -> bool {
         match item {
+            MenuItem::SaveState
+            | MenuItem::LoadState
+            | MenuItem::StateSlot
+            | MenuItem::StateAutoloadSlot => self.rom_loaded,
             MenuItem::SaveBattery => self.manual_save_available,
             MenuItem::CameraImage | MenuItem::CameraLive | MenuItem::CameraReset => {
                 self.cartridge_pocket_camera_supported
@@ -496,6 +575,17 @@ impl MenuPresentation {
     fn item_enabled(self, item: MenuItem) -> bool {
         match item {
             MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
+            MenuItem::SaveState => {
+                self.rom_loaded && self.machine_state_available && !self.any_dialog_pending
+            }
+            MenuItem::LoadState => {
+                self.rom_loaded
+                    && self.machine_state_available
+                    && self.machine_state_load_available
+                    && !self.any_dialog_pending
+            }
+            MenuItem::StateSlot => self.rom_loaded,
+            MenuItem::StateAutoloadSlot => self.rom_loaded && !self.any_dialog_pending,
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -567,7 +657,14 @@ impl MenuPresentation {
             | MenuItem::KeyboardMenuConfirm
             | MenuItem::KeyboardMenuCancel
             | MenuItem::HotkeyPause
+            | MenuItem::HotkeySaveState
+            | MenuItem::HotkeyLoadState
+            | MenuItem::HotkeyStateSlot1
+            | MenuItem::HotkeyStateSlot2
+            | MenuItem::HotkeyStateSlot3
+            | MenuItem::HotkeyStateSlot4
             | MenuItem::HotkeyReset
+            | MenuItem::HotkeyRewind
             | MenuItem::HotkeyFullscreen
             | MenuItem::HotkeyPerformanceHud
             | MenuItem::HotkeySaveBattery
@@ -577,9 +674,16 @@ impl MenuPresentation {
             | MenuItem::SystemMenu
             | MenuItem::BootRomMenu
             | MenuItem::SaveMenu
+            | MenuItem::RewindMenu
             | MenuItem::ConsoleModel
             | MenuItem::StartupMode
             | MenuItem::ExecutionMode
+            | MenuItem::RewindEnabled
+            | MenuItem::RewindHistory
+            | MenuItem::RewindSubframes
+            | MenuItem::RewindSpeed
+            | MenuItem::RewindMemory
+            | MenuItem::RewindDefaults
             | MenuItem::BootRomDefaultPath
             | MenuItem::BootRomVerify
             | MenuItem::SavesEnabled
@@ -614,6 +718,13 @@ impl MenuPresentation {
         match item {
             MenuItem::OpenRom => "OPEN ROM".to_string(),
             MenuItem::RecentMenu => "OPEN RECENT".to_string(),
+            MenuItem::SaveState => "SAVE STATE".to_string(),
+            MenuItem::LoadState => "LOAD STATE".to_string(),
+            MenuItem::StateSlot => format!("STATE SLOT {}", self.machine_state_slot.clamp(1, 4)),
+            MenuItem::StateAutoloadSlot => match self.machine_state_autoload_slot {
+                Some(slot) => format!("AUTOLOAD SLOT {}", slot.clamp(1, 4)),
+                None => "AUTOLOAD OFF".to_string(),
+            },
             MenuItem::RecentRom1 => recent_rom_item_label(self.recent_rom_labels[0]),
             MenuItem::RecentRom2 => recent_rom_item_label(self.recent_rom_labels[1]),
             MenuItem::RecentRom3 => recent_rom_item_label(self.recent_rom_labels[2]),
@@ -656,6 +767,7 @@ impl MenuPresentation {
             MenuItem::GamepadMenuControls => "PAD MENU".to_string(),
             MenuItem::SystemMenu => "SYSTEM".to_string(),
             MenuItem::BootRomMenu => "BOOT ROM".to_string(),
+            MenuItem::RewindMenu => "REWIND".to_string(),
             MenuItem::ConsoleModel => match self.console_model {
                 DesktopConsoleModel::Dmg0 => "MODEL DMG0".to_string(),
                 DesktopConsoleModel::Dmg => "MODEL DMG".to_string(),
@@ -670,6 +782,30 @@ impl MenuPresentation {
                 ExecutionMode::Permissive => "MODE PERM".to_string(),
                 ExecutionMode::Experimental => "MODE EXP".to_string(),
             },
+            MenuItem::RewindEnabled => {
+                if self.rewind_options.enabled {
+                    "REWIND ON".to_string()
+                } else {
+                    "REWIND OFF".to_string()
+                }
+            }
+            MenuItem::RewindHistory => {
+                format!("HISTORY {}S", self.rewind_options.history_seconds.max(1))
+            }
+            MenuItem::RewindSubframes => {
+                if self.rewind_options.subframes_per_frame == 0 {
+                    "SUBFR OFF".to_string()
+                } else {
+                    format!("SUBFR {}", self.rewind_options.subframes_per_frame)
+                }
+            }
+            MenuItem::RewindSpeed => {
+                format!("SPEED {}X", self.rewind_options.speed_multiplier.max(1))
+            }
+            MenuItem::RewindMemory => {
+                format!("MEMORY {}M", self.rewind_options.max_memory_mib.max(1))
+            }
+            MenuItem::RewindDefaults => "DEFAULTS".to_string(),
             MenuItem::BootRomDefaultPath => {
                 if self.boot_rom_uses_default_path {
                     "BOOT AUTO ON".to_string()
@@ -960,8 +1096,47 @@ impl MenuPresentation {
             MenuItem::HotkeyPause => {
                 format!("PAUSE {}", desktop_key_label(self.hotkey_bindings.pause))
             }
+            MenuItem::HotkeySaveState => {
+                format!(
+                    "SAVE STATE {}",
+                    desktop_key_label(self.hotkey_bindings.save_state)
+                )
+            }
+            MenuItem::HotkeyLoadState => {
+                format!(
+                    "LOAD STATE {}",
+                    desktop_key_label(self.hotkey_bindings.load_state)
+                )
+            }
+            MenuItem::HotkeyStateSlot1 => {
+                format!(
+                    "STATE SLOT 1 {}",
+                    desktop_key_label(self.hotkey_bindings.state_slot_1)
+                )
+            }
+            MenuItem::HotkeyStateSlot2 => {
+                format!(
+                    "STATE SLOT 2 {}",
+                    desktop_key_label(self.hotkey_bindings.state_slot_2)
+                )
+            }
+            MenuItem::HotkeyStateSlot3 => {
+                format!(
+                    "STATE SLOT 3 {}",
+                    desktop_key_label(self.hotkey_bindings.state_slot_3)
+                )
+            }
+            MenuItem::HotkeyStateSlot4 => {
+                format!(
+                    "STATE SLOT 4 {}",
+                    desktop_key_label(self.hotkey_bindings.state_slot_4)
+                )
+            }
             MenuItem::HotkeyReset => {
                 format!("RESET {}", desktop_key_label(self.hotkey_bindings.reset))
+            }
+            MenuItem::HotkeyRewind => {
+                format!("REWIND {}", desktop_key_label(self.hotkey_bindings.rewind))
             }
             MenuItem::HotkeyFullscreen => {
                 format!(
@@ -1005,6 +1180,7 @@ enum MenuScreen {
     System,
     BootRom,
     Save,
+    Rewind,
 }
 
 impl MenuScreen {
@@ -1031,6 +1207,7 @@ impl MenuScreen {
             Self::System => "SYSTEM",
             Self::BootRom => "BOOT ROM",
             Self::Save => "SAVE",
+            Self::Rewind => "REWIND",
         }
     }
 }
@@ -1039,6 +1216,10 @@ impl MenuScreen {
 enum MenuItem {
     OpenRom,
     RecentMenu,
+    SaveState,
+    LoadState,
+    StateSlot,
+    StateAutoloadSlot,
     RecentRom1,
     RecentRom2,
     RecentRom3,
@@ -1068,6 +1249,7 @@ enum MenuItem {
     SystemMenu,
     BootRomMenu,
     SaveMenu,
+    RewindMenu,
     ConsoleModel,
     StartupMode,
     ExecutionMode,
@@ -1081,6 +1263,12 @@ enum MenuItem {
     SavePolicy,
     SaveDefaultPath,
     SaveDirectoryPath,
+    RewindEnabled,
+    RewindHistory,
+    RewindSubframes,
+    RewindSpeed,
+    RewindMemory,
+    RewindDefaults,
     Fullscreen,
     Vsync,
     WindowScale,
@@ -1133,7 +1321,14 @@ enum MenuItem {
     KeyboardMenuConfirm,
     KeyboardMenuCancel,
     HotkeyPause,
+    HotkeySaveState,
+    HotkeyLoadState,
+    HotkeyStateSlot1,
+    HotkeyStateSlot2,
+    HotkeyStateSlot3,
+    HotkeyStateSlot4,
     HotkeyReset,
+    HotkeyRewind,
     HotkeyFullscreen,
     HotkeyPerformanceHud,
     HotkeySaveBattery,
@@ -1326,6 +1521,34 @@ pub fn render_performance_hud(
             1,
         );
     }
+}
+
+pub fn render_rewind_indicator(rgb_frame: &mut [u8], frame_width: usize, frame_height: usize) {
+    let text_width = text_width(REWIND_INDICATOR_TEXT, 1);
+    let width = text_width + REWIND_INDICATOR_PADDING_X * 2;
+    let height = GLYPH_HEIGHT + REWIND_INDICATOR_PADDING_Y * 2;
+    let x = frame_width
+        .saturating_sub(width)
+        .saturating_sub(REWIND_INDICATOR_MARGIN);
+    let y = REWIND_INDICATOR_MARGIN.min(frame_height.saturating_sub(height));
+    let mut canvas = OverlayCanvas::new(rgb_frame, frame_width, frame_height);
+
+    canvas.fill_rect(x, y, width, height, HUD_PANEL_COLOR);
+    canvas.draw_rect(x, y, width, height, PANEL_BORDER_COLOR);
+    canvas.draw_rect(
+        x + 1,
+        y + 1,
+        width.saturating_sub(2),
+        height.saturating_sub(2),
+        PANEL_INNER_BORDER_COLOR,
+    );
+    canvas.draw_text(
+        x + REWIND_INDICATOR_PADDING_X,
+        y + REWIND_INDICATOR_PADDING_Y,
+        REWIND_INDICATOR_TEXT,
+        TEXT_COLOR,
+        1,
+    );
 }
 
 fn scroll_indicator_rows(direction: ScrollIndicatorDirection) -> [(usize, usize); 3] {
@@ -1626,6 +1849,10 @@ impl OverlayMenuState {
             MenuItem::RecentRom11 => Some(MenuAction::OpenRecentRom(10)),
             MenuItem::RecentRom12 => Some(MenuAction::OpenRecentRom(11)),
             MenuItem::ClearRecentList => Some(MenuAction::ClearRecentList),
+            MenuItem::SaveState => Some(MenuAction::SaveState),
+            MenuItem::LoadState => Some(MenuAction::LoadState),
+            MenuItem::StateSlot => Some(MenuAction::CycleStateSlot),
+            MenuItem::StateAutoloadSlot => Some(MenuAction::CycleStateAutoloadSlot),
             MenuItem::SaveBattery => Some(MenuAction::SaveBattery),
             MenuItem::CameraImage => Some(MenuAction::SelectCameraImage),
             MenuItem::CameraLive => Some(MenuAction::ToggleCameraLive),
@@ -1682,9 +1909,19 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::Save, presentation);
                 None
             }
+            MenuItem::RewindMenu => {
+                self.push_screen(MenuScreen::Rewind, presentation);
+                None
+            }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
+            MenuItem::RewindEnabled => Some(MenuAction::ToggleRewindEnabled),
+            MenuItem::RewindHistory => Some(MenuAction::CycleRewindHistory),
+            MenuItem::RewindSubframes => Some(MenuAction::CycleRewindSubframes),
+            MenuItem::RewindSpeed => Some(MenuAction::CycleRewindSpeed),
+            MenuItem::RewindMemory => Some(MenuAction::CycleRewindMemory),
+            MenuItem::RewindDefaults => Some(MenuAction::ResetRewindDefaults),
             MenuItem::BootRomDefaultPath => Some(MenuAction::ClearBootRomPath),
             MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
             MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
@@ -1818,9 +2055,51 @@ impl OverlayMenuState {
                 ));
                 None
             }
+            MenuItem::HotkeySaveState => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::SaveState,
+                ));
+                None
+            }
+            MenuItem::HotkeyLoadState => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::LoadState,
+                ));
+                None
+            }
+            MenuItem::HotkeyStateSlot1 => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::StateSlot1,
+                ));
+                None
+            }
+            MenuItem::HotkeyStateSlot2 => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::StateSlot2,
+                ));
+                None
+            }
+            MenuItem::HotkeyStateSlot3 => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::StateSlot3,
+                ));
+                None
+            }
+            MenuItem::HotkeyStateSlot4 => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::StateSlot4,
+                ));
+                None
+            }
             MenuItem::HotkeyReset => {
                 self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
                     KeyboardBindingTarget::Reset,
+                ));
+                None
+            }
+            MenuItem::HotkeyRewind => {
+                self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(
+                    KeyboardBindingTarget::Rewind,
                 ));
                 None
             }
@@ -1956,8 +2235,29 @@ impl OverlayMenuState {
             Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::Pause)) => {
                 Some(MenuItem::HotkeyPause)
             }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::SaveState)) => {
+                Some(MenuItem::HotkeySaveState)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::LoadState)) => {
+                Some(MenuItem::HotkeyLoadState)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::StateSlot1)) => {
+                Some(MenuItem::HotkeyStateSlot1)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::StateSlot2)) => {
+                Some(MenuItem::HotkeyStateSlot2)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::StateSlot3)) => {
+                Some(MenuItem::HotkeyStateSlot3)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::StateSlot4)) => {
+                Some(MenuItem::HotkeyStateSlot4)
+            }
             Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::Reset)) => {
                 Some(MenuItem::HotkeyReset)
+            }
+            Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::Rewind)) => {
+                Some(MenuItem::HotkeyRewind)
             }
             Some(PendingBindingCapture::Keyboard(KeyboardBindingTarget::ToggleFullscreen)) => {
                 Some(MenuItem::HotkeyFullscreen)
@@ -2110,6 +2410,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::System => &SYSTEM_MENU_ITEMS,
         MenuScreen::BootRom => &BOOT_ROM_MENU_ITEMS,
         MenuScreen::Save => &SAVE_MENU_ITEMS,
+        MenuScreen::Rewind => &REWIND_MENU_ITEMS,
     }
 }
 
@@ -2127,10 +2428,22 @@ fn desktop_key_label(key: DesktopKey) -> &'static str {
         DesktopKey::R => "R",
         DesktopKey::X => "X",
         DesktopKey::Z => "Z",
+        DesktopKey::Digit1 => "1",
+        DesktopKey::Digit2 => "2",
+        DesktopKey::Digit3 => "3",
+        DesktopKey::Digit4 => "4",
         DesktopKey::F1 => "F1",
+        DesktopKey::F2 => "F2",
+        DesktopKey::F3 => "F3",
+        DesktopKey::F4 => "F4",
         DesktopKey::F5 => "F5",
+        DesktopKey::F6 => "F6",
+        DesktopKey::F7 => "F7",
+        DesktopKey::F8 => "F8",
+        DesktopKey::F9 => "F9",
         DesktopKey::F10 => "F10",
         DesktopKey::F11 => "F11",
+        DesktopKey::F12 => "F12",
         DesktopKey::LeftShift => "L SHIFT",
         DesktopKey::RightShift => "R SHIFT",
         DesktopKey::LeftControl => "L CTRL",
@@ -2322,7 +2635,7 @@ fn compact_gamepad_name(name: &str) -> String {
     last_token[..last_token.len().min(COMPACT_MENU_LABEL_MAX_BYTES)].to_string()
 }
 
-fn performance_hud_lines(snapshot: PerformanceHudSnapshot) -> [String; 4] {
+fn performance_hud_lines(snapshot: PerformanceHudSnapshot) -> [String; 6] {
     [
         format!(
             "FPS {} {}%",
@@ -2343,11 +2656,39 @@ fn performance_hud_lines(snapshot: PerformanceHudSnapshot) -> [String; 4] {
             .audio_queue_ms
             .map(|audio_queue_ms| format!("AUD {}", hud_number(audio_queue_ms)))
             .unwrap_or_else(|| "AUD OFF".to_string()),
+        rewind_hud_status_line(snapshot.rewind),
+        rewind_hud_memory_line(snapshot.rewind),
     ]
 }
 
 fn hud_number(value: f64) -> u32 {
     value.max(0.0).round() as u32
+}
+
+fn rewind_hud_status_line(snapshot: RewindHudSnapshot) -> String {
+    if !snapshot.supported || !snapshot.enabled {
+        return "RW OFF".to_string();
+    }
+    if snapshot.snapshot_count == 0 {
+        return "RW EMPTY".to_string();
+    }
+
+    let history_tenths = (snapshot.history_seconds.max(0.0) * 10.0).round() / 10.0;
+    if snapshot.rewinding {
+        format!("RW << {history_tenths:.1}S")
+    } else {
+        format!("RW {history_tenths:.1}S {}", snapshot.snapshot_count)
+    }
+}
+
+fn rewind_hud_memory_line(snapshot: RewindHudSnapshot) -> String {
+    let used_mib = bytes_to_hud_mib(snapshot.accounted_bytes);
+    let max_mib = bytes_to_hud_mib(snapshot.max_bytes).max(1);
+    format!("MEM {used_mib}/{max_mib}M")
+}
+
+fn bytes_to_hud_mib(bytes: usize) -> u32 {
+    ((bytes as f64) / (1024.0 * 1024.0)).round().max(0.0) as u32
 }
 
 fn visible_item_count(screen: MenuScreen, presentation: MenuPresentation) -> usize {
@@ -2562,6 +2903,9 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
         '%' => [
             0b11001, 0b11010, 0b00100, 0b01000, 0b10110, 0b00110, 0b00000,
         ],
+        '<' => [
+            0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010,
+        ],
         ' ' => [0, 0, 0, 0, 0, 0, 0],
         _ => [0, 0, 0, 0, 0, 0, 0],
     }
@@ -2576,10 +2920,11 @@ mod tests {
         KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
         KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem,
         MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS,
-        RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS, SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS,
-        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, desktop_key_label, gamepad_binding_label,
-        normalized_selected_index, performance_hud_lines, previous_enabled_index,
-        render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
+        RECENT_ROM_MENU_CAPACITY, REWIND_MENU_ITEMS, ROOT_MENU_ITEMS, RewindHudSnapshot,
+        SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
+        desktop_key_label, gamepad_binding_label, glyph_rows, normalized_selected_index,
+        performance_hud_lines, previous_enabled_index, render_performance_hud,
+        render_rewind_indicator, rendered_recent_rom_item_label, scroll_indicator_rows,
         viewport_start_index, visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
@@ -2588,7 +2933,7 @@ mod tests {
         BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
         DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
         GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-        JoypadKeyboardBindings, MenuKeyboardBindings,
+        JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
     };
     use std::time::Duration;
 
@@ -2626,6 +2971,13 @@ mod tests {
             manual_save_available: false,
             external_save_available: false,
             external_save_import_available: false,
+            machine_state_available: true,
+            machine_state_load_available: true,
+            machine_state_slot: 1,
+            machine_state_autoload_slot: None,
+            rewind_supported: true,
+            rewind_options: RewindOptions::default(),
+            rewind_available: true,
             any_dialog_pending: false,
             cartridge_pocket_camera_supported: false,
             pocket_camera_live_enabled: false,
@@ -3274,9 +3626,7 @@ mod tests {
 
         select_visible_item(&mut menu, presentation, MenuItem::HotkeysMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::HotkeyPerformanceHud);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
         assert_eq!(
@@ -3396,6 +3746,15 @@ mod tests {
             render_time_ms: 1.4,
             pacing_time_ms: 3.1,
             audio_queue_ms: Some(18.2),
+            rewind: RewindHudSnapshot {
+                supported: true,
+                enabled: true,
+                rewinding: false,
+                snapshot_count: 42,
+                history_seconds: 3.24,
+                accounted_bytes: 24 * 1024 * 1024,
+                max_bytes: 256 * 1024 * 1024,
+            },
         };
 
         assert_eq!(
@@ -3405,6 +3764,8 @@ mod tests {
                 "FRM 17 EMU 12".to_string(),
                 "REN 1 PAC 3".to_string(),
                 "AUD 18".to_string(),
+                "RW 3.2S 42".to_string(),
+                "MEM 24/256M".to_string(),
             ]
         );
 
@@ -3413,6 +3774,37 @@ mod tests {
             ..snapshot
         };
         assert_eq!(performance_hud_lines(without_audio)[3], "AUD OFF");
+        assert_eq!(
+            performance_hud_lines(PerformanceHudSnapshot {
+                rewind: RewindHudSnapshot {
+                    rewinding: true,
+                    history_seconds: 1.84,
+                    ..snapshot.rewind
+                },
+                ..snapshot
+            })[4],
+            "RW << 1.8S"
+        );
+        assert_eq!(
+            performance_hud_lines(PerformanceHudSnapshot {
+                rewind: RewindHudSnapshot {
+                    snapshot_count: 0,
+                    ..snapshot.rewind
+                },
+                ..snapshot
+            })[4],
+            "RW EMPTY"
+        );
+        assert_eq!(
+            performance_hud_lines(PerformanceHudSnapshot {
+                rewind: RewindHudSnapshot {
+                    enabled: false,
+                    ..snapshot.rewind
+                },
+                ..snapshot
+            })[4],
+            "RW OFF"
+        );
     }
 
     #[test]
@@ -3457,7 +3849,13 @@ mod tests {
         assert_eq!(desktop_key_label(DesktopKey::RightShift), "R SHIFT");
         assert_eq!(desktop_key_label(DesktopKey::LeftControl), "L CTRL");
         assert_eq!(desktop_key_label(DesktopKey::RightControl), "R CTRL");
+        assert_eq!(desktop_key_label(DesktopKey::Digit1), "1");
+        assert_eq!(desktop_key_label(DesktopKey::Digit4), "4");
         assert_eq!(desktop_key_label(DesktopKey::F1), "F1");
+        assert_eq!(desktop_key_label(DesktopKey::F2), "F2");
+        assert_eq!(desktop_key_label(DesktopKey::F6), "F6");
+        assert_eq!(desktop_key_label(DesktopKey::F9), "F9");
+        assert_eq!(desktop_key_label(DesktopKey::F12), "F12");
         #[cfg(target_os = "macos")]
         {
             assert_eq!(desktop_key_label(DesktopKey::LeftAlt), "L OPT");
@@ -3481,7 +3879,7 @@ mod tests {
         }
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            6
+            10
         );
 
         let mut presentation = test_presentation();
@@ -3489,6 +3887,86 @@ mod tests {
         presentation.recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
         presentation.recent_rom_labels[1] = CompactRecentRomLabel::from_text("MARIO");
         assert_eq!(presentation.item_label(MenuItem::RecentRom2), "MARIO");
+    }
+
+    #[test]
+    fn machine_state_root_items_label_cycle_and_disable_when_unavailable() {
+        let presentation = MenuPresentation {
+            machine_state_slot: 3,
+            ..test_presentation()
+        };
+
+        assert_eq!(presentation.item_label(MenuItem::SaveState), "SAVE STATE");
+        assert_eq!(presentation.item_label(MenuItem::LoadState), "LOAD STATE");
+        assert_eq!(presentation.item_label(MenuItem::StateSlot), "STATE SLOT 3");
+        assert_eq!(
+            presentation.item_label(MenuItem::StateAutoloadSlot),
+            "AUTOLOAD OFF"
+        );
+        assert!(presentation.item_enabled(MenuItem::SaveState));
+        assert!(presentation.item_enabled(MenuItem::LoadState));
+        assert!(presentation.item_enabled(MenuItem::StateSlot));
+        assert!(presentation.item_enabled(MenuItem::StateAutoloadSlot));
+
+        let launcher = MenuPresentation {
+            rom_loaded: false,
+            ..presentation
+        };
+        assert!(!launcher.item_visible(MenuItem::SaveState));
+        assert!(!launcher.item_visible(MenuItem::LoadState));
+        assert!(!launcher.item_visible(MenuItem::StateSlot));
+        assert!(!launcher.item_visible(MenuItem::StateAutoloadSlot));
+
+        let blocked = MenuPresentation {
+            machine_state_available: false,
+            ..presentation
+        };
+        assert!(blocked.item_visible(MenuItem::LoadState));
+        assert!(!blocked.item_enabled(MenuItem::SaveState));
+        assert!(!blocked.item_enabled(MenuItem::LoadState));
+        assert!(blocked.item_enabled(MenuItem::StateSlot));
+        assert!(blocked.item_enabled(MenuItem::StateAutoloadSlot));
+
+        let no_slot_file = MenuPresentation {
+            machine_state_load_available: false,
+            ..presentation
+        };
+        assert!(no_slot_file.item_enabled(MenuItem::SaveState));
+        assert!(no_slot_file.item_visible(MenuItem::LoadState));
+        assert!(!no_slot_file.item_enabled(MenuItem::LoadState));
+        assert!(no_slot_file.item_enabled(MenuItem::StateSlot));
+        assert!(no_slot_file.item_enabled(MenuItem::StateAutoloadSlot));
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 2, no_slot_file),
+            Some(MenuItem::LoadState)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 4, no_slot_file),
+            Some(MenuItem::StateAutoloadSlot)
+        );
+
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+        select_visible_item(&mut menu, presentation, MenuItem::SaveState);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SaveState)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::LoadState);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::LoadState)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::StateSlot);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleStateSlot)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::StateAutoloadSlot);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleStateAutoloadSlot)
+        );
     }
 
     #[test]
@@ -3514,7 +3992,11 @@ mod tests {
         assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraReset);
         assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::OpenRom);
         assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::RecentMenu);
-        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::VideoMenu);
+        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::SaveState);
+        assert_eq!(ROOT_MENU_ITEMS[6], MenuItem::LoadState);
+        assert_eq!(ROOT_MENU_ITEMS[7], MenuItem::StateSlot);
+        assert_eq!(ROOT_MENU_ITEMS[8], MenuItem::StateAutoloadSlot);
+        assert_eq!(ROOT_MENU_ITEMS[9], MenuItem::VideoMenu);
         assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
@@ -3556,7 +4038,7 @@ mod tests {
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[0], MenuItem::KeyboardMenuUp);
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
         assert_eq!(HOTKEYS_MENU_ITEMS[0], MenuItem::HotkeyPause);
-        assert_eq!(HOTKEYS_MENU_ITEMS[5], MenuItem::Return);
+        assert_eq!(HOTKEYS_MENU_ITEMS[12], MenuItem::Return);
         assert_eq!(GAMEPAD_MENU_ITEMS[0], MenuItem::GamepadActive);
         assert_eq!(GAMEPAD_MENU_ITEMS[10], MenuItem::Return);
         assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[0], MenuItem::GamepadMenuUp);
@@ -3567,9 +4049,18 @@ mod tests {
         assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::ExecutionMode);
         assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::BootRomMenu);
         assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::SaveMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::Reset);
-        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::Return);
+        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::RewindMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::Return);
         assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
+
+        assert_eq!(REWIND_MENU_ITEMS[0], MenuItem::RewindEnabled);
+        assert_eq!(REWIND_MENU_ITEMS[1], MenuItem::RewindHistory);
+        assert_eq!(REWIND_MENU_ITEMS[2], MenuItem::RewindSubframes);
+        assert_eq!(REWIND_MENU_ITEMS[3], MenuItem::RewindSpeed);
+        assert_eq!(REWIND_MENU_ITEMS[4], MenuItem::RewindMemory);
+        assert_eq!(REWIND_MENU_ITEMS[5], MenuItem::RewindDefaults);
+        assert_eq!(REWIND_MENU_ITEMS[6], MenuItem::Return);
 
         assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDefaultPath);
         assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomFilePath);
@@ -3691,6 +4182,50 @@ mod tests {
 
         assert_eq!(presentation.item_label(MenuItem::BootRomMenu), "BOOT ROM");
         assert_eq!(presentation.item_label(MenuItem::SaveMenu), "SAVE");
+        assert_eq!(presentation.item_label(MenuItem::RewindMenu), "REWIND");
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindEnabled),
+            "REWIND ON"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindHistory),
+            "HISTORY 10S"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindSubframes),
+            "SUBFR 1"
+        );
+        assert_eq!(presentation.item_label(MenuItem::RewindSpeed), "SPEED 2X");
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindMemory),
+            "MEMORY 256M"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindDefaults),
+            "DEFAULTS"
+        );
+        presentation.rewind_options.enabled = false;
+        presentation.rewind_options.history_seconds = 20;
+        presentation.rewind_options.subframes_per_frame = 0;
+        presentation.rewind_options.speed_multiplier = 4;
+        presentation.rewind_options.max_memory_mib = 128;
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindEnabled),
+            "REWIND OFF"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindHistory),
+            "HISTORY 20S"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindSubframes),
+            "SUBFR OFF"
+        );
+        assert_eq!(presentation.item_label(MenuItem::RewindSpeed), "SPEED 4X");
+        assert_eq!(
+            presentation.item_label(MenuItem::RewindMemory),
+            "MEMORY 128M"
+        );
         assert_eq!(presentation.item_label(MenuItem::ExportSave), "EXPORT SAVE");
         assert_eq!(presentation.item_label(MenuItem::ImportSave), "IMPORT SAVE");
         assert!(!presentation.item_enabled(MenuItem::ExportSave));
@@ -3991,15 +4526,42 @@ mod tests {
 
         presentation.hotkey_bindings = HotkeyBindings {
             pause: DesktopKey::R,
+            save_state: DesktopKey::F1,
+            load_state: DesktopKey::F2,
+            state_slot_1: DesktopKey::Digit1,
+            state_slot_2: DesktopKey::Digit2,
+            state_slot_3: DesktopKey::Digit3,
+            state_slot_4: DesktopKey::Digit4,
             reset: DesktopKey::Space,
+            rewind: DesktopKey::LeftShift,
             toggle_fullscreen: DesktopKey::F11,
             toggle_performance_hud: DesktopKey::F10,
-            save_battery: DesktopKey::F5,
+            save_battery: DesktopKey::F9,
         };
         assert_eq!(presentation.item_label(MenuItem::HotkeyPause), "PAUSE R");
         assert_eq!(
+            presentation.item_label(MenuItem::HotkeySaveState),
+            "SAVE STATE F1"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyLoadState),
+            "LOAD STATE F2"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyStateSlot1),
+            "STATE SLOT 1 1"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyStateSlot4),
+            "STATE SLOT 4 4"
+        );
+        assert_eq!(
             presentation.item_label(MenuItem::HotkeyReset),
             "RESET SPACE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyRewind),
+            "REWIND L SHIFT"
         );
         assert_eq!(
             presentation.item_label(MenuItem::HotkeyFullscreen),
@@ -4011,7 +4573,7 @@ mod tests {
         );
         assert_eq!(
             presentation.item_label(MenuItem::HotkeySaveBattery),
-            "SAVE BATTERY F5"
+            "SAVE BATTERY F9"
         );
         assert_eq!(presentation.item_label(MenuItem::Quit), "QUIT");
     }
@@ -4073,6 +4635,7 @@ mod tests {
         assert_eq!(MenuScreen::System.title(presentation), "SYSTEM");
         assert_eq!(MenuScreen::BootRom.title(presentation), "BOOT ROM");
         assert_eq!(MenuScreen::Save.title(presentation), "SAVE");
+        assert_eq!(MenuScreen::Rewind.title(presentation), "REWIND");
 
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
@@ -4169,6 +4732,40 @@ mod tests {
             menu.apply_item_action(MenuItem::SaveBattery, presentation),
             Some(MenuAction::SaveBattery)
         );
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SystemMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Rewind);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindEnabled, presentation),
+            Some(MenuAction::ToggleRewindEnabled)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindHistory, presentation),
+            Some(MenuAction::CycleRewindHistory)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindSubframes, presentation),
+            Some(MenuAction::CycleRewindSubframes)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindSpeed, presentation),
+            Some(MenuAction::CycleRewindSpeed)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindMemory, presentation),
+            Some(MenuAction::CycleRewindMemory)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RewindDefaults, presentation),
+            Some(MenuAction::ResetRewindDefaults)
+        );
         assert_eq!(
             menu.apply_item_action(MenuItem::CameraImage, presentation),
             Some(MenuAction::SelectCameraImage)
@@ -4216,7 +4813,14 @@ mod tests {
             (MenuItem::KeyboardMenuConfirm, MenuItem::KeyboardMenuConfirm),
             (MenuItem::KeyboardMenuCancel, MenuItem::KeyboardMenuCancel),
             (MenuItem::HotkeyPause, MenuItem::HotkeyPause),
+            (MenuItem::HotkeySaveState, MenuItem::HotkeySaveState),
+            (MenuItem::HotkeyLoadState, MenuItem::HotkeyLoadState),
+            (MenuItem::HotkeyStateSlot1, MenuItem::HotkeyStateSlot1),
+            (MenuItem::HotkeyStateSlot2, MenuItem::HotkeyStateSlot2),
+            (MenuItem::HotkeyStateSlot3, MenuItem::HotkeyStateSlot3),
+            (MenuItem::HotkeyStateSlot4, MenuItem::HotkeyStateSlot4),
             (MenuItem::HotkeyReset, MenuItem::HotkeyReset),
+            (MenuItem::HotkeyRewind, MenuItem::HotkeyRewind),
             (MenuItem::HotkeyFullscreen, MenuItem::HotkeyFullscreen),
             (
                 MenuItem::HotkeyPerformanceHud,
@@ -4257,12 +4861,35 @@ mod tests {
                 render_time_ms: 2.0,
                 pacing_time_ms: 3.0,
                 audio_queue_ms: Some(18.0),
+                rewind: RewindHudSnapshot::default(),
             },
         );
 
         assert!(
             frame.iter().any(|component| *component != 255),
             "HUD rendering should modify the destination framebuffer"
+        );
+    }
+
+    #[test]
+    fn rewind_indicator_renderer_draws_into_the_top_right_corner() {
+        let mut frame = vec![255_u8; 160 * 144 * 3];
+        render_rewind_indicator(&mut frame, 160, 144);
+
+        let top_right_region_start = 4 * 160 * 3 + 112 * 3;
+        let top_right_region_end = 24 * 160 * 3;
+        assert!(
+            frame[top_right_region_start..top_right_region_end]
+                .iter()
+                .any(|component| *component != 255),
+            "rewind indicator should modify the top-right framebuffer region"
+        );
+        assert_eq!(
+            glyph_rows('<'),
+            [
+                0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010,
+            ],
+            "rewind indicator text requires the left chevron glyph"
         );
     }
 }

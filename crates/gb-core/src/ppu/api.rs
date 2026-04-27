@@ -1,7 +1,7 @@
 use super::snapshot::*;
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct PpuMode3LiveBackgroundWriteRoute {
     register: PpuMode3LiveBackgroundRegister,
     write_context: PpuMode3LiveRegisterWriteContext,

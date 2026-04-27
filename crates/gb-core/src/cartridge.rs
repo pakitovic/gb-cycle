@@ -1,5 +1,7 @@
 use crate::model::ExecutionMode;
+use crate::save_state::SaveStateByteFingerprint;
 use crate::scheduler::TCycle;
+use std::{fmt, mem};
 
 mod classify;
 mod device;
@@ -109,7 +111,7 @@ const M161_SYNTHETIC_MENU_TITLE: &[u8] = b"MANI 4 IN 1";
 const M161_COMMERCIAL_MENU_TITLE: &[u8] = b"TETRIS SET";
 const M161_KNOWN_SUBTITLE_SET: [&[u8]; 4] = [b"TETRIS", b"TENNIS", b"ALLEY WAY", b"YAKUMAN"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeSlotState {
     Empty,
     NoMbc,
@@ -124,7 +126,7 @@ pub enum CartridgeSlotState {
     PocketCamera,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CgbFlag {
     None,
     Supported,
@@ -133,30 +135,31 @@ pub enum CgbFlag {
     Unknown(u8),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SgbFlag {
     None,
     Supported,
     Unknown(u8),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RomSizeInfo {
     pub raw_code: u8,
     pub decoded_bytes: Option<usize>,
     pub bank_count: Option<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RamSizeInfo {
     pub raw_code: u8,
     pub decoded_bytes: Option<usize>,
     pub bank_count: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeHeader {
     pub entry_point: [u8; ENTRY_POINT_LEN],
+    #[serde(with = "serde_big_array::BigArray")]
     pub nintendo_logo: [u8; NINTENDO_LOGO_LEN],
     pub title_bytes: [u8; TITLE_BYTES_LEN],
     pub raw_title_suffix_or_manufacturer_code: [u8; MANUFACTURER_CODE_LEN],
@@ -172,7 +175,7 @@ pub struct CartridgeHeader {
     pub header_checksum: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeHeaderParseError {
     ImageTooSmall {
         actual_size: usize,
@@ -180,7 +183,7 @@ pub enum CartridgeHeaderParseError {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SupportedCartridgeFamily {
     NoMbc,
     Mmm01,
@@ -194,7 +197,7 @@ pub enum SupportedCartridgeFamily {
     PocketCamera,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UnsupportedCartridgeCategory {
     PlannedVariant,
     DocumentedButUnsupported,
@@ -203,13 +206,13 @@ pub enum UnsupportedCartridgeCategory {
     UnknownCode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeSelection {
     Supported(SupportedCartridgeFamily),
     Unsupported(UnsupportedCartridgeCategory),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct CartridgeClassification {
     raw_type: u8,
     detected_name: &'static str,
@@ -217,19 +220,109 @@ pub struct CartridgeClassification {
     reason: &'static str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl<'de> serde::Deserialize<'de> for CartridgeClassification {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct CartridgeClassificationFields {
+            raw_type: u8,
+            detected_name: String,
+            selection: CartridgeSelection,
+            reason: String,
+        }
+
+        let fields = CartridgeClassificationFields::deserialize(deserializer)?;
+        Ok(Self {
+            raw_type: fields.raw_type,
+            detected_name: known_classification_str(&fields.detected_name).ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "unknown cartridge classification name {:?}",
+                    fields.detected_name
+                ))
+            })?,
+            selection: fields.selection,
+            reason: known_classification_str(&fields.reason).ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "unknown cartridge classification reason {:?}",
+                    fields.reason
+                ))
+            })?,
+        })
+    }
+}
+
+fn known_classification_str(value: &str) -> Option<&'static str> {
+    KNOWN_CLASSIFICATION_STRINGS
+        .iter()
+        .copied()
+        .find(|known| *known == value)
+}
+
+const KNOWN_CLASSIFICATION_STRINGS: &[&str] = &[
+    "ROM ONLY",
+    "ROM+RAM",
+    "ROM+RAM+BATTERY",
+    "MBC1",
+    "MBC1+RAM",
+    "MBC1+RAM+BATTERY",
+    "MBC1M",
+    "MBC2",
+    "MBC2+BATTERY",
+    "MBC3",
+    "MBC3+RAM",
+    "MBC3+RAM+BATTERY",
+    "MBC3+TIMER+BATTERY",
+    "MBC3+TIMER+RAM+BATTERY",
+    "MBC30",
+    "MBC5",
+    "MBC5+RAM",
+    "MBC5+RAM+BATTERY",
+    "MBC5+RUMBLE",
+    "MBC5+RUMBLE+RAM",
+    "MBC5+RUMBLE+RAM+BATTERY",
+    "MBC6",
+    "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
+    "MMM01",
+    "MMM01+RAM",
+    "MMM01+RAM+BATTERY",
+    "M161",
+    "HuC-3",
+    "HuC1+RAM+BATTERY",
+    "POCKET CAMERA",
+    "BANDAI TAMA5",
+    "BUNG",
+    "EMS",
+    "WISDOM TREE",
+    "UNKNOWN",
+    "supported cartridge family",
+    "MBC6 requires a dedicated cartridge-local implementation",
+    "MBC7 requires EEPROM and accelerometer behavior that is not implemented yet",
+    "Bandai TAMA5 needs dedicated accessory hardware",
+    "The cartridge type code is not recognized",
+    "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
+    "MMM01 classification came from the explicit later Mani trailing-menu signature path",
+    "MBC1 multicart classification came from the explicit subheader signature path",
+    "MBC30 is a known MBC3-family variant reserved for later support",
+    "Bung multicart classification came from an explicit experimental heuristic path",
+    "EMS multicart classification came from an explicit experimental heuristic path",
+    "Wisdom Tree classification came from an explicit experimental heuristic path",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeDiagnosticSeverity {
     Warning,
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeDiagnostic {
     pub severity: CartridgeDiagnosticSeverity,
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeLoadError {
     HeaderParse(CartridgeHeaderParseError),
     Rejected {
@@ -240,21 +333,22 @@ pub enum CartridgeLoadError {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeLoadReport {
     cartridge: CartridgeSlot,
     diagnostics: Vec<CartridgeDiagnostic>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeSlot {
     device: Option<CartridgeDevice>,
+    rom_fingerprint: Option<SaveStateByteFingerprint>,
 }
 
 // Keep one concrete mapper-owned state object in the slot; boxing every large
 // mapper here would add indirection across the whole cartridge path.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum CartridgeDevice {
     NoMbc(NoMbcCartridge),
     Mmm01(Mmm01Cartridge),
@@ -268,7 +362,7 @@ enum CartridgeDevice {
     PocketCamera(PocketCameraCartridge),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct NoMbcCartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -277,7 +371,7 @@ struct NoMbcCartridge {
     classification: CartridgeClassification,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mmm01Cartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -298,7 +392,7 @@ struct Mmm01Cartridge {
     multiplex_enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct M161Cartridge {
     rom: Vec<u8>,
     header: CartridgeHeader,
@@ -308,13 +402,13 @@ struct M161Cartridge {
     last_bank_write: Option<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Huc1IoMode {
     Ram,
     Ir,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Huc1Cartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -328,7 +422,7 @@ struct Huc1Cartridge {
     ir_light_detected: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Huc3SelectMode {
     RamReadOnly,
     RamReadWrite,
@@ -339,7 +433,7 @@ enum Huc3SelectMode {
     OpenBus(u8),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Huc3Mailbox {
     command: u8,
     argument: u8,
@@ -347,7 +441,7 @@ struct Huc3Mailbox {
     semaphore_ready: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 struct Huc3RtcState {
     current_minutes_of_day: u16,
     current_days: u16,
@@ -356,7 +450,7 @@ struct Huc3RtcState {
     event_days: u16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Huc3Cartridge {
     rom: Vec<u8>,
     ram: Vec<u8>,
@@ -368,6 +462,7 @@ struct Huc3Cartridge {
     ram_bank: u8,
     access_address: u8,
     mailbox: Huc3Mailbox,
+    #[serde(with = "serde_big_array::BigArray")]
     mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
     rtc: Huc3RtcState,
     ir_emitter_on: bool,
@@ -377,27 +472,27 @@ struct Huc3Cartridge {
     last_unsupported_argument: Option<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mbc1Wiring {
     Standard,
     LargeRom,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 enum Mbc1Variant {
     Standard,
     Mbc1M,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc1Layout {
     wiring: Mbc1Wiring,
     variant: Mbc1Variant,
     ram_len: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc1Cartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -412,9 +507,10 @@ struct Mbc1Cartridge {
     banking_mode: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc2Cartridge {
     rom: Vec<u8>,
+    #[serde(with = "serde_big_array::BigArray")]
     ram_nibbles: [u8; MBC2_RAM_CELL_COUNT],
     has_battery: bool,
     header: CartridgeHeader,
@@ -423,14 +519,14 @@ struct Mbc2Cartridge {
     rom_bank_low4: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 enum Mbc3Variant {
     Standard,
     Mbc30Reserved,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mbc3RtcRegister {
     Seconds,
     Minutes,
@@ -439,14 +535,14 @@ enum Mbc3RtcRegister {
     DayHigh,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mbc3RamRtcSelect {
     RamBank(u8),
     ReservedSelector(u8),
     RtcRegister(Mbc3RtcRegister),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 struct Mbc3RtcState {
     seconds: u8,
     minutes: u8,
@@ -456,7 +552,7 @@ struct Mbc3RtcState {
     carry: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc3Cartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -475,7 +571,7 @@ struct Mbc3Cartridge {
     rtc_access_ready_at: Option<TCycle>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mbc5Variant {
     NoRam,
     Ram,
@@ -485,7 +581,7 @@ enum Mbc5Variant {
     RumbleRamBattery,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc5Cartridge {
     rom: Vec<u8>,
     ram: Option<Vec<u8>>,
@@ -501,7 +597,7 @@ struct Mbc5Cartridge {
     rumble_on: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PocketCameraCartridge {
     rom: Vec<u8>,
     ram: Vec<u8>,
@@ -510,12 +606,13 @@ struct PocketCameraCartridge {
     ram_enabled: bool,
     rom_bank: u8,
     ram_bank_or_register_select: u8,
+    #[serde(with = "serde_big_array::BigArray")]
     registers: [u8; POCKET_CAMERA_REGISTER_COUNT],
     host_frame: Vec<u8>,
     capture_state: PocketCameraCaptureState,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum PocketCameraCaptureState {
     Idle,
     Working {
@@ -528,7 +625,341 @@ enum PocketCameraCaptureState {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CartridgeRuntimeSaveState {
+    device: Option<CartridgeDeviceSaveState>,
+}
+
+impl CartridgeRuntimeSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.device
+            .as_ref()
+            .map(CartridgeDeviceSaveState::dynamic_payload_bytes)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn slot_state(&self) -> CartridgeSlotState {
+        self.device
+            .as_ref()
+            .map(CartridgeDeviceSaveState::slot_state)
+            .unwrap_or(CartridgeSlotState::Empty)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CartridgeRuntimeSaveStateError {
+    SlotStateMismatch {
+        expected: CartridgeSlotState,
+        actual: CartridgeSlotState,
+    },
+    RamShapeMismatch {
+        field: &'static str,
+        expected: Option<usize>,
+        actual: Option<usize>,
+    },
+}
+
+impl fmt::Display for CartridgeRuntimeSaveStateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SlotStateMismatch { expected, actual } => write!(
+                f,
+                "save-state cartridge runtime state mismatch: expected {:?}, got {:?}",
+                expected, actual
+            ),
+            Self::RamShapeMismatch {
+                field,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "save-state cartridge {field} shape mismatch: expected {:?} bytes, got {:?} bytes",
+                expected, actual
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CartridgeRuntimeSaveStateError {}
+
+fn optional_ram_shape(bytes: &Option<Vec<u8>>) -> Option<usize> {
+    bytes.as_ref().map(Vec::len)
+}
+
+fn validate_optional_ram_shape(
+    field: &'static str,
+    expected: &Option<Vec<u8>>,
+    actual: &Option<Vec<u8>>,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    let expected = optional_ram_shape(expected);
+    let actual = optional_ram_shape(actual);
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field,
+            expected,
+            actual,
+        })
+    }
+}
+
+fn validate_ram_shape(
+    field: &'static str,
+    expected: &[u8],
+    actual: &[u8],
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    if expected.len() == actual.len() {
+        Ok(())
+    } else {
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field,
+            expected: Some(expected.len()),
+            actual: Some(actual.len()),
+        })
+    }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum CartridgeDeviceSaveState {
+    NoMbc(NoMbcCartridgeSaveState),
+    Mmm01(Mmm01CartridgeSaveState),
+    M161(M161CartridgeSaveState),
+    Huc1(Huc1CartridgeSaveState),
+    Huc3(Huc3CartridgeSaveState),
+    Mbc1(Mbc1CartridgeSaveState),
+    Mbc2(Mbc2CartridgeSaveState),
+    Mbc3(Mbc3CartridgeSaveState),
+    Mbc5(Mbc5CartridgeSaveState),
+    PocketCamera(PocketCameraCartridgeSaveState),
+}
+
+impl CartridgeDeviceSaveState {
+    fn slot_state(&self) -> CartridgeSlotState {
+        match self {
+            Self::NoMbc(_) => CartridgeSlotState::NoMbc,
+            Self::Mmm01(_) => CartridgeSlotState::Mmm01,
+            Self::M161(_) => CartridgeSlotState::M161,
+            Self::Huc1(_) => CartridgeSlotState::Huc1,
+            Self::Huc3(_) => CartridgeSlotState::Huc3,
+            Self::Mbc1(_) => CartridgeSlotState::Mbc1,
+            Self::Mbc2(_) => CartridgeSlotState::Mbc2,
+            Self::Mbc3(_) => CartridgeSlotState::Mbc3,
+            Self::Mbc5(_) => CartridgeSlotState::Mbc5,
+            Self::PocketCamera(_) => CartridgeSlotState::PocketCamera,
+        }
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        match self {
+            Self::NoMbc(state) => state.dynamic_payload_bytes(),
+            Self::Mmm01(state) => state.dynamic_payload_bytes(),
+            Self::M161(state) => state.dynamic_payload_bytes(),
+            Self::Huc1(state) => state.dynamic_payload_bytes(),
+            Self::Huc3(state) => state.dynamic_payload_bytes(),
+            Self::Mbc1(state) => state.dynamic_payload_bytes(),
+            Self::Mbc2(state) => state.dynamic_payload_bytes(),
+            Self::Mbc3(state) => state.dynamic_payload_bytes(),
+            Self::Mbc5(state) => state.dynamic_payload_bytes(),
+            Self::PocketCamera(state) => state.dynamic_payload_bytes(),
+        }
+    }
+}
+
+fn optional_bytes_len(bytes: &Option<Vec<u8>>) -> usize {
+    bytes.as_ref().map(Vec::len).unwrap_or(0)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct NoMbcCartridgeSaveState {
+    ram: Option<Vec<u8>>,
+}
+
+impl NoMbcCartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mmm01CartridgeSaveState {
+    ram: Option<Vec<u8>>,
+    mapped: bool,
+    ram_enabled: bool,
+    ram_bank_mask: u8,
+    rom_bank_low: u8,
+    rom_bank_mid: u8,
+    ram_bank_low: u8,
+    ram_bank_high: u8,
+    rom_bank_high: u8,
+    mode_write_disable: bool,
+    banking_mode: u8,
+    rom_bank_mask: u8,
+    multiplex_enabled: bool,
+}
+
+impl Mmm01CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct M161CartridgeSaveState {
+    selected_bank: u8,
+    bank_switch_locked: bool,
+    last_bank_write: Option<u8>,
+}
+
+impl M161CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Huc1CartridgeSaveState {
+    ram: Option<Vec<u8>>,
+    io_mode: Huc1IoMode,
+    rom_bank: u8,
+    ram_bank: u8,
+    ir_emitter_on: bool,
+    ir_light_detected: bool,
+}
+
+impl Huc1CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Huc3CartridgeSaveState {
+    ram: Vec<u8>,
+    select_mode: Huc3SelectMode,
+    rom_bank: u8,
+    ram_bank: u8,
+    access_address: u8,
+    mailbox: Huc3Mailbox,
+    #[serde(with = "serde_big_array::BigArray")]
+    mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
+    rtc: Huc3RtcState,
+    ir_emitter_on: bool,
+    ir_light_detected: bool,
+    last_control_write: Option<u8>,
+    last_unsupported_command: Option<u8>,
+    last_unsupported_argument: Option<u8>,
+}
+
+impl Huc3CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.ram.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc1CartridgeSaveState {
+    ram: Option<Vec<u8>>,
+    ram_enabled: bool,
+    rom_bank_low5: u8,
+    secondary_bank: u8,
+    banking_mode: u8,
+}
+
+impl Mbc1CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc2CartridgeSaveState {
+    #[serde(with = "serde_big_array::BigArray")]
+    ram_nibbles: [u8; MBC2_RAM_CELL_COUNT],
+    ram_enabled: bool,
+    rom_bank_low4: u8,
+}
+
+impl Mbc2CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc3CartridgeSaveState {
+    ram: Option<Vec<u8>>,
+    ram_rtc_enabled: bool,
+    rom_bank: u8,
+    ram_or_rtc_select: Mbc3RamRtcSelect,
+    rtc_live: Mbc3RtcState,
+    rtc_latched: Mbc3RtcState,
+    rtc_latched_valid: bool,
+    rtc_latch_armed: bool,
+    rtc_access_ready_at: Option<TCycle>,
+}
+
+impl Mbc3CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc5CartridgeSaveState {
+    ram: Option<Vec<u8>>,
+    ram_enabled: bool,
+    rom_bank_low8: u8,
+    rom_bank_high1: u8,
+    ram_bank_raw: u8,
+    rumble_on: bool,
+}
+
+impl Mbc5CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        optional_bytes_len(&self.ram)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PocketCameraCartridgeSaveState {
+    ram: Vec<u8>,
+    ram_enabled: bool,
+    rom_bank: u8,
+    ram_bank_or_register_select: u8,
+    #[serde(with = "serde_big_array::BigArray")]
+    registers: [u8; POCKET_CAMERA_REGISTER_COUNT],
+    host_frame: Vec<u8>,
+    capture_state: PocketCameraCaptureState,
+}
+
+impl PocketCameraCartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.ram
+            .len()
+            .saturating_add(self.host_frame.len())
+            .saturating_add(self.capture_state.dynamic_payload_bytes())
+    }
+}
+
+impl PocketCameraCaptureState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        match self {
+            Self::Idle => 0,
+            Self::Working {
+                ready_at: _,
+                staged_tiles,
+            }
+            | Self::Paused {
+                remaining_t_cycles: _,
+                staged_tiles,
+            } => staged_tiles.len().saturating_mul(mem::size_of::<u8>()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeSnapshot {
     pub state: CartridgeSlotState,
     pub rtc_access_ready_at: Option<TCycle>,
@@ -536,7 +967,7 @@ pub struct CartridgeSnapshot {
     pub camera_registers_selected: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeRtcRegister {
     Seconds,
     Minutes,
@@ -545,7 +976,7 @@ pub enum CartridgeRtcRegister {
     DayHigh,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeExternalTarget {
     NoDevice,
     LinearRam,
@@ -561,7 +992,7 @@ pub enum CartridgeExternalTarget {
     PocketCameraRegister { offset: u8 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeExternalAvailability {
     Accessible,
     Disabled,
@@ -569,7 +1000,7 @@ pub enum CartridgeExternalAvailability {
     Reserved,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeExternalReadBehavior {
     Storage,
     InfraredSensor,
@@ -580,7 +1011,7 @@ pub enum CartridgeExternalReadBehavior {
     FallbackValue(u8),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeExternalWriteBehavior {
     Storage,
     InfraredTransmitter,
@@ -590,7 +1021,7 @@ pub enum CartridgeExternalWriteBehavior {
     Ignored,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeExternalAccessInfo {
     address: u16,
     target: CartridgeExternalTarget,
@@ -658,13 +1089,13 @@ impl CartridgeExternalAccessInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeRamPayloadKind {
     Linear { byte_len: usize },
     Mbc2Nibbles { cell_count: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgePersistenceProfile {
     None,
     NonPersistentRam { ram: CartridgeRamPayloadKind },
@@ -673,14 +1104,14 @@ pub enum CartridgePersistenceProfile {
     PersistentRamAndRtc { ram: CartridgeRamPayloadKind },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgePersistenceMetadata {
     pub has_battery: bool,
     pub has_rtc: bool,
     pub profile: CartridgePersistenceProfile,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Mbc3RtcPersistentState {
     pub seconds: u8,
     pub minutes: u8,
@@ -690,7 +1121,7 @@ pub struct Mbc3RtcPersistentState {
     pub carry: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Huc3RtcPersistentState {
     pub current_minutes_of_day: u16,
     pub current_days: u16,
@@ -702,7 +1133,7 @@ pub struct Huc3RtcPersistentState {
 // Persist the full mapper-owned backing store shape explicitly, including the
 // MBC2 nibble array, instead of hiding those semantics behind ad hoc packing.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PersistentCartState {
     None,
     NoMbcRam {
@@ -716,6 +1147,7 @@ pub enum PersistentCartState {
     },
     Huc3 {
         ram: Vec<u8>,
+        #[serde(with = "serde_big_array::BigArray")]
         mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
         rtc: Huc3RtcPersistentState,
         rom_bank: u8,
@@ -736,6 +1168,7 @@ pub enum PersistentCartState {
         ram: Vec<u8>,
     },
     Mbc2Ram {
+        #[serde(with = "serde_big_array::BigArray")]
         ram_nibbles: [u8; MBC2_RAM_CELL_COUNT],
     },
     Mbc3Rtc {
@@ -756,7 +1189,7 @@ pub enum PersistentCartState {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgePersistentStateError {
     KindMismatch {
         expected: &'static str,
@@ -776,14 +1209,14 @@ pub enum CartridgePersistentStateError {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PocketCameraFrame {
     pub width: u16,
     pub height: u16,
     pub grayscale_pixels: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PocketCameraFrameError {
     UnsupportedCartridge,
     InvalidDimensions {

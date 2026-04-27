@@ -7,7 +7,7 @@ use super::super::common::{
     pulse_timer_reload, pulse_timer_reload_preserving_trigger_phase, pulse_waveform_high,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) runtime: ChannelRuntimeState,
     pub(in crate::apu) duty: u8,
@@ -20,7 +20,7 @@ pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) envelope: EnvelopeState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct PulseStartupState {
     pub(in crate::apu) length_duty_value: u8,
     pub(in crate::apu) envelope_value: u8,

@@ -24,7 +24,7 @@ pub(super) const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
     0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct HacktixStrikethroughLine68Observation {
     t_cycle: u64,
     line_dot: u16,

@@ -2,8 +2,8 @@ use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBindings,
     GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
-    JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
-    VideoOptions,
+    JoypadKeyboardBindings, MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity,
+    RewindOptions, SaveDirectoryPolicy, VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -49,9 +49,11 @@ impl DesktopSettingsStore {
         let launch = PersistedLaunchSettings::from_config(config);
         let boot_rom = PersistedBootRomSettings::from_config(config);
         let saves = PersistedSaveSettings::from_config(config);
+        let machine_state = config.machine_state;
         if self.settings.launch == launch
             && self.settings.boot_rom == boot_rom
             && self.settings.saves == saves
+            && self.settings.machine_state == machine_state
         {
             return Ok(());
         }
@@ -59,6 +61,7 @@ impl DesktopSettingsStore {
         self.settings.launch = launch;
         self.settings.boot_rom = boot_rom;
         self.settings.saves = saves;
+        self.settings.machine_state = machine_state;
         self.save()
     }
 
@@ -158,6 +161,27 @@ impl DesktopSettingsStore {
         }
 
         self.settings.video = defaults;
+        self.save()
+    }
+
+    pub fn set_rewind_options(&mut self, rewind: RewindOptions) -> Result<(), String> {
+        if self.settings.rewind == rewind {
+            return Ok(());
+        }
+
+        self.settings.rewind = rewind;
+        self.save()
+    }
+
+    pub fn set_machine_state_options(
+        &mut self,
+        machine_state: MachineStateOptions,
+    ) -> Result<(), String> {
+        if self.settings.machine_state == machine_state {
+            return Ok(());
+        }
+
+        self.settings.machine_state = machine_state;
         self.save()
     }
 
@@ -364,6 +388,8 @@ struct PersistedDesktopSettings {
     launch: PersistedLaunchSettings,
     boot_rom: PersistedBootRomSettings,
     saves: PersistedSaveSettings,
+    machine_state: MachineStateOptions,
+    rewind: RewindOptions,
     video: VideoOptions,
     audio: PersistedAudioSettings,
     input: InputOptions,
@@ -403,8 +429,20 @@ impl PersistedDesktopSettings {
     }
 
     fn migrate_defaults(&mut self) {
-        if self.input.keyboard.hotkeys.reset == DesktopKey::R {
-            self.input.keyboard.hotkeys.reset = DesktopKey::F1;
+        if matches!(
+            self.input.keyboard.hotkeys.reset,
+            DesktopKey::R | DesktopKey::F1
+        ) {
+            self.input.keyboard.hotkeys.reset = DesktopKey::F12;
+        }
+        if self.input.keyboard.hotkeys.rewind == DesktopKey::F6 {
+            self.input.keyboard.hotkeys.rewind = DesktopKey::LeftShift;
+        }
+        if self.input.keyboard.hotkeys.save_battery == DesktopKey::F5 {
+            self.input.keyboard.hotkeys.save_battery = DesktopKey::F9;
+        }
+        if !matches!(self.machine_state.autoload_slot, None | Some(1..=4)) {
+            self.machine_state.autoload_slot = None;
         }
     }
 
@@ -436,6 +474,8 @@ impl PersistedDesktopSettings {
         self.launch.apply_to_config(config);
         self.boot_rom.apply_to_config(config);
         self.saves.apply_to_config(config);
+        config.machine_state = self.machine_state;
+        config.rewind = self.rewind;
         config.video = self.video.clone();
         config.audio = self.audio.audio_options();
         config.input = self.input.clone();
@@ -449,6 +489,8 @@ impl Default for PersistedDesktopSettings {
             launch: PersistedLaunchSettings::default(),
             boot_rom: PersistedBootRomSettings::default(),
             saves: PersistedSaveSettings::default(),
+            machine_state: MachineStateOptions::default(),
+            rewind: RewindOptions::default(),
             video: VideoOptions::default(),
             audio: PersistedAudioSettings::default(),
             input: InputOptions::default(),
@@ -778,7 +820,7 @@ mod tests {
         DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
         GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
         InputOptions, JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
-        SaveDirectoryPolicy, VideoOptions,
+        RewindOptions, SaveDirectoryPolicy, VideoOptions,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -870,10 +912,83 @@ mod tests {
             PersistedDesktopSettings::load(&path).expect("missing settings should default");
 
         assert_eq!(settings.version, DESKTOP_SETTINGS_VERSION);
+        assert_eq!(
+            settings.machine_state,
+            gb_desktop::MachineStateOptions::default()
+        );
+        assert_eq!(settings.rewind, RewindOptions::default());
         assert_eq!(settings.video, DesktopConfig::default().video);
         assert_eq!(settings.input, DesktopConfig::default().input);
         assert_eq!(settings.last_open_directory, None);
         assert!(settings.recent_roms.is_empty());
+    }
+
+    #[test]
+    fn loading_settings_without_rewind_block_uses_rewind_defaults() {
+        let path = unique_test_path("missing-rewind-block");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(&path, "version = 1\n")
+            .expect("legacy settings without rewind block should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("legacy settings should reload");
+
+        assert_eq!(settings.rewind, RewindOptions::default());
+    }
+
+    #[test]
+    fn loading_settings_without_machine_state_block_uses_state_defaults() {
+        let path = unique_test_path("missing-machine-state-block");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(&path, "version = 1\n")
+            .expect("legacy settings without machine_state block should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("legacy settings should reload");
+
+        assert_eq!(
+            settings.machine_state,
+            gb_desktop::MachineStateOptions::default()
+        );
+    }
+
+    #[test]
+    fn loading_rewind_block_without_speed_uses_speed_default() {
+        let path = unique_test_path("missing-rewind-speed");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(
+            &path,
+            "\
+version = 1
+
+[rewind]
+enabled = false
+history_seconds = 20
+subframes_per_frame = 4
+max_memory_mib = 128
+",
+        )
+        .expect("legacy rewind settings should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("legacy rewind settings should reload");
+
+        assert_eq!(
+            settings.rewind,
+            RewindOptions {
+                enabled: false,
+                history_seconds: 20,
+                subframes_per_frame: 4,
+                max_memory_mib: 128,
+                speed_multiplier: RewindOptions::default().speed_multiplier,
+            }
+        );
     }
 
     #[test]
@@ -889,6 +1004,14 @@ mod tests {
         settings.saves.directory_policy =
             PersistedSaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"));
         settings.saves.flush_policy = DesktopSaveFlushPolicy::OnClose;
+        settings.machine_state.autoload_slot = Some(3);
+        settings.rewind = RewindOptions {
+            enabled: false,
+            history_seconds: 20,
+            subframes_per_frame: 2,
+            max_memory_mib: 128,
+            speed_multiplier: 4,
+        };
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.presentation_filter = true;
@@ -941,6 +1064,17 @@ mod tests {
             SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"))
         );
         assert_eq!(config.saves.flush_policy, DesktopSaveFlushPolicy::OnClose);
+        assert_eq!(config.machine_state.autoload_slot, Some(3));
+        assert_eq!(
+            config.rewind,
+            RewindOptions {
+                enabled: false,
+                history_seconds: 20,
+                subframes_per_frame: 2,
+                max_memory_mib: 128,
+                speed_multiplier: 4,
+            }
+        );
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.presentation_filter);
@@ -1148,6 +1282,15 @@ mod tests {
             .expect("performance HUD visibility should persist");
         store.set_vsync(false).expect("vsync toggle should persist");
         store
+            .set_rewind_options(RewindOptions {
+                enabled: false,
+                history_seconds: 30,
+                subframes_per_frame: 4,
+                max_memory_mib: 512,
+                speed_multiplier: 1,
+            })
+            .expect("rewind options should persist");
+        store
             .set_audio_muted(true)
             .expect("audio mute toggle should persist");
         store
@@ -1204,6 +1347,16 @@ mod tests {
         assert!(!reloaded.video.show_objects);
         assert!(!reloaded.video.show_performance_hud);
         assert!(!reloaded.video.vsync);
+        assert_eq!(
+            reloaded.rewind,
+            RewindOptions {
+                enabled: false,
+                history_seconds: 30,
+                subframes_per_frame: 4,
+                max_memory_mib: 512,
+                speed_multiplier: 1,
+            }
+        );
         assert_eq!(reloaded.audio.volume_percent, 75);
         assert!(reloaded.audio.muted);
         assert_eq!(
@@ -1501,17 +1654,38 @@ mod tests {
     }
 
     #[test]
-    fn loading_settings_migrates_the_old_reset_hotkey_default() {
+    fn loading_settings_migrates_old_hotkey_defaults() {
         let path = unique_test_path("migrate-reset-hotkey");
         let mut settings = PersistedDesktopSettings::default();
         settings.input.keyboard.hotkeys.reset = DesktopKey::R;
+        settings.input.keyboard.hotkeys.rewind = DesktopKey::F6;
+        settings.input.keyboard.hotkeys.save_battery = DesktopKey::F5;
         settings
             .save(&path)
             .expect("old reset hotkey settings should save");
 
         let reloaded =
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
-        assert_eq!(reloaded.input.keyboard.hotkeys.reset, DesktopKey::F1);
+        assert_eq!(reloaded.input.keyboard.hotkeys.reset, DesktopKey::F12);
+        assert_eq!(
+            reloaded.input.keyboard.hotkeys.rewind,
+            DesktopKey::LeftShift
+        );
+        assert_eq!(reloaded.input.keyboard.hotkeys.save_battery, DesktopKey::F9);
+    }
+
+    #[test]
+    fn loading_settings_migrates_invalid_machine_state_autoload_slot() {
+        let path = unique_test_path("migrate-invalid-state-autoload");
+        let mut settings = PersistedDesktopSettings::default();
+        settings.machine_state.autoload_slot = Some(9);
+        settings
+            .save(&path)
+            .expect("invalid autoload slot settings should save");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(reloaded.machine_state.autoload_slot, None);
     }
 
     fn unique_test_path(label: &str) -> PathBuf {

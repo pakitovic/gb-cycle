@@ -16,26 +16,6 @@ When an open item is non-trivial, make four things obvious:
 
 Remove TODOs when closed. Rewrite when the old wording points to a superseded path. Do not keep archival `Done` bullets.
 
-### Cross-phase
-
-- None currently.
-
-### Phase 0 — Verification, debugging, and base architecture infrastructure
-
-- None currently.
-
-### Phase 1 — Temporal foundation and hardware access
-
-- None currently.
-
-### Phase 2 — CPU and real temporal control
-
-- None currently.
-
-### Phase 3 — Base DMA
-
-- None currently.
-
 ### Phase 4 — Base PPU and visible pipeline
 
 - [PPU][MODE3-SCY-OBJ-PHASE-POLICY] `m3_scy_change.gb` is green through `PpuMode3ScyObjPhasePolicy` plus `PpuMode3ObservedScyObjPhaseTable`. This is cleanup debt, not a blocker: if a later oracle resolves the exact BG/OBJ handoff phase, replace the remaining observed-table ranges with direct shared BG/OBJ fetcher arbitration instead of extending the table further.
@@ -45,10 +25,6 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - [PPU][LCDC2-8X16-ARTIFACTS] Core `8x16` rules and the mid-frame `LCDC.2` shrink crash are fixed through a narrow model: line-start OBJ-height latch, observed per-phase bitplane selection, queued-FIFO rewrite for future tail pixels, and retroactive scanline repaint when shrink lands after low-half rows started drawing. Re-check finer DMG-visible artifacts only with a targeted ROM or oracle.
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch has repo-local continuity coverage, but still needs a trusted-oracle or hardware comparison proving that first LCD-visible dots are coherent with published `LCDC`, `STAT`, and `LY` state.
 - [PPU][PROJECT-OWNED-COVERAGE-GAPS] Keep these as concrete test gaps if the related code changes again: direct DMG `LCDC.0 = 0` suppression of window rendering when `LCDC.5 = 1`; end-to-end OAM-corruption fixtures for `pop`, `call`, `ret`, `rst`, and executing code from OAM; and an explicit project decision/test for whether the canonical fetcher `Sleep` phase is a named state or represented by the current push-entry / retry timing.
-
-### Phase 5 — Input and simple peripherals
-
-- None currently.
 
 ### Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
 
@@ -69,11 +45,3 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - [APU][CH4-NR43-OUTPUT-ORACLE] CH4 DMG/pre-`CGB-D` now uses the SameBoy-guided hidden noise-counter path for ordinary LFSR stepping, delayed DMG trigger startup, divisor-`0` / `alignment == 3` visible `0x0055`, and staged `old -> FF -> new` live `NR43` writes. The old broad startup-handshake and Zelda-tail guard experiments are superseded; if this reopens, compare the explicit pass/action trace against a SameBoy isolated CH4 output oracle instead of retuning the hidden counter from commercial-audio symptoms.
 - [APU][ZOMBIE-MODE-REVISION-MATRIX] CH1/CH2/CH4 now model the cross-revision-consistent manual increment path for live `NR12` / `NR22` / `NR42` writes (`increase` with pace `0` increments the current volume modulo `16`), but the broader zombie-mode write matrix still varies by hardware revision. Do not claim a fully solved DMG zombie-mode contract until a revision-scoped oracle or hardware-backed policy closes the rest of that matrix.
 - [APU][DAC-OFF-FADE-TUNING] The APU now models DAC disable as a short explicit per-channel analog discharge toward `0` on the T-cycle timeline, which is a closer fit to Pan Docs than the previous instantaneous step. However, Pan Docs still says the exact fade varies by model, and the current repo policy uses one conservative SameBoy-aligned decay duration/curve across the supported models. Keep per-model tuning and hardware-backed fade-shape validation open until a stronger oracle closes that gap.
-
-### Phase 8 — Full emulator save states and global serialization strategy
-
-- None currently.
-
-### Phase 9 — Final DMG hardening, differential validation, and closure
-
-- None currently.

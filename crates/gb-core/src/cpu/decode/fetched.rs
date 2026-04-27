@@ -6,7 +6,7 @@ use super::{
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum OpcodeDecodeGroup {
     Misc,
     Load,

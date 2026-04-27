@@ -2,15 +2,18 @@ use gb_core::{
     BootRomAssetError, BootRomAssets, BootRomKind, CartridgeDiagnostic,
     CartridgeDiagnosticSeverity, CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError,
     CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
-    ConsoleModel, ExecutionMode, Machine, MachineConfig, PersistentCartState, SgbFlag, StartupMode,
-    TraceBuffer, TraceSummaryBuffer, UnsupportedCartridgeCategory,
+    ConsoleModel, ExecutionMode, Machine, MachineConfig, MachineSaveState,
+    MachineSaveStateRestoreError, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
+    TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveEnvelope, CartridgeSaveKey,
     CartridgeSaveKeyError, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
     ExternalSaveError, FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
-    SystemCartridgeSaveTimeSource, export_external_cartridge_save, import_external_cartridge_save,
-    legacy_sanitized_save_key, uses_battery_backed_hardware_persistence,
+    MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource,
+    decode_machine_save_state_envelope, encode_machine_save_state_envelope,
+    export_external_cartridge_save, import_external_cartridge_save, legacy_sanitized_save_key,
+    uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -46,6 +49,8 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
     "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
+    "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
+    "  --state-out <path>                     Save a full-machine .gbstate at the end of the run\n",
     "  --save-dir <dir>                       Load/save battery-backed cartridge persistence under this directory\n",
     "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
     "  --save-policy <manual|on-close|on-write>\n",
@@ -185,6 +190,8 @@ struct RunOptions {
     serial_out: Option<PathBuf>,
     framebuffer_out: Option<PathBuf>,
     trace_out: Option<PathBuf>,
+    state_in: Option<PathBuf>,
+    state_out: Option<PathBuf>,
     save_dir: Option<PathBuf>,
     save_key: Option<String>,
     save_policy: SavePolicy,
@@ -206,6 +213,8 @@ impl RunOptions {
             serial_out: None,
             framebuffer_out: None,
             trace_out: None,
+            state_in: None,
+            state_out: None,
             save_dir: None,
             save_key: None,
             save_policy: SavePolicy::default(),
@@ -311,6 +320,23 @@ impl CliMachine {
         match self {
             Self::Buffered(machine) => machine.restore_cartridge_persistent_state(state),
             Self::Summary(machine) => machine.restore_cartridge_persistent_state(state),
+        }
+    }
+
+    fn capture_save_state(&self) -> MachineSaveState {
+        match self {
+            Self::Buffered(machine) => machine.capture_save_state(),
+            Self::Summary(machine) => machine.capture_save_state(),
+        }
+    }
+
+    fn restore_save_state(
+        &mut self,
+        state: &MachineSaveState,
+    ) -> Result<(), MachineSaveStateRestoreError> {
+        match self {
+            Self::Buffered(machine) => machine.restore_save_state(state),
+            Self::Summary(machine) => machine.restore_save_state(state),
         }
     }
 
@@ -495,6 +521,20 @@ where
                 };
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().trace_out = Some(PathBuf::from(value.as_ref()));
+            }
+            "--state-in" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--state-in requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().state_in = Some(PathBuf::from(value.as_ref()));
+            }
+            "--state-out" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--state-out requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().state_out = Some(PathBuf::from(value.as_ref()));
             }
             "--save-dir" => {
                 let Some(value) = arguments.next() else {
@@ -713,12 +753,25 @@ fn run_command(
     if let Some(save_root) = &save_root {
         validate_directory_input("--save-dir", save_root)?;
     }
+    let state_in_path = options
+        .state_in
+        .as_ref()
+        .map(|path| resolve_path(&current_dir, path));
+    let state_out_path = options
+        .state_out
+        .as_ref()
+        .map(|path| resolve_path(&current_dir, path));
+
+    if let Some(state_in_path) = &state_in_path {
+        restore_machine_save_state_from_path(&mut machine, state_in_path)?;
+    }
     let mut save_session = open_save_session(
         save_root.as_deref(),
         &options,
         &rom_path,
         &mut machine,
         stderr,
+        state_in_path.is_none(),
     )?;
 
     let frame_limit = options.frame_limit;
@@ -795,6 +848,9 @@ fn run_command(
         };
         write_text_file_with_parent(trace_out, &trace_text)?;
     }
+    if let Some(state_out_path) = &state_out_path {
+        write_machine_save_state_to_path(&machine, state_out_path)?;
+    }
 
     if let Some(save_session) = &mut save_session {
         match options.save_policy {
@@ -829,6 +885,12 @@ fn run_command(
     }
     if let Some(serial_out) = &options.serial_out {
         writeln_checked(stderr, &format!("serial_out={}", serial_out.display()))?;
+    }
+    if let Some(state_in_path) = &state_in_path {
+        writeln_checked(stderr, &format!("state_in={}", state_in_path.display()))?;
+    }
+    if let Some(state_out_path) = &state_out_path {
+        writeln_checked(stderr, &format!("state_out={}", state_out_path.display()))?;
     }
     if let Some(save_session) = &save_session {
         writeln_checked(stderr, &format!("save_key={}", save_session.key.as_str()))?;
@@ -1171,6 +1233,7 @@ fn open_save_session(
     rom_path: &Path,
     machine: &mut CliMachine,
     stderr: &mut dyn Write,
+    load_existing_save: bool,
 ) -> Result<Option<SaveSession>, String> {
     let Some(save_root) = save_root else {
         return Ok(None);
@@ -1193,8 +1256,9 @@ fn open_save_session(
     let mut loaded_existing_save = false;
     let mut last_saved_state = machine.cartridge().persistent_state();
 
-    if let Some((envelope, save_path)) =
-        load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?
+    if load_existing_save
+        && let Some((envelope, save_path)) =
+            load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?
     {
         let elapsed_seconds = backend
             .current_unix_seconds()
@@ -1245,6 +1309,32 @@ fn flush_save_if_changed(
     save_session.last_saved_state = current_state;
     save_session.save_writes += 1;
     Ok(true)
+}
+
+fn restore_machine_save_state_from_path(
+    machine: &mut CliMachine,
+    path: &Path,
+) -> Result<(), String> {
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "failed to read .{} state {}: {error}",
+            MACHINE_SAVE_STATE_FILE_EXTENSION,
+            path.display()
+        )
+    })?;
+    let envelope = decode_machine_save_state_envelope(&bytes)
+        .map_err(|error| format_machine_save_state_io_error("decode", path, error))?;
+    machine
+        .restore_save_state(&envelope.state)
+        .map_err(|error| format!("failed to restore state {}: {error}", path.display()))
+}
+
+fn write_machine_save_state_to_path(machine: &CliMachine, path: &Path) -> Result<(), String> {
+    let envelope = MachineSaveStateEnvelope::new(machine.capture_save_state());
+    let bytes = encode_machine_save_state_envelope(&envelope)
+        .map_err(|error| format_machine_save_state_io_error("encode", path, error))?;
+    write_bytes_with_parent(path, &bytes)
+        .map_err(|error| format!("failed to write state {}: {error}", path.display()))
 }
 
 fn load_boot_rom_assets(
@@ -1600,6 +1690,18 @@ fn format_save_load_error(path: &Path, error: CartridgeSaveBackendError) -> Stri
 fn format_save_flush_error(path: &Path, reason: &str, error: CartridgeSaveBackendError) -> String {
     format!(
         "failed to save cartridge persistence ({reason}) to {}: {error}",
+        path.display()
+    )
+}
+
+fn format_machine_save_state_io_error(
+    operation: &str,
+    path: &Path,
+    error: CartridgeSaveBackendError,
+) -> String {
+    format!(
+        "failed to {operation} .{} state {}: {error}",
+        MACHINE_SAVE_STATE_FILE_EXTENSION,
         path.display()
     )
 }

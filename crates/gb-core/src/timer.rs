@@ -5,12 +5,12 @@ const TIMER_ENABLE_MASK: u8 = 0x04;
 const TIMER_CONTROL_MASK: u8 = 0x07;
 const TIMER_RELOAD_DELAY_T_CYCLES: u8 = 4;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TimerStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TimerStartupState {
     pub system_counter: u16,
     pub tima: u8,
@@ -18,7 +18,7 @@ pub struct TimerStartupState {
     pub tac: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Timer {
     console_model: ConsoleModel,
     status: TimerStatus,
@@ -31,7 +31,26 @@ pub struct Timer {
     reloaded_this_t_cycle: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TimerSaveState {
+    console_model: ConsoleModel,
+    status: TimerStatus,
+    system_counter: u16,
+    tima: u8,
+    tma: u8,
+    tac: u8,
+    previous_timer_signal: bool,
+    overflow_state: TimerOverflowState,
+    reloaded_this_t_cycle: bool,
+}
+
+impl TimerSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimerSnapshot {
     pub console_model: ConsoleModel,
     pub status: TimerStatus,
@@ -41,7 +60,7 @@ pub struct TimerSnapshot {
     pub tac: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct DividerResetEffects {
     pub apu_frame_sequencer_edge: bool,
 }
@@ -67,6 +86,32 @@ impl Timer {
 
     pub fn status(&self) -> TimerStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> TimerSaveState {
+        TimerSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            system_counter: self.system_counter,
+            tima: self.tima,
+            tma: self.tma,
+            tac: self.tac,
+            previous_timer_signal: self.previous_timer_signal,
+            overflow_state: self.overflow_state,
+            reloaded_this_t_cycle: self.reloaded_this_t_cycle,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &TimerSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.system_counter = state.system_counter;
+        self.tima = state.tima;
+        self.tma = state.tma;
+        self.tac = state.tac;
+        self.previous_timer_signal = state.previous_timer_signal;
+        self.overflow_state = state.overflow_state;
+        self.reloaded_this_t_cycle = state.reloaded_this_t_cycle;
     }
 
     pub fn read_div(&self) -> u8 {
@@ -252,13 +297,13 @@ impl Timer {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum TimerOverflowState {
     Idle,
     Pending { ticks_until_reload: u8 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum TimerSignalChangeOrigin {
     AutonomousTick,
     MmioWrite,

@@ -6,19 +6,23 @@ const SC_FORCED_HIGH_BITS: u8 = 0x7E;
 const SC_CLOCK_MODE_BIT: u8 = 0x01;
 const DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT: u8 = 8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SerialStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialClockMode {
     #[default]
     External,
     Internal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialPeer {
     #[default]
     Disconnected,
@@ -28,7 +32,9 @@ pub enum SerialPeer {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialTransferState {
     #[default]
     Idle,
@@ -37,7 +43,7 @@ pub enum SerialTransferState {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SerialStartupState {
     pub sb: u8,
     pub clock_mode: SerialClockMode,
@@ -69,7 +75,7 @@ impl SerialStartupState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Serial {
     console_model: ConsoleModel,
     status: SerialStatus,
@@ -87,7 +93,31 @@ pub struct Serial {
     completed_output_bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SerialSaveState {
+    console_model: ConsoleModel,
+    status: SerialStatus,
+    sb: u8,
+    clock_mode: SerialClockMode,
+    transfer_state: SerialTransferState,
+    peer: SerialPeer,
+    clock_counter: u16,
+    external_clock_pulses_pending: u8,
+    staged_outgoing_byte: u8,
+    current_outgoing_byte: u8,
+    current_outgoing_shift_byte: u8,
+    current_incoming_byte: u8,
+    latest_completed_output_byte: Option<u8>,
+    completed_output_bytes: Vec<u8>,
+}
+
+impl SerialSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.completed_output_bytes.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerialSnapshot {
     pub console_model: ConsoleModel,
     pub status: SerialStatus,
@@ -123,6 +153,42 @@ impl Serial {
 
     pub fn status(&self) -> SerialStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> SerialSaveState {
+        SerialSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            sb: self.sb,
+            clock_mode: self.clock_mode,
+            transfer_state: self.transfer_state,
+            peer: self.peer,
+            clock_counter: self.clock_counter,
+            external_clock_pulses_pending: self.external_clock_pulses_pending,
+            staged_outgoing_byte: self.staged_outgoing_byte,
+            current_outgoing_byte: self.current_outgoing_byte,
+            current_outgoing_shift_byte: self.current_outgoing_shift_byte,
+            current_incoming_byte: self.current_incoming_byte,
+            latest_completed_output_byte: self.latest_completed_output_byte,
+            completed_output_bytes: self.completed_output_bytes.clone(),
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &SerialSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.sb = state.sb;
+        self.clock_mode = state.clock_mode;
+        self.transfer_state = state.transfer_state;
+        self.peer = state.peer;
+        self.clock_counter = state.clock_counter;
+        self.external_clock_pulses_pending = state.external_clock_pulses_pending;
+        self.staged_outgoing_byte = state.staged_outgoing_byte;
+        self.current_outgoing_byte = state.current_outgoing_byte;
+        self.current_outgoing_shift_byte = state.current_outgoing_shift_byte;
+        self.current_incoming_byte = state.current_incoming_byte;
+        self.latest_completed_output_byte = state.latest_completed_output_byte;
+        self.completed_output_bytes = state.completed_output_bytes.clone();
     }
 
     pub fn clock_mode(&self) -> SerialClockMode {

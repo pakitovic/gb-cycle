@@ -63,6 +63,18 @@ fn classification_keeps_supported_families_and_structured_unsupported_categories
 }
 
 #[test]
+fn classification_deserialize_only_accepts_known_static_literals() {
+    assert_eq!(known_classification_str("MBC1M"), Some("MBC1M"));
+    assert_eq!(
+        known_classification_str(
+            "MMM01 classification came from the explicit later Mani trailing-menu signature path"
+        ),
+        Some("MMM01 classification came from the explicit later Mani trailing-menu signature path")
+    );
+    assert_eq!(known_classification_str("UNBOUNDED REVIEW STRING"), None);
+}
+
+#[test]
 fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_header() {
     let mbc30_rom = build_test_rom(256 * 1024, 0x13, 0x03, 0x05);
     let mbc30_header = CartridgeHeader::parse(&mbc30_rom).expect("header should parse");
@@ -219,6 +231,32 @@ fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_in
             other => panic!("expected typed rejection, got {other:?}"),
         }
     }
+}
+
+#[test]
+fn loaded_slot_caches_rom_fingerprint_for_save_state_metadata() {
+    let rom = build_banked_mbc1_rom(0x03, 0x00);
+    let expected = SaveStateByteFingerprint::from_bytes(&rom);
+    let (mut cartridge, _) = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("MBC1 should load")
+        .into_parts();
+
+    assert_eq!(cartridge.rom_fingerprint(), Some(expected));
+
+    match &mut cartridge.device {
+        Some(CartridgeDevice::Mbc1(mapper)) => mapper.rom[0] ^= 0xFF,
+        other => panic!("expected MBC1 mapper, got {other:?}"),
+    }
+
+    assert_ne!(
+        cartridge
+            .device
+            .as_ref()
+            .expect("device should exist")
+            .compute_rom_fingerprint(),
+        expected
+    );
+    assert_eq!(cartridge.rom_fingerprint(), Some(expected));
 }
 
 #[test]

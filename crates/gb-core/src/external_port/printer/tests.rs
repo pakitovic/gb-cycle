@@ -155,6 +155,32 @@ fn compressed_packets_are_rejected_with_packet_error_status() {
 }
 
 #[test]
+fn dynamic_payload_bytes_counts_printer_owned_buffers() {
+    let mut printer = PrinterDevice::new();
+    assert_eq!(printer.dynamic_payload_bytes(), 0);
+
+    printer.response_queue.extend([0x81, 0x00]);
+    printer.image_buffer.extend([0x11, 0x22, 0x33, 0x44]);
+    printer.packet_data.extend([0x55, 0x66, 0x77]);
+    printer.printed_pages.push(PrintedPage {
+        width: 2,
+        height: 2,
+        pixels: vec![0, 1, 2, 3],
+        print_args: PrinterPrintArgs {
+            sheets: 1,
+            margins: PrinterMargins::default(),
+            palette: 0xE4,
+            exposure: 0x40,
+        },
+    });
+
+    assert_eq!(
+        printer.dynamic_payload_bytes(),
+        2 * std::mem::size_of::<u8>() + 4 + 3 + std::mem::size_of::<PrintedPage>() + 4
+    );
+}
+
+#[test]
 fn render_printed_page_decodes_gb_tile_bytes_into_shade_indices() {
     let mut tile_bytes = vec![0; 16];
     tile_bytes[0] = 0b1000_0000;

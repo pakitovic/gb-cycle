@@ -148,8 +148,10 @@ cargo run --release -p gb-desktop -- /path/to/tetris.gb \
   `Left Command` for `A`, `Backspace` for `SELECT`, and `Enter` for `START`.
   The keyboard menu defaults mirror those face buttons with `Left Command` as
   confirm/`A` and `Left Option` as cancel/`B`; `Esc` also remains a hardwired
-  cancel shortcut. Default hotkeys use `Space` for pause, `F1` for reset,
-  `F5` for manual save, `F10` for stats, and `F11` for fullscreen.
+  cancel shortcut. Default hotkeys use `Space` for pause, `F1` for save state,
+  `F2` for load state, `1`/`2`/`3`/`4` for selecting the active state slot,
+  `Left Shift` for rewind, `F9` for manual cartridge save, `F10` for stats,
+  `F11` for fullscreen, and `F12` for reset.
 - The current local `DMG-04` `P2` console uses its explicit `P2` keyboard profile.
   `DMG-07` reuses that `P2` profile and adds fixed keyboard profiles for `P3`
   and `P4` in this first desktop cut.
@@ -166,7 +168,7 @@ All rebinding takes immediate runtime effect:
 - `INPUT -> KEYBOARD` — in-window keyboard joypad rebinding.
 - `INPUT -> KB MENU` — dedicated host-side keyboard menu rebinding.
 - `INPUT -> HOTKEYS` — frontend hotkey rebinding.
-- Keyboard rebinding uses SDL3 physical scancodes when available so saved bindings stay stable across host layouts. Supported keyboard keys include the existing arrows, `Backspace`, `Enter`, `Space`, `R`, `X`, `Z`, function hotkeys such as `F1`, plus `Tab`, left/right `Shift`, left/right `Control`, left/right `Alt` (`Option` on macOS), and left/right GUI (`Command` on macOS, Windows/Super on Windows/Linux). `Fn` remains host/firmware-owned and is not treated as a reliable bindable key.
+- Keyboard rebinding uses SDL3 physical scancodes when available so saved bindings stay stable across host layouts. Supported keyboard keys include the existing arrows, top-row `1`/`2`/`3`/`4`, `Backspace`, `Enter`, `Space`, `R`, `X`, `Z`, all function keys from `F1` through `F12`, plus `Tab`, left/right `Shift`, left/right `Control`, left/right `Alt` (`Option` on macOS), and left/right GUI (`Command` on macOS, Windows/Super on Windows/Linux). `Fn` remains host/firmware-owned and is not treated as a reliable bindable key.
 - `INPUT -> GAMEPAD` — SDL gamepad rebinding.
 - `INPUT -> PAD MENU` — dedicated SDL gamepad menu rebinding.
 - `INPUT -> RUMBLE` — host rumble mode for the active SDL gamepad with `OFF`, `HIGH`, and `LOW` host-intensity options. This option is only enabled when the loaded cartridge exposes rumble support and the active gamepad reports SDL rumble capability; otherwise it remains visible but disabled.
@@ -178,6 +180,10 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - `Escape` and the active gamepad `Guide` button open the overlay when it is closed; when it is already open they both act as the same back/cancel control.
 - In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
+- Once a ROM is loaded, the root overlay exposes single-machine `.gbstate` v3 actions immediately below `OPEN RECENT`: `SAVE STATE`, `LOAD STATE`, `STATE SLOT N`, and `AUTOLOAD OFF` / `AUTOLOAD SLOT N`. They are hidden in the launcher/no-ROM root menu to keep startup uncluttered; after a ROM is loaded, `LOAD STATE` remains visible but disabled until the selected slot file exists. The autoload selector is persisted, cycles through `OFF` and slots `1` through `4`, and attempts to restore the selected slot after `OPEN ROM` / `OPEN RECENT` only when that slot file exists; missing slots are ignored without a modal error. Older `.gbstate` v1/v2 slot files are unsupported and must be recreated. State defaults are `F1` save, `F2` load, and `1`/`2`/`3`/`4` for selecting the active slot. Rewind is controlled by the `Left Shift` hold hotkey rather than a one-step root menu action and, by default, consumes four older in-memory snapshots per presented frame while held.
+- `SYSTEM -> REWIND` owns desktop-only rewind policy: `REWIND ON/OFF`, `HISTORY` (`5`/`10`/`20`/`30`/`60` seconds), `SUBFR` (`OFF`/`1`/`2`/`4` subframes per frame), `SPEED` (`1x`/`2x`/`4x`, currently mapped to `2`/`4`/`8` snapshot restores per presented frame while held), `MEMORY` (`64`/`128`/`256`/`512` MiB), and `DEFAULTS`. Capture-policy changes rebuild the in-memory buffer and clear history so old snapshots are not mixed with a different cadence or capacity; changing `SPEED` only affects playback and keeps the existing history.
+- The compact stats HUD includes rewind status next to the frame/audio metrics: `RW OFF` when disabled or linked, `RW EMPTY` with no history, `RW <seconds>S <count>` when history is available, `RW << <seconds>S` while actively rewinding, and `MEM <used>/<limit>M` using core-accounted snapshot payload bytes. Holding rewind with an empty buffer does not show a modal error and does not advance emulation during that frame. While the rewind hotkey is active, a separate top-right `<< REW` indicator is rendered even when the stats HUD is hidden; it is suppressed when rewind is off or unsupported.
+- `.gbstate` slots and rewind are disabled by design in local `DMG-04` 2-player Game Link and `DMG-07` 4-Player Adapter linked sessions; Phase 8 only supports single-machine save states and rewind.
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - Root-level back/cancel (`Escape` / `Guide`) clears an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:

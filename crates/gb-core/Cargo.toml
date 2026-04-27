@@ -6,6 +6,8 @@ rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde-big-array = "0.5"
 
 [dev-dependencies]
 criterion = "0.5.1"

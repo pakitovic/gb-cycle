@@ -1,5 +1,5 @@
 use super::*;
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum PpuPaletteRegister {
     Bgp,
     Obp0,
@@ -19,7 +19,7 @@ impl PpuPaletteRegister {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum PpuRegister {
     Lcdc,
     Stat,
@@ -69,7 +69,7 @@ impl PpuRegister {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum PpuMode3LiveBackgroundRegister {
     Lcdc,
     Scy,
@@ -94,7 +94,7 @@ impl PpuMode3LiveBackgroundRegister {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferDotKind {
     NotServed,
     ServedPreVisibleTransfer,
@@ -102,7 +102,7 @@ pub(super) enum Mode3TransferDotKind {
     ServedVisiblePixel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode3TransferDot {
     pub(super) kind: Mode3TransferDotKind,
     pub(super) consumed_scx_discard: bool,
@@ -135,14 +135,14 @@ impl Mode3TransferDot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferPhase {
     #[default]
     Priming,
     Output,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferLane {
     PreVisible,
     Hidden,
@@ -159,26 +159,26 @@ impl Mode3TransferLane {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferSourceWindow {
     AbstractStartup,
     FifoBacked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode3TransferContext {
     pub(super) lane: Mode3TransferLane,
     pub(super) source_window: Mode3TransferSourceWindow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode3TransferServicePlan {
     pub(super) result_kind: Mode3TransferDotKind,
     pub(super) execution: Mode3TransferServiceExecution,
     pub(super) backing: Mode3TransferBacking,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode3CurrentTransfer {
     pub(super) context: Mode3TransferContext,
     pub(super) readiness: Mode3TransferReadiness,
@@ -202,7 +202,7 @@ impl Mode3CurrentTransfer {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferReadiness {
     WaitingForFifo(Mode3TransferServicePlan),
     Ready(Mode3TransferServicePlan),
@@ -222,7 +222,7 @@ impl Mode3TransferReadiness {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferServiceExecution {
     ConsumeScxDiscard,
     AdvancePreVisibleWithBgPop,
@@ -252,7 +252,7 @@ impl Mode3TransferServiceExecution {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferBacking {
     Abstract,
     FifoBacked,
@@ -285,7 +285,7 @@ impl Mode3TransferServicePlan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3StartupSourceState {
     EntryDelay { remaining: u8 },
     Abstract { remaining: u8 },
@@ -312,7 +312,7 @@ pub(super) const fn register_affects_pixel(
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OamCorruptionEventKind {
     Read,
     Write,
@@ -320,7 +320,7 @@ pub(crate) enum OamCorruptionEventKind {
     WriteWithIncDec,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct OamCorruptionController;
 
 impl OamCorruptionController {
@@ -398,7 +398,7 @@ impl OamCorruptionController {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFifo {
     entries: VecDeque<BgFifoPixel>,
 }
@@ -406,6 +406,12 @@ pub(super) struct BgFifo {
 impl BgFifo {
     pub(super) fn clear(&mut self) {
         self.entries.clear();
+    }
+
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.entries
+            .len()
+            .saturating_mul(std::mem::size_of::<BgFifoPixel>())
     }
 
     pub(super) fn len(&self) -> usize {
@@ -518,7 +524,7 @@ impl std::ops::Index<usize> for BgFifo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgPipelineState {
     pub(super) fetcher: BgFetcherState,
     pub(super) push: BgPushState,
@@ -554,7 +560,13 @@ pub(super) struct BgPipelineState {
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl BgPipelineState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.fifo.dynamic_payload_bytes()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgWx0WindowDisablePrefixState {
     pub(super) desired_prefix_pixels: u8,
     pub(super) prefix_bg_pixel: Option<u8>,
@@ -569,7 +581,7 @@ impl DmgWx0WindowDisablePrefixState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgLateWindowEnableOverride {
     pub(super) onset_x: u8,
     pub(super) end_x: u8,
@@ -586,7 +598,7 @@ impl DmgLateWindowEnableOverride {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum DmgPrevisibleWxRetargetKind {
     CancelOnly,
     OneHiddenPrefixResume,
@@ -594,7 +606,7 @@ pub(super) enum DmgPrevisibleWxRetargetKind {
     PlainRestart,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgPrevisibleWxRetarget {
     pub(super) kind: DmgPrevisibleWxRetargetKind,
     pub(super) trigger_x: Option<u8>,
@@ -655,7 +667,7 @@ impl DmgPrevisibleWxRetarget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgPendingPrevisibleWxCarry {
     pub(super) next_trigger_x: u8,
     pub(super) end_trigger_x: u8,
@@ -679,7 +691,7 @@ impl DmgPendingPrevisibleWxCarry {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgPendingLiveWxTriggerGlitch {
     pub(super) trigger_x: u8,
 }
@@ -690,7 +702,7 @@ impl DmgPendingLiveWxTriggerGlitch {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgPendingWindowReenableResume {
     pub(super) onset_x: u8,
     pub(super) window_origin_x: u8,
@@ -717,7 +729,7 @@ impl DmgPendingWindowReenableResume {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgWindowRestartState {
     pub(super) pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
     pub(super) previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
@@ -810,7 +822,7 @@ impl DmgWindowRestartState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgStartupScyTiledataLatch {
     lcdc: u8,
     tile_data_row: u16,
@@ -825,7 +837,7 @@ impl BgStartupScyTiledataLatch {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct PerPlane<T> {
     pub(super) low: T,
     pub(super) high: T,
@@ -837,7 +849,7 @@ impl<T> PerPlane<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgTileDataSelect {
     Signed8800,
     Unsigned8000,
@@ -854,13 +866,13 @@ impl BgTileDataSelect {
 
 pub(in crate::ppu) type BgTileDataSelectOverride = PerPlane<Option<BgTileDataSelect>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct StartupContinuationSliceOverrides<T> {
     pub(super) visible_tile2: T,
     pub(super) visible_tile3: T,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgVisibleStartupSlice {
     VisibleTile2,
     VisibleTile3,
@@ -892,7 +904,7 @@ type DmgLcdc3StartupTilemapSelectOverrides = StartupContinuationSliceOverrides<O
 type DmgLcdc4StartupTileDataSelectOverrides =
     StartupContinuationSliceOverrides<BgTileDataSelectOverride>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgStartupContinuationOverrides {
     pub(super) lcdc3_tilemap_select: DmgLcdc3StartupTilemapSelectOverrides,
     pub(super) lcdc4_tiledata_select: DmgLcdc4StartupTileDataSelectOverrides,
@@ -950,13 +962,13 @@ impl DmgStartupContinuationOverrides {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgMode3LiveLcdcBgState {
     pub(super) lcdc3_current_line_bg_tilemap_write_count: u8,
     pub(super) startup_continuation_overrides: DmgStartupContinuationOverrides,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgLcdc0PanelLiveWriteState {
     pub(super) current_line_bg_enable_write_count: u8,
     pub(super) bg_enable_visible_hold: DmgVisibleHold<bool>,
@@ -975,7 +987,7 @@ impl DmgLcdc0PanelLiveWriteState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgLcdc1PanelLiveWriteState {
     pub(super) obj_enable_visible_hold: DmgVisibleHold<bool>,
 }
@@ -986,7 +998,7 @@ impl DmgLcdc1PanelLiveWriteState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgVisibleHold<T> {
     pub(super) override_value: Option<T>,
     pub(super) pixels_remaining: u8,
@@ -1018,13 +1030,13 @@ impl<T: Copy> DmgVisibleHold<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum DmgLcdc2ObservedEffectState {
     Pending,
     Applied,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgLcdc2ActiveObjSizeWrite {
     pub(super) write_index: u8,
     pub(super) visible_x: u8,
@@ -1052,7 +1064,7 @@ impl DmgLcdc2ActiveObjSizeWrite {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgLcdc2ObjSizeLiveWriteState {
     pub(super) current_line_obj_size_write_count: u8,
     pub(super) active_write: Option<DmgLcdc2ActiveObjSizeWrite>,
@@ -1104,7 +1116,7 @@ impl DmgLcdc2ObjSizeLiveWriteState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgBgpCpuCommitState {
     pub(super) output_palette_override: Option<u8>,
     pub(super) output_delay_pixels_remaining: u8,
@@ -1117,6 +1129,15 @@ pub(super) struct DmgBgpCpuCommitState {
     pub(super) previous_line_start_palette: u8,
     pub(super) current_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
     pub(super) previous_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+}
+
+impl DmgBgpCpuCommitState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.current_line_writes
+            .len()
+            .saturating_add(self.previous_line_writes.len())
+            .saturating_mul(std::mem::size_of::<PpuDmgBgpCpuCommitWrite>())
+    }
 }
 
 impl DmgBgpCpuCommitState {
@@ -1143,13 +1164,23 @@ impl DmgBgpCpuCommitState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgPanelLiveWriteState {
     pub(super) lcdc0: DmgLcdc0PanelLiveWriteState,
     pub(super) lcdc1: DmgLcdc1PanelLiveWriteState,
     pub(super) lcdc2: DmgLcdc2ObjSizeLiveWriteState,
     pub(super) bgp_cpu_commit: DmgBgpCpuCommitState,
     pub(super) recent_panel_dots: VecDeque<PpuRecentPanelDot>,
+}
+
+impl DmgPanelLiveWriteState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.bgp_cpu_commit.dynamic_payload_bytes().saturating_add(
+            self.recent_panel_dots
+                .len()
+                .saturating_mul(std::mem::size_of::<PpuRecentPanelDot>()),
+        )
+    }
 }
 
 impl DmgPanelLiveWriteState {
@@ -2014,7 +2045,7 @@ impl Default for BgPipelineState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgStartupFetchSeamState {
     #[default]
     Inactive,
@@ -2029,7 +2060,7 @@ pub(super) enum BgStartupFetchSeamState {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgStartupContinuationSlice {
     #[default]
     None,
@@ -2055,7 +2086,7 @@ impl BgStartupContinuationSlice {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFetcherState {
     pub(super) source: PpuBgFetcherSource,
     pub(super) stage: PpuBgFetcherStage,
@@ -2303,7 +2334,7 @@ impl BgFetcherState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgPushState {
     pub(super) pending: bool,
     pub(super) disposition: BgPushDisposition,
@@ -2370,7 +2401,7 @@ impl BgPushState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFifoFillState {
     pub(super) pending: bool,
     pub(super) startup_dummy_pixels: u8,
@@ -2405,7 +2436,7 @@ impl BgFifoFillState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgCachedSliceOrigin {
     #[default]
     Ordinary,
@@ -2436,7 +2467,7 @@ impl BgCachedSliceOrigin {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgCachedSlice {
     pub(super) source: PpuBgFetcherSource,
     pub(super) origin: BgCachedSliceOrigin,
@@ -2730,7 +2761,7 @@ impl BgCachedSlice {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFifoPixelCached {
     pub(super) cached: BgCachedSlice,
     pub(super) pixel_index: u8,
@@ -2745,7 +2776,7 @@ impl BgFifoPixelCached {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFifoPixel {
     pub(super) color: u8,
     pub(super) cached: Option<BgFifoPixelCached>,
@@ -2925,14 +2956,14 @@ const fn startup_visible_tile3_scx_boundary_old_tail_pixels(scx: u8) -> u8 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgPushDisposition {
     #[default]
     Ready,
     InterruptedByObjectFetch,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgPushDotResult {
     NotReady,
     EntryDelay,
@@ -2942,7 +2973,7 @@ pub(super) enum BgPushDotResult {
     QueuedFill,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum BgPushDotOwnership {
     NotReady,
     EntryDelay,
@@ -2952,7 +2983,7 @@ pub(super) enum BgPushDotOwnership {
     QueueFillThenObjectFetch,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode3DotArbitration {
     pub(super) bg_transfer_can_advance: bool,
     pub(super) obj_fetch_can_start_from_fifo_backed_transfer: bool,
@@ -2976,14 +3007,14 @@ impl Mode3DotArbitration {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ObjFetchStartSource {
     FifoBackedTransfer,
     PushCachedBgFetch,
     QueuedBgFill,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct WindowState {
     pub(super) wy_triggered: bool,
     pub(super) pending_wx166_next_line: bool,
@@ -2998,13 +3029,13 @@ impl WindowState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct StatState {
     pub(super) irq_line: bool,
     pub(super) lcd_disabled_lyc_coincidence: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ObjPipelineState {
     pub(super) fifo: VecDeque<ObjPixel>,
     pub(super) fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
@@ -3014,6 +3045,19 @@ pub(super) struct ObjPipelineState {
     pub(super) pending_match_x: Option<u8>,
     pub(super) late_metadata_word: Option<(u8, u8)>,
     pub(super) fetch: ObjFetchState,
+}
+
+impl ObjPipelineState {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.fifo
+            .len()
+            .saturating_mul(std::mem::size_of::<ObjPixel>())
+            .saturating_add(
+                self.pending_sprite_slots
+                    .len()
+                    .saturating_mul(std::mem::size_of::<u8>()),
+            )
+    }
 }
 
 impl ObjPipelineState {
@@ -3113,20 +3157,20 @@ impl ObjPipelineState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ObjHitOwnership {
     pub(super) match_x: u8,
     pub(super) phase: ObjHitPhase,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ObjHitPhase {
     PreVisible,
     Hidden,
     Visible,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ObjFetchState {
     pub(super) stage: PpuObjFetcherStage,
     pub(super) stage_dot: u8,
@@ -3143,7 +3187,7 @@ pub(super) struct ObjFetchState {
     pub(super) tile_high: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ObjPixel {
     pub(super) color: u8,
     pub(super) palette_obp1: bool,
@@ -3168,7 +3212,7 @@ impl ObjPixel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct MixedPixel {
     pub(super) color: u8,
     pub(super) source: MixedPixelSource,
@@ -3190,13 +3234,13 @@ impl MixedPixel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum MixedPixelSource {
     Background,
     Object { palette_obp1: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Mode2ScanState {
     pub(super) scanned_entries: u8,
     pub(super) selected_sprite_count: u8,

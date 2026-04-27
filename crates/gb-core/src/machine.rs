@@ -20,12 +20,17 @@ use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::link::Dmg07Port;
 use crate::model::MachineConfig;
 use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
+use crate::save_state::{
+    MachineBootSaveStateMetadata, MachineCartridgeSaveStateMetadata, MachineCoreSaveState,
+    MachineRuntimeSaveState, MachineSaveState, MachineSaveStateMetadata,
+    MachineSaveStateRestoreError, SchedulerSaveState,
+};
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTransferState};
 use crate::timer::Timer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct PendingExternalEvents {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PendingExternalEvents {
     joypad_pressed_mask: u8,
     joypad_state_dirty: bool,
     external_serial_clock_pulses_pending: u8,
@@ -396,6 +401,147 @@ impl<S: TraceSink> Machine<S> {
         self.cartridge.advance_rtc_seconds(seconds);
     }
 
+    pub fn capture_save_state(&self) -> MachineSaveState {
+        MachineSaveState::new(
+            self.save_state_metadata(),
+            MachineCoreSaveState {
+                scheduler: SchedulerSaveState {
+                    next_t_cycle: self.scheduler.next_t_cycle(),
+                },
+                machine: MachineRuntimeSaveState {
+                    joypad_pressed_mask: self.pending_external_events.joypad_pressed_mask,
+                    joypad_state_dirty: self.pending_external_events.joypad_state_dirty,
+                    external_serial_clock_pulses_pending: self
+                        .pending_external_events
+                        .external_serial_clock_pulses_pending,
+                },
+                cpu: self.cpu.capture_save_state(),
+                bus: self.bus.capture_save_state(),
+                apu: self.apu.capture_save_state(),
+                ppu: self.ppu.capture_save_state(),
+                dma: self.dma.capture_save_state(),
+                timer: self.timer.capture_save_state(),
+                serial: self.serial.capture_save_state(),
+                external_port: self.external_port.capture_save_state(),
+                boot: self.boot.capture_save_state(),
+                interrupts: self.interrupts.capture_save_state(),
+                joypad: self.joypad.capture_save_state(),
+                cartridge: self.cartridge.capture_save_state(),
+            },
+        )
+    }
+
+    pub fn restore_save_state(
+        &mut self,
+        state: &MachineSaveState,
+    ) -> Result<(), MachineSaveStateRestoreError> {
+        self.validate_save_state_metadata(state.metadata())?;
+
+        let core = state.core();
+        self.cartridge.validate_save_state(&core.cartridge)?;
+        self.scheduler.set_next_t_cycle(core.scheduler.next_t_cycle);
+        self.cpu.restore_save_state(&core.cpu);
+        self.bus.restore_save_state(&core.bus);
+        self.apu.restore_save_state(&core.apu);
+        self.ppu.restore_save_state(&core.ppu);
+        self.dma.restore_save_state(&core.dma);
+        self.timer.restore_save_state(&core.timer);
+        self.serial.restore_save_state(&core.serial);
+        self.external_port.restore_save_state(&core.external_port);
+        self.boot.restore_save_state(&core.boot);
+        self.interrupts.restore_save_state(&core.interrupts);
+        self.joypad.restore_save_state(&core.joypad);
+        self.cartridge.restore_save_state(&core.cartridge);
+        self.pending_external_events = PendingExternalEvents {
+            joypad_pressed_mask: core.machine.joypad_pressed_mask,
+            joypad_state_dirty: core.machine.joypad_state_dirty,
+            external_serial_clock_pulses_pending: core.machine.external_serial_clock_pulses_pending,
+        };
+        self.pending_ppu_mmio_write = None;
+        self.sync_serial_peer_from_external_port();
+        Ok(())
+    }
+
+    fn save_state_metadata(&self) -> MachineSaveStateMetadata {
+        MachineSaveStateMetadata {
+            console_model: self.config.console_model,
+            operating_mode: self.config.operating_mode,
+            host_platform: self.config.host_platform,
+            startup_mode: self.config.startup_mode,
+            compatibility: self.config.compatibility.clone(),
+            next_t_cycle: self.scheduler.next_t_cycle(),
+            cartridge: self.cartridge_save_state_metadata(),
+            boot: self.boot_save_state_metadata(),
+        }
+    }
+
+    fn cartridge_save_state_metadata(&self) -> MachineCartridgeSaveStateMetadata {
+        MachineCartridgeSaveStateMetadata {
+            state: self.cartridge.state(),
+            rom_fingerprint: self.cartridge.rom_fingerprint(),
+        }
+    }
+
+    fn boot_save_state_metadata(&self) -> MachineBootSaveStateMetadata {
+        MachineBootSaveStateMetadata {
+            startup_mode: self.boot.startup_mode(),
+            boot_rom_kind: self.boot.boot_rom_kind(),
+            boot_rom_mapped: self.boot.is_boot_rom_mapped(),
+            boot_rom_fingerprint: self.boot.boot_rom_fingerprint(),
+        }
+    }
+
+    fn validate_save_state_metadata(
+        &self,
+        metadata: &MachineSaveStateMetadata,
+    ) -> Result<(), MachineSaveStateRestoreError> {
+        if metadata.console_model != self.config.console_model {
+            return Err(MachineSaveStateRestoreError::ConsoleModelMismatch {
+                expected: metadata.console_model,
+                actual: self.config.console_model,
+            });
+        }
+        if metadata.operating_mode != self.config.operating_mode {
+            return Err(MachineSaveStateRestoreError::OperatingModeMismatch {
+                expected: metadata.operating_mode,
+                actual: self.config.operating_mode,
+            });
+        }
+        if metadata.host_platform != self.config.host_platform {
+            return Err(MachineSaveStateRestoreError::HostPlatformMismatch {
+                expected: metadata.host_platform,
+                actual: self.config.host_platform,
+            });
+        }
+        if metadata.startup_mode != self.config.startup_mode {
+            return Err(MachineSaveStateRestoreError::StartupModeMismatch {
+                expected: metadata.startup_mode,
+                actual: self.config.startup_mode,
+            });
+        }
+        if metadata.compatibility != self.config.compatibility {
+            return Err(MachineSaveStateRestoreError::CompatibilityMismatch);
+        }
+
+        let actual_cartridge = self.cartridge_save_state_metadata();
+        if metadata.cartridge != actual_cartridge {
+            return Err(MachineSaveStateRestoreError::CartridgeMismatch {
+                expected: metadata.cartridge.clone(),
+                actual: actual_cartridge,
+            });
+        }
+
+        let actual_boot = self.boot_save_state_metadata();
+        if !boot_save_state_metadata_is_compatible(&metadata.boot, &actual_boot) {
+            return Err(MachineSaveStateRestoreError::BootRomMismatch {
+                expected: metadata.boot.clone(),
+                actual: actual_boot,
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn into_parts(self) -> MachineParts<S> {
         MachineParts {
             config: self.config,
@@ -484,6 +630,15 @@ impl<S: TraceSink> Machine<S> {
             CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
         )
     }
+}
+
+fn boot_save_state_metadata_is_compatible(
+    expected: &MachineBootSaveStateMetadata,
+    actual: &MachineBootSaveStateMetadata,
+) -> bool {
+    expected.startup_mode == actual.startup_mode
+        && expected.boot_rom_kind == actual.boot_rom_kind
+        && expected.boot_rom_fingerprint == actual.boot_rom_fingerprint
 }
 
 #[cfg(test)]

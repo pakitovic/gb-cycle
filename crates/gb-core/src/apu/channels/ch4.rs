@@ -13,7 +13,7 @@ use super::super::registers::Channel4Register;
 use super::super::{ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace};
 use super::ch4_live_write::{step_channel4_lfsr, trace_channel4_live_nr43_write};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel4NoiseSignalState {
     pub(in crate::apu) clock_shift: u8,
     pub(in crate::apu) short_width_mode: bool,
@@ -22,7 +22,7 @@ pub(in crate::apu) struct Channel4NoiseSignalState {
     pub(in crate::apu) lfsr_state: u16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel4Nr43LiveWriteState {
     pub(in crate::apu) alignment: u8,
     pub(in crate::apu) alignment_subphase: bool,
@@ -36,7 +36,7 @@ pub(in crate::apu) struct Channel4Nr43LiveWriteState {
     pub(in crate::apu) last_trace: Option<ApuCh4Nr43LiveWriteTrace>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel4State {
     nr41: u8,
     nr42: u8,

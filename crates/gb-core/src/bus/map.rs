@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusRegion {
     BootRom,
     CartridgeRomBank0,
@@ -46,7 +46,7 @@ impl BusRegion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusDomain {
     BootRom,
     Cartridge,
@@ -57,7 +57,7 @@ pub enum BusDomain {
     IoHram,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusRegionOwner {
     Boot,
     Bus,
@@ -67,7 +67,7 @@ pub enum BusRegionOwner {
     InterruptController,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BusAddressInfo {
     address: u16,
     region: BusRegion,
@@ -104,19 +104,19 @@ impl BusAddressInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum UnusableAreaReadProfile {
     DmgFamilyFixedZero,
     CgbRevisionDependent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum UnusableAreaWriteProfile {
     Ignored,
     CgbRevisionDependentRam,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct UnusableAreaInfo {
     address: u16,
     read_profile: UnusableAreaReadProfile,
@@ -163,7 +163,7 @@ impl UnusableAreaInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IoRegisterOwner {
     Joypad,
     Serial,
@@ -179,21 +179,21 @@ pub enum IoRegisterOwner {
     Reserved,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IoRegisterAvailability {
     Shared,
     DmgCompatible,
     CgbOnly,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IoRegisterImplementation {
     Implemented,
     Stubbed,
     Unavailable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IoRegisterAccess {
     ReadWrite,
     ReadOnly,
@@ -201,7 +201,7 @@ pub enum IoRegisterAccess {
     Mixed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IoRegisterKind {
     Joyp,
     SerialData,
@@ -272,7 +272,7 @@ pub enum IoRegisterKind {
     InterruptEnable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct IoRegisterInfo {
     address: u16,
     owner: IoRegisterOwner,

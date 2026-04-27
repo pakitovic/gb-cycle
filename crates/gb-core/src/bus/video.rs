@@ -9,8 +9,9 @@ use super::{
 
 type BusMasterMask = u16;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct OamDomain {
+    #[serde(with = "serde_big_array::BigArray")]
     bytes: [u8; OAM_LEN],
     acquired_by: BusMasterMask,
 }
@@ -106,8 +107,9 @@ impl OamDomain {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct VramDomain {
+    #[serde(with = "serde_big_array::BigArray")]
     bytes: [u8; VRAM_LEN],
     acquired_by: BusMasterMask,
 }

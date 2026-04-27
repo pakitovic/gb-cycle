@@ -4,18 +4,18 @@ use crate::scheduler::{CycleContext, InterruptSource};
 const INTERRUPT_REQUEST_MASK: u8 = 0x1F;
 const INTERRUPT_FLAG_FORCED_HIGH_BITS: u8 = 0xE0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InterruptControllerStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct InterruptStartupState {
     pub interrupt_flags: u8,
     pub interrupt_enable: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptController {
     console_model: ConsoleModel,
     status: InterruptControllerStatus,
@@ -23,7 +23,21 @@ pub struct InterruptController {
     interrupt_enable: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InterruptSaveState {
+    console_model: ConsoleModel,
+    status: InterruptControllerStatus,
+    interrupt_flags: u8,
+    interrupt_enable: u8,
+}
+
+impl InterruptSaveState {
+    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptControllerSnapshot {
     pub console_model: ConsoleModel,
     pub status: InterruptControllerStatus,
@@ -85,6 +99,22 @@ impl InterruptController {
 
     pub fn status(&self) -> InterruptControllerStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> InterruptSaveState {
+        InterruptSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            interrupt_flags: self.interrupt_flags,
+            interrupt_enable: self.interrupt_enable,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &InterruptSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.interrupt_flags = state.interrupt_flags;
+        self.interrupt_enable = state.interrupt_enable;
     }
 
     pub fn read_if(&self) -> u8 {

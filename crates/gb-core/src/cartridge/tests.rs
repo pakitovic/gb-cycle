@@ -352,6 +352,56 @@ fn build_pocket_camera_rom() -> Vec<u8> {
     rom
 }
 
+#[test]
+fn runtime_save_state_validation_rejects_mapper_mismatch() {
+    let mbc1 = CartridgeSlot::load(
+        build_banked_mbc1_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC1 should load")
+    .cartridge;
+    let mbc5 = CartridgeSlot::load(
+        build_banked_mbc5_rom(0x1B, 0x04, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC5 should load")
+    .cartridge;
+    let mbc1_state = mbc1.capture_save_state();
+
+    assert!(matches!(
+        mbc5.validate_save_state(&mbc1_state),
+        Err(CartridgeRuntimeSaveStateError::SlotStateMismatch {
+            expected: CartridgeSlotState::Mbc5,
+            actual: CartridgeSlotState::Mbc1,
+        })
+    ));
+}
+
+#[test]
+fn runtime_save_state_validation_rejects_ram_shape_mismatch() {
+    let cartridge = CartridgeSlot::load(
+        build_banked_mbc5_rom(0x1B, 0x04, 0x04),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC5 should load")
+    .cartridge;
+    let mut state = cartridge.capture_save_state();
+
+    let Some(CartridgeDeviceSaveState::Mbc5(saved)) = &mut state.device else {
+        panic!("expected MBC5 save state");
+    };
+    saved.ram = Some(vec![0; 8 * 1024]);
+
+    assert!(matches!(
+        cartridge.validate_save_state(&state),
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field: "MBC5 RAM",
+            expected,
+            actual,
+        }) if expected == Some(128 * 1024) && actual == Some(8 * 1024)
+    ));
+}
+
 fn warn_policy() -> CompatibilityPolicy {
     CompatibilityPolicy {
         execution_mode: ExecutionMode::Permissive,

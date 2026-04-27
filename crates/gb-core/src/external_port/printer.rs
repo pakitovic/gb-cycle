@@ -4,7 +4,7 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem};
 
 const PRINTER_MAGIC_0: u8 = 0x88;
 const PRINTER_MAGIC_1: u8 = 0x33;
@@ -13,7 +13,7 @@ const PRINTER_IMAGE_BUFFER_CAPACITY_BYTES: usize = 8_000;
 const PRINTER_TILE_WIDTH: usize = 20;
 const PRINTER_PAGE_WIDTH_PIXELS: u16 = 160;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PrinterCommand {
     Initialize = 0x01,
     Print = 0x02,
@@ -21,13 +21,15 @@ pub enum PrinterCommand {
     Status = 0x0F,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct PrinterMargins {
     pub before: u8,
     pub after: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PrinterPrintArgs {
     pub sheets: u8,
     pub margins: PrinterMargins,
@@ -35,7 +37,7 @@ pub struct PrinterPrintArgs {
     pub exposure: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PrintedPage {
     pub width: u16,
     pub height: u16,
@@ -43,7 +45,9 @@ pub struct PrintedPage {
     pub print_args: PrinterPrintArgs,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct PrinterStatusBits {
     pub low_battery: bool,
     pub other_error: bool,
@@ -55,7 +59,7 @@ pub struct PrinterStatusBits {
     pub checksum_error: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PrinterSnapshot {
     pub parser_state: PrinterParserState,
     pub status: PrinterStatusBits,
@@ -67,7 +71,9 @@ pub struct PrinterSnapshot {
     pub completed_page_count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PrinterParserState {
     #[default]
     AwaitMagic0,
@@ -104,7 +110,7 @@ pub enum PrinterParserState {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 enum PrinterProcessingState {
     Idle,
     DataBuffered,
@@ -113,7 +119,7 @@ enum PrinterProcessingState {
     PrintComplete,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct PrinterDevice {
     parser_state: PrinterParserState,
     processing_state: PrinterProcessingState,
@@ -127,4 +133,25 @@ pub(super) struct PrinterDevice {
     status: PrinterStatusBits,
     packet_timeout_t_cycles: u32,
     print_armed: bool,
+}
+
+impl PrinterDevice {
+    pub(super) fn dynamic_payload_bytes(&self) -> usize {
+        self.response_queue
+            .len()
+            .saturating_mul(mem::size_of::<u8>())
+            .saturating_add(self.image_buffer.len())
+            .saturating_add(self.packet_data.len())
+            .saturating_add(
+                self.printed_pages
+                    .len()
+                    .saturating_mul(mem::size_of::<PrintedPage>()),
+            )
+            .saturating_add(
+                self.printed_pages
+                    .iter()
+                    .map(|page| page.pixels.len())
+                    .sum::<usize>(),
+            )
+    }
 }

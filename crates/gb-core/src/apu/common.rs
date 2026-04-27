@@ -141,19 +141,19 @@ pub(super) const PULSE_DUTY_PATTERNS: [[bool; 8]; 4] = [
     [false, true, true, true, true, true, true, false],
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum WaveRamMmioPolicy {
     DmgCurrentByteDuringFetchOnly,
     DeferredCgbActiveAccess,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ExtraLengthClockingPolicy {
     CurrentDmgBaseline,
     DeferredCgbRevisionBehavior,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Nrx4WriteContext {
     pub(super) trigger: bool,
     pub(super) length_enabled: bool,
@@ -161,14 +161,14 @@ pub(super) struct Nrx4WriteContext {
     pub(super) next_step_clocks_envelope: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Nrx4WritePlan {
     pub(super) context: Nrx4WriteContext,
     pub(super) was_length_enabled: bool,
     pub(super) trigger_reloaded_zero_length: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ExtraLengthClockingContext {
     pub(super) console_model: ConsoleModel,
     pub(super) length_enabled: bool,
@@ -178,7 +178,7 @@ pub(super) struct ExtraLengthClockingContext {
     pub(super) trigger_reloaded_zero_length: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct EnvelopeState {
     initial_volume: u8,
     increase: bool,
@@ -535,7 +535,7 @@ pub(super) const fn sweep_decreases_from_nr10(nr10: u8) -> bool {
     nr10 & SWEEP_DIRECTION_BIT != 0
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ChannelRuntimeState {
     pub(super) dac_enabled: bool,
     pub(super) active: bool,
