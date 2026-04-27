@@ -236,16 +236,79 @@ impl<'de> serde::Deserialize<'de> for CartridgeClassification {
         let fields = CartridgeClassificationFields::deserialize(deserializer)?;
         Ok(Self {
             raw_type: fields.raw_type,
-            detected_name: leaked_save_state_str(fields.detected_name),
+            detected_name: known_classification_str(&fields.detected_name).ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "unknown cartridge classification name {:?}",
+                    fields.detected_name
+                ))
+            })?,
             selection: fields.selection,
-            reason: leaked_save_state_str(fields.reason),
+            reason: known_classification_str(&fields.reason).ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "unknown cartridge classification reason {:?}",
+                    fields.reason
+                ))
+            })?,
         })
     }
 }
 
-fn leaked_save_state_str(value: String) -> &'static str {
-    Box::leak(value.into_boxed_str())
+fn known_classification_str(value: &str) -> Option<&'static str> {
+    KNOWN_CLASSIFICATION_STRINGS
+        .iter()
+        .copied()
+        .find(|known| *known == value)
 }
+
+const KNOWN_CLASSIFICATION_STRINGS: &[&str] = &[
+    "ROM ONLY",
+    "ROM+RAM",
+    "ROM+RAM+BATTERY",
+    "MBC1",
+    "MBC1+RAM",
+    "MBC1+RAM+BATTERY",
+    "MBC1M",
+    "MBC2",
+    "MBC2+BATTERY",
+    "MBC3",
+    "MBC3+RAM",
+    "MBC3+RAM+BATTERY",
+    "MBC3+TIMER+BATTERY",
+    "MBC3+TIMER+RAM+BATTERY",
+    "MBC30",
+    "MBC5",
+    "MBC5+RAM",
+    "MBC5+RAM+BATTERY",
+    "MBC5+RUMBLE",
+    "MBC5+RUMBLE+RAM",
+    "MBC5+RUMBLE+RAM+BATTERY",
+    "MBC6",
+    "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
+    "MMM01",
+    "MMM01+RAM",
+    "MMM01+RAM+BATTERY",
+    "M161",
+    "HuC-3",
+    "HuC1+RAM+BATTERY",
+    "POCKET CAMERA",
+    "BANDAI TAMA5",
+    "BUNG",
+    "EMS",
+    "WISDOM TREE",
+    "UNKNOWN",
+    "supported cartridge family",
+    "MBC6 requires a dedicated cartridge-local implementation",
+    "MBC7 requires EEPROM and accelerometer behavior that is not implemented yet",
+    "Bandai TAMA5 needs dedicated accessory hardware",
+    "The cartridge type code is not recognized",
+    "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
+    "MMM01 classification came from the explicit later Mani trailing-menu signature path",
+    "MBC1 multicart classification came from the explicit subheader signature path",
+    "MBC30 is a known MBC3-family variant reserved for later support",
+    "Bung multicart classification came from an explicit experimental heuristic path",
+    "EMS multicart classification came from an explicit experimental heuristic path",
+    "Wisdom Tree classification came from an explicit experimental heuristic path",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeDiagnosticSeverity {
@@ -279,6 +342,7 @@ pub struct CartridgeLoadReport {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeSlot {
     device: Option<CartridgeDevice>,
+    rom_fingerprint: Option<SaveStateByteFingerprint>,
 }
 
 // Keep one concrete mapper-owned state object in the slot; boxing every large

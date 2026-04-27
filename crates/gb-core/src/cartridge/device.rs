@@ -17,7 +17,7 @@ impl CartridgeDevice {
         }
     }
 
-    pub(in crate::cartridge) fn rom_fingerprint(&self) -> SaveStateByteFingerprint {
+    pub(in crate::cartridge) fn compute_rom_fingerprint(&self) -> SaveStateByteFingerprint {
         SaveStateByteFingerprint::from_bytes(self.rom_bytes())
     }
 

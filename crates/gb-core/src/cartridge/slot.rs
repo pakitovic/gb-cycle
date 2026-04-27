@@ -23,7 +23,20 @@ impl CartridgeLoadReport {
 
 impl CartridgeSlot {
     pub fn empty() -> Self {
-        Self { device: None }
+        Self {
+            device: None,
+            rom_fingerprint: None,
+        }
+    }
+
+    fn with_loaded_device(
+        device: CartridgeDevice,
+        rom_fingerprint: SaveStateByteFingerprint,
+    ) -> Self {
+        Self {
+            device: Some(device),
+            rom_fingerprint: Some(rom_fingerprint),
+        }
     }
 
     pub(crate) fn capture_save_state(&self) -> CartridgeRuntimeSaveState {
@@ -215,6 +228,7 @@ impl CartridgeSlot {
     ) -> Result<CartridgeLoadReport, CartridgeLoadError> {
         let header =
             CartridgeHeader::parse_for_load(&rom_bytes).map_err(CartridgeLoadError::HeaderParse)?;
+        let rom_fingerprint = SaveStateByteFingerprint::from_bytes(&rom_bytes);
         let classification = classify_loaded_cartridge(&header, &rom_bytes, compatibility);
         let mut diagnostics = Vec::new();
 
@@ -231,15 +245,16 @@ impl CartridgeSlot {
                 let has_battery = matches!(classification.raw_type(), 0x09);
                 let has_ram = matches!(classification.raw_type(), 0x08 | 0x09);
                 let ram = has_ram.then(|| vec![0; NO_MBC_SUPPORTED_RAM_BYTES]);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::NoMbc(NoMbcCartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::NoMbc(NoMbcCartridge {
                         rom: rom_bytes,
                         ram,
                         has_battery,
                         header,
                         classification,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -257,8 +272,8 @@ impl CartridgeSlot {
 
                 let has_battery = matches!(classification.raw_type(), 0x0D);
                 let ram = (ram_len != 0).then(|| vec![0; ram_len]);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Mmm01(Mmm01Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mmm01(Mmm01Cartridge {
                         rom: rom_bytes,
                         ram,
                         has_battery,
@@ -276,8 +291,9 @@ impl CartridgeSlot {
                         banking_mode: 0,
                         rom_bank_mask: 0,
                         multiplex_enabled: false,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -293,16 +309,17 @@ impl CartridgeSlot {
                     &mut diagnostics,
                 )?;
 
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::M161(M161Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::M161(M161Cartridge {
                         rom: rom_bytes,
                         header,
                         classification,
                         selected_bank: 0,
                         bank_switch_locked: false,
                         last_bank_write: None,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -318,8 +335,8 @@ impl CartridgeSlot {
                     &mut diagnostics,
                 )?;
 
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Huc1(Huc1Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Huc1(Huc1Cartridge {
                         rom: rom_bytes,
                         ram: Some(vec![0; ram_len]),
                         has_battery: true,
@@ -330,8 +347,9 @@ impl CartridgeSlot {
                         ram_bank: 0,
                         ir_emitter_on: false,
                         ir_light_detected: false,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -367,9 +385,8 @@ impl CartridgeSlot {
                     last_unsupported_argument: None,
                 };
                 mapper.initialize_runtime_state();
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Huc3(mapper)),
-                };
+                let cartridge =
+                    Self::with_loaded_device(CartridgeDevice::Huc3(mapper), rom_fingerprint);
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -387,8 +404,8 @@ impl CartridgeSlot {
 
                 let has_battery = matches!(classification.raw_type(), 0x03);
                 let ram = (layout.ram_len != 0).then(|| vec![0; layout.ram_len]);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Mbc1(Mbc1Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc1(Mbc1Cartridge {
                         rom: rom_bytes,
                         ram,
                         has_battery,
@@ -400,8 +417,9 @@ impl CartridgeSlot {
                         rom_bank_low5: 0,
                         secondary_bank: 0,
                         banking_mode: 0,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -418,8 +436,8 @@ impl CartridgeSlot {
                 )?;
 
                 let has_battery = matches!(classification.raw_type(), 0x06);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Mbc2(Mbc2Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc2(Mbc2Cartridge {
                         rom: rom_bytes,
                         ram_nibbles: [0; MBC2_RAM_CELL_COUNT],
                         has_battery,
@@ -427,8 +445,9 @@ impl CartridgeSlot {
                         classification,
                         ram_enabled: false,
                         rom_bank_low4: 0,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -449,8 +468,8 @@ impl CartridgeSlot {
                 let has_ram = matches!(classification.raw_type(), 0x10 | 0x12 | 0x13);
                 let ram = (has_ram && header.ram_size.decoded_bytes.unwrap_or(0) != 0)
                     .then(|| vec![0; header.ram_size.decoded_bytes.unwrap_or(0)]);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Mbc3(Mbc3Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc3(Mbc3Cartridge {
                         rom: rom_bytes,
                         ram,
                         has_battery,
@@ -466,8 +485,9 @@ impl CartridgeSlot {
                         rtc_latched_valid: false,
                         rtc_latch_armed: false,
                         rtc_access_ready_at: None,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -487,8 +507,8 @@ impl CartridgeSlot {
                 let has_rumble = variant.has_rumble();
                 let ram = (variant.has_ram() && header.ram_size.decoded_bytes.unwrap_or(0) != 0)
                     .then(|| vec![0; header.ram_size.decoded_bytes.unwrap_or(0)]);
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::Mbc5(Mbc5Cartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc5(Mbc5Cartridge {
                         rom: rom_bytes,
                         ram,
                         has_battery,
@@ -504,8 +524,9 @@ impl CartridgeSlot {
                         rom_bank_high1: 0,
                         ram_bank_raw: 0,
                         rumble_on: false,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -521,8 +542,8 @@ impl CartridgeSlot {
                     &mut diagnostics,
                 )?;
 
-                let cartridge = Self {
-                    device: Some(CartridgeDevice::PocketCamera(PocketCameraCartridge {
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::PocketCamera(PocketCameraCartridge {
                         rom: rom_bytes,
                         ram: vec![0; POCKET_CAMERA_SUPPORTED_RAM_BYTES],
                         header,
@@ -533,8 +554,9 @@ impl CartridgeSlot {
                         registers: [0; POCKET_CAMERA_REGISTER_COUNT],
                         host_frame: PocketCameraCartridge::placeholder_frame(),
                         capture_state: PocketCameraCaptureState::Idle,
-                    })),
-                };
+                    }),
+                    rom_fingerprint,
+                );
 
                 Ok(CartridgeLoadReport {
                     cartridge,
@@ -579,7 +601,11 @@ impl CartridgeSlot {
     }
 
     pub fn rom_fingerprint(&self) -> Option<SaveStateByteFingerprint> {
-        self.device.as_ref().map(CartridgeDevice::rom_fingerprint)
+        self.rom_fingerprint.or_else(|| {
+            self.device
+                .as_ref()
+                .map(CartridgeDevice::compute_rom_fingerprint)
+        })
     }
 
     pub fn read_rom(&self, address: u16) -> u8 {
