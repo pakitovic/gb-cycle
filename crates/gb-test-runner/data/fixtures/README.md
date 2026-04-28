@@ -174,6 +174,4 @@ cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
   --build-if-missing
 ```
 
-Commercial or otherwise non-redistributable ROMs do not belong in these
-stores. Keep them under the separate gitignored `/.roms/local-commercial/`
-root and out of CI.
+Commercial or otherwise non-redistributable ROMs do not belong in these stores. Keep them outside the repository in private developer-owned locations, reference them only through explicit local manifests or environment-rooted paths, and keep them out of CI.

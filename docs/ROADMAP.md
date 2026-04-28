@@ -1,12 +1,12 @@
-# DMG ROADMAP — T-Cycle-Based Game Boy DMG Core
+# gb-cycle Roadmap — T-Cycle-Based Game Boy Core
 
-Implementation roadmap for the project's **DMG** core: T-cycle based, PPU dot-by-dot, Mode 3 with pixel FIFO, architecturally prepared for CGB.
+Implementation roadmap for the project's **DMG** core closure and **CGB** expansion: T-cycle based, PPU dot-by-dot, Mode 3 with pixel FIFO, and architecturally prepared for model-specific hardware behavior.
 
 This is a living document. Update it when phase structure, scope, or done criteria change. Keep TODOs in [TODO.md](TODO.md).
 
 ## Scope
 
-DMG only. CGB-specific features (double speed, VRAM/WRAM banking, CGB palettes, HDMA/GDMA) are out of scope. CGB compatibility is considered at the architectural level only.
+Phases 0 through 9 close the DMG core. CGB-specific features such as double speed, VRAM/WRAM banking, CGB palettes, and HDMA/GDMA stay out of those DMG closure phases except where architectural seams are required. Phase 10 starts the functional CGB implementation roadmap and must preserve the DMG `167/167` ROM gate after every CGB slice.
 
 ## Authority boundaries
 
@@ -31,3 +31,4 @@ Two workstreams span multiple phases:
 - [Phase 7 — Audio](roadmap/07-audio.md)
 - [Phase 8 — Full emulator save states and global serialization strategy](roadmap/08-save-states.md)
 - [Phase 9 — Final DMG hardening, differential validation, and closure](roadmap/09-hardening.md)
+- [Phase 10 — CGB implementation roadmap](roadmap/10-cgb.md)

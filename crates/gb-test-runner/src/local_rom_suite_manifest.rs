@@ -578,13 +578,13 @@ pressed = true
                 r#"
 version = 1
 suite_name = "commercial-smoke"
-family = "local-commercial"
+family = "private-commercial"
 subsystem = "joypad"
 
 [[case]]
 id = "mgb-serial"
 rom = "commercial/pokemon.gb"
-external_rom_root_key = "GB_CYCLE_LOCAL_COMMERCIAL_ROOT"
+external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 console = "mgb"
 startup = "real-boot"
 mode = "permissive"
@@ -635,7 +635,7 @@ expected = "DEADBEEF"
         let suite =
             load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
         assert_eq!(suite.name, "commercial-smoke");
-        assert_eq!(suite.family.as_deref(), Some("local-commercial"));
+        assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
         assert_eq!(suite.cases.len(), 4);
 
@@ -646,7 +646,7 @@ expected = "DEADBEEF"
         assert_eq!(serial_case.timeout, crate::Timeout::TCycles(4096));
         assert_eq!(
             serial_case.external_rom_root_key.as_deref(),
-            Some("GB_CYCLE_LOCAL_COMMERCIAL_ROOT")
+            Some("GB_CYCLE_PRIVATE_ROM_ROOT")
         );
         assert_eq!(
             serial_case.pass_condition,

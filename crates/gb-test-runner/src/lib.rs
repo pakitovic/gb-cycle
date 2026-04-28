@@ -60,9 +60,8 @@ pub use differential::{
 };
 pub use external_roms::{
     EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomRequiredFile,
-    ExternalRomSource, ExternalRomSourceManifest, LOCAL_COMMERCIAL_ROM_STORE_DIR,
-    discover_external_rom_root_for_key, external_rom_source_manifest_path, external_rom_store_root,
-    load_external_rom_source_manifest, local_commercial_rom_store_root,
+    ExternalRomSource, ExternalRomSourceManifest, discover_external_rom_root_for_key,
+    external_rom_source_manifest_path, external_rom_store_root, load_external_rom_source_manifest,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
 pub use first_divergence::{

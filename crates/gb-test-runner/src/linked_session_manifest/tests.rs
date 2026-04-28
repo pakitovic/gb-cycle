@@ -171,7 +171,7 @@ fixture = "fixtures/pokemon.trace"
   [[session.participant]]
   id = "left"
   rom = "commercial/pokemon-red.gb"
-  external_rom_root_key = "GB_CYCLE_LOCAL_COMMERCIAL_ROOT"
+  external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
   console = "mgb"
   startup = "real-boot"
   mode = "permissive"
@@ -238,7 +238,7 @@ fixture = "fixtures/snapshot.txt"
     assert_eq!(left.execution_mode, ExecutionMode::Permissive);
     assert_eq!(
         left.external_rom_root_key.as_deref(),
-        Some("GB_CYCLE_LOCAL_COMMERCIAL_ROOT")
+        Some("GB_CYCLE_PRIVATE_ROM_ROOT")
     );
     assert_eq!(
         left.external_stimuli.stimuli()[0].action,
@@ -1242,7 +1242,7 @@ oracle = "info-linked-snapshot"
   [[session.participant]]
   id = "right"
   rom = "commercial/right.gb"
-  external_rom_root_key = "GB_CYCLE_LOCAL_COMMERCIAL_ROOT"
+  external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 "#,
             left_rom.display(),
         ),
@@ -1263,6 +1263,6 @@ oracle = "info-linked-snapshot"
     assert_eq!(session.participants[0].rom_path, left_rom);
     assert_eq!(
         session.participants[1].external_rom_root_key.as_deref(),
-        Some("GB_CYCLE_LOCAL_COMMERCIAL_ROOT")
+        Some("GB_CYCLE_PRIVATE_ROM_ROOT")
     );
 }
