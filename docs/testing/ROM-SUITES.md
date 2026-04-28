@@ -134,7 +134,7 @@ Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout`
 
 ## Commercial ROM testing
 
-Keep private commercial ROMs out of the curated store; use the separate gitignored `/.roms/local-commercial/` directory for local-only assets that must never be referenced by CI.
+Keep private commercial ROMs out of the curated store and outside repository-managed ROM stores. For local-only smoke, point a manifest at developer-owned external storage through an explicit `external_rom_root_key`; do not document or standardize the private filesystem path in the repo, and never reference those assets from CI.
 
 For ad hoc local commercial-ROM bring-up, `run_rom_suite` accepts `--manifest <path>` with typed per-case metadata and deterministic joypad stimuli. When a manifest-driven case captures the framebuffer, the runner writes a sibling PNG next to the ROM using the ROM stem.
 
@@ -145,7 +145,8 @@ version = 1
 
 [[case]]
 id = "tetris-dmg-start"
-rom = ".roms/local-commercial/tetris.gb"
+rom = "tetris.gb"
+external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 console = "dmg"
 startup = "real-boot"
 mode = "strict"
@@ -167,7 +168,7 @@ pressed = false
 cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/tetris-start.toml
 ```
 
-The final framebuffer PNG lands next to the ROM as `/.roms/local-commercial/tetris.png`.
+The final framebuffer PNG lands beside the resolved private ROM path using the ROM stem, and that artifact remains outside repo-managed oracle stores.
 
 ### Audio and menu investigation
 
@@ -184,7 +185,8 @@ version = 1
 
 [[case]]
 id = "pokemon-gold-menu-audio"
-rom = ".roms/local-commercial/pokemon_gold.gbc"
+rom = "pokemon_gold.gbc"
+external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 console = "dmg"
 startup = "real-boot"
 mode = "strict"

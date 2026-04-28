@@ -5,7 +5,6 @@ use std::{env, fs, io};
 use serde::Deserialize;
 
 pub const EXTERNAL_ROM_STORE_DIR: &str = ".roms/external-test";
-pub const LOCAL_COMMERCIAL_ROM_STORE_DIR: &str = ".roms/local-commercial";
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
 const SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION: u32 = 1;
 
@@ -94,10 +93,6 @@ pub fn external_rom_store_root(workspace_root: &Path) -> PathBuf {
     workspace_root.join(EXTERNAL_ROM_STORE_DIR)
 }
 
-pub fn local_commercial_rom_store_root(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(LOCAL_COMMERCIAL_ROM_STORE_DIR)
-}
-
 pub fn external_rom_source_manifest_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
 }
@@ -160,10 +155,9 @@ pub fn discover_external_rom_root_for_key(
 mod tests {
     use super::{
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomSourceManifestError,
-        LOCAL_COMMERCIAL_ROM_STORE_DIR, default_external_rom_root_for_key,
-        discover_external_rom_root_for_key, external_rom_source_manifest_path,
-        external_rom_store_root, load_external_rom_source_manifest,
-        local_commercial_rom_store_root,
+        default_external_rom_root_for_key, discover_external_rom_root_for_key,
+        external_rom_source_manifest_path, external_rom_store_root,
+        load_external_rom_source_manifest,
     };
     use std::env;
     use std::fs;
@@ -216,10 +210,6 @@ mod tests {
         assert_eq!(
             external_rom_store_root(workspace_root),
             workspace_root.join(EXTERNAL_ROM_STORE_DIR)
-        );
-        assert_eq!(
-            local_commercial_rom_store_root(workspace_root),
-            workspace_root.join(LOCAL_COMMERCIAL_ROM_STORE_DIR)
         );
         assert_eq!(
             external_rom_source_manifest_path(workspace_root),
