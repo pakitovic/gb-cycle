@@ -108,6 +108,31 @@ fn run_rom_suite_binary_handles_help_and_parse_errors() {
 }
 
 #[test]
+fn run_determinism_binary_handles_help_and_parse_errors() {
+    assert_help_and_parse_error(
+        "run_determinism",
+        &["--suite", "phase-2-cpu-timing", "--save-at-tcycles", "nope"],
+        "invalid --save-at-tcycles",
+    );
+}
+
+#[test]
+fn run_first_divergence_binary_handles_help_and_parse_errors() {
+    assert_help_and_parse_error(
+        "run_first_divergence",
+        &[
+            "--oracle",
+            "sameboy",
+            "--suite",
+            "hacktix-dmg-curated",
+            "--probe-interval-tcycles",
+            "nope",
+        ],
+        "invalid --probe-interval-tcycles",
+    );
+}
+
+#[test]
 fn run_linked_session_binary_handles_help_and_parse_errors() {
     assert_help_and_parse_error(
         "run_linked_session",

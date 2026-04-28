@@ -302,6 +302,34 @@ impl<S: TraceSink> Machine<S> {
         &self.bus
     }
 
+    /// Returns raw VRAM backing bytes for deterministic debug probes.
+    ///
+    /// This bypasses CPU bus visibility rules and must be used only by tooling that needs non-perturbing state comparison.
+    pub fn debug_vram_bytes(&self) -> &[u8] {
+        self.bus.debug_vram_bytes()
+    }
+
+    /// Returns raw OAM backing bytes for deterministic debug probes.
+    ///
+    /// This bypasses CPU bus visibility rules and must be used only by tooling that needs non-perturbing state comparison.
+    pub fn debug_oam_bytes(&self) -> &[u8] {
+        self.bus.debug_oam_bytes()
+    }
+
+    /// Returns raw WRAM backing bytes for deterministic debug probes.
+    ///
+    /// This bypasses CPU bus side effects and must be used only by tooling that needs direct storage state.
+    pub fn debug_wram_bytes(&self) -> &[u8] {
+        self.bus.debug_wram_bytes()
+    }
+
+    /// Returns raw HRAM backing bytes for deterministic debug probes.
+    ///
+    /// This excludes MMIO and IE; those live in subsystem state.
+    pub fn debug_hram_bytes(&self) -> &[u8] {
+        self.bus.debug_hram_bytes()
+    }
+
     pub fn ppu(&self) -> &Ppu {
         &self.ppu
     }

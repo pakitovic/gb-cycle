@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -22,6 +22,17 @@ help:
 	@echo "  make run-hacktix          Fetch and run the curated Hacktix DMG suite"
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
+	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
+	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
+	@echo "  make phase9-diff-cartridge    Compare Phase 6 cartridge oracle against SameBoy case-bundle artifacts"
+	@echo "  make phase9-sameboy-cartridge-oracles Materialize SameBoy case-bundle artifacts for cartridge differential"
+	@echo "  make phase9-diff-acid         Compare Acid framebuffer cases against LibSameBoy case-bundle artifacts"
+	@echo "  make phase9-sameboy-acid-oracles Materialize LibSameBoy case-bundle artifacts for Acid"
+	@echo "  make phase9-diff-mealybug     Compare SameBoy-PASS Mealybug framebuffer cases against LibSameBoy case-bundle artifacts"
+	@echo "  make phase9-sameboy-mealybug-oracles Materialize LibSameBoy case-bundle artifacts for the SameBoy-PASS Mealybug subset"
+	@echo "  make phase9-diff-hacktix      Compare Hacktix framebuffer cases against LibSameBoy case-bundle artifacts"
+	@echo "  make phase9-sameboy-hacktix-oracles Materialize LibSameBoy case-bundle artifacts for Hacktix"
+	@echo "  make phase9-first-divergence-hacktix Capture Hacktix local/LibSameBoy first-divergence probe windows"
 
 setup: hooks tools
 
@@ -93,3 +104,53 @@ run-cpp:
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
 	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_passes_from_repo_store --no-capture
+
+phase9-determinism-smoke:
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-interrupt-timing
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
+
+phase9-determinism-local: phase9-determinism-smoke
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	$(MAKE) fetch-test-roms FAMILIES=acid
+	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
+	$(MAKE) fetch-test-roms FAMILIES=blargg
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-timer-div-write --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-oam-dma-basic --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite acid-dmg-curated --case dmg-acid2 --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mealybug-tearoom-dmg-curated --case mealybug-m3-window-timing --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run -q -p gb-test-runner --bin run_determinism -- --suite blargg-dmg-curated --case blargg-dmg-sound-01-registers --save-at-tcycles 1024 --continuation-tcycles 1024
+
+phase9-sameboy-cartridge-oracles:
+	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite phase-6-cartridge-oracle --build-if-missing
+
+phase9-diff-cartridge:
+	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite phase-6-cartridge-oracle
+
+phase9-sameboy-acid-oracles:
+	$(MAKE) fetch-test-roms FAMILIES=acid
+	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite acid-dmg-curated --build-if-missing
+
+phase9-diff-acid:
+	$(MAKE) fetch-test-roms FAMILIES=acid
+	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite acid-dmg-curated
+
+phase9-sameboy-mealybug-oracles:
+	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
+	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite mealybug-tearoom-dmg-sameboy-differential --build-if-missing
+
+phase9-diff-mealybug:
+	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
+	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite mealybug-tearoom-dmg-sameboy-differential
+
+phase9-sameboy-hacktix-oracles:
+	$(MAKE) fetch-test-roms FAMILIES=hacktix
+	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite hacktix-dmg-curated --build-if-missing
+
+phase9-diff-hacktix:
+	$(MAKE) fetch-test-roms FAMILIES=hacktix
+	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite hacktix-dmg-curated
+
+phase9-first-divergence-hacktix:
+	$(MAKE) fetch-test-roms FAMILIES=hacktix
+	cargo run -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite hacktix-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence

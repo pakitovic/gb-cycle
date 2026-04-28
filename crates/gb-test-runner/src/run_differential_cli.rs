@@ -204,11 +204,19 @@ fn run_selected_suite<W: Write>(
     })?;
     write_suite_report(output, &report)?;
 
-    if report.all_matched() && report.cases.iter().all(|case| case.local_report.passed()) {
+    if report_succeeded(&report) {
         Ok(())
     } else {
         Err("one or more differential cases diverged or failed local pass conditions".to_string())
     }
+}
+
+fn report_succeeded(report: &DifferentialSuiteReport) -> bool {
+    report.all_matched()
+        && report
+            .cases
+            .iter()
+            .all(|case| case.local_report.non_failing())
 }
 
 fn select_suite_for_options(options: &DifferentialCliOptions) -> Result<RomSuite, String> {
@@ -577,6 +585,37 @@ mod tests {
         assert!(output.contains("differential_outcome=diverged"));
         assert!(output.contains("mismatch=framebuffer-mismatch"));
         assert!(output.contains("archived_context_artifacts="));
+    }
+
+    #[test]
+    fn matched_informational_local_cases_count_as_successful_differentials() {
+        let report = DifferentialSuiteReport {
+            suite_name: "suite".to_string(),
+            subsystem: TestSubsystem::Ppu,
+            oracle: DifferentialOracle::SameBoy,
+            oracle_layout: DifferentialOracleLayout::CaseBundle,
+            cases: vec![DifferentialCaseReport {
+                case_id: "info-case".to_string(),
+                oracle: DifferentialOracle::SameBoy,
+                oracle_layout: DifferentialOracleLayout::CaseBundle,
+                compared_capture: CaptureKind::Framebuffer,
+                oracle_artifact_path: PathBuf::from("/tmp/framebuffer.pgm"),
+                local_report: RomCaseReport {
+                    case_id: "info-case".to_string(),
+                    rom_path: PathBuf::from("synthetic/info.gb"),
+                    outcome: RomCaseOutcome::Informational,
+                    executed_t_cycles: 77,
+                    completed_frames: 2,
+                    diagnostics: Vec::new(),
+                    artifacts: CapturedArtifacts::default(),
+                    retained_failure_artifacts: Vec::new(),
+                },
+                outcome: DifferentialCaseOutcome::Matched,
+                archived_context_artifacts: Vec::new(),
+            }],
+        };
+
+        assert!(super::report_succeeded(&report));
     }
 
     #[test]

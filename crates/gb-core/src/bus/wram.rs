@@ -28,6 +28,10 @@ impl WramDomain {
         self.bytes[index] = value;
     }
 
+    pub(crate) fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     fn index(&self, address: u16) -> usize {
         match address {
             0xC000..=0xDFFF => (address - 0xC000) as usize,

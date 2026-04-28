@@ -59,7 +59,7 @@ statuses do not appear in the table.
   oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
 - `hacktix-dmg-curated`
   source family: `hacktix`
-  current status: workflow-managed
+  current status: workflow-managed and Phase 9 LibSameBoy differential matched
   oracle mix: framebuffer fixture
 - `cpp-dmg-curated`
   source family: `cpp`
@@ -68,6 +68,10 @@ statuses do not appear in the table.
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory local-only
+  oracle: framebuffer fixture
+- `mealybug-tearoom-dmg-sameboy-differential`
+  source family: `mealybug-tearoom-tests`
+  current status: Phase 9 SameBoy-PASS differential subset
   oracle: framebuffer fixture
 - `mooneye-acceptance-dmg-curated`
   source family: `mooneye`
@@ -120,25 +124,53 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
   --failure-artifact-root .artifacts/acid
 ```
 
-Compare the curated Acid family against SameBoy tester artifacts:
+Compare the curated Acid family against LibSameBoy case-bundle artifacts:
 
 ```bash
 cargo run -p gb-test-runner --bin run_differential -- \
   --oracle sameboy \
-  --oracle-layout sameboy-tester \
+  --oracle-layout case-bundle \
   --suite acid-dmg-curated
 ```
 
-The `sameboy-tester` oracle layout mirrors ROM-relative paths under
-`/.oracles/sameboy/sameboy-tester/`, for example `acid/dmg-acid2.bmp`.
+Compare the SameBoy-PASS Mealybug subset against LibSameBoy case-bundle artifacts:
+
+```bash
+cargo run -p gb-test-runner --bin run_differential -- \
+  --oracle sameboy \
+  --oracle-layout case-bundle \
+  --suite mealybug-tearoom-dmg-sameboy-differential
+```
+
+Compare the curated Hacktix family against LibSameBoy case-bundle artifacts:
+
+```bash
+cargo run -p gb-test-runner --bin run_differential -- \
+  --oracle sameboy \
+  --oracle-layout case-bundle \
+  --suite hacktix-dmg-curated
+```
+
+Capture Hacktix first-divergence probe windows against LibSameBoy:
+
+```bash
+cargo run -p gb-test-runner --bin run_first_divergence -- \
+  --oracle sameboy \
+  --suite hacktix-dmg-curated \
+  --probe-interval-tcycles 70224 \
+  --build-if-missing \
+  --allow-divergence
+```
+
+The `case-bundle` oracle layout stores one directory per case id under
+`/.oracles/sameboy/case-bundle/`, for example `dmg-acid2/framebuffer.pgm`.
 
 Materialize those SameBoy artifacts:
 
 ```bash
-cargo run -p gb-test-runner --bin run_sameboy_tester -- \
+cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
   --sameboy-root /path/to/SameBoy \
   --suite acid-dmg-curated \
-  --image-format bmp \
   --build-if-missing
 ```
 

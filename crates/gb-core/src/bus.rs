@@ -124,6 +124,34 @@ impl Bus {
         self.router
             .describe_unusable_area(self.console_model, address)
     }
+
+    /// Returns the raw VRAM backing bytes for deterministic debug probes.
+    ///
+    /// This is intentionally not a CPU bus read: it bypasses live PPU/DMA arbitration so external tooling can compare emulator state without perturbing the machine or conflating blocked CPU visibility with actual storage.
+    pub fn debug_vram_bytes(&self) -> &[u8] {
+        self.vram.bytes()
+    }
+
+    /// Returns the raw OAM backing bytes for deterministic debug probes.
+    ///
+    /// This is intentionally not a CPU bus read: it bypasses live PPU/DMA arbitration so external tooling can compare emulator state without perturbing the machine or conflating blocked CPU visibility with actual storage.
+    pub fn debug_oam_bytes(&self) -> &[u8] {
+        self.oam.bytes()
+    }
+
+    /// Returns the raw WRAM backing bytes for deterministic debug probes.
+    ///
+    /// This is intentionally not a CPU bus read: it bypasses echo routing and arbitration side effects so external tooling can compare storage state directly.
+    pub fn debug_wram_bytes(&self) -> &[u8] {
+        self.wram.bytes()
+    }
+
+    /// Returns the raw HRAM backing bytes for deterministic debug probes.
+    ///
+    /// This excludes MMIO registers and the interrupt-enable register; those are captured through subsystem snapshots or non-perturbing cloned reads by tooling that needs CPU-visible values.
+    pub fn debug_hram_bytes(&self) -> &[u8] {
+        self.iohram.hram_bytes()
+    }
 }
 
 #[cfg(test)]

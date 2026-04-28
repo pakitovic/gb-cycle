@@ -6,7 +6,8 @@ use std::process::Command;
 use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
 
 use crate::{
-    CaptureKind, RomExecutionError, RomRunner, RomSuite, RomSuiteValidationError, Timeout,
+    CaptureKind, RomExecutionError, RomRunner, RomSuite, RomSuiteValidationError,
+    StartupMemoryWrite, Timeout,
 };
 
 pub const SAMEBOY_CASE_BUNDLE_BIN_ENV_VAR: &str = "GB_CYCLE_SAMEBOY_CASE_BUNDLE_BIN";
@@ -25,6 +26,9 @@ pub enum SameBoyCaseBundleExecutionError {
     UnsupportedStartupMode {
         case_id: String,
         actual: StartupMode,
+    },
+    UnsupportedExternalStimuli {
+        case_id: String,
     },
     ResolveRomPath {
         case_id: String,
@@ -66,7 +70,8 @@ pub enum SameBoyCaseBundleExecutionError {
 pub struct SameBoyCaseBundleCaseReport {
     pub case_id: String,
     pub rom_path: PathBuf,
-    pub serial_hex_artifact_path: PathBuf,
+    pub capture: CaptureKind,
+    pub artifact_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +80,13 @@ pub struct SameBoyCaseBundleSuiteReport {
     pub runner_binary: PathBuf,
     pub oracle_root: PathBuf,
     pub cases: Vec<SameBoyCaseBundleCaseReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SameBoyProbeCaseReport {
+    pub case_id: String,
+    pub rom_path: PathBuf,
+    pub probe_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +152,108 @@ impl SameBoyCaseBundleRunner {
         })
     }
 
+    pub fn run_probe_case(
+        &self,
+        case: &crate::RomTestCase,
+        probe_path: &Path,
+        probe_interval_tcycles: u64,
+    ) -> Result<SameBoyProbeCaseReport, SameBoyCaseBundleExecutionError> {
+        if case.execution_mode != ExecutionMode::Strict {
+            return Err(SameBoyCaseBundleExecutionError::NonStrictCase {
+                case_id: case.id.clone(),
+                actual: case.execution_mode,
+            });
+        }
+
+        if case.startup_mode != StartupMode::SkipBoot {
+            return Err(SameBoyCaseBundleExecutionError::UnsupportedStartupMode {
+                case_id: case.id.clone(),
+                actual: case.startup_mode,
+            });
+        }
+
+        if !case.external_stimuli.stimuli().is_empty() {
+            return Err(
+                SameBoyCaseBundleExecutionError::UnsupportedExternalStimuli {
+                    case_id: case.id.clone(),
+                },
+            );
+        }
+
+        let runner_binary = self.ensure_runner_binary()?;
+        let model = model_arg(case);
+        let rom_path = self
+            .rom_runner
+            .resolve_case_rom_path(case)
+            .map_err(|source| SameBoyCaseBundleExecutionError::ResolveRomPath {
+                case_id: case.id.clone(),
+                source: Box::new(source),
+            })?;
+
+        if let Some(parent) = probe_path.parent() {
+            fs::create_dir_all(parent).map_err(|source| {
+                SameBoyCaseBundleExecutionError::CreateDirectory {
+                    path: parent.to_path_buf(),
+                    source,
+                }
+            })?;
+        }
+
+        let mut command = Command::new(&runner_binary);
+        command
+            .arg("--model")
+            .arg(model)
+            .arg("--rom")
+            .arg(&rom_path)
+            .arg("--probe-json-out")
+            .arg(probe_path)
+            .arg("--probe-interval-tcycles")
+            .arg(probe_interval_tcycles.to_string());
+        match case.timeout {
+            Timeout::TCycles(limit) => {
+                command.arg("--timeout-tcycles").arg(limit.to_string());
+            }
+            Timeout::Frames(limit) => {
+                command.arg("--timeout-frames").arg(limit.to_string());
+            }
+        }
+        if let Some(seconds) = case.startup_cartridge_rtc_seconds {
+            command
+                .arg("--startup-cartridge-rtc-seconds")
+                .arg(seconds.to_string());
+        }
+        for write in &case.startup_memory_writes {
+            append_startup_memory_write_args(&mut command, *write);
+        }
+
+        let output =
+            command
+                .output()
+                .map_err(|source| SameBoyCaseBundleExecutionError::SpawnRunner {
+                    path: runner_binary.clone(),
+                    source,
+                })?;
+        if !output.status.success() {
+            return Err(SameBoyCaseBundleExecutionError::RunnerFailed {
+                path: runner_binary,
+                status: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            });
+        }
+        if !probe_path.is_file() {
+            return Err(SameBoyCaseBundleExecutionError::MissingArtifact {
+                path: probe_path.to_path_buf(),
+            });
+        }
+
+        Ok(SameBoyProbeCaseReport {
+            case_id: case.id.clone(),
+            rom_path,
+            probe_path: probe_path.to_path_buf(),
+        })
+    }
+
     fn run_case(
         &self,
         case: &crate::RomTestCase,
@@ -153,7 +267,7 @@ impl SameBoyCaseBundleRunner {
         }
 
         let capture = case.pass_condition.required_capture();
-        if capture != CaptureKind::SerialHex {
+        if !matches!(capture, CaptureKind::SerialHex | CaptureKind::Framebuffer) {
             return Err(SameBoyCaseBundleExecutionError::UnsupportedCapture {
                 case_id: case.id.clone(),
                 capture,
@@ -183,16 +297,23 @@ impl SameBoyCaseBundleRunner {
                 source,
             }
         })?;
-        let serial_hex_artifact_path = case_dir.join("serial_hex.txt");
+        let artifact_path = artifact_path_for_capture(&case_dir, capture);
 
         let mut command = Command::new(runner_binary);
         command
             .arg("--model")
             .arg(model)
             .arg("--rom")
-            .arg(&rom_path)
-            .arg("--serial-hex-out")
-            .arg(&serial_hex_artifact_path);
+            .arg(&rom_path);
+        match capture {
+            CaptureKind::SerialHex => {
+                command.arg("--serial-hex-out").arg(&artifact_path);
+            }
+            CaptureKind::Framebuffer => {
+                command.arg("--framebuffer-pgm-out").arg(&artifact_path);
+            }
+            _ => unreachable!("unsupported captures are rejected before command construction"),
+        }
         match case.timeout {
             Timeout::TCycles(limit) => {
                 command.arg("--timeout-tcycles").arg(limit.to_string());
@@ -205,6 +326,9 @@ impl SameBoyCaseBundleRunner {
             command
                 .arg("--startup-cartridge-rtc-seconds")
                 .arg(seconds.to_string());
+        }
+        for write in &case.startup_memory_writes {
+            append_startup_memory_write_args(&mut command, *write);
         }
 
         let output =
@@ -222,16 +346,17 @@ impl SameBoyCaseBundleRunner {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
         }
-        if !serial_hex_artifact_path.is_file() {
+        if !artifact_path.is_file() {
             return Err(SameBoyCaseBundleExecutionError::MissingArtifact {
-                path: serial_hex_artifact_path,
+                path: artifact_path,
             });
         }
 
         Ok(SameBoyCaseBundleCaseReport {
             case_id: case.id.clone(),
             rom_path,
-            serial_hex_artifact_path,
+            capture,
+            artifact_path,
         })
     }
 
@@ -249,7 +374,10 @@ impl SameBoyCaseBundleRunner {
             return Err(SameBoyCaseBundleExecutionError::MissingSameBoyRoot);
         };
         let runner_binary = default_sameboy_case_bundle_runner_path(sameboy_root);
-        if runner_binary.is_file() {
+        if runner_binary.is_file()
+            && (!self.build_if_missing
+                || !runner_binary_needs_rebuild(sameboy_root, &runner_binary))
+        {
             return Ok(runner_binary);
         }
         if !self.build_if_missing {
@@ -269,6 +397,21 @@ impl SameBoyCaseBundleRunner {
     }
 }
 
+fn artifact_path_for_capture(case_dir: &Path, capture: CaptureKind) -> PathBuf {
+    match capture {
+        CaptureKind::SerialHex => case_dir.join("serial_hex.txt"),
+        CaptureKind::Framebuffer => case_dir.join("framebuffer.pgm"),
+        _ => unreachable!("unsupported captures are rejected before artifact path resolution"),
+    }
+}
+
+fn append_startup_memory_write_args(command: &mut Command, write: StartupMemoryWrite) {
+    command
+        .arg("--write-memory")
+        .arg(write.address.to_string())
+        .arg(write.value.to_string());
+}
+
 fn default_sameboy_case_bundle_runner_path(sameboy_root: &Path) -> PathBuf {
     let executable = if cfg!(windows) {
         "gb_cycle_case_bundle_runner.exe"
@@ -276,6 +419,36 @@ fn default_sameboy_case_bundle_runner_path(sameboy_root: &Path) -> PathBuf {
         "gb_cycle_case_bundle_runner"
     };
     sameboy_root.join("build/bin").join(executable)
+}
+
+fn helper_source_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("c_support/sameboy_case_bundle_runner.c")
+}
+
+fn runner_binary_needs_rebuild(sameboy_root: &Path, runner_binary: &Path) -> bool {
+    let Ok(runner_modified) = runner_binary
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+    else {
+        return true;
+    };
+
+    for dependency in [
+        helper_source_path(),
+        sameboy_root.join("build/lib").join("libsameboy.o"),
+    ] {
+        let Ok(dependency_modified) = dependency
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+        else {
+            continue;
+        };
+        if dependency_modified > runner_modified {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn build_sameboy_case_bundle_runner(
@@ -317,8 +490,6 @@ fn build_sameboy_case_bundle_runner(
         })?;
     }
 
-    let helper_source =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("c_support/sameboy_case_bundle_runner.c");
     let mut command = Command::new("cc");
     command
         .arg("-std=c11")
@@ -327,7 +498,7 @@ fn build_sameboy_case_bundle_runner(
         .arg(sameboy_root.join("Core"))
         .arg("-o")
         .arg(runner_binary)
-        .arg(helper_source)
+        .arg(helper_source_path())
         .arg(lib_object);
     if !cfg!(windows) {
         command.arg("-lm");
@@ -369,7 +540,9 @@ mod tests {
 
     use gb_core::StartupMode;
 
-    use crate::{RomRunner, TEST_ROM_ROOT_ENV_VAR, phase_6_cartridge_oracle_suite};
+    use crate::{
+        CaptureKind, RomRunner, TEST_ROM_ROOT_ENV_VAR, Timeout, phase_6_cartridge_oracle_suite,
+    };
 
     use super::{
         SAMEBOY_CASE_BUNDLE_BIN_ENV_VAR, SameBoyCaseBundleExecutionError, SameBoyCaseBundleRunner,
@@ -398,16 +571,36 @@ mod tests {
                     "args_file=\"{}\"\n",
                     "printf '%s\\n' '---' >> \"$args_file\"\n",
                     "serial_hex_out=''\n",
+                    "framebuffer_pgm_out=''\n",
+                    "probe_json_out=''\n",
                     "while [ \"$#\" -gt 0 ]; do\n",
                     "  printf '%s\\n' \"$1\" >> \"$args_file\"\n",
                     "  if [ \"$1\" = '--serial-hex-out' ]; then\n",
                     "    shift\n",
                     "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
                     "    serial_hex_out=\"$1\"\n",
+                    "  elif [ \"$1\" = '--framebuffer-pgm-out' ]; then\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "    framebuffer_pgm_out=\"$1\"\n",
+                    "  elif [ \"$1\" = '--probe-json-out' ]; then\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "    probe_json_out=\"$1\"\n",
+                    "  elif [ \"$1\" = '--probe-interval-tcycles' ]; then\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "  elif [ \"$1\" = '--write-memory' ]; then\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
                     "  fi\n",
                     "  shift\n",
                     "done\n",
-                    "printf 'FAKEHEX' > \"$serial_hex_out\"\n",
+                    "if [ -n \"$serial_hex_out\" ]; then printf 'FAKEHEX' > \"$serial_hex_out\"; fi\n",
+                    "if [ -n \"$framebuffer_pgm_out\" ]; then printf 'P5\\n1 1\\n255\\n\\377' > \"$framebuffer_pgm_out\"; fi\n",
+                    "if [ -n \"$probe_json_out\" ]; then printf '{{\"t_cycles\":0,\"pc\":256,\"sp\":65534,\"af\":432,\"bc\":19,\"de\":216,\"hl\":333,\"ime\":false,\"div\":171,\"tima\":0,\"tma\":0,\"tac\":248,\"interrupt_flags\":225,\"interrupt_enable\":0,\"lcdc\":145,\"stat\":133,\"ly\":0,\"line_dot\":0,\"scy\":0,\"scx\":0,\"lyc\":0,\"bgp\":252,\"obp0\":255,\"obp1\":255,\"wy\":0,\"wx\":0,\"vram_hash\":\"a\",\"oam_hash\":\"b\",\"wram_hash\":\"c\",\"hram_hash\":\"d\",\"framebuffer_hash\":\"e\",\"serial_hex\":\"\"}}\\n' > \"$probe_json_out\"; fi\n",
                 ),
                 args_output.display(),
             ),
@@ -503,7 +696,7 @@ mod tests {
             .find(|case| case.case_id == "phase6-mbc3-banking-ram-and-rtc")
             .expect("report should include mbc3");
         assert_eq!(
-            fs::read_to_string(&mbc3.serial_hex_artifact_path)
+            fs::read_to_string(&mbc3.artifact_path)
                 .expect("serial hex artifact should be readable"),
             "FAKEHEX"
         );
@@ -514,7 +707,7 @@ mod tests {
         assert!(args.contains("--startup-cartridge-rtc-seconds\n93784\n"));
         assert!(
             args.contains(
-                mbc3.serial_hex_artifact_path
+                mbc3.artifact_path
                     .to_str()
                     .expect("artifact path should be utf-8")
             )
@@ -522,7 +715,95 @@ mod tests {
     }
 
     #[test]
-    fn sameboy_case_bundle_runner_requires_serial_hex_cases() {
+    fn sameboy_case_bundle_runner_materializes_framebuffer_artifacts_with_startup_writes() {
+        let temp_dir = unique_temp_dir("framebuffer");
+        let oracle_root = temp_dir.join("oracle");
+        let external_root = temp_dir.join("external");
+        let acid_root = external_root.join("acid");
+        fs::create_dir_all(&acid_root).expect("acid dir should be creatable");
+        fs::write(acid_root.join("dmg-acid2.gb"), b"fake-rom").expect("fixture ROM should exist");
+
+        let args_output = temp_dir.join("runner-args.txt");
+        let runner_binary = temp_dir.join("fake-sameboy-case-bundle.sh");
+        write_fake_runner(&runner_binary, &args_output);
+
+        let acid_suite = crate::acid_dmg_curated_suite();
+        let mut case = acid_suite
+            .cases
+            .into_iter()
+            .find(|case| case.id == "dmg-acid2")
+            .expect("acid2 case should exist")
+            .with_startup_memory_write(crate::StartupMemoryWrite::new(0x8000, 0x42));
+        case.timeout = Timeout::Frames(12);
+        let suite = crate::RomSuite::new("acid-framebuffer-only", crate::TestSubsystem::Ppu)
+            .with_family("acid")
+            .with_case(case);
+
+        let report = SameBoyCaseBundleRunner::new(&oracle_root)
+            .with_rom_runner(
+                RomRunner::new().with_external_rom_root(TEST_ROM_ROOT_ENV_VAR, &external_root),
+            )
+            .with_runner_binary(&runner_binary)
+            .run_suite(&suite)
+            .expect("case bundle framebuffer suite should run");
+
+        assert_eq!(report.cases.len(), 1);
+        let case = &report.cases[0];
+        assert_eq!(case.capture, CaptureKind::Framebuffer);
+        assert!(case.artifact_path.ends_with("framebuffer.pgm"));
+        assert!(case.artifact_path.is_file());
+
+        let args = fs::read_to_string(args_output).expect("runner args should be readable");
+        assert!(args.contains("--framebuffer-pgm-out\n"));
+        assert!(args.contains("--timeout-frames\n12\n"));
+        assert!(args.contains("--write-memory\n32768\n66\n"));
+    }
+
+    #[test]
+    fn sameboy_case_bundle_runner_materializes_probe_json() {
+        let temp_dir = unique_temp_dir("probe");
+        let oracle_root = temp_dir.join("oracle");
+        let external_root = temp_dir.join("external");
+        let hacktix_root = external_root.join("hacktix");
+        fs::create_dir_all(&hacktix_root).expect("hacktix dir should be creatable");
+        fs::write(hacktix_root.join("bully.gb"), b"fake-rom").expect("fixture ROM should exist");
+
+        let args_output = temp_dir.join("runner-args.txt");
+        let runner_binary = temp_dir.join("fake-sameboy-case-bundle.sh");
+        write_fake_runner(&runner_binary, &args_output);
+
+        let suite = crate::hacktix_dmg_curated_suite();
+        let case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "hacktix-bully")
+            .expect("hacktix bully case should exist");
+        let probe_path = oracle_root
+            .join("hacktix-bully")
+            .join("sameboy_probes.jsonl");
+        let report = SameBoyCaseBundleRunner::new(&oracle_root)
+            .with_rom_runner(
+                RomRunner::new().with_external_rom_root(TEST_ROM_ROOT_ENV_VAR, &external_root),
+            )
+            .with_runner_binary(&runner_binary)
+            .run_probe_case(case, &probe_path, 70_224)
+            .expect("probe case should run");
+
+        assert_eq!(report.case_id, "hacktix-bully");
+        assert!(report.probe_path.is_file());
+        assert!(
+            fs::read_to_string(&report.probe_path)
+                .expect("probe JSONL should be readable")
+                .contains("\"framebuffer_hash\"")
+        );
+
+        let args = fs::read_to_string(args_output).expect("runner args should be readable");
+        assert!(args.contains("--probe-json-out\n"));
+        assert!(args.contains("--probe-interval-tcycles\n70224\n"));
+    }
+
+    #[test]
+    fn sameboy_case_bundle_runner_requires_serial_hex_or_framebuffer_cases() {
         let temp_dir = unique_temp_dir("reject");
         let runner_binary = temp_dir.join("fake-runner.sh");
         let args_output = temp_dir.join("runner-args.txt");
