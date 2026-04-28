@@ -493,6 +493,19 @@ static bool write_probe_json_line(FILE *file, GB_gameboy_t *gb, uint64_t elapsed
     return fprintf(file, "\"}\n") >= 0;
 }
 
+static uint64_t next_probe_boundary_after_observation(uint64_t next_probe_tcycles,
+                                                      uint64_t probe_interval_tcycles,
+                                                      uint64_t elapsed_tcycles)
+{
+    while (next_probe_tcycles != 0 && next_probe_tcycles <= elapsed_tcycles) {
+        if (UINT64_MAX - next_probe_tcycles < probe_interval_tcycles) {
+            return 0;
+        }
+        next_probe_tcycles += probe_interval_tcycles;
+    }
+    return next_probe_tcycles;
+}
+
 int main(int argc, char **argv)
 {
     options_t options;
@@ -559,17 +572,25 @@ int main(int argc, char **argv)
         else {
             remaining_tcycles -= elapsed;
         }
-        if (probe_file) {
-            while (next_probe_tcycles != 0 && elapsed_tcycles >= next_probe_tcycles) {
-                if (!write_probe_json_line(probe_file, &gb, elapsed_tcycles)) {
-                    fprintf(stderr, "failed to write %s\n", options.probe_json_out_path);
-                    fclose(probe_file);
-                    GB_free(&gb);
-                    return 2;
-                }
-                last_probe_tcycles = elapsed_tcycles;
-                next_probe_tcycles += options.probe_interval_tcycles;
+        if (probe_file && next_probe_tcycles != 0 && elapsed_tcycles >= next_probe_tcycles) {
+            /*
+               GB_run observes state only after the current SameBoy scheduling slice has completed.
+               If one call crosses several requested probe boundaries, emitting one JSON row per
+               boundary would duplicate the same post-run state at several probe indexes. Record the
+               first observable post-boundary state once, timestamp it with the actual elapsed T-cycle,
+               and advance past any unsampleable boundaries instead of fabricating exact-boundary rows.
+             */
+            if (!write_probe_json_line(probe_file, &gb, elapsed_tcycles)) {
+                fprintf(stderr, "failed to write %s\n", options.probe_json_out_path);
+                fclose(probe_file);
+                GB_free(&gb);
+                return 2;
             }
+            last_probe_tcycles = elapsed_tcycles;
+            next_probe_tcycles = next_probe_boundary_after_observation(
+                next_probe_tcycles,
+                options.probe_interval_tcycles,
+                elapsed_tcycles);
         }
     }
 

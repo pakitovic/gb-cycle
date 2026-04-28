@@ -31,6 +31,9 @@ impl FirstDivergenceCompareMode {
 
 #[derive(Debug)]
 pub enum FirstDivergenceExecutionError {
+    InvalidProbeInterval {
+        probe_interval_tcycles: u64,
+    },
     InvalidSuite(RomSuiteValidationError),
     InvalidCase {
         case_id: String,
@@ -215,6 +218,12 @@ impl FirstDivergenceRunner {
         &self,
         suite: &RomSuite,
     ) -> Result<FirstDivergenceSuiteReport, FirstDivergenceExecutionError> {
+        if self.probe_interval_tcycles == 0 {
+            return Err(FirstDivergenceExecutionError::InvalidProbeInterval {
+                probe_interval_tcycles: self.probe_interval_tcycles,
+            });
+        }
+
         suite
             .validate()
             .map_err(FirstDivergenceExecutionError::InvalidSuite)?;
@@ -473,13 +482,24 @@ fn probe_mismatches(
     compare_mode: FirstDivergenceCompareMode,
 ) -> Vec<ProbeFieldMismatch> {
     match compare_mode {
-        FirstDivergenceCompareMode::Framebuffer => compare_field(
-            "framebuffer_hash",
-            &local.framebuffer_hash,
-            &oracle.framebuffer_hash,
-        )
-        .into_iter()
-        .collect(),
+        FirstDivergenceCompareMode::Framebuffer => {
+            let mut mismatches = Vec::new();
+            if local.t_cycles != oracle.t_cycles {
+                mismatches.push(ProbeFieldMismatch {
+                    field: "t_cycles".to_string(),
+                    local: local.t_cycles.to_string(),
+                    oracle: oracle.t_cycles.to_string(),
+                });
+            }
+            if let Some(mismatch) = compare_field(
+                "framebuffer_hash",
+                &local.framebuffer_hash,
+                &oracle.framebuffer_hash,
+            ) {
+                mismatches.push(mismatch);
+            }
+            mismatches
+        }
         FirstDivergenceCompareMode::State => compare_state_fields(local, oracle),
     }
 }
@@ -741,6 +761,26 @@ mod tests {
     }
 
     #[test]
+    fn framebuffer_compare_reports_probe_tcycle_drift_before_framebuffer_state() {
+        let local = [probe(10, "same")];
+        let oracle = [probe(12, "same")];
+        let outcome =
+            compare_probe_sequences(&local, &oracle, FirstDivergenceCompareMode::Framebuffer);
+        let FirstDivergenceCaseOutcome::Diverged {
+            local_tcycles,
+            oracle_tcycles,
+            mismatches,
+            ..
+        } = outcome
+        else {
+            panic!("expected cadence divergence");
+        };
+        assert_eq!(local_tcycles, Some(10));
+        assert_eq!(oracle_tcycles, Some(12));
+        assert_eq!(mismatches[0].field, "t_cycles");
+    }
+
+    #[test]
     fn compare_reports_probe_count_drift_and_full_match() {
         let local = [probe(0, "same"), probe(10, "same")];
         let oracle = [probe(0, "same")];
@@ -876,6 +916,21 @@ mod tests {
         assert!(matches!(
             runner.run_suite(&external),
             Err(FirstDivergenceExecutionError::UnsupportedExternalStimuli { .. })
+        ));
+    }
+
+    #[test]
+    fn runner_rejects_zero_probe_interval_before_suite_execution() {
+        let runner = FirstDivergenceRunner::new(unique_temp_dir("zero-interval"))
+            .with_probe_interval_tcycles(0);
+        let mut suite = crate::phase_2_cpu_timing_suite();
+        suite.cases.truncate(1);
+
+        assert!(matches!(
+            runner.run_suite(&suite),
+            Err(FirstDivergenceExecutionError::InvalidProbeInterval {
+                probe_interval_tcycles: 0,
+            })
         ));
     }
 
