@@ -210,6 +210,10 @@ impl FirstDivergenceRunner {
     }
 
     pub fn with_probe_interval_tcycles(mut self, probe_interval_tcycles: u64) -> Self {
+        assert!(
+            probe_interval_tcycles > 0,
+            "probe interval T-cycle cadence must be greater than zero"
+        );
         self.probe_interval_tcycles = probe_interval_tcycles;
         self
     }
@@ -920,9 +924,16 @@ mod tests {
     }
 
     #[test]
-    fn runner_rejects_zero_probe_interval_before_suite_execution() {
-        let runner = FirstDivergenceRunner::new(unique_temp_dir("zero-interval"))
+    #[should_panic(expected = "probe interval T-cycle cadence must be greater than zero")]
+    fn runner_builder_rejects_zero_probe_interval() {
+        let _runner = FirstDivergenceRunner::new(unique_temp_dir("zero-interval-builder"))
             .with_probe_interval_tcycles(0);
+    }
+
+    #[test]
+    fn runner_rejects_zero_probe_interval_before_suite_execution() {
+        let mut runner = FirstDivergenceRunner::new(unique_temp_dir("zero-interval"));
+        runner.probe_interval_tcycles = 0;
         let mut suite = crate::phase_2_cpu_timing_suite();
         suite.cases.truncate(1);
 
