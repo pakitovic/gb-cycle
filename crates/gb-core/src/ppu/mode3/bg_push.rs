@@ -17,12 +17,16 @@ impl Ppu {
             };
         }
 
-        if self.ly >= VISIBLE_SCANLINES || next_line_dot >= self.current_mode0_start_dot() {
+        if self.ly >= VISIBLE_SCANLINES {
             return PpuStepRegion::Mode0Or1;
         }
 
         if next_line_dot < MODE2_DOTS {
             return PpuStepRegion::Mode2Scan;
+        }
+
+        if next_line_dot >= self.current_mode0_start_dot() {
+            return PpuStepRegion::Mode0Or1;
         }
 
         if !self.runtime.bg_pipeline_state.mode3_started {

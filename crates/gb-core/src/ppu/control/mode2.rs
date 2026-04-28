@@ -43,6 +43,22 @@ impl Ppu {
             return raster_state;
         }
 
+        if self.runtime.startup_mode_latch.is_none() {
+            if self.ly >= VISIBLE_SCANLINES {
+                return PpuRasterState::Active {
+                    mode: PpuAccessMode::VBlank,
+                    mode_dot: self.line_dot,
+                };
+            }
+
+            if self.line_dot < MODE2_DOTS {
+                return PpuRasterState::Active {
+                    mode: PpuAccessMode::OamScan,
+                    mode_dot: self.line_dot,
+                };
+            }
+        }
+
         let mode0_start_dot = self.current_mode0_start_dot();
         let mode = self
             .runtime
@@ -52,9 +68,6 @@ impl Ppu {
         PpuRasterState::Active {
             mode,
             mode_dot: mode_dot_from_raster_mode(mode, self.line_dot, mode0_start_dot),
-            mode2_scan_active: self.ly < VISIBLE_SCANLINES
-                && self.line_dot != 0
-                && self.line_dot <= MODE2_DOTS,
         }
     }
 
@@ -159,11 +172,14 @@ impl Ppu {
         oam: &OamBusView<'_>,
         dma_oam_active: bool,
     ) {
-        let raster_state = self.current_raster_state();
-
-        if self.ly >= VISIBLE_SCANLINES
-            || !raster_state.is_mode2_scan()
+        if !self.is_lcd_enabled()
+            || self.ly >= VISIBLE_SCANLINES
+            || self
+                .lcd_restart_phase
+                .raster_state(self.ly, self.line_dot)
+                .is_some()
             || self.line_dot == 0
+            || self.line_dot > MODE2_DOTS
             || !self.line_dot.is_multiple_of(MODE2_T_CYCLES_PER_OAM_ENTRY)
             || self.runtime.mode2_scan_state.scanned_entries() >= OAM_SPRITE_COUNT
         {

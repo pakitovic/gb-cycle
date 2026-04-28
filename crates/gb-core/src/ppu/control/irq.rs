@@ -38,38 +38,44 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn ordinary_stat_irq_line(&self) -> bool {
-        let coincidence_source = self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
+        let stat_interrupt_enable = self.stat_interrupt_enable;
+        if stat_interrupt_enable == 0 {
+            return false;
+        }
+
+        let coincidence_source = stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.effective_lyc_coincidence();
 
         if !self.is_lcd_enabled() {
             return coincidence_source || self.lcd_enable_pending_lyc_rise_source();
         }
 
+        let mode_interrupt_enable = stat_interrupt_enable
+            & (STAT_MODE0_INTERRUPT_ENABLE_BIT
+                | STAT_MODE1_INTERRUPT_ENABLE_BIT
+                | STAT_MODE2_INTERRUPT_ENABLE_BIT)
+            != 0;
+        if !mode_interrupt_enable {
+            return coincidence_source;
+        }
+
         let mode0_start_dot = self.current_mode0_start_dot();
-        let mode0_pretrigger_source = self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT
-            != 0
+        let mode0_pretrigger_source = stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot < mode0_start_dot
             && self.line_dot + 4 >= mode0_start_dot;
-        let mode2_pretrigger_source = self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT
-            != 0
+        let mode2_pretrigger_source = stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.ly + 1 < VISIBLE_SCANLINES
             && self.line_dot + 4 >= self.current_scanline_length();
         let dmg_mode2_vblank_entry_source = self.console_model.is_dmg_family()
-            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.current_access_mode() == PpuAccessMode::VBlank
             && self.ly == VISIBLE_SCANLINES
             && self.line_dot == 0;
         let mode_source = match self.current_access_mode() {
-            PpuAccessMode::HBlank => {
-                self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
-            }
-            PpuAccessMode::VBlank => {
-                self.stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0
-            }
-            PpuAccessMode::OamScan => {
-                self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-            }
+            PpuAccessMode::HBlank => stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0,
+            PpuAccessMode::VBlank => stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0,
+            PpuAccessMode::OamScan => stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0,
             PpuAccessMode::Drawing => false,
         };
 

@@ -173,6 +173,14 @@ impl Ppu {
             return raster_state.access_mode();
         }
 
+        if self.ly >= VISIBLE_SCANLINES {
+            return PpuAccessMode::VBlank;
+        }
+
+        if line_dot < MODE2_DOTS {
+            return PpuAccessMode::OamScan;
+        }
+
         access_mode_from_raster(self.ly, line_dot, self.current_mode0_start_dot())
     }
 

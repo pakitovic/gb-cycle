@@ -48,7 +48,7 @@ fn trace_buffer_clear_drops_buffered_events() {
 }
 
 #[test]
-fn summary_tracer_keeps_sequence_without_buffering_events() {
+fn summary_tracer_skips_sequence_and_buffering_events() {
     let mut tracer = Tracer::summary();
 
     tracer.emit_with(TraceSubsystem::Core, TraceLevel::Info, || "trace ready");
@@ -56,7 +56,7 @@ fn summary_tracer_keeps_sequence_without_buffering_events() {
     let snapshot = tracer.snapshot();
 
     assert_eq!(snapshot.trace_format_version, TRACE_FORMAT_VERSION);
-    assert_eq!(snapshot.next_sequence, 1);
+    assert_eq!(snapshot.next_sequence, 0);
     assert_eq!(snapshot.buffered_event_count, 0);
     assert_eq!(snapshot.last_event, None);
 }

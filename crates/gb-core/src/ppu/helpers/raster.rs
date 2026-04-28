@@ -12,15 +12,8 @@ pub(in crate::ppu) enum PpuLcdRestartPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuRasterState {
     Disabled,
-    LcdRestartFirstLine {
-        mode: PpuAccessMode,
-        mode_dot: u16,
-    },
-    Active {
-        mode: PpuAccessMode,
-        mode_dot: u16,
-        mode2_scan_active: bool,
-    },
+    LcdRestartFirstLine { mode: PpuAccessMode, mode_dot: u16 },
+    Active { mode: PpuAccessMode, mode_dot: u16 },
 }
 
 impl PpuRasterState {
@@ -36,16 +29,6 @@ impl PpuRasterState {
             Self::Disabled => 0,
             Self::LcdRestartFirstLine { mode_dot, .. } | Self::Active { mode_dot, .. } => mode_dot,
         }
-    }
-
-    pub(in crate::ppu) const fn is_mode2_scan(self) -> bool {
-        matches!(
-            self,
-            Self::Active {
-                mode2_scan_active: true,
-                ..
-            }
-        )
     }
 }
 
