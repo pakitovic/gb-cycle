@@ -60,6 +60,18 @@ const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
 ];
+/// Mealybug DMG rows where GBEmulatorShootout marks SameBoy as non-PASS in the 2026-03-22 table.
+pub const MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS: &[&str] = &[
+    "mealybug-m3-lcdc-bg-en-change",
+    "mealybug-m3-lcdc-bg-map-change",
+    "mealybug-m3-lcdc-obj-size-change",
+    "mealybug-m3-lcdc-obj-size-change-scx",
+    "mealybug-m3-lcdc-tile-sel-change",
+    "mealybug-m3-lcdc-tile-sel-win-change",
+    "mealybug-m3-lcdc-win-en-change-multiple-wx",
+    "mealybug-m3-lcdc-win-map-change",
+    "mealybug-m3-scy-change",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedTestRomManifestFile {
@@ -145,6 +157,15 @@ pub fn cpp_dmg_curated_suite() -> RomSuite {
 
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     manifest_suite("mealybug-tearoom-tests")
+}
+
+pub fn mealybug_tearoom_dmg_sameboy_differential_suite() -> RomSuite {
+    let mut suite = mealybug_tearoom_dmg_curated_suite();
+    suite.name = "mealybug-tearoom-dmg-sameboy-differential".to_string();
+    suite
+        .cases
+        .retain(|case| !MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS.contains(&case.id.as_str()));
+    suite
 }
 
 pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
@@ -792,7 +813,8 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CuratedTestRomCase, GBEMU_SHOOTOUT_TESTROMS_DIR, PersistedCaseStatus, PersistedSuiteStatus,
+        CuratedTestRomCase, GBEMU_SHOOTOUT_TESTROMS_DIR,
+        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
         blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
@@ -800,9 +822,10 @@ mod tests {
         discover_test_rom_store_root, dmg_boot_trademark_tile_startup_writes,
         failure_artifacts_for_pass_condition, load_persisted_suite_status,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
-        materialize_curated_test_rom_store, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, sort_persisted_case_statuses,
-        test_rom_store_root, update_curated_test_report,
+        materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
+        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_subsystem,
+        render_markdown_report, report_rom_display, report_status_display,
+        sort_persisted_case_statuses, test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
@@ -916,6 +939,45 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
+        );
+    }
+
+    #[test]
+    fn sameboy_mealybug_differential_suite_excludes_shootout_non_pass_cases_only() {
+        let full_suite = mealybug_tearoom_dmg_curated_suite();
+        let sameboy_suite = mealybug_tearoom_dmg_sameboy_differential_suite();
+
+        assert_eq!(full_suite.cases.len(), 24);
+        assert_eq!(
+            sameboy_suite.name,
+            "mealybug-tearoom-dmg-sameboy-differential"
+        );
+        assert_eq!(
+            sameboy_suite.family.as_deref(),
+            Some("mealybug-tearoom-tests")
+        );
+        assert_eq!(
+            sameboy_suite.cases.len(),
+            full_suite.cases.len() - MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS.len()
+        );
+        for excluded_id in MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS {
+            assert!(
+                full_suite.cases.iter().any(|case| case.id == *excluded_id),
+                "excluded id {excluded_id} should still exist in the full curated suite"
+            );
+            assert!(
+                sameboy_suite
+                    .cases
+                    .iter()
+                    .all(|case| case.id != *excluded_id),
+                "excluded id {excluded_id} must not be judged in the SameBoy differential subset"
+            );
+        }
+        assert!(
+            sameboy_suite
+                .cases
+                .iter()
+                .any(|case| case.id == "mealybug-m3-window-timing")
         );
     }
 

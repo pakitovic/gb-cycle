@@ -28,8 +28,8 @@ pub fn sameboy_case_bundle_cli_help_text() -> &'static str {
         "Usage:\n",
         "  cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite <suite-name> [--case <case-id>] [--oracle-root <dir>] [--sameboy-root <dir> | --runner-binary <path>] [--timeout-frames <n> | --timeout-tcycles <n>] [--build-if-missing]\n",
         "\n",
-        "The runner materializes SameBoy case-bundle artifacts, such as serial_hex.txt,\n",
-        "under one subdirectory per case id. If --oracle-root is omitted, the default\n",
+        "The runner materializes LibSameBoy case-bundle artifacts, such as serial_hex.txt\n",
+        "or framebuffer.pgm, under one subdirectory per case id. If --oracle-root is omitted, the default\n",
         "repo-local root is .oracles/sameboy/case-bundle/.\n",
         "\n",
         "Environment fallbacks:\n",
@@ -227,15 +227,28 @@ fn write_suite_report<W: Write>(
         writeln_checked(
             output,
             &format!(
-                "case={} rom={} serial_hex_artifact={}",
+                "case={} rom={} capture={} artifact={}",
                 case.case_id,
                 case.rom_path.display(),
-                case.serial_hex_artifact_path.display(),
+                capture_name(case.capture),
+                case.artifact_path.display(),
             ),
         )?;
     }
 
     Ok(())
+}
+
+fn capture_name(capture: crate::CaptureKind) -> &'static str {
+    match capture {
+        crate::CaptureKind::Serial => "serial",
+        crate::CaptureKind::SerialHex => "serial-hex",
+        crate::CaptureKind::MemoryTextOutput => "memory-text-output",
+        crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
+        crate::CaptureKind::Framebuffer => "framebuffer",
+        crate::CaptureKind::Trace => "trace",
+        crate::CaptureKind::Snapshot => "snapshot",
+    }
 }
 
 fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
@@ -258,8 +271,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
-        SameBoyCaseBundleSuiteReport, sameboy_case_bundle::SameBoyCaseBundleCaseReport,
-        sameboy_case_bundle_cli_help_text, sameboy_case_bundle_oracle_root,
+        CaptureKind, SameBoyCaseBundleSuiteReport,
+        sameboy_case_bundle::SameBoyCaseBundleCaseReport, sameboy_case_bundle_cli_help_text,
+        sameboy_case_bundle_oracle_root,
     };
 
     use super::{
@@ -403,14 +417,16 @@ mod tests {
             cases: vec![SameBoyCaseBundleCaseReport {
                 case_id: "phase6-mbc1-standard-banking".to_string(),
                 rom_path: PathBuf::from("rom.gb"),
-                serial_hex_artifact_path: PathBuf::from("/tmp/oracle/serial_hex.txt"),
+                capture: CaptureKind::SerialHex,
+                artifact_path: PathBuf::from("/tmp/oracle/serial_hex.txt"),
             }],
         };
         let mut output = Vec::new();
         super::write_suite_report(&mut output, &report).expect("report should write");
         let output = String::from_utf8(output).expect("output should be utf-8");
         assert!(output.contains("suite=phase-6-cartridge-oracle"));
-        assert!(output.contains("serial_hex_artifact=/tmp/oracle/serial_hex.txt"));
+        assert!(output.contains("capture=serial-hex"));
+        assert!(output.contains("artifact=/tmp/oracle/serial_hex.txt"));
     }
 
     struct BrokenWriter;
@@ -462,7 +478,8 @@ mod tests {
         let output = String::from_utf8(output).expect("command output should be utf-8");
         assert!(output.contains("suite=phase-6-cartridge-oracle"));
         assert!(output.contains("case=phase6-mbc1-standard-banking"));
-        assert!(output.contains("serial_hex_artifact="));
+        assert!(output.contains("capture=serial-hex"));
+        assert!(output.contains("artifact="));
 
         let args = fs::read_to_string(args_output).expect("runner args should be readable");
         assert!(args.contains("--timeout-frames\n12\n"));

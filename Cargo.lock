@@ -328,6 +328,7 @@ dependencies = [
  "gb-core",
  "png",
  "serde",
+ "serde_json",
  "sha2",
  "toml",
 ]

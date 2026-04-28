@@ -825,7 +825,8 @@ mod tests {
             String::from_utf8(checklist_output).expect("checklist output should be utf-8");
         assert!(checklist_output.contains("subsystem=cpu status=repo-gate-present"));
         assert!(checklist_output.contains("subsystem=ppu status=repo-gate-present"));
-        assert!(checklist_output.contains("subsystem=timer status=internal-gate-only"));
+        assert!(checklist_output.contains("subsystem=timer status=repo-gate-present"));
+        assert!(checklist_output.contains("subsystem=cartridge status=repo-gate-present"));
     }
 
     #[test]

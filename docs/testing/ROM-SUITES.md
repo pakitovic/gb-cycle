@@ -40,6 +40,13 @@ make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
 make run-mealybug      # exploratory mealybug-tearoom DMG subset
 make run-mooneye       # exploratory mooneye DMG acceptance subset
+make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
+make phase9-determinism-local # replay/save-load sample across CPU/interrupts, Mooneye Timer/DMA, Acid/Mealybug PPU, cartridge, and one APU Blargg case
+make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
+make phase9-diff-acid         # compare Acid framebuffer artifacts against LibSameBoy case-bundle output
+make phase9-diff-mealybug     # compare the SameBoy-PASS Mealybug framebuffer subset against LibSameBoy case-bundle output
+make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against LibSameBoy case-bundle output
+make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
 ```
 
 Each `make run-*` target is autosufficient and materializes its own curated family before execution.
@@ -58,6 +65,9 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
 
 # Show early hardening status by subsystem
 cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
+
+# Run deterministic replay plus in-memory save/load continuation checks
+cargo run -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
 ```
 
 ### Retaining failure artifacts
@@ -106,9 +116,15 @@ Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture frame
 
 Workflow-managed DMG subset using committed framebuffer fixtures for the curated green cases from `GBEmulatorShootout`; exercised by the GitHub `test-roms` workflow.
 
+The full local gate remains `mealybug-tearoom-dmg-curated` and keeps all 24 curated cases, including cases where gb-cycle passes but the current GBEmulatorShootout table marks SameBoy as `FAIL`.
+
+The Phase `9` SameBoy differential uses the narrower built-in suite `mealybug-tearoom-dmg-sameboy-differential`, which excludes the nine Mealybug rows that GBEmulatorShootout updated on March 22, 2026 marks as SameBoy non-PASS: `mealybug-m3-lcdc-bg-en-change`, `mealybug-m3-lcdc-bg-map-change`, `mealybug-m3-lcdc-obj-size-change`, `mealybug-m3-lcdc-obj-size-change-scx`, `mealybug-m3-lcdc-tile-sel-change`, `mealybug-m3-lcdc-tile-sel-win-change`, `mealybug-m3-lcdc-win-en-change-multiple-wx`, `mealybug-m3-lcdc-win-map-change`, and `mealybug-m3-scy-change`.
+
+Do not treat those excluded cases as gb-cycle regressions just because `mealybug-tearoom-dmg-curated` diverges from SameBoy; for Phase `9.3`, the full local fixture gate is accepted as the gb-cycle signal and the SameBoy divergence is recorded as an oracle limitation unless stronger hardware-facing evidence or another passing oracle supersedes it.
+
 ### Mooneye
 
-Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence, not a substitute for differential, replay, or save/load determinism closure.
+Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix.
 
 ## CI integration
 
@@ -186,9 +202,54 @@ button = "start"
 pressed = false
 ```
 
+## Determinism and save/load continuation
+
+`run_determinism` is the accepted Phase `9` in-memory determinism lane:
+
+```bash
+cargo run -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
+cargo run -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
+make phase9-determinism-smoke
+make phase9-determinism-local
+```
+
+For each selected strict case, the runner performs two independent replays, compares the final `MachineSaveState` plus serial output, captures a mid-run save state, dirties and restores the machine, checks continuation against the uninterrupted run, and verifies that a mismatched console-model restore is rejected. Non-`Strict` cases intentionally fail fast so this path remains usable as closure evidence instead of permissive compatibility evidence.
+
 ## Differential oracle testing
 
-### SameBoy Tester
+### LibSameBoy case-bundle artifacts
+
+The Phase `9` SameBoy materialization path uses a small repo-owned C helper linked against SameBoy's `lib` target:
+
+```bash
+cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
+  --suite phase-6-cartridge-oracle \
+  --sameboy-root /path/to/SameBoy \
+  --build-if-missing
+
+cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
+  --suite acid-dmg-curated \
+  --sameboy-root /path/to/SameBoy \
+  --build-if-missing
+```
+
+When `--oracle-root` is omitted, artifacts are written under `/.oracles/sameboy/case-bundle/<case-id>/`. Serial-hex cases emit `serial_hex.txt`; framebuffer cases emit `framebuffer.pgm`. The helper applies the suite's startup cartridge RTC seconds, startup memory writes, and the synthetic SkipBoot internal `DIV` phase before execution, so cartridge and PPU lanes share the same controlled LibSameBoy entrypoint instead of depending on a prebuilt SameBoy application binary.
+
+### First-divergence probe windows
+
+The Phase `9` first-divergence lane reuses the LibSameBoy helper but asks it for periodic JSONL probes instead of only final artifacts:
+
+```bash
+cargo run -p gb-test-runner --bin run_first_divergence -- \
+  --oracle sameboy \
+  --suite hacktix-dmg-curated \
+  --probe-interval-tcycles 70224 \
+  --build-if-missing
+```
+
+When `--probe-root` is omitted, local and SameBoy probe streams are written under `/.oracles/sameboy/first-divergence/<case-id>/local_probes.jsonl` and `sameboy_probes.jsonl`. The default `--compare-mode framebuffer` compares normalized framebuffer hashes and keeps CPU registers, timer/IRQ registers, PPU timing/register values, raw VRAM/OAM/WRAM/HRAM hashes, and serial output as context; `--compare-mode state` compares all captured state fields except probe timestamp drift. Use `--allow-divergence` for exploratory Make targets such as `phase9-first-divergence-hacktix`, where the command should report the first known intermediate timing window while still returning success for local investigation.
+
+### SameBoy Tester compatibility path
 
 To materialize SameBoy Tester artifacts under a compatible oracle root:
 
@@ -209,16 +270,18 @@ SameBoy Tester always boots through a boot ROM, so this path is best suited to e
 ```bash
 cargo run -p gb-test-runner --bin run_differential -- \
   --oracle sameboy \
-  --oracle-layout sameboy-tester \
+  --oracle-layout case-bundle \
   --suite acid-dmg-curated
 ```
 
 If `--oracle-artifact-root` is omitted, the default repo-local root is `/.oracles/<oracle>/<layout>/`.
 
+For Mealybug Phase `9` closure, use `--suite mealybug-tearoom-dmg-sameboy-differential` rather than the full local `mealybug-tearoom-dmg-curated` gate, because the full gate intentionally includes rows where SameBoy is not a passing GBEmulatorShootout oracle.
+
 #### Layouts
 
-- **`sameboy-tester`** — framebuffer-only; expects SameBoy Tester artifacts mirrored by ROM-relative path (e.g. `acid/dmg-acid2.bmp`).
-- **`case-bundle`** (default) — oracle root contains one subdirectory per case id using the same artifact filenames that `gb-test-runner` emits locally (`serial.txt`, `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.png`, `trace.txt`).
+- **`case-bundle`** (default) — oracle root contains one subdirectory per case id using the same artifact filenames that `gb-test-runner` emits locally or a legacy `framebuffer.pgm` for LibSameBoy framebuffer captures (`serial.txt`, `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.png`, `framebuffer.pgm`, `trace.txt`).
+- **`sameboy-tester`** — framebuffer-only compatibility layout; expects SameBoy Tester artifacts mirrored by ROM-relative path (e.g. `acid/dmg-acid2.bmp`).
 
 ### Case-bundle oracle example
 

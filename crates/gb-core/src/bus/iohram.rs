@@ -56,6 +56,10 @@ impl IoHramDomain {
         policy.initialize_hram(&mut self.hram);
     }
 
+    pub(crate) fn hram_bytes(&self) -> &[u8] {
+        &self.hram
+    }
+
     pub(crate) fn read(
         &self,
         router: &AddressRouter,

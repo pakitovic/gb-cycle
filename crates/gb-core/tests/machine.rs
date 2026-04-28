@@ -58,3 +58,26 @@ fn two_identical_machines_produce_the_same_two_cycle_trace() {
     assert_eq!(left.next_t_cycle(), TCycle::new(2));
     assert_eq!(right.next_t_cycle(), TCycle::new(2));
 }
+
+#[test]
+fn debug_memory_views_expose_raw_backing_storage_without_bus_reads() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.debug_vram_bytes().len(), 0x2000);
+    assert_eq!(machine.debug_oam_bytes().len(), 0x00A0);
+    assert_eq!(machine.debug_wram_bytes().len(), 0x2000);
+    assert_eq!(machine.debug_hram_bytes().len(), 0x007F);
+
+    machine.write_bus(0xC123, 0x42);
+    machine.write_bus(0xE123, 0x99);
+    machine.write_bus(0xFF80, 0x77);
+
+    assert_eq!(machine.debug_wram_bytes()[0x0123], 0x99);
+    assert_eq!(machine.debug_hram_bytes()[0], 0x77);
+    assert_eq!(machine.debug_vram_bytes(), machine.bus().debug_vram_bytes());
+    assert_eq!(machine.debug_oam_bytes(), machine.bus().debug_oam_bytes());
+    assert_eq!(machine.debug_wram_bytes(), machine.bus().debug_wram_bytes());
+    assert_eq!(machine.debug_hram_bytes(), machine.bus().debug_hram_bytes());
+}
