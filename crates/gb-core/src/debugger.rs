@@ -701,20 +701,24 @@ impl<S: TraceSink> Tracer<S> {
         level: TraceLevel,
         message: impl Into<String>,
     ) -> u64 {
+        // Summary-only tracers are used on hot emulator paths. They deliberately do not
+        // consume sequence IDs because no event can later expose the skipped number.
+        if !self.sink.records_events() {
+            return self.next_sequence;
+        }
+
         let sequence = self.next_sequence;
         self.next_sequence = self
             .next_sequence
             .checked_add(1)
             .expect("trace sequence overflow");
 
-        if self.sink.records_events() {
-            self.sink.push(TraceEvent {
-                sequence,
-                subsystem,
-                level,
-                message: message.into(),
-            });
-        }
+        self.sink.push(TraceEvent {
+            sequence,
+            subsystem,
+            level,
+            message: message.into(),
+        });
 
         sequence
     }
@@ -729,20 +733,24 @@ impl<S: TraceSink> Tracer<S> {
         F: FnOnce() -> M,
         M: Into<String>,
     {
+        // Keep lazy messages truly lazy for non-recording sinks; this path runs per T-cycle
+        // when only summary/debug snapshots are enabled.
+        if !self.sink.records_events() {
+            return self.next_sequence;
+        }
+
         let sequence = self.next_sequence;
         self.next_sequence = self
             .next_sequence
             .checked_add(1)
             .expect("trace sequence overflow");
 
-        if self.sink.records_events() {
-            self.sink.push(TraceEvent {
-                sequence,
-                subsystem,
-                level,
-                message: message().into(),
-            });
-        }
+        self.sink.push(TraceEvent {
+            sequence,
+            subsystem,
+            level,
+            message: message().into(),
+        });
 
         sequence
     }

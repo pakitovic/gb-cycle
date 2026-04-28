@@ -368,6 +368,7 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 ### `debugger/`
 
 - tracing
+- non-recording trace summary sinks may skip event sequence advancement entirely; `next_sequence` is meaningful for recording trace buffers, while summary snapshots remain observational counters/state only
 - breakpoints
 - watchpoints
 - snapshots
