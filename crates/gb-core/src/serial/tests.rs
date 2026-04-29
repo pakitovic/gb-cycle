@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn sc_forces_reserved_bits_high_and_tracks_control_fields() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
 
     serial.write_sc(0x81);
 
@@ -16,7 +16,7 @@ fn sc_forces_reserved_bits_high_and_tracks_control_fields() {
 
 #[test]
 fn startup_state_recreates_the_documented_post_boot_sb_and_sc_snapshot() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
 
     serial.apply_startup_state(SerialStartupState::from_registers(0x00, 0x7E));
 
@@ -37,7 +37,7 @@ fn startup_state_and_sc_writes_cover_internal_and_external_transfer_modes() {
     );
     assert_eq!(startup_state.clock_counter, 0);
 
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     serial.apply_startup_state(startup_state);
     assert_eq!(serial.read_sc(), 0xFF);
 
@@ -49,19 +49,19 @@ fn startup_state_and_sc_writes_cover_internal_and_external_transfer_modes() {
 
 #[test]
 fn scheduler_trace_message_reports_cycle_phase_and_console_model() {
-    let serial = Serial::new(ConsoleModel::Dmg);
+    let serial = Serial::new(ConsoleModel::GameBoy);
     let context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
     let trace = serial.scheduler_trace_message(&context);
 
     assert_eq!(
         trace,
-        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready sb=0x00 clock_mode=External transfer_state=Idle peer=Disconnected"
+        "t_cycle=0 phase=external_event_ingress console_model=GameBoy status=Ready sb=0x00 clock_mode=External transfer_state=Idle peer=Disconnected"
     );
 }
 
 #[test]
 fn internal_clock_shifts_sb_bit_by_bit_and_requests_irq_on_completion() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.write_sb(0x81);
@@ -98,7 +98,7 @@ fn internal_clock_shifts_sb_bit_by_bit_and_requests_irq_on_completion() {
 
 #[test]
 fn slave_mode_waits_for_external_clocks() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.write_sb(0xA5);
@@ -120,7 +120,7 @@ fn slave_mode_waits_for_external_clocks() {
 
 #[test]
 fn slave_mode_discards_external_clock_pulses_queued_before_transfer_start() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     assert!(!serial.queue_external_clock_pulse());
@@ -147,7 +147,7 @@ fn slave_mode_discards_external_clock_pulses_queued_before_transfer_start() {
 
 #[test]
 fn loopback_peer_returns_the_original_byte_after_eight_shifts() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.set_peer(SerialPeer::Loopback);
@@ -166,7 +166,7 @@ fn loopback_peer_returns_the_original_byte_after_eight_shifts() {
 
 #[test]
 fn staged_incoming_byte_is_shifted_in_bit_by_bit_across_the_transfer() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.set_peer(SerialPeer::StagedIncomingByte { byte: 0x81 });
@@ -185,7 +185,7 @@ fn staged_incoming_byte_is_shifted_in_bit_by_bit_across_the_transfer() {
 
 #[test]
 fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_starts() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.apply_startup_state(
@@ -212,7 +212,7 @@ fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_
 
 #[test]
 fn transfer_reuses_the_last_staged_outgoing_byte_until_sb_is_rewritten() {
-    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     serial.set_peer(SerialPeer::StagedIncomingByte { byte: 0x12 });

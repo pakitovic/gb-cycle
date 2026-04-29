@@ -336,8 +336,10 @@ impl DeterminismRunner {
 
 fn mismatched_console_model(model: ConsoleModel) -> ConsoleModel {
     match model {
-        ConsoleModel::Dmg0 | ConsoleModel::Mgb | ConsoleModel::Cgb => ConsoleModel::Dmg,
-        ConsoleModel::Dmg => ConsoleModel::Mgb,
+        ConsoleModel::GameBoy => ConsoleModel::GameBoyPocket,
+        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight | ConsoleModel::GameBoyColor => {
+            ConsoleModel::GameBoy
+        }
     }
 }
 
@@ -355,20 +357,20 @@ mod tests {
     #[test]
     fn mismatched_console_model_keeps_restore_guard_inside_dmg_family() {
         assert_eq!(
-            mismatched_console_model(ConsoleModel::Dmg),
-            ConsoleModel::Mgb
+            mismatched_console_model(ConsoleModel::GameBoy),
+            ConsoleModel::GameBoyPocket
         );
         assert_eq!(
-            mismatched_console_model(ConsoleModel::Mgb),
-            ConsoleModel::Dmg
+            mismatched_console_model(ConsoleModel::GameBoyPocket),
+            ConsoleModel::GameBoy
         );
         assert_eq!(
-            mismatched_console_model(ConsoleModel::Dmg0),
-            ConsoleModel::Dmg
+            mismatched_console_model(ConsoleModel::GameBoyLight),
+            ConsoleModel::GameBoy
         );
         assert_eq!(
-            mismatched_console_model(ConsoleModel::Cgb),
-            ConsoleModel::Dmg
+            mismatched_console_model(ConsoleModel::GameBoyColor),
+            ConsoleModel::GameBoy
         );
     }
 

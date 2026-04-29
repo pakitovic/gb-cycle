@@ -941,7 +941,7 @@ mod tests {
 
     fn test_machine() -> Machine<TraceSummaryBuffer> {
         Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         )
     }
 

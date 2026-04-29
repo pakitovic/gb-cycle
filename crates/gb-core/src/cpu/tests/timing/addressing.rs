@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn hli_and_hld_transfer_forms_publish_combined_access_and_idu_events() {
-    let mut load_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut load_bus = Bus::new(ConsoleModel::Dmg);
+    let mut load_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut load_bus = Bus::new(ConsoleModel::GameBoy);
     let mut load_cartridge = build_test_cartridge(&[0x2A]);
 
     load_cpu.apply_startup_state(CpuStartupState {
@@ -28,8 +28,8 @@ fn hli_and_hld_transfer_forms_publish_combined_access_and_idu_events() {
         })
     );
 
-    let mut store_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut store_bus = Bus::new(ConsoleModel::Dmg);
+    let mut store_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut store_bus = Bus::new(ConsoleModel::GameBoy);
     let mut store_cartridge = build_test_cartridge(&[0x32]);
 
     store_cpu.apply_startup_state(CpuStartupState {
@@ -57,8 +57,8 @@ fn hli_and_hld_transfer_forms_publish_combined_access_and_idu_events() {
 
 #[test]
 fn inc_and_dec_register_pairs_publish_pure_idu_events() {
-    let mut inc_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut inc_bus = Bus::new(ConsoleModel::Dmg);
+    let mut inc_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut inc_bus = Bus::new(ConsoleModel::GameBoy);
     let mut inc_cartridge = build_test_cartridge(&[0x23]);
 
     inc_cpu.apply_startup_state(CpuStartupState {
@@ -81,8 +81,8 @@ fn inc_and_dec_register_pairs_publish_pure_idu_events() {
         })
     );
 
-    let mut dec_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut dec_bus = Bus::new(ConsoleModel::Dmg);
+    let mut dec_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut dec_bus = Bus::new(ConsoleModel::GameBoy);
     let mut dec_cartridge = build_test_cartridge(&[0x3B]);
 
     dec_cpu.apply_startup_state(CpuStartupState {
@@ -107,8 +107,8 @@ fn inc_and_dec_register_pairs_publish_pure_idu_events() {
 
 #[test]
 fn ld_hl_sp_plus_signed_immediate_uses_three_machine_cycles_and_sets_flags_from_sp_math() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xF8, 0x08]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -141,8 +141,8 @@ fn ld_hl_sp_plus_signed_immediate_uses_three_machine_cycles_and_sets_flags_from_
 
 #[test]
 fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xE8, 0x08]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -185,8 +185,8 @@ fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math(
 
 #[test]
 fn add_sp_negative_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xE8, 0xF8]);
 
     cpu.apply_startup_state(CpuStartupState {

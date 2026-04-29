@@ -174,7 +174,7 @@ fn load_verified_boot_rom_assets(console_model: ConsoleModel) -> Option<BootRomA
         return None;
     };
     let Some(kind) = boot_rom_kind_for_console_model(console_model) else {
-        panic!("expected a DMG-family console model, got {console_model:?}");
+        panic!("expected a boot-ROM-backed console model, got {console_model:?}");
     };
     let image_path = boot_rom_image_path(&root, kind);
     verify_boot_rom_file(&image_path, kind).unwrap_or_else(|_| {
@@ -449,13 +449,53 @@ fn run_real_boot_validation(console_model: ConsoleModel) {
     );
 }
 
+fn run_cgb_real_boot_handoff_smoke() {
+    let Some(boot_rom_assets) = load_verified_boot_rom_assets(ConsoleModel::GameBoyColor) else {
+        return;
+    };
+
+    let rom_bytes = build_real_boot_validation_rom(ValidationRomProfile::Valid);
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(boot_rom_assets),
+    );
+    machine
+        .load_cartridge(rom_bytes)
+        .expect("validation cartridge should load as NoMBC");
+    machine.write_bus(ENTRY_SENTINEL_ADDRESS, 0x00);
+
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert_eq!(
+        machine.read_bus(0x0000),
+        machine.boot().read_boot_rom(0x0000)
+    );
+
+    step_until_real_boot_handoff(&mut machine);
+
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.cpu().registers().pc, 0x0100);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().current_opcode(), None);
+    assert_eq!(machine.read_bus(0x0000), 0x12);
+    assert_eq!(machine.read_bus(0x0100), VALIDATION_ENTRY_OPCODE);
+    assert_eq!(
+        machine.read_bus(ENTRY_SENTINEL_ADDRESS),
+        0x00,
+        "the CGB real-boot smoke should stop at the firmware handoff and not execute cartridge code before the test owns the post-boot policy"
+    );
+}
+
 fn run_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_label: &str) {
-    let Some(boot_rom_assets) = load_verified_boot_rom_assets(ConsoleModel::Dmg) else {
+    let Some(boot_rom_assets) = load_verified_boot_rom_assets(ConsoleModel::GameBoy) else {
         return;
     };
 
     let mut machine = Machine::new_summary(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(boot_rom_assets),
     );
@@ -476,19 +516,25 @@ fn run_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_labe
 #[test]
 #[ignore = "requires verified local dmg0 boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg0_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
-    run_real_boot_validation(ConsoleModel::Dmg0);
+    run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
 #[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
-    run_real_boot_validation(ConsoleModel::Dmg);
+    run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
 #[ignore = "requires verified local mgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_mgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
-    run_real_boot_validation(ConsoleModel::Mgb);
+    run_real_boot_validation(ConsoleModel::GameBoyPocket);
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
+    run_cgb_real_boot_handoff_smoke();
 }
 
 #[test]
@@ -615,7 +661,7 @@ fn blargg_01_special_copies_bank1_payload_to_wram_before_running() {
     let rom = fs::read(&rom_path).expect("curated blargg ROM should be readable");
 
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom.clone())

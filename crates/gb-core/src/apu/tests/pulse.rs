@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_step() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x11);
     apu.write_register(0xFF11, 0xBF);
@@ -28,7 +28,7 @@ fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_st
 
 #[test]
 fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     apu.write_register(0xFF10, 0x11);
@@ -81,7 +81,7 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
 
 #[test]
 fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_output() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF11, 0x40);
     apu.write_register(0xFF12, 0xF0);
@@ -108,7 +108,7 @@ fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_outpu
 
 #[test]
 fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress_output() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x40);
     apu.write_register(0xFF17, 0xF0);
@@ -132,7 +132,7 @@ fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress
 
 #[test]
 fn triggering_a_pulse_channel_from_inactive_state_resuppresses_output_until_the_next_duty_step() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x40);
     apu.write_register(0xFF17, 0xF0);
@@ -165,7 +165,7 @@ fn triggering_a_pulse_channel_from_inactive_state_resuppresses_output_until_the_
 
 #[test]
 fn pulse_fast_timer_stays_frozen_until_the_first_trigger_after_power_on() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
@@ -188,7 +188,7 @@ fn pulse_fast_timer_stays_frozen_until_the_first_trigger_after_power_on() {
 
 #[test]
 fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF11, 0x40);
     apu.write_register(0xFF12, 0xF0);
@@ -216,7 +216,7 @@ fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() 
 
 #[test]
 fn triggering_a_pulse_channel_preserves_the_underlying_timer_phase() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
@@ -233,7 +233,7 @@ fn triggering_a_pulse_channel_preserves_the_underlying_timer_phase() {
 
 #[test]
 fn pulse_trigger_phase_preservation_matches_all_four_t_cycle_subphases() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
@@ -251,7 +251,7 @@ fn pulse_trigger_phase_preservation_matches_all_four_t_cycle_subphases() {
 
 #[test]
 fn triggering_a_pulse_channel_just_before_an_envelope_step_reloads_the_timer_with_plus_one() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF16, 0x80);
@@ -267,7 +267,7 @@ fn triggering_a_pulse_channel_just_before_an_envelope_step_reloads_the_timer_wit
 
 #[test]
 fn enabling_pulse_length_on_a_non_length_step_clocks_it_immediately() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(1);
     apu.write_register(0xFF11, 0xBF);
@@ -287,7 +287,7 @@ fn enabling_pulse_length_on_a_non_length_step_clocks_it_immediately() {
 
 #[test]
 fn enabling_pulse_length_on_a_length_step_does_not_clock_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(0);
     apu.write_register(0xFF11, 0xBF);
@@ -307,7 +307,7 @@ fn enabling_pulse_length_on_a_length_step_does_not_clock_it() {
 
 #[test]
 fn pulse_trigger_rom_second_half_enable_keeps_length_unchanged_before_retrigger() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(6);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
@@ -324,7 +324,7 @@ fn pulse_trigger_rom_second_half_enable_keeps_length_unchanged_before_retrigger(
 
 #[test]
 fn pulse_trigger_rom_first_half_enable_clocks_once_and_survives_the_intervening_non_length_edge() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
@@ -346,7 +346,7 @@ fn pulse_trigger_rom_first_half_enable_clocks_once_and_survives_the_intervening_
 
 #[test]
 fn triggering_a_zero_length_pulse_with_length_enabled_reloads_and_clocks_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -364,7 +364,7 @@ fn triggering_a_zero_length_pulse_with_length_enabled_reloads_and_clocks_it() {
 #[test]
 fn triggering_a_length_one_pulse_with_enable_on_the_same_first_half_write_matches_the_unfrozen_case()
  {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -377,7 +377,7 @@ fn triggering_a_length_one_pulse_with_enable_on_the_same_first_half_write_matche
 
 #[test]
 fn triggering_a_nonzero_length_pulse_does_not_change_its_length_counter() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(6);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
@@ -391,7 +391,7 @@ fn triggering_a_nonzero_length_pulse_does_not_change_its_length_counter() {
 
 #[test]
 fn writes_other_than_disabling_to_enabled_do_not_extra_clock_pulse_length() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
@@ -411,7 +411,7 @@ fn writes_other_than_disabling_to_enabled_do_not_extra_clock_pulse_length() {
 
 #[test]
 fn writing_length_after_enabling_it_matches_the_trigger_rom_sequence() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF17, 0x08);
@@ -431,7 +431,7 @@ fn writing_length_after_enabling_it_matches_the_trigger_rom_sequence() {
 
 #[test]
 fn extra_length_clocking_to_zero_disables_the_pulse_channel() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -444,7 +444,7 @@ fn extra_length_clocking_to_zero_disables_the_pulse_channel() {
 
 #[test]
 fn enabling_length_again_after_it_reached_zero_does_not_clock_or_unfreeze_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -463,7 +463,7 @@ fn enabling_length_again_after_it_reached_zero_does_not_clock_or_unfreeze_it() {
 
 #[test]
 fn triggering_a_zero_length_pulse_with_length_disabled_unfreezes_it_to_the_full_reload() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -481,7 +481,7 @@ fn triggering_a_zero_length_pulse_with_length_disabled_unfreezes_it_to_the_full_
 
 #[test]
 fn disabled_dac_still_allows_trigger_to_reload_and_clock_pulse_length() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -504,7 +504,7 @@ fn disabled_dac_still_allows_trigger_to_reload_and_clock_pulse_length() {
 
 #[test]
 fn channel_1_first_half_enable_clocks_length_once_before_retrigger() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 2);
@@ -522,7 +522,7 @@ fn channel_1_first_half_enable_clocks_length_once_before_retrigger() {
 
 #[test]
 fn channel_1_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
@@ -539,7 +539,7 @@ fn channel_1_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
 
 #[test]
 fn channel_1_trigger_unfreezes_zero_length_and_clocks_it_after_disabling_length() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
@@ -560,7 +560,7 @@ fn channel_1_trigger_unfreezes_zero_length_and_clocks_it_after_disabling_length(
 
 #[test]
 fn channel_1_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
@@ -582,7 +582,7 @@ fn channel_1_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again()
 
 #[test]
 fn trigger_unfreezes_zero_length_then_a_later_enable_allows_normal_length_clocks() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
@@ -616,7 +616,7 @@ fn trigger_unfreezes_zero_length_then_a_later_enable_allows_normal_length_clocks
 
 #[test]
 fn channel_1_retrigger_after_two_zero_length_freezes_only_extra_clocks_on_real_unfreeze_points() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
@@ -656,7 +656,7 @@ fn channel_1_retrigger_after_two_zero_length_freezes_only_extra_clocks_on_real_u
 
 #[test]
 fn triggering_a_zero_length_pulse_on_a_non_length_step_reloads_it_to_63() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(1);
     apu.write_register(0xFF16, 0x80);
@@ -672,7 +672,7 @@ fn triggering_a_zero_length_pulse_on_a_non_length_step_reloads_it_to_63() {
 
 #[test]
 fn pulse_period_writes_take_effect_only_after_the_current_sample_finishes() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
@@ -701,7 +701,7 @@ fn pulse_period_writes_take_effect_only_after_the_current_sample_finishes() {
 
 #[test]
 fn frame_sequencer_length_and_envelope_clocks_drive_pulse_channel_state() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF11, 0xBF);
     apu.write_register(0xFF12, 0x11);
@@ -727,7 +727,7 @@ fn frame_sequencer_length_and_envelope_clocks_drive_pulse_channel_state() {
 
 #[test]
 fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_check() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x11);
     apu.write_register(0xFF11, 0x80);
@@ -747,7 +747,7 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
 
 #[test]
 fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x11);
     apu.write_register(0xFF11, 0x80);
@@ -768,7 +768,7 @@ fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
 
 #[test]
 fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_sweep_clock() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x10);
     apu.write_register(0xFF11, 0x80);
@@ -787,7 +787,7 @@ fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_
 
 #[test]
 fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x11);
     apu.write_register(0xFF11, 0x80);
@@ -819,7 +819,7 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
 
 #[test]
 fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x09);
     apu.write_register(0xFF11, 0x80);
@@ -837,7 +837,7 @@ fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
 
 #[test]
 fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x19);
     apu.write_register(0xFF11, 0x80);
@@ -857,7 +857,7 @@ fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1
 
 #[test]
 fn clearing_negate_without_a_negate_calculation_keeps_channel_1_active() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x08);
     apu.write_register(0xFF11, 0x80);
@@ -875,7 +875,7 @@ fn clearing_negate_without_a_negate_calculation_keeps_channel_1_active() {
 
 #[test]
 fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x1C);
     apu.write_register(0xFF11, 0x80);
@@ -892,7 +892,7 @@ fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
 
 #[test]
 fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0x11);
@@ -907,7 +907,7 @@ fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
 
 #[test]
 fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xFA);
@@ -958,7 +958,7 @@ fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
 
 #[test]
 fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
@@ -979,7 +979,7 @@ fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive() {
 
 #[test]
 fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0x11);
@@ -999,7 +999,7 @@ fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
 
 #[test]
 fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF11, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -1030,7 +1030,7 @@ fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels(
 
 #[test]
 fn live_nrx2_write_requires_retrigger_before_reprogramming_pulse_envelopes() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     apu.write_register(0xFF11, 0x80);

@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn ff46_write_builds_a_starting_oam_transfer_with_normalized_dmg_metadata() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF46, 0x12);
@@ -43,7 +43,7 @@ fn ff46_write_builds_a_starting_oam_transfer_with_normalized_dmg_metadata() {
 #[test]
 fn skip_boot_keeps_ff46_visible_but_leaves_dma_idle_until_software_starts_it() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     assert_eq!(machine.read_bus(0xFF46), 0xFF);
@@ -54,7 +54,7 @@ fn skip_boot_keeps_ff46_visible_but_leaves_dma_idle_until_software_starts_it() {
 #[test]
 fn scheduler_ticks_move_oam_dma_from_starting_to_active_and_then_completed() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF46, 0x12);
@@ -137,7 +137,7 @@ fn scheduler_ticks_move_oam_dma_from_starting_to_active_and_then_completed() {
 #[test]
 fn dma_trace_shows_start_and_completion_points_with_progress_metadata() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF46, 0x12);
@@ -149,10 +149,10 @@ fn dma_trace_shows_start_and_completion_points_with_progress_metadata() {
     let trace = machine.tracer().sink().render_text();
 
     assert!(trace.contains(
-        "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
+        "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=GameBoy status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
     ));
     assert!(trace.contains(
-        "subsystem=dma level=trace message=\"t_cycle=648 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Completed transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=0 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=0 cpu_bus_restriction_active=true elapsed_t_cycles=648 completed_bytes=160 remaining_bytes=0 completed_blocks=160 remaining_blocks=0"
+        "subsystem=dma level=trace message=\"t_cycle=648 phase=autonomous_peripheral_ticks console_model=GameBoy status=Ready transfer_state=Completed transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=0 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=0 cpu_bus_restriction_active=true elapsed_t_cycles=648 completed_bytes=160 remaining_bytes=0 completed_blocks=160 remaining_blocks=0"
     ));
     assert!(trace.contains(&format!(
         "cpu_access_policy={:?} active_region={:?}",
@@ -164,7 +164,7 @@ fn dma_trace_shows_start_and_completion_points_with_progress_metadata() {
 #[test]
 fn oam_dma_copies_the_latched_source_page_contents_into_oam_after_completion() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_dma_source_page(&mut machine, 0xC1, 0x19);
@@ -200,7 +200,7 @@ fn oam_dma_copies_the_latched_source_page_contents_into_oam_after_completion() {
 #[test]
 fn dma_status_view_reports_lifecycle_progress_and_bus_impact_without_ff46_readback() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     let idle_status = machine.dma().transfer_status();
@@ -270,7 +270,7 @@ fn dma_status_view_reports_lifecycle_progress_and_bus_impact_without_ff46_readba
 #[test]
 fn oam_dma_progress_and_partial_oam_contents_remain_observable_before_completion() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_dma_source_page(&mut machine, 0xC1, 0x33);
@@ -355,7 +355,7 @@ fn oam_dma_progress_and_partial_oam_contents_remain_observable_before_completion
 #[test]
 fn oam_dma_completion_happens_after_the_last_active_transfer_t_cycle() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_dma_source_page(&mut machine, 0xC1, 0x47);

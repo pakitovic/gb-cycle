@@ -8,7 +8,7 @@ const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
 const DMG04_CHRONOLOGY_FIXTURE_NAME: &str = "dmg04_linked_transfer_chronology.txt";
 
 fn dmg_skip_boot_machine() -> Machine {
-    Machine::new(MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot))
+    Machine::new(MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot))
 }
 
 fn step_linked_t_cycles(linked: &mut LinkedMachines, t_cycles: usize) {

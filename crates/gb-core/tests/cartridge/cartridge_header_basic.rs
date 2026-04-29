@@ -68,7 +68,7 @@ fn no_mbc_rom_reads_and_external_ram_writes_route_through_the_cartridge_device()
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("NoMBC should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -125,7 +125,7 @@ fn no_mbc_rom_reads_and_external_ram_writes_route_through_the_cartridge_device()
 #[test]
 fn machine_load_cartridge_installs_the_loaded_slot() {
     let rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     let diagnostics = machine
         .load_cartridge(rom)

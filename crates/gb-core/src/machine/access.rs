@@ -108,6 +108,8 @@ impl<S: TraceSink> Machine<S> {
         let external_port = self.external_port.clone();
         let host_joypad_pressed_mask = self.pending_external_events.joypad_pressed_mask();
         self.cartridge = cartridge;
+        self.config
+            .apply_direct_boot_cartridge_header(self.cartridge.header());
         self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, external_port);
         Ok(diagnostics)
     }
@@ -147,6 +149,7 @@ impl<S: TraceSink> Machine<S> {
     ) {
         let console_model = self.config.console_model;
         let startup_mode = self.config.startup_mode;
+        let boot_rom_kind = self.config.boot_rom_kind;
         let boot_rom_assets = self.config.boot_rom_assets.clone();
 
         self.scheduler.reset();
@@ -159,7 +162,8 @@ impl<S: TraceSink> Machine<S> {
         self.timer = Timer::new(console_model);
         self.serial = Serial::new(console_model);
         self.external_port = external_port;
-        self.boot = BootController::new(console_model, startup_mode, boot_rom_assets);
+        self.boot =
+            BootController::new(console_model, startup_mode, boot_rom_kind, boot_rom_assets);
         self.interrupts = InterruptController::new(console_model);
         self.joypad = Joypad::new(console_model);
         self.pending_ppu_mmio_write = None;

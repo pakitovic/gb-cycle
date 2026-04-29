@@ -735,7 +735,7 @@ mod tests {
                 sample_rate_hz: 48_000,
                 stem_channels: Vec::new(),
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect_err("unsupported extensions should fail");
         assert!(error.contains("unsupported audio recording extension"));
@@ -749,7 +749,7 @@ mod tests {
                 sample_rate_hz: 0,
                 stem_channels: Vec::new(),
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect_err("zero sample rate should fail");
         assert_eq!(
@@ -979,10 +979,10 @@ mod tests {
                 sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
                 stem_channels: vec![ApuRecordedChannel::Ch1, ApuRecordedChannel::Ch4],
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect("recorder");
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
 
         for _ in 0..8 {
@@ -1017,10 +1017,10 @@ mod tests {
                 sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
                 stem_channels: Vec::new(),
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect("recorder");
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
 
         recorder
@@ -1059,10 +1059,10 @@ mod tests {
                 sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
                 stem_channels: vec![ApuRecordedChannel::Ch3],
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect("recorder");
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
 
         recorder
@@ -1085,9 +1085,9 @@ mod tests {
             .expect("captured samples should flush before console-model updates");
 
         recorder
-            .reset_for_session_swap(ConsoleModel::Mgb)
+            .reset_for_session_swap(ConsoleModel::GameBoyPocket)
             .expect("console-model changes should reset all capture state");
-        assert_eq!(recorder.console_model, ConsoleModel::Mgb);
+        assert_eq!(recorder.console_model, ConsoleModel::GameBoyPocket);
         assert_eq!(recorder.mixed_stream.capture.pending_sample_count(), 0);
         assert_eq!(
             recorder.stem_streams[0]
@@ -1100,7 +1100,7 @@ mod tests {
         assert!(recorder.stem_streams[0].stream.post_hpf_filter.is_some());
 
         recorder
-            .reset_for_session_swap(ConsoleModel::Mgb)
+            .reset_for_session_swap(ConsoleModel::GameBoyPocket)
             .expect("same-model session swaps should still reset capture state");
 
         recorder
@@ -1126,10 +1126,10 @@ mod tests {
                 sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
                 stem_channels: vec![ApuRecordedChannel::Ch4],
             },
-            ConsoleModel::Dmg,
+            ConsoleModel::GameBoy,
         )
         .expect("recorder");
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
 
         for _ in 0..8 {
@@ -1138,9 +1138,9 @@ mod tests {
         assert!(recorder.mixed_stream.capture.pending_sample_count() > 0);
 
         recorder
-            .reset_for_session_swap(ConsoleModel::Dmg)
+            .reset_for_session_swap(ConsoleModel::GameBoy)
             .expect("session swaps should flush and reset recording capture");
-        assert_eq!(recorder.console_model, ConsoleModel::Dmg);
+        assert_eq!(recorder.console_model, ConsoleModel::GameBoy);
         assert_eq!(recorder.mixed_stream.capture.pending_sample_count(), 0);
         assert_eq!(
             recorder.stem_streams[0]

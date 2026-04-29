@@ -2,7 +2,7 @@ use super::super::*;
 
 #[test]
 fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and_mode2_end() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -35,7 +35,7 @@ fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and
 
 #[test]
 fn cpu_oam_read_bus_state_only_opens_the_mode2_end_probe_window() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -67,7 +67,7 @@ fn cpu_oam_read_bus_state_only_opens_the_mode2_end_probe_window() {
 
 #[test]
 fn cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -97,7 +97,7 @@ fn cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot() {
 
 #[test]
 fn sprite_extended_mode0_start_opens_cpu_oam_read_before_published_stat_catches_up() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -151,7 +151,7 @@ fn sprite_extended_mode0_start_opens_cpu_oam_read_before_published_stat_catches_
 
 #[test]
 fn bus_state_snapshot_matches_the_individual_bus_state_helpers() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,

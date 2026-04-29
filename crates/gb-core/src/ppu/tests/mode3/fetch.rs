@@ -3476,7 +3476,7 @@ fn bg_fetcher_rereads_the_unsigned_tile_data_byte_when_tile_selector_flips_to_un
 
 #[test]
 fn window_lcdc4_output_override_uses_observed_previous_plane_masks_for_window_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.window_state.window_line_counter = 40;
     ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
         lcdc: LCDC_BG_ENABLE_BIT,
@@ -3520,7 +3520,7 @@ fn window_lcdc4_output_override_uses_observed_previous_plane_masks_for_window_pi
 
 #[test]
 fn window_lcdc4_output_override_from_context_reconstructs_previous_window_dot_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.window_state.window_line_counter = 40;
     ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
         lcdc: LCDC_BG_ENABLE_BIT,
@@ -3564,7 +3564,7 @@ fn window_lcdc4_output_override_from_context_reconstructs_previous_window_dot_pi
 
 #[test]
 fn pending_window_lcdc4_output_repaint_updates_background_owned_visible_pixels_and_panel_history() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.ly = 0;
     ppu.window_state.window_line_counter = 40;
@@ -3625,7 +3625,7 @@ fn pending_window_lcdc4_output_repaint_updates_background_owned_visible_pixels_a
 #[test]
 fn pending_window_lcdc4_output_repaint_keeps_object_owned_pixels_mixed_while_refreshing_bg_history()
 {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.ly = 0;
     ppu.window_state.window_line_counter = 40;

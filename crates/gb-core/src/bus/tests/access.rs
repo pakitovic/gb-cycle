@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn resolve_access_uses_boot_overlay_for_reads_but_not_for_writes() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
 
     let read = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
@@ -18,7 +18,7 @@ fn resolve_access_uses_boot_overlay_for_reads_but_not_for_writes() {
 
 #[test]
 fn boot_overlay_reads_report_the_boot_domain() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
 
     let read = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
@@ -28,7 +28,7 @@ fn boot_overlay_reads_report_the_boot_domain() {
 
 #[test]
 fn cgb_boot_overlay_can_cover_the_upper_window_without_changing_write_ownership() {
-    let bus = Bus::new(ConsoleModel::Cgb);
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_cgb_windows());
 
     let read = bus.resolve_access(BusAccessKind::Read, 0x0200, &state, None);
@@ -44,7 +44,7 @@ fn cgb_boot_overlay_can_cover_the_upper_window_without_changing_write_ownership(
 
 #[test]
 fn resolve_access_keeps_nominal_target_and_policy_separate() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state =
         BusArbitrationState::default().with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::OamScan));
 
@@ -63,7 +63,7 @@ fn resolve_access_keeps_nominal_target_and_policy_separate() {
 
 #[test]
 fn echo_ram_aliases_shared_wram_storage() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
 
     bus.write(0xC123, 0x42);
     assert_eq!(bus.read(0xE123), 0x42);
@@ -74,7 +74,7 @@ fn echo_ram_aliases_shared_wram_storage() {
 
 #[test]
 fn cartridge_mmio_and_unusable_placeholders_do_not_behave_like_storage() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
 
     bus.write(0x0000, 0x12);
     bus.write(0x4000, 0x23);
@@ -91,7 +91,7 @@ fn cartridge_mmio_and_unusable_placeholders_do_not_behave_like_storage() {
 
 #[test]
 fn cgb_unusable_placeholder_reads_stay_tied_to_the_public_revision_dependent_descriptor() {
-    let mut bus = Bus::new(ConsoleModel::Cgb);
+    let mut bus = Bus::new(ConsoleModel::GameBoyColor);
 
     let descriptor = bus.describe_unusable_area(0xFEA0).unwrap();
 
@@ -109,7 +109,7 @@ fn cgb_unusable_placeholder_reads_stay_tied_to_the_public_revision_dependent_des
 
 #[test]
 fn cgb_unusable_placeholder_writes_are_currently_ignored_but_not_advertised_as_nominally_absent() {
-    let mut bus = Bus::new(ConsoleModel::Cgb);
+    let mut bus = Bus::new(ConsoleModel::GameBoyColor);
     let descriptor = bus.describe_unusable_area(0xFEA0).unwrap();
 
     bus.write(0xFEA0, 0x12);
@@ -124,7 +124,7 @@ fn cgb_unusable_placeholder_writes_are_currently_ignored_but_not_advertised_as_n
 
 #[test]
 fn video_bus_dma_policy_has_precedence_over_ppu_region_rules() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default()
         .with_dma(DmaBusState::video_bus_blocked(Some(
             DmaMemoryRegionImpact::Oam,
@@ -142,7 +142,7 @@ fn video_bus_dma_policy_has_precedence_over_ppu_region_rules() {
 
 #[test]
 fn external_bus_dma_policy_keeps_ff46_readable_and_writable_during_active_dma() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
@@ -158,7 +158,7 @@ fn external_bus_dma_policy_keeps_ff46_readable_and_writable_during_active_dma() 
 
 #[test]
 fn external_bus_dma_resolution_exposes_nominal_blocking_and_effective_redirection() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(
         DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
             .with_cpu_conflict_source_address(Some(0xC100)),
@@ -185,7 +185,7 @@ fn external_bus_dma_resolution_exposes_nominal_blocking_and_effective_redirectio
 
 #[test]
 fn requester_aware_resolution_keeps_non_cpu_dma_accesses_unblocked() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
@@ -199,7 +199,7 @@ fn requester_aware_resolution_keeps_non_cpu_dma_accesses_unblocked() {
 
 #[test]
 fn requester_aware_resolution_can_tag_non_cpu_requesters_for_runtime_observability() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     let resolution = bus.resolve_requester_access(
         BusRequester::Boot,

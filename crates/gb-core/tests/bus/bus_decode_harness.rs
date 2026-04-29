@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn public_bus_decode_covers_the_complete_dmg_region_map() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let cases = [
         (
             0x0000,
@@ -44,7 +44,7 @@ fn public_bus_decode_covers_the_complete_dmg_region_map() {
 
 #[test]
 fn explicit_cartridgeless_bus_harness_round_trips_only_through_storage_regions() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
 
     write_cartridgeless_bus_harness(&mut bus, 0x8000, 0x11);
     write_cartridgeless_bus_harness(&mut bus, 0xC000, 0x22);
@@ -61,7 +61,7 @@ fn explicit_cartridgeless_bus_harness_round_trips_only_through_storage_regions()
 
 #[test]
 fn explicit_cartridgeless_bus_harness_keeps_echo_ram_aliased_to_wram() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
 
     write_cartridgeless_bus_harness(&mut bus, 0xC000, 0xA1);
     write_cartridgeless_bus_harness(&mut bus, 0xE321, 0xB2);
@@ -72,7 +72,7 @@ fn explicit_cartridgeless_bus_harness_keeps_echo_ram_aliased_to_wram() {
 
 #[test]
 fn explicit_cartridgeless_bus_harness_uses_placeholders_for_unowned_regions() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
 
     write_cartridgeless_bus_harness(&mut bus, 0x0100, 0x77);
     write_cartridgeless_bus_harness(&mut bus, 0xA123, 0x88);
@@ -87,8 +87,8 @@ fn explicit_cartridgeless_bus_harness_uses_placeholders_for_unowned_regions() {
 
 #[test]
 fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
-    let dmg_bus = Bus::new(ConsoleModel::Dmg);
-    let cgb_bus = Bus::new(ConsoleModel::Cgb);
+    let dmg_bus = Bus::new(ConsoleModel::GameBoy);
+    let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
     let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();

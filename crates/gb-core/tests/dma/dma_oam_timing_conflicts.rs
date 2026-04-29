@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn external_bus_dma_redirects_cpu_reads_to_the_most_recent_source_byte_after_the_first_copy() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_dma_source_page(&mut machine, 0xC1, 0x33);
@@ -24,7 +24,7 @@ fn external_bus_dma_redirects_cpu_reads_to_the_most_recent_source_byte_after_the
 #[test]
 fn external_bus_dma_redirects_cpu_writes_to_the_most_recent_source_byte_after_the_first_copy() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_dma_source_page(&mut machine, 0xC1, 0x47);

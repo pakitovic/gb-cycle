@@ -335,7 +335,7 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
                 &format!(
                     "  case={} family={} source={} oracle={} console={} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
                     case.id,
-                    suite.family.as_deref().unwrap_or("-"),
+                    case_catalog_family(&suite, case),
                     case_source_name(case),
                     pass_condition_name(&case.pass_condition),
                     console_model_name(case.console_model),
@@ -569,12 +569,27 @@ fn case_source_name(case: &crate::RomTestCase) -> &'static str {
     }
 }
 
+fn case_catalog_family<'a>(suite: &'a RomSuite, case: &'a crate::RomTestCase) -> &'a str {
+    if case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        && let Some(family) = case.rom_path.components().next().and_then(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .filter(|value| !value.is_empty())
+        })
+    {
+        family
+    } else {
+        suite.family.as_deref().unwrap_or("-")
+    }
+}
+
 fn console_model_name(console_model: gb_core::ConsoleModel) -> &'static str {
     match console_model {
-        gb_core::ConsoleModel::Dmg0 => "dmg0",
-        gb_core::ConsoleModel::Dmg => "dmg",
-        gb_core::ConsoleModel::Mgb => "mgb",
-        gb_core::ConsoleModel::Cgb => "cgb",
+        gb_core::ConsoleModel::GameBoy => "game-boy",
+        gb_core::ConsoleModel::GameBoyPocket => "pocket",
+        gb_core::ConsoleModel::GameBoyLight => "light",
+        gb_core::ConsoleModel::GameBoyColor => "color",
     }
 }
 
@@ -812,6 +827,15 @@ mod tests {
         );
         assert!(detailed_output.contains(
             "case=blargg-oam-bug-1-lcd-sync family=blargg source=test-rom-store oracle=memory-text-output"
+        ));
+        assert!(detailed_output.contains(
+            "suite=cgb-smoke family=cgb-smoke subsystem=cross-subsystem cases=2 sources=test-rom-store oracles=mooneye-result,info-framebuffer"
+        ));
+        assert!(detailed_output.contains(
+            "case=cgb-smoke-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
+        ));
+        assert!(detailed_output.contains(
+            "case=cgb-smoke-which-gbc family=acid source=test-rom-store oracle=info-framebuffer console=color"
         ));
 
         let mut checklist_output = Vec::new();

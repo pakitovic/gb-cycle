@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     tick_apu_with_edges(&mut apu, 0, &[]);
     assert_eq!(apu.snapshot().div_apu, 0x00);
@@ -19,7 +19,7 @@ fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
 
 #[test]
 fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.apply_startup_state(ApuStartupState {
         powered: false,
         nr10: 0x00,
@@ -57,7 +57,7 @@ fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
 
 #[test]
 fn frame_sequencer_emits_length_sweep_and_envelope_clocks_on_the_documented_steps() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     for t_cycle in 0..8 {
         tick_apu_with_edges(&mut apu, t_cycle, &[DerivedEdge::ApuFrameSequencerEdge]);

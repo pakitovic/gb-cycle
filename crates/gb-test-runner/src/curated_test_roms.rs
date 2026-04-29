@@ -1,9 +1,10 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use gb_core::ConsoleModel;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -18,6 +19,7 @@ pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
 
 const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const CURATED_TEST_ROM_MANIFEST_VERSION: u32 = 1;
+const CURATED_SOURCE_MANIFEST_VERSION: u32 = 1;
 const CURATED_TEST_ROM_REPORT_VERSION: u32 = 1;
 const GBEMU_SHOOTOUT_TESTROMS_DIR: &str = "testroms";
 const REPORT_STATUS_PASS_EMOJI: &str = "✅";
@@ -76,32 +78,51 @@ pub const MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedTestRomManifestFile {
     version: u32,
-    family: String,
+    family: Option<String>,
     suite_name: String,
     subsystem: String,
     #[serde(rename = "case")]
-    cases: Vec<CuratedTestRomCase>,
+    cases: Vec<CuratedTestRomCaseFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct CuratedTestRomCase {
+struct CuratedTestRomCaseFile {
+    family: Option<String>,
     id: String,
     rom: PathBuf,
+    report_model_suffix: Option<bool>,
     timeout_frames: u32,
     oracle: String,
     expected: Option<String>,
     fixture: Option<PathBuf>,
     fixtures: Option<Vec<PathBuf>>,
+    console: Option<String>,
     execution_mode: Option<String>,
     startup_memory_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CuratedTestRomManifest {
-    family: String,
+    suite_family: Option<String>,
     suite_name: String,
     subsystem: TestSubsystem,
     cases: Vec<CuratedTestRomCase>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CuratedTestRomCase {
+    family: String,
+    id: String,
+    rom: PathBuf,
+    report_model_suffix: bool,
+    timeout_frames: u32,
+    oracle: String,
+    expected: Option<String>,
+    fixture: Option<PathBuf>,
+    fixtures: Option<Vec<PathBuf>>,
+    console_model: ConsoleModel,
+    execution_mode: Option<String>,
+    startup_memory_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,8 +135,42 @@ struct PersistedSuiteStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct PersistedCaseStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    family: Option<String>,
     rom: String,
     status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReportCaseMetadata {
+    family: String,
+    rom: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ReportCaseOrder {
+    source_order_missing: bool,
+    source_or_manifest_order: usize,
+    console_order: usize,
+    manifest_order: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct CuratedSourceManifestFile {
+    version: u32,
+    #[serde(rename = "source")]
+    sources: Vec<CuratedSourceFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct CuratedSourceFile {
+    #[serde(default, rename = "required_file")]
+    required_files: Vec<CuratedRequiredFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct CuratedRequiredFile {
+    path: PathBuf,
 }
 
 pub fn test_rom_store_root(workspace_root: &Path) -> PathBuf {
@@ -186,12 +241,11 @@ pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
 }
 
 pub fn curated_test_rom_families() -> Vec<String> {
-    let mut families = curated_test_rom_manifests()
+    let families = curated_test_rom_manifests()
         .into_iter()
-        .map(|manifest| manifest.family)
-        .collect::<Vec<_>>();
-    families.sort();
-    families
+        .flat_map(|manifest| manifest.cases.into_iter().map(|case| case.family))
+        .collect::<BTreeSet<_>>();
+    families.into_iter().collect()
 }
 
 pub fn materialize_curated_test_rom_store(
@@ -230,16 +284,11 @@ fn materialize_curated_test_rom_store_filtered(
         )
     })?;
 
+    let selected_roms_by_family = curated_test_roms_by_family(selected_families);
     let mut materialized_families = BTreeSet::new();
-    for manifest in curated_test_rom_manifests() {
-        if let Some(selected_families) = selected_families
-            && !selected_families.contains(manifest.family.as_str())
-        {
-            continue;
-        }
-
-        materialized_families.insert(manifest.family.clone());
-        let family_root = store_root.join(&manifest.family);
+    for (family, roms) in selected_roms_by_family {
+        materialized_families.insert(family.clone());
+        let family_root = store_root.join(&family);
         if family_root.exists() {
             fs::remove_dir_all(&family_root).map_err(|error| {
                 format!(
@@ -255,27 +304,8 @@ fn materialize_curated_test_rom_store_filtered(
             )
         })?;
 
-        for case in &manifest.cases {
-            let source_path = gbemu_shootout_root
-                .join(GBEMU_SHOOTOUT_TESTROMS_DIR)
-                .join(&manifest.family)
-                .join(&case.rom);
-            let target_path = family_root.join(&case.rom);
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "failed to create curated ROM parent {}: {error}",
-                        parent.display()
-                    )
-                })?;
-            }
-            fs::copy(&source_path, &target_path).map_err(|error| {
-                format!(
-                    "failed to copy curated ROM {} -> {}: {error}",
-                    source_path.display(),
-                    target_path.display()
-                )
-            })?;
+        for rom in roms {
+            copy_curated_rom(gbemu_shootout_root, &family, &rom, &family_root.join(&rom))?;
         }
     }
 
@@ -292,6 +322,55 @@ fn materialize_curated_test_rom_store_filtered(
             ));
         }
     }
+
+    Ok(())
+}
+
+fn curated_test_roms_by_family(
+    selected_families: Option<&BTreeSet<&str>>,
+) -> BTreeMap<String, BTreeSet<PathBuf>> {
+    let mut roms_by_family = BTreeMap::<String, BTreeSet<PathBuf>>::new();
+    for manifest in curated_test_rom_manifests() {
+        for case in manifest.cases {
+            if let Some(selected_families) = selected_families
+                && !selected_families.contains(case.family.as_str())
+            {
+                continue;
+            }
+            roms_by_family
+                .entry(case.family)
+                .or_default()
+                .insert(case.rom);
+        }
+    }
+    roms_by_family
+}
+
+fn copy_curated_rom(
+    gbemu_shootout_root: &Path,
+    family: &str,
+    rom: &Path,
+    target_path: &Path,
+) -> Result<(), String> {
+    let source_path = gbemu_shootout_root
+        .join(GBEMU_SHOOTOUT_TESTROMS_DIR)
+        .join(family)
+        .join(rom);
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create curated ROM parent {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::copy(&source_path, target_path).map_err(|error| {
+        format!(
+            "failed to copy curated ROM {} -> {}: {error}",
+            source_path.display(),
+            target_path.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -328,17 +407,22 @@ pub fn update_curated_test_report(
         .map_or_else(Vec::new, |persisted| persisted.cases);
 
     for case in &report.cases {
-        let rom = report_rom_display(family, &case.rom_path);
+        let metadata = report_case_metadata(&report.suite_name, family, case);
+        let legacy_rom = report_rom_display(family, &case.rom_path);
+        let legacy_full_rom = case.rom_path.to_string_lossy();
         let status = case.outcome.report_status().to_string();
 
-        if let Some(existing) = merged_case_statuses
-            .iter_mut()
-            .find(|entry| entry.rom == rom)
-        {
-            existing.status = status;
-        } else {
-            merged_case_statuses.push(PersistedCaseStatus { rom, status });
-        }
+        merged_case_statuses.retain(|entry| {
+            let entry_family = entry.family.as_deref().unwrap_or(family);
+            !(entry_family == metadata.family && entry.rom == metadata.rom
+                || entry.family.is_none() && entry.rom == legacy_rom
+                || entry.family.is_none() && entry.rom == legacy_full_rom.as_ref())
+        });
+        merged_case_statuses.push(PersistedCaseStatus {
+            family: (metadata.family != *family).then_some(metadata.family),
+            rom: metadata.rom,
+            status,
+        });
     }
     sort_persisted_case_statuses(family, &mut merged_case_statuses);
 
@@ -389,7 +473,7 @@ pub fn update_curated_test_report(
                 entry.path().display()
             )
         })?;
-        suites.push(persisted);
+        suites.push(normalize_persisted_suite_status(persisted));
     }
 
     suites.sort_by(compare_report_suites);
@@ -423,27 +507,78 @@ fn load_persisted_suite_status(path: &Path) -> Result<Option<PersistedSuiteStatu
             path.display()
         )
     })?;
-    Ok(Some(persisted))
+    Ok(Some(normalize_persisted_suite_status(persisted)))
 }
 
-fn manifest_case_order(family: &str, rom: &str) -> Option<usize> {
+fn normalize_persisted_suite_status(mut persisted: PersistedSuiteStatus) -> PersistedSuiteStatus {
+    for case in &mut persisted.cases {
+        let family = case.family.as_deref().unwrap_or(&persisted.family);
+        if let Some(normalized_rom) = manifest_report_rom_for_persisted_case(family, &case.rom) {
+            case.rom = normalized_rom;
+        }
+    }
+    sort_persisted_case_statuses(&persisted.family, &mut persisted.cases);
+    persisted
+}
+
+fn manifest_report_rom_for_persisted_case(family: &str, rom: &str) -> Option<String> {
     curated_test_rom_manifests()
         .into_iter()
-        .find(|manifest| manifest.family == family)
-        .and_then(|manifest| {
-            manifest
-                .cases
-                .iter()
-                .position(|case| case.rom == Path::new(rom))
+        .flat_map(|manifest| manifest.cases)
+        .filter(|case| case.family == family)
+        .find(|case| {
+            let rom_path = PathBuf::from(&case.family).join(&case.rom);
+            report_rom_display(&case.family, &rom_path) == rom
+                || manifest_case_report_rom_display(case) == rom
+                || rom_path.to_string_lossy() == rom
         })
+        .map(|case| manifest_case_report_rom_display(&case))
+}
+
+fn manifest_case_order(family: &str, rom: &str) -> Option<ReportCaseOrder> {
+    for (case_manifest_order, case) in curated_test_rom_manifests()
+        .into_iter()
+        .flat_map(|manifest| manifest.cases)
+        .filter(|case| case.family == family)
+        .enumerate()
+    {
+        if report_rom_display(&case.family, &PathBuf::from(&case.family).join(&case.rom)) == rom
+            || manifest_case_report_rom_display(&case) == rom
+        {
+            let source_order = curated_source_rom_order(&case.family, &case.rom);
+            return Some(ReportCaseOrder {
+                source_order_missing: source_order.is_none(),
+                source_or_manifest_order: source_order.unwrap_or(case_manifest_order),
+                console_order: console_report_order(case.console_model),
+                manifest_order: case_manifest_order,
+            });
+        }
+    }
+
+    None
 }
 
 fn sort_persisted_case_statuses(family: &str, case_statuses: &mut [PersistedCaseStatus]) {
     case_statuses.sort_by(|left, right| {
-        let left_order = manifest_case_order(family, &left.rom);
-        let right_order = manifest_case_order(family, &right.rom);
-        (left_order.is_none(), left_order.unwrap_or(usize::MAX))
-            .cmp(&(right_order.is_none(), right_order.unwrap_or(usize::MAX)))
+        let left_family = left.family.as_deref().unwrap_or(family);
+        let right_family = right.family.as_deref().unwrap_or(family);
+        let left_rank = report_family_rank(left_family);
+        let right_rank = report_family_rank(right_family);
+        let left_order = manifest_case_order(left_family, &left.rom);
+        let right_order = manifest_case_order(right_family, &right.rom);
+        (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
+            .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
+            .then_with(|| left_family.cmp(right_family))
+            .then_with(|| {
+                (
+                    left_order.is_none(),
+                    left_order.unwrap_or(ReportCaseOrder::fallback()),
+                )
+                    .cmp(&(
+                        right_order.is_none(),
+                        right_order.unwrap_or(ReportCaseOrder::fallback()),
+                    ))
+            })
             .then_with(|| left.rom.cmp(&right.rom))
     });
 }
@@ -451,12 +586,35 @@ fn sort_persisted_case_statuses(family: &str, case_statuses: &mut [PersistedCase
 fn manifest_suite(family: &str) -> RomSuite {
     let manifest = curated_test_rom_manifests()
         .into_iter()
-        .find(|manifest| manifest.family == family)
+        .find(|manifest| manifest.suite_family.as_deref() == Some(family))
         .unwrap_or_else(|| panic!("missing curated test ROM manifest for family {family}"));
 
     let mut suite = RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(family);
     for case in manifest.cases {
-        suite.push_case(manifest_case_to_rom_test_case(&manifest.family, case));
+        suite.push_case(manifest_case_to_rom_test_case(case));
+    }
+    suite
+}
+
+pub fn cgb_smoke_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-smoke")
+}
+
+fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
+    let manifest = curated_test_rom_manifests()
+        .into_iter()
+        .find(|manifest| manifest.suite_name == suite_name)
+        .unwrap_or_else(|| panic!("missing curated test ROM manifest for suite {suite_name}"));
+    let suite_family = manifest
+        .suite_family
+        .as_deref()
+        .unwrap_or(&manifest.suite_name)
+        .to_string();
+
+    let mut suite =
+        RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(suite_family);
+    for case in manifest.cases {
+        suite.push_case(manifest_case_to_rom_test_case(case));
     }
     suite
 }
@@ -468,11 +626,15 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 7] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 8] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
             include_str!("../data/acid.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-smoke.toml",
+            include_str!("../data/cgb-smoke.toml"),
         ),
         (
             "crates/gb-test-runner/data/blargg.toml",
@@ -510,10 +672,50 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
     );
 
     CuratedTestRomManifest {
-        family: parsed.family,
+        suite_family: parsed.family.clone(),
         suite_name: parsed.suite_name,
         subsystem: parse_manifest_subsystem(source_path, &parsed.subsystem),
-        cases: parsed.cases,
+        cases: parsed
+            .cases
+            .into_iter()
+            .map(|case| parse_manifest_case(source_path, parsed.family.as_deref(), case))
+            .collect(),
+    }
+}
+
+fn parse_manifest_case(
+    source_path: &str,
+    manifest_family: Option<&str>,
+    case: CuratedTestRomCaseFile,
+) -> CuratedTestRomCase {
+    let family = case
+        .family
+        .or_else(|| manifest_family.map(str::to_string))
+        .unwrap_or_else(|| {
+            panic!(
+                "missing family for curated case {} in {source_path}",
+                case.id
+            )
+        });
+    let console_model = parse_manifest_console_model(
+        source_path,
+        &case.id,
+        case.console.as_deref().unwrap_or("dmg"),
+    );
+
+    CuratedTestRomCase {
+        family,
+        id: case.id,
+        rom: case.rom,
+        report_model_suffix: case.report_model_suffix.unwrap_or(false),
+        timeout_frames: case.timeout_frames,
+        oracle: case.oracle,
+        expected: case.expected,
+        fixture: case.fixture,
+        fixtures: case.fixtures,
+        console_model,
+        execution_mode: case.execution_mode,
+        startup_memory_profile: case.startup_memory_profile,
     }
 }
 
@@ -525,15 +727,30 @@ fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem
     }
 }
 
-fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> RomTestCase {
+fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str) -> ConsoleModel {
+    match console {
+        "game-boy" | "dmg0" | "dmg" => ConsoleModel::GameBoy,
+        "pocket" | "mgb" => ConsoleModel::GameBoyPocket,
+        "light" => ConsoleModel::GameBoyLight,
+        "color" | "cgb" => ConsoleModel::GameBoyColor,
+        other => panic!(
+            "unsupported console model {other:?} for curated case {case_id} in {source_path}"
+        ),
+    }
+}
+
+fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     let CuratedTestRomCase {
+        family,
         id,
         rom,
+        report_model_suffix: _,
         timeout_frames,
         oracle,
         expected,
         fixture,
         fixtures,
+        console_model,
         execution_mode,
         startup_memory_profile,
     } = case;
@@ -574,18 +791,19 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
     let failure_artifacts = failure_artifacts_for_pass_condition(&pass_condition);
     let mut rom_case = RomTestCase::new(
         id,
-        PathBuf::from(family).join(rom),
+        PathBuf::from(&family).join(rom),
         Timeout::Frames(timeout_frames),
         pass_condition,
     )
     .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR)
+    .with_console_model(console_model)
     .with_capture_plan(capture_plan)
     .with_failure_artifacts(failure_artifacts);
 
     if let Some(execution_mode) = execution_mode.as_deref() {
         let case_id = rom_case.id.clone();
         rom_case = rom_case.with_execution_mode(parse_manifest_execution_mode(
-            family,
+            &family,
             &case_id,
             execution_mode,
         ));
@@ -730,9 +948,47 @@ fn dmg_boot_logo_vram_startup_writes() -> Vec<StartupMemoryWrite> {
 }
 
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
-    let mut ordered_suites = suites.to_vec();
+    let mut ordered_suites = suites
+        .iter()
+        .cloned()
+        .map(normalize_persisted_suite_status)
+        .collect::<Vec<_>>();
     ordered_suites.sort_by(compare_report_suites);
     let (non_failing_cases, total_cases) = report_summary_counts(&ordered_suites);
+    let mut rows = ordered_suites
+        .iter()
+        .flat_map(|suite| {
+            suite
+                .cases
+                .iter()
+                .map(move |case| (suite.family.as_str(), case))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(
+        |(left_default_family, left), (right_default_family, right)| {
+            let left_family = left.family.as_deref().unwrap_or(left_default_family);
+            let right_family = right.family.as_deref().unwrap_or(right_default_family);
+            let left_rank = report_family_rank(left_family);
+            let right_rank = report_family_rank(right_family);
+            let left_order = manifest_case_order(left_family, &left.rom);
+            let right_order = manifest_case_order(right_family, &right.rom);
+
+            (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
+                .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
+                .then_with(|| left_family.cmp(right_family))
+                .then_with(|| {
+                    (
+                        left_order.is_none(),
+                        left_order.unwrap_or(ReportCaseOrder::fallback()),
+                    )
+                        .cmp(&(
+                            right_order.is_none(),
+                            right_order.unwrap_or(ReportCaseOrder::fallback()),
+                        ))
+                })
+                .then_with(|| left.rom.cmp(&right.rom))
+        },
+    );
 
     let mut report = String::new();
     let _ = writeln!(
@@ -743,16 +999,15 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
     let _ = writeln!(&mut report, "| family | rom | status |");
     let _ = writeln!(&mut report, "| --- | --- | --- |");
 
-    for suite in &ordered_suites {
-        for case in &suite.cases {
-            let _ = writeln!(
-                &mut report,
-                "| {} | {} | {} |",
-                suite.family,
-                case.rom,
-                report_status_display(&case.status)
-            );
-        }
+    for (default_family, case) in rows {
+        let family = case.family.as_deref().unwrap_or(default_family);
+        let _ = writeln!(
+            &mut report,
+            "| {} | {} | {} |",
+            family,
+            case.rom,
+            report_status_display(&case.status)
+        );
     }
     report
 }
@@ -801,6 +1056,154 @@ fn report_status_display(status: &str) -> &'static str {
     }
 }
 
+fn report_case_metadata(
+    suite_name: &str,
+    default_family: &str,
+    case: &crate::RomCaseReport,
+) -> ReportCaseMetadata {
+    let (path_family, rom_without_family) = split_curated_rom_path(default_family, &case.rom_path);
+    let candidates = curated_manifest_cases_for_family_rom(&path_family, &rom_without_family);
+
+    let selected = candidates
+        .iter()
+        .find(|(manifest, manifest_case)| {
+            manifest.suite_name == suite_name && manifest_case.id == case.case_id
+        })
+        .or_else(|| {
+            candidates
+                .iter()
+                .find(|(manifest, _)| manifest.suite_name == suite_name)
+        })
+        .or_else(|| {
+            candidates
+                .iter()
+                .find(|(_, manifest_case)| manifest_case.id == case.case_id)
+        })
+        .or_else(|| {
+            candidates
+                .iter()
+                .find(|(manifest, _)| manifest.suite_family.as_deref() == Some(default_family))
+        })
+        .or_else(|| candidates.first());
+
+    if let Some((_, manifest_case)) = selected {
+        ReportCaseMetadata {
+            family: manifest_case.family.clone(),
+            rom: manifest_case_report_rom_display(manifest_case),
+        }
+    } else {
+        ReportCaseMetadata {
+            family: path_family,
+            rom: report_rom_display(default_family, &case.rom_path),
+        }
+    }
+}
+
+fn split_curated_rom_path(default_family: &str, rom_path: &Path) -> (String, PathBuf) {
+    let mut components = rom_path.components();
+    let Some(first) = components.next() else {
+        return (default_family.to_string(), PathBuf::new());
+    };
+    let Some(first) = first.as_os_str().to_str() else {
+        return (default_family.to_string(), rom_path.to_path_buf());
+    };
+
+    if curated_test_rom_families()
+        .iter()
+        .any(|family| family == first)
+    {
+        (first.to_string(), components.collect())
+    } else {
+        (default_family.to_string(), rom_path.to_path_buf())
+    }
+}
+
+fn curated_manifest_cases_for_family_rom(
+    family: &str,
+    rom: &Path,
+) -> Vec<(CuratedTestRomManifest, CuratedTestRomCase)> {
+    let mut candidates = Vec::new();
+    for manifest in curated_test_rom_manifests() {
+        for case in &manifest.cases {
+            if case.family == family && case.rom == rom {
+                candidates.push((manifest.clone(), case.clone()));
+            }
+        }
+    }
+    candidates
+}
+
+fn manifest_case_report_rom_display(case: &CuratedTestRomCase) -> String {
+    let rom = report_rom_display(&case.family, &PathBuf::from(&case.family).join(&case.rom));
+    if case.report_model_suffix {
+        format!("{rom} ({})", console_report_suffix(case.console_model))
+    } else {
+        rom
+    }
+}
+
+impl ReportCaseOrder {
+    fn fallback() -> Self {
+        Self {
+            source_order_missing: true,
+            source_or_manifest_order: usize::MAX,
+            console_order: usize::MAX,
+            manifest_order: usize::MAX,
+        }
+    }
+}
+
+fn curated_source_rom_order(family: &str, rom: &Path) -> Option<usize> {
+    curated_source_rom_paths()
+        .into_iter()
+        .position(|(source_family, source_rom)| source_family == family && source_rom == rom)
+}
+
+fn curated_source_rom_paths() -> Vec<(String, PathBuf)> {
+    let parsed: CuratedSourceManifestFile = toml::from_str(include_str!("../data/sources.toml"))
+        .unwrap_or_else(|error| panic!("failed to parse curated source manifest: {error}"));
+    assert_eq!(
+        parsed.version, CURATED_SOURCE_MANIFEST_VERSION,
+        "unsupported curated source manifest version"
+    );
+
+    parsed
+        .sources
+        .into_iter()
+        .flat_map(|source| source.required_files)
+        .filter_map(|file| curated_required_rom_path(&file.path))
+        .collect()
+}
+
+fn curated_required_rom_path(path: &Path) -> Option<(String, PathBuf)> {
+    if !matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("gb" | "gbc")
+    ) {
+        return None;
+    }
+
+    let stripped = path.strip_prefix(GBEMU_SHOOTOUT_TESTROMS_DIR).ok()?;
+    let mut components = stripped.components();
+    let family = components.next()?.as_os_str().to_str()?.to_string();
+    let rom = components.collect::<PathBuf>();
+    Some((family, rom))
+}
+
+fn console_report_suffix(console_model: ConsoleModel) -> &'static str {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => "DMG",
+        ConsoleModel::GameBoyColor => "GBC",
+    }
+}
+
+fn console_report_order(console_model: ConsoleModel) -> usize {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0,
+        ConsoleModel::GameBoyColor => 1,
+    }
+}
+
 fn report_rom_display(family: &str, rom_path: &Path) -> String {
     rom_path
         .strip_prefix(family)
@@ -813,24 +1216,27 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CuratedTestRomCase, GBEMU_SHOOTOUT_TESTROMS_DIR,
+        CuratedTestRomCase, CuratedTestRomCaseFile, GBEMU_SHOOTOUT_TESTROMS_DIR,
         MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
         blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
-        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifests,
-        discover_test_rom_store_root, dmg_boot_trademark_tile_startup_writes,
-        failure_artifacts_for_pass_condition, load_persisted_suite_status,
+        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
+        curated_test_rom_family_suites, curated_test_rom_manifests, discover_test_rom_store_root,
+        dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
+        load_persisted_suite_status, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
-        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_subsystem,
-        render_markdown_report, report_rom_display, report_status_display,
-        sort_persisted_case_statuses, test_rom_store_root, update_curated_test_report,
+        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_case,
+        parse_manifest_console_model, parse_manifest_subsystem, render_markdown_report,
+        report_rom_display, report_status_display, sort_persisted_case_statuses,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
         RomCaseReport, RomSuiteReport, TestSubsystem,
     };
+    use gb_core::ConsoleModel;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -882,7 +1288,7 @@ mod tests {
             for case in &manifest.cases {
                 let source_path = root
                     .join(GBEMU_SHOOTOUT_TESTROMS_DIR)
-                    .join(&manifest.family)
+                    .join(&case.family)
                     .join(&case.rom);
                 let source_parent = source_path
                     .parent()
@@ -891,11 +1297,52 @@ mod tests {
                     .expect("fake shootout ROM parent should be creatable");
                 fs::write(
                     &source_path,
-                    format!("{}:{}", manifest.family, case.rom.display()),
+                    format!("{}:{}", case.family, case.rom.display()),
                 )
                 .expect("fake shootout ROM should be writable");
             }
         }
+    }
+
+    #[test]
+    fn curated_materialization_error_paths_report_target_context() {
+        let workspace_file = unique_temp_dir("materialize-workspace-file");
+        fs::write(&workspace_file, "not-a-directory").expect("workspace file should be writable");
+        let gbemu_shootout_root = unique_temp_dir("materialize-workspace-file-source");
+        let error = materialize_curated_test_rom_store(&workspace_file, &gbemu_shootout_root)
+            .expect_err("workspace file should reject store creation");
+        assert!(error.contains("failed to create curated test ROM store"));
+        fs::remove_file(&workspace_file).expect("workspace file should be removable");
+
+        let workspace_root = unique_temp_dir("materialize-replace-file");
+        let gbemu_shootout_root = workspace_root.join("gbemu-shootout");
+        write_fake_gbemu_shootout_tree(&gbemu_shootout_root);
+        let acid_root = test_rom_store_root(&workspace_root).join("acid");
+        fs::create_dir_all(acid_root.parent().expect("acid root should have a parent"))
+            .expect("store root should be creatable");
+        fs::write(&acid_root, "not-a-directory").expect("acid file should be writable");
+        let error = materialize_curated_test_rom_families(
+            &workspace_root,
+            &gbemu_shootout_root,
+            &["acid".to_string()],
+        )
+        .expect_err("family file should reject replacement");
+        assert!(error.contains("failed to replace curated family directory"));
+
+        let blocked_parent = workspace_root.join("blocked-parent");
+        fs::write(&blocked_parent, "not-a-directory").expect("blocked parent should be writable");
+        let source_rom = gbemu_shootout_root.join("testroms/acid/which.gb");
+        assert!(source_rom.exists());
+        let error = copy_curated_rom(
+            &gbemu_shootout_root,
+            "acid",
+            Path::new("which.gb"),
+            &blocked_parent.join("which.gb"),
+        )
+        .expect_err("file parent should reject copied ROM target");
+        assert!(error.contains("failed to create curated ROM parent"));
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
 
     #[test]
@@ -978,6 +1425,124 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "mealybug-m3-window-timing")
+        );
+    }
+
+    #[test]
+    fn cgb_smoke_suite_is_manifest_backed_and_uses_upstream_families() {
+        let suite = cgb_smoke_suite();
+
+        assert_eq!(suite.name, "cgb-smoke");
+        assert_eq!(suite.family.as_deref(), Some("cgb-smoke"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        }));
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_regs-cgb.gb")
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::MooneyeResult
+        ));
+        assert_eq!(suite.cases[1].rom_path, PathBuf::from("acid/which.gb"));
+        assert!(matches!(
+            suite.cases[1].pass_condition,
+            PassCondition::Informational(CaptureKind::Framebuffer)
+        ));
+    }
+
+    #[test]
+    fn manifests_mark_current_gbemu_shootout_model_suffixed_rows() {
+        let dmg_rows = [
+            ("acid", "which.gb"),
+            ("daid", "ppu_scanline_bgp.gb"),
+            ("daid", "stop_instr.gb"),
+            ("hacktix", "bully.gb"),
+            ("mealybug-tearoom-tests", "ppu/m2_win_en_toggle.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_bgp_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_bgp_change_sprites.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_bg_en_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_bg_map_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_obj_en_change.gb"),
+            (
+                "mealybug-tearoom-tests",
+                "ppu/m3_lcdc_obj_en_change_variant.gb",
+            ),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_obj_size_change.gb"),
+            (
+                "mealybug-tearoom-tests",
+                "ppu/m3_lcdc_obj_size_change_scx.gb",
+            ),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_tile_sel_change.gb"),
+            (
+                "mealybug-tearoom-tests",
+                "ppu/m3_lcdc_tile_sel_win_change.gb",
+            ),
+            (
+                "mealybug-tearoom-tests",
+                "ppu/m3_lcdc_win_en_change_multiple.gb",
+            ),
+            (
+                "mealybug-tearoom-tests",
+                "ppu/m3_lcdc_win_en_change_multiple_wx.gb",
+            ),
+            ("mealybug-tearoom-tests", "ppu/m3_lcdc_win_map_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_obp0_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_scx_high_5_bits.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_scx_low_3_bits.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_scy_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_window_timing.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_window_timing_wx_0.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_wx_4_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_wx_4_change_sprites.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_wx_5_change.gb"),
+            ("mealybug-tearoom-tests", "ppu/m3_wx_6_change.gb"),
+        ];
+        let manifests = curated_test_rom_manifests();
+
+        for (family, rom) in dmg_rows {
+            let case = manifests
+                .iter()
+                .flat_map(|manifest| &manifest.cases)
+                .find(|case| case.family == family && case.rom == Path::new(rom))
+                .unwrap_or_else(|| panic!("missing GBEmulatorShootout DMG row {family}/{rom}"));
+
+            assert_eq!(case.console_model, ConsoleModel::GameBoy, "{family}/{rom}");
+            assert!(case.report_model_suffix, "{family}/{rom}");
+            assert_eq!(
+                manifest_case_report_rom_display(case),
+                format!("{rom} (DMG)")
+            );
+        }
+
+        let cgb_which = manifests
+            .iter()
+            .flat_map(|manifest| &manifest.cases)
+            .find(|case| {
+                case.family == "acid"
+                    && case.rom == Path::new("which.gb")
+                    && case.console_model == ConsoleModel::GameBoyColor
+            })
+            .expect("CGB Acid which row should exist");
+        assert!(cgb_which.report_model_suffix);
+        assert_eq!(
+            manifest_case_report_rom_display(cgb_which),
+            "which.gb (GBC)"
+        );
+
+        let cgb_boot_regs = manifests
+            .iter()
+            .flat_map(|manifest| &manifest.cases)
+            .find(|case| case.family == "mooneye" && case.rom == Path::new("misc/boot_regs-cgb.gb"))
+            .expect("CGB Mooneye boot_regs row should exist");
+        assert!(!cgb_boot_regs.report_model_suffix);
+        assert_eq!(
+            manifest_case_report_rom_display(cgb_boot_regs),
+            "misc/boot_regs-cgb.gb"
         );
     }
 
@@ -1188,16 +1753,23 @@ mod tests {
 
         assert!(!stale_family_root.join("stale.txt").exists());
         for manifest in curated_test_rom_manifests() {
-            let family_root = test_rom_store_root(&workspace_root).join(&manifest.family);
-            assert!(!family_root.join("catalog.toml").exists());
             for case in &manifest.cases {
+                let family_root = test_rom_store_root(&workspace_root).join(&case.family);
+                assert!(!family_root.join("catalog.toml").exists());
                 assert_eq!(
                     fs::read_to_string(family_root.join(&case.rom))
                         .expect("curated ROM should be readable"),
-                    format!("{}:{}", manifest.family, case.rom.display())
+                    format!("{}:{}", case.family, case.rom.display())
                 );
             }
         }
+        assert_eq!(
+            fs::read_to_string(
+                test_rom_store_root(&workspace_root).join("mooneye/misc/boot_regs-cgb.gb")
+            )
+            .expect("CGB smoke ROM should be materialized from the cgb-smoke manifest"),
+            "mooneye:misc/boot_regs-cgb.gb"
+        );
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
@@ -1212,7 +1784,7 @@ mod tests {
             .expect_err("missing curated ROM source should fail");
 
         assert!(error.contains("failed to copy curated ROM"));
-        assert!(error.contains("testroms/acid/which.gb"));
+        assert!(error.contains("testroms/acid/"));
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
@@ -1429,11 +2001,146 @@ mod tests {
         let rendered_report =
             fs::read_to_string(report_path).expect("markdown report should be readable");
         assert!(rendered_report.starts_with("# Test Report (1/1)\n"));
-        assert!(
-            rendered_report.contains(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
-        );
+        assert!(rendered_report.contains(&format!(
+            "| acid | which.gb (DMG) | {REPORT_STATUS_INFO_EMOJI} |"
+        )));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn cgb_smoke_report_uses_upstream_case_families_and_shootout_suffixes() {
+        let workspace_root = unique_temp_dir("report-cgb-smoke");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let report = RomSuiteReport {
+            suite_name: "cgb-smoke".to_string(),
+            family: Some("cgb-smoke".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "cgb-smoke-boot-regs-cgb",
+                    "mooneye/misc/boot_regs-cgb.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "cgb-smoke-which-gbc",
+                    "acid/which.gb",
+                    RomCaseOutcome::Informational,
+                ),
+            ],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &report)
+            .expect("CGB smoke report should write")
+            .expect("curated suite should emit a report path");
+
+        let suite_status_path = test_rom_store_root(&workspace_root)
+            .join(TEST_ROM_STATUS_DIR_NAME)
+            .join("cgb-smoke.toml");
+        let suite_status =
+            fs::read_to_string(&suite_status_path).expect("suite status should be readable");
+        assert!(suite_status.contains("family = \"acid\""));
+        assert!(suite_status.contains("rom = \"which.gb (GBC)\""));
+        assert!(suite_status.contains("family = \"mooneye\""));
+        assert!(suite_status.contains("rom = \"misc/boot_regs-cgb.gb\""));
+
+        let rendered_report =
+            fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (2/2)\n"));
+        let acid_which = rendered_report
+            .find(&format!(
+                "| acid | which.gb (GBC) | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("CGB Acid report row should exist");
+        let mooneye_boot_regs = rendered_report
+            .find(&format!(
+                "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+            ))
+            .expect("CGB Mooneye report row should exist");
+        assert!(acid_which < mooneye_boot_regs);
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn render_markdown_report_orders_mixed_rows_by_shootout_source_order() {
+        let rendered = render_markdown_report(&[
+            PersistedSuiteStatus {
+                version: 1,
+                suite_name: "acid-dmg-curated".to_string(),
+                family: "acid".to_string(),
+                cases: vec![
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "dmg-acid2.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "which.gb (DMG)".to_string(),
+                        status: "INFO".to_string(),
+                    },
+                ],
+            },
+            PersistedSuiteStatus {
+                version: 1,
+                suite_name: "mooneye-acceptance-dmg-curated".to_string(),
+                family: "mooneye".to_string(),
+                cases: vec![PersistedCaseStatus {
+                    family: None,
+                    rom: "manual-only/sprite_priority.gb".to_string(),
+                    status: "PASS".to_string(),
+                }],
+            },
+            PersistedSuiteStatus {
+                version: 1,
+                suite_name: "cgb-smoke".to_string(),
+                family: "cgb-smoke".to_string(),
+                cases: vec![
+                    PersistedCaseStatus {
+                        family: Some("mooneye".to_string()),
+                        rom: "misc/boot_regs-cgb.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: Some("acid".to_string()),
+                        rom: "which.gb (GBC)".to_string(),
+                        status: "INFO".to_string(),
+                    },
+                ],
+            },
+        ]);
+
+        let acid_which_dmg = rendered
+            .find(&format!(
+                "| acid | which.gb (DMG) | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("Acid DMG which row should exist");
+        let acid_which_gbc = rendered
+            .find(&format!(
+                "| acid | which.gb (GBC) | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("Acid GBC which row should exist");
+        let acid_dmg_acid2 = rendered
+            .find(&format!(
+                "| acid | dmg-acid2.gb | {REPORT_STATUS_PASS_EMOJI} |"
+            ))
+            .expect("Acid dmg-acid2 row should exist");
+        let mooneye_sprite_priority = rendered
+            .find(&format!(
+                "| mooneye | manual-only/sprite_priority.gb | {REPORT_STATUS_PASS_EMOJI} |"
+            ))
+            .expect("Mooneye sprite_priority row should exist");
+        let mooneye_boot_regs_cgb = rendered
+            .find(&format!(
+                "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+            ))
+            .expect("Mooneye CGB boot_regs row should exist");
+
+        assert!(acid_which_dmg < acid_which_gbc);
+        assert!(acid_which_gbc < acid_dmg_acid2);
+        assert!(mooneye_sprite_priority < mooneye_boot_regs_cgb);
     }
 
     #[test]
@@ -1459,6 +2166,49 @@ mod tests {
     }
 
     #[test]
+    fn curated_test_report_error_paths_report_target_context() {
+        let report = RomSuiteReport {
+            suite_name: "acid-dmg-curated".to_string(),
+            family: Some("acid".to_string()),
+            subsystem: TestSubsystem::Ppu,
+            cases: vec![report_case(
+                "which-dmg",
+                "acid/which.gb",
+                RomCaseOutcome::Informational,
+            )],
+        };
+
+        let workspace_file = unique_temp_dir("report-workspace-file");
+        fs::write(&workspace_file, "not-a-directory").expect("workspace file should be writable");
+        let error = update_curated_test_report(&workspace_file, &report)
+            .expect_err("workspace file should reject report store creation");
+        assert!(error.contains("failed to create curated test ROM store"));
+        fs::remove_file(&workspace_file).expect("workspace file should be removable");
+
+        let workspace_root = unique_temp_dir("report-status-file");
+        let status_root = test_rom_store_root(&workspace_root).join(TEST_ROM_STATUS_DIR_NAME);
+        fs::create_dir_all(
+            status_root
+                .parent()
+                .expect("status root should have a parent"),
+        )
+        .expect("store root should be creatable");
+        fs::write(&status_root, "not-a-directory").expect("status file should be writable");
+        let error = update_curated_test_report(&workspace_root, &report)
+            .expect_err("status file should reject status root creation");
+        assert!(error.contains("failed to create curated test ROM status root"));
+        fs::remove_dir_all(&workspace_root).expect("workspace root should be removable");
+
+        let workspace_root = unique_temp_dir("report-output-dir");
+        let report_path = test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME);
+        fs::create_dir_all(&report_path).expect("report path directory should be creatable");
+        let error = update_curated_test_report(&workspace_root, &report)
+            .expect_err("report directory should reject markdown write");
+        assert!(error.contains("failed to write curated test ROM report"));
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
     fn render_markdown_report_orders_present_families_without_placeholders() {
         let rendered = render_markdown_report(&[
             PersistedSuiteStatus {
@@ -1467,10 +2217,12 @@ mod tests {
                 family: "mooneye".to_string(),
                 cases: vec![
                     PersistedCaseStatus {
+                        family: None,
                         rom: "acceptance/div_timing.gb".to_string(),
                         status: "PASS".to_string(),
                     },
                     PersistedCaseStatus {
+                        family: None,
                         rom: "acceptance/add_sp_e_timing.gb".to_string(),
                         status: "PASS".to_string(),
                     },
@@ -1482,10 +2234,12 @@ mod tests {
                 family: "acid".to_string(),
                 cases: vec![
                     PersistedCaseStatus {
+                        family: None,
                         rom: "which.gb".to_string(),
                         status: "INFO".to_string(),
                     },
                     PersistedCaseStatus {
+                        family: None,
                         rom: "dmg-acid2.gb".to_string(),
                         status: "PASS".to_string(),
                     },
@@ -1495,7 +2249,9 @@ mod tests {
 
         assert!(rendered.starts_with("# Test Report (4/4)\n"));
         let acid_which = rendered
-            .find(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
+            .find(&format!(
+                "| acid | which.gb (DMG) | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
             .expect("acid informational row should exist");
         let acid_dmg = rendered
             .find(&format!(
@@ -1514,7 +2270,7 @@ mod tests {
             .expect("second mooneye row should exist");
         assert!(acid_which < acid_dmg);
         assert!(acid_dmg < mooneye_div);
-        assert!(mooneye_div < mooneye_add);
+        assert!(mooneye_add < mooneye_div);
         assert!(!rendered.contains("| blargg | - | - |"));
         assert!(!rendered.contains("| daid | - | - |"));
         assert!(!rendered.contains("| ax6 | - | - |"));
@@ -1531,6 +2287,7 @@ mod tests {
             suite_name: "future-dmg-curated".to_string(),
             family: "future".to_string(),
             cases: vec![PersistedCaseStatus {
+                family: None,
                 rom: "probe.gb".to_string(),
                 status: "INFO".to_string(),
             }],
@@ -1586,9 +2343,9 @@ mod tests {
         let rendered_report =
             fs::read_to_string(report_path).expect("markdown report should be readable");
         assert!(rendered_report.starts_with("# Test Report (2/3)\n"));
-        assert!(
-            rendered_report.contains(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
-        );
+        assert!(rendered_report.contains(&format!(
+            "| acid | which.gb (DMG) | {REPORT_STATUS_INFO_EMOJI} |"
+        )));
         assert!(rendered_report.contains(&format!(
             "| acid | dmg-acid2.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -1603,14 +2360,17 @@ mod tests {
     fn sort_persisted_case_statuses_uses_manifest_order_before_lexical_fallback() {
         let mut case_statuses = vec![
             PersistedCaseStatus {
+                family: None,
                 rom: "dmg-acid2.gb".to_string(),
                 status: "PASS".to_string(),
             },
             PersistedCaseStatus {
+                family: None,
                 rom: "which.gb".to_string(),
                 status: "INFO".to_string(),
             },
             PersistedCaseStatus {
+                family: None,
                 rom: "zzz-untracked.gb".to_string(),
                 status: "INFO".to_string(),
             },
@@ -1670,18 +2430,28 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "unsupported oracle")]
-    fn manifest_case_to_rom_test_case_rejects_unknown_oracles() {
-        let _ = manifest_case_to_rom_test_case(
-            "blargg",
-            CuratedTestRomCase {
-                id: "bad-oracle".to_string(),
-                rom: PathBuf::from("bad.gb"),
+    #[should_panic(expected = "unsupported console model")]
+    fn parse_manifest_console_model_rejects_unknown_values() {
+        let _ = parse_manifest_console_model("test-manifest.toml", "test-case", "sgb");
+    }
+
+    #[test]
+    #[should_panic(expected = "missing family")]
+    fn parse_manifest_case_rejects_familyless_mixed_cases() {
+        let _ = parse_manifest_case(
+            "test-manifest.toml",
+            None,
+            CuratedTestRomCaseFile {
+                family: None,
+                id: "familyless".to_string(),
+                rom: PathBuf::from("familyless.gb"),
+                report_model_suffix: None,
                 timeout_frames: 1,
-                oracle: "unknown".to_string(),
+                oracle: "info-framebuffer".to_string(),
                 expected: None,
                 fixture: None,
                 fixtures: None,
+                console: None,
                 execution_mode: None,
                 startup_memory_profile: None,
             },
@@ -1689,22 +2459,41 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "unsupported oracle")]
+    fn manifest_case_to_rom_test_case_rejects_unknown_oracles() {
+        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
+            family: "blargg".to_string(),
+            id: "bad-oracle".to_string(),
+            rom: PathBuf::from("bad.gb"),
+            report_model_suffix: false,
+            timeout_frames: 1,
+            oracle: "unknown".to_string(),
+            expected: None,
+            fixture: None,
+            fixtures: None,
+            console_model: ConsoleModel::GameBoy,
+            execution_mode: None,
+            startup_memory_profile: None,
+        });
+    }
+
+    #[test]
     #[should_panic(expected = "unsupported startup memory profile")]
     fn manifest_case_to_rom_test_case_rejects_unknown_startup_profiles() {
-        let _ = manifest_case_to_rom_test_case(
-            "mealybug-tearoom-tests",
-            CuratedTestRomCase {
-                id: "bad-profile".to_string(),
-                rom: PathBuf::from("ppu/bad.gb"),
-                timeout_frames: 1,
-                oracle: "framebuffer-fixture".to_string(),
-                expected: None,
-                fixture: Some(PathBuf::from("fixture.png")),
-                fixtures: None,
-                execution_mode: None,
-                startup_memory_profile: Some("unknown-profile".to_string()),
-            },
-        );
+        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
+            family: "mealybug-tearoom-tests".to_string(),
+            id: "bad-profile".to_string(),
+            rom: PathBuf::from("ppu/bad.gb"),
+            report_model_suffix: false,
+            timeout_frames: 1,
+            oracle: "framebuffer-fixture".to_string(),
+            expected: None,
+            fixture: Some(PathBuf::from("fixture.png")),
+            fixtures: None,
+            console_model: ConsoleModel::GameBoy,
+            execution_mode: None,
+            startup_memory_profile: Some("unknown-profile".to_string()),
+        });
     }
 
     #[test]

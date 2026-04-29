@@ -6,8 +6,8 @@ fn decimal_adjust_accumulator_crc_matches_blargg_01_special_reference() {
 
     for flags in (0_u8..=0xF0).step_by(0x10) {
         for a in u8::MIN..=u8::MAX {
-            let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-            let mut bus = Bus::new(ConsoleModel::Dmg);
+            let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+            let mut bus = Bus::new(ConsoleModel::GameBoy);
             let mut cartridge = build_test_cartridge(&[0x27]);
 
             cpu.apply_startup_state(CpuStartupState {

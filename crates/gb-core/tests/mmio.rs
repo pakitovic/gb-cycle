@@ -6,7 +6,7 @@ use gb_core::{
 
 #[test]
 fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     for address in 0xFF00..=0xFF7F {
         assert!(
@@ -122,7 +122,7 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
 #[test]
 fn machine_routes_phase_1_mmio_registers_through_real_subsystem_owners() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF00, 0x10);
@@ -174,7 +174,7 @@ fn machine_routes_phase_1_mmio_registers_through_real_subsystem_owners() {
 #[test]
 fn joyp_readback_comes_from_hardware_button_state_plus_selected_rows() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.set_joypad_button_pressed(JoypadButton::A, true);
@@ -200,7 +200,7 @@ fn joyp_readback_comes_from_hardware_button_state_plus_selected_rows() {
 #[test]
 fn joypad_irq_reaches_if_only_after_scheduler_aggregation_and_only_for_visible_edges() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF00, 0x30);
@@ -220,7 +220,7 @@ fn joypad_irq_reaches_if_only_after_scheduler_aggregation_and_only_for_visible_e
 #[test]
 fn joypad_irq_can_retrigger_after_a_new_visible_high_to_low_transition() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF00, 0x10);
@@ -241,7 +241,7 @@ fn joypad_irq_can_retrigger_after_a_new_visible_high_to_low_transition() {
 #[test]
 fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::RealBoot),
     );
 
     assert_eq!(machine.boot().status(), BootStatus::Ready);
@@ -263,7 +263,7 @@ fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
 #[test]
 fn ppu_mmio_commit_phase_emits_a_ppu_trace_for_the_committed_write() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge({
@@ -310,7 +310,7 @@ fn ppu_mmio_commit_phase_emits_a_ppu_trace_for_the_committed_write() {
 #[test]
 fn serial_mmio_arming_keeps_transfer_pending_without_instant_completion() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF01, 0xA5);
@@ -337,7 +337,7 @@ fn serial_mmio_arming_keeps_transfer_pending_without_instant_completion() {
 #[test]
 fn serial_snapshot_and_debug_view_expose_the_pending_transfer_shape() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF01, 0x3C);
@@ -360,7 +360,7 @@ fn serial_snapshot_and_debug_view_expose_the_pending_transfer_shape() {
 #[test]
 fn dmg_family_reads_ff_and_ignores_writes_for_unavailable_cgb_registers() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     for address in [0xFF4C, 0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {

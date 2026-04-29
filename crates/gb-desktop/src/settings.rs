@@ -1,10 +1,10 @@
-use gb_core::{ExecutionMode, StartupMode};
+use gb_core::{BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings, MachineStateOptions,
-    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
-    VideoOptions,
+    AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
+    DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
+    JoypadKeyboardBindings, MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity,
+    RewindOptions, SaveDirectoryPolicy, VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -110,6 +110,18 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_display_palette(
+        &mut self,
+        display_palette: DesktopDisplayPalette,
+    ) -> Result<(), String> {
+        if self.settings.video.display_palette == display_palette {
+            return Ok(());
+        }
+
+        self.settings.video.display_palette = display_palette;
+        self.save()
+    }
+
     pub fn set_show_background(&mut self, show_background: bool) -> Result<(), String> {
         if self.settings.video.show_background == show_background {
             return Ok(());
@@ -155,8 +167,11 @@ impl DesktopSettingsStore {
         self.save()
     }
 
-    pub fn reset_video_defaults(&mut self) -> Result<(), String> {
-        let defaults = VideoOptions::default();
+    pub fn reset_video_defaults(
+        &mut self,
+        console_model: DesktopConsoleModel,
+    ) -> Result<(), String> {
+        let defaults = VideoOptions::default_for_console_model(console_model);
         if self.settings.video == defaults {
             return Ok(());
         }
@@ -547,6 +562,9 @@ impl PersistedLaunchSettings {
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
         config.launch.console_model = self.console_model.to_external();
+        if let Some(legacy_boot_rom_kind) = self.console_model.legacy_boot_rom_kind() {
+            config.boot_rom.kind = legacy_boot_rom_kind;
+        }
         config.launch.startup_mode = self.startup_mode.to_external();
         config.launch.execution_mode = self.execution_mode.to_external();
     }
@@ -555,6 +573,7 @@ impl PersistedLaunchSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct PersistedBootRomSettings {
+    kind: Option<PersistedBootRomKind>,
     search_path: Option<PathBuf>,
     verification: PersistedBootRomVerificationMode,
 }
@@ -562,6 +581,7 @@ struct PersistedBootRomSettings {
 impl PersistedBootRomSettings {
     fn from_config(config: &DesktopConfig) -> Self {
         Self {
+            kind: Some(PersistedBootRomKind::from_external(config.boot_rom.kind)),
             search_path: config.boot_rom.search_path.clone(),
             verification: PersistedBootRomVerificationMode::from_external(
                 config.boot_rom.verification,
@@ -570,8 +590,14 @@ impl PersistedBootRomSettings {
     }
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
+        if let Some(kind) = self.kind {
+            config.boot_rom.kind = kind.to_external();
+        }
         config.boot_rom.search_path = self.search_path.clone();
         config.boot_rom.verification = self.verification.to_external();
+        config
+            .boot_rom
+            .normalize_kind_for_model(config.launch.console_model);
     }
 }
 
@@ -639,29 +665,93 @@ impl PersistedSaveDirectoryPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 enum PersistedDesktopConsoleModel {
-    #[serde(rename = "dmg0")]
-    Dmg0,
     #[default]
+    #[serde(rename = "game-boy")]
+    GameBoy,
+    #[serde(rename = "pocket")]
+    GameBoyPocket,
+    #[serde(rename = "light")]
+    GameBoyLight,
+    #[serde(rename = "color")]
+    GameBoyColor,
+    #[serde(rename = "dmg0")]
+    LegacyDmg0,
     #[serde(rename = "dmg")]
-    Dmg,
+    LegacyDmg,
     #[serde(rename = "mgb")]
-    Mgb,
+    LegacyMgb,
+    #[serde(rename = "cgb")]
+    LegacyCgb,
 }
 
 impl PersistedDesktopConsoleModel {
     fn from_external(value: gb_desktop::DesktopConsoleModel) -> Self {
         match value {
-            gb_desktop::DesktopConsoleModel::Dmg0 => Self::Dmg0,
-            gb_desktop::DesktopConsoleModel::Dmg => Self::Dmg,
-            gb_desktop::DesktopConsoleModel::Mgb => Self::Mgb,
+            gb_desktop::DesktopConsoleModel::GameBoy => Self::GameBoy,
+            gb_desktop::DesktopConsoleModel::GameBoyPocket => Self::GameBoyPocket,
+            gb_desktop::DesktopConsoleModel::GameBoyLight => Self::GameBoyLight,
+            gb_desktop::DesktopConsoleModel::GameBoyColor => Self::GameBoyColor,
         }
     }
 
     fn to_external(self) -> gb_desktop::DesktopConsoleModel {
         match self {
-            Self::Dmg0 => gb_desktop::DesktopConsoleModel::Dmg0,
-            Self::Dmg => gb_desktop::DesktopConsoleModel::Dmg,
-            Self::Mgb => gb_desktop::DesktopConsoleModel::Mgb,
+            Self::GameBoy | Self::LegacyDmg0 | Self::LegacyDmg => {
+                gb_desktop::DesktopConsoleModel::GameBoy
+            }
+            Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
+            Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
+            Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+        }
+    }
+
+    fn legacy_boot_rom_kind(self) -> Option<BootRomKind> {
+        match self {
+            Self::LegacyDmg0 => Some(BootRomKind::Dmg0),
+            Self::LegacyDmg => Some(BootRomKind::Dmg),
+            Self::LegacyMgb => Some(BootRomKind::Mgb),
+            Self::LegacyCgb => Some(BootRomKind::Cgb),
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum PersistedBootRomKind {
+    #[serde(rename = "dmg0")]
+    Dmg0,
+    #[serde(rename = "dmg")]
+    Dmg,
+    #[serde(rename = "mgb")]
+    Mgb,
+    #[serde(rename = "cgb0")]
+    Cgb0,
+    #[serde(rename = "cgb")]
+    Cgb,
+    #[serde(rename = "cgb-e", alias = "cgbe", alias = "cgbE")]
+    CgbE,
+}
+
+impl PersistedBootRomKind {
+    fn from_external(value: BootRomKind) -> Self {
+        match value {
+            BootRomKind::Dmg0 => Self::Dmg0,
+            BootRomKind::Dmg => Self::Dmg,
+            BootRomKind::Mgb => Self::Mgb,
+            BootRomKind::Cgb0 => Self::Cgb0,
+            BootRomKind::Cgb => Self::Cgb,
+            BootRomKind::CgbE => Self::CgbE,
+        }
+    }
+
+    fn to_external(self) -> BootRomKind {
+        match self {
+            Self::Dmg0 => BootRomKind::Dmg0,
+            Self::Dmg => BootRomKind::Dmg,
+            Self::Mgb => BootRomKind::Mgb,
+            Self::Cgb0 => BootRomKind::Cgb0,
+            Self::Cgb => BootRomKind::Cgb,
+            Self::CgbE => BootRomKind::CgbE,
         }
     }
 }
@@ -838,17 +928,18 @@ fn resolve_desktop_settings_path_from_locations(
 mod tests {
     use super::{
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
-        MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomVerificationMode,
-        PersistedDesktopConsoleModel, PersistedDesktopSettings, PersistedExecutionMode,
-        PersistedSaveDirectoryPolicy, PersistedStartupMode,
+        MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomKind,
+        PersistedBootRomVerificationMode, PersistedDesktopConsoleModel, PersistedDesktopSettings,
+        PersistedExecutionMode, PersistedSaveDirectoryPolicy, PersistedStartupMode,
         resolve_desktop_settings_path_from_locations,
     };
-    use gb_core::{ExecutionMode, StartupMode};
+    use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-        InputOptions, JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
-        RewindOptions, SaveDirectoryPolicy, VideoOptions,
+        DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
+        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
+        JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+        SaveDirectoryPolicy, VideoOptions,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -862,9 +953,9 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 Some(PathBuf::from("/tmp/custom-desktop-settings.toml").into_os_string()),
-                Some(PathBuf::from("/Users/pakitovic").into_os_string()),
+                Some(PathBuf::from("/Users/example-user").into_os_string()),
                 None,
-                Some(PathBuf::from("C:/Users/pakitovic/AppData/Roaming").into_os_string()),
+                Some(PathBuf::from("C:/Users/example-user/AppData/Roaming").into_os_string()),
             ),
             Some(PathBuf::from("/tmp/custom-desktop-settings.toml"))
         );
@@ -876,12 +967,12 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/Users/pakitovic").into_os_string()),
+                Some(PathBuf::from("/Users/example-user").into_os_string()),
                 None,
                 None,
             ),
             Some(PathBuf::from(
-                "/Users/pakitovic/Library/Application Support/gb-cycle/desktop-settings.toml"
+                "/Users/example-user/Library/Application Support/gb-cycle/desktop-settings.toml"
             ))
         );
     }
@@ -894,10 +985,10 @@ mod tests {
                 None,
                 None,
                 None,
-                Some(PathBuf::from("C:/Users/pakitovic/AppData/Roaming").into_os_string()),
+                Some(PathBuf::from("C:/Users/example-user/AppData/Roaming").into_os_string()),
             ),
             Some(PathBuf::from(
-                "C:/Users/pakitovic/AppData/Roaming/gb-cycle/desktop-settings.toml"
+                "C:/Users/example-user/AppData/Roaming/gb-cycle/desktop-settings.toml"
             ))
         );
     }
@@ -908,7 +999,7 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/home/pakitovic").into_os_string()),
+                Some(PathBuf::from("/home/example-user").into_os_string()),
                 Some(PathBuf::from("/tmp/xdg-config").into_os_string()),
                 None,
             ),
@@ -919,12 +1010,12 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/home/pakitovic").into_os_string()),
+                Some(PathBuf::from("/home/example-user").into_os_string()),
                 None,
                 None,
             ),
             Some(PathBuf::from(
-                "/home/pakitovic/.config/gb-cycle/desktop-settings.toml"
+                "/home/example-user/.config/gb-cycle/desktop-settings.toml"
             ))
         );
         assert_eq!(
@@ -985,6 +1076,65 @@ mod tests {
     }
 
     #[test]
+    fn loading_video_block_without_display_palette_uses_game_boy_palette() {
+        let path = unique_test_path("missing-display-palette");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(
+            &path,
+            "\
+version = 1
+
+[video]
+window_scale = 5
+integer_scale = true
+presentation_filter = false
+show_background = true
+show_window = true
+show_objects = true
+vsync = true
+fullscreen = false
+show_performance_hud = true
+",
+        )
+        .expect("legacy video settings should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("legacy video settings should reload");
+
+        assert_eq!(settings.video.window_scale, 5);
+        assert_eq!(
+            settings.video.display_palette,
+            DesktopDisplayPalette::GameBoy
+        );
+    }
+
+    #[test]
+    fn display_palette_settings_round_trip_each_palette() {
+        for (index, display_palette) in [
+            DesktopDisplayPalette::Grey,
+            DesktopDisplayPalette::GameBoy,
+            DesktopDisplayPalette::Pocket,
+            DesktopDisplayPalette::Light,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = unique_test_path(&format!("display-palette-{index}"));
+            let mut settings = PersistedDesktopSettings::default();
+            settings.video.display_palette = display_palette;
+            settings
+                .save(&path)
+                .expect("display palette setting should be writable");
+
+            let reloaded =
+                PersistedDesktopSettings::load(&path).expect("display palette should reload");
+            assert_eq!(reloaded.video.display_palette, display_palette);
+        }
+    }
+
+    #[test]
     fn loading_rewind_block_without_speed_uses_speed_default() {
         let path = unique_test_path("missing-rewind-speed");
         if let Some(parent) = path.parent() {
@@ -1023,9 +1173,10 @@ max_memory_mib = 128
     fn settings_store_base_config_applies_persisted_host_preferences() {
         let path = unique_test_path("applies-settings");
         let mut settings = PersistedDesktopSettings::default();
-        settings.launch.console_model = PersistedDesktopConsoleModel::Mgb;
+        settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
         settings.launch.startup_mode = PersistedStartupMode::RealBoot;
         settings.launch.execution_mode = PersistedExecutionMode::Permissive;
+        settings.boot_rom.kind = Some(PersistedBootRomKind::Mgb);
         settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
         settings.boot_rom.verification = PersistedBootRomVerificationMode::Warn;
         settings.saves.enabled = false;
@@ -1043,6 +1194,7 @@ max_memory_mib = 128
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.presentation_filter = true;
+        settings.video.display_palette = DesktopDisplayPalette::Pocket;
         settings.video.show_background = false;
         settings.video.show_window = false;
         settings.video.show_objects = false;
@@ -1074,10 +1226,11 @@ max_memory_mib = 128
 
         assert_eq!(
             config.launch.console_model,
-            gb_desktop::DesktopConsoleModel::Mgb
+            gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Permissive);
+        assert_eq!(config.boot_rom.kind, BootRomKind::Mgb);
         assert_eq!(
             config.boot_rom.search_path,
             Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"))
@@ -1106,6 +1259,7 @@ max_memory_mib = 128
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.presentation_filter);
+        assert_eq!(config.video.display_palette, DesktopDisplayPalette::Pocket);
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
         assert!(!config.video.show_objects);
@@ -1236,9 +1390,10 @@ max_memory_mib = 128
             settings: PersistedDesktopSettings::default(),
         };
         let mut config = DesktopConfig::default();
-        config.launch.console_model = gb_desktop::DesktopConsoleModel::Dmg0;
+        config.launch.console_model = gb_desktop::DesktopConsoleModel::GameBoy;
         config.launch.startup_mode = StartupMode::RealBoot;
         config.launch.execution_mode = ExecutionMode::Experimental;
+        config.boot_rom.kind = BootRomKind::Dmg0;
         config.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"));
         config.boot_rom.verification = gb_desktop::BootRomVerificationMode::Off;
         config.saves.enabled = false;
@@ -1253,7 +1408,7 @@ max_memory_mib = 128
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
         assert_eq!(
             reloaded.launch.console_model,
-            PersistedDesktopConsoleModel::Dmg0
+            PersistedDesktopConsoleModel::GameBoy
         );
         assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::RealBoot);
         assert_eq!(
@@ -1264,6 +1419,7 @@ max_memory_mib = 128
             reloaded.boot_rom.search_path,
             Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"))
         );
+        assert_eq!(reloaded.boot_rom.kind, Some(PersistedBootRomKind::Dmg0));
         assert_eq!(
             reloaded.boot_rom.verification,
             PersistedBootRomVerificationMode::Off
@@ -1296,6 +1452,9 @@ max_memory_mib = 128
         store
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
+        store
+            .set_display_palette(DesktopDisplayPalette::Light)
+            .expect("display palette should persist");
         store
             .set_show_background(false)
             .expect("background layer visibility should persist");
@@ -1370,6 +1529,7 @@ max_memory_mib = 128
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
         assert!(reloaded.video.presentation_filter);
+        assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Light);
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
@@ -1466,7 +1626,7 @@ max_memory_mib = 128
             .expect("keyboard hotkey bindings should persist");
 
         store
-            .reset_video_defaults()
+            .reset_video_defaults(DesktopConsoleModel::GameBoy)
             .expect("video defaults should persist");
         store
             .reset_audio_defaults()
@@ -1480,6 +1640,30 @@ max_memory_mib = 128
         assert_eq!(reloaded.video, VideoOptions::default());
         assert_eq!(reloaded.audio, PersistedAudioSettings::default());
         assert_eq!(reloaded.input, InputOptions::default());
+    }
+
+    #[test]
+    fn reset_video_defaults_uses_the_active_console_model_palette() {
+        let path = unique_test_path("reset-video-color-defaults");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+
+        store
+            .set_display_palette(DesktopDisplayPalette::Light)
+            .expect("custom display palette should persist");
+        store
+            .reset_video_defaults(DesktopConsoleModel::GameBoyColor)
+            .expect("video defaults should persist");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(
+            reloaded.video,
+            VideoOptions::default_for_console_model(DesktopConsoleModel::GameBoyColor)
+        );
+        assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Grey);
     }
 
     #[test]
@@ -1602,9 +1786,11 @@ max_memory_mib = 128
             SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"))
         );
         assert_eq!(
-            PersistedDesktopConsoleModel::from_external(gb_desktop::DesktopConsoleModel::Mgb)
-                .to_external(),
-            gb_desktop::DesktopConsoleModel::Mgb
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::GameBoyPocket
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(
             PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),
@@ -1620,6 +1806,10 @@ max_memory_mib = 128
             )
             .to_external(),
             gb_desktop::BootRomVerificationMode::Warn
+        );
+        assert_eq!(
+            PersistedBootRomKind::from_external(BootRomKind::CgbE).to_external(),
+            BootRomKind::CgbE
         );
     }
 

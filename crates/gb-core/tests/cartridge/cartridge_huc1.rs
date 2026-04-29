@@ -27,7 +27,7 @@ fn huc1_bus_resolution_surfaces_ram_vs_ir_mode_semantics() {
     )
     .expect("HuC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     let ram_resolution = bus.resolve_access(
         BusAccessKind::Read,
@@ -77,7 +77,7 @@ fn huc1_bus_writes_bank_rom_and_ram_without_a_ram_enable_gate() {
     )
     .expect("HuC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(

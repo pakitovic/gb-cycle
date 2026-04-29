@@ -20,7 +20,7 @@ fn new_rom_test_case_defaults_to_dmg_skip_boot_strict_with_debug_artifacts() {
         PassCondition::SerialContains("Passed".to_string()),
     );
 
-    assert_eq!(case.console_model, ConsoleModel::Dmg);
+    assert_eq!(case.console_model, ConsoleModel::GameBoy);
     assert_eq!(case.startup_mode, StartupMode::SkipBoot);
     assert_eq!(case.execution_mode, ExecutionMode::Strict);
     assert!(case.external_stimuli.stimuli().is_empty());
@@ -202,7 +202,7 @@ fn rom_suite_rejects_duplicate_case_ids() {
         Timeout::Frames(10),
         PassCondition::SerialExact("Passed".to_string()),
     )
-    .with_console_model(ConsoleModel::Mgb)
+    .with_console_model(ConsoleModel::GameBoyPocket)
     .with_startup_mode(StartupMode::RealBoot)
     .with_execution_mode(ExecutionMode::Permissive);
 
@@ -530,25 +530,25 @@ fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
         suite
             .cases
             .iter()
-            .any(|case| case.console_model == ConsoleModel::Dmg0)
+            .any(|case| case.console_model == ConsoleModel::GameBoy)
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.console_model == ConsoleModel::Dmg)
+            .any(|case| case.console_model == ConsoleModel::GameBoy)
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.console_model == ConsoleModel::Mgb)
+            .any(|case| case.console_model == ConsoleModel::GameBoyPocket)
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.console_model == ConsoleModel::Cgb)
+            .any(|case| case.console_model == ConsoleModel::GameBoyColor)
     );
 }
 
@@ -785,7 +785,7 @@ fn curated_hacktix_suite_tracks_the_active_dmg_framebuffer_cases() {
         .find(|case| case.id == "hacktix-bully")
         .expect("hacktix suite should include bully.gb");
     assert_eq!(bully.rom_path, PathBuf::from("hacktix/bully.gb"));
-    assert_eq!(bully.console_model, ConsoleModel::Dmg);
+    assert_eq!(bully.console_model, ConsoleModel::GameBoy);
     assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
     assert_eq!(bully.startup_memory_writes.len(), 244);
 
@@ -916,7 +916,7 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
         .collect::<Vec<_>>();
     assert_eq!(actual_rom_paths, expected_rom_paths);
     assert!(suite.cases.iter().all(|case| {
-        case.console_model == ConsoleModel::Dmg
+        case.console_model == ConsoleModel::GameBoy
             && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
             && case.rom_path.starts_with(Path::new("mooneye"))
     }));

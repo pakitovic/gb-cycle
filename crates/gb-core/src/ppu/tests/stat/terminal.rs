@@ -3,7 +3,7 @@ use super::super::*;
 #[test]
 #[ignore = "diagnostic state for the sprite-extended post-visible publication seam without startup placeholders"]
 fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placeholders() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -66,7 +66,7 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_without_obj_work() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -123,7 +123,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_without_obj_wor
 
 #[test]
 fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_x_work() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -178,7 +178,7 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_
 #[test]
 fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_with_ready_push_and_pending_same_x_chain()
  {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -246,7 +246,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_with_ready_push
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_while_blank_frame_is_active() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -303,7 +303,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_while_blank_fra
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_terminal_x165_visible_tail_while_blank_frame_is_active() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -355,7 +355,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x165_visible_tail_while_blank_fra
 
 #[test]
 fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x85,
@@ -407,7 +407,7 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame(
 
 #[test]
 fn cpu_stat_read_keeps_mode3_for_terminal_placeholder_only_visible_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -459,7 +459,7 @@ fn cpu_stat_read_keeps_mode3_for_terminal_placeholder_only_visible_tail() {
 
 #[test]
 fn cpu_stat_read_keeps_mode3_for_terminal_x163_visible_tail_even_with_one_real_fifo_pixel() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,

@@ -65,7 +65,7 @@ impl PpuTestRig {
     }
 
     pub(super) fn dmg() -> Self {
-        Self::with_model(ConsoleModel::Dmg)
+        Self::with_model(ConsoleModel::GameBoy)
     }
 
     pub(super) fn with_startup_state(mut self, startup_state: PpuStartupState) -> Self {
@@ -321,7 +321,7 @@ pub(super) fn load_hacktix_strikethrough_machine() -> Machine<TraceSummaryBuffer
         .join("../../.roms/test/hacktix/strikethrough.gb");
     let rom = std::fs::read(&rom_path).expect("hacktix strikethrough ROM should be present");
     let mut machine = Machine::new_summary(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)

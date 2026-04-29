@@ -18,7 +18,7 @@ fn build_test_rom(program: &[u8], patches: &[(usize, u8)]) -> Vec<u8> {
 #[test]
 fn dmg_master_serial_shifts_every_512_t_cycles_and_completes_on_the_eighth_pulse() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     step_machine_t_cycles(&mut machine, 52);
@@ -62,7 +62,7 @@ fn dmg_master_serial_shifts_every_512_t_cycles_and_completes_on_the_eighth_pulse
 #[test]
 fn serial_slave_mode_does_not_advance_without_external_clock_pulses() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF0F, 0x00);
@@ -83,7 +83,7 @@ fn serial_slave_mode_does_not_advance_without_external_clock_pulses() {
 #[test]
 fn external_serial_clock_pulses_advance_slave_mode_one_shift_each() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF01, 0x81);
@@ -111,7 +111,7 @@ fn external_serial_clock_pulses_advance_slave_mode_one_shift_each() {
 #[test]
 fn external_serial_clock_pulses_queued_before_sc7_do_not_replay_into_a_later_transfer() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.queue_external_serial_clock();
@@ -140,7 +140,7 @@ fn external_serial_clock_pulses_queued_before_sc7_do_not_replay_into_a_later_tra
 #[test]
 fn loopback_peer_returns_the_original_byte_after_eight_internal_shifts() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
@@ -159,7 +159,7 @@ fn loopback_peer_returns_the_original_byte_after_eight_internal_shifts() {
 #[test]
 fn machine_exposes_completed_serial_output_bytes_for_host_side_capture() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF01, 0x41);
@@ -201,7 +201,7 @@ fn boot_aligned_serial_irq_matches_the_mooneye_interrupt_window() {
     }
 
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

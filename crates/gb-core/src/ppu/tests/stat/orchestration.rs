@@ -1,7 +1,7 @@
 use super::super::*;
 
 fn dmg_stat_ppu(stat: u8) -> Ppu {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat,

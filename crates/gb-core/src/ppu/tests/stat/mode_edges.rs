@@ -2,7 +2,7 @@ use super::super::*;
 
 #[test]
 fn cpu_stat_read_switches_to_mode3_on_the_exact_mode2_end_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -41,7 +41,7 @@ fn cpu_stat_read_switches_to_mode3_on_the_exact_mode2_end_dot() {
 
 #[test]
 fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x08,
@@ -81,7 +81,7 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
 #[test]
 #[ignore = "diagnostic direct-read experiment for offscreen-right mode0 publication"]
 fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_right_sprites() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,
@@ -119,7 +119,7 @@ fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_rig
 
 #[test]
 fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x85,

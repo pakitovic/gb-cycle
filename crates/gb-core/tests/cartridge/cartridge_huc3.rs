@@ -27,7 +27,7 @@ fn huc3_bus_resolution_surfaces_mailbox_and_ram_modes() {
     )
     .expect("HuC-3 should load");
     let (mut cartridge, _) = report.into_parts();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     let ram_resolution = bus.resolve_access(
         BusAccessKind::Read,
@@ -77,7 +77,7 @@ fn huc3_bus_can_write_ram_and_execute_basic_mailbox_commands() {
     )
     .expect("HuC-3 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(

@@ -73,7 +73,7 @@ fn observe_lcd_reenable_lyc_irq_service_window(
     lyc_while_off: Option<u8>,
 ) -> bool {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_lcd_reenable_lyc_irq_probe_rom(

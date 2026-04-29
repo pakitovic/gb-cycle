@@ -6,7 +6,7 @@ fn resolve_access_surfaces_mbc3_rtc_selection_in_the_external_window() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
     let (mut cartridge, _) = report.into_parts();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     cartridge.write_rom(0x0000, 0x0A);
     cartridge.write_rom(0x4000, 0x08);
@@ -37,7 +37,7 @@ fn resolve_access_surfaces_mbc3_rtc_selection_in_the_external_window() {
 fn public_mbc3_rtc_access_spacing_state_surfaces_through_descriptor_and_snapshot() {
     let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
@@ -68,7 +68,7 @@ fn public_mbc3_rtc_access_spacing_state_surfaces_through_descriptor_and_snapshot
     assert_eq!(snapshot.state, CartridgeSlotState::Mbc3);
     assert_eq!(snapshot.rtc_access_ready_at, expected_ready_at);
 
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let resolution = bus.resolve_access(
         BusAccessKind::Read,
         0xA000,
@@ -109,7 +109,7 @@ fn mbc3_high_window_can_reach_banks_0x20_0x40_and_0x60_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     for bank in [0x20, 0x40, 0x60] {
@@ -136,7 +136,7 @@ fn mbc3_high_window_can_reach_banks_0x20_0x40_and_0x60_through_the_bus() {
 fn mbc3_ram_banking_and_rtc_latch_are_visible_through_machine_access() {
     let rom = build_banked_mbc3_rom(0x10, 0x06, 0x03);
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(gb_core::StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(gb_core::StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
@@ -230,7 +230,7 @@ fn strict_validation_treats_no_ram_mbc3_with_64kib_code_as_a_header_mismatch_not
 fn mbc3_persistent_state_serializes_live_rtc_state_not_the_latched_snapshot() {
     let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(gb_core::StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(gb_core::StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)

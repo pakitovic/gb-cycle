@@ -6,6 +6,8 @@ subsystem = "Ppu"
 [[case]]
 id = "which-dmg"
 rom = "which.gb"
+console = "dmg"
+report_model_suffix = true
 timeout_frames = 180
 oracle = "info-framebuffer"
 

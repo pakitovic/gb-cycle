@@ -37,7 +37,7 @@ fn mmm01_bus_writes_switch_from_the_menu_rom_to_the_selected_game() {
     )
     .expect("MMM01 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -106,7 +106,7 @@ fn mani_like_mmm01_bus_writes_switch_from_the_trailing_set_menu_rom_to_the_selec
     let report = CartridgeSlot::load(build_mani_mmm01_rom(0x04), &CompatibilityPolicy::strict())
         .expect("later Mani MMM01 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(

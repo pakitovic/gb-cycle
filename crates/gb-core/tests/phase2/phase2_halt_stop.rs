@@ -14,7 +14,7 @@ fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state()
     let mut machine = load_fixture_machine(
         HALT_STOP_AND_HALT_BUG_ROM_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
     );
     let mut stop_wake_injected = false;
     let mut stop_irq_injected = false;

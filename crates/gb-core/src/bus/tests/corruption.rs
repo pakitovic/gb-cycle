@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn route_cpu_address_event_turns_mode2_oam_reads_into_corruption_events() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 1);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
 
     let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
@@ -27,8 +27,8 @@ fn route_cpu_address_event_turns_mode2_oam_reads_into_corruption_events() {
 
 #[test]
 fn route_cpu_address_event_uses_the_unusable_mode2_read_path_for_corruption() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 1);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
 
     let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
@@ -50,8 +50,8 @@ fn route_cpu_address_event_uses_the_unusable_mode2_read_path_for_corruption() {
 
 #[test]
 fn route_cpu_address_event_uses_the_unusable_mode2_write_path_for_corruption() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 1);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
 
     let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
@@ -75,8 +75,8 @@ fn route_cpu_address_event_uses_the_unusable_mode2_write_path_for_corruption() {
 
 #[test]
 fn route_cpu_address_event_uses_pure_idu_activity_in_fe_range() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 2);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 2);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
 
     let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
@@ -100,8 +100,8 @@ fn route_cpu_address_event_uses_pure_idu_activity_in_fe_range() {
 
 #[test]
 fn route_cpu_address_event_keeps_the_last_mode2_row_corruptible_for_pure_idu_activity() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 19);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 19);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 0, 0x1234);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 1, 0x1111);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 2, 0x00FF);
@@ -135,8 +135,8 @@ fn route_cpu_address_event_keeps_the_last_mode2_row_corruptible_for_pure_idu_act
 
 #[test]
 fn route_cpu_address_event_does_not_widen_plain_oam_reads_in_the_last_mode2_slot() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 19);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 19);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 0, 0x1234);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 1, 0x1111);
     write_oam_word_bytes(bus.oam.bytes_mut(), 18, 2, 0x00FF);
@@ -167,8 +167,8 @@ fn route_cpu_address_event_does_not_widen_plain_oam_reads_in_the_last_mode2_slot
 
 #[test]
 fn route_cpu_address_event_uses_write_with_incdec_when_the_idu_edge_reaches_oam() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 2);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::GameBoy, 2);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
 
     let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
@@ -192,8 +192,8 @@ fn route_cpu_address_event_uses_write_with_incdec_when_the_idu_edge_reaches_oam(
 
 #[test]
 fn route_cpu_address_event_does_not_turn_mode3_oam_blocking_into_corruption() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = prepare_mode3_ppu(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = prepare_mode3_ppu(ConsoleModel::GameBoy);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
     let before = bus.oam.clone();
 
@@ -214,8 +214,8 @@ fn route_cpu_address_event_does_not_turn_mode3_oam_blocking_into_corruption() {
 
 #[test]
 fn route_cpu_address_event_does_not_turn_dma_video_bus_unusable_reads_into_corruption() {
-    let mut bus = Bus::new(ConsoleModel::Dmg);
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     seed_oam_corruption_rows(bus.oam.bytes_mut());
     let before = bus.oam.clone();
 

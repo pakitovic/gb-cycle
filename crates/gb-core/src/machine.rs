@@ -243,6 +243,7 @@ impl<S: TraceSink> Machine<S> {
     pub fn with_tracer(config: MachineConfig, tracer: Tracer<S>) -> Self {
         let console_model = config.console_model;
         let startup_mode = config.startup_mode;
+        let boot_rom_kind = config.boot_rom_kind;
         let boot_rom_assets = config.boot_rom_assets.clone();
 
         let mut machine = Self {
@@ -258,7 +259,7 @@ impl<S: TraceSink> Machine<S> {
             timer: Timer::new(console_model),
             serial: Serial::new(console_model),
             external_port: ExternalPort::new(),
-            boot: BootController::new(console_model, startup_mode, boot_rom_assets),
+            boot: BootController::new(console_model, startup_mode, boot_rom_kind, boot_rom_assets),
             interrupts: InterruptController::new(console_model),
             joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),

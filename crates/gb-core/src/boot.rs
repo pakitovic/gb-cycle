@@ -26,7 +26,9 @@ pub enum BootRomKind {
     Dmg0,
     Dmg,
     Mgb,
+    Cgb0,
     Cgb,
+    CgbE,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -34,7 +36,9 @@ pub struct BootRomAssets {
     dmg0: Option<Vec<u8>>,
     dmg: Option<Vec<u8>>,
     mgb: Option<Vec<u8>>,
+    cgb0: Option<Vec<u8>>,
     cgb: Option<Vec<u8>>,
+    cgb_e: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -111,7 +115,9 @@ impl BootRomAssets {
             dmg0: None,
             dmg: None,
             mgb: None,
+            cgb0: None,
             cgb: None,
+            cgb_e: None,
         }
     }
 
@@ -132,7 +138,9 @@ impl BootRomAssets {
             dmg0: read_boot_rom_file(path, BootRomKind::Dmg0)?,
             dmg: read_boot_rom_file(path, BootRomKind::Dmg)?,
             mgb: read_boot_rom_file(path, BootRomKind::Mgb)?,
+            cgb0: read_boot_rom_file(path, BootRomKind::Cgb0)?,
             cgb: read_boot_rom_file(path, BootRomKind::Cgb)?,
+            cgb_e: read_boot_rom_file(path, BootRomKind::CgbE)?,
         })
     }
 
@@ -160,7 +168,9 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => "dmg0_boot.bin",
             BootRomKind::Dmg => "dmg_boot.bin",
             BootRomKind::Mgb => "mgb_boot.bin",
+            BootRomKind::Cgb0 => "cgb0_boot.bin",
             BootRomKind::Cgb => "cgb_boot.bin",
+            BootRomKind::CgbE => "cgbE_boot.bin",
         }
     }
 
@@ -172,7 +182,9 @@ impl BootRomAssets {
         !self.has_image(BootRomKind::Dmg0)
             && !self.has_image(BootRomKind::Dmg)
             && !self.has_image(BootRomKind::Mgb)
+            && !self.has_image(BootRomKind::Cgb0)
             && !self.has_image(BootRomKind::Cgb)
+            && !self.has_image(BootRomKind::CgbE)
     }
 
     pub fn read_byte(&self, kind: BootRomKind, address: u16) -> Option<u8> {
@@ -182,7 +194,9 @@ impl BootRomAssets {
             BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => {
                 bytes.get(address as usize).copied()
             }
-            BootRomKind::Cgb => read_cgb_boot_rom_byte(bytes, address),
+            BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE => {
+                read_cgb_boot_rom_byte(bytes, address)
+            }
         }
     }
 
@@ -195,7 +209,9 @@ impl BootRomAssets {
         self.dmg0.as_ref().map(Vec::len).unwrap_or(0)
             + self.dmg.as_ref().map(Vec::len).unwrap_or(0)
             + self.mgb.as_ref().map(Vec::len).unwrap_or(0)
+            + self.cgb0.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb.as_ref().map(Vec::len).unwrap_or(0)
+            + self.cgb_e.as_ref().map(Vec::len).unwrap_or(0)
     }
 
     fn bytes_for(&self, kind: BootRomKind) -> Option<&[u8]> {
@@ -203,7 +219,9 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => self.dmg0.as_deref(),
             BootRomKind::Dmg => self.dmg.as_deref(),
             BootRomKind::Mgb => self.mgb.as_deref(),
+            BootRomKind::Cgb0 => self.cgb0.as_deref(),
             BootRomKind::Cgb => self.cgb.as_deref(),
+            BootRomKind::CgbE => self.cgb_e.as_deref(),
         }
     }
 
@@ -212,7 +230,9 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => &mut self.dmg0,
             BootRomKind::Dmg => &mut self.dmg,
             BootRomKind::Mgb => &mut self.mgb,
+            BootRomKind::Cgb0 => &mut self.cgb0,
             BootRomKind::Cgb => &mut self.cgb,
+            BootRomKind::CgbE => &mut self.cgb_e,
         }
     }
 }
@@ -377,13 +397,14 @@ impl BootController {
     pub fn new(
         console_model: ConsoleModel,
         startup_mode: StartupMode,
+        boot_rom_kind: BootRomKind,
         boot_rom_assets: BootRomAssets,
     ) -> Self {
         Self {
             console_model,
             startup_mode,
             status: BootStatus::Ready,
-            boot_rom_kind: select_boot_rom_kind(console_model),
+            boot_rom_kind,
             boot_rom_mapped: startup_mode.requires_boot_rom(),
             boot_rom_assets,
         }
@@ -443,8 +464,8 @@ impl BootController {
         }
 
         match self.console_model {
-            ConsoleModel::Cgb => BootRomBusState::map_cgb_windows(),
-            ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => {
+            ConsoleModel::GameBoyColor => BootRomBusState::map_cgb_windows(),
+            ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
                 BootRomBusState::map_dmg_low_bytes()
             }
         }
@@ -586,33 +607,12 @@ const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
     }
 }
 
-const fn select_boot_rom_kind(console_model: ConsoleModel) -> BootRomKind {
-    match console_model {
-        ConsoleModel::Dmg0 => BootRomKind::Dmg0,
-        ConsoleModel::Dmg => BootRomKind::Dmg,
-        ConsoleModel::Mgb => BootRomKind::Mgb,
-        ConsoleModel::Cgb => BootRomKind::Cgb,
-    }
-}
-
 const fn build_skip_boot_cpu_state(
     console_model: ConsoleModel,
     header_checksum: Option<u8>,
 ) -> CpuStartupState {
     match console_model {
-        ConsoleModel::Dmg0 => CpuStartupState {
-            a: 0x01,
-            f: 0x00,
-            b: 0xFF,
-            c: 0x13,
-            d: 0x00,
-            e: 0xC1,
-            h: 0x84,
-            l: 0x03,
-            sp: 0xFFFE,
-            pc: 0x0100,
-        },
-        ConsoleModel::Dmg => CpuStartupState {
+        ConsoleModel::GameBoy => CpuStartupState {
             a: 0x01,
             f: dmg_family_skip_boot_flags(header_checksum),
             b: 0x00,
@@ -624,7 +624,7 @@ const fn build_skip_boot_cpu_state(
             sp: 0xFFFE,
             pc: 0x0100,
         },
-        ConsoleModel::Mgb => CpuStartupState {
+        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => CpuStartupState {
             a: 0xFF,
             f: dmg_family_skip_boot_flags(header_checksum),
             b: 0x00,
@@ -636,9 +636,17 @@ const fn build_skip_boot_cpu_state(
             sp: 0xFFFE,
             pc: 0x0100,
         },
-        ConsoleModel::Cgb => CpuStartupState {
+        ConsoleModel::GameBoyColor => CpuStartupState {
+            a: 0x11,
+            f: 0x80,
+            b: 0x00,
+            c: 0x00,
+            d: 0x00,
+            e: 0x08,
+            h: 0x00,
+            l: 0x7C,
+            sp: 0xFFFE,
             pc: 0x0100,
-            ..CpuStartupState::power_on_reset()
         },
     }
 }
@@ -678,51 +686,31 @@ const fn synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
 
 const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoSnapshot {
     match console_model {
-        ConsoleModel::Dmg | ConsoleModel::Mgb => BootIoSnapshot {
-            p1: 0xFF,
-            sb: 0x00,
-            sc: 0x7E,
-            div: 0xBD,
-            tima: 0x00,
-            tma: 0x00,
-            tac: 0xF8,
-            interrupt_flag: 0xE1,
-            lcdc: 0x91,
-            stat: 0x81,
-            scy: 0x00,
-            scx: 0x00,
-            ly: 153,
-            lyc: 0x00,
-            dma: 0xFF,
-            bgp: 0xFC,
-            wy: 0x00,
-            wx: 0x00,
-            interrupt_enable: 0x00,
-            audio: dmg_family_skip_boot_audio_snapshot(),
-        },
-        ConsoleModel::Dmg0 => BootIoSnapshot {
-            p1: 0xFF,
-            sb: 0x00,
-            sc: 0x7E,
-            div: 0x17,
-            tima: 0x00,
-            tma: 0x00,
-            tac: 0xF8,
-            interrupt_flag: 0xE1,
-            lcdc: 0x91,
-            stat: 0x81,
-            scy: 0x00,
-            scx: 0x00,
-            ly: 144,
-            lyc: 0x00,
-            dma: 0xFF,
-            bgp: 0xFC,
-            wy: 0x00,
-            wx: 0x00,
-            interrupt_enable: 0x00,
-            audio: dmg_family_skip_boot_audio_snapshot(),
-        },
-        ConsoleModel::Cgb => synthetic_skip_boot_io_snapshot(),
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            BootIoSnapshot {
+                p1: 0xFF,
+                sb: 0x00,
+                sc: 0x7E,
+                div: 0xBD,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0xF8,
+                interrupt_flag: 0xE1,
+                lcdc: 0x91,
+                stat: 0x81,
+                scy: 0x00,
+                scx: 0x00,
+                ly: 153,
+                lyc: 0x00,
+                dma: 0xFF,
+                bgp: 0xFC,
+                wy: 0x00,
+                wx: 0x00,
+                interrupt_enable: 0x00,
+                audio: dmg_family_skip_boot_audio_snapshot(),
+            }
+        }
+        ConsoleModel::GameBoyColor => synthetic_skip_boot_io_snapshot(),
     }
 }
 
@@ -828,31 +816,32 @@ fn validate_boot_rom_len(
 const fn minimum_boot_rom_len(kind: BootRomKind) -> usize {
     match kind {
         BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => DMG_FAMILY_BOOT_ROM_LEN,
-        BootRomKind::Cgb => CGB_BOOT_ROM_RAW_LEN,
+        BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE => CGB_BOOT_ROM_RAW_LEN,
     }
 }
 
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xBD04;
-const VERIFIED_DMG0_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0x1748;
 const SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 = ((synthetic_skip_boot_io_snapshot().div as u16)
     << 8)
     | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
 
 const fn verified_boot_entry_system_counter(console_model: ConsoleModel) -> u16 {
     match console_model {
-        ConsoleModel::Dmg | ConsoleModel::Mgb => VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER,
-        ConsoleModel::Dmg0 => VERIFIED_DMG0_BOOT_ENTRY_SYSTEM_COUNTER,
-        ConsoleModel::Cgb => SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER,
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER
+        }
+        ConsoleModel::GameBoyColor => SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER,
     }
 }
 
 const fn verified_boot_entry_div_apu(console_model: ConsoleModel) -> u8 {
     match console_model {
-        ConsoleModel::Dmg | ConsoleModel::Mgb => 0x01,
-        ConsoleModel::Dmg0 => 0x04,
-        ConsoleModel::Cgb => div_apu_phase_from_system_counter(SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER),
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
+        ConsoleModel::GameBoyColor => {
+            div_apu_phase_from_system_counter(SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER)
+        }
     }
 }
 

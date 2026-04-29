@@ -106,6 +106,16 @@ pub use workspace_paths::{
     sameboy_tester_oracle_root,
 };
 
+pub(crate) fn boot_rom_kind_is_required_for_runner_gate(kind: gb_core::BootRomKind) -> bool {
+    matches!(
+        kind,
+        gb_core::BootRomKind::Dmg0
+            | gb_core::BootRomKind::Dmg
+            | gb_core::BootRomKind::Mgb
+            | gb_core::BootRomKind::Cgb
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TestSubsystem {
     Cpu,
@@ -151,6 +161,19 @@ pub enum CaptureKind {
 
 pub const GBEMU_SHOOTOUT_ROOT_ENV_VAR: &str = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT";
 const DMG_FAMILY_FRAME_T_CYCLES: u64 = 70_224;
+
+pub const INITIAL_CGB_ROM_SUITE_NAMES: &[&str] = &[
+    "cgb-smoke",
+    "cgb-boot-div",
+    "cgb-boot-hwio",
+    "cgb-speed",
+    "cgb-ppu-basic",
+    "cgb-dma",
+    "cgb-audio-blargg",
+    "cgb-audio-samesuite",
+    "cgb-rtc",
+    "cgb-ppu-hard",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Timeout {
@@ -416,7 +439,7 @@ impl RomTestCase {
             id: id.into(),
             rom_path: rom_path.into(),
             external_rom_root_key: None,
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
@@ -766,7 +789,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_dmg0.trace")),
             )
-            .with_console_model(ConsoleModel::Dmg0)
+            .with_console_model(ConsoleModel::GameBoy)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -791,7 +814,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_mgb.trace")),
             )
-            .with_console_model(ConsoleModel::Mgb)
+            .with_console_model(ConsoleModel::GameBoyPocket)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -830,7 +853,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_cgb.trace")),
             )
-            .with_console_model(ConsoleModel::Cgb)
+            .with_console_model(ConsoleModel::GameBoyColor)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -887,12 +910,17 @@ pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mooneye_acceptance_dmg_curated_suite()
 }
 
+pub fn cgb_smoke_suite() -> RomSuite {
+    curated_test_roms::cgb_smoke_suite()
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     let mut suites = vec![
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
+        cgb_smoke_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
@@ -1658,6 +1686,9 @@ impl RomRunner {
             .or_else(|| discover_boot_rom_store_root(&self.workspace_root))
             .unwrap_or_else(|| boot_rom_store_root(&self.workspace_root));
         let image_path = boot_rom_image_path(&root, kind);
+        if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
+            return Ok(BootRomAssets::none());
+        }
         enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, kind)
             .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
         if !root.is_dir() {
@@ -2392,16 +2423,16 @@ mod tests {
     use super::{
         BootRomAssets, BootRomVerificationMode, CaptureKind, CapturedArtifacts,
         CapturedMemoryTextOutput, CaseEvaluationInputs, DMG_FAMILY_FRAME_T_CYCLES,
-        FailureArtifactPolicy, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
-        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
-        RomExecutionError, RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR,
-        TestSubsystem, Timeout, artifact_file_name, blargg_console_text_complete,
-        blargg_dmg_repo_gated_suite, budget_exhausted, built_in_rom_suite_by_name,
-        capture_blargg_console_text, capture_memory_text_output, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output,
+        FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
+        MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
+        RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
+        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
+        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
+        cgb_smoke_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
+        memory_text_output_completion_reached, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output,
     };
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
@@ -2533,6 +2564,49 @@ mod tests {
         assert!(memory_text_output_completion_reached(
             &mut last_candidate,
             Some(final_failure)
+        ));
+    }
+
+    #[test]
+    fn cgb_smoke_suite_is_manifest_backed_cgb_model_catalog_entry() {
+        assert_eq!(
+            INITIAL_CGB_ROM_SUITE_NAMES,
+            &[
+                "cgb-smoke",
+                "cgb-boot-div",
+                "cgb-boot-hwio",
+                "cgb-speed",
+                "cgb-ppu-basic",
+                "cgb-dma",
+                "cgb-audio-blargg",
+                "cgb-audio-samesuite",
+                "cgb-rtc",
+                "cgb-ppu-hard",
+            ]
+        );
+
+        let suite = cgb_smoke_suite();
+
+        assert_eq!(suite.name, "cgb-smoke");
+        assert_eq!(suite.family.as_deref(), Some("cgb-smoke"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        }));
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_regs-cgb.gb")
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::MooneyeResult
+        ));
+        assert_eq!(suite.cases[1].rom_path, PathBuf::from("acid/which.gb"));
+        assert!(matches!(
+            suite.cases[1].pass_condition,
+            PassCondition::Informational(CaptureKind::Framebuffer)
         ));
     }
 
@@ -2743,7 +2817,7 @@ mod tests {
     #[test]
     fn mooneye_result_for_signature_requires_matching_registers() {
         let mut snapshot = CpuSnapshot {
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             status: CpuStatus::Ready,
             startup_state: CpuStartupState {
                 a: 0,
@@ -3492,14 +3566,15 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
             Timeout::TCycles(1),
             PassCondition::Informational(CaptureKind::Snapshot),
         )
-        .with_console_model(ConsoleModel::Cgb)
+        .with_console_model(ConsoleModel::GameBoyColor)
         .with_startup_mode(StartupMode::RealBoot);
-        assert!(
-            runner
-                .load_boot_rom_assets(&cgb_real_boot_case)
-                .expect("cgb real-boot lookup should succeed")
-                .is_empty()
-        );
+        let cgb_error = runner
+            .load_boot_rom_assets(&cgb_real_boot_case)
+            .expect_err("strict CGB real-boot should require the default CGB boot ROM asset");
+        assert!(matches!(
+            cgb_error,
+            RomExecutionError::BootRomVerification { .. }
+        ));
 
         let missing_boot_root = workspace.join("missing-bootrom");
         let dmg_real_boot_case = RomTestCase::new(

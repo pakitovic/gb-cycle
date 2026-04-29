@@ -611,14 +611,16 @@ impl AddressRouter {
         }
 
         Some(match console_model {
-            ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => UnusableAreaInfo::new(
-                address,
-                UnusableAreaReadProfile::DmgFamilyFixedZero,
-                UnusableAreaWriteProfile::Ignored,
-                DMG_UNUSABLE_READ_VALUE,
-                true,
-            ),
-            ConsoleModel::Cgb => UnusableAreaInfo::new(
+            ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+                UnusableAreaInfo::new(
+                    address,
+                    UnusableAreaReadProfile::DmgFamilyFixedZero,
+                    UnusableAreaWriteProfile::Ignored,
+                    DMG_UNUSABLE_READ_VALUE,
+                    true,
+                )
+            }
+            ConsoleModel::GameBoyColor => UnusableAreaInfo::new(
                 address,
                 UnusableAreaReadProfile::CgbRevisionDependent,
                 UnusableAreaWriteProfile::CgbRevisionDependentRam,

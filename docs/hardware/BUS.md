@@ -124,8 +124,8 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - This region must not be modeled as free RAM.
 - The nominal decode may stay as one `Unusable` region, but the public bus contract should also expose a model-aware unusable-area descriptor so `DMG` and future `CGB` revision-specific behavior are not collapsed into one fake readback rule.
 - For the current repo baseline on `DMG0`, `DMG`, and `MGB`, reads should return `0x00` outside OAM-blocked periods and `0xFF` during OAM-blocked periods, including ordinary PPU Mode `2/3` OAM blocking and DMA-published video-bus conflicts that also block OAM.
-- `ConsoleModel::Cgb` should already publish that the non-blocked readback is revision-dependent even before concrete CGB revisions are modeled.
-- `ConsoleModel::Cgb` should also already publish that the nominal write or backing-storage contract is revision-dependent, because early CGB revisions expose a masked RAM-like area there.
+- `ConsoleModel::GameBoyColor` should already publish that the non-blocked readback is revision-dependent even before concrete CGB revisions are modeled.
+- `ConsoleModel::GameBoyColor` should also already publish that the nominal write or backing-storage contract is revision-dependent, because early CGB revisions expose a masked RAM-like area there.
 - Until the core has concrete CGB revision coverage, any raw `Bus` fallback value or write-ignore policy used there must be documented as a temporary placeholder for harness use, not as verified hardware truth.
 - If later model coverage or hardware evidence requires refinement for a specific revision, keep that change model-gated here rather than falling back to generic RAM semantics.
 - On affected DMG-family hardware during the specific Mode `2` OAM-scan block, reads from this range should also enter the same OAM-corruption trigger path used for OAM reads.

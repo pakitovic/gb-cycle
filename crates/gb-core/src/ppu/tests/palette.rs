@@ -35,7 +35,7 @@ fn framebuffer_applies_bgp_without_changing_logical_scanline_colors() {
 
 #[test]
 fn dmg_pixel_output_uses_or_of_current_and_previous_bgp_for_one_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0xB1,
         stat: 0x83,
@@ -66,7 +66,7 @@ fn dmg_pixel_output_uses_or_of_current_and_previous_bgp_for_one_dot() {
 
 #[test]
 fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x93;
     ppu.pipeline_registers.lcdc = 0x91;
@@ -89,7 +89,7 @@ fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
 
 #[test]
 fn later_visible_pixels_use_the_delayed_lcdc_copy() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x93;
     ppu.pipeline_registers.lcdc = 0x91;
@@ -113,7 +113,7 @@ fn later_visible_pixels_use_the_delayed_lcdc_copy() {
 
 #[test]
 fn later_visible_pixels_use_the_live_lcdc_bg_enable_bit() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x92;
     ppu.pipeline_registers.lcdc = 0x93;
@@ -130,7 +130,7 @@ fn later_visible_pixels_use_the_live_lcdc_bg_enable_bit() {
 
 #[test]
 fn later_visible_pixels_keep_live_bg_output_when_only_the_delayed_copy_disables_bg() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x93;
     ppu.pipeline_registers.lcdc = 0x92;
@@ -147,7 +147,7 @@ fn later_visible_pixels_keep_live_bg_output_when_only_the_delayed_copy_disables_
 
 #[test]
 fn bg_disabled_background_pixels_force_white_panel_output_on_dmg() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x92;
     ppu.pipeline_registers.lcdc = 0x93;
@@ -165,7 +165,7 @@ fn bg_disabled_background_pixels_force_white_panel_output_on_dmg() {
 
 #[test]
 fn bg_disabled_background_pixels_keep_the_underlying_mixed_bg_color_on_dmg() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x92;
     ppu.pipeline_registers.lcdc = 0x93;
@@ -187,7 +187,7 @@ fn bg_disabled_background_pixels_keep_the_underlying_mixed_bg_color_on_dmg() {
 
 #[test]
 fn dmg_single_left_sprite_lcdc0_first_write_retroactively_forces_the_expected_left_edge_window() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x93;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -236,7 +236,7 @@ fn dmg_single_left_sprite_lcdc0_first_write_retroactively_forces_the_expected_le
 
 #[test]
 fn dmg_single_left_sprite_lcdc0_second_write_restores_the_expected_retroactive_window() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x92;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -292,7 +292,7 @@ fn dmg_single_left_sprite_lcdc0_second_write_restores_the_expected_retroactive_w
 
 #[test]
 fn dmg_lcdc0_historical_repaint_only_updates_background_dots() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x93;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -352,7 +352,7 @@ fn dmg_lcdc0_historical_repaint_only_updates_background_dots() {
 
 #[test]
 fn dmg_lcdc0_historical_repaint_ignores_active_bgp_output_delay_override() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x92;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -404,7 +404,7 @@ fn dmg_lcdc0_historical_repaint_ignores_active_bgp_output_delay_override() {
 
 #[test]
 fn dmg_single_left_sprite_lcdc0_first_write_waits_until_the_modeled_future_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x93;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -450,7 +450,7 @@ fn dmg_single_left_sprite_lcdc0_first_write_waits_until_the_modeled_future_onset
 
 #[test]
 fn dmg_single_left_sprite_lcdc0_second_write_waits_until_the_modeled_future_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.lcdc = 0x92;
     ppu.lcd_state = PpuLcdState::Enabled;
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -499,7 +499,7 @@ fn dmg_single_left_sprite_lcdc0_second_write_waits_until_the_modeled_future_onse
 
 #[test]
 fn bg_disabled_background_pixels_stay_white_during_retroactive_bgp_repaint() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x90,
         stat: 0x83,
@@ -530,7 +530,7 @@ fn bg_disabled_background_pixels_stay_white_during_retroactive_bgp_repaint() {
 
 #[test]
 fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x92;
     ppu.pipeline_registers.lcdc = 0x93;
@@ -556,7 +556,7 @@ fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
 
 #[test]
 fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x92;
     ppu.pipeline_registers.lcdc = 0x93;
@@ -595,7 +595,7 @@ fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
 
 #[test]
 fn later_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.visible_registers.lcdc = 0x93;
     ppu.pipeline_registers.lcdc = 0x92;
@@ -662,7 +662,7 @@ fn framebuffer_applies_obj_palette_selection_without_changing_logical_obj_colors
 
 #[test]
 fn dmg_bgp_write_during_mode3_recolors_recent_bg_pixels_with_transient_then_final_palette() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0xB1,
         stat: 0x83,
@@ -688,7 +688,7 @@ fn dmg_bgp_write_during_mode3_recolors_recent_bg_pixels_with_transient_then_fina
 
 #[test]
 fn cpu_mmio_bgp_write_retroactively_recolors_recent_bg_color0_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0xB1,
         stat: 0x83,
@@ -763,7 +763,7 @@ fn cpu_mmio_bgp_write_retroactively_recolors_recent_bg_color0_pixels() {
 
 #[test]
 fn cpu_mmio_bgp_write_uses_pipeline_delay_when_recent_pixels_are_not_all_bg_color0() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -828,7 +828,7 @@ fn cpu_mmio_bgp_write_uses_pipeline_delay_when_recent_pixels_are_not_all_bg_colo
 
 #[test]
 fn cpu_mmio_bgp_write_ignores_recent_obj_pixels_when_bg_tail_is_color0() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -887,7 +887,7 @@ fn cpu_mmio_bgp_write_ignores_recent_obj_pixels_when_bg_tail_is_color0() {
 
 #[test]
 fn cpu_mmio_bgp_write_stays_delayed_when_recent_affected_bg_pixel_is_nonzero_even_with_obj_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -946,7 +946,7 @@ fn cpu_mmio_bgp_write_stays_delayed_when_recent_affected_bg_pixel_is_nonzero_eve
 
 #[test]
 fn cpu_mmio_bgp_second_write_after_window_restart_backdates_the_recent_bg_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1042,7 +1042,7 @@ fn cpu_mmio_bgp_second_write_after_window_restart_backdates_the_recent_bg_tail()
 #[test]
 fn cpu_mmio_bgp_first_write_after_window_restart_backdates_the_recent_bg_tail_to_the_final_palette()
 {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1110,7 +1110,7 @@ fn cpu_mmio_bgp_first_write_after_window_restart_backdates_the_recent_bg_tail_to
 #[test]
 fn cpu_mmio_bgp_second_write_after_window_restart_backdates_even_if_the_first_write_was_retroactive()
  {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1178,7 +1178,7 @@ fn cpu_mmio_bgp_second_write_after_window_restart_backdates_even_if_the_first_wr
 #[test]
 fn cpu_mmio_bgp_second_write_after_window_restart_uses_scanline_positions_when_panel_history_stalls()
  {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1257,7 +1257,7 @@ fn cpu_mmio_bgp_second_write_after_window_restart_uses_scanline_positions_when_p
 
 #[test]
 fn cpu_mmio_bgp_first_write_before_window_restart_waits_for_the_clamped_window_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1322,7 +1322,7 @@ fn cpu_mmio_bgp_first_write_before_window_restart_waits_for_the_clamped_window_o
 
 #[test]
 fn cpu_mmio_bgp_second_write_before_window_restart_backdates_to_the_clamped_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1403,7 +1403,7 @@ fn cpu_mmio_bgp_second_write_before_window_restart_backdates_to_the_clamped_onse
 
 #[test]
 fn cpu_mmio_bgp_second_write_after_wx0_window_restart_uses_the_first_window_row_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1474,7 +1474,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_uses_the_first_window_row_
 
 #[test]
 fn cpu_mmio_bgp_second_write_after_wx0_window_restart_caps_the_row_onset_by_the_arrival_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1542,7 +1542,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_caps_the_row_onset_by_the_
 
 #[test]
 fn cpu_mmio_bgp_second_write_after_wx0_window_restart_uses_the_active_window_tile_row() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1615,7 +1615,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_uses_the_active_window_til
 }
 
 fn dmg_bgp_pipeline_delayed_burst_rig() -> Ppu {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -1777,7 +1777,7 @@ fn cpu_mmio_bgp_burst_with_visible_progress_slides_the_pipeline_delayed_window_f
 
 #[test]
 fn cpu_mmio_bgp_write_before_first_visible_bg_pixel_uses_the_visible_obj_prefix_as_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -1828,7 +1828,7 @@ fn cpu_mmio_bgp_write_before_first_visible_bg_pixel_uses_the_visible_obj_prefix_
 #[test]
 fn cpu_mmio_bgp_write_after_four_leading_obj_pixels_uses_the_committed_palette_on_the_current_dot()
 {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -1899,7 +1899,7 @@ fn cpu_mmio_bgp_write_after_four_leading_obj_pixels_uses_the_committed_palette_o
 #[test]
 fn cpu_mmio_bgp_write_after_the_first_selected_retroactive_write_keeps_the_recent_tail_and_flips_on_the_current_dot()
  {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -1996,7 +1996,7 @@ fn cpu_mmio_bgp_write_after_the_first_selected_retroactive_write_keeps_the_recen
 
 #[test]
 fn cpu_mmio_bgp_write_with_a_single_left_sprite_can_backdate_the_first_write_onset() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2047,7 +2047,7 @@ fn cpu_mmio_bgp_write_with_a_single_left_sprite_can_backdate_the_first_write_ons
 #[test]
 fn cpu_mmio_bgp_write_with_a_single_left_sprite_does_not_repaint_the_whole_prefix_late_in_the_line()
 {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2099,7 +2099,7 @@ fn cpu_mmio_bgp_write_with_a_single_left_sprite_does_not_repaint_the_whole_prefi
 
 #[test]
 fn cpu_mmio_bgp_late_black_pulse_with_single_left_sprite_uses_the_variant_tail_onset_table() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2162,7 +2162,7 @@ fn cpu_mmio_bgp_late_black_pulse_with_single_left_sprite_uses_the_variant_tail_o
 
 #[test]
 fn cpu_mmio_bgp_late_black_pulse_with_sprite_x0_tracks_the_late_visible_position() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2225,7 +2225,7 @@ fn cpu_mmio_bgp_late_black_pulse_with_sprite_x0_tracks_the_late_visible_position
 
 #[test]
 fn cpu_mmio_bgp_late_black_pulse_with_sprite_x16_extends_the_tail_window() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2282,7 +2282,7 @@ fn cpu_mmio_bgp_late_black_pulse_with_sprite_x16_extends_the_tail_window() {
 
 #[test]
 fn cpu_mmio_bgp_second_write_with_sprite_x15_recolors_the_left_edge_boundary_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2345,7 +2345,7 @@ fn cpu_mmio_bgp_second_write_with_sprite_x15_recolors_the_left_edge_boundary_dot
 
 #[test]
 fn cpu_mmio_bgp_write_with_single_left_sprite_on_the_current_dot_uses_current_dot_transient() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2409,7 +2409,7 @@ fn cpu_mmio_bgp_write_with_single_left_sprite_on_the_current_dot_uses_current_do
 
 #[test]
 fn cpu_mmio_bgp_write_with_single_left_sprite_can_keep_a_late_write_pipeline_delayed() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2493,7 +2493,7 @@ fn cpu_mmio_bgp_write_with_single_left_sprite_can_keep_a_late_write_pipeline_del
 
 #[test]
 fn cpu_mmio_bgp_second_write_with_single_left_sprite_covers_the_x14_clamp_and_x16_window() {
-    let mut clamped = Ppu::new(ConsoleModel::Dmg);
+    let mut clamped = Ppu::new(ConsoleModel::GameBoy);
     clamped.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2555,7 +2555,7 @@ fn cpu_mmio_bgp_second_write_with_single_left_sprite_covers_the_x14_clamp_and_x1
     );
     assert_eq!(clamped.framebuffer()[12], 0);
 
-    let mut windowed = Ppu::new(ConsoleModel::Dmg);
+    let mut windowed = Ppu::new(ConsoleModel::GameBoy);
     windowed.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2620,7 +2620,7 @@ fn cpu_mmio_bgp_second_write_with_single_left_sprite_covers_the_x14_clamp_and_x1
 
 #[test]
 fn cpu_mmio_bgp_second_write_with_single_left_sprite_waits_for_the_transient_window() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2728,7 +2728,7 @@ fn cpu_mmio_bgp_second_write_with_single_left_sprite_waits_for_the_transient_win
 
 #[test]
 fn cpu_mmio_bgp_write_with_future_obj_pixels_starts_and_consumes_the_bg_visible_hold() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: 0x83,
@@ -2838,7 +2838,7 @@ fn cpu_mmio_bgp_write_with_future_obj_pixels_starts_and_consumes_the_bg_visible_
 
 #[test]
 fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.bg_pipeline_state.visible_pixels_output = 7;
     ppu.bg_pipeline_state.current_transfer_x = 15;
@@ -2904,7 +2904,7 @@ fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
 
 #[test]
 fn dmg_bgp_cpu_commit_uses_the_panel_path_at_visible_line_start_before_transfer_x_advances() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.bg_pipeline_state.visible_pixels_output = 0;
     ppu.bg_pipeline_state.current_transfer_x = 0;
@@ -2917,7 +2917,7 @@ fn dmg_bgp_cpu_commit_uses_the_panel_path_at_visible_line_start_before_transfer_
 
 #[test]
 fn dmg_bgp_cpu_commit_keeps_the_delayed_path_once_transfer_x_has_advanced_past_line_start() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.bg_pipeline_state.visible_pixels_output = 0;
     ppu.bg_pipeline_state.current_transfer_x = 1;
@@ -2930,7 +2930,7 @@ fn dmg_bgp_cpu_commit_keeps_the_delayed_path_once_transfer_x_has_advanced_past_l
 
 #[test]
 fn finalize_dmg_bgp_cpu_commit_scanline_recolors_the_previous_boundary_without_selected_sprites() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.ly = 8;
     ppu.previous_scanline_ly = Some(7);
@@ -2972,7 +2972,7 @@ fn finalize_dmg_bgp_cpu_commit_scanline_recolors_the_previous_boundary_without_s
 
 #[test]
 fn finalize_dmg_bgp_cpu_commit_scanline_skips_previous_boundary_repaint_with_selected_sprites() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.ly = 8;
     ppu.previous_scanline_ly = Some(7);
@@ -3013,7 +3013,7 @@ fn finalize_dmg_bgp_cpu_commit_scanline_skips_previous_boundary_repaint_with_sel
 #[test]
 fn dmg_bgp_row_family_change_handles_selected_current_retroactive_and_current_dot_transient_writes()
 {
-    let ppu = Ppu::new(ConsoleModel::Dmg);
+    let ppu = Ppu::new(ConsoleModel::GameBoy);
     let retroactive_writes = [
         PpuDmgBgpBoundaryRepaintWrite {
             write: PpuDmgBgpCpuCommitWrite {
@@ -3131,7 +3131,7 @@ fn dmg_bgp_row_family_change_handles_selected_current_retroactive_and_current_do
 
 #[test]
 fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3173,7 +3173,7 @@ fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
 
 #[test]
 fn dmg_bgp_row_family_change_keeps_lcdc0_forced_white_previous_boundary_pixels_white() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3216,7 +3216,7 @@ fn dmg_bgp_row_family_change_keeps_lcdc0_forced_white_previous_boundary_pixels_w
 
 #[test]
 fn dmg_bgp_row_family_change_can_optionally_consume_retroactive_panel_writes() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3259,7 +3259,7 @@ fn dmg_bgp_row_family_change_can_optionally_consume_retroactive_panel_writes() {
 
 #[test]
 fn dmg_bgp_row_family_change_uses_transient_x_for_optional_retroactive_panel_repaint() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3291,7 +3291,7 @@ fn dmg_bgp_row_family_change_uses_transient_x_for_optional_retroactive_panel_rep
 
 #[test]
 fn dmg_bgp_row_family_change_ignores_transfer_lead_for_optional_retroactive_repaint() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3323,7 +3323,7 @@ fn dmg_bgp_row_family_change_ignores_transfer_lead_for_optional_retroactive_repa
 
 #[test]
 fn dmg_bgp_row_family_change_allows_zero_start_optional_retroactive_repaint_for_bg_prefix() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3353,7 +3353,7 @@ fn dmg_bgp_row_family_change_allows_zero_start_optional_retroactive_repaint_for_
 
 #[test]
 fn dmg_bgp_row_family_change_skips_zero_start_optional_retroactive_repaint_for_obj_prefix() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3384,7 +3384,7 @@ fn dmg_bgp_row_family_change_skips_zero_start_optional_retroactive_repaint_for_o
 
 #[test]
 fn dmg_bgp_row_family_change_skips_optional_retroactive_repaint_that_precedes_delayed_boundary() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3425,7 +3425,7 @@ fn dmg_bgp_row_family_change_skips_optional_retroactive_repaint_that_precedes_de
 
 #[test]
 fn dmg_bgp_row_family_change_uses_previous_line_start_palette() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.previous_scanline_ly = Some(7);
     ppu.previous_scanline_mixed_pixels
@@ -3457,7 +3457,7 @@ fn dmg_bgp_row_family_change_uses_previous_line_start_palette() {
 
 #[test]
 fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x80,
@@ -3483,7 +3483,7 @@ fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
 
 #[test]
 fn dmg_obp0_write_before_visible_x10_does_not_retroactively_recolor_obj_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
         stat: 0x83,
@@ -3509,7 +3509,7 @@ fn dmg_obp0_write_before_visible_x10_does_not_retroactively_recolor_obj_pixels()
 
 #[test]
 fn dmg_obp0_write_during_mode3_skips_background_gaps_and_recolors_four_recent_obj_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
         stat: 0x83,
@@ -3539,7 +3539,7 @@ fn dmg_obp0_write_during_mode3_skips_background_gaps_and_recolors_four_recent_ob
 
 #[test]
 fn dmg_obp0_write_at_visible_x10_skips_a_leading_isolated_obj_pixel() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
         stat: 0x83,
@@ -3574,7 +3574,7 @@ fn dmg_obp0_write_at_visible_x10_skips_a_leading_isolated_obj_pixel() {
 
 #[test]
 fn dmg_obp0_write_during_mode3_recolors_recent_obj_pixels_with_the_committed_palette() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
         stat: 0x83,
@@ -3603,7 +3603,7 @@ fn dmg_obp0_write_during_mode3_recolors_recent_obj_pixels_with_the_committed_pal
 
 #[test]
 fn cgb_bgp_cpu_commit_write_during_mode3_skips_dmg_palette_conflict_paths() {
-    let mut ppu = Ppu::new(ConsoleModel::Cgb);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: 0x83,
@@ -3651,7 +3651,7 @@ fn cgb_bgp_cpu_commit_write_during_mode3_skips_dmg_palette_conflict_paths() {
 
 #[test]
 fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Cgb);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
         stat: 0x83,

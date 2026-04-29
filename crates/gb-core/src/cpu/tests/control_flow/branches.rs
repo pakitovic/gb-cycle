@@ -13,8 +13,8 @@ fn jr_nz_taken_and_untaken_use_different_temporal_sequences() {
         ..CpuStartupState::power_on_reset()
     };
 
-    let mut taken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut taken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut taken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut taken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut taken_cartridge = build_test_cartridge(&[0x20, 0x02]);
     taken_cpu.apply_startup_state(startup_taken);
 
@@ -37,8 +37,8 @@ fn jr_nz_taken_and_untaken_use_different_temporal_sequences() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut untaken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut untaken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut untaken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut untaken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut untaken_cartridge = build_test_cartridge(&[0x20, 0x02]);
     untaken_cpu.apply_startup_state(startup_untaken);
 
@@ -58,8 +58,8 @@ fn jr_nz_taken_and_untaken_use_different_temporal_sequences() {
 
 #[test]
 fn jr_positive_negative_and_jp_hl_match_blargg_special_control_flow_cases() {
-    let mut jr_negative_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut jr_negative_bus = Bus::new(ConsoleModel::Dmg);
+    let mut jr_negative_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut jr_negative_bus = Bus::new(ConsoleModel::GameBoy);
     let mut jr_negative_cartridge = build_test_cartridge(&[0x18, 0xFE]);
 
     jr_negative_cpu.apply_startup_state(CpuStartupState {
@@ -80,8 +80,8 @@ fn jr_positive_negative_and_jp_hl_match_blargg_special_control_flow_cases() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut jr_positive_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut jr_positive_bus = Bus::new(ConsoleModel::Dmg);
+    let mut jr_positive_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut jr_positive_bus = Bus::new(ConsoleModel::GameBoy);
     let mut jr_positive_cartridge = build_test_cartridge(&[0x18, 0x01, 0x00, 0x00]);
 
     jr_positive_cpu.apply_startup_state(CpuStartupState {
@@ -102,8 +102,8 @@ fn jr_positive_negative_and_jp_hl_match_blargg_special_control_flow_cases() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut jp_hl_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut jp_hl_bus = Bus::new(ConsoleModel::Dmg);
+    let mut jp_hl_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut jp_hl_bus = Bus::new(ConsoleModel::GameBoy);
     let mut jp_hl_cartridge = build_test_cartridge(&[0xE9]);
 
     jp_hl_cpu.apply_startup_state(CpuStartupState {
@@ -126,8 +126,8 @@ fn jr_positive_negative_and_jp_hl_match_blargg_special_control_flow_cases() {
 
 #[test]
 fn jp_nz_taken_and_untaken_use_different_temporal_sequences() {
-    let mut taken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut taken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut taken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut taken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut taken_cartridge = build_test_cartridge(&[0xC2, 0x34, 0x12]);
 
     taken_cpu.apply_startup_state(CpuStartupState {
@@ -154,8 +154,8 @@ fn jp_nz_taken_and_untaken_use_different_temporal_sequences() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut untaken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut untaken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut untaken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut untaken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut untaken_cartridge = build_test_cartridge(&[0xC2, 0x34, 0x12]);
 
     untaken_cpu.apply_startup_state(CpuStartupState {
@@ -180,8 +180,8 @@ fn jp_nz_taken_and_untaken_use_different_temporal_sequences() {
 
 #[test]
 fn call_nz_taken_and_untaken_split_before_stack_traffic() {
-    let mut taken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut taken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut taken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut taken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut taken_cartridge = build_test_cartridge(&[0xC4, 0x08, 0x01]);
 
     taken_cpu.apply_startup_state(CpuStartupState {
@@ -214,8 +214,8 @@ fn call_nz_taken_and_untaken_split_before_stack_traffic() {
         }
     );
 
-    let mut untaken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut untaken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut untaken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut untaken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut untaken_cartridge = build_test_cartridge(&[0xC4, 0x08, 0x01]);
 
     untaken_cpu.apply_startup_state(CpuStartupState {
@@ -242,8 +242,8 @@ fn call_nz_taken_and_untaken_split_before_stack_traffic() {
 
 #[test]
 fn ret_nz_taken_and_untaken_split_before_stack_reads() {
-    let mut taken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut taken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut taken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut taken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut taken_cartridge = build_test_cartridge(&[0xC0]);
 
     taken_cpu.apply_startup_state(CpuStartupState {
@@ -285,8 +285,8 @@ fn ret_nz_taken_and_untaken_split_before_stack_reads() {
         })
     );
 
-    let mut untaken_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut untaken_bus = Bus::new(ConsoleModel::Dmg);
+    let mut untaken_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut untaken_bus = Bus::new(ConsoleModel::GameBoy);
     let mut untaken_cartridge = build_test_cartridge(&[0xC0]);
 
     untaken_cpu.apply_startup_state(CpuStartupState {

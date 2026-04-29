@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn boot_overlay_changes_nominal_read_ownership_without_changing_rom_space_writes() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
 
     let read = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
@@ -19,7 +19,7 @@ fn boot_overlay_changes_nominal_read_ownership_without_changing_rom_space_writes
 
 #[test]
 fn cgb_boot_overlay_state_exposes_both_boot_windows() {
-    let bus = Bus::new(ConsoleModel::Cgb);
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_cgb_windows());
 
     let low_window = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
@@ -38,7 +38,7 @@ fn cgb_boot_overlay_state_exposes_both_boot_windows() {
 
 #[test]
 fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let mode3_state =
         BusArbitrationState::default().with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
     let mode2_state =
@@ -71,7 +71,7 @@ fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
 
 #[test]
 fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_and_ff46() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
@@ -101,7 +101,7 @@ fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_and_ff46() {
 
 #[test]
 fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_ff46() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
@@ -129,7 +129,7 @@ fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_ff46() {
 
 #[test]
 fn video_bus_dma_policy_blocks_vram_and_oam_but_keeps_wram_accessible() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::video_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
@@ -157,7 +157,7 @@ fn video_bus_dma_policy_blocks_vram_and_oam_but_keeps_wram_accessible() {
 
 #[test]
 fn video_bus_dma_constraints_take_precedence_over_ppu_mode_restrictions() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default()
         .with_dma(DmaBusState::video_bus_blocked(Some(
             DmaMemoryRegionImpact::Oam,
@@ -189,7 +189,7 @@ fn public_bus_state_accessors_expose_blocked_values_and_built_resolutions() {
     let dma_state = DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Vram))
         .with_cpu_conflict_source_address(Some(0x8123));
     let boot_state = BootRomBusState::map_dmg_low_bytes();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     assert_eq!(blocked.blocked_read_value(), Some(0xA5));
     assert_eq!(ignored.blocked_read_value(), None);
@@ -210,7 +210,7 @@ fn public_bus_state_accessors_expose_blocked_values_and_built_resolutions() {
 
 #[test]
 fn public_bus_resolution_exposes_nominal_and_effective_targets_during_dma_redirection() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(
         DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
             .with_cpu_conflict_source_address(Some(0xC100)),

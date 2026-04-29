@@ -3,11 +3,11 @@ use crate::joypad::JoypadButton;
 
 #[test]
 fn interrupt_service_uses_a_five_machine_cycle_sequence_and_pushes_pc_bytewise() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0150,
@@ -114,9 +114,9 @@ fn interrupt_service_uses_a_five_machine_cycle_sequence_and_pushes_pc_bytewise()
 
 #[test]
 fn pending_interrupt_can_preempt_the_in_flight_fetch_before_the_opcode_latches() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0150,
@@ -142,11 +142,11 @@ fn pending_interrupt_can_preempt_the_in_flight_fetch_before_the_opcode_latches()
 
 #[test]
 fn pending_interrupt_does_not_preempt_after_the_opcode_has_latched() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xCB, 0x11]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -184,11 +184,11 @@ fn pending_interrupt_does_not_preempt_after_the_opcode_has_latched() {
 
 #[test]
 fn interrupt_service_keeps_the_accepted_source_latched_until_vector_commit() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0150,
@@ -225,9 +225,9 @@ fn interrupt_service_keeps_the_accepted_source_latched_until_vector_commit() {
 
 #[test]
 fn halt_with_a_pending_interrupt_and_ime_enabled_enters_service_without_staying_halted() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0150,
@@ -253,11 +253,11 @@ fn halt_with_a_pending_interrupt_and_ime_enabled_enters_service_without_staying_
 
 #[test]
 fn pending_interrupt_wakes_a_halted_cpu_with_ime_disabled_without_entering_service() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0x00, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -308,9 +308,9 @@ fn pending_interrupt_wakes_a_halted_cpu_with_ime_disabled_without_entering_servi
 
 #[test]
 fn ei_halt_with_a_pending_interrupt_services_and_preserves_the_halt_return_address() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0151,
@@ -339,11 +339,11 @@ fn ei_halt_with_a_pending_interrupt_services_and_preserves_the_halt_return_addre
 
 #[test]
 fn halt_bug_turns_the_next_fetch_into_a_non_incrementing_pc_read() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0x76, 0x00, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -418,11 +418,11 @@ fn halt_bug_turns_the_next_fetch_into_a_non_incrementing_pc_read() {
 
 #[test]
 fn ei_then_nop_accepts_a_pending_interrupt_before_the_third_opcode_starts() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xFB, 0x00, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -469,11 +469,11 @@ fn ei_then_nop_accepts_a_pending_interrupt_before_the_third_opcode_starts() {
 
 #[test]
 fn ei_then_di_does_not_leave_an_interrupt_acceptance_window() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xFB, 0xF3, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -520,11 +520,11 @@ fn ei_then_di_does_not_leave_an_interrupt_acceptance_window() {
 
 #[test]
 fn di_ei_nop_accepts_a_pending_interrupt_after_the_following_instruction() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xF3, 0xFB, 0x00, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -573,11 +573,11 @@ fn di_ei_nop_accepts_a_pending_interrupt_after_the_following_instruction() {
 
 #[test]
 fn chained_ei_still_accepts_a_pending_interrupt_after_the_second_instruction() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xFB, 0xFB, 0x00]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -624,11 +624,11 @@ fn chained_ei_still_accepts_a_pending_interrupt_after_the_second_instruction() {
 
 #[test]
 fn interrupt_rerequest_from_the_same_source_remains_pending_after_service() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0150,
@@ -656,11 +656,11 @@ fn interrupt_rerequest_from_the_same_source_remains_pending_after_service() {
 
 #[test]
 fn reti_restores_pc_reenables_ime_and_allows_immediate_interrupt_acceptance() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xD9]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0100,
@@ -714,11 +714,11 @@ fn reti_restores_pc_reenables_ime_and_allows_immediate_interrupt_acceptance() {
 
 #[test]
 fn upper_pc_push_into_ie_can_cancel_service_and_restore_the_accepted_if_bit() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0200,
@@ -745,11 +745,11 @@ fn upper_pc_push_into_ie_can_cancel_service_and_restore_the_accepted_if_bit() {
 
 #[test]
 fn upper_pc_push_into_ie_can_retarget_service_and_restore_the_unserved_if_bit() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0200,
@@ -776,11 +776,11 @@ fn upper_pc_push_into_ie_can_retarget_service_and_restore_the_unserved_if_bit() 
 
 #[test]
 fn stop_wake_with_ime_enabled_and_a_pending_joypad_irq_enters_bugged_interrupt_service() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[]);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     cpu.apply_startup_state(CpuStartupState {
         pc: 0x0104,

@@ -291,10 +291,10 @@ fn parse_stimulus(stimulus: LocalRomStimulus, case_id: &str) -> Result<ExternalS
 
 fn parse_console_model(console: &str, case_id: &str) -> Result<ConsoleModel, String> {
     match console {
-        "dmg0" => Ok(ConsoleModel::Dmg0),
-        "dmg" => Ok(ConsoleModel::Dmg),
-        "mgb" => Ok(ConsoleModel::Mgb),
-        "cgb" => Ok(ConsoleModel::Cgb),
+        "game-boy" | "dmg0" | "dmg" => Ok(ConsoleModel::GameBoy),
+        "pocket" | "mgb" => Ok(ConsoleModel::GameBoyPocket),
+        "light" => Ok(ConsoleModel::GameBoyLight),
+        "color" | "cgb" => Ok(ConsoleModel::GameBoyColor),
         other => Err(format!("case {case_id} uses unsupported console {other:?}")),
     }
 }
@@ -503,7 +503,7 @@ pressed = false
         let case = &suite.cases[0];
         assert_eq!(case.id, "tetris");
         assert_eq!(case.rom_path, rom_path);
-        assert_eq!(case.console_model, ConsoleModel::Dmg);
+        assert_eq!(case.console_model, ConsoleModel::GameBoy);
         assert_eq!(case.startup_mode, StartupMode::SkipBoot);
         assert_eq!(case.execution_mode, ExecutionMode::Strict);
         assert_eq!(case.timeout, crate::Timeout::Frames(450));
@@ -640,7 +640,7 @@ expected = "DEADBEEF"
         assert_eq!(suite.cases.len(), 4);
 
         let serial_case = &suite.cases[0];
-        assert_eq!(serial_case.console_model, ConsoleModel::Mgb);
+        assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
         assert_eq!(serial_case.startup_mode, StartupMode::RealBoot);
         assert_eq!(serial_case.execution_mode, ExecutionMode::Permissive);
         assert_eq!(serial_case.timeout, crate::Timeout::TCycles(4096));
@@ -666,7 +666,7 @@ expected = "DEADBEEF"
         );
 
         let trace_case = &suite.cases[1];
-        assert_eq!(trace_case.console_model, ConsoleModel::Dmg0);
+        assert_eq!(trace_case.console_model, ConsoleModel::GameBoy);
         assert_eq!(trace_case.execution_mode, ExecutionMode::Experimental);
         assert_eq!(
             trace_case.pass_condition,
@@ -675,7 +675,7 @@ expected = "DEADBEEF"
         assert!(trace_case.capture_plan.contains(CaptureKind::Trace));
 
         let framebuffer_case = &suite.cases[2];
-        assert_eq!(framebuffer_case.console_model, ConsoleModel::Cgb);
+        assert_eq!(framebuffer_case.console_model, ConsoleModel::GameBoyColor);
         assert_eq!(
             framebuffer_case.pass_condition,
             PassCondition::FramebufferFixtureSet(vec![

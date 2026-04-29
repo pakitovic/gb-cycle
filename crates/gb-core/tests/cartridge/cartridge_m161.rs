@@ -45,7 +45,7 @@ fn m161_bus_writes_switch_the_entire_rom_window_once() {
     let report = CartridgeSlot::load(build_m161_signature_rom(), &CompatibilityPolicy::strict())
         .expect("M161 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -107,7 +107,7 @@ fn m161_bus_resolution_reports_absent_external_ram_and_no_persistence() {
     let report = CartridgeSlot::load(build_m161_signature_rom(), &CompatibilityPolicy::strict())
         .expect("M161 should load");
     let (cartridge, _) = report.into_parts();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     let resolution = bus.resolve_access(
         BusAccessKind::Read,

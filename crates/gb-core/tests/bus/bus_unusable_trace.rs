@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn unusable_area_readback_tracks_oam_blocked_periods() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let oam_blocked =
         BusArbitrationState::default().with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
 
@@ -27,7 +27,7 @@ fn unusable_area_readback_tracks_oam_blocked_periods() {
 
 #[test]
 fn unusable_area_readback_tracks_dma_video_bus_oam_conflicts() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let dma_video_bus_blocked = BusArbitrationState::default().with_dma(
         DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Oam)),
     );
@@ -46,7 +46,7 @@ fn unusable_area_readback_tracks_dma_video_bus_oam_conflicts() {
 
 #[test]
 fn bus_snapshot_and_trace_expose_live_arbitration_state() {
-    let bus = Bus::new(ConsoleModel::Cgb);
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
     let state = BusArbitrationState::default()
         .with_boot_rom(BootRomBusState::map_cgb_windows())
         .with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing))
@@ -57,7 +57,7 @@ fn bus_snapshot_and_trace_expose_live_arbitration_state() {
 
     let snapshot = bus.snapshot(state);
 
-    assert_eq!(snapshot.console_model, ConsoleModel::Cgb);
+    assert_eq!(snapshot.console_model, ConsoleModel::GameBoyColor);
     assert_eq!(snapshot.status, gb_core::BusStatus::Ready);
     assert_eq!(snapshot.arbitration, state);
 

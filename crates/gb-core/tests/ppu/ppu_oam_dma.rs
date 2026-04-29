@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn mode2_selection_on_the_live_machine_preserves_oam_order_and_caps_at_ten_entries() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     for index in 0..12 {
@@ -39,7 +39,7 @@ fn mode2_selection_on_the_live_machine_preserves_oam_order_and_caps_at_ten_entri
 #[test]
 fn mode2_selection_uses_live_lcdc2_on_the_machine_timeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_oam_entry(&mut machine, 0, 0, 24, 0x10, 0);
@@ -63,7 +63,7 @@ fn mode2_selection_uses_live_lcdc2_on_the_machine_timeline() {
 #[test]
 fn direct_mode2_oam_write_corrupts_the_live_row_without_storing_the_cpu_byte() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let rows = build_oam_corruption_fixture();
 
@@ -88,7 +88,7 @@ fn direct_mode2_oam_write_corrupts_the_live_row_without_storing_the_cpu_byte() {
 #[test]
 fn direct_mode2_fea0_read_uses_blocked_readback_and_the_same_read_corruption_path() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let rows = build_oam_corruption_fixture();
 
@@ -113,7 +113,7 @@ fn direct_mode2_fea0_read_uses_blocked_readback_and_the_same_read_corruption_pat
 #[test]
 fn cpu_inc_hl_inside_fe_range_reaches_the_same_mode2_corruption_controller() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let rows = build_oam_corruption_fixture();
     let mut program = vec![0x21, 0x08, 0xFE];

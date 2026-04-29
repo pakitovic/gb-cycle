@@ -338,7 +338,7 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
 
 fn placeholder_summary_machine() -> Machine<TraceSummaryBuffer> {
     Machine::new_summary(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     )
 }
 
@@ -357,7 +357,7 @@ mod tests {
 
     fn dmg_skip_boot_summary_machine() -> Machine<TraceSummaryBuffer> {
         Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         )
     }
 

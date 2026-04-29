@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn opcode_fetch_reads_bus_at_pc_on_the_fourth_t_cycle() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xCB]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -35,7 +35,7 @@ fn opcode_fetch_reads_bus_at_pc_on_the_fourth_t_cycle() {
 
 #[test]
 fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     let mut operations = Vec::new();
 
     cpu.apply_startup_state(CpuStartupState {
@@ -77,7 +77,7 @@ fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
 
 #[test]
 fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machine_cycle() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     let mut operations = Vec::new();
 
     cpu.apply_startup_state(CpuStartupState {
@@ -117,7 +117,7 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
 
 #[test]
 fn stop_real_path_fetches_the_padding_byte_before_entering_stopped() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     let mut operations = Vec::new();
 
     cpu.apply_startup_state(CpuStartupState {
@@ -159,7 +159,7 @@ fn stop_real_path_fetches_the_padding_byte_before_entering_stopped() {
 
 #[test]
 fn stop_zombie_path_skips_the_padding_fetch_and_keeps_pc_at_post_opcode() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     let mut operations = Vec::new();
 
     cpu.apply_startup_state(CpuStartupState {
@@ -199,9 +199,9 @@ fn stop_zombie_path_skips_the_padding_fetch_and_keeps_pc_at_post_opcode() {
 
 #[test]
 fn stop_halt_like_path_fetches_the_padding_byte_before_halting() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut interrupts = InterruptController::new(ConsoleModel::GameBoy);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
     let mut operations = Vec::new();
 
     cpu.apply_startup_state(CpuStartupState {
@@ -251,8 +251,8 @@ fn stop_halt_like_path_fetches_the_padding_byte_before_halting() {
 
 #[test]
 fn invalid_opcode_hole_enters_an_explicit_diagnostic_trap() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xD3]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -300,8 +300,8 @@ fn invalid_opcode_hole_enters_an_explicit_diagnostic_trap() {
 
 #[test]
 fn cb_set_opcode_executes_as_a_normal_prefixed_instruction() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xCB, 0xFF]);
 
     cpu.apply_startup_state(CpuStartupState {

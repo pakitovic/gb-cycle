@@ -1442,13 +1442,19 @@ fn linked_session_runner_real_boot_helpers_cover_missing_roots_and_stimulus_timi
     )
     .with_participant(
         LinkedSessionParticipant::new("left", &left_rom)
-            .with_console_model(gb_core::ConsoleModel::Cgb)
+            .with_console_model(gb_core::ConsoleModel::GameBoyColor)
             .with_startup_mode(gb_core::StartupMode::RealBoot),
     )
     .with_participant(LinkedSessionParticipant::new("right", &right_rom));
-    LinkedSessionRunner::new()
-        .build_summary_linked_machines(&cgb_real_boot_session)
-        .expect("CGB real-boot participants should keep the DMG-only linked harness permissive");
+    let cgb_error =
+        match LinkedSessionRunner::new().build_summary_linked_machines(&cgb_real_boot_session) {
+            Ok(_) => panic!("strict CGB real-boot should require the default CGB boot ROM asset"),
+            Err(error) => error,
+        };
+    assert!(matches!(
+        cgb_error,
+        LinkedSessionExecutionError::BootRomVerification { .. }
+    ));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

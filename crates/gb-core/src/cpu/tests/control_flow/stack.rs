@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn call_and_ret_use_bytewise_stack_transfers_in_order() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge =
         build_test_cartridge(&[0xCD, 0x08, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC9]);
 
@@ -87,8 +87,8 @@ fn call_and_ret_use_bytewise_stack_transfers_in_order() {
 
 #[test]
 fn push_and_pop_share_the_same_stack_byte_order_model() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xC5, 0xD1]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -142,8 +142,8 @@ fn push_and_pop_share_the_same_stack_byte_order_model() {
 fn pop_af_masks_the_low_flag_nibble_across_the_full_blargg_special_loop() {
     for high in u8::MIN..=u8::MAX {
         for low in u8::MIN..=u8::MAX {
-            let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-            let mut bus = Bus::new(ConsoleModel::Dmg);
+            let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+            let mut bus = Bus::new(ConsoleModel::GameBoy);
             let mut cartridge = build_test_cartridge(&[0xC5, 0xF1, 0xF5, 0xD1]);
 
             cpu.apply_startup_state(CpuStartupState {

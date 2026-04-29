@@ -509,7 +509,7 @@ mod tests {
 
     fn test_machine() -> Machine {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(&[0x00]))
@@ -519,7 +519,7 @@ mod tests {
 
     fn test_machine_with_rom(rom: Vec<u8>) -> Machine {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg)
+            MachineConfig::new(ConsoleModel::GameBoy)
                 .with_startup_mode(StartupMode::SkipBoot)
                 .with_execution_mode(ExecutionMode::Permissive),
         );
@@ -799,7 +799,8 @@ mod tests {
     fn rewind_one_reports_empty_and_preserves_buffer_on_restore_failure() {
         let source = test_machine();
         let mut target = Machine::new(
-            MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoyPocket)
+                .with_startup_mode(StartupMode::SkipBoot),
         );
         let before = target.capture_save_state();
         let mut empty_buffer = MachineRewindBuffer::default();
@@ -831,7 +832,8 @@ mod tests {
     fn rewind_restore_error_exposes_wrapped_save_state_error() {
         let source = test_machine();
         let mut target = Machine::new(
-            MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoyPocket)
+                .with_startup_mode(StartupMode::SkipBoot),
         );
         let mut buffer = MachineRewindBuffer::default();
 

@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn skip_boot_exposes_the_published_post_boot_audio_readback() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     let cases = [
@@ -53,7 +53,7 @@ fn skip_boot_exposes_the_published_post_boot_audio_readback() {
 #[test]
 fn nr52_power_off_clears_audio_registers_but_preserves_wave_ram_through_the_machine_bus() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF30, 0x12);
@@ -88,7 +88,7 @@ fn nr52_power_off_clears_audio_registers_but_preserves_wave_ram_through_the_mach
 #[test]
 fn channel_3_wave_ram_survives_nr52_power_off_after_the_channel_has_been_started() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF30, 0x12);
@@ -112,7 +112,7 @@ fn channel_3_wave_ram_survives_nr52_power_off_after_the_channel_has_been_started
 #[test]
 fn nr52_channel_status_follows_trigger_and_dac_disable_through_the_machine_bus() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);

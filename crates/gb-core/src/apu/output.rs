@@ -106,8 +106,10 @@ impl ApuStereoOutputSnapshot {
 impl HpfChargeModel {
     const fn for_console_model(console_model: ConsoleModel) -> Self {
         match console_model {
-            ConsoleModel::Dmg0 | ConsoleModel::Dmg => Self::Dmg0Dmg,
-            ConsoleModel::Mgb | ConsoleModel::Cgb => Self::MgbCgb,
+            ConsoleModel::GameBoy => Self::Dmg0Dmg,
+            ConsoleModel::GameBoyPocket
+            | ConsoleModel::GameBoyLight
+            | ConsoleModel::GameBoyColor => Self::MgbCgb,
         }
     }
 

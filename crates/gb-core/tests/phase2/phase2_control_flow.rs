@@ -11,7 +11,7 @@ fn phase_2_control_flow_stack_cb_rom_fixture_matches_expected_trace_and_state() 
     let mut machine = load_fixture_machine(
         CONTROL_FLOW_STACK_CB_ROM_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
     );
 
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);

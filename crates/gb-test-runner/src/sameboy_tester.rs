@@ -375,8 +375,10 @@ fn remove_if_present(path: &Path) -> Result<(), SameBoyTesterExecutionError> {
 
 fn model_flag(case: &crate::RomTestCase) -> Result<&'static str, SameBoyTesterExecutionError> {
     match case.console_model {
-        ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => Ok("--dmg"),
-        ConsoleModel::Cgb => Ok("--cgb"),
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            Ok("--dmg")
+        }
+        ConsoleModel::GameBoyColor => Ok("--cgb"),
     }
 }
 
@@ -691,7 +693,7 @@ mod tests {
                     PassCondition::FramebufferFixture(PathBuf::from("unused")),
                 )
                 .with_external_rom_root_key("TEST_ROOT")
-                .with_console_model(ConsoleModel::Mgb)
+                .with_console_model(ConsoleModel::GameBoyPocket)
                 .with_startup_mode(StartupMode::RealBoot),
             );
         let report = SameBoyTesterRunner::new(&oracle_root)

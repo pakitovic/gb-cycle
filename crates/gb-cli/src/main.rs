@@ -35,7 +35,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  gb-cli run <rom> [options]\n",
     "\n",
     "Options:\n",
-    "  --model <dmg0|dmg|mgb>                 Select the DMG-family startup model (default: dmg)\n",
+    "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy; legacy: dmg0,dmg,mgb,cgb)\n",
     "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -94,34 +94,46 @@ enum BootRomVerificationMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum RunModel {
-    Dmg0,
     #[default]
+    GameBoy,
+    GameBoyPocket,
+    GameBoyLight,
+    GameBoyColor,
+    Dmg0,
     Dmg,
     Mgb,
+    Cgb,
 }
 
 impl RunModel {
     fn console_model(self) -> ConsoleModel {
         match self {
-            Self::Dmg0 => ConsoleModel::Dmg0,
-            Self::Dmg => ConsoleModel::Dmg,
-            Self::Mgb => ConsoleModel::Mgb,
+            Self::GameBoy | Self::Dmg0 | Self::Dmg => ConsoleModel::GameBoy,
+            Self::GameBoyPocket | Self::Mgb => ConsoleModel::GameBoyPocket,
+            Self::GameBoyLight => ConsoleModel::GameBoyLight,
+            Self::GameBoyColor | Self::Cgb => ConsoleModel::GameBoyColor,
         }
     }
 
     fn boot_rom_kind(self) -> BootRomKind {
         match self {
+            Self::GameBoy | Self::Dmg => BootRomKind::Dmg,
             Self::Dmg0 => BootRomKind::Dmg0,
-            Self::Dmg => BootRomKind::Dmg,
-            Self::Mgb => BootRomKind::Mgb,
+            Self::GameBoyPocket | Self::GameBoyLight | Self::Mgb => BootRomKind::Mgb,
+            Self::GameBoyColor | Self::Cgb => BootRomKind::Cgb,
         }
     }
 
     fn name(self) -> &'static str {
         match self {
+            Self::GameBoy => "game-boy",
+            Self::GameBoyPocket => "pocket",
+            Self::GameBoyLight => "light",
+            Self::GameBoyColor => "color",
             Self::Dmg0 => "dmg0",
             Self::Dmg => "dmg",
             Self::Mgb => "mgb",
+            Self::Cgb => "cgb",
         }
     }
 }
@@ -383,7 +395,7 @@ fn general_help_text() -> &'static str {
         "  gb-cli saves <export|import> <rom> <save.sav> --save-dir <dir> [--save-key <key>]\n",
         "\n",
         "Commands:\n",
-        "  run         Execute one ROM with the DMG-family headless runner\n",
+        "  run         Execute one ROM with the headless runner\n",
         "  inspect-rom Parse the cartridge header and report mapper compatibility\n",
         "  saves       Convert gb-cycle .gbsav cartridge persistence to or from external .sav files\n",
         "\n",
@@ -738,6 +750,7 @@ fn run_command(
     let boot_rom_assets = load_boot_rom_assets(&options, &current_dir, stderr)?;
     let config = MachineConfig::new(options.model.console_model())
         .with_startup_mode(options.startup_mode)
+        .with_boot_rom_kind(options.model.boot_rom_kind())
         .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
         .with_boot_rom_assets(boot_rom_assets);
     let mut machine = CliMachine::new(config, options.trace_out.is_some());
@@ -1498,11 +1511,16 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
 
 fn parse_run_model(value: &str) -> Result<RunModel, String> {
     match value {
+        "game-boy" => Ok(RunModel::GameBoy),
+        "pocket" => Ok(RunModel::GameBoyPocket),
+        "light" => Ok(RunModel::GameBoyLight),
+        "color" => Ok(RunModel::GameBoyColor),
         "dmg0" => Ok(RunModel::Dmg0),
         "dmg" => Ok(RunModel::Dmg),
         "mgb" => Ok(RunModel::Mgb),
+        "cgb" => Ok(RunModel::Cgb),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: dmg0, dmg, mgb"
+            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color, dmg0, dmg, mgb, cgb"
         )),
     }
 }
@@ -1745,7 +1763,9 @@ fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
         BootRomKind::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
         BootRomKind::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
         BootRomKind::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
-        BootRomKind::Cgb => unreachable!("gb-cli currently exposes only DMG-family run models"),
+        BootRomKind::Cgb0 => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
+        BootRomKind::Cgb => "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7",
+        BootRomKind::CgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
     }
 }
 

@@ -135,6 +135,19 @@ pub enum CgbFlag {
     Unknown(u8),
 }
 
+impl CgbFlag {
+    pub const fn enables_cgb_native_mode(self) -> bool {
+        matches!(
+            self,
+            Self::Supported | Self::Only | Self::SupportedNonCanonical(_)
+        )
+    }
+
+    pub const fn is_cgb_only(self) -> bool {
+        matches!(self, Self::Only)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SgbFlag {
     None,

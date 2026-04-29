@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn decode_address_covers_each_dmg_region_boundary() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
     let cases = [
         (
             0x0000,
@@ -179,7 +179,7 @@ fn decode_address_covers_each_dmg_region_boundary() {
 
 #[test]
 fn io_contract_table_covers_ff00_ff7f_and_ie() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     for address in 0xFF00..=0xFF7F {
         assert!(
@@ -250,7 +250,7 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
 
 #[test]
 fn dmg_cgb_only_io_fallback_reads_as_ff() {
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF4D, BusIoReadView::default()), 0xFF);
@@ -259,7 +259,7 @@ fn dmg_cgb_only_io_fallback_reads_as_ff() {
 
 #[test]
 fn cgb_ready_stubbed_io_registers_still_read_as_ff_until_implemented() {
-    let bus = Bus::new(ConsoleModel::Cgb);
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
 
     assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
@@ -295,8 +295,8 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
 
 #[test]
 fn unusable_area_descriptor_is_model_aware() {
-    let dmg_bus = Bus::new(ConsoleModel::Dmg);
-    let cgb_bus = Bus::new(ConsoleModel::Cgb);
+    let dmg_bus = Bus::new(ConsoleModel::GameBoy);
+    let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
     let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();

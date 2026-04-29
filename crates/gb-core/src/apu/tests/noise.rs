@@ -3,7 +3,7 @@ use crate::apu::registers::Channel4Register;
 
 #[test]
 fn channel_4_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF21, 0x08);
@@ -21,7 +21,7 @@ fn channel_4_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
 
 #[test]
 fn channel_4_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF21, 0x08);
@@ -44,7 +44,7 @@ fn channel_4_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again()
 
 #[test]
 fn channel_4_delayed_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF21, 0x08);
@@ -64,7 +64,7 @@ fn channel_4_delayed_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
 
 #[test]
 fn channel_4_delayed_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF21, 0x08);
@@ -85,7 +85,7 @@ fn channel_4_delayed_retrigger_after_unfreezing_zero_length_does_not_extra_clock
 
 #[test]
 fn channel_4_delayed_trigger_still_fires_when_noise_clocking_is_suppressed() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0xF2);
     apu.write_register(0xFF22, 0xE0);
@@ -108,7 +108,7 @@ fn channel_4_delayed_trigger_still_fires_when_noise_clocking_is_suppressed() {
 
 #[test]
 fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0xF2);
     apu.write_register(0xFF22, 0x15);
@@ -127,7 +127,7 @@ fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
 
 #[test]
 fn channel_4_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0x00);
     apu.write_register(0xFF22, 0x15);
@@ -178,9 +178,9 @@ fn channel_4_trigger_uses_the_sameboy_guided_hidden_counter_start_state() {
     channel.nr43_live_write.alignment = 0;
     channel.nr43_live_write.noise_counter = 0x1234;
     channel.nr43_live_write.counter_timer = 0;
-    channel.write_register(Channel4Register::Nr42, 0xF0, ConsoleModel::Dmg, 0);
-    channel.write_register(Channel4Register::Nr43, 0x4C, ConsoleModel::Dmg, 0);
-    channel.write_register(Channel4Register::Nr44, 0x80, ConsoleModel::Dmg, 0);
+    channel.write_register(Channel4Register::Nr42, 0xF0, ConsoleModel::GameBoy, 0);
+    channel.write_register(Channel4Register::Nr43, 0x4C, ConsoleModel::GameBoy, 0);
+    channel.write_register(Channel4Register::Nr44, 0x80, ConsoleModel::GameBoy, 0);
 
     assert_eq!(channel.nr43_live_write.alignment, 0);
     assert_eq!(channel.nr43_live_write.noise_counter, 0x1234);
@@ -705,7 +705,7 @@ fn channel_4_high_shift_narrow_staircase_runs_through_explicit_pre_cgb_d_passes(
 
 #[test]
 fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0x12);
     apu.write_register(0xFF22, 0x00);
@@ -752,7 +752,7 @@ fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
 
 #[test]
 fn channel_4_envelope_clock_advances_while_the_channel_is_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0x11);
     apu.write_register(0xFF23, 0x80);
@@ -771,7 +771,7 @@ fn channel_4_envelope_clock_advances_while_the_channel_is_inactive() {
 
 #[test]
 fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0x08);
     apu.write_register(0xFF23, 0x80);
@@ -789,7 +789,7 @@ fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel()
 
 #[test]
 fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0x52);
     apu.write_register(0xFF23, 0x80);
@@ -848,7 +848,7 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silentl
 
 #[test]
 fn channel_4_retrigger_recovers_from_short_width_lockup_without_clearing_activity() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF21, 0xF0);
     apu.write_register(0xFF22, 0x08);

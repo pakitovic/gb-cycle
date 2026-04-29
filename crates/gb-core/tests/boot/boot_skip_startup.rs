@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     assert_eq!(machine.boot().boot_rom_kind(), BootRomKind::Dmg);
@@ -41,7 +41,7 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     assert_ne!(hram_seed, 0x00);
 
     let mut second_machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     assert_eq!(
         second_machine.boot().startup_memory_policy(),
@@ -54,10 +54,10 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
 #[test]
 fn skip_boot_recomputes_the_checksum_derived_f_register_when_a_cartridge_is_loaded() {
     let mut zero_checksum_machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let mut non_zero_checksum_machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     zero_checksum_machine

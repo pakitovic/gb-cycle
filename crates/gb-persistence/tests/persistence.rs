@@ -339,7 +339,7 @@ fn filesystem_backend_round_trips_mbc2_nibbles_and_cleans_temp_artifacts() {
 
 #[test]
 fn filesystem_backend_round_trips_mbc3_rtc_payload_and_exposes_saved_timestamp() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
     machine
         .load_cartridge(build_banked_mbc3_rom(0x10, 0x02, 0x03))
         .expect("MBC3 cartridge should load");

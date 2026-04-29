@@ -71,7 +71,7 @@ fn mode2_to_mode3_stat_probe_matches_mooneye_counts() {
 #[test]
 fn mode0_stat_request_can_precede_visible_hblank_while_vram_stays_blocked() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0x8000, 0x12);
@@ -118,7 +118,7 @@ fn mode0_stat_request_can_precede_visible_hblank_while_vram_stays_blocked() {
 #[test]
 fn entering_vblank_can_raise_vblank_and_mode1_stat_together() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x18, 0xFE], 0x00))

@@ -388,10 +388,10 @@ fn parse_subsystem(subsystem: &str) -> Result<TestSubsystem, String> {
 
 fn parse_console_model(console: &str, participant_id: &str) -> Result<ConsoleModel, String> {
     match console {
-        "dmg0" => Ok(ConsoleModel::Dmg0),
-        "dmg" => Ok(ConsoleModel::Dmg),
-        "mgb" => Ok(ConsoleModel::Mgb),
-        "cgb" => Ok(ConsoleModel::Cgb),
+        "game-boy" | "dmg0" | "dmg" => Ok(ConsoleModel::GameBoy),
+        "pocket" | "mgb" => Ok(ConsoleModel::GameBoyPocket),
+        "light" => Ok(ConsoleModel::GameBoyLight),
+        "color" | "cgb" => Ok(ConsoleModel::GameBoyColor),
         other => Err(format!(
             "participant {participant_id} uses unsupported console {other:?}"
         )),

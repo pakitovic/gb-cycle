@@ -6,6 +6,8 @@ subsystem = "CrossSubsystem"
 [[case]]
 id = "daid-ppu-scanline-bgp"
 rom = "ppu_scanline_bgp.gb"
+console = "dmg"
+report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture-set"
 fixtures = [
@@ -17,6 +19,8 @@ fixtures = [
 [[case]]
 id = "daid-stop-instr"
 rom = "stop_instr.gb"
+console = "dmg"
+report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr.dmg.png"

@@ -138,7 +138,7 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
     ];
 
     for (opcode, kind, step) in cases {
-        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
         cpu.in_flight.opcode = Some(opcode);
         cpu.in_flight.kind = Some(kind);
         cpu.execution_state = CpuExecutionState::Execute { step, t_cycle: 0 };
@@ -155,7 +155,7 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
     }
 
     for step in [1_u8, 2, 3] {
-        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
         cpu.in_flight.opcode = Some(0xCB);
         cpu.in_flight.kind = Some(CpuInstructionKind::CbPrefixed);
         cpu.execution_state = CpuExecutionState::Execute { step, t_cycle: 0 };
@@ -172,7 +172,7 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
         );
     }
 
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     cpu.complete_interrupt_service_machine_cycle(InterruptSource::Serial, 5, &mut |_| None);
     assert_eq!(
         cpu.execution_state,
@@ -186,7 +186,7 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
 
 #[test]
 fn startup_state_resets_live_registers_and_fetch_state() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     let startup_state = CpuStartupState {
         a: 0x01,
         f: 0xB0,
@@ -219,7 +219,7 @@ fn startup_state_resets_live_registers_and_fetch_state() {
 
 #[test]
 fn snapshot_derives_current_opcode_from_the_in_flight_instruction_record() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
 
     cpu.in_flight.opcode = Some(0xCB);
     cpu.in_flight.kind = Some(CpuInstructionKind::CbPrefixed);

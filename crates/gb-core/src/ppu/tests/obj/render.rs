@@ -19,7 +19,7 @@ fn obj_priority_prefers_lower_x_before_oam_order() {
 
 #[test]
 fn previsible_left_edge_obj_push_keeps_negative_screen_pixels_until_hidden_dots_consume_them() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.bg_pipeline_state.current_transfer_x = 6;
@@ -49,7 +49,7 @@ fn previsible_left_edge_obj_push_keeps_negative_screen_pixels_until_hidden_dots_
 
 #[test]
 fn previsible_left_edge_obj_push_with_scx_discard_keeps_the_raw_hidden_prefix() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.bg_pipeline_state.current_transfer_x = 4;

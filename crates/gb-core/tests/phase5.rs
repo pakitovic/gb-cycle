@@ -14,7 +14,7 @@ const SERIAL_EXTERNAL_CLOCK_TRACE_NAME: &str = "phase5_serial_external_clock_pro
 #[test]
 fn phase_5_joypad_stop_wake_and_irq_trace_fixture_matches() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -43,7 +43,7 @@ fn phase_5_joypad_stop_wake_and_irq_trace_fixture_matches() {
 #[test]
 fn phase_5_serial_external_clock_progress_trace_fixture_matches() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);

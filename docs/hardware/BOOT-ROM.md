@@ -8,21 +8,34 @@ Own boot ROM assets, boot-ROM enable/disable state, power-up sequencing, direct-
 
 Distinguish clearly between running through boot ROM code and starting from an already initialized state. DMG and CGB must not share assumed initial state without evidence.
 
-Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` into one generic startup model if observable differences matter. For DMG-family support, prefer one shared hardware core with different boot ROM images rather than separate emulator implementations per model. When CGB support arrives, treat its boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes. The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses. Real boot should start CPU execution at `0x0000` with the internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. Skip-boot should be a separate explicit initialization path rather than a partially executed or silently shortened boot ROM flow.
+Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` firmware-visible differences into one generic startup profile if observable differences matter. The public `ConsoleModel` axis names the visible product model (`GameBoy`, `GameBoyPocket`, `GameBoyLight`, `GameBoyColor`), while `BootRomKind` names the concrete firmware image selected for `RealBoot` (`Dmg0`, `Dmg`, `Mgb`, `Cgb0`, `Cgb`, `CgbE`). For DMG-family support, prefer one shared hardware core with product-level skip-boot profiles and explicit boot ROM images rather than separate emulator implementations per model. Treat the CGB boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes. The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses. Real boot should start CPU execution at `0x0000` with the selected internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. Skip-boot should be a separate explicit initialization path rather than a partially executed or silently shortened boot ROM flow, and it should never require a boot ROM asset.
 
 ## Responsibilities
 
 - select between explicit real-boot and skip-boot startup modes
 - boot ROM enable/disable behavior
 - boot ROM mapping policy and state exposed to the bus
-- boot ROM kind selection for the active console model
-- model-specific initial register and memory state
+- boot ROM kind selection as an explicit `RealBoot` firmware axis
+- product-specific skip-boot initial register and memory state
 - revision-aware startup configuration
 - DMG-family differentiation where boot ROM or startup-visible behavior differs
 - configurable boot ROM source selection
 - direct-boot configuration for tests and tooling
 - future CGB boot ROM mapping and compatibility-mode entry rules
 - boot-time selection of the future `OperatingMode` for CGB-family hardware based on cartridge compatibility information
+
+## Product and firmware profiles
+
+`ConsoleModel` is the visible console product exposed to frontends and persisted settings. CPU hardware revision strings remain documentation only for now and must not gate behavior until a tested hardware difference requires it. `BootRomKind` is the selected firmware image for `RealBoot`; if the selected firmware is not valid for the current product model, frontends and configuration loaders normalize it back to the model default.
+
+| ConsoleModel | Default BootRomKind | Allowed BootRomKind values | SkipBoot profile |
+|---|---|---|---|
+| `GameBoy` | `Dmg` | `Dmg0`, `Dmg` | standard DMG post-boot profile |
+| `GameBoyPocket` | `Mgb` | `Mgb` | MGB post-boot profile |
+| `GameBoyLight` | `Mgb` | `Mgb` | MGB post-boot profile with a distinct desktop display palette |
+| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` | CGB synthetic post-boot profile |
+
+Informative hardware-profile defaults for the current product rows are `DMG-CPU B` with `dmg_boot.bin` for `GameBoy`, `CPU MGB` with `mgb_boot.bin` for `GameBoyPocket` and `GameBoyLight`, and `CPU CGB C` with `cgb_boot.bin` for `GameBoyColor`. These revision names are not represented as functional enums yet.
 
 ## Registers / MMIO
 
@@ -195,7 +208,7 @@ Priority order:
 - Boot ROM loading should be configurable so the emulator can use real dumps, custom firmware, or no boot ROM at all.
 - A dedicated `BootRom` component with bytes, selected kind, and mapped/unmapped state is the intended baseline.
 - Keep boot-ROM asset ownership and boot enable/disable state in the boot subsystem even if the bus performs the actual address routing.
-- Keep boot-ROM asset selection model-aware too: DMG-family models may keep their `0x100`-byte images, but `ConsoleModel::Cgb` should select an explicit `CGB` boot image kind rather than aliasing to `DMG`.
+- Keep boot-ROM asset selection model-aware too: DMG-family models may keep their `0x100`-byte images, but `ConsoleModel::GameBoyColor` should select an explicit `CGB` boot image kind rather than aliasing to `DMG`.
 - Keep real-boot and skip-boot as explicit modes such as `RealBoot` and `SkipBoot`; the rest of the emulator should see only the resulting machine state and bus mapping.
 - A `SkipBoot` or equivalent explicit direct-boot mode is useful for tests, tooling, and differential validation, but it must remain distinct from verified boot ROM execution.
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.

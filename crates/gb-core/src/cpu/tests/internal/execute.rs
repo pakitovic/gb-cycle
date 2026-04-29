@@ -3,7 +3,7 @@ use crate::cpu::decode::FetchCompletionKind;
 
 #[test]
 fn execute_without_instruction_kind_restalls_last_machine_cycle() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
 
     cpu.complete_execute_machine_cycle(2, &mut |_| None);
 
