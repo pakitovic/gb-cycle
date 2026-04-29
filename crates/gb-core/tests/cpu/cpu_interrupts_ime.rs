@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn pending_irq_stays_visible_when_ime_is_disabled() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -27,7 +27,7 @@ fn pending_irq_stays_visible_when_ime_is_disabled() {
 #[test]
 fn machine_accepts_the_highest_priority_pending_irq_after_ei_nop() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -76,7 +76,7 @@ fn machine_accepts_the_highest_priority_pending_irq_after_ei_nop() {
 #[test]
 fn machine_accepts_a_pending_irq_after_ei_followed_by_ei() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -121,7 +121,7 @@ fn machine_accepts_a_pending_irq_after_ei_followed_by_ei() {
 #[test]
 fn machine_keeps_interrupts_blocked_for_ei_di() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -155,7 +155,7 @@ fn machine_keeps_interrupts_blocked_for_ei_di() {
 #[test]
 fn reti_reenables_interrupts_and_allows_a_remaining_pending_source_to_service() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -208,7 +208,7 @@ fn reti_reenables_interrupts_and_allows_a_remaining_pending_source_to_service() 
 #[test]
 fn interrupt_service_cancels_when_the_high_pc_byte_push_disables_the_last_pending_interrupt() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -250,7 +250,7 @@ fn interrupt_service_cancels_when_the_high_pc_byte_push_disables_the_last_pendin
 #[test]
 fn interrupt_service_retargets_when_the_high_pc_byte_push_changes_ie_priority() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -301,7 +301,7 @@ fn interrupt_service_retargets_when_the_high_pc_byte_push_changes_ie_priority() 
 #[test]
 fn interrupt_service_does_not_cancel_when_the_low_pc_byte_push_disables_ie_too_late() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

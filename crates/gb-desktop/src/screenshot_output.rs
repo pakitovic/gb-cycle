@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn render_screenshot_uses_same_dmg_grayscale_ramp_as_desktop_presentation() {
+    fn render_screenshot_uses_same_dmg_display_palette_as_desktop_presentation() {
         let mut primary =
             vec![0_u8; (crate::FRAMEBUFFER_WIDTH * crate::FRAMEBUFFER_HEIGHT) as usize];
         let primary_sources = vec![PpuFramebufferLayerSource::Background; primary.len()];
@@ -190,6 +190,7 @@ mod tests {
                 bgwin_framebuffer: &primary,
                 backdrop_framebuffer: &primary,
                 bgwin_framebuffer_layer_sources: &primary_sources,
+                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
             }),
             &crate::VideoOptions::default(),
         );
@@ -198,7 +199,9 @@ mod tests {
         assert_eq!(rendered.height, crate::FRAMEBUFFER_HEIGHT);
         assert_eq!(
             &rendered.rgb_pixels[..12],
-            &[255, 255, 255, 170, 170, 170, 85, 85, 85, 0, 0, 0]
+            &[
+                0xC6, 0xDE, 0x8C, 0x84, 0xA5, 0x63, 0x39, 0x61, 0x39, 0x08, 0x18, 0x10,
+            ]
         );
     }
 
@@ -222,6 +225,7 @@ mod tests {
                         bgwin_framebuffer: &primary,
                         backdrop_framebuffer: &primary,
                         bgwin_framebuffer_layer_sources: &primary_sources,
+                        display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     Some(crate::FramebufferPanelInput {
                         framebuffer: &secondary,
@@ -229,6 +233,7 @@ mod tests {
                         bgwin_framebuffer: &secondary,
                         backdrop_framebuffer: &secondary,
                         bgwin_framebuffer_layer_sources: &secondary_sources,
+                        display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -242,8 +247,11 @@ mod tests {
 
         assert_eq!(rendered.width, crate::FRAMEBUFFER_WIDTH * 2);
         assert_eq!(rendered.height, crate::FRAMEBUFFER_HEIGHT);
-        assert_eq!(left_pixel, &[255, 255, 255]);
-        assert_eq!(right_pixel, &[0, 0, 0]);
+        assert_eq!(left_pixel, &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
+        assert_eq!(
+            right_pixel,
+            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+        );
         assert_eq!(rendered.rgb_pixels.len(), rendered.height as usize * pitch);
     }
 
@@ -400,11 +408,15 @@ mod tests {
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_bgwin,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
+                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
             }),
             &video_options,
         );
 
-        assert_eq!(&rendered.rgb_pixels[..3], &[170, 170, 170]);
+        assert_eq!(
+            &rendered.rgb_pixels[..3],
+            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+        );
     }
 
     #[test]
@@ -431,12 +443,22 @@ mod tests {
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_backdrop,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
+                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
             }),
             &video_options,
         );
 
-        assert_eq!(&rendered.rgb_pixels[..3], &[170, 170, 170]);
-        assert_eq!(&rendered.rgb_pixels[3..6], &[0, 0, 0]);
-        assert_eq!(&rendered.rgb_pixels[6..9], &[85, 85, 85]);
+        assert_eq!(
+            &rendered.rgb_pixels[..3],
+            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+        );
+        assert_eq!(
+            &rendered.rgb_pixels[3..6],
+            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+        );
+        assert_eq!(
+            &rendered.rgb_pixels[6..9],
+            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
+        );
     }
 }

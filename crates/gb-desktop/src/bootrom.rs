@@ -1,5 +1,5 @@
 use gb_core::{BootRomAssets, BootRomKind, StartupMode};
-use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConsoleModel};
+use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
@@ -10,7 +10,7 @@ const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 pub fn load_boot_rom_assets(
     search_path: Option<&Path>,
     verification_mode: BootRomVerificationMode,
-    console_model: DesktopConsoleModel,
+    boot_rom_kind: BootRomKind,
     startup_mode: StartupMode,
     current_dir: &Path,
 ) -> Result<BootRomAssets, String> {
@@ -19,7 +19,7 @@ pub fn load_boot_rom_assets(
     }
 
     let source = resolve_boot_rom_source(search_path, current_dir);
-    let kind = console_model.boot_rom_kind();
+    let kind = boot_rom_kind;
     let image_path = boot_rom_image_path(&source, kind);
     match verification_mode {
         BootRomVerificationMode::Off => {}
@@ -51,11 +51,11 @@ pub fn load_boot_rom_assets(
 
 pub fn missing_boot_rom_asset_path(
     search_path: Option<&Path>,
-    console_model: DesktopConsoleModel,
+    boot_rom_kind: BootRomKind,
     current_dir: &Path,
 ) -> Result<Option<PathBuf>, String> {
     let source = resolve_boot_rom_source(search_path, current_dir);
-    let kind = console_model.boot_rom_kind();
+    let kind = boot_rom_kind;
 
     if !path_exists(&source)? {
         return Ok(Some(source));
@@ -157,9 +157,9 @@ fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
         BootRomKind::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
         BootRomKind::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
         BootRomKind::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
-        BootRomKind::Cgb => {
-            unreachable!("gb-desktop currently exposes only DMG-family boot ROM selection")
-        }
+        BootRomKind::Cgb0 => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
+        BootRomKind::Cgb => "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7",
+        BootRomKind::CgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
     }
 }
 
@@ -177,7 +177,7 @@ mod tests {
         resolve_boot_rom_source, resolve_path, sha256_hex, verify_boot_rom_file,
     };
     use gb_core::{BootRomAssets, BootRomKind, StartupMode};
-    use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConsoleModel};
+    use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR};
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn sha_and_expected_sha_helpers_cover_all_supported_dmg_family_kinds() {
+    fn sha_and_expected_sha_helpers_cover_all_supported_boot_rom_kinds() {
         assert_eq!(
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -257,12 +257,9 @@ mod tests {
         assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg0).len(), 64);
         assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg).len(), 64);
         assert_eq!(expected_boot_rom_sha256(BootRomKind::Mgb).len(), 64);
-    }
-
-    #[test]
-    #[should_panic(expected = "gb-desktop currently exposes only DMG-family boot ROM selection")]
-    fn expected_boot_rom_sha256_rejects_cgb_kind_in_the_dmg_only_desktop_surface() {
-        let _ = expected_boot_rom_sha256(BootRomKind::Cgb);
+        assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb0).len(), 64);
+        assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb).len(), 64);
+        assert_eq!(expected_boot_rom_sha256(BootRomKind::CgbE).len(), 64);
     }
 
     #[test]
@@ -326,7 +323,7 @@ mod tests {
         let assets = load_boot_rom_assets(
             Some(&directory),
             BootRomVerificationMode::Off,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -351,7 +348,7 @@ mod tests {
         let error = load_boot_rom_assets(
             Some(&directory),
             BootRomVerificationMode::Off,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -381,7 +378,7 @@ mod tests {
         let skip_boot = load_boot_rom_assets(
             Some(&image_path),
             BootRomVerificationMode::Strict,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::SkipBoot,
             Path::new("/unused"),
         )
@@ -391,7 +388,7 @@ mod tests {
         let off = load_boot_rom_assets(
             Some(&image_path),
             BootRomVerificationMode::Off,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -401,7 +398,7 @@ mod tests {
         let warn = load_boot_rom_assets(
             Some(&image_path),
             BootRomVerificationMode::Warn,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -411,7 +408,7 @@ mod tests {
         let strict = load_boot_rom_assets(
             Some(&image_path),
             BootRomVerificationMode::Strict,
-            DesktopConsoleModel::Dmg,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -426,7 +423,7 @@ mod tests {
         let assets = load_boot_rom_assets(
             Some(Path::new("/definitely/missing/bootrom")),
             BootRomVerificationMode::Off,
-            DesktopConsoleModel::Dmg0,
+            BootRomKind::Dmg,
             StartupMode::RealBoot,
             Path::new("/unused"),
         )
@@ -441,23 +438,15 @@ mod tests {
         let exact_file = root.join("mgb_boot.bin");
 
         assert_eq!(
-            missing_boot_rom_asset_path(
-                Some(&exact_file),
-                DesktopConsoleModel::Mgb,
-                Path::new("/unused"),
-            )
-            .expect("missing exact files should resolve cleanly"),
+            missing_boot_rom_asset_path(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
+                .expect("missing exact files should resolve cleanly"),
             Some(exact_file.clone())
         );
 
         write_boot_rom_image(&exact_file, 0x33);
         assert_eq!(
-            missing_boot_rom_asset_path(
-                Some(&exact_file),
-                DesktopConsoleModel::Mgb,
-                Path::new("/unused"),
-            )
-            .expect("existing exact files should not trigger fallback"),
+            missing_boot_rom_asset_path(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
+                .expect("existing exact files should not trigger fallback"),
             None
         );
 
@@ -475,21 +464,13 @@ mod tests {
         );
 
         assert_eq!(
-            missing_boot_rom_asset_path(
-                Some(&directory),
-                DesktopConsoleModel::Dmg,
-                Path::new("/unused"),
-            )
-            .expect("present active-model image should not trigger fallback"),
+            missing_boot_rom_asset_path(Some(&directory), BootRomKind::Dmg, Path::new("/unused"),)
+                .expect("present active-model image should not trigger fallback"),
             None
         );
         assert_eq!(
-            missing_boot_rom_asset_path(
-                Some(&directory),
-                DesktopConsoleModel::Mgb,
-                Path::new("/unused"),
-            )
-            .expect("missing active-model image should surface the expected path"),
+            missing_boot_rom_asset_path(Some(&directory), BootRomKind::Mgb, Path::new("/unused"),)
+                .expect("missing active-model image should surface the expected path"),
             Some(directory.join(BootRomAssets::filename(BootRomKind::Mgb)))
         );
 
@@ -503,7 +484,7 @@ mod tests {
         assert_eq!(
             missing_boot_rom_asset_path(
                 Some(&missing_directory),
-                DesktopConsoleModel::Dmg0,
+                BootRomKind::Dmg,
                 Path::new("/unused"),
             )
             .expect("missing directory roots should resolve cleanly"),

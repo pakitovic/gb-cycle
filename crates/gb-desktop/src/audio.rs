@@ -627,8 +627,9 @@ mod tests {
     fn desktop_audio_output_scales_queues_and_clears_captured_samples() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
         output.pause().expect("pause");
 
         push_captured_sample(
@@ -717,8 +718,9 @@ mod tests {
     fn desktop_audio_output_can_disable_automatic_oversized_queue_clears() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
         output.pause().expect("pause");
         output.auto_queue_clear_enabled = false;
         output.max_queued_bytes = -1;
@@ -744,8 +746,9 @@ mod tests {
     fn desktop_audio_output_controls_pause_volume_and_buffer_reset() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
 
         assert!(!output.is_muted());
         assert!(
@@ -759,13 +762,13 @@ mod tests {
         assert!(!output.stream.device_paused().expect("device_paused"));
         output.pause().expect("pause");
 
-        output.capture_t_cycle(&Apu::new(ConsoleModel::Dmg));
+        output.capture_t_cycle(&Apu::new(ConsoleModel::GameBoy));
         output
             .submit_captured_samples()
             .expect("empty submit_captured_samples");
         assert!(output.captured_samples.is_empty());
 
-        let silent_apu = Apu::new(ConsoleModel::Dmg);
+        let silent_apu = Apu::new(ConsoleModel::GameBoy);
         while output.capture.pending_sample_count() == 0 {
             output.capture_t_cycle(&silent_apu);
         }
@@ -821,8 +824,9 @@ mod tests {
     fn desktop_audio_output_channel_masks_reset_host_capture_and_follow_console_model() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
         output.pause().expect("pause");
 
         let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
@@ -838,7 +842,7 @@ mod tests {
         assert_eq!(output.channel_mask, subset_mask);
         assert!(output.masked_mix_hpf.is_some());
 
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
         while output.capture.pending_sample_count() == 0 {
             output.capture_t_cycle(&apu);
@@ -849,17 +853,17 @@ mod tests {
         assert!(!output.interleaved_buffer.is_empty());
 
         output
-            .reset_for_session_swap(ConsoleModel::Mgb)
+            .reset_for_session_swap(ConsoleModel::GameBoyPocket)
             .expect("console model changes should reset the masked capture");
-        assert_eq!(output.console_model, ConsoleModel::Mgb);
+        assert_eq!(output.console_model, ConsoleModel::GameBoyPocket);
         assert!(output.masked_mix_hpf.is_some());
         assert!(output.captured_samples.is_empty());
         assert!(output.interleaved_buffer.is_empty());
 
         output
-            .reset_for_session_swap(ConsoleModel::Mgb)
+            .reset_for_session_swap(ConsoleModel::GameBoyPocket)
             .expect("same-model session swaps should still clear buffered audio");
-        assert_eq!(output.console_model, ConsoleModel::Mgb);
+        assert_eq!(output.console_model, ConsoleModel::GameBoyPocket);
 
         output
             .set_channel_mask(ApuRecordedChannelMask::ALL)
@@ -872,8 +876,9 @@ mod tests {
     fn session_swaps_clear_audio_output_even_when_the_console_model_stays_the_same() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
         output.pause().expect("pause");
 
         let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
@@ -881,7 +886,7 @@ mod tests {
             .set_channel_mask(subset_mask)
             .expect("subset channel mask should update");
 
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         configure_constant_ch1_output(&mut apu);
         while output.capture.pending_sample_count() == 0 {
             output.capture_t_cycle(&apu);
@@ -892,9 +897,9 @@ mod tests {
         assert!(!output.interleaved_buffer.is_empty());
 
         output
-            .reset_for_session_swap(ConsoleModel::Dmg)
+            .reset_for_session_swap(ConsoleModel::GameBoy)
             .expect("session swaps should clear buffered audio even when the model is unchanged");
-        assert_eq!(output.console_model, ConsoleModel::Dmg);
+        assert_eq!(output.console_model, ConsoleModel::GameBoy);
         assert!(output.captured_samples.is_empty());
         assert!(output.interleaved_buffer.is_empty());
         assert!(output.masked_mix_hpf.is_some());
@@ -977,8 +982,9 @@ mod tests {
 
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
-            .expect("audio output");
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
         output.output_sample_rate_hz = 0;
         assert_eq!(output.queued_duration_ms(), None);
         assert_eq!(output.sample_frames_duration_ms(1), None);

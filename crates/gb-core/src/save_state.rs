@@ -258,7 +258,8 @@ mod tests {
 
     fn machine_with_cartridge(cartridge_type: u8, rom_size: u8, ram_size: u8) -> crate::Machine {
         let mut machine = crate::Machine::new(
-            crate::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            crate::MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_banked_test_rom(cartridge_type, rom_size, ram_size))
@@ -315,8 +316,8 @@ mod tests {
         let errors = [
             (
                 MachineSaveStateRestoreError::ConsoleModelMismatch {
-                    expected: ConsoleModel::Dmg,
-                    actual: ConsoleModel::Mgb,
+                    expected: ConsoleModel::GameBoy,
+                    actual: ConsoleModel::GameBoyPocket,
                 },
                 "console model mismatch",
             ),
@@ -383,7 +384,8 @@ mod tests {
     #[test]
     fn machine_save_state_metadata_accessor_returns_the_core_contract() {
         let state = crate::Machine::new_summary(
-            crate::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            crate::MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot),
         )
         .capture_save_state();
         let metadata = state.metadata().clone();

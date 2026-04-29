@@ -110,7 +110,7 @@ fn render_printed_page_fixture(page: &PrintedPage) -> String {
 #[test]
 fn printer_attachment_supports_the_documented_detection_sequence() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
 
@@ -124,7 +124,7 @@ fn printer_attachment_supports_the_documented_detection_sequence() {
 #[test]
 fn printer_attachment_produces_a_typed_printed_page() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
 
@@ -141,7 +141,7 @@ fn printer_attachment_produces_a_typed_printed_page() {
 #[test]
 fn printer_typed_page_fixture_matches_the_golden_output() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
 

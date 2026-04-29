@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn channel_3_trigger_preserves_the_buffered_sample_until_the_next_wave_fetch() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.channels.channel_3.wave_ram[0] = 0x12;
     apu.channels.channel_3.wave_ram[1] = 0x34;
@@ -35,7 +35,7 @@ fn channel_3_trigger_preserves_the_buffered_sample_until_the_next_wave_fetch() {
 
 #[test]
 fn channel_3_period_writes_take_effect_only_after_the_next_wave_fetch_boundary() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.channels.channel_3.wave_ram[0] = 0x12;
 
@@ -75,7 +75,7 @@ fn channel_3_period_writes_take_effect_only_after_the_next_wave_fetch_boundary()
 
 #[test]
 fn channel_3_output_level_applies_immediate_digital_attenuation_without_disabling_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
     apu.channels.channel_3.runtime.active = true;
@@ -98,7 +98,7 @@ fn channel_3_output_level_applies_immediate_digital_attenuation_without_disablin
 
 #[test]
 fn channel_3_fast_timer_advances_sample_state_while_the_channel_is_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.channels.channel_3.wave_ram[0] = 0x12;
     apu.write_register(0xFF1A, 0x80);
@@ -122,7 +122,7 @@ fn channel_3_fast_timer_advances_sample_state_while_the_channel_is_inactive() {
 
 #[test]
 fn channel_3_trigger_reloads_timer_and_index_but_does_not_activate_while_the_dac_is_off() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x00);
     apu.write_register(0xFF1D, 0xAB);
@@ -145,7 +145,7 @@ fn channel_3_trigger_reloads_timer_and_index_but_does_not_activate_while_the_dac
 
 #[test]
 fn active_channel_3_wave_ram_reads_return_ff_outside_the_dmg_fetch_window() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
     apu.channels.channel_3.runtime.active = true;
@@ -158,7 +158,7 @@ fn active_channel_3_wave_ram_reads_return_ff_outside_the_dmg_fetch_window() {
 
 #[test]
 fn active_channel_3_wave_ram_writes_are_ignored_outside_the_dmg_fetch_window() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
     apu.channels.channel_3.runtime.active = true;
@@ -173,7 +173,7 @@ fn active_channel_3_wave_ram_writes_are_ignored_outside_the_dmg_fetch_window() {
 
 #[test]
 fn dmg_channel_3_wave_ram_access_uses_the_internal_byte_only_during_the_fetch_window() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
     apu.write_register(0xFF1C, 0x20);
@@ -203,7 +203,7 @@ fn dmg_channel_3_wave_ram_access_uses_the_internal_byte_only_during_the_fetch_wi
 
 #[test]
 fn cgb_channel_3_wave_ram_remains_addressable_while_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Cgb);
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
     apu.channels.channel_3.wave_ram[0] = 0x12;
@@ -220,7 +220,7 @@ fn cgb_channel_3_wave_ram_remains_addressable_while_inactive() {
 
 #[test]
 fn observed_register_write_captures_channel_3_dac_disable_before_and_after_state() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, NR30_DAC_POWER_BIT);
     apu.write_register(0xFF1C, 0x20);
@@ -287,7 +287,7 @@ fn dmg_channel_3_retrigger_corrupts_wave_ram_byte_zero_two_t_cycles_before_the_n
     channel.sample_index = 1;
     channel.period_timer = 2;
 
-    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::Dmg, 0);
+    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::GameBoy, 0);
 
     assert_eq!(channel.wave_ram[0], 0x11);
     assert_eq!(channel.wave_ram[1], 0x11);
@@ -305,7 +305,7 @@ fn dmg_channel_3_retrigger_corrupts_wave_ram_from_the_next_aligned_four_byte_blo
     channel.sample_index = 7;
     channel.period_timer = 2;
 
-    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::Dmg, 0);
+    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::GameBoy, 0);
 
     assert_eq!(channel.wave_ram[0], 0x44);
     assert_eq!(channel.wave_ram[1], 0x55);
@@ -323,7 +323,7 @@ fn channel_3_retrigger_corruption_is_gated_to_dmg_family_behavior() {
     channel.sample_index = 7;
     channel.period_timer = 2;
 
-    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::Cgb, 0);
+    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::GameBoyColor, 0);
 
     assert_eq!(
         channel.wave_ram,
@@ -344,7 +344,7 @@ fn dmg_channel_3_retrigger_corruption_requires_the_two_t_cycle_window() {
     channel.sample_index = 7;
     channel.period_timer = 1;
 
-    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::Dmg, 0);
+    channel.write_nr34(CHANNEL_TRIGGER_BIT, ConsoleModel::GameBoy, 0);
 
     assert_eq!(
         channel.wave_ram,
@@ -357,7 +357,7 @@ fn dmg_channel_3_retrigger_corruption_requires_the_two_t_cycle_window() {
 
 #[test]
 fn channel_3_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
     apu.write_register(0xFF1A, 0x80);

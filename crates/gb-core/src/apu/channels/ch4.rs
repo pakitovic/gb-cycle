@@ -351,7 +351,7 @@ impl Channel4State {
         if start_after_tick {
             let next_step_clocks_envelope = self.pending_trigger_envelope_reload;
             self.pending_trigger_envelope_reload = false;
-            self.trigger(ConsoleModel::Dmg, next_step_clocks_envelope);
+            self.trigger(ConsoleModel::GameBoy, next_step_clocks_envelope);
         }
 
         if noise_clocking_suppressed(self.noise.clock_shift) {
@@ -593,13 +593,17 @@ mod tests {
             ..Channel4State::default()
         };
 
-        channel.write_powered_off_register(Channel4Register::Nr42, 0x00, ConsoleModel::Dmg);
+        channel.write_powered_off_register(Channel4Register::Nr42, 0x00, ConsoleModel::GameBoy);
         assert_eq!(channel.length_counter, 9);
 
-        channel.write_powered_off_register(Channel4Register::Nr41, 0x3F, ConsoleModel::Cgb);
+        channel.write_powered_off_register(
+            Channel4Register::Nr41,
+            0x3F,
+            ConsoleModel::GameBoyColor,
+        );
         assert_eq!(channel.length_counter, 9);
 
-        channel.write_powered_off_register(Channel4Register::Nr41, 0x3F, ConsoleModel::Dmg);
+        channel.write_powered_off_register(Channel4Register::Nr41, 0x3F, ConsoleModel::GameBoy);
         assert_eq!(channel.length_counter, 1);
     }
 
@@ -611,13 +615,13 @@ mod tests {
         assert!(!dmg.nr43_live_write.counter_active);
         assert!(!dmg.nr43_live_write.background_counting);
         assert!(!dmg.nr43_live_write.started_with_dac_disabled);
-        dmg.power_off_registers(ConsoleModel::Dmg);
+        dmg.power_off_registers(ConsoleModel::GameBoy);
         assert_eq!(dmg.length_counter, 1);
 
         let mut cgb = Channel4State::default();
         cgb.apply_powered_startup(0x3F, 0x00, 0x01, LENGTH_ENABLE_BIT, true);
         assert_eq!(cgb.length_counter, 1);
-        cgb.power_off_registers(ConsoleModel::Cgb);
+        cgb.power_off_registers(ConsoleModel::GameBoyColor);
         assert_eq!(cgb.length_counter, 0);
     }
 
@@ -702,7 +706,7 @@ mod tests {
         channel.nr43_live_write.counter_timer = 1;
         channel.nr43_live_write.noise_counter = 0x1234;
 
-        channel.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        channel.prepare_hidden_counter_start(ConsoleModel::GameBoy);
 
         assert_eq!(channel.nr43_live_write.noise_counter, 0x1235);
         assert_eq!(channel.nr43_live_write.counter_timer, 10);
@@ -723,7 +727,7 @@ mod tests {
         channel.nr43_live_write.alignment = 0;
         channel.nr43_live_write.did_step_counter = false;
 
-        channel.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        channel.prepare_hidden_counter_start(ConsoleModel::GameBoy);
 
         assert_eq!(channel.nr43_live_write.noise_counter, 1);
         assert_eq!(channel.nr43_live_write.counter_timer, 2);
@@ -737,14 +741,14 @@ mod tests {
         alignment_one_div_zero.write_nr42(0xF0);
         alignment_one_div_zero.write_nr43(0x00);
         alignment_one_div_zero.nr43_live_write.alignment = 1;
-        alignment_one_div_zero.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        alignment_one_div_zero.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(alignment_one_div_zero.nr43_live_write.counter_timer, 7);
 
         let mut alignment_three_div_one = Channel4State::default();
         alignment_three_div_one.write_nr42(0xF0);
         alignment_three_div_one.write_nr43(0x01);
         alignment_three_div_one.nr43_live_write.alignment = 3;
-        alignment_three_div_one.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        alignment_three_div_one.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(alignment_three_div_one.nr43_live_write.counter_timer, 11);
 
         let mut alignment_one_div_one_active = Channel4State::default();
@@ -752,7 +756,7 @@ mod tests {
         alignment_one_div_one_active.write_nr43(0x01);
         alignment_one_div_one_active.runtime.active = true;
         alignment_one_div_one_active.nr43_live_write.alignment = 1;
-        alignment_one_div_one_active.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        alignment_one_div_one_active.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(
             alignment_one_div_one_active.nr43_live_write.counter_timer,
             5
@@ -764,7 +768,7 @@ mod tests {
         let mut divisor_gt_one_dac_disabled = Channel4State::default();
         divisor_gt_one_dac_disabled.write_nr43(0x02);
         divisor_gt_one_dac_disabled.nr43_live_write.alignment = 0;
-        divisor_gt_one_dac_disabled.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        divisor_gt_one_dac_disabled.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(
             divisor_gt_one_dac_disabled.nr43_live_write.counter_timer,
             14
@@ -781,13 +785,13 @@ mod tests {
         divisor_zero_background
             .nr43_live_write
             .started_with_dac_disabled = true;
-        divisor_zero_background.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        divisor_zero_background.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(divisor_zero_background.nr43_live_write.counter_timer, 34);
 
         let mut divisor_one_background = Channel4State::default();
         divisor_one_background.write_nr43(0x01);
         divisor_one_background.nr43_live_write.background_counting = true;
-        divisor_one_background.prepare_hidden_counter_start(ConsoleModel::Dmg);
+        divisor_one_background.prepare_hidden_counter_start(ConsoleModel::GameBoy);
         assert_eq!(divisor_one_background.nr43_live_write.counter_timer, 6);
     }
 

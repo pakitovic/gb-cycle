@@ -8,10 +8,11 @@ use gb_core::{
 fn default_machine_config_is_dmg_skip_boot_and_strict() {
     let config = MachineConfig::default();
 
-    assert_eq!(config.console_model, ConsoleModel::Dmg);
+    assert_eq!(config.console_model, ConsoleModel::GameBoy);
     assert_eq!(config.operating_mode, OperatingMode::Dmg);
     assert_eq!(config.host_platform, HostPlatform::Handheld);
     assert_eq!(config.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(config.boot_rom_kind, BootRomKind::Dmg);
     assert!(config.boot_rom_assets.is_empty());
     assert_eq!(config.compatibility.execution_mode, ExecutionMode::Strict);
     assert_eq!(
@@ -22,44 +23,68 @@ fn default_machine_config_is_dmg_skip_boot_and_strict() {
 
 #[test]
 fn public_model_api_exposes_dmg_and_cgb_families() {
-    assert_eq!(ConsoleModel::Dmg0.family(), ConsoleFamily::Dmg);
-    assert_eq!(ConsoleModel::Mgb.family(), ConsoleFamily::Dmg);
-    assert_eq!(ConsoleModel::Cgb.family(), ConsoleFamily::Cgb);
+    assert_eq!(ConsoleModel::GameBoy.family(), ConsoleFamily::Dmg);
+    assert_eq!(ConsoleModel::GameBoyPocket.family(), ConsoleFamily::Dmg);
+    assert_eq!(ConsoleModel::GameBoyLight.family(), ConsoleFamily::Dmg);
+    assert_eq!(ConsoleModel::GameBoyColor.family(), ConsoleFamily::Cgb);
     assert_eq!(
-        ConsoleModel::Dmg.default_operating_mode(),
+        ConsoleModel::GameBoy.default_operating_mode(),
         OperatingMode::Dmg
     );
     assert_eq!(
-        ConsoleModel::Cgb.default_operating_mode(),
+        ConsoleModel::GameBoyColor.default_operating_mode(),
         OperatingMode::Cgb
+    );
+}
+
+#[test]
+fn public_model_api_exposes_boot_rom_defaults_and_allowed_sets() {
+    assert_eq!(
+        ConsoleModel::GameBoy.default_boot_rom_kind(),
+        BootRomKind::Dmg
+    );
+    assert!(ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Dmg0));
+    assert!(ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Dmg));
+    assert!(!ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Mgb));
+    assert_eq!(
+        ConsoleModel::GameBoyPocket.allowed_boot_rom_kinds(),
+        &[BootRomKind::Mgb]
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyLight.allowed_boot_rom_kinds(),
+        &[BootRomKind::Mgb]
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyColor.allowed_boot_rom_kinds(),
+        &[BootRomKind::Cgb0, BootRomKind::Cgb, BootRomKind::CgbE]
     );
 }
 
 #[test]
 fn direct_boot_cgb_header_policy_keeps_model_and_mode_axes_separate() {
     assert_eq!(
-        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::None),
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::None),
         OperatingMode::CgbCompatibility
     );
     assert_eq!(
-        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Unknown(0x42)),
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Unknown(0x42)),
         OperatingMode::CgbCompatibility
     );
     assert_eq!(
-        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
         OperatingMode::Cgb
     );
     assert_eq!(
-        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Only),
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Only),
         OperatingMode::Cgb
     );
     assert_eq!(
-        ConsoleModel::Cgb
+        ConsoleModel::GameBoyColor
             .direct_boot_operating_mode_for_cgb_flag(CgbFlag::SupportedNonCanonical(0xA0)),
         OperatingMode::Cgb
     );
     assert_eq!(
-        ConsoleModel::Dmg.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
+        ConsoleModel::GameBoy.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
         OperatingMode::Dmg
     );
 }
@@ -89,13 +114,13 @@ fn public_model_api_exposes_operating_modes_and_host_platforms() {
 
 #[test]
 fn experimental_policy_keeps_future_cgb_extension_seams_explicit() {
-    let config = MachineConfig::new(ConsoleModel::Cgb)
+    let config = MachineConfig::new(ConsoleModel::GameBoyColor)
         .with_operating_mode(OperatingMode::CgbCompatibility)
         .with_host_platform(HostPlatform::Sgb1)
         .with_startup_mode(StartupMode::RealBoot)
         .with_compatibility(CompatibilityPolicy::experimental());
 
-    assert_eq!(config.console_model, ConsoleModel::Cgb);
+    assert_eq!(config.console_model, ConsoleModel::GameBoyColor);
     assert_eq!(config.operating_mode, OperatingMode::CgbCompatibility);
     assert_eq!(config.host_platform, HostPlatform::Sgb1);
     assert_eq!(config.startup_mode, StartupMode::RealBoot);
@@ -124,7 +149,7 @@ fn override_policy_reports_when_explicit_overrides_exist() {
     assert!(!OverridePolicy::default().has_overrides());
 
     let model_override = OverridePolicy {
-        forced_console_model: Some(ConsoleModel::Mgb),
+        forced_console_model: Some(ConsoleModel::GameBoyPocket),
         forced_operating_mode: None,
         forced_host_platform: None,
         forced_startup_mode: None,
@@ -165,12 +190,12 @@ fn default_compatibility_policy_matches_the_strict_preset() {
 #[test]
 fn machine_config_can_replace_the_full_compatibility_policy() {
     let compatibility = CompatibilityPolicy::experimental();
-    let config = MachineConfig::new(ConsoleModel::Dmg0)
+    let config = MachineConfig::new(ConsoleModel::GameBoy)
         .with_host_platform(HostPlatform::Sgb1)
         .with_startup_mode(StartupMode::SkipBoot)
         .with_compatibility(compatibility.clone());
 
-    assert_eq!(config.console_model, ConsoleModel::Dmg0);
+    assert_eq!(config.console_model, ConsoleModel::GameBoy);
     assert_eq!(config.operating_mode, OperatingMode::Dmg);
     assert_eq!(config.host_platform, HostPlatform::Sgb1);
     assert_eq!(config.startup_mode, StartupMode::SkipBoot);
@@ -198,7 +223,7 @@ fn machine_config_can_carry_explicit_boot_rom_assets() {
     let boot_rom_assets = BootRomAssets::none()
         .with_bytes(BootRomKind::Dmg, vec![0xAA; 0x0100])
         .expect("dmg boot ROM asset should validate");
-    let config = MachineConfig::new(ConsoleModel::Dmg).with_boot_rom_assets(boot_rom_assets);
+    let config = MachineConfig::new(ConsoleModel::GameBoy).with_boot_rom_assets(boot_rom_assets);
 
     assert!(config.boot_rom_assets.has_image(BootRomKind::Dmg));
 }
@@ -206,12 +231,12 @@ fn machine_config_can_carry_explicit_boot_rom_assets() {
 #[test]
 fn capability_sets_keep_silicon_mode_and_host_axes_distinct() {
     let dmg = CapabilitySet::from_model_axes(
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
         OperatingMode::Dmg,
         HostPlatform::Handheld,
     );
     let cgb_compat = CapabilitySet::from_model_axes(
-        ConsoleModel::Cgb,
+        ConsoleModel::GameBoyColor,
         OperatingMode::CgbCompatibility,
         HostPlatform::Sgb2,
     );
@@ -230,7 +255,7 @@ fn capability_sets_keep_silicon_mode_and_host_axes_distinct() {
 
 #[test]
 fn machine_config_reports_when_requested_axes_are_incoherent() {
-    let config = MachineConfig::new(ConsoleModel::Dmg).with_operating_mode(OperatingMode::Cgb);
+    let config = MachineConfig::new(ConsoleModel::GameBoy).with_operating_mode(OperatingMode::Cgb);
 
     assert!(!config.model_axes_are_coherent());
     assert_eq!(config.operating_mode, OperatingMode::Cgb);

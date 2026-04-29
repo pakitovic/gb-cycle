@@ -1602,10 +1602,10 @@ fn decode_fingerprint(
 
 fn encode_console_model(value: ConsoleModel) -> u8 {
     match value {
-        ConsoleModel::Dmg0 => 0,
-        ConsoleModel::Dmg => 1,
-        ConsoleModel::Mgb => 2,
-        ConsoleModel::Cgb => 3,
+        ConsoleModel::GameBoy => 1,
+        ConsoleModel::GameBoyPocket => 2,
+        ConsoleModel::GameBoyColor => 3,
+        ConsoleModel::GameBoyLight => 4,
     }
 }
 
@@ -1614,10 +1614,11 @@ fn decode_console_model(
     field: &'static str,
 ) -> Result<ConsoleModel, CartridgeSaveBackendError> {
     match tag {
-        0 => Ok(ConsoleModel::Dmg0),
-        1 => Ok(ConsoleModel::Dmg),
-        2 => Ok(ConsoleModel::Mgb),
-        3 => Ok(ConsoleModel::Cgb),
+        0 => Ok(ConsoleModel::GameBoy),
+        1 => Ok(ConsoleModel::GameBoy),
+        2 => Ok(ConsoleModel::GameBoyPocket),
+        3 => Ok(ConsoleModel::GameBoyColor),
+        4 => Ok(ConsoleModel::GameBoyLight),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -1799,7 +1800,9 @@ fn encode_boot_rom_kind(value: BootRomKind) -> u8 {
         BootRomKind::Dmg0 => 0,
         BootRomKind::Dmg => 1,
         BootRomKind::Mgb => 2,
+        BootRomKind::Cgb0 => 4,
         BootRomKind::Cgb => 3,
+        BootRomKind::CgbE => 5,
     }
 }
 
@@ -1812,6 +1815,8 @@ fn decode_boot_rom_kind(
         1 => Ok(BootRomKind::Dmg),
         2 => Ok(BootRomKind::Mgb),
         3 => Ok(BootRomKind::Cgb),
+        4 => Ok(BootRomKind::Cgb0),
+        5 => Ok(BootRomKind::CgbE),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2274,7 +2279,8 @@ mod tests {
 
     fn machine_save_state_envelope() -> MachineSaveStateEnvelope {
         let mut machine = gb_core::Machine::new(
-            gb_core::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            gb_core::MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot),
         );
         for _ in 0..16 {
             machine.step_t_cycle();
@@ -2285,10 +2291,10 @@ mod tests {
     #[test]
     fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         for value in [
-            ConsoleModel::Dmg0,
-            ConsoleModel::Dmg,
-            ConsoleModel::Mgb,
-            ConsoleModel::Cgb,
+            ConsoleModel::GameBoy,
+            ConsoleModel::GameBoy,
+            ConsoleModel::GameBoyPocket,
+            ConsoleModel::GameBoyColor,
         ] {
             assert_eq!(
                 decode_console_model(encode_console_model(value), "console_model")
@@ -2453,7 +2459,7 @@ mod tests {
         ));
 
         let metadata = MachineSaveStateMetadata {
-            console_model: ConsoleModel::Cgb,
+            console_model: ConsoleModel::GameBoyColor,
             operating_mode: OperatingMode::CgbCompatibility,
             host_platform: HostPlatform::Sgb2,
             startup_mode: StartupMode::RealBoot,
@@ -2462,7 +2468,7 @@ mod tests {
                 validation_policy: ValidationPolicy::Ignore,
                 heuristic_policy: HeuristicPolicy::AllowExperimental,
                 override_policy: OverridePolicy {
-                    forced_console_model: Some(ConsoleModel::Mgb),
+                    forced_console_model: Some(ConsoleModel::GameBoyPocket),
                     forced_operating_mode: Some(OperatingMode::Dmg),
                     forced_host_platform: Some(HostPlatform::Sgb1),
                     forced_startup_mode: Some(StartupMode::SkipBoot),

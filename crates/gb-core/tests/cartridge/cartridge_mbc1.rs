@@ -6,7 +6,7 @@ fn resolve_access_surfaces_disabled_mbc1_external_ram_state() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (cartridge, _) = report.into_parts();
-    let bus = Bus::new(ConsoleModel::Dmg);
+    let bus = Bus::new(ConsoleModel::GameBoy);
 
     let resolution = bus.resolve_access(
         BusAccessKind::Read,
@@ -79,7 +79,7 @@ fn mbc1_rom_bank_writes_take_effect_immediately_for_later_bus_reads() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -133,7 +133,7 @@ fn mbc1_standard_high_window_supports_bank_0x1f_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -161,7 +161,7 @@ fn mbc1_small_rom_masking_can_surface_bank_zero_in_the_high_window_through_the_b
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -199,7 +199,7 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -268,7 +268,7 @@ fn mbc1_large_rom_mode_one_remaps_the_low_window_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -341,7 +341,7 @@ fn mbc1m_with_battery_ram_keeps_a_fixed_8kib_window_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1M should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -390,7 +390,7 @@ fn mbc1_ram_enable_controls_external_ram_visibility_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -441,7 +441,7 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(
@@ -522,7 +522,7 @@ fn mbc1_large_rom_keeps_a_fixed_8kib_ram_window_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(

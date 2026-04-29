@@ -191,7 +191,7 @@ fn cpu_mmio_scx_write_after_alignment_seed_does_not_retune_the_current_line_disc
 
 #[test]
 fn previsible_live_scx_retarget_accounts_for_already_consumed_discard_dots() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.initial_scx_discard = 5;
     ppu.bg_pipeline_state.scx_discard_remaining = 3;
@@ -551,7 +551,7 @@ fn startup_post_alignment_seam_skips_the_first_real_push_entry_delay_once() {
 
 #[test]
 fn first_real_background_push_after_startup_alignment_skips_entry_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
     vram.set_acquired(BusMaster::Ppu, true);
 
@@ -596,7 +596,7 @@ fn first_real_background_push_after_startup_alignment_skips_entry_delay() {
 
 #[test]
 fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.current_transfer_x = 8;
@@ -620,7 +620,7 @@ fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
 
 #[test]
 fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + 1;
@@ -661,7 +661,7 @@ fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
 
 #[test]
 fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_transfer() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -703,7 +703,7 @@ fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_tra
 
 #[test]
 fn mode3_started_keeps_an_explicit_previsible_lane_before_hidden_transfer() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -747,7 +747,7 @@ fn mode3_started_keeps_an_explicit_previsible_lane_before_hidden_transfer() {
 
 #[test]
 fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
@@ -768,7 +768,7 @@ fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill(
 
 #[test]
 fn late_hidden_scx_discard_can_consume_a_startup_placeholder_before_real_fifo_backing() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;

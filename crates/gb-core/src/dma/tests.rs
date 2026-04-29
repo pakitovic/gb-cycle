@@ -45,7 +45,7 @@ fn dmg_oam_dma_source_addresses_above_dfff_follow_the_echo_alias_path() {
 
 #[test]
 fn ff46_latches_the_source_page_and_builds_a_starting_oam_transfer_immediately() {
-    let mut dma = DmaController::new(ConsoleModel::Dmg);
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
 
     dma.write_ff46(0x12);
 
@@ -65,7 +65,7 @@ fn ff46_latches_the_source_page_and_builds_a_starting_oam_transfer_immediately()
 
 #[test]
 fn dma_tick_advances_starting_active_and_completed_lifecycle_over_t_cycles() {
-    let mut dma = DmaController::new(ConsoleModel::Dmg);
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     dma.write_ff46(0x12);
@@ -142,7 +142,7 @@ fn dma_tick_advances_starting_active_and_completed_lifecycle_over_t_cycles() {
 #[test]
 fn restarting_active_oam_dma_keeps_the_current_transfer_alive_until_the_new_startup_seam_finishes()
 {
-    let mut dma = DmaController::new(ConsoleModel::Dmg);
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     dma.write_ff46(0x12);
@@ -195,7 +195,7 @@ fn restarting_active_oam_dma_keeps_the_current_transfer_alive_until_the_new_star
 #[test]
 fn dma_tick_emits_the_first_oam_byte_after_the_first_active_dma_byte_cycle_and_then_every_four_t_cycles()
  {
-    let mut dma = DmaController::new(ConsoleModel::Dmg);
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
     dma.write_ff46(0x12);
@@ -281,7 +281,7 @@ fn transfer_progress_reports_the_oam_startup_seam_and_tail_without_losing_total_
 
 #[test]
 fn startup_state_preserves_idle_dma_while_setting_visible_ff46() {
-    let mut dma = DmaController::new(ConsoleModel::Dmg);
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
 
     dma.apply_startup_state(DmaStartupState {
         source_page_latch: 0xFF,

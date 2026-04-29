@@ -183,7 +183,7 @@ This matrix assigns every CGB-only or CGB-reinterpreted MMIO surface to one owni
 
 ## Slice 1 — CGB model, machine mode, and direct boot baseline
 
-- Consolidate `ConsoleModel::Cgb`, `OperatingMode::Cgb`, `OperatingMode::CgbCompatibility`, and `CapabilitySet` as the only model/mode decision surface.
+- Consolidate `ConsoleModel::GameBoyColor`, `OperatingMode::Cgb`, `OperatingMode::CgbCompatibility`, and `CapabilitySet` as the only model/mode decision surface.
 - Choose CGB native versus CGB compatibility mode from the cartridge CGB header without conflating CGB compatibility mode with DMG silicon.
 - Validate the CGB initial state with `SkipBoot` before depending on a real CGB boot ROM.
 - Add a synthetic header/mode policy matrix before broader CGB bring-up so the project has one source of truth for `0x0143`, `ConsoleModel`, `OperatingMode`, `KEY0`, and loader policy.
@@ -194,7 +194,7 @@ This matrix assigns every CGB-only or CGB-reinterpreted MMIO surface to one owni
 
 This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 under RealBoot. It is not a replacement for Pan Docs or boot-ROM evidence; it is the project policy for how the core maps cartridge metadata into model and mode state without creating a second CGB core.
 
-| cartridge/header scenario | `ConsoleModel::Cgb` direct-boot policy | `ConsoleModel::Dmg` policy | required validation |
+| cartridge/header scenario | `ConsoleModel::GameBoyColor` direct-boot policy | `ConsoleModel::GameBoy` policy | required validation |
 | --- | --- | --- | --- |
 | `0x0143` bit `7 = 0` | Start as `OperatingMode::CgbCompatibility`, synthesize `KEY0` DMG-compatibility state, defer boot-selected compatibility palette seed to Slice 6, and keep CGB-family silicon quirks rather than pretending the model is DMG | Stay Non-CGB/DMG; do not expose CGB MMIO or CGB-only capabilities | Synthetic direct-boot tests for mode, capabilities, CGB-only MMIO fallback, and no accidental DMG-silicon OAM corruption when the model is CGB |
 | `0x0143 = 0x80` | Start as CGB native mode with CGB features unlocked and compatibility metadata preserved for loader/reporting | Stay DMG silicon; loader policy may warn or classify support, but hardware mode must not mutate to CGB | Synthetic direct-boot tests for CGB native mode, `KEY0` seed, `CapabilitySet`, and model-axis separation |
@@ -215,7 +215,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Add internal `DIV` / timer tests for double-speed switching: `DIV` reset or freeze during the switch window, timer edge detection across the speed transition, `TIMA` overflow/reload/IRQ ordering when the selected timer bit changes, and parity between natural divider ticks and switch-induced divider effects.
 - Add internal PPU/lock observability tests for `STOP`: start `STOP` during Mode `0`, Mode `1`, Mode `2`, and Mode `3`, assert the documented visible memory-lock / black-pixel behavior exposed through the minimal PPU bridge, and keep these tests as the contract that Slice 4 must preserve when the full CGB PPU renderer lands.
 - Add scheduler-domain tests proving that the speed state changes CPU/timer/serial/OAM-DMA cadence while LCD timing, HDMA block duration, and APU frame sequencing remain on their documented CGB domains instead of being multiplied by a generic speed factor.
-- Add a CGB-mode CPU and interrupt smoke suite before treating timing bring-up as stable: run focused instruction/flag, `IME` / `EI` / `DI` / `RETI`, interrupt priority, `HALT`, timer IRQ, and `STOP` cases under `ConsoleModel::Cgb` and CGB operating modes to prove CGB mode reuses the proven SM83 core semantics instead of accidentally forking CPU behavior.
+- Add a CGB-mode CPU and interrupt smoke suite before treating timing bring-up as stable: run focused instruction/flag, `IME` / `EI` / `DI` / `RETI`, interrupt priority, `HALT`, timer IRQ, and `STOP` cases under `ConsoleModel::GameBoyColor` and CGB operating modes to prove CGB mode reuses the proven SM83 core semantics instead of accidentally forking CPU behavior.
 - CGB gate order: first `cgb-speed` through `make run-cgb-speed`, then `cgb-boot-div` through `make run-cgb-boot-div`; `cgb-boot-div` must not be promoted until the speed-domain contract and `DIV`/timer edge semantics are already owned by this slice.
 - Regression gate: DMG `167/167` plus focused DMG `STOP` tests so the CGB path cannot rewrite DMG semantics.
 
@@ -365,7 +365,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 
 - AGB/AGS/GBA and Game Boy Player host behavior is outside Phase 10; the Phase 10 CGB core must model CGB-family hardware, not a GBA running in CGB compatibility mode.
 - Commercial smoke titles that mention GBA detection are reference-only sanity cases; their GBA-specific branches, display correction, host BIOS behavior, and Game Boy Player integration must not become CGB acceptance criteria.
-- If a future AGB/GBP phase is opened, it must introduce explicit model axes, boot assets, post-boot register expectations, color-correction policy, and tests instead of overloading `ConsoleModel::Cgb`.
+- If a future AGB/GBP phase is opened, it must introduce explicit model axes, boot assets, post-boot register expectations, color-correction policy, and tests instead of overloading `ConsoleModel::GameBoyColor`.
 
 ## Cross-cutting CGB save-state and determinism rule
 

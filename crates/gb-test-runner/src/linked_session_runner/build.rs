@@ -10,7 +10,8 @@ use super::{
 };
 use crate::{
     ExternalStimulusAction, LinkedSessionCase, boot_rom_kind_for_console_model,
-    compatibility_for_execution_mode, discover_boot_rom_store_root, enforce_boot_rom_verification,
+    boot_rom_kind_is_required_for_runner_gate, compatibility_for_execution_mode,
+    discover_boot_rom_store_root, enforce_boot_rom_verification,
 };
 
 impl LinkedSessionRunner {
@@ -166,6 +167,9 @@ impl LinkedSessionRunner {
             .or_else(|| discover_boot_rom_store_root(&self.runner.workspace_root))
             .unwrap_or_else(|| crate::boot_rom_store_root(&self.runner.workspace_root));
         let image_path = crate::boot_rom_image_path(&root, kind);
+        if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
+            return Ok(BootRomAssets::none());
+        }
         enforce_boot_rom_verification(self.runner.boot_rom_verification_mode, &image_path, kind)
             .map_err(|issue| LinkedSessionExecutionError::BootRomVerification {
                 issue: Box::new(issue),

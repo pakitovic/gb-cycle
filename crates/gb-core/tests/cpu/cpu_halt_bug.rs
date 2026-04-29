@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn halt_bug_suppresses_the_next_pc_increment_without_servicing_the_irq() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

@@ -1,4 +1,4 @@
-use gb_core::{ExecutionMode, StartupMode};
+use gb_core::{BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
     GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
@@ -547,6 +547,9 @@ impl PersistedLaunchSettings {
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
         config.launch.console_model = self.console_model.to_external();
+        if let Some(legacy_boot_rom_kind) = self.console_model.legacy_boot_rom_kind() {
+            config.boot_rom.kind = legacy_boot_rom_kind;
+        }
         config.launch.startup_mode = self.startup_mode.to_external();
         config.launch.execution_mode = self.execution_mode.to_external();
     }
@@ -555,6 +558,7 @@ impl PersistedLaunchSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct PersistedBootRomSettings {
+    kind: Option<PersistedBootRomKind>,
     search_path: Option<PathBuf>,
     verification: PersistedBootRomVerificationMode,
 }
@@ -562,6 +566,7 @@ struct PersistedBootRomSettings {
 impl PersistedBootRomSettings {
     fn from_config(config: &DesktopConfig) -> Self {
         Self {
+            kind: Some(PersistedBootRomKind::from_external(config.boot_rom.kind)),
             search_path: config.boot_rom.search_path.clone(),
             verification: PersistedBootRomVerificationMode::from_external(
                 config.boot_rom.verification,
@@ -570,8 +575,14 @@ impl PersistedBootRomSettings {
     }
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
+        if let Some(kind) = self.kind {
+            config.boot_rom.kind = kind.to_external();
+        }
         config.boot_rom.search_path = self.search_path.clone();
         config.boot_rom.verification = self.verification.to_external();
+        config
+            .boot_rom
+            .normalize_kind_for_model(config.launch.console_model);
     }
 }
 
@@ -639,29 +650,93 @@ impl PersistedSaveDirectoryPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 enum PersistedDesktopConsoleModel {
-    #[serde(rename = "dmg0")]
-    Dmg0,
     #[default]
+    #[serde(rename = "game-boy")]
+    GameBoy,
+    #[serde(rename = "pocket")]
+    GameBoyPocket,
+    #[serde(rename = "light")]
+    GameBoyLight,
+    #[serde(rename = "color")]
+    GameBoyColor,
+    #[serde(rename = "dmg0")]
+    LegacyDmg0,
     #[serde(rename = "dmg")]
-    Dmg,
+    LegacyDmg,
     #[serde(rename = "mgb")]
-    Mgb,
+    LegacyMgb,
+    #[serde(rename = "cgb")]
+    LegacyCgb,
 }
 
 impl PersistedDesktopConsoleModel {
     fn from_external(value: gb_desktop::DesktopConsoleModel) -> Self {
         match value {
-            gb_desktop::DesktopConsoleModel::Dmg0 => Self::Dmg0,
-            gb_desktop::DesktopConsoleModel::Dmg => Self::Dmg,
-            gb_desktop::DesktopConsoleModel::Mgb => Self::Mgb,
+            gb_desktop::DesktopConsoleModel::GameBoy => Self::GameBoy,
+            gb_desktop::DesktopConsoleModel::GameBoyPocket => Self::GameBoyPocket,
+            gb_desktop::DesktopConsoleModel::GameBoyLight => Self::GameBoyLight,
+            gb_desktop::DesktopConsoleModel::GameBoyColor => Self::GameBoyColor,
         }
     }
 
     fn to_external(self) -> gb_desktop::DesktopConsoleModel {
         match self {
-            Self::Dmg0 => gb_desktop::DesktopConsoleModel::Dmg0,
-            Self::Dmg => gb_desktop::DesktopConsoleModel::Dmg,
-            Self::Mgb => gb_desktop::DesktopConsoleModel::Mgb,
+            Self::GameBoy | Self::LegacyDmg0 | Self::LegacyDmg => {
+                gb_desktop::DesktopConsoleModel::GameBoy
+            }
+            Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
+            Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
+            Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+        }
+    }
+
+    fn legacy_boot_rom_kind(self) -> Option<BootRomKind> {
+        match self {
+            Self::LegacyDmg0 => Some(BootRomKind::Dmg0),
+            Self::LegacyDmg => Some(BootRomKind::Dmg),
+            Self::LegacyMgb => Some(BootRomKind::Mgb),
+            Self::LegacyCgb => Some(BootRomKind::Cgb),
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum PersistedBootRomKind {
+    #[serde(rename = "dmg0")]
+    Dmg0,
+    #[serde(rename = "dmg")]
+    Dmg,
+    #[serde(rename = "mgb")]
+    Mgb,
+    #[serde(rename = "cgb0")]
+    Cgb0,
+    #[serde(rename = "cgb")]
+    Cgb,
+    #[serde(rename = "cgb-e", alias = "cgbe", alias = "cgbE")]
+    CgbE,
+}
+
+impl PersistedBootRomKind {
+    fn from_external(value: BootRomKind) -> Self {
+        match value {
+            BootRomKind::Dmg0 => Self::Dmg0,
+            BootRomKind::Dmg => Self::Dmg,
+            BootRomKind::Mgb => Self::Mgb,
+            BootRomKind::Cgb0 => Self::Cgb0,
+            BootRomKind::Cgb => Self::Cgb,
+            BootRomKind::CgbE => Self::CgbE,
+        }
+    }
+
+    fn to_external(self) -> BootRomKind {
+        match self {
+            Self::Dmg0 => BootRomKind::Dmg0,
+            Self::Dmg => BootRomKind::Dmg,
+            Self::Mgb => BootRomKind::Mgb,
+            Self::Cgb0 => BootRomKind::Cgb0,
+            Self::Cgb => BootRomKind::Cgb,
+            Self::CgbE => BootRomKind::CgbE,
         }
     }
 }
@@ -838,12 +913,12 @@ fn resolve_desktop_settings_path_from_locations(
 mod tests {
     use super::{
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
-        MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomVerificationMode,
-        PersistedDesktopConsoleModel, PersistedDesktopSettings, PersistedExecutionMode,
-        PersistedSaveDirectoryPolicy, PersistedStartupMode,
+        MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomKind,
+        PersistedBootRomVerificationMode, PersistedDesktopConsoleModel, PersistedDesktopSettings,
+        PersistedExecutionMode, PersistedSaveDirectoryPolicy, PersistedStartupMode,
         resolve_desktop_settings_path_from_locations,
     };
-    use gb_core::{ExecutionMode, StartupMode};
+    use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
         DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
         GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
@@ -1023,9 +1098,10 @@ max_memory_mib = 128
     fn settings_store_base_config_applies_persisted_host_preferences() {
         let path = unique_test_path("applies-settings");
         let mut settings = PersistedDesktopSettings::default();
-        settings.launch.console_model = PersistedDesktopConsoleModel::Mgb;
+        settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
         settings.launch.startup_mode = PersistedStartupMode::RealBoot;
         settings.launch.execution_mode = PersistedExecutionMode::Permissive;
+        settings.boot_rom.kind = Some(PersistedBootRomKind::Mgb);
         settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
         settings.boot_rom.verification = PersistedBootRomVerificationMode::Warn;
         settings.saves.enabled = false;
@@ -1074,10 +1150,11 @@ max_memory_mib = 128
 
         assert_eq!(
             config.launch.console_model,
-            gb_desktop::DesktopConsoleModel::Mgb
+            gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Permissive);
+        assert_eq!(config.boot_rom.kind, BootRomKind::Mgb);
         assert_eq!(
             config.boot_rom.search_path,
             Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"))
@@ -1236,9 +1313,10 @@ max_memory_mib = 128
             settings: PersistedDesktopSettings::default(),
         };
         let mut config = DesktopConfig::default();
-        config.launch.console_model = gb_desktop::DesktopConsoleModel::Dmg0;
+        config.launch.console_model = gb_desktop::DesktopConsoleModel::GameBoy;
         config.launch.startup_mode = StartupMode::RealBoot;
         config.launch.execution_mode = ExecutionMode::Experimental;
+        config.boot_rom.kind = BootRomKind::Dmg0;
         config.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"));
         config.boot_rom.verification = gb_desktop::BootRomVerificationMode::Off;
         config.saves.enabled = false;
@@ -1253,7 +1331,7 @@ max_memory_mib = 128
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
         assert_eq!(
             reloaded.launch.console_model,
-            PersistedDesktopConsoleModel::Dmg0
+            PersistedDesktopConsoleModel::GameBoy
         );
         assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::RealBoot);
         assert_eq!(
@@ -1264,6 +1342,7 @@ max_memory_mib = 128
             reloaded.boot_rom.search_path,
             Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"))
         );
+        assert_eq!(reloaded.boot_rom.kind, Some(PersistedBootRomKind::Dmg0));
         assert_eq!(
             reloaded.boot_rom.verification,
             PersistedBootRomVerificationMode::Off
@@ -1602,9 +1681,11 @@ max_memory_mib = 128
             SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"))
         );
         assert_eq!(
-            PersistedDesktopConsoleModel::from_external(gb_desktop::DesktopConsoleModel::Mgb)
-                .to_external(),
-            gb_desktop::DesktopConsoleModel::Mgb
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::GameBoyPocket
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(
             PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),
@@ -1620,6 +1701,10 @@ max_memory_mib = 128
             )
             .to_external(),
             gb_desktop::BootRomVerificationMode::Warn
+        );
+        assert_eq!(
+            PersistedBootRomKind::from_external(BootRomKind::CgbE).to_external(),
+            BootRomKind::CgbE
         );
     }
 

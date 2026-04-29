@@ -4,7 +4,7 @@ use gb_core::{ConsoleModel, Machine, MachineConfig, TCycle};
 
 #[test]
 fn public_api_smoke_test_constructs_a_machine() {
-    let machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
 }

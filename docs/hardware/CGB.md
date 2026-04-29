@@ -10,6 +10,27 @@ Design interfaces today that do not block CGB tomorrow. Separate DMG-only, share
 
 CGB should extend the shared core through model-aware behavior and capabilities, not by introducing a parallel emulator architecture. Until CGB work starts, avoid premature complexity in DMG-family subsystems; only preserve the extension seams that prevent large future refactors.
 
+`ConsoleModel` is the visible product model, not the CPU revision string and not the boot ROM filename. The CGB product row is `ConsoleModel::GameBoyColor`; it defaults to `BootRomKind::Cgb`, allows `Cgb0`, `Cgb`, and `CgbE` for `RealBoot`, and uses the CGB skip-boot synthetic startup profile when `StartupMode::SkipBoot` is selected. CPU revisions such as `CPU CGB 0`, `CPU CGB A`, `CPU CGB C`, `CPU CGB D`, and `CPU CGB E` are documented hardware profiles only in this phase and must not enter behavior gates until a tested revision-specific difference is intentionally modeled.
+
+| Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
+|---:|---|---:|---|---|---|---|---|
+| false | Game Boy | Handheld | `DMG-CPU` | `dmg0_boot.bin` | DMG | DMG green palette | Initial CPU without suffix; early DMG/DMG0-class unit. |
+| false | Game Boy | Handheld | `DMG-CPU A` | `dmg_boot.bin` | DMG | DMG green palette | Later DMG revision; standard DMG boot ROM. |
+| true | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
+| false | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
+| true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
+| true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
+| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
+| false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
+| false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
+| true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
+| false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
+| false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB | CGB color; CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
+| true | Super Game Boy | Sgb1 | `SGB-CPU 01` | `sgb_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB1 host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side. |
+| false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB2 host; NTSC/JPN case; corrected clock versus SGB1; boot identifies SGB2 separately. |
+
+The desktop presentation palettes for `GameBoy`, `GameBoyPocket`, and `GameBoyLight` intentionally live in `gb-desktop`, not `gb-core`: the core framebuffer remains shade/rank data for tests and tooling, while desktop rendering and screenshots map shades through SameBoy's `Core/display.c` DMG, MGB, and GBL palettes. Shade mapping follows SameBoy: shade `0` uses palette entry `3`, shade `1` uses entry `2`, shade `2` uses entry `1`, and shade `3` uses entry `0`. `GameBoyColor` is reserved for native color rendering once CGB palettes are implemented and currently keeps the existing monochrome fallback path from breaking.
+
 ## Responsibilities
 
 - double-speed behavior
@@ -98,7 +119,7 @@ Priority order:
 - The public model surface should distinguish at least `ConsoleModel`, `OperatingMode`, and `HostPlatform` so CGB silicon, CGB native mode, CGB DMG-compatibility mode, and future SGB hosting are not conflated.
 - Shared subsystems should expose clean extension points for CGB-only behavior.
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
-- `ConsoleModel::Cgb` plus `OperatingMode::CgbCompatibility` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
+- `ConsoleModel::GameBoyColor` plus `OperatingMode::CgbCompatibility` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
 - CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
 - Do not claim functional closure for CGB-only special cartridges such as `MBC30`, `MBC7`, or `MBC6` before the base CGB implementation can boot and validate CGB-only software end to end; before that point, keep only explicit classification, typed variant space, and clear TODO tracking.
 - The shared CPU execution model should already be based on in-flight fetch/read/write/internal steps so future double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
@@ -116,7 +137,7 @@ Priority order:
 - Even before functional CGB work starts, the routed MMIO metadata should keep `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. In the current descriptor baseline, `FF72-FF74` should publish nominal `ReadWrite` access, while `FF75` should remain `Mixed` because only bits `4-6` are writable in CGB mode.
 - The public model surface may already expose an explicit `OperatingMode`, but routed MMIO and subsystem behavior may still stage runtime consultation incrementally; until a specific register path consumes that mode directly, descriptors such as `BGP` / `OBP*` may continue to publish nominal `DMG-compatible` availability without claiming full runtime mode routing.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
-- Phase 10 direct boot applies the loaded cartridge header byte at `0x0143` to `ConsoleModel::Cgb` after cartridge load in `SkipBoot`: flags with bit `7` clear select `OperatingMode::CgbCompatibility`, canonical CGB-supported/CGB-only values select `OperatingMode::Cgb`, noncanonical high-bit values select native CGB without enabling PGB/PSM behavior, and DMG-family models stay `OperatingMode::Dmg`.
+- Phase 10 direct boot applies the loaded cartridge header byte at `0x0143` to `ConsoleModel::GameBoyColor` after cartridge load in `SkipBoot`: flags with bit `7` clear select `OperatingMode::CgbCompatibility`, canonical CGB-supported/CGB-only values select `OperatingMode::Cgb`, noncanonical high-bit values select native CGB without enabling PGB/PSM behavior, and DMG-family models stay `OperatingMode::Dmg`.
 - Phase 10 CGB `SkipBoot` seeds the CPU entry registers to the `boot_regs-cgb` contract (`AF=$1180`, `BC=$0000`, `DE=$0008`, `HL=$007C`, `SP=$FFFE`, `PC=$0100`) so direct boot starts from the same observable CGB register baseline before real boot-ROM handoff is implemented.
 - CGB `RealBoot` operating-mode handoff remains boot-owned until the Slice 6 boot-ROM work validates `KEY0`, `FF50`, and RealBoot versus SkipBoot equivalence; do not fake a real-boot mode switch from the loader path before that handoff exists.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.

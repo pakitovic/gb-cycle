@@ -26,7 +26,7 @@ fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -147,7 +147,7 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -253,7 +253,7 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
 fn rumble_capable_mbc5_keeps_motor_state_distinct_from_the_effective_ram_bank() {
     let rom = build_banked_mbc5_rom(0x1E, 0x03, 0x03);
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(gb_core::StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(gb_core::StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
@@ -278,7 +278,7 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(

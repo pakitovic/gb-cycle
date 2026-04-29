@@ -586,10 +586,10 @@ fn case_catalog_family<'a>(suite: &'a RomSuite, case: &'a crate::RomTestCase) ->
 
 fn console_model_name(console_model: gb_core::ConsoleModel) -> &'static str {
     match console_model {
-        gb_core::ConsoleModel::Dmg0 => "dmg0",
-        gb_core::ConsoleModel::Dmg => "dmg",
-        gb_core::ConsoleModel::Mgb => "mgb",
-        gb_core::ConsoleModel::Cgb => "cgb",
+        gb_core::ConsoleModel::GameBoy => "game-boy",
+        gb_core::ConsoleModel::GameBoyPocket => "pocket",
+        gb_core::ConsoleModel::GameBoyLight => "light",
+        gb_core::ConsoleModel::GameBoyColor => "color",
     }
 }
 
@@ -832,10 +832,10 @@ mod tests {
             "suite=cgb-smoke family=cgb-smoke subsystem=cross-subsystem cases=2 sources=test-rom-store oracles=mooneye-result,info-framebuffer"
         ));
         assert!(detailed_output.contains(
-            "case=cgb-smoke-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=cgb"
+            "case=cgb-smoke-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
         ));
         assert!(detailed_output.contains(
-            "case=cgb-smoke-which-gbc family=acid source=test-rom-store oracle=info-framebuffer console=cgb"
+            "case=cgb-smoke-which-gbc family=acid source=test-rom-store oracle=info-framebuffer console=color"
         ));
 
         let mut checklist_output = Vec::new();

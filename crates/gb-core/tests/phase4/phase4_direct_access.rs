@@ -12,7 +12,8 @@ fn phase_4_direct_mode2_oam_access_rom_fixture_matches_expected_oam_state_and_tr
         DIRECT_MODE2_ROM_NAME,
         DIRECT_MODE2_TRACE_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
+        BootRomKind::Dmg,
         2_048,
     );
 
@@ -44,7 +45,8 @@ fn phase_4_fea0_mode2_read_rom_fixture_matches_expected_oam_state_and_trace() {
         FEA0_MODE2_ROM_NAME,
         FEA0_MODE2_TRACE_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
+        BootRomKind::Dmg,
         2_048,
     );
 

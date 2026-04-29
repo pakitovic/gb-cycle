@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn external_bus_dma_restricts_machine_bus_access_to_hram_and_ff46_only_from_live_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xC000, 0x34);
@@ -53,7 +53,7 @@ fn external_bus_dma_restricts_machine_bus_access_to_hram_and_ff46_only_from_live
 #[test]
 fn video_bus_dma_leaves_wram_and_echo_accessible_while_blocking_vram_and_oam() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xC000, 0x34);
@@ -91,7 +91,7 @@ fn video_bus_dma_leaves_wram_and_echo_accessible_while_blocking_vram_and_oam() {
 #[test]
 fn dma_and_bus_traces_show_the_same_cycle_arbitration_constraints() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF46, 0x12);
@@ -100,9 +100,9 @@ fn dma_and_bus_traces_show_the_same_cycle_arbitration_constraints() {
     let trace = machine.tracer().sink().render_text();
 
     assert!(trace.contains(
-        "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
+        "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=GameBoy status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
     ));
     assert!(trace.contains(
-        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready boot_low_window_mapped=false boot_cgb_upper_window_mapped=false ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None dma_cpu_conflict_source_address=None\""
+        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=GameBoy status=Ready boot_low_window_mapped=false boot_cgb_upper_window_mapped=false ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None dma_cpu_conflict_source_address=None\""
     ));
 }

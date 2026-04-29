@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn real_boot_with_an_invalid_logo_stays_mapped_and_never_reaches_cartridge_entry() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
@@ -28,7 +28,7 @@ fn real_boot_with_an_invalid_logo_stays_mapped_and_never_reaches_cartridge_entry
 #[test]
 fn real_boot_with_an_invalid_checksum_stays_mapped_and_never_reaches_cartridge_entry() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()

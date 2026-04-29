@@ -6,7 +6,7 @@ mod execute;
 mod registers_alu;
 
 fn power_on_cpu() -> CpuCore {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
     cpu.apply_startup_state(CpuStartupState::power_on_reset());
     cpu
 }

@@ -524,9 +524,9 @@ fn build_sameboy_case_bundle_runner(
 
 fn model_arg(case: &crate::RomTestCase) -> &'static str {
     match case.console_model {
-        ConsoleModel::Dmg | ConsoleModel::Dmg0 => "dmg",
-        ConsoleModel::Mgb => "mgb",
-        ConsoleModel::Cgb => "cgb",
+        ConsoleModel::GameBoy => "dmg",
+        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => "mgb",
+        ConsoleModel::GameBoyColor => "cgb",
     }
 }
 

@@ -22,12 +22,13 @@ use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
-    CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind,
-    CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
-    CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode, InterruptControllerSnapshot, JoypadButton,
-    JoypadSnapshot, Machine, MachineConfig, MachineRewindBuffer, MachineRewindFrameBoundaryTracker,
-    MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuAccessMode,
-    PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode, TraceSummaryBuffer,
+    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
+    CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
+    CpuExecutionState, CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode,
+    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
+    MachineRewindBuffer, MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion,
+    PersistentCartState, PocketCameraFrame, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
+    PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
@@ -132,6 +133,7 @@ struct FramebufferPanelInput<'a> {
     bgwin_framebuffer: &'a [u8],
     backdrop_framebuffer: &'a [u8],
     bgwin_framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
+    display_palette: DisplayPalette,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -148,6 +150,44 @@ struct RenderHudInput {
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DisplayPalette {
+    shades: [[u8; 3]; 4],
+}
+
+impl DisplayPalette {
+    const fn shade_rgb(self, shade: u8) -> [u8; 3] {
+        match shade {
+            0..=3 => self.shades[shade as usize],
+            _ => self.shades[3],
+        }
+    }
+}
+
+const SAMEBOY_DMG_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+    shades: [
+        [0xC6, 0xDE, 0x8C],
+        [0x84, 0xA5, 0x63],
+        [0x39, 0x61, 0x39],
+        [0x08, 0x18, 0x10],
+    ],
+};
+const SAMEBOY_MGB_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+    shades: [
+        [0xC2, 0xCE, 0x93],
+        [0x81, 0x8D, 0x66],
+        [0x3A, 0x4C, 0x3A],
+        [0x07, 0x10, 0x0E],
+    ],
+};
+const SAMEBOY_GBL_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+    shades: [
+        [0x7F, 0xE2, 0xC3],
+        [0x56, 0xB4, 0x95],
+        [0x35, 0x78, 0x62],
+        [0x0A, 0x1C, 0x15],
+    ],
+};
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
     "GB_CYCLE_DESKTOP_AUDIO_DISABLE_PACING_CORRECTION";
 const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
@@ -4797,12 +4837,16 @@ fn prepare_machine_config(
     current_dir: &Path,
 ) -> Result<PreparedMachineConfig, String> {
     let mut effective_config = config.clone();
+    effective_config
+        .boot_rom
+        .normalize_kind_for_model(effective_config.launch.console_model);
+    let boot_rom_kind = effective_config.boot_rom.kind;
     let boot_rom_fallback_warning =
         maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
     let boot_rom_assets = load_boot_rom_assets(
         effective_config.boot_rom.search_path.as_deref(),
         effective_config.boot_rom.verification,
-        effective_config.launch.console_model,
+        boot_rom_kind,
         effective_config.launch.startup_mode,
         current_dir,
     )?;
@@ -4811,6 +4855,7 @@ fn prepare_machine_config(
         machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
             .with_startup_mode(effective_config.launch.startup_mode)
             .with_execution_mode(effective_config.launch.execution_mode)
+            .with_boot_rom_kind(boot_rom_kind)
             .with_boot_rom_assets(boot_rom_assets),
         effective_config,
         boot_rom_fallback_warning,
@@ -4825,9 +4870,12 @@ fn maybe_apply_missing_boot_rom_fallback(
         return Ok(None);
     }
 
+    config
+        .boot_rom
+        .normalize_kind_for_model(config.launch.console_model);
     let Some(missing_path) = missing_boot_rom_asset_path(
         config.boot_rom.search_path.as_deref(),
-        config.launch.console_model,
+        config.boot_rom.kind,
         current_dir,
     )?
     else {
@@ -7944,6 +7992,16 @@ fn execute_menu_action(
         MenuAction::CycleConsoleModel => {
             apply_machine_settings_change(canvas, context, "Console model", |config| {
                 config.launch.console_model = next_console_model(config.launch.console_model);
+                config
+                    .boot_rom
+                    .normalize_kind_for_model(config.launch.console_model);
+            })?;
+            Ok(None)
+        }
+        MenuAction::CycleBootRomKind => {
+            apply_machine_settings_change(canvas, context, "Boot ROM kind", |config| {
+                config.boot_rom.kind =
+                    next_boot_rom_kind(config.launch.console_model, config.boot_rom.kind);
             })?;
             Ok(None)
         }
@@ -8700,6 +8758,10 @@ fn current_menu_presentation(
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
+        boot_rom_kind: session
+            .config
+            .boot_rom
+            .effective_boot_rom_kind(session.config.launch.console_model),
         boot_rom_verification: session.config.boot_rom.verification,
         saves_enabled: session.config.saves.enabled,
         save_flush_policy: session.config.saves.flush_policy,
@@ -8792,10 +8854,29 @@ fn current_menu_presentation(
 
 fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel {
     match console_model {
-        DesktopConsoleModel::Dmg0 => DesktopConsoleModel::Dmg,
-        DesktopConsoleModel::Dmg => DesktopConsoleModel::Mgb,
-        DesktopConsoleModel::Mgb => DesktopConsoleModel::Dmg0,
+        DesktopConsoleModel::GameBoy => DesktopConsoleModel::GameBoyPocket,
+        DesktopConsoleModel::GameBoyPocket => DesktopConsoleModel::GameBoyLight,
+        DesktopConsoleModel::GameBoyLight => DesktopConsoleModel::GameBoyColor,
+        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::GameBoy,
     }
+}
+
+fn next_boot_rom_kind(
+    console_model: DesktopConsoleModel,
+    boot_rom_kind: BootRomKind,
+) -> BootRomKind {
+    let core_model = console_model.console_model();
+    let allowed = core_model.allowed_boot_rom_kinds();
+    let current_index = allowed
+        .iter()
+        .position(|candidate| *candidate == boot_rom_kind)
+        .unwrap_or_else(|| {
+            allowed
+                .iter()
+                .position(|candidate| *candidate == core_model.default_boot_rom_kind())
+                .unwrap_or(0)
+        });
+    allowed[(current_index + 1) % allowed.len()]
 }
 
 fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
@@ -9940,6 +10021,7 @@ fn framebuffer_panel_input_for_player_slot(
         bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
         backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
         bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
+        display_palette: display_palette_for_console_model(machine.config().console_model),
     })
 }
 
@@ -10087,10 +10169,10 @@ fn write_monochrome_framebuffer_region(
                 source_panel.backdrop_framebuffer[source_index],
                 video_options,
             );
-            let shade = framebuffer_pixel_to_grayscale(panel_shade);
-            target_rgb_frame[target_pixel_index] = shade;
-            target_rgb_frame[target_pixel_index + 1] = shade;
-            target_rgb_frame[target_pixel_index + 2] = shade;
+            let [r, g, b] = source_panel.display_palette.shade_rgb(panel_shade);
+            target_rgb_frame[target_pixel_index] = r;
+            target_rgb_frame[target_pixel_index + 1] = g;
+            target_rgb_frame[target_pixel_index + 2] = b;
         }
     }
 }
@@ -10536,10 +10618,12 @@ fn execution_mode_name(execution_mode: ExecutionMode) -> &'static str {
     }
 }
 
-fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
-    match pixel {
-        0..=3 => DMG_GRAYSCALE_SHADES[usize::from(pixel)],
-        _ => DMG_GRAYSCALE_SHADES[3],
+fn display_palette_for_console_model(console_model: ConsoleModel) -> DisplayPalette {
+    match console_model {
+        ConsoleModel::GameBoy => SAMEBOY_DMG_DISPLAY_PALETTE,
+        ConsoleModel::GameBoyPocket => SAMEBOY_MGB_DISPLAY_PALETTE,
+        ConsoleModel::GameBoyLight => SAMEBOY_GBL_DISPLAY_PALETTE,
+        ConsoleModel::GameBoyColor => SAMEBOY_DMG_DISPLAY_PALETTE,
     }
 }
 
@@ -10563,8 +10647,8 @@ mod tests {
         load_machine_state_slot, machine_state_actions_available,
         machine_state_slot_load_available, machine_state_slot_path, map_path_dialog_result,
         menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
-        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
-        next_fast_forward_speed_multiplier, next_gamepad_directional_source,
+        next_boot_rom_kind, next_boot_rom_verification_mode, next_console_model,
+        next_execution_mode, next_fast_forward_speed_multiplier, next_gamepad_directional_source,
         next_gamepad_rumble_mode, next_machine_state_slot, next_save_flush_policy,
         next_startup_mode, next_window_scale, parse_edge_trace_addresses,
         parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
@@ -10579,7 +10663,7 @@ mod tests {
     use gb_core::{
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
-        ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
+        ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, BootRomKind,
         CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
         CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
         Dmg07Port, ExecutionMode, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
@@ -10804,7 +10888,7 @@ mod tests {
 
     fn dmg_skip_boot_summary_machine() -> Machine<TraceSummaryBuffer> {
         Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         )
     }
 
@@ -11687,7 +11771,8 @@ mod tests {
                 )
             } else {
                 super::DesktopEmulationSession::new_single(Machine::new_summary(
-                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                    MachineConfig::new(ConsoleModel::GameBoy)
+                        .with_startup_mode(StartupMode::SkipBoot),
                 ))
             };
 
@@ -12489,7 +12574,7 @@ mod tests {
     #[test]
     fn emulation_profile_request_and_replay_preserve_host_and_core_timing() {
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut request = super::EmulationProfileRequest::new(
             super::DesktopEmulationSession::new_single(machine),
@@ -12517,10 +12602,10 @@ mod tests {
     #[test]
     fn linked_emulation_profile_request_replays_core_regions() {
         let primary = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let secondary = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let linked =
             super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
@@ -12538,7 +12623,7 @@ mod tests {
     #[test]
     fn async_emulation_profile_worker_and_counter_collect_samples() {
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let worker = super::AsyncEmulationProfileWorker::new();
         let mut completed = Vec::new();
@@ -13035,7 +13120,7 @@ mod tests {
     #[test]
     fn watched_cpu_addresses_consider_bus_activity_and_address_events() {
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut cpu = machine.cpu().snapshot();
         cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
@@ -13059,7 +13144,7 @@ mod tests {
     #[test]
     fn watched_pc_ranges_match_current_program_counter() {
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut cpu = machine.cpu().snapshot();
         cpu.registers.pc = 0x0604;
@@ -13167,9 +13252,9 @@ mod tests {
     #[test]
     fn desktop_trace_renderer_includes_apu_last_write_when_present() {
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
-        let mut apu = Apu::new(ConsoleModel::Dmg);
+        let mut apu = Apu::new(ConsoleModel::GameBoy);
         apu.write_register(0xFF26, 0x80);
         apu.write_register(0xFF1A, 0x80);
         apu.write_register(0xFF1E, 0x80);
@@ -13219,7 +13304,7 @@ mod tests {
         assert_eq!(capture.max_records, 2);
 
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut cpu = machine.cpu().snapshot();
         cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
@@ -13284,7 +13369,7 @@ mod tests {
     fn desktop_watch_trace_record_t_cycle_captures_matching_bus_activity_and_noops_when_disabled() {
         let root = temp_test_root("watch-trace-record");
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
@@ -13377,7 +13462,7 @@ mod tests {
         assert_eq!(capture.max_records, 2);
 
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut cpu = machine.cpu().snapshot();
         cpu.registers.pc = 0x0604;
@@ -13454,7 +13539,7 @@ mod tests {
      {
         let root = temp_test_root("pc-watch-trace-record");
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
@@ -13551,7 +13636,7 @@ mod tests {
         assert_eq!(capture.max_records, 2);
 
         let machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut cpu = machine.cpu().snapshot();
         cpu.registers.pc = 0x4C0E;
@@ -13647,7 +13732,7 @@ mod tests {
     fn desktop_edge_trace_record_t_cycle_tracks_pc_entry_and_bus_changes() {
         let root = temp_test_root("edge-trace-record");
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
@@ -13749,7 +13834,7 @@ mod tests {
         assert!(capture.records.is_empty());
 
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine.write_bus(0xFF26, 0x80);
         capture.record_t_cycle(&machine);
@@ -13979,7 +14064,7 @@ mod tests {
         assert_eq!(capture.max_t_cycles, 2);
 
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         for _ in 0..3 {
             machine.step_t_cycle();
@@ -14021,7 +14106,7 @@ mod tests {
         }
 
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine.write_bus(0xFF26, 0x80);
         machine.write_bus(super::CH4_NR42_ADDRESS, 0xF0);
@@ -14064,7 +14149,7 @@ mod tests {
         }
 
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine.write_bus(super::MASTER_NR52_ADDRESS, 0x80);
         capture.record_t_cycle(&machine);
@@ -14084,7 +14169,7 @@ mod tests {
         );
 
         let idle_machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         let mut previous_ch4 = idle_machine.apu().channel_4_debug_snapshot();
         previous_ch4.dmg_delayed_start = 1;
@@ -14133,7 +14218,7 @@ mod tests {
         assert!(!capture.finished);
 
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine.step_t_cycle();
         capture.records.push(super::DesktopCpuWindowTraceRecord {
@@ -14301,7 +14386,7 @@ mod tests {
         assert_eq!(super::visible_nr52(false, 0x0B), 0x70);
         assert_eq!(
             super::visible_joypad_low_nibble(&JoypadSnapshot {
-                console_model: ConsoleModel::Dmg,
+                console_model: ConsoleModel::GameBoy,
                 status: JoypadStatus::Ready,
                 selection_bits: 0x00,
                 pressed_mask: 0xFF,
@@ -14310,7 +14395,7 @@ mod tests {
         );
         assert_eq!(
             super::visible_joypad_low_nibble(&JoypadSnapshot {
-                console_model: ConsoleModel::Dmg,
+                console_model: ConsoleModel::GameBoy,
                 status: JoypadStatus::Ready,
                 selection_bits: 0x30,
                 pressed_mask: 0xFF,
@@ -14488,7 +14573,7 @@ mod tests {
     #[test]
     fn host_rtc_sync_advances_live_mbc3_sessions_from_wall_clock_elapsed_seconds() {
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
@@ -14515,7 +14600,7 @@ mod tests {
     #[test]
     fn host_rtc_sync_ignores_backward_host_clock_steps() {
         let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
@@ -14647,16 +14732,40 @@ mod tests {
     #[test]
     fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         assert_eq!(
-            next_console_model(DesktopConsoleModel::Dmg0),
-            DesktopConsoleModel::Dmg
+            next_console_model(DesktopConsoleModel::GameBoy),
+            DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(
-            next_console_model(DesktopConsoleModel::Dmg),
-            DesktopConsoleModel::Mgb
+            next_console_model(DesktopConsoleModel::GameBoyPocket),
+            DesktopConsoleModel::GameBoyLight
         );
         assert_eq!(
-            next_console_model(DesktopConsoleModel::Mgb),
-            DesktopConsoleModel::Dmg0
+            next_console_model(DesktopConsoleModel::GameBoyLight),
+            DesktopConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopConsoleModel::GameBoy
+        );
+        assert_eq!(
+            next_boot_rom_kind(DesktopConsoleModel::GameBoy, BootRomKind::Dmg),
+            BootRomKind::Dmg0
+        );
+        assert_eq!(
+            next_boot_rom_kind(DesktopConsoleModel::GameBoy, BootRomKind::Dmg0),
+            BootRomKind::Dmg
+        );
+        assert_eq!(
+            next_boot_rom_kind(DesktopConsoleModel::GameBoyPocket, BootRomKind::Dmg),
+            BootRomKind::Mgb
+        );
+        assert_eq!(
+            next_boot_rom_kind(DesktopConsoleModel::GameBoyColor, BootRomKind::Cgb),
+            BootRomKind::CgbE
+        );
+        assert_eq!(
+            next_boot_rom_kind(DesktopConsoleModel::GameBoyColor, BootRomKind::CgbE),
+            BootRomKind::Cgb0
         );
         assert_eq!(
             next_startup_mode(StartupMode::SkipBoot),
@@ -15786,8 +15895,8 @@ mod tests {
             "experimental"
         );
         assert_eq!(
-            super::framebuffer_pixel_to_grayscale(7),
-            super::DMG_GRAYSCALE_SHADES[3]
+            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(7),
+            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
         );
     }
 
@@ -18709,6 +18818,7 @@ mod tests {
                             .machine
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -18749,6 +18859,7 @@ mod tests {
                             .machine
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -18807,6 +18918,7 @@ mod tests {
                     bgwin_framebuffer: &framebuffer,
                     backdrop_framebuffer: &framebuffer,
                     bgwin_framebuffer_layer_sources: &layer_sources,
+                    display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                 }),
                 None,
                 None,
@@ -18871,7 +18983,7 @@ mod tests {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("linked-keyboard-routing", true, false, false);
         let secondary_machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         harness
             .machine
@@ -19183,6 +19295,7 @@ mod tests {
                         bgwin_framebuffer: &left_framebuffer,
                         backdrop_framebuffer: &left_framebuffer,
                         bgwin_framebuffer_layer_sources: &left_sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &right_framebuffer,
@@ -19190,6 +19303,7 @@ mod tests {
                         bgwin_framebuffer: &right_framebuffer,
                         backdrop_framebuffer: &right_framebuffer,
                         bgwin_framebuffer_layer_sources: &right_sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -19205,8 +19319,11 @@ mod tests {
         let left_pixel = &rgb_frame[0..3];
         let right_pixel_index = super::FRAMEBUFFER_WIDTH as usize * 3;
         let right_pixel = &rgb_frame[right_pixel_index..right_pixel_index + 3];
-        assert_eq!(left_pixel, &[super::framebuffer_pixel_to_grayscale(0); 3]);
-        assert_eq!(right_pixel, &[super::framebuffer_pixel_to_grayscale(3); 3]);
+        assert_eq!(left_pixel, &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
+        assert_eq!(
+            right_pixel,
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+        );
         assert_eq!(rgb_frame.len(), linked_dimensions.height as usize * pitch);
     }
 
@@ -19266,6 +19383,7 @@ mod tests {
                         bgwin_framebuffer: &panel_0,
                         backdrop_framebuffer: &panel_0,
                         bgwin_framebuffer_layer_sources: &sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_1,
@@ -19273,6 +19391,7 @@ mod tests {
                         bgwin_framebuffer: &panel_1,
                         backdrop_framebuffer: &panel_1,
                         bgwin_framebuffer_layer_sources: &sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_2,
@@ -19280,6 +19399,7 @@ mod tests {
                         bgwin_framebuffer: &panel_2,
                         backdrop_framebuffer: &panel_2,
                         bgwin_framebuffer_layer_sources: &sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_3,
@@ -19287,6 +19407,7 @@ mod tests {
                         bgwin_framebuffer: &panel_3,
                         backdrop_framebuffer: &panel_3,
                         bgwin_framebuffer_layer_sources: &sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                 ],
             },
@@ -19301,18 +19422,18 @@ mod tests {
         let top_right_index = super::FRAMEBUFFER_WIDTH as usize * 3;
         let bottom_left_index = super::FRAMEBUFFER_HEIGHT as usize * pitch;
         let bottom_right_index = bottom_left_index + top_right_index;
-        assert_eq!(top_left, &[super::framebuffer_pixel_to_grayscale(0); 3]);
+        assert_eq!(top_left, &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
         assert_eq!(
             &rgb_frame[top_right_index..top_right_index + 3],
-            &[super::framebuffer_pixel_to_grayscale(1); 3]
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
         );
         assert_eq!(
             &rgb_frame[bottom_left_index..bottom_left_index + 3],
-            &[super::framebuffer_pixel_to_grayscale(2); 3]
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
         );
         assert_eq!(
             &rgb_frame[bottom_right_index..bottom_right_index + 3],
-            &[super::framebuffer_pixel_to_grayscale(3); 3]
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
         );
     }
 
@@ -19355,6 +19476,7 @@ mod tests {
                         bgwin_framebuffer: &bgwin_framebuffer,
                         backdrop_framebuffer: &bgwin_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -19367,7 +19489,10 @@ mod tests {
         )
         .expect("layer-masked frame should render");
 
-        assert_eq!(&rgb_frame[..3], &[170, 170, 170]);
+        assert_eq!(
+            &rgb_frame[..3],
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+        );
     }
 
     #[test]
@@ -19415,6 +19540,7 @@ mod tests {
                         bgwin_framebuffer: &bgwin_framebuffer,
                         backdrop_framebuffer: &backdrop_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
+                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                     }),
                     None,
                     None,
@@ -19427,9 +19553,18 @@ mod tests {
         )
         .expect("OBJ-only frame should render with a dynamic backdrop");
 
-        assert_eq!(&rgb_frame[..3], &[170, 170, 170]);
-        assert_eq!(&rgb_frame[3..6], &[0, 0, 0]);
-        assert_eq!(&rgb_frame[6..9], &[85, 85, 85]);
+        assert_eq!(
+            &rgb_frame[..3],
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+        );
+        assert_eq!(
+            &rgb_frame[3..6],
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+        );
+        assert_eq!(
+            &rgb_frame[6..9],
+            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
+        );
     }
 
     #[test]
@@ -19461,6 +19596,7 @@ mod tests {
                         .machine
                         .ppu()
                         .framebuffer_bgwin_layer_sources(),
+                    display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
                 }),
                 None,
                 None,
@@ -20077,8 +20213,9 @@ mod tests {
         );
         assert_eq!(
             harness.session.config.launch.console_model,
-            DesktopConsoleModel::Mgb
+            DesktopConsoleModel::GameBoyPocket
         );
+        assert_eq!(harness.session.config.boot_rom.kind, BootRomKind::Mgb);
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleStartupMode)
@@ -20107,6 +20244,13 @@ mod tests {
                 .is_none()
         );
         assert!(harness.session.config.boot_rom.search_path.is_none());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleBootRomKind)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.session.config.boot_rom.kind, BootRomKind::Mgb);
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleBootRomVerify)
@@ -20599,7 +20743,8 @@ mod tests {
 
         let persisted = fs::read_to_string(&harness.settings_path)
             .expect("actions test should persist settings");
-        assert!(persisted.contains("console_model = \"mgb\""));
+        assert!(persisted.contains("console_model = \"pocket\""));
+        assert!(persisted.contains("kind = \"mgb\""));
         assert!(persisted.contains("startup_mode = \"real-boot\""));
     }
 }

@@ -71,7 +71,7 @@ fn run_live_bgp_write_prefix(config: MachineConfig) -> (Vec<u8>, Vec<u8>) {
 #[test]
 fn live_machine_bus_access_uses_the_current_ppu_mode_from_the_raster_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.step_t_cycle();
@@ -91,7 +91,7 @@ fn live_machine_bus_access_uses_the_current_ppu_mode_from_the_raster_state() {
 #[test]
 fn skip_boot_ppu_state_continues_from_the_published_snapshot_on_the_shared_timeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     let startup = machine.ppu().snapshot();
@@ -113,7 +113,7 @@ fn skip_boot_ppu_state_continues_from_the_published_snapshot_on_the_shared_timel
 #[test]
 fn bg_only_mode3_produces_visible_pixels_from_vram_on_the_machine_timeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_bg_tile_row(&mut machine, 0, 0, 0x55, 0x33);
@@ -135,8 +135,9 @@ fn bg_only_mode3_produces_visible_pixels_from_vram_on_the_machine_timeline() {
 
 #[test]
 fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
-    let dmg_config = MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot);
-    let cgb_compat_config = MachineConfig::new(ConsoleModel::Cgb)
+    let dmg_config =
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot);
+    let cgb_compat_config = MachineConfig::new(ConsoleModel::GameBoyColor)
         .with_operating_mode(OperatingMode::CgbCompatibility)
         .with_startup_mode(StartupMode::SkipBoot);
 
@@ -156,7 +157,7 @@ fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
 #[test]
 fn scx_discard_keeps_vram_blocked_until_the_variable_mode3_end() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0x8000, 0x12);
@@ -180,7 +181,7 @@ fn scx_discard_keeps_vram_blocked_until_the_variable_mode3_end() {
 #[test]
 fn window_starts_mid_scanline_on_the_live_machine_without_recomputing_the_bg_prefix() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF40, 0xF1);
@@ -207,7 +208,7 @@ fn window_starts_mid_scanline_on_the_live_machine_without_recomputing_the_bg_pre
 #[test]
 fn window_status_bar_style_activation_uses_the_internal_line_counter_on_later_lines() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF40, 0xF1);
@@ -243,7 +244,7 @@ fn window_status_bar_style_activation_uses_the_internal_line_counter_on_later_li
 #[test]
 fn live_machine_obj_fetch_stretches_mode3_and_keeps_vram_blocked_until_hblank() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_oam_entry(&mut machine, 0, 16, 8, 0, 0);
@@ -271,7 +272,7 @@ fn live_machine_obj_fetch_stretches_mode3_and_keeps_vram_blocked_until_hblank() 
 fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixels() {
     fn run_case(disable_obj_during_fetch: bool) -> PpuSnapshot {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
 
         seed_oam_entry(&mut machine, 0, 16, 8, 0, 0);
@@ -321,7 +322,7 @@ fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixe
 #[test]
 fn window_start_keeps_the_obj_fifo_alive_for_final_mixing_on_the_live_machine() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     seed_oam_entry(&mut machine, 0, 16, 28, 1, 0x80);

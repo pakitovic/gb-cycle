@@ -27,7 +27,7 @@ Use `--release` for normal gameplay and timing-sensitive validation. Unoptimized
 
 ## Core emulation
 
-Reuses the same DMG-family startup model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`.
+Reuses the same visible console model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`. `SYSTEM -> MODEL` selects the product model (`GAME BOY`, `POCKET`, `LIGHT`, `COLOR`), while `BOOT ROM -> ROM` selects the concrete firmware image used only by `RealBoot`; if the selected firmware is invalid for the model, the desktop configuration normalizes it back to that model's default.
 
 Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-core`, so the desktop frontend only performs final host-side `f32` normalization and SDL3 queueing instead of owning APU semantics.
 
@@ -72,6 +72,7 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 ## Display and performance
 
 - Opens a desktop window and renders the live `160x144` framebuffer for a single console. Local linked layouts render native panels side by side: `DMG-04` and 2-player `DMG-07` use `320x144`; 3- and 4-player `DMG-07` use a `2x2` `320x288` grid, leaving the unused fourth panel black for 3P.
+- `GameBoy`, `GameBoyPocket`, and `GameBoyLight` presentation applies SameBoy `Core/display.c` DMG/MGB/GBL RGB palettes in the desktop renderer and screenshots. The core framebuffer, CLI artifacts, ROM-test oracles, and rank-normalized test outputs remain shade/rank data rather than desktop presentation colors.
 - Host-side presentation filtering now defaults to `OFF`, so the SDL texture is sampled with nearest-neighbor scaling unless `VIDEO -> FILTER` is enabled for linear smoothing.
 - `VIDEO -> BACKGROUND`, `VIDEO -> WINDOW`, and `VIDEO -> OBJECTS` are debug presentation masks that do not touch core timing or `LCDC` state. Disabling `OBJECTS` reveals the stored BG/WIN plane underneath in both the live window and screenshots; if `BACKGROUND` and/or `WINDOW` are also masked away, the uncovered area now falls back to the per-pixel DMG backdrop shade (palette entry `0` under the historical `BGP` value) instead of a fixed solid fill, so OBJ-only captures track SameBoy's changing diagnostic backdrop more closely. Disabling `BACKGROUND` or `WINDOW` still masks that plane by source rather than recomputing a fresh behind-window raster.
 - `VIDEO -> SCREENSHOT` saves a native-size PNG next to the running ROM inside a `screenshots/` subdirectory using an `8-bit RGB` layout similar to SameBoy’s raw screenshots, without baking in host-side scaling, filtering, HUD, or menu overlays.

@@ -44,7 +44,7 @@ fn build_idle_rom() -> Vec<u8> {
 
 fn load_machine(rom: Vec<u8>) -> Machine<TraceSummaryBuffer> {
     let mut machine = Machine::new_summary(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)

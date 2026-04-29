@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn inc_hl_uses_distinct_read_and_write_machine_cycles() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0x34]);
 
     cpu.apply_startup_state(CpuStartupState {
@@ -38,8 +38,8 @@ fn inc_hl_uses_distinct_read_and_write_machine_cycles() {
 
 #[test]
 fn add_a_d8_updates_flags_from_the_fetched_immediate() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xC6, 0x01]);
 
     cpu.apply_startup_state(CpuStartupState {

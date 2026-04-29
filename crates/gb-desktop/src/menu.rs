@@ -1,5 +1,5 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
-use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
+use gb_core::{ApuRecordedChannel, BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
     DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
@@ -230,7 +230,8 @@ const FAST_FORWARD_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FastForwardDefaults,
     MenuItem::Return,
 ];
-const BOOT_ROM_MENU_ITEMS: [MenuItem; 5] = [
+const BOOT_ROM_MENU_ITEMS: [MenuItem; 6] = [
+    MenuItem::BootRomKind,
     MenuItem::BootRomDefaultPath,
     MenuItem::BootRomFilePath,
     MenuItem::BootRomDirectoryPath,
@@ -286,6 +287,7 @@ pub enum MenuAction {
     CycleFastForwardSpeed,
     ResetFastForwardDefaults,
     ClearBootRomPath,
+    CycleBootRomKind,
     SelectBootRomFilePath,
     SelectBootRomDirectoryPath,
     CycleBootRomVerify,
@@ -520,6 +522,7 @@ pub struct MenuPresentation {
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
     pub boot_rom_uses_default_path: bool,
+    pub boot_rom_kind: BootRomKind,
     pub boot_rom_verification: BootRomVerificationMode,
     pub saves_enabled: bool,
     pub save_flush_policy: DesktopSaveFlushPolicy,
@@ -722,6 +725,7 @@ impl MenuPresentation {
             | MenuItem::FastForwardEnabled
             | MenuItem::FastForwardSpeed
             | MenuItem::FastForwardDefaults
+            | MenuItem::BootRomKind
             | MenuItem::BootRomDefaultPath
             | MenuItem::BootRomVerify
             | MenuItem::SavesEnabled
@@ -808,9 +812,10 @@ impl MenuPresentation {
             MenuItem::RewindMenu => "REWIND".to_string(),
             MenuItem::FastForwardMenu => "F-FORWARD".to_string(),
             MenuItem::ConsoleModel => match self.console_model {
-                DesktopConsoleModel::Dmg0 => "MODEL DMG0".to_string(),
-                DesktopConsoleModel::Dmg => "MODEL DMG".to_string(),
-                DesktopConsoleModel::Mgb => "MODEL MGB".to_string(),
+                DesktopConsoleModel::GameBoy => "MODEL GAME BOY".to_string(),
+                DesktopConsoleModel::GameBoyPocket => "MODEL POCKET".to_string(),
+                DesktopConsoleModel::GameBoyLight => "MODEL LIGHT".to_string(),
+                DesktopConsoleModel::GameBoyColor => "MODEL COLOR".to_string(),
             },
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
@@ -859,6 +864,14 @@ impl MenuPresentation {
                 )
             }
             MenuItem::FastForwardDefaults => "DEFAULTS".to_string(),
+            MenuItem::BootRomKind => match self.boot_rom_kind {
+                BootRomKind::Dmg0 => "ROM DMG0".to_string(),
+                BootRomKind::Dmg => "ROM DMG".to_string(),
+                BootRomKind::Mgb => "ROM MGB".to_string(),
+                BootRomKind::Cgb0 => "ROM CGB0".to_string(),
+                BootRomKind::Cgb => "ROM CGB".to_string(),
+                BootRomKind::CgbE => "ROM CGB-E".to_string(),
+            },
             MenuItem::BootRomDefaultPath => {
                 if self.boot_rom_uses_default_path {
                     "BOOT AUTO ON".to_string()
@@ -1339,6 +1352,7 @@ enum MenuItem {
     ConsoleModel,
     StartupMode,
     ExecutionMode,
+    BootRomKind,
     BootRomDefaultPath,
     BootRomFilePath,
     BootRomDirectoryPath,
@@ -2065,6 +2079,7 @@ impl OverlayMenuState {
             MenuItem::FastForwardEnabled => Some(MenuAction::ToggleFastForwardEnabled),
             MenuItem::FastForwardSpeed => Some(MenuAction::CycleFastForwardSpeed),
             MenuItem::FastForwardDefaults => Some(MenuAction::ResetFastForwardDefaults),
+            MenuItem::BootRomKind => Some(MenuAction::CycleBootRomKind),
             MenuItem::BootRomDefaultPath => Some(MenuAction::ClearBootRomPath),
             MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
             MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
@@ -3132,7 +3147,7 @@ mod tests {
         scroll_indicator_rows, viewport_start_index, visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
-    use gb_core::{ExecutionMode, StartupMode};
+    use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
         DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
@@ -3146,11 +3161,12 @@ mod tests {
             rom_loaded: true,
             recent_rom_count: 0,
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
-            console_model: DesktopConsoleModel::Dmg,
+            console_model: DesktopConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
             boot_rom_uses_default_path: true,
+            boot_rom_kind: BootRomKind::Dmg,
             boot_rom_verification: BootRomVerificationMode::Strict,
             saves_enabled: true,
             save_flush_policy: DesktopSaveFlushPolicy::Debounced,
@@ -3533,6 +3549,11 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         open_boot_rom_menu(&mut menu, presentation);
 
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleBootRomKind)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ClearBootRomPath)
@@ -4280,11 +4301,12 @@ mod tests {
         assert_eq!(FAST_FORWARD_MENU_ITEMS[2], MenuItem::FastForwardDefaults);
         assert_eq!(FAST_FORWARD_MENU_ITEMS[3], MenuItem::Return);
 
-        assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDefaultPath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomFilePath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::BootRomDirectoryPath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[3], MenuItem::BootRomVerify);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[4], MenuItem::Return);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomKind);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomDefaultPath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::BootRomFilePath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[3], MenuItem::BootRomDirectoryPath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[4], MenuItem::BootRomVerify);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[5], MenuItem::Return);
         assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::ConsoleModel));
         assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::StartupMode));
 
@@ -4364,13 +4386,26 @@ mod tests {
             "CLEAR LIST"
         );
 
-        presentation.console_model = DesktopConsoleModel::Dmg0;
+        presentation.console_model = DesktopConsoleModel::GameBoy;
         assert_eq!(
             presentation.item_label(MenuItem::ConsoleModel),
-            "MODEL DMG0"
+            "MODEL GAME BOY"
         );
-        presentation.console_model = DesktopConsoleModel::Mgb;
-        assert_eq!(presentation.item_label(MenuItem::ConsoleModel), "MODEL MGB");
+        presentation.console_model = DesktopConsoleModel::GameBoyPocket;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL POCKET"
+        );
+        presentation.console_model = DesktopConsoleModel::GameBoyLight;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL LIGHT"
+        );
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL COLOR"
+        );
 
         presentation.startup_mode = StartupMode::RealBoot;
         assert_eq!(presentation.item_label(MenuItem::StartupMode), "START REAL");
@@ -4387,6 +4422,12 @@ mod tests {
             presentation.item_label(MenuItem::BootRomDefaultPath),
             "BOOT AUTO OFF"
         );
+        presentation.boot_rom_kind = BootRomKind::Dmg0;
+        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM DMG0");
+        presentation.boot_rom_kind = BootRomKind::Mgb;
+        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM MGB");
+        presentation.boot_rom_kind = BootRomKind::CgbE;
+        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM CGB-E");
         presentation.boot_rom_verification = BootRomVerificationMode::Warn;
         assert_eq!(
             presentation.item_label(MenuItem::BootRomVerify),

@@ -90,7 +90,7 @@ fn run_hblank_ly_scx_probe(
     delay_nops: usize,
 ) -> HblankLyScxProbeObservation {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

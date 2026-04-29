@@ -2,7 +2,7 @@ use super::super::*;
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x2_placeholder_backed_terminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -55,7 +55,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x2_placeholder_backed_terminal_tail
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x4_placeholder_backed_preterminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -108,7 +108,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x4_placeholder_backed_preterminal_t
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x5_placeholder_backed_preterminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -161,7 +161,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x5_placeholder_backed_preterminal_t
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x6_placeholder_backed_preterminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -214,7 +214,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x6_placeholder_backed_preterminal_t
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x7_placeholder_backed_preterminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -267,7 +267,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x7_placeholder_backed_preterminal_t
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x12_terminal_tail_with_entry_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -320,7 +320,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x12_terminal_tail_with_entry_delay(
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_x16_terminal_tail_with_entry_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -373,7 +373,7 @@ fn cpu_stat_read_publishes_hblank_for_single_x16_terminal_tail_with_entry_delay(
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_xa0_terminal_tail_without_entry_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -426,7 +426,7 @@ fn cpu_stat_read_publishes_hblank_for_single_xa0_terminal_tail_without_entry_del
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_single_xa7_terminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -480,7 +480,7 @@ fn cpu_stat_read_publishes_hblank_for_single_xa7_terminal_tail() {
 
 #[test]
 fn cpu_stat_read_publishes_hblank_on_the_single_xa2_mode0_boundary() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,

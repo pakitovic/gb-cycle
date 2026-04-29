@@ -16,7 +16,7 @@ fn mode2_scan_rig(model: ConsoleModel) -> PpuTestRig {
 }
 
 fn dmg_mode2_scan_rig() -> PpuTestRig {
-    mode2_scan_rig(ConsoleModel::Dmg)
+    mode2_scan_rig(ConsoleModel::GameBoy)
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn current_mode2_oam_row_tracks_the_live_four_dot_slices() {
 
 #[test]
 fn first_oam_row_is_immune_to_basic_read_and_write_corruption_patterns() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     let mut read_oam = [0; 160];
     let mut write_oam = [0; 160];
 
@@ -291,7 +291,7 @@ fn read_plus_incdec_on_the_last_row_falls_back_to_ordinary_read_corruption() {
 
 #[test]
 fn cgb_models_do_not_apply_dmg_family_oam_corruption() {
-    let mut ppu = mode2_scan_rig(ConsoleModel::Cgb);
+    let mut ppu = mode2_scan_rig(ConsoleModel::GameBoyColor);
     let mut oam_bytes = [0; 160];
 
     write_oam_corruption_row(&mut oam_bytes, 0, [0x1357, 0x2468, 0xAAAA, 0xBBBB]);

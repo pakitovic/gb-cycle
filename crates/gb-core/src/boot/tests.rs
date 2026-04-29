@@ -9,6 +9,19 @@ fn empty_assets() -> BootRomAssets {
     BootRomAssets::none()
 }
 
+fn boot(
+    console_model: ConsoleModel,
+    startup_mode: StartupMode,
+    assets: BootRomAssets,
+) -> BootController {
+    BootController::new(
+        console_model,
+        startup_mode,
+        console_model.default_boot_rom_kind(),
+        assets,
+    )
+}
+
 fn unique_temp_dir() -> PathBuf {
     static UNIQUE_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -25,8 +38,8 @@ fn unique_temp_dir() -> PathBuf {
 
 #[test]
 fn startup_mode_controls_initial_boot_mapping_state() {
-    let real_boot = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets());
-    let skip_boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
+    let real_boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
+    let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
 
     assert!(real_boot.is_boot_rom_mapped());
     assert!(!skip_boot.is_boot_rom_mapped());
@@ -34,7 +47,7 @@ fn startup_mode_controls_initial_boot_mapping_state() {
 
 #[test]
 fn ff50_only_unmaps_on_non_zero_writes() {
-    let mut boot = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets());
+    let mut boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
 
     boot.write_ff50(0x00);
     assert!(boot.is_boot_rom_mapped());
@@ -48,9 +61,17 @@ fn ff50_only_unmaps_on_non_zero_writes() {
 
 #[test]
 fn bus_state_publishes_model_specific_boot_overlay_windows() {
-    let dmg = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets());
-    let cgb = BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, empty_assets());
-    let skip_boot = BootController::new(ConsoleModel::Cgb, StartupMode::SkipBoot, empty_assets());
+    let dmg = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
+    let cgb = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::RealBoot,
+        empty_assets(),
+    );
+    let skip_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    );
 
     let dmg_bus_state = dmg.bus_state();
     let cgb_bus_state = cgb.bus_state();
@@ -64,26 +85,51 @@ fn bus_state_publishes_model_specific_boot_overlay_windows() {
 }
 
 #[test]
-fn console_model_selects_the_expected_dmg_family_boot_kind() {
+fn console_model_defaults_to_the_expected_boot_kind() {
     assert_eq!(
-        BootController::new(ConsoleModel::Dmg0, StartupMode::RealBoot, empty_assets())
-            .boot_rom_kind(),
-        BootRomKind::Dmg0
-    );
-    assert_eq!(
-        BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets())
-            .boot_rom_kind(),
+        boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets()).boot_rom_kind(),
         BootRomKind::Dmg
     );
     assert_eq!(
-        BootController::new(ConsoleModel::Mgb, StartupMode::RealBoot, empty_assets())
-            .boot_rom_kind(),
+        boot(
+            ConsoleModel::GameBoyPocket,
+            StartupMode::RealBoot,
+            empty_assets()
+        )
+        .boot_rom_kind(),
         BootRomKind::Mgb
     );
     assert_eq!(
-        BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, empty_assets())
-            .boot_rom_kind(),
+        boot(
+            ConsoleModel::GameBoyLight,
+            StartupMode::RealBoot,
+            empty_assets()
+        )
+        .boot_rom_kind(),
+        BootRomKind::Mgb
+    );
+    assert_eq!(
+        boot(
+            ConsoleModel::GameBoyColor,
+            StartupMode::RealBoot,
+            empty_assets()
+        )
+        .boot_rom_kind(),
         BootRomKind::Cgb
+    );
+}
+
+#[test]
+fn boot_controller_uses_the_explicit_boot_kind() {
+    assert_eq!(
+        BootController::new(
+            ConsoleModel::GameBoy,
+            StartupMode::RealBoot,
+            BootRomKind::Dmg0,
+            empty_assets(),
+        )
+        .boot_rom_kind(),
+        BootRomKind::Dmg0
     );
 }
 
@@ -94,8 +140,18 @@ fn boot_rom_reads_come_from_the_configured_selected_model_image() {
         .expect("dmg image should validate")
         .with_bytes(BootRomKind::Mgb, vec![0xB0; DMG_FAMILY_BOOT_ROM_LEN])
         .expect("mgb image should validate");
-    let dmg = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, assets.clone());
-    let mgb = BootController::new(ConsoleModel::Mgb, StartupMode::RealBoot, assets);
+    let dmg = BootController::new(
+        ConsoleModel::GameBoy,
+        StartupMode::RealBoot,
+        BootRomKind::Dmg,
+        assets.clone(),
+    );
+    let mgb = BootController::new(
+        ConsoleModel::GameBoyPocket,
+        StartupMode::RealBoot,
+        BootRomKind::Mgb,
+        assets,
+    );
 
     assert_eq!(dmg.read_boot_rom(0x0000), 0xC0);
     assert_eq!(mgb.read_boot_rom(0x0000), 0xB0);
@@ -112,7 +168,12 @@ fn cgb_boot_rom_reads_cover_both_overlay_windows_without_aliasing_to_dmg_assets(
     let assets = BootRomAssets::none()
         .with_bytes(BootRomKind::Cgb, cgb_boot)
         .expect("cgb image should validate");
-    let cgb = BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, assets);
+    let cgb = BootController::new(
+        ConsoleModel::GameBoyColor,
+        StartupMode::RealBoot,
+        BootRomKind::Cgb,
+        assets,
+    );
 
     assert_eq!(cgb.read_boot_rom(0x0000), 0xC0);
     assert_eq!(cgb.read_boot_rom(0x0200), 0xD2);
@@ -137,7 +198,7 @@ fn cgb_boot_rom_assets_also_accept_sparse_address_space_images() {
 
 #[test]
 fn direct_boot_state_uses_model_specific_verified_entry_presets() {
-    let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
+    let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let direct_boot = boot
         .direct_boot_state(None)
         .expect("SkipBoot should expose a direct-boot state");
@@ -166,7 +227,11 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
 
 #[test]
 fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
-    let boot = BootController::new(ConsoleModel::Cgb, StartupMode::SkipBoot, empty_assets());
+    let boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    );
 
     for startup_state in [
         boot.direct_boot_state(None)
@@ -189,7 +254,7 @@ fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
 
 #[test]
 fn direct_boot_helpers_share_the_common_skip_boot_builder() {
-    let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
+    let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
 
     let direct_boot = boot
         .direct_boot_state(None)
@@ -240,7 +305,7 @@ fn patterned_startup_memory_policy_is_deterministic_without_zero_filling_wram_or
 
 #[test]
 fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
-    let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
+    let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let mut rom = vec![0x00; 0x150];
     rom[0x014D] = 0x00;
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
@@ -251,18 +316,18 @@ fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
         "empty-slot fallback keeps the common DMG preset"
     );
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::Dmg, Some(header.header_checksum)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(header.header_checksum)).f,
         0x80
     );
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::Dmg, Some(0x7F)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(0x7F)).f,
         0xB0
     );
 }
 
 #[test]
 fn missing_boot_rom_assets_fall_back_to_ff_reads_without_fake_placeholder_data() {
-    let boot = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets());
+    let boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
 
     assert!(!boot.has_boot_rom_asset());
     assert_eq!(boot.read_boot_rom(0x0000), 0xFF);

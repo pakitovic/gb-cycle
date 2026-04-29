@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn skip_boot_fetches_the_entry_opcode_from_the_cartridge_bus_path() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -35,7 +35,7 @@ fn skip_boot_fetches_the_entry_opcode_from_the_cartridge_bus_path() {
 #[test]
 fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
@@ -67,7 +67,7 @@ fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
 #[test]
 fn machine_executes_imm16_load_and_immediate_alu_with_real_fetches() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -93,7 +93,7 @@ fn machine_executes_imm16_load_and_immediate_alu_with_real_fetches() {
 #[test]
 fn machine_executes_add_hl_register_pair_and_preserves_zero_flag() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -118,7 +118,7 @@ fn machine_executes_add_hl_register_pair_and_preserves_zero_flag() {
 #[test]
 fn machine_executes_control_flow_stack_and_cb_prefix_program() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -146,7 +146,7 @@ fn machine_executes_control_flow_stack_and_cb_prefix_program() {
 #[test]
 fn machine_executes_alu_register_hl_and_immediate_families() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -173,7 +173,7 @@ fn machine_executes_alu_register_hl_and_immediate_families() {
 #[test]
 fn machine_executes_register_to_register_loads_from_a_into_dehl() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -196,7 +196,7 @@ fn machine_executes_register_to_register_loads_from_a_into_dehl() {
 #[test]
 fn machine_increments_a_b_c_d_e_h_l_consistently_inside_a_short_loop_body() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -226,7 +226,7 @@ fn machine_increments_a_b_c_d_e_h_l_consistently_inside_a_short_loop_body() {
 #[test]
 fn machine_executes_decimal_adjust_accumulator_flag_ops_accumulator_rotates_and_jp_hl() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -252,7 +252,7 @@ fn machine_executes_decimal_adjust_accumulator_flag_ops_accumulator_rotates_and_
 #[test]
 fn invalid_opcode_hole_enters_a_visible_machine_level_diagnostic_trap() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -291,7 +291,7 @@ fn invalid_opcode_hole_enters_a_visible_machine_level_diagnostic_trap() {
 #[test]
 fn supported_cb_set_opcode_completes_and_keeps_machine_running() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

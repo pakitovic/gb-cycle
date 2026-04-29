@@ -10,7 +10,7 @@ const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
 #[test]
 fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.step_t_cycle();
@@ -18,7 +18,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
 
     let snapshot = machine.snapshot();
 
-    assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
+    assert_eq!(snapshot.config.console_model, ConsoleModel::GameBoy);
     assert_eq!(snapshot.config.startup_mode, StartupMode::SkipBoot);
     assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
     assert_eq!(snapshot.trace.buffered_event_count, 42);
@@ -65,7 +65,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
 #[test]
 fn machine_snapshot_rendering_matches_the_golden_fixture() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.step_t_cycle();
@@ -85,7 +85,7 @@ fn machine_snapshot_rendering_matches_the_golden_fixture() {
 #[test]
 fn machine_snapshot_rendering_includes_mode3_startup_observability_fields() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.step_t_cycle();

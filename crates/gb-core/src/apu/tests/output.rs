@@ -13,7 +13,7 @@ fn host_normalization_reference_keeps_explicit_pcm_headroom() {
 
 #[test]
 fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_inactive() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     apu.write_register(0xFF12, 0x08);
@@ -34,7 +34,7 @@ fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_ina
 
 #[test]
 fn disabling_the_last_dac_keeps_the_previous_analog_level_alive_until_the_fade_advances() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
@@ -62,7 +62,7 @@ fn disabling_the_last_dac_keeps_the_previous_analog_level_alive_until_the_fade_a
 
 #[test]
 fn hpf_capacitor_keeps_evolving_while_the_last_dac_fades_and_then_freezes_after_settling() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
@@ -125,7 +125,7 @@ fn hpf_capacitor_keeps_evolving_while_the_last_dac_fades_and_then_freezes_after_
 
 #[test]
 fn routed_nonzero_vin_does_not_keep_the_output_path_connected_without_channel_dacs() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.master.vin_input = ApuStereoOutputSnapshot::new(ANALOG_ONE, ANALOG_ONE / 2);
     apu.write_register(0xFF24, NR50_VIN_LEFT_BIT | NR50_VIN_RIGHT_BIT);
@@ -155,7 +155,7 @@ fn routed_nonzero_vin_does_not_keep_the_output_path_connected_without_channel_da
 
 #[test]
 fn nr51_routes_channel_dac_outputs_independently_to_left_and_right_buses() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF17, 0x08);
@@ -177,7 +177,7 @@ fn nr51_routes_channel_dac_outputs_independently_to_left_and_right_buses() {
 
 #[test]
 fn nr50_vin_bits_route_the_explicit_neutral_vin_lane_without_altering_channel_mix() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
@@ -202,7 +202,7 @@ fn nr50_vin_bits_route_the_explicit_neutral_vin_lane_without_altering_channel_mi
 
 #[test]
 fn nr50_volume_zero_still_scales_by_one_and_seven_scales_by_eight() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
@@ -220,7 +220,7 @@ fn nr50_volume_zero_still_scales_by_one_and_seven_scales_by_eight() {
 
 #[test]
 fn hpf_state_persists_across_t_cycles_and_pulls_the_output_towards_zero() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
@@ -250,19 +250,23 @@ fn hpf_state_persists_across_t_cycles_and_pulls_the_output_towards_zero() {
 #[test]
 fn output_path_selects_the_expected_hpf_charge_model_per_console_model() {
     assert_eq!(
-        Apu::new(ConsoleModel::Dmg0).output_path.hpf_charge_model,
+        Apu::new(ConsoleModel::GameBoy).output_path.hpf_charge_model,
         HpfChargeModel::Dmg0Dmg
     );
     assert_eq!(
-        Apu::new(ConsoleModel::Dmg).output_path.hpf_charge_model,
+        Apu::new(ConsoleModel::GameBoy).output_path.hpf_charge_model,
         HpfChargeModel::Dmg0Dmg
     );
     assert_eq!(
-        Apu::new(ConsoleModel::Mgb).output_path.hpf_charge_model,
+        Apu::new(ConsoleModel::GameBoyPocket)
+            .output_path
+            .hpf_charge_model,
         HpfChargeModel::MgbCgb
     );
     assert_eq!(
-        Apu::new(ConsoleModel::Cgb).output_path.hpf_charge_model,
+        Apu::new(ConsoleModel::GameBoyColor)
+            .output_path
+            .hpf_charge_model,
         HpfChargeModel::MgbCgb
     );
 }
@@ -270,27 +274,27 @@ fn output_path_selects_the_expected_hpf_charge_model_per_console_model() {
 #[test]
 fn extra_length_clocking_policy_is_explicitly_revision_deferred_for_cgb() {
     assert_eq!(
-        extra_length_clocking_policy(ConsoleModel::Dmg0),
+        extra_length_clocking_policy(ConsoleModel::GameBoy),
         ExtraLengthClockingPolicy::CurrentDmgBaseline
     );
     assert_eq!(
-        extra_length_clocking_policy(ConsoleModel::Dmg),
+        extra_length_clocking_policy(ConsoleModel::GameBoy),
         ExtraLengthClockingPolicy::CurrentDmgBaseline
     );
     assert_eq!(
-        extra_length_clocking_policy(ConsoleModel::Mgb),
+        extra_length_clocking_policy(ConsoleModel::GameBoyPocket),
         ExtraLengthClockingPolicy::CurrentDmgBaseline
     );
     assert_eq!(
-        extra_length_clocking_policy(ConsoleModel::Cgb),
+        extra_length_clocking_policy(ConsoleModel::GameBoyColor),
         ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior
     );
 }
 
 #[test]
 fn cgb_hpf_settles_more_aggressively_than_dmg() {
-    let mut dmg = Apu::new(ConsoleModel::Dmg);
-    let mut cgb = Apu::new(ConsoleModel::Cgb);
+    let mut dmg = Apu::new(ConsoleModel::GameBoy);
+    let mut cgb = Apu::new(ConsoleModel::GameBoyColor);
 
     for apu in [&mut dmg, &mut cgb] {
         apu.write_register(0xFF26, 0x80);
@@ -318,7 +322,7 @@ fn cgb_hpf_settles_more_aggressively_than_dmg() {
 
 #[test]
 fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
@@ -337,7 +341,7 @@ fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
 
 #[test]
 fn recorded_channel_sample_pre_hpf_matches_the_isolated_routed_master_lane() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
@@ -356,7 +360,7 @@ fn recorded_channel_sample_pre_hpf_matches_the_isolated_routed_master_lane() {
 
 #[test]
 fn recorded_channel_sample_pre_hpf_respects_nr51_routing_and_nr50_scaling() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF17, 0x08);
     apu.write_register(0xFF24, 0x50);
@@ -377,7 +381,7 @@ fn recorded_channel_sample_pre_hpf_respects_nr51_routing_and_nr50_scaling() {
 
 #[test]
 fn recorded_channel_mix_pre_hpf_respects_empty_single_and_full_masks() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF17, 0x08);
@@ -409,7 +413,7 @@ fn recorded_channel_mix_pre_hpf_respects_empty_single_and_full_masks() {
 
 #[test]
 fn recorded_channel_mix_pre_hpf_sums_only_the_selected_channels() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF17, 0x08);
@@ -444,7 +448,7 @@ fn recorded_channel_mix_pre_hpf_sums_only_the_selected_channels() {
 
 #[test]
 fn recorded_channel_mix_tap_reports_connection_state_for_selected_channels() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
@@ -466,7 +470,7 @@ fn recorded_channel_mix_tap_reports_connection_state_for_selected_channels() {
 
 #[test]
 fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
-    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::GameBoy, 96_000);
     let mut filtered = ApuHostSample::default();
 
     for _ in 0..4_096 {
@@ -482,7 +486,7 @@ fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
 
 #[test]
 fn host_dc_blocker_reset_restores_the_initial_step_response() {
-    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::GameBoy, 96_000);
 
     let first = blocker.filter_sample(ApuHostSample {
         left: ANALOG_ONE,
@@ -506,7 +510,7 @@ fn host_dc_blocker_reset_restores_the_initial_step_response() {
 
 #[test]
 fn host_hpf_matches_the_output_path_step_response() {
-    let mut hpf = ApuHostHpf::new(ConsoleModel::Dmg);
+    let mut hpf = ApuHostHpf::new(ConsoleModel::GameBoy);
 
     let first = hpf.filter_t_cycle(
         ApuHostSample {
@@ -680,7 +684,7 @@ fn sample_capture_can_drain_into_a_reusable_buffer() {
 
 #[test]
 fn mixer_and_hpf_output_change_immediately_when_routing_changes() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);

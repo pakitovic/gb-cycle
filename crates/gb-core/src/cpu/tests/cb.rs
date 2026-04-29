@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distinct() {
-    let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut register_bus = Bus::new(ConsoleModel::Dmg);
+    let mut register_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut register_bus = Bus::new(ConsoleModel::GameBoy);
     let mut register_cartridge = build_test_cartridge(&[0xCB, 0x11]);
     register_cpu.apply_startup_state(CpuStartupState {
         c: 0x81,
@@ -42,8 +42,8 @@ fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distin
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut hl_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut hl_bus = Bus::new(ConsoleModel::Dmg);
+    let mut hl_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut hl_bus = Bus::new(ConsoleModel::GameBoy);
     let mut hl_cartridge = build_test_cartridge(&[0xCB, 0x06]);
     hl_cpu.apply_startup_state(CpuStartupState {
         h: 0xC0,
@@ -88,8 +88,8 @@ fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distin
 
 #[test]
 fn cb_rr_and_srl_support_the_blargg_crc_runtime_path() {
-    let mut rr_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut rr_bus = Bus::new(ConsoleModel::Dmg);
+    let mut rr_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut rr_bus = Bus::new(ConsoleModel::GameBoy);
     let mut rr_cartridge = build_test_cartridge(&[0xCB, 0x19]);
     rr_cpu.apply_startup_state(CpuStartupState {
         c: 0x80,
@@ -108,8 +108,8 @@ fn cb_rr_and_srl_support_the_blargg_crc_runtime_path() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut srl_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut srl_bus = Bus::new(ConsoleModel::Dmg);
+    let mut srl_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut srl_bus = Bus::new(ConsoleModel::GameBoy);
     let mut srl_cartridge = build_test_cartridge(&[0xCB, 0x3E]);
     srl_cpu.apply_startup_state(CpuStartupState {
         h: 0xC0,
@@ -143,8 +143,8 @@ fn cb_rr_and_srl_support_the_blargg_crc_runtime_path() {
 
 #[test]
 fn cb_rrc_register_and_hl_variants_support_the_external_bitop_paths() {
-    let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut register_bus = Bus::new(ConsoleModel::Dmg);
+    let mut register_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut register_bus = Bus::new(ConsoleModel::GameBoy);
     let mut register_cartridge = build_test_cartridge(&[0xCB, 0x08]);
     register_cpu.apply_startup_state(CpuStartupState {
         b: 0x01,
@@ -167,8 +167,8 @@ fn cb_rrc_register_and_hl_variants_support_the_external_bitop_paths() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 
-    let mut hl_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut hl_bus = Bus::new(ConsoleModel::Dmg);
+    let mut hl_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut hl_bus = Bus::new(ConsoleModel::GameBoy);
     let mut hl_cartridge = build_test_cartridge(&[0xCB, 0x0E]);
     hl_cpu.apply_startup_state(CpuStartupState {
         h: 0xC0,
@@ -202,8 +202,8 @@ fn cb_rrc_register_and_hl_variants_support_the_external_bitop_paths() {
 
 #[test]
 fn cb_sla_sra_and_swap_register_variants_update_flags_as_documented() {
-    let mut sla_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut sla_bus = Bus::new(ConsoleModel::Dmg);
+    let mut sla_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut sla_bus = Bus::new(ConsoleModel::GameBoy);
     let mut sla_cartridge = build_test_cartridge(&[0xCB, 0x20]);
     sla_cpu.apply_startup_state(CpuStartupState {
         b: 0x81,
@@ -216,8 +216,8 @@ fn cb_sla_sra_and_swap_register_variants_update_flags_as_documented() {
     assert_eq!(sla_cpu.registers().b, 0x02);
     assert_eq!(sla_cpu.registers().f, FLAG_C);
 
-    let mut sra_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut sra_bus = Bus::new(ConsoleModel::Dmg);
+    let mut sra_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut sra_bus = Bus::new(ConsoleModel::GameBoy);
     let mut sra_cartridge = build_test_cartridge(&[0xCB, 0x28]);
     sra_cpu.apply_startup_state(CpuStartupState {
         b: 0x81,
@@ -230,8 +230,8 @@ fn cb_sla_sra_and_swap_register_variants_update_flags_as_documented() {
     assert_eq!(sra_cpu.registers().b, 0xC0);
     assert_eq!(sra_cpu.registers().f, FLAG_C);
 
-    let mut swap_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut swap_bus = Bus::new(ConsoleModel::Dmg);
+    let mut swap_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut swap_bus = Bus::new(ConsoleModel::GameBoy);
     let mut swap_cartridge = build_test_cartridge(&[0xCB, 0x30]);
     swap_cpu.apply_startup_state(CpuStartupState {
         b: 0xF0,
@@ -247,8 +247,8 @@ fn cb_sla_sra_and_swap_register_variants_update_flags_as_documented() {
 
 #[test]
 fn cb_res_and_set_preserve_flags_for_register_and_hl_targets() {
-    let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut register_bus = Bus::new(ConsoleModel::Dmg);
+    let mut register_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut register_bus = Bus::new(ConsoleModel::GameBoy);
     let mut register_cartridge = build_test_cartridge(&[0xCB, 0x80, 0xCB, 0xC0]);
     register_cpu.apply_startup_state(CpuStartupState {
         b: 0xFF,
@@ -268,8 +268,8 @@ fn cb_res_and_set_preserve_flags_for_register_and_hl_targets() {
     assert_eq!(register_cpu.registers().f, FLAG_Z | FLAG_C);
     assert_eq!(register_cpu.registers().pc, 0x0104);
 
-    let mut hl_cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut hl_bus = Bus::new(ConsoleModel::Dmg);
+    let mut hl_cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut hl_bus = Bus::new(ConsoleModel::GameBoy);
     let mut hl_cartridge = build_test_cartridge(&[0xCB, 0x86, 0xCB, 0xC6]);
     hl_cpu.apply_startup_state(CpuStartupState {
         h: 0xC0,
@@ -293,8 +293,8 @@ fn cb_res_and_set_preserve_flags_for_register_and_hl_targets() {
 
 #[test]
 fn bit_cb_operation_preserves_carry_while_setting_half_carry() {
-    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cpu = CpuCore::new(ConsoleModel::GameBoy);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let mut cartridge = build_test_cartridge(&[0xCB, 0x7C]);
 
     cpu.apply_startup_state(CpuStartupState {

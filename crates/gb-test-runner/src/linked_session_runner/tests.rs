@@ -1442,7 +1442,7 @@ fn linked_session_runner_real_boot_helpers_cover_missing_roots_and_stimulus_timi
     )
     .with_participant(
         LinkedSessionParticipant::new("left", &left_rom)
-            .with_console_model(gb_core::ConsoleModel::Cgb)
+            .with_console_model(gb_core::ConsoleModel::GameBoyColor)
             .with_startup_mode(gb_core::StartupMode::RealBoot),
     )
     .with_participant(LinkedSessionParticipant::new("right", &right_rom));

@@ -294,7 +294,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast waveform timer.
 - `NR14` bit `6` should enable or disable the CH1 length unit immediately on write.
 - If the length counter expires while enabled, CH1 should be disabled.
-- For the current DMG-family baseline, extra length clocking on `NR14` writes should remain an explicit CH1 work item; do not treat it as a negligible quirk. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::Cgb` path.
+- For the current DMG-family baseline, extra length clocking on `NR14` writes should remain an explicit CH1 work item; do not treat it as a negligible quirk. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::GameBoyColor` path.
 - CH1 should keep envelope timer state and current volume separate from the readable contents of `NR12`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
@@ -405,7 +405,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast waveform timer.
 - `NR24` bit `6` should enable or disable the CH2 length unit immediately on write.
 - If the length counter expires while enabled, CH2 should be disabled.
-- For the current DMG-family baseline, extra length clocking on `NR24` writes should remain an explicit CH2 work item and should reuse the same general infrastructure as CH1 rather than a parallel incompatible implementation. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::Cgb` path.
+- For the current DMG-family baseline, extra length clocking on `NR24` writes should remain an explicit CH2 work item and should reuse the same general infrastructure as CH1 rather than a parallel incompatible implementation. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::GameBoyColor` path.
 - CH2 should keep envelope timer state and current volume separate from the readable contents of `NR22`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
@@ -523,7 +523,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast sample timer.
 - `NR34` bit `6` should enable or disable the CH3 length unit immediately on write.
 - If the length counter expires while enabled, CH3 should be disabled.
-- For the current DMG-family baseline, extra length clocking on `NR34` writes should remain an explicit CH3 path rather than disappearing behind generic channel code. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::Cgb` path.
+- For the current DMG-family baseline, extra length clocking on `NR34` writes should remain an explicit CH3 path rather than disappearing behind generic channel code. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::GameBoyColor` path.
 - Trigger-with-length-0 should keep the documented `255` versus `256` seam explicit on the shared frame-sequencer timeline instead of being flattened into an unconditional full reload.
 
 ## CH3 wave RAM access and DMG retrigger-corruption baseline
@@ -653,7 +653,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast noise timer.
 - `NR44` bit `6` should enable or disable the CH4 length unit immediately on write.
 - If the length counter expires while enabled, CH4 should be disabled.
-- For the current DMG-family baseline, extra length clocking on `NR44` writes should remain an explicit CH4 work item and should reuse the same general infrastructure as CH1 / CH2 rather than a parallel incompatible implementation. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::Cgb` path.
+- For the current DMG-family baseline, extra length clocking on `NR44` writes should remain an explicit CH4 work item and should reuse the same general infrastructure as CH1 / CH2 rather than a parallel incompatible implementation. The documented `CGB-02` exception remains revision-specific follow-up and must not be claimed through the coarse `ConsoleModel::GameBoyColor` path.
 - CH4 should keep envelope timer state and current volume separate from the readable contents of `NR42`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.

@@ -118,7 +118,7 @@ fn load_mealybug_m3_lcdc_bg_en_change_machine() -> Machine<TraceSummaryBuffer> {
     let rom =
         std::fs::read(&rom_path).expect("mealybug m3_lcdc_bg_en_change ROM should be present");
     let mut machine = Machine::new_summary(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)

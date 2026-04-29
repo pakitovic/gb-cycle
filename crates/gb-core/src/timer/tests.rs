@@ -3,7 +3,7 @@ use crate::scheduler::TCycle;
 
 #[test]
 fn div_is_derived_from_the_internal_counter_and_reset_by_any_write() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
 
     timer.system_counter = 0xABCD;
 
@@ -18,7 +18,7 @@ fn div_is_derived_from_the_internal_counter_and_reset_by_any_write() {
 
 #[test]
 fn tac_forces_unused_bits_high_and_masks_writes_to_control_bits() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
 
     timer.write_tac(0xFF);
 
@@ -28,7 +28,7 @@ fn tac_forces_unused_bits_high_and_masks_writes_to_control_bits() {
 
 #[test]
 fn startup_state_applies_the_visible_post_boot_timer_snapshot() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
 
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0xAB00,
@@ -51,7 +51,7 @@ fn tick_timer(timer: &mut Timer, t_cycle: u64) -> CycleContext {
 
 #[test]
 fn bit_3_timer_frequency_increments_tima_on_falling_edges() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tac(0x05);
 
     for t_cycle in 0..15 {
@@ -75,7 +75,7 @@ fn bit_3_timer_frequency_increments_tima_on_falling_edges() {
 
 #[test]
 fn div_write_falling_edge_glitch_can_increment_tima() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0x0008,
         tima: 0x0F,
@@ -92,7 +92,7 @@ fn div_write_falling_edge_glitch_can_increment_tima() {
 
 #[test]
 fn div_write_reports_when_the_apu_frame_sequencer_edge_occurs() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0x1000,
         tima: 0x00,
@@ -108,7 +108,7 @@ fn div_write_reports_when_the_apu_frame_sequencer_edge_occurs() {
 
 #[test]
 fn tac_write_falling_edge_glitch_can_increment_tima() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0x0020,
         tima: 0x2A,
@@ -123,7 +123,7 @@ fn tac_write_falling_edge_glitch_can_increment_tima() {
 
 #[test]
 fn overflow_reloads_tima_and_requests_timer_interrupt_four_t_cycles_later() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tima(0xFF);
     timer.write_tma(0x77);
     timer.write_tac(0x05);
@@ -150,7 +150,7 @@ fn overflow_reloads_tima_and_requests_timer_interrupt_four_t_cycles_later() {
 
 #[test]
 fn tac_glitch_overflow_reloads_without_slipping_an_extra_t_cycle() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0x0200,
         tima: 0xFF,
@@ -174,7 +174,7 @@ fn tac_glitch_overflow_reloads_without_slipping_an_extra_t_cycle() {
 
 #[test]
 fn tima_write_during_pending_reload_cancels_the_reload_and_irq_request() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tima(0xFF);
     timer.write_tma(0x99);
     timer.write_tac(0x05);
@@ -196,7 +196,7 @@ fn tima_write_during_pending_reload_cancels_the_reload_and_irq_request() {
 
 #[test]
 fn tma_write_before_reload_changes_the_value_copied_into_tima() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tima(0xFF);
     timer.write_tma(0x12);
     timer.write_tac(0x05);
@@ -219,7 +219,7 @@ fn tma_write_before_reload_changes_the_value_copied_into_tima() {
 
 #[test]
 fn tima_write_on_the_reload_cycle_is_ignored() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tima(0xFF);
     timer.write_tma(0x55);
     timer.write_tac(0x05);
@@ -237,7 +237,7 @@ fn tima_write_on_the_reload_cycle_is_ignored() {
 
 #[test]
 fn tma_write_on_the_reload_cycle_updates_the_reloaded_tima_value() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.write_tima(0xFF);
     timer.write_tma(0x12);
     timer.write_tac(0x05);
@@ -254,7 +254,7 @@ fn tma_write_on_the_reload_cycle_updates_the_reloaded_tima_value() {
 
 #[test]
 fn shared_divider_tick_publishes_timer_and_apu_edges_into_the_cycle_context() {
-    let mut timer = Timer::new(ConsoleModel::Dmg);
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
     timer.apply_startup_state(TimerStartupState {
         system_counter: 0x1FFF,
         tima: 0x0F,

@@ -107,7 +107,7 @@ struct Intr20ProbeObservation {
 
 fn run_intr_2_0_probe(delay_nops: usize) -> Intr20ProbeObservation {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

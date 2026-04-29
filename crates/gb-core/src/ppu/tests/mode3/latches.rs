@@ -35,45 +35,45 @@ fn mode3_latch_helpers_expose_the_expected_register_snapshots_and_accessors() {
     assert_eq!(latches.window_fetch_registers(false), visible);
     assert_eq!(latches.window_fetch_registers(true), pipeline);
     assert_eq!(
-        latches.window_activation_registers(ConsoleModel::Dmg),
+        latches.window_activation_registers(ConsoleModel::GameBoy),
         pipeline
     );
     assert_eq!(
-        latches.window_activation_registers(ConsoleModel::Cgb),
+        latches.window_activation_registers(ConsoleModel::GameBoyColor),
         visible
     );
     assert_eq!(latches.mode3_start_scx(), visible.scx);
     assert_eq!(latches.current_obj_height(), 16);
     assert_eq!(
-        latches.pixel_pipeline_lcdc(ConsoleModel::Dmg, 7),
+        latches.pixel_pipeline_lcdc(ConsoleModel::GameBoy, 7),
         pipeline.lcdc
     );
     assert_eq!(
-        latches.pixel_pipeline_lcdc(ConsoleModel::Dmg, 8),
+        latches.pixel_pipeline_lcdc(ConsoleModel::GameBoy, 8),
         visible.lcdc
     );
     assert_eq!(
-        latches.pixel_pipeline_lcdc(ConsoleModel::Cgb, 0),
+        latches.pixel_pipeline_lcdc(ConsoleModel::GameBoyColor, 0),
         visible.lcdc
     );
     assert_eq!(
-        latches.pixel_pipeline_bgp(ConsoleModel::Dmg, None, None),
+        latches.pixel_pipeline_bgp(ConsoleModel::GameBoy, None, None),
         0xFF
     );
     assert_eq!(
-        latches.pixel_pipeline_bgp(ConsoleModel::Dmg, Some(0x12), None),
+        latches.pixel_pipeline_bgp(ConsoleModel::GameBoy, Some(0x12), None),
         0x12
     );
     assert_eq!(
-        latches.pixel_pipeline_bgp(ConsoleModel::Dmg, None, Some(0x34)),
+        latches.pixel_pipeline_bgp(ConsoleModel::GameBoy, None, Some(0x34)),
         0x34
     );
     assert_eq!(
-        latches.pixel_pipeline_bgp(ConsoleModel::Cgb, None, None),
+        latches.pixel_pipeline_bgp(ConsoleModel::GameBoyColor, None, None),
         visible.bgp
     );
-    assert!(latches.pixel_transfer_bg_enabled(ConsoleModel::Dmg, 0));
-    assert!(latches.pixel_transfer_obj_enabled(ConsoleModel::Dmg, 0));
+    assert!(latches.pixel_transfer_bg_enabled(ConsoleModel::GameBoy, 0));
+    assert!(latches.pixel_transfer_obj_enabled(ConsoleModel::GameBoy, 0));
     assert!(latches.lcdc_bit_changed(LCDC_OBJ_SIZE_BIT));
 
     let advanced = latches.advance(PpuVisibleRegisters {

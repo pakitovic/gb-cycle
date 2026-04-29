@@ -86,7 +86,7 @@ fn build_battery_backed_serial_and_ram_rom(byte: u8, ram_value: u8) -> Vec<u8> {
 }
 
 fn build_loaded_machine(rom: Vec<u8>, capture_trace: bool) -> CliMachine {
-    let config = MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot);
+    let config = MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot);
     let mut machine = CliMachine::new(config, capture_trace);
     machine
         .load_cartridge(rom)
@@ -127,12 +127,12 @@ impl Write for FailOnWrite {
 }
 
 #[test]
-fn parse_run_arguments_keep_the_dmg_first_defaults() {
+fn parse_run_arguments_keep_the_default_game_boy_model() {
     let action = parse_cli_arguments(["run", "demo.gb"]).expect("run arguments should parse");
 
     match action {
         CliAction::Run(options) => {
-            assert_eq!(options.model, RunModel::Dmg);
+            assert_eq!(options.model, RunModel::GameBoy);
             assert_eq!(options.startup_mode, StartupMode::SkipBoot);
             assert_eq!(options.execution_mode, ExecutionMode::Strict);
             assert_eq!(
@@ -1736,10 +1736,14 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
 
 #[test]
 fn helper_parsers_names_and_formatters_cover_supported_variants() {
-    assert_eq!(RunModel::Dmg0.console_model(), ConsoleModel::Dmg0);
+    assert_eq!(RunModel::GameBoy.console_model(), ConsoleModel::GameBoy);
+    assert_eq!(RunModel::GameBoy.name(), "game-boy");
+    assert_eq!(RunModel::Dmg0.console_model(), ConsoleModel::GameBoy);
     assert_eq!(RunModel::Dmg.boot_rom_kind(), BootRomKind::Dmg);
     assert_eq!(RunModel::Mgb.boot_rom_kind(), BootRomKind::Mgb);
     assert_eq!(RunModel::Mgb.name(), "mgb");
+    assert_eq!(RunModel::GameBoyLight.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(RunModel::GameBoyColor.boot_rom_kind(), BootRomKind::Cgb);
     assert_eq!(SavePolicy::Manual.name(), "manual");
     assert_eq!(SavePolicy::OnClose.name(), "on-close");
     assert_eq!(SavePolicy::OnWrite.name(), "on-write");
@@ -1770,11 +1774,16 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         CompatibilityPolicy::experimental()
     );
 
+    assert_eq!(parse_run_model("game-boy"), Ok(RunModel::GameBoy));
+    assert_eq!(parse_run_model("pocket"), Ok(RunModel::GameBoyPocket));
+    assert_eq!(parse_run_model("light"), Ok(RunModel::GameBoyLight));
+    assert_eq!(parse_run_model("color"), Ok(RunModel::GameBoyColor));
     assert_eq!(parse_run_model("dmg0"), Ok(RunModel::Dmg0));
     assert_eq!(parse_run_model("dmg"), Ok(RunModel::Dmg));
     assert_eq!(parse_run_model("mgb"), Ok(RunModel::Mgb));
+    assert_eq!(parse_run_model("cgb"), Ok(RunModel::Cgb));
     assert!(
-        parse_run_model("cgb")
+        parse_run_model("sgb")
             .expect_err("unsupported models should fail")
             .contains("unsupported --model value")
     );
@@ -1922,16 +1931,13 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg0).len(), 64);
     assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg).len(), 64);
     assert_eq!(expected_boot_rom_sha256(BootRomKind::Mgb).len(), 64);
+    assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb0).len(), 64);
+    assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb).len(), 64);
+    assert_eq!(expected_boot_rom_sha256(BootRomKind::CgbE).len(), 64);
     assert_eq!(
         sha256_hex(b"abc"),
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
-}
-
-#[test]
-#[should_panic(expected = "gb-cli currently exposes only DMG-family run models")]
-fn expected_boot_rom_sha256_rejects_cgb_kind_in_the_dmg_only_cli_surface() {
-    let _ = expected_boot_rom_sha256(BootRomKind::Cgb);
 }
 
 #[test]

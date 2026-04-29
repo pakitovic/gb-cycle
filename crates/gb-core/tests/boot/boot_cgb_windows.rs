@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn cgb_real_boot_uses_a_cgb_boot_asset_for_the_split_boot_windows() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Cgb)
+        MachineConfig::new(ConsoleModel::GameBoyColor)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()

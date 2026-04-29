@@ -717,7 +717,7 @@ mod tests {
     }
 
     fn load_machine(rom: Vec<u8>) -> Machine<TraceSummaryBuffer> {
-        let mut machine = Machine::new_summary(MachineConfig::new(ConsoleModel::Dmg));
+        let mut machine = Machine::new_summary(MachineConfig::new(ConsoleModel::GameBoy));
         machine
             .load_cartridge(rom)
             .expect("test cartridge should load");

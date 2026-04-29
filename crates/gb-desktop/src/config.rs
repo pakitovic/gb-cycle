@@ -36,14 +36,17 @@ pub struct DesktopConfig {
 
 impl DesktopConfig {
     pub fn machine_config(&self) -> Result<MachineConfig, DesktopConfigError> {
-        let boot_rom_assets = self.boot_rom.load_assets(
-            self.launch.startup_mode,
-            self.launch.console_model.boot_rom_kind(),
-        )?;
+        let boot_rom_kind = self
+            .boot_rom
+            .effective_boot_rom_kind(self.launch.console_model);
+        let boot_rom_assets = self
+            .boot_rom
+            .load_assets(self.launch.startup_mode, boot_rom_kind)?;
 
         Ok(
             MachineConfig::new(self.launch.console_model.console_model())
                 .with_startup_mode(self.launch.startup_mode)
+                .with_boot_rom_kind(boot_rom_kind)
                 .with_boot_rom_assets(boot_rom_assets)
                 .with_compatibility(self.launch.compatibility_policy()),
         )
@@ -95,34 +98,33 @@ impl From<CartridgeSaveKeyError> for DesktopConfigError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DesktopConsoleModel {
-    Dmg0,
     #[default]
-    Dmg,
-    Mgb,
+    GameBoy,
+    GameBoyPocket,
+    GameBoyLight,
+    GameBoyColor,
 }
 
 impl DesktopConsoleModel {
     pub fn console_model(self) -> ConsoleModel {
         match self {
-            Self::Dmg0 => ConsoleModel::Dmg0,
-            Self::Dmg => ConsoleModel::Dmg,
-            Self::Mgb => ConsoleModel::Mgb,
+            Self::GameBoy => ConsoleModel::GameBoy,
+            Self::GameBoyPocket => ConsoleModel::GameBoyPocket,
+            Self::GameBoyLight => ConsoleModel::GameBoyLight,
+            Self::GameBoyColor => ConsoleModel::GameBoyColor,
         }
     }
 
-    pub fn boot_rom_kind(self) -> BootRomKind {
-        match self {
-            Self::Dmg0 => BootRomKind::Dmg0,
-            Self::Dmg => BootRomKind::Dmg,
-            Self::Mgb => BootRomKind::Mgb,
-        }
+    pub fn default_boot_rom_kind(self) -> BootRomKind {
+        self.console_model().default_boot_rom_kind()
     }
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Dmg0 => "dmg0",
-            Self::Dmg => "dmg",
-            Self::Mgb => "mgb",
+            Self::GameBoy => "game-boy",
+            Self::GameBoyPocket => "pocket",
+            Self::GameBoyLight => "light",
+            Self::GameBoyColor => "color",
         }
     }
 }
@@ -147,7 +149,7 @@ impl LaunchOptions {
 impl Default for LaunchOptions {
     fn default() -> Self {
         Self {
-            console_model: DesktopConsoleModel::Dmg,
+            console_model: DesktopConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
         }
@@ -164,6 +166,7 @@ pub enum BootRomVerificationMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootRomOptions {
+    pub kind: BootRomKind,
     pub search_path: Option<PathBuf>,
     pub verification: BootRomVerificationMode,
 }
@@ -195,11 +198,25 @@ impl BootRomOptions {
 
         BootRomAssets::from_directory(path)
     }
+
+    pub fn effective_boot_rom_kind(&self, console_model: DesktopConsoleModel) -> BootRomKind {
+        let model = console_model.console_model();
+        if model.supports_boot_rom_kind(self.kind) {
+            self.kind
+        } else {
+            model.default_boot_rom_kind()
+        }
+    }
+
+    pub fn normalize_kind_for_model(&mut self, console_model: DesktopConsoleModel) {
+        self.kind = self.effective_boot_rom_kind(console_model);
+    }
 }
 
 impl Default for BootRomOptions {
     fn default() -> Self {
         Self {
+            kind: DesktopConsoleModel::default().default_boot_rom_kind(),
             search_path: None,
             verification: BootRomVerificationMode::Strict,
         }
@@ -798,7 +815,8 @@ mod tests {
     fn default_desktop_config_matches_the_dmg_interactive_baseline() {
         let config = DesktopConfig::default();
 
-        assert_eq!(config.launch.console_model, DesktopConsoleModel::Dmg);
+        assert_eq!(config.launch.console_model, DesktopConsoleModel::GameBoy);
+        assert_eq!(config.boot_rom.kind, BootRomKind::Dmg);
         assert_eq!(config.launch.startup_mode, StartupMode::SkipBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Strict);
         assert!(config.saves.enabled);
@@ -918,7 +936,7 @@ mod tests {
             .machine_config()
             .expect("skip-boot should not load firmware");
 
-        assert_eq!(machine_config.console_model, ConsoleModel::Dmg);
+        assert_eq!(machine_config.console_model, ConsoleModel::GameBoy);
         assert_eq!(machine_config.startup_mode, StartupMode::SkipBoot);
         assert_eq!(
             machine_config.compatibility.execution_mode,
@@ -1029,19 +1047,64 @@ mod tests {
     }
 
     #[test]
-    fn console_model_helpers_cover_all_supported_dmg_family_variants() {
+    fn console_model_helpers_cover_all_visible_product_models() {
         assert_eq!(
-            DesktopConsoleModel::Dmg0.console_model(),
-            ConsoleModel::Dmg0
+            DesktopConsoleModel::GameBoy.console_model(),
+            ConsoleModel::GameBoy
         );
-        assert_eq!(DesktopConsoleModel::Dmg.console_model(), ConsoleModel::Dmg);
-        assert_eq!(DesktopConsoleModel::Mgb.console_model(), ConsoleModel::Mgb);
-        assert_eq!(DesktopConsoleModel::Dmg0.boot_rom_kind(), BootRomKind::Dmg0);
-        assert_eq!(DesktopConsoleModel::Dmg.boot_rom_kind(), BootRomKind::Dmg);
-        assert_eq!(DesktopConsoleModel::Mgb.boot_rom_kind(), BootRomKind::Mgb);
-        assert_eq!(DesktopConsoleModel::Dmg0.name(), "dmg0");
-        assert_eq!(DesktopConsoleModel::Dmg.name(), "dmg");
-        assert_eq!(DesktopConsoleModel::Mgb.name(), "mgb");
+        assert_eq!(
+            DesktopConsoleModel::GameBoyPocket.console_model(),
+            ConsoleModel::GameBoyPocket
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoyLight.console_model(),
+            ConsoleModel::GameBoyLight
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoyColor.console_model(),
+            ConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoy.default_boot_rom_kind(),
+            BootRomKind::Dmg
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoyPocket.default_boot_rom_kind(),
+            BootRomKind::Mgb
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoyLight.default_boot_rom_kind(),
+            BootRomKind::Mgb
+        );
+        assert_eq!(
+            DesktopConsoleModel::GameBoyColor.default_boot_rom_kind(),
+            BootRomKind::Cgb
+        );
+        assert_eq!(DesktopConsoleModel::GameBoy.name(), "game-boy");
+        assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "pocket");
+        assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "light");
+        assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "color");
+    }
+
+    #[test]
+    fn boot_rom_options_normalize_kind_against_the_visible_console_model() {
+        let mut options = BootRomOptions {
+            kind: BootRomKind::CgbE,
+            ..BootRomOptions::default()
+        };
+
+        assert_eq!(
+            options.effective_boot_rom_kind(DesktopConsoleModel::GameBoy),
+            BootRomKind::Dmg
+        );
+        options.normalize_kind_for_model(DesktopConsoleModel::GameBoyPocket);
+        assert_eq!(options.kind, BootRomKind::Mgb);
+
+        options.kind = BootRomKind::Cgb0;
+        assert_eq!(
+            options.effective_boot_rom_kind(DesktopConsoleModel::GameBoyColor),
+            BootRomKind::Cgb0
+        );
     }
 
     #[test]
@@ -1154,6 +1217,7 @@ mod tests {
         fs::write(&image_path, vec![0x11; 0x100]).expect("test boot ROM image should be writable");
 
         let options = BootRomOptions {
+            kind: BootRomKind::Dmg,
             search_path: Some(image_path.clone()),
             verification: BootRomVerificationMode::Off,
         };

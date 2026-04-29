@@ -14,7 +14,7 @@ fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
         FIXTURE_ACCEPT_ENV,
     );
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom_fixture)

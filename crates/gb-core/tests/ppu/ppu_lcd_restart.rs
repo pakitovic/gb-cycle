@@ -16,7 +16,7 @@ fn lcd_reenable_retained_true_does_not_service_lcd_stat_in_the_same_sequence() {
 #[test]
 fn lcd_disabled_machine_state_keeps_the_ppu_raster_frozen() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF40, 0x00);
@@ -37,7 +37,7 @@ fn lcd_disabled_machine_state_keeps_the_ppu_raster_frozen() {
 #[test]
 fn mid_scanline_lcdc7_disable_resets_the_raster_and_releases_ppu_bus_blocking() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0x8000, 0x12);
@@ -63,7 +63,7 @@ fn mid_scanline_lcdc7_disable_resets_the_raster_and_releases_ppu_bus_blocking() 
 #[test]
 fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x18, 0xFE], 0x00))
@@ -145,7 +145,7 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
 
     let run_probe = |address: u16, delay_nops: u16| -> u8 {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_lcd_enable_read_probe_rom(
@@ -160,7 +160,7 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
     let actual_ly = PROBE_M_CYCLES.map(|delay| run_probe(0xFF44, delay));
     let actual_stat_lyc0 = PROBE_M_CYCLES.map(|delay| {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
@@ -171,7 +171,7 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
     });
     let actual_stat_lyc1 = PROBE_M_CYCLES.map(|delay| {
         let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
             .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
@@ -198,7 +198,7 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
 #[test]
 fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_blocking() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let initial_hram = machine.read_bus(0xFF80);
 

@@ -8,7 +8,7 @@ fn cpu_stat_read_logs_case1_pre_read_state_against_real_rom() {
     let rom = std::fs::read(&rom_path)
         .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine.load_cartridge(rom).expect("probe ROM should load");
 
@@ -69,7 +69,7 @@ fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
     let rom = std::fs::read(&rom_path)
         .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine.load_cartridge(rom).expect("probe ROM should load");
 

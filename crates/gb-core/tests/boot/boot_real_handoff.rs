@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn real_boot_reads_boot_rom_at_0000_until_ff50_handoff_restores_cartridge_visibility() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
@@ -37,7 +37,7 @@ fn real_boot_reads_boot_rom_at_0000_until_ff50_handoff_restores_cartridge_visibi
 #[test]
 fn real_boot_executes_a_boot_rom_handoff_and_fetches_the_cartridge_entry_next() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
@@ -94,7 +94,7 @@ fn real_boot_can_source_boot_rom_assets_from_a_directory() {
     .expect("boot ROM asset file should be writable");
 
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::from_directory(&directory)

@@ -2,7 +2,7 @@ use super::super::*;
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_two_sprite_staggered_x2_x0a_fifo_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -57,7 +57,7 @@ fn cpu_stat_read_publishes_hblank_for_two_sprite_staggered_x2_x0a_fifo_tail() {
 
 #[test]
 fn cpu_stat_read_publishes_hblank_for_two_sprite_staggered_x4_x0c_fifo_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -112,7 +112,7 @@ fn cpu_stat_read_publishes_hblank_for_two_sprite_staggered_x4_x0c_fifo_tail() {
 
 #[test]
 fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x8_x10_preterminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -169,7 +169,7 @@ fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x8_x10_preterminal_tail(
 
 #[test]
 fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x0_x08_terminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -224,7 +224,7 @@ fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x0_x08_terminal_tail() {
 
 #[test]
 fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x1_x09_terminal_tail() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -279,7 +279,7 @@ fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x1_x09_terminal_tail() {
 
 #[test]
 fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x9_x11_terminal_boundary() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -335,7 +335,7 @@ fn cpu_stat_read_keeps_drawing_for_ten_sprite_step8_terminal_tails() {
     for (min_x, placeholders, push_pending, terminal_offset) in
         [(0, 2, true, 4), (1, 1, false, 4), (2, 4, true, 4)]
     {
-        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut ppu = Ppu::new(ConsoleModel::GameBoy);
         ppu.apply_startup_state(PpuStartupState {
             lcdc: 0x91,
             stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -389,7 +389,7 @@ fn cpu_stat_read_publishes_hblank_for_ten_sprite_step8_preterminal_tails() {
         (6, 152, 8_usize),
         (7, 152, 8_usize),
     ] {
-        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut ppu = Ppu::new(ConsoleModel::GameBoy);
         ppu.apply_startup_state(PpuStartupState {
             lcdc: 0x91,
             stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,

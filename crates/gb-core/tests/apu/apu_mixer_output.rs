@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn nr51_bus_writes_retarget_the_live_analog_mix_immediately() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -30,7 +30,7 @@ fn nr51_bus_writes_retarget_the_live_analog_mix_immediately() {
 #[test]
 fn nr50_vin_bus_bits_route_a_neutral_lane_without_perturbing_the_live_mix() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -59,10 +59,10 @@ fn nr50_vin_bus_bits_route_a_neutral_lane_without_perturbing_the_live_mix() {
 #[test]
 fn host_side_snapshot_capture_cadence_does_not_feed_back_into_apu_state() {
     let mut baseline = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let mut observed = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     for machine in [&mut baseline, &mut observed] {

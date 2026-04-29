@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn machine_executes_ldh_a8_reads_and_writes_through_ff00_offset() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -27,7 +27,7 @@ fn machine_executes_ldh_a8_reads_and_writes_through_ff00_offset() {
 #[test]
 fn machine_executes_ld_ff00_plus_c_reads_and_writes_through_the_same_bus_path() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -51,7 +51,7 @@ fn machine_executes_ld_ff00_plus_c_reads_and_writes_through_the_same_bus_path() 
 #[test]
 fn machine_exposes_hli_hld_and_incdec_address_events_through_the_public_cpu_api() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -108,7 +108,7 @@ fn machine_exposes_hli_hld_and_incdec_address_events_through_the_public_cpu_api(
 #[test]
 fn cpu_trace_mentions_the_last_address_event_next_to_the_last_bus_activity() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

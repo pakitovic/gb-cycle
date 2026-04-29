@@ -2,7 +2,7 @@ use super::super::*;
 
 #[test]
 fn bg_push_waits_for_fifo_space_without_losing_the_fetched_tile() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
     ppu.bg_pipeline_state.fetcher.fetch_x = 0;
@@ -53,7 +53,7 @@ fn bg_push_waits_for_fifo_space_without_losing_the_fetched_tile() {
 
 #[test]
 fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.current_transfer_x = 8;
@@ -123,7 +123,7 @@ fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths()
 
 #[test]
 fn bg_push_stage_waits_one_dot_on_entry_then_retries_every_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
     ppu.bg_pipeline_state.fetcher.fetch_x = 0;
@@ -172,7 +172,7 @@ fn bg_push_stage_waits_one_dot_on_entry_then_retries_every_dot() {
 
 #[test]
 fn bg_push_queues_fifo_fill_before_the_fill_phase_materializes_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
     ppu.bg_pipeline_state.push.pending = true;
@@ -203,14 +203,14 @@ fn bg_push_queues_fifo_fill_before_the_fill_phase_materializes_pixels() {
 
 #[test]
 fn bg_push_stage_reports_not_ready_when_no_cached_slice_is_pending() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::NotReady);
 }
 
 #[test]
 fn current_transfer_snapshot_keeps_context_and_readiness_together() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.mode3_started = true;
@@ -257,7 +257,7 @@ fn current_transfer_snapshot_keeps_context_and_readiness_together() {
 
 #[test]
 fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_paths() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
@@ -323,7 +323,7 @@ fn transfer_service_plan_rejects_non_visible_context_after_startup_tail() {
 
 #[test]
 fn bg_fifo_starvation_after_priming_does_not_advance_pre_visible_match_x() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -338,7 +338,7 @@ fn bg_fifo_starvation_after_priming_does_not_advance_pre_visible_match_x() {
 
 #[test]
 fn abstract_previsible_scx_discard_keeps_lx_zero_until_hidden_transfer_begins() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
@@ -363,7 +363,7 @@ fn abstract_previsible_scx_discard_keeps_lx_zero_until_hidden_transfer_begins() 
 
 #[test]
 fn fifo_backed_hidden_service_moves_transfer_phase_to_output() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
@@ -386,7 +386,7 @@ fn fifo_backed_hidden_service_moves_transfer_phase_to_output() {
 
 #[test]
 fn bg_fifo_discard_after_priming_keeps_lx_zero_until_discard_finishes() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -411,7 +411,7 @@ fn bg_fifo_discard_after_priming_keeps_lx_zero_until_discard_finishes() {
 
 #[test]
 fn visible_bg_pixel_output_reports_a_visible_pixel_dot() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x91;
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -428,7 +428,7 @@ fn visible_bg_pixel_output_reports_a_visible_pixel_dot() {
 
 #[test]
 fn flushing_bg_fill_tracks_cached_slice_in_fifo_sideband() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.fill.pending = true;
     ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
@@ -470,7 +470,7 @@ fn flushing_bg_fill_tracks_cached_slice_in_fifo_sideband() {
 
 #[test]
 fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.push_back(2);
@@ -501,7 +501,7 @@ fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
 
 #[test]
 fn visible_fifo_pop_skips_residual_startup_placeholder_before_real_pixels() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.push_back(0);
@@ -533,7 +533,7 @@ fn visible_fifo_pop_skips_residual_startup_placeholder_before_real_pixels() {
 
 #[test]
 fn visible_fifo_pop_preserves_multi_placeholder_startup_tail_timing() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
 
     ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
     ppu.bg_pipeline_state.fifo.push_back(0);

@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn stop_does_not_wake_when_no_joyp_rows_are_selected() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -28,7 +28,7 @@ fn stop_does_not_wake_when_no_joyp_rows_are_selected() {
 #[test]
 fn stop_resets_div_and_keeps_it_frozen_until_a_later_wake_event() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -66,7 +66,7 @@ fn stop_resets_div_and_keeps_it_frozen_until_a_later_wake_event() {
 #[test]
 fn stop_drops_external_serial_clocks_instead_of_replaying_them_after_wake() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -122,7 +122,7 @@ fn stop_drops_external_serial_clocks_instead_of_replaying_them_after_wake() {
 #[test]
 fn stop_wakes_from_the_selected_joypad_line_and_services_irq_later() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -174,7 +174,7 @@ fn stop_wakes_from_the_selected_joypad_line_and_services_irq_later() {
 #[test]
 fn stop_with_ime_disabled_and_a_pending_interrupt_enters_zombie_mode_as_a_one_byte_stop() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -222,7 +222,7 @@ fn stop_with_ime_disabled_and_a_pending_interrupt_enters_zombie_mode_as_a_one_by
 #[test]
 fn stop_with_ime_disabled_and_a_selected_held_button_behaves_like_halt_with_two_byte_visibility() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -248,7 +248,7 @@ fn stop_with_ime_disabled_and_a_selected_held_button_behaves_like_halt_with_two_
 fn stop_with_ime_disabled_and_a_selected_held_button_plus_pending_interrupt_behaves_like_a_one_byte_nop()
  {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -278,7 +278,7 @@ fn stop_with_ime_disabled_and_a_selected_held_button_plus_pending_interrupt_beha
 #[test]
 fn stop_with_ime_enabled_and_a_selected_held_button_behaves_like_a_one_byte_nop() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -305,7 +305,7 @@ fn stop_with_ime_enabled_and_a_selected_held_button_behaves_like_a_one_byte_nop(
 #[test]
 fn stop_nop_like_entry_still_resets_div_before_running_immediately_again() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -334,7 +334,7 @@ fn stop_nop_like_entry_still_resets_div_before_running_immediately_again() {
 #[test]
 fn stop_wake_with_ime_enabled_takes_the_bugged_0x0000_isr_and_corrupts_the_return_stack() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -382,7 +382,7 @@ fn stop_wake_with_ime_enabled_takes_the_bugged_0x0000_isr_and_corrupts_the_retur
 #[test]
 fn stop_wake_events_do_not_survive_while_the_cpu_is_not_stopped() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -402,7 +402,7 @@ fn stop_wake_events_do_not_survive_while_the_cpu_is_not_stopped() {
 #[test]
 fn stop_wake_and_joypad_irq_remain_separate_ordered_events_on_the_same_input_change() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -453,7 +453,7 @@ fn stop_wake_and_joypad_irq_remain_separate_ordered_events_on_the_same_input_cha
 #[test]
 fn second_stop_with_the_same_button_still_held_takes_the_halt_like_branch() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -490,7 +490,7 @@ fn second_stop_with_the_same_button_still_held_takes_the_halt_like_branch() {
 #[test]
 fn stop_can_wake_again_after_the_button_is_released_and_pressed_again() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

@@ -13,7 +13,8 @@ fn phase_4_stack_and_interrupt_service_rom_fixture_matches_expected_oam_state_an
         STACK_AND_INTERRUPT_ROM_NAME,
         STACK_AND_INTERRUPT_TRACE_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
+        BootRomKind::Dmg,
         8_192,
     );
     let _ = machine;

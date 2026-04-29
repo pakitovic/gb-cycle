@@ -729,10 +729,10 @@ fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem
 
 fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str) -> ConsoleModel {
     match console {
-        "dmg0" => ConsoleModel::Dmg0,
-        "dmg" => ConsoleModel::Dmg,
-        "mgb" => ConsoleModel::Mgb,
-        "cgb" => ConsoleModel::Cgb,
+        "game-boy" | "dmg0" | "dmg" => ConsoleModel::GameBoy,
+        "pocket" | "mgb" => ConsoleModel::GameBoyPocket,
+        "light" => ConsoleModel::GameBoyLight,
+        "color" | "cgb" => ConsoleModel::GameBoyColor,
         other => panic!(
             "unsupported console model {other:?} for curated case {case_id} in {source_path}"
         ),
@@ -1192,15 +1192,15 @@ fn curated_required_rom_path(path: &Path) -> Option<(String, PathBuf)> {
 
 fn console_report_suffix(console_model: ConsoleModel) -> &'static str {
     match console_model {
-        ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => "DMG",
-        ConsoleModel::Cgb => "GBC",
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => "DMG",
+        ConsoleModel::GameBoyColor => "GBC",
     }
 }
 
 fn console_report_order(console_model: ConsoleModel) -> usize {
     match console_model {
-        ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => 0,
-        ConsoleModel::Cgb => 1,
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0,
+        ConsoleModel::GameBoyColor => 1,
     }
 }
 
@@ -1437,7 +1437,7 @@ mod tests {
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(suite.cases.iter().all(|case| {
-            case.console_model == ConsoleModel::Cgb
+            case.console_model == ConsoleModel::GameBoyColor
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
         }));
         assert_eq!(
@@ -1511,7 +1511,7 @@ mod tests {
                 .find(|case| case.family == family && case.rom == Path::new(rom))
                 .unwrap_or_else(|| panic!("missing GBEmulatorShootout DMG row {family}/{rom}"));
 
-            assert_eq!(case.console_model, ConsoleModel::Dmg, "{family}/{rom}");
+            assert_eq!(case.console_model, ConsoleModel::GameBoy, "{family}/{rom}");
             assert!(case.report_model_suffix, "{family}/{rom}");
             assert_eq!(
                 manifest_case_report_rom_display(case),
@@ -1525,7 +1525,7 @@ mod tests {
             .find(|case| {
                 case.family == "acid"
                     && case.rom == Path::new("which.gb")
-                    && case.console_model == ConsoleModel::Cgb
+                    && case.console_model == ConsoleModel::GameBoyColor
             })
             .expect("CGB Acid which row should exist");
         assert!(cgb_which.report_model_suffix);
@@ -2471,7 +2471,7 @@ mod tests {
             expected: None,
             fixture: None,
             fixtures: None,
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             execution_mode: None,
             startup_memory_profile: None,
         });
@@ -2490,7 +2490,7 @@ mod tests {
             expected: None,
             fixture: Some(PathBuf::from("fixture.png")),
             fixtures: None,
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             execution_mode: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
         });

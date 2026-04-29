@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn joyp_keeps_upper_bits_high_and_uses_row_selection() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.set_button_pressed(JoypadButton::A, true);
     joypad.write_p1(0x10);
@@ -12,7 +12,7 @@ fn joyp_keeps_upper_bits_high_and_uses_row_selection() {
 
 #[test]
 fn selecting_both_rows_combines_the_visible_matrix_without_priority() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.set_button_pressed(JoypadButton::A, true);
     joypad.set_button_pressed(JoypadButton::Right, true);
@@ -23,7 +23,7 @@ fn selecting_both_rows_combines_the_visible_matrix_without_priority() {
 
 #[test]
 fn writing_0x30_reads_back_all_released_when_no_rows_are_selected() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.set_button_pressed(JoypadButton::A, true);
     joypad.set_button_pressed(JoypadButton::Right, true);
@@ -34,7 +34,7 @@ fn writing_0x30_reads_back_all_released_when_no_rows_are_selected() {
 
 #[test]
 fn button_row_and_dpad_row_are_observed_independently() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.set_button_pressed(JoypadButton::A, true);
     joypad.set_button_pressed(JoypadButton::Right, true);
@@ -48,7 +48,7 @@ fn button_row_and_dpad_row_are_observed_independently() {
 
 #[test]
 fn low_nibble_writes_do_not_override_the_live_matrix_view() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.set_button_pressed(JoypadButton::Start, true);
     joypad.write_p1(0x17);
@@ -58,7 +58,7 @@ fn low_nibble_writes_do_not_override_the_live_matrix_view() {
 
 #[test]
 fn startup_state_can_recreate_the_documented_post_boot_p1_snapshot() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.apply_startup_state(JoypadStartupState {
         selection_bits: 0x30,
@@ -70,7 +70,7 @@ fn startup_state_can_recreate_the_documented_post_boot_p1_snapshot() {
 
 #[test]
 fn visible_button_press_on_the_selected_row_requests_the_joypad_interrupt() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x10);
     joypad.set_button_pressed(JoypadButton::A, true);
@@ -81,7 +81,7 @@ fn visible_button_press_on_the_selected_row_requests_the_joypad_interrupt() {
 
 #[test]
 fn unselected_row_changes_do_not_request_until_a_selection_write_makes_them_visible() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x20);
     joypad.set_button_pressed(JoypadButton::A, true);
@@ -93,7 +93,7 @@ fn unselected_row_changes_do_not_request_until_a_selection_write_makes_them_visi
 
 #[test]
 fn repeated_visible_high_to_low_transitions_can_request_repeatedly() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x10);
     joypad.set_button_pressed(JoypadButton::A, true);
@@ -108,7 +108,7 @@ fn repeated_visible_high_to_low_transitions_can_request_repeatedly() {
 
 #[test]
 fn both_rows_selected_use_the_same_combined_visible_rule_for_interrupt_edges() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x00);
     joypad.set_button_pressed(JoypadButton::A, true);
@@ -123,7 +123,7 @@ fn both_rows_selected_use_the_same_combined_visible_rule_for_interrupt_edges() {
 
 #[test]
 fn stop_wake_uses_the_selected_visible_lines() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x30);
     joypad.set_button_pressed(JoypadButton::A, true);
@@ -144,7 +144,7 @@ fn stop_wake_uses_the_selected_visible_lines() {
 
 #[test]
 fn stop_wake_requires_a_new_released_to_pressed_transition() {
-    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::GameBoy);
 
     joypad.write_p1(0x10);
     joypad.set_button_pressed(JoypadButton::Start, true);

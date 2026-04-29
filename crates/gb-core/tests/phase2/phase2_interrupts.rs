@@ -9,8 +9,11 @@ fn phase_2_ei_delay_priority_rom_fixture_matches_expected_trace_and_state() {
         PROGRAM_ENTRY_ADDRESS,
         &[(0x0040, &vector)],
     );
-    let mut machine =
-        load_fixture_machine(EI_DELAY_PRIORITY_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
+    let mut machine = load_fixture_machine(
+        EI_DELAY_PRIORITY_ROM_NAME,
+        &expected_rom,
+        ConsoleModel::GameBoy,
+    );
 
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
 
@@ -36,7 +39,7 @@ fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_an
     let mut machine = load_fixture_machine(
         TIMER_IF_VISIBILITY_ROM_NAME,
         &expected_rom,
-        ConsoleModel::Dmg,
+        ConsoleModel::GameBoy,
     );
 
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
@@ -55,7 +58,7 @@ fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_an
 #[test]
 fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -76,8 +79,8 @@ fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
             "last_bus_activity=opcode_fetch@0x0100=0x3E",
             "subsystem=cpu level=trace message=\"t_cycle=7 phase=cpu_micro_operation",
             "last_bus_activity=operand_read@0x0101=0x12",
-            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=interrupt_aggregation console_model=Dmg status=Ready if=0xE1 ie=0x01\"",
-            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xE0 ie=0x01\"",
+            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=interrupt_aggregation console_model=GameBoy status=Ready if=0xE1 ie=0x01\"",
+            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation console_model=GameBoy status=Ready if=0xE0 ie=0x01\"",
             "subsystem=cpu level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation",
             "execution_state=ServiceInterrupt { source: VBlank, step: 0, t_cycle: 0 }",
         ],

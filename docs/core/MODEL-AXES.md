@@ -16,38 +16,56 @@ If this file conflicts with a subsystem handbook about hardware truth, the subsy
 
 ## Mental model
 
-Treat the public model surface as three independent axes:
+Treat the public model surface as independent axes, with `BootRomKind` deliberately kept outside the model identity:
 
 ```text
-ConsoleModel   = which silicon family / revision this machine is
+ConsoleModel   = visible product model selected by users and frontends
 OperatingMode  = which GB-visible mode the software is currently running under
 HostPlatform   = which outer host shell surrounds the shared GB core
+BootRomKind    = which firmware image RealBoot executes
 ```
 
 Examples:
 
-- `ConsoleModel::Dmg` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = ordinary DMG
-- `ConsoleModel::Cgb` + `OperatingMode::Cgb` = native CGB
-- `ConsoleModel::Cgb` + `OperatingMode::CgbCompatibility` = CGB-family silicon running monochrome software-visible mode
+- `ConsoleModel::GameBoy` + `BootRomKind::Dmg` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = ordinary Game Boy with the standard DMG boot ROM
+- `ConsoleModel::GameBoy` + `BootRomKind::Dmg0` = the same visible Game Boy product model with the earlier DMG0 firmware selected for `RealBoot`
+- `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `BootRomKind::Mgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot profile
+- `ConsoleModel::GameBoyColor` + `OperatingMode::Cgb` = native CGB
+- `ConsoleModel::GameBoyColor` + `OperatingMode::CgbCompatibility` = CGB-family silicon running monochrome software-visible mode
 - `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
 
 `CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
 
 ## When to use each type
 
-### Use `ConsoleModel` when the question is about silicon truth
+### Use `ConsoleModel` when the question is about the visible product model
 
-Reach for `ConsoleModel` when the code needs to know what hardware family or revision the machine actually is.
+Reach for `ConsoleModel` when the code needs to know the user-facing product class and its default hardware-family contract.
 
 Typical uses:
 
-- boot ROM asset selection
-- boot-time power-up defaults that differ by hardware model
+- default boot ROM kind and allowed firmware set
+- skip-boot power-up presets that differ by product model
 - silicon-family quirks such as DMG-family-only OAM corruption
-- revision-specific or family-specific analog behavior
+- product-specific desktop presentation such as DMG, MGB, or Game Boy Light display palette
 - raw family classification when a subsystem is defining a derived capability
 
+Do not model CPU revision suffixes such as `DMG-CPU B` or `CPU CGB C` as functional enum values until a tested hardware behavior actually needs them. Keep those revision notes in documentation and choose the closest product-level default.
+
 Do not use `ConsoleModel` just because it is nearby in the API. If the real question is "is this feature enabled right now?", `ConsoleModel` is usually too low-level.
+
+### Use `BootRomKind` when the question is about firmware
+
+Reach for `BootRomKind` when the code needs to load, verify, route, or execute a concrete boot ROM image. `BootRomKind` is selected explicitly for `RealBoot`; `SkipBoot` does not require an asset and instead uses the synthetic startup profile for the selected `ConsoleModel`.
+
+Current defaults and allowed firmware sets are:
+
+| ConsoleModel | Default BootRomKind | Allowed BootRomKind values |
+|---|---|---|
+| `GameBoy` | `Dmg` | `Dmg0`, `Dmg` |
+| `GameBoyPocket` | `Mgb` | `Mgb` |
+| `GameBoyLight` | `Mgb` | `Mgb` |
+| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` |
 
 ### Use `OperatingMode` when the question is about the active software-visible GB mode
 
@@ -116,9 +134,15 @@ Use `CapabilitySet::dmg_family_quirks_enabled()` for:
 
 Use `ConsoleModel` directly for:
 
-- `BootRomKind` selection
-- revision-specific startup presets
-- future per-revision CGB exceptions once they are implemented
+- deriving the default and allowed `BootRomKind` set
+- product-specific skip-boot startup presets
+- product-specific desktop display palette selection
+
+Use `BootRomKind` directly for:
+
+- boot ROM asset filenames and hashes
+- `RealBoot` firmware selection
+- boot ROM mapping payload lookup
 
 Use `OperatingMode` or a capability derived from it for:
 
@@ -147,7 +171,7 @@ This keeps behavior-neutral refactors small and makes later CGB bring-up easier 
 
 ## Anti-patterns
 
-- Do not use `ConsoleModel::Dmg` as a synonym for "DMG-visible behavior".
+- Do not use `ConsoleModel::GameBoy` as a synonym for "DMG-visible behavior".
 - Do not use `OperatingMode::CgbCompatibility` as a synonym for "DMG-family silicon".
 - Do not put SGB host-shell policy behind random `ConsoleModel` checks.
 - Do not re-derive the same semantic meaning from the raw axes in several subsystems.

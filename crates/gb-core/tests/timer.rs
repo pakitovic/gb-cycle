@@ -91,7 +91,7 @@ fn build_timer_rapid_toggle_probe_rom() -> Vec<u8> {
 #[test]
 fn skip_boot_div_continues_from_the_documented_hidden_counter_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -108,7 +108,7 @@ fn skip_boot_div_continues_from_the_documented_hidden_counter_state() {
 #[test]
 fn skip_boot_div_phase_matches_mooneye_boot_div_probe_on_dmg() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -132,7 +132,7 @@ fn skip_boot_div_phase_matches_mooneye_boot_div_probe_on_dmg() {
 #[test]
 fn timer_request_becomes_visible_only_after_the_reload_delay() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -169,7 +169,7 @@ fn timer_request_becomes_visible_only_after_the_reload_delay() {
 #[test]
 fn halted_cpu_services_timer_irq_only_after_the_reload_delay() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -237,7 +237,7 @@ fn same_cycle_if_read_observes_a_timer_request_before_interrupt_aggregation() {
     ]);
 
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -260,7 +260,7 @@ fn same_cycle_if_read_observes_a_timer_request_before_interrupt_aggregation() {
 #[test]
 fn rapid_timer_toggle_matches_the_mooneye_interrupt_window() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

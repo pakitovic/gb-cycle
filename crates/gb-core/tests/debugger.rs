@@ -6,7 +6,7 @@ use gb_core::{
 
 #[test]
 fn public_debug_controls_register_stable_breakpoint_ids() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     let first = machine
         .debug_controls_mut()
@@ -27,7 +27,7 @@ fn public_debug_controls_register_stable_breakpoint_ids() {
 
 #[test]
 fn public_debug_controls_cover_memory_mmio_and_cartridge_watch_targets() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     let memory = machine.debug_controls_mut().add_watchpoint(
         WatchpointTarget::MemoryAddress(0xC100),
@@ -73,7 +73,7 @@ fn public_debug_controls_cover_memory_mmio_and_cartridge_watch_targets() {
 
 #[test]
 fn machine_snapshot_reports_debug_control_counts() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Mgb));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoyPocket));
 
     let breakpoint_id = machine
         .debug_controls_mut()
@@ -98,7 +98,7 @@ fn machine_snapshot_reports_debug_control_counts() {
 
 #[test]
 fn debug_controls_allow_removal_and_reject_unknown_ids() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     let breakpoint_id = machine
         .debug_controls_mut()
@@ -145,7 +145,7 @@ fn debug_controls_allow_removal_and_reject_unknown_ids() {
 
 #[test]
 fn watchpoint_conditions_stay_distinct_across_read_write_and_change() {
-    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoy));
 
     let read_watchpoint = machine.debug_controls_mut().add_watchpoint(
         WatchpointTarget::MmioRegister(0xFF44),

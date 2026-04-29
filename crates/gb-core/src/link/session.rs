@@ -269,7 +269,9 @@ mod tests {
     use crate::model::{ConsoleModel, MachineConfig, StartupMode};
 
     fn dmg_skip_boot_machine() -> Machine {
-        Machine::new(MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot))
+        Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        )
     }
 
     #[derive(Default)]

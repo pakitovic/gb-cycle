@@ -38,10 +38,9 @@ pub fn sameboy_case_bundle_oracle_root(workspace_root: &Path) -> PathBuf {
 
 pub fn boot_rom_kind_for_console_model(console_model: ConsoleModel) -> Option<BootRomKind> {
     match console_model {
-        ConsoleModel::Dmg0 => Some(BootRomKind::Dmg0),
-        ConsoleModel::Dmg => Some(BootRomKind::Dmg),
-        ConsoleModel::Mgb => Some(BootRomKind::Mgb),
-        ConsoleModel::Cgb => None,
+        ConsoleModel::GameBoy => Some(BootRomKind::Dmg),
+        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => Some(BootRomKind::Mgb),
+        ConsoleModel::GameBoyColor => Some(BootRomKind::Cgb),
     }
 }
 
@@ -88,14 +87,21 @@ mod tests {
         let root = Path::new("/tmp/gb-cycle/.roms/bootrom");
 
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::Dmg),
+            boot_rom_kind_for_console_model(ConsoleModel::GameBoy),
             Some(BootRomKind::Dmg)
         );
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::Mgb),
+            boot_rom_kind_for_console_model(ConsoleModel::GameBoyPocket),
             Some(BootRomKind::Mgb)
         );
-        assert_eq!(boot_rom_kind_for_console_model(ConsoleModel::Cgb), None);
+        assert_eq!(
+            boot_rom_kind_for_console_model(ConsoleModel::GameBoyLight),
+            Some(BootRomKind::Mgb)
+        );
+        assert_eq!(
+            boot_rom_kind_for_console_model(ConsoleModel::GameBoyColor),
+            Some(BootRomKind::Cgb)
+        );
         assert_eq!(
             boot_rom_image_path(root, BootRomKind::Dmg),
             root.join("dmg_boot.bin")

@@ -206,7 +206,7 @@ impl LinkedSessionParticipant {
             id: id.into(),
             rom_path: rom_path.into(),
             external_rom_root_key: None,
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             adapter_port: None,

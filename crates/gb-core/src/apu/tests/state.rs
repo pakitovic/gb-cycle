@@ -3,7 +3,7 @@ use crate::apu::registers::{UNUSED_NR1F_ADDRESS, UNUSED_NR15_ADDRESS, WAVE_RAM_S
 
 #[test]
 fn nr52_tracks_channel_active_state_separately_from_dac_state() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     apu.write_register(0xFF26, 0x80);
 
@@ -28,7 +28,7 @@ fn nr52_tracks_channel_active_state_separately_from_dac_state() {
 
 #[test]
 fn audio_register_readback_keeps_write_only_and_mixed_fields_explicit() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     apu.write_register(0xFF10, 0x00);
@@ -51,7 +51,7 @@ fn audio_register_readback_keeps_write_only_and_mixed_fields_explicit() {
 
 #[test]
 fn nr52_power_off_clears_audio_registers_but_preserves_wave_ram() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0xF3);
     apu.write_register(0xFF14, 0x80);
@@ -80,7 +80,7 @@ fn nr52_power_off_clears_audio_registers_but_preserves_wave_ram() {
 
 #[test]
 fn nr52_power_on_restarts_the_ch4_hidden_startup_phase_from_zero() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF26, 0x00);
 
@@ -103,7 +103,7 @@ fn nr52_power_on_restarts_the_ch4_hidden_startup_phase_from_zero() {
 #[test]
 fn dmg_powered_off_length_writes_preserve_internal_length_counters_without_restoring_register_state()
  {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF26, 0x00);
 
@@ -136,7 +136,7 @@ fn dmg_powered_off_length_writes_preserve_internal_length_counters_without_resto
 
 #[test]
 fn dmg_powered_off_non_length_writes_leave_preserved_length_counters_unchanged() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF26, 0x00);
 
@@ -189,7 +189,7 @@ fn dmg_powered_off_non_length_writes_leave_preserved_length_counters_unchanged()
 
 #[test]
 fn cgb_powered_off_length_writes_are_ignored_for_all_channels() {
-    let mut apu = Apu::new(ConsoleModel::Cgb);
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
 
     for (address, value) in [
         (0xFF11, 0xD5),
@@ -212,7 +212,7 @@ fn cgb_powered_off_length_writes_are_ignored_for_all_channels() {
 
 #[test]
 fn register_write_observation_is_recorded_only_for_decoded_apu_registers() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     for (address, value, expected_observation) in [
@@ -243,7 +243,7 @@ fn register_write_observation_is_recorded_only_for_decoded_apu_registers() {
 
 #[test]
 fn observed_nr52_power_off_write_captures_the_before_and_after_power_transition() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0xF3);
     apu.write_register(0xFF14, 0x80);
@@ -270,7 +270,7 @@ fn observed_nr52_power_off_write_captures_the_before_and_after_power_transition(
 
 #[test]
 fn startup_state_recreates_the_published_post_boot_audio_snapshot() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     apu.apply_startup_state(ApuStartupState {
         powered: true,
@@ -334,7 +334,7 @@ fn startup_state_recreates_the_published_post_boot_audio_snapshot() {
 
 #[test]
 fn channel_2_3_and_4_register_paths_keep_dac_enable_and_trigger_distinct() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
 
     apu.write_register(0xFF16, 0xC7);
@@ -387,7 +387,7 @@ fn channel_2_3_and_4_register_paths_keep_dac_enable_and_trigger_distinct() {
 
 #[test]
 fn powered_off_startup_state_matches_the_nr52_power_off_contract() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     apu.apply_startup_state(ApuStartupState {
         powered: false,
@@ -433,13 +433,13 @@ fn powered_off_startup_state_matches_the_nr52_power_off_contract() {
     let trace = apu.scheduler_trace_message(&context);
     assert_eq!(
         trace,
-        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready powered=false nr50=0x00 nr51=0x00 nr52=0x70 div_apu=7 active_mask=0x00 dac_mask=0x00 channel_digital_outputs=[0, 0, 0, 0] mixer=(0, 0) hpf=(0, 0)"
+        "t_cycle=0 phase=external_event_ingress console_model=GameBoy status=Ready powered=false nr50=0x00 nr51=0x00 nr52=0x70 div_apu=7 active_mask=0x00 dac_mask=0x00 channel_digital_outputs=[0, 0, 0, 0] mixer=(0, 0) hpf=(0, 0)"
     );
 }
 
 #[test]
 fn powered_off_apu_keeps_div_apu_phase_in_sync_with_shared_edges() {
-    let mut apu = Apu::new(ConsoleModel::Dmg);
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.apply_startup_state(ApuStartupState {
         powered: false,
         nr10: 0x00,

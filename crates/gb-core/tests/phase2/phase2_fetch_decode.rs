@@ -8,8 +8,11 @@ fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() 
         PROGRAM_ENTRY_ADDRESS,
         &[],
     );
-    let mut machine =
-        load_fixture_machine(FETCH_IMMEDIATE_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
+    let mut machine = load_fixture_machine(
+        FETCH_IMMEDIATE_ROM_NAME,
+        &expected_rom,
+        ConsoleModel::GameBoy,
+    );
 
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 512);
 
@@ -25,7 +28,7 @@ fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() 
 #[test]
 fn phase_2_trace_shows_boot_handoff_before_the_first_cartridge_fetch() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
+        MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
@@ -49,7 +52,7 @@ fn phase_2_trace_shows_boot_handoff_before_the_first_cartridge_fetch() {
         &[
             "subsystem=cpu level=trace message=\"t_cycle=39 phase=cpu_micro_operation",
             "last_bus_activity=data_write@0xFF50=",
-            "subsystem=boot level=trace message=\"t_cycle=39 phase=mmio_side_effect_commit console_model=Dmg startup_mode=RealBoot status=Ready boot_rom_kind=Dmg boot_rom_mapped=false\"",
+            "subsystem=boot level=trace message=\"t_cycle=39 phase=mmio_side_effect_commit console_model=GameBoy startup_mode=RealBoot status=Ready boot_rom_kind=Dmg boot_rom_mapped=false\"",
             "subsystem=cpu level=trace message=\"t_cycle=43 phase=cpu_micro_operation",
             "last_bus_activity=opcode_fetch@0x0100=0xD3",
         ],

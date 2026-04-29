@@ -199,12 +199,12 @@ fn seed_dma_source_page(machine: &mut Machine, source_page: u8, seed: u8) {
 #[test]
 fn machine_new_starts_on_the_first_t_cycle() {
     let machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
-    assert_eq!(machine.config().console_model, ConsoleModel::Dmg);
-    assert_eq!(machine.cpu().console_model(), ConsoleModel::Dmg);
+    assert_eq!(machine.config().console_model, ConsoleModel::GameBoy);
+    assert_eq!(machine.cpu().console_model(), ConsoleModel::GameBoy);
     assert_eq!(machine.boot().startup_mode(), StartupMode::SkipBoot);
     assert!(machine.cartridge().is_empty());
     assert_eq!(
@@ -216,7 +216,8 @@ fn machine_new_starts_on_the_first_t_cycle() {
 #[test]
 fn step_t_cycle_advances_exactly_one_cycle_per_call() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Mgb).with_execution_mode(ExecutionMode::Permissive),
+        MachineConfig::new(ConsoleModel::GameBoyPocket)
+            .with_execution_mode(ExecutionMode::Permissive),
     );
 
     let first = machine.step_t_cycle();
@@ -246,7 +247,7 @@ impl MachineStepObserver for RegionCollector {
 #[test]
 fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let mut observer = RegionCollector::default();
 
@@ -281,7 +282,7 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
 #[test]
 fn machine_can_restore_cartridge_persistent_state_through_a_narrow_host_api() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom_with_header(&[0x00], 0x09, 0x00, 0x02))
@@ -305,7 +306,7 @@ fn machine_pocket_camera_host_api_is_gated_by_the_loaded_cartridge_family() {
     };
 
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     assert!(!machine.has_pocket_camera());
     assert_eq!(
@@ -341,27 +342,30 @@ fn machine_pocket_camera_host_api_is_gated_by_the_loaded_cartridge_family() {
 #[test]
 fn machine_parts_keep_the_current_subsystem_boundaries_explicit() {
     let machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::RealBoot),
+        MachineConfig::new(ConsoleModel::GameBoyPocket).with_startup_mode(StartupMode::RealBoot),
     );
 
     let parts = machine.into_parts();
 
     assert!(parts.debug_controls.breakpoints().is_empty());
     assert!(parts.debug_controls.watchpoints().is_empty());
-    assert_eq!(parts.cpu.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.bus.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.apu.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.ppu.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.dma.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.timer.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.serial.console_model(), ConsoleModel::Mgb);
+    assert_eq!(parts.cpu.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.bus.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.apu.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.ppu.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.dma.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.timer.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(parts.serial.console_model(), ConsoleModel::GameBoyPocket);
     assert_eq!(
         parts.external_port.attachment_kind(),
         ExternalPortAttachmentKind::None
     );
-    assert_eq!(parts.boot.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.interrupts.console_model(), ConsoleModel::Mgb);
-    assert_eq!(parts.joypad.console_model(), ConsoleModel::Mgb);
+    assert_eq!(parts.boot.console_model(), ConsoleModel::GameBoyPocket);
+    assert_eq!(
+        parts.interrupts.console_model(),
+        ConsoleModel::GameBoyPocket
+    );
+    assert_eq!(parts.joypad.console_model(), ConsoleModel::GameBoyPocket);
     assert_eq!(parts.boot.startup_mode(), StartupMode::RealBoot);
     assert!(parts.cartridge.is_empty());
 }
@@ -369,7 +373,7 @@ fn machine_parts_keep_the_current_subsystem_boundaries_explicit() {
 #[test]
 fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.step_t_cycle();
@@ -377,20 +381,20 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
 
     let snapshot = machine.snapshot();
 
-    assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
+    assert_eq!(snapshot.config.console_model, ConsoleModel::GameBoy);
     assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
     assert_eq!(snapshot.trace.buffered_event_count, 42);
     assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
     assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
-    assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);
-    assert_eq!(snapshot.apu.console_model, ConsoleModel::Dmg);
-    assert_eq!(snapshot.serial.console_model, ConsoleModel::Dmg);
+    assert_eq!(snapshot.cpu.console_model, ConsoleModel::GameBoy);
+    assert_eq!(snapshot.apu.console_model, ConsoleModel::GameBoy);
+    assert_eq!(snapshot.serial.console_model, ConsoleModel::GameBoy);
     assert_eq!(
         snapshot.external_port.attachment_kind(),
         ExternalPortAttachmentKind::None
     );
-    assert_eq!(snapshot.interrupts.console_model, ConsoleModel::Dmg);
-    assert_eq!(snapshot.joypad.console_model, ConsoleModel::Dmg);
+    assert_eq!(snapshot.interrupts.console_model, ConsoleModel::GameBoy);
+    assert_eq!(snapshot.joypad.console_model, ConsoleModel::GameBoy);
     assert!(matches!(
         snapshot.cartridge.state,
         crate::CartridgeSlotState::Empty
@@ -400,7 +404,7 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
 #[test]
 fn save_state_round_trips_exactly_at_a_t_cycle_boundary() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[
@@ -432,7 +436,7 @@ fn save_state_round_trips_exactly_at_a_t_cycle_boundary() {
 #[test]
 fn save_state_continuation_matches_uninterrupted_execution() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[
@@ -473,11 +477,11 @@ fn save_state_continuation_matches_uninterrupted_execution() {
 #[test]
 fn save_state_restore_rejects_incompatible_model_before_mutating() {
     let source = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let saved = source.capture_save_state();
     let mut target = Machine::new(
-        MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoyPocket).with_startup_mode(StartupMode::SkipBoot),
     );
     let before = target.capture_save_state();
 
@@ -488,8 +492,8 @@ fn save_state_restore_rejects_incompatible_model_before_mutating() {
     assert!(matches!(
         error,
         MachineSaveStateRestoreError::ConsoleModelMismatch {
-            expected: ConsoleModel::Dmg,
-            actual: ConsoleModel::Mgb,
+            expected: ConsoleModel::GameBoy,
+            actual: ConsoleModel::GameBoyPocket,
         }
     ));
     assert_eq!(target.capture_save_state(), before);
@@ -498,14 +502,14 @@ fn save_state_restore_rejects_incompatible_model_before_mutating() {
 #[test]
 fn save_state_restore_can_replace_runtime_boot_mapping_state() {
     let mut source = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::RealBoot),
     );
     source.write_bus(0xFF50, 0x01);
     assert!(!source.boot().is_boot_rom_mapped());
     let saved = source.capture_save_state();
 
     let mut target = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::RealBoot),
     );
     assert!(target.boot().is_boot_rom_mapped());
 
@@ -519,7 +523,7 @@ fn save_state_restore_can_replace_runtime_boot_mapping_state() {
 #[test]
 fn save_state_capture_restore_supports_rewind_style_subframe_cadence() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[
@@ -551,7 +555,7 @@ fn save_state_capture_restore_supports_rewind_style_subframe_cadence() {
 #[test]
 fn save_state_hardening_preserves_cpu_mid_instruction_halt_and_ime_states() {
     let mut mid_instruction = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     mid_instruction
         .load_cartridge(build_test_rom(&[
@@ -575,7 +579,7 @@ fn save_state_hardening_preserves_cpu_mid_instruction_halt_and_ime_states() {
     assert_save_state_restores_continuation(mid_instruction, "CPU mid-instruction", 37, 149);
 
     let mut ime_pending = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     ime_pending
         .load_cartridge(build_test_rom(&[
@@ -590,7 +594,7 @@ fn save_state_hardening_preserves_cpu_mid_instruction_halt_and_ime_states() {
     assert_save_state_restores_continuation(ime_pending, "CPU pending IME", 19, 97);
 
     let mut halted = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     halted
         .load_cartridge(build_test_rom(&[
@@ -607,7 +611,7 @@ fn save_state_hardening_preserves_cpu_mid_instruction_halt_and_ime_states() {
 #[test]
 fn save_state_hardening_preserves_mode3_window_fifo_and_obj_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -648,7 +652,7 @@ fn save_state_hardening_preserves_mode3_window_fifo_and_obj_state() {
 #[test]
 fn save_state_hardening_preserves_active_dma_and_pending_restart() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -674,7 +678,7 @@ fn save_state_hardening_preserves_active_dma_and_pending_restart() {
 #[test]
 fn save_state_hardening_preserves_timer_overflow_pipeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -696,7 +700,7 @@ fn save_state_hardening_preserves_timer_overflow_pipeline() {
 #[test]
 fn save_state_hardening_preserves_serial_transfers_in_flight() {
     let mut internal_clock = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     internal_clock
         .load_cartridge(build_test_rom(&[0x00]))
@@ -723,7 +727,7 @@ fn save_state_hardening_preserves_serial_transfers_in_flight() {
     );
 
     let mut external_clock = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     external_clock
         .load_cartridge(build_test_rom(&[0x00]))
@@ -753,7 +757,7 @@ fn save_state_hardening_preserves_serial_transfers_in_flight() {
 #[test]
 fn save_state_hardening_preserves_active_apu_channels_and_output_path() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -793,7 +797,7 @@ fn assert_mapper_save_state_restores_continuation(
     configure: impl FnOnce(&mut Machine),
 ) {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
@@ -899,7 +903,7 @@ fn save_state_hardening_preserves_representative_mapper_runtime_state() {
 #[test]
 fn rewind_preserves_cpu_mid_instruction_halt_and_ime_states() {
     let mut mid_instruction = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     mid_instruction
         .load_cartridge(build_test_rom(&[
@@ -923,7 +927,7 @@ fn rewind_preserves_cpu_mid_instruction_halt_and_ime_states() {
     assert_rewind_restores_continuation(mid_instruction, "rewind CPU mid-instruction", 37, 149);
 
     let mut ime_pending = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     ime_pending
         .load_cartridge(build_test_rom(&[
@@ -941,7 +945,7 @@ fn rewind_preserves_cpu_mid_instruction_halt_and_ime_states() {
     assert_rewind_restores_continuation(ime_pending, "rewind CPU pending IME", 19, 97);
 
     let mut halted = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     halted
         .load_cartridge(build_test_rom(&[
@@ -958,7 +962,7 @@ fn rewind_preserves_cpu_mid_instruction_halt_and_ime_states() {
 #[test]
 fn rewind_preserves_mode3_window_fifo_and_obj_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -999,7 +1003,7 @@ fn rewind_preserves_mode3_window_fifo_and_obj_state() {
 #[test]
 fn rewind_preserves_active_dma_and_pending_restart() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -1028,7 +1032,7 @@ fn rewind_preserves_active_dma_and_pending_restart() {
 #[test]
 fn rewind_preserves_timer_overflow_pipeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -1050,7 +1054,7 @@ fn rewind_preserves_timer_overflow_pipeline() {
 #[test]
 fn rewind_preserves_serial_transfers_in_flight() {
     let mut internal_clock = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     internal_clock
         .load_cartridge(build_test_rom(&[0x00]))
@@ -1077,7 +1081,7 @@ fn rewind_preserves_serial_transfers_in_flight() {
     );
 
     let mut external_clock = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     external_clock
         .load_cartridge(build_test_rom(&[0x00]))
@@ -1107,7 +1111,7 @@ fn rewind_preserves_serial_transfers_in_flight() {
 #[test]
 fn rewind_preserves_active_apu_channels_and_output_path() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[0x00]))
@@ -1147,7 +1151,7 @@ fn assert_mapper_rewind_restores_continuation(
     configure: impl FnOnce(&mut Machine),
 ) {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
@@ -1252,7 +1256,7 @@ fn rewind_preserves_representative_mapper_runtime_state() {
 
 #[test]
 fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
-    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     let mut pending = Some(PendingPpuMmioWrite {
         address: 0xFF42,
         value: 0x12,
@@ -1269,7 +1273,7 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
 #[test]
 fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(build_test_rom(&[
@@ -1300,7 +1304,7 @@ fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
 #[test]
 fn joypad_host_input_is_ingested_during_external_event_ingress() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF00, 0x10);
@@ -1326,7 +1330,7 @@ fn joypad_host_input_is_ingested_during_external_event_ingress() {
 #[test]
 fn external_serial_clock_is_ingested_during_external_event_ingress() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF01, 0x81);
@@ -1345,7 +1349,7 @@ fn external_serial_clock_is_ingested_during_external_event_ingress() {
 #[test]
 fn external_serial_clock_is_dropped_while_cpu_stop_is_active() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -1379,7 +1383,7 @@ fn external_serial_clock_is_dropped_while_cpu_stop_is_active() {
 #[test]
 fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     let mut first_rom = build_test_rom(&[0x00]);
     let mut second_rom = build_test_rom(&[0x00]);
@@ -1430,7 +1434,7 @@ fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
 #[test]
 fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
@@ -1445,7 +1449,7 @@ fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
 #[test]
 fn machine_exposes_external_port_reset_policy_configuration() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.set_external_port_reset_policy(ExternalPortResetPolicy::PreserveAttachmentKind);
@@ -1459,7 +1463,7 @@ fn machine_exposes_external_port_reset_policy_configuration() {
 #[test]
 fn load_cartridge_restarts_real_boot_from_power_on_state() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::RealBoot),
     );
 
     machine

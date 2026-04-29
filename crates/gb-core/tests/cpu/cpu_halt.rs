@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn ei_halt_with_a_pending_irq_services_once_and_returns_to_halt() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -56,7 +56,7 @@ fn ei_halt_with_a_pending_irq_services_once_and_returns_to_halt() {
 #[test]
 fn ei_halt_followed_by_rst_still_returns_to_halt_before_executing_rst() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -109,7 +109,7 @@ fn ei_halt_followed_by_rst_still_returns_to_halt_before_executing_rst() {
 #[test]
 fn halt_with_ime_enabled_wakes_on_a_later_irq_and_services_it() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
@@ -148,7 +148,7 @@ fn halt_with_ime_enabled_wakes_on_a_later_irq_and_services_it() {
 #[test]
 fn halt_with_ime_disabled_wakes_without_servicing_the_pending_irq() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine

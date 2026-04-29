@@ -1,4 +1,4 @@
-use crate::boot::BootRomAssets;
+use crate::boot::{BootRomAssets, BootRomKind};
 use crate::cartridge::{CartridgeHeader, CgbFlag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -11,18 +11,47 @@ pub enum ConsoleFamily {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 pub enum ConsoleModel {
-    Dmg0,
     #[default]
-    Dmg,
-    Mgb,
-    Cgb,
+    GameBoy,
+    GameBoyPocket,
+    GameBoyLight,
+    GameBoyColor,
 }
 
 impl ConsoleModel {
     pub const fn family(self) -> ConsoleFamily {
         match self {
-            Self::Cgb => ConsoleFamily::Cgb,
-            Self::Dmg0 | Self::Dmg | Self::Mgb => ConsoleFamily::Dmg,
+            Self::GameBoyColor => ConsoleFamily::Cgb,
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight => ConsoleFamily::Dmg,
+        }
+    }
+
+    pub const fn default_boot_rom_kind(self) -> BootRomKind {
+        match self {
+            Self::GameBoy => BootRomKind::Dmg,
+            Self::GameBoyPocket | Self::GameBoyLight => BootRomKind::Mgb,
+            Self::GameBoyColor => BootRomKind::Cgb,
+        }
+    }
+
+    pub const fn allowed_boot_rom_kinds(self) -> &'static [BootRomKind] {
+        match self {
+            Self::GameBoy => &[BootRomKind::Dmg0, BootRomKind::Dmg],
+            Self::GameBoyPocket | Self::GameBoyLight => &[BootRomKind::Mgb],
+            Self::GameBoyColor => &[BootRomKind::Cgb0, BootRomKind::Cgb, BootRomKind::CgbE],
+        }
+    }
+
+    pub const fn supports_boot_rom_kind(self, boot_rom_kind: BootRomKind) -> bool {
+        match self {
+            Self::GameBoy => matches!(boot_rom_kind, BootRomKind::Dmg0 | BootRomKind::Dmg),
+            Self::GameBoyPocket | Self::GameBoyLight => matches!(boot_rom_kind, BootRomKind::Mgb),
+            Self::GameBoyColor => {
+                matches!(
+                    boot_rom_kind,
+                    BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE
+                )
+            }
         }
     }
 
@@ -299,6 +328,7 @@ pub struct MachineConfig {
     pub operating_mode: OperatingMode,
     pub host_platform: HostPlatform,
     pub startup_mode: StartupMode,
+    pub boot_rom_kind: BootRomKind,
     pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
 }
@@ -308,12 +338,19 @@ impl MachineConfig {
         Self {
             console_model,
             operating_mode: console_model.default_operating_mode(),
+            boot_rom_kind: console_model.default_boot_rom_kind(),
             ..Self::default()
         }
     }
 
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
+        if !console_model.supports_operating_mode(self.operating_mode) {
+            self.operating_mode = console_model.default_operating_mode();
+        }
+        if !console_model.supports_boot_rom_kind(self.boot_rom_kind) {
+            self.boot_rom_kind = console_model.default_boot_rom_kind();
+        }
         self
     }
 
@@ -329,6 +366,11 @@ impl MachineConfig {
 
     pub fn with_startup_mode(mut self, startup_mode: StartupMode) -> Self {
         self.startup_mode = startup_mode;
+        self
+    }
+
+    pub fn with_boot_rom_kind(mut self, boot_rom_kind: BootRomKind) -> Self {
+        self.boot_rom_kind = boot_rom_kind;
         self
     }
 
@@ -370,16 +412,20 @@ impl MachineConfig {
     pub const fn model_axes_are_coherent(&self) -> bool {
         self.console_model
             .supports_operating_mode(self.operating_mode)
+            && self
+                .console_model
+                .supports_boot_rom_kind(self.boot_rom_kind)
     }
 }
 
 impl Default for MachineConfig {
     fn default() -> Self {
         Self {
-            console_model: ConsoleModel::Dmg,
-            operating_mode: ConsoleModel::Dmg.default_operating_mode(),
+            console_model: ConsoleModel::GameBoy,
+            operating_mode: ConsoleModel::GameBoy.default_operating_mode(),
             host_platform: HostPlatform::Handheld,
             startup_mode: StartupMode::SkipBoot,
+            boot_rom_kind: ConsoleModel::GameBoy.default_boot_rom_kind(),
             boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),
         }

@@ -17,7 +17,7 @@ fn mbc2_address_bit_8_decode_and_bank_zero_translation_are_visible_through_the_b
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC2 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     assert_eq!(
@@ -95,7 +95,7 @@ fn mbc2_internal_nibble_ram_aliases_and_honors_the_repo_readback_policy() {
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC2 should load");
     let (mut cartridge, _) = report.into_parts();
-    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default();
 
     bus.write_partial_harness_with_cartridge(

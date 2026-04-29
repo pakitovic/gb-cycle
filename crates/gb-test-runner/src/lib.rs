@@ -106,6 +106,13 @@ pub use workspace_paths::{
     sameboy_tester_oracle_root,
 };
 
+pub(crate) fn boot_rom_kind_is_required_for_runner_gate(kind: gb_core::BootRomKind) -> bool {
+    matches!(
+        kind,
+        gb_core::BootRomKind::Dmg0 | gb_core::BootRomKind::Dmg | gb_core::BootRomKind::Mgb
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TestSubsystem {
     Cpu,
@@ -429,7 +436,7 @@ impl RomTestCase {
             id: id.into(),
             rom_path: rom_path.into(),
             external_rom_root_key: None,
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
@@ -779,7 +786,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_dmg0.trace")),
             )
-            .with_console_model(ConsoleModel::Dmg0)
+            .with_console_model(ConsoleModel::GameBoy)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -804,7 +811,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_mgb.trace")),
             )
-            .with_console_model(ConsoleModel::Mgb)
+            .with_console_model(ConsoleModel::GameBoyPocket)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -843,7 +850,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
                 Timeout::TCycles(1_024),
                 PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_cgb.trace")),
             )
-            .with_console_model(ConsoleModel::Cgb)
+            .with_console_model(ConsoleModel::GameBoyColor)
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
                 address: PHASE_SENTINEL_ADDRESS,
                 value: PHASE_SENTINEL_VALUE,
@@ -1676,6 +1683,9 @@ impl RomRunner {
             .or_else(|| discover_boot_rom_store_root(&self.workspace_root))
             .unwrap_or_else(|| boot_rom_store_root(&self.workspace_root));
         let image_path = boot_rom_image_path(&root, kind);
+        if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
+            return Ok(BootRomAssets::none());
+        }
         enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, kind)
             .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
         if !root.is_dir() {
@@ -2579,7 +2589,7 @@ mod tests {
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(suite.cases.iter().all(|case| {
-            case.console_model == ConsoleModel::Cgb
+            case.console_model == ConsoleModel::GameBoyColor
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
         }));
         assert_eq!(
@@ -2804,7 +2814,7 @@ mod tests {
     #[test]
     fn mooneye_result_for_signature_requires_matching_registers() {
         let mut snapshot = CpuSnapshot {
-            console_model: ConsoleModel::Dmg,
+            console_model: ConsoleModel::GameBoy,
             status: CpuStatus::Ready,
             startup_state: CpuStartupState {
                 a: 0,
@@ -3553,7 +3563,7 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
             Timeout::TCycles(1),
             PassCondition::Informational(CaptureKind::Snapshot),
         )
-        .with_console_model(ConsoleModel::Cgb)
+        .with_console_model(ConsoleModel::GameBoyColor)
         .with_startup_mode(StartupMode::RealBoot);
         assert!(
             runner

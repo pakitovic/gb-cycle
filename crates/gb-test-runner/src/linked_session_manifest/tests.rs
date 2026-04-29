@@ -105,7 +105,7 @@ timeout_tcycles = 8192
     let left = &session.participants[0];
     assert_eq!(left.id, "left");
     assert_eq!(left.rom_path, left_rom);
-    assert_eq!(left.console_model, ConsoleModel::Dmg);
+    assert_eq!(left.console_model, ConsoleModel::GameBoy);
     assert_eq!(left.startup_mode, StartupMode::SkipBoot);
     assert_eq!(left.execution_mode, ExecutionMode::Strict);
     assert_eq!(left.external_stimuli.stimuli().len(), 1);
@@ -233,7 +233,7 @@ fixture = "fixtures/snapshot.txt"
     );
 
     let left = &trace_session.participants[0];
-    assert_eq!(left.console_model, ConsoleModel::Mgb);
+    assert_eq!(left.console_model, ConsoleModel::GameBoyPocket);
     assert_eq!(left.startup_mode, StartupMode::RealBoot);
     assert_eq!(left.execution_mode, ExecutionMode::Permissive);
     assert_eq!(
@@ -249,7 +249,7 @@ fixture = "fixtures/snapshot.txt"
     );
 
     let right = &trace_session.participants[1];
-    assert_eq!(right.console_model, ConsoleModel::Cgb);
+    assert_eq!(right.console_model, ConsoleModel::GameBoyColor);
     assert_eq!(right.execution_mode, ExecutionMode::Experimental);
 
     let info_session = &suite.sessions[1];

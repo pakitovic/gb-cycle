@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn dmg_powered_off_nr41_length_write_survives_power_cycle_on_the_machine_bus() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -27,7 +27,7 @@ fn dmg_powered_off_nr41_length_write_survives_power_cycle_on_the_machine_bus() {
 #[test]
 fn skip_boot_div_apu_phase_matches_the_shared_divider_entry_and_next_edge() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     let initial_div_apu = machine.apu().snapshot().div_apu;
@@ -54,7 +54,7 @@ fn skip_boot_div_apu_phase_matches_the_shared_divider_entry_and_next_edge() {
 #[test]
 fn div_write_can_advance_div_apu_immediately_when_it_resets_a_high_source_bit() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     while machine.timer().snapshot().system_counter & 0x1000 == 0 {
@@ -72,7 +72,7 @@ fn div_write_can_advance_div_apu_immediately_when_it_resets_a_high_source_bit() 
 #[test]
 fn powering_on_apu_keeps_the_next_live_frame_edge() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -103,7 +103,7 @@ fn powering_on_apu_keeps_the_next_live_frame_edge() {
 #[test]
 fn pulse_channel_length_expiry_clears_nr52_bits_on_the_next_length_clock() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -134,7 +134,7 @@ fn pulse_channel_length_expiry_clears_nr52_bits_on_the_next_length_clock() {
 #[test]
 fn channel_1_sweep_overflow_clears_nr52_on_the_frame_sequencer_timeline() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
@@ -162,7 +162,7 @@ fn channel_1_sweep_overflow_clears_nr52_on_the_frame_sequencer_timeline() {
 #[test]
 fn channel_3_length_expiry_clears_nr52_on_the_shared_length_clock() {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine.write_bus(0xFF26, 0x00);
