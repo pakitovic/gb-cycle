@@ -953,9 +953,9 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 Some(PathBuf::from("/tmp/custom-desktop-settings.toml").into_os_string()),
-                Some(PathBuf::from("/Users/pakitovic").into_os_string()),
+                Some(PathBuf::from("/Users/example-user").into_os_string()),
                 None,
-                Some(PathBuf::from("C:/Users/pakitovic/AppData/Roaming").into_os_string()),
+                Some(PathBuf::from("C:/Users/example-user/AppData/Roaming").into_os_string()),
             ),
             Some(PathBuf::from("/tmp/custom-desktop-settings.toml"))
         );
@@ -967,12 +967,12 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/Users/pakitovic").into_os_string()),
+                Some(PathBuf::from("/Users/example-user").into_os_string()),
                 None,
                 None,
             ),
             Some(PathBuf::from(
-                "/Users/pakitovic/Library/Application Support/gb-cycle/desktop-settings.toml"
+                "/Users/example-user/Library/Application Support/gb-cycle/desktop-settings.toml"
             ))
         );
     }
@@ -985,10 +985,10 @@ mod tests {
                 None,
                 None,
                 None,
-                Some(PathBuf::from("C:/Users/pakitovic/AppData/Roaming").into_os_string()),
+                Some(PathBuf::from("C:/Users/example-user/AppData/Roaming").into_os_string()),
             ),
             Some(PathBuf::from(
-                "C:/Users/pakitovic/AppData/Roaming/gb-cycle/desktop-settings.toml"
+                "C:/Users/example-user/AppData/Roaming/gb-cycle/desktop-settings.toml"
             ))
         );
     }
@@ -999,7 +999,7 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/home/pakitovic").into_os_string()),
+                Some(PathBuf::from("/home/example-user").into_os_string()),
                 Some(PathBuf::from("/tmp/xdg-config").into_os_string()),
                 None,
             ),
@@ -1010,12 +1010,12 @@ mod tests {
         assert_eq!(
             resolve_desktop_settings_path_from_locations(
                 None,
-                Some(PathBuf::from("/home/pakitovic").into_os_string()),
+                Some(PathBuf::from("/home/example-user").into_os_string()),
                 None,
                 None,
             ),
             Some(PathBuf::from(
-                "/home/pakitovic/.config/gb-cycle/desktop-settings.toml"
+                "/home/example-user/.config/gb-cycle/desktop-settings.toml"
             ))
         );
         assert_eq!(
