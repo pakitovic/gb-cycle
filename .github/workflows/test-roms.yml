@@ -15,19 +15,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Acid
+          - name: acid
             command: make run-acid
-          - name: Blargg
+          - name: blargg
             command: make run-blargg
-          - name: Daid
+          - name: daid
             command: make run-daid
-          - name: Hacktix
+          - name: hacktix
             command: make run-hacktix
-          - name: CPP
+          - name: cpp
             command: make run-cpp
-          - name: Mooneye
+          - name: mooneye
             command: make run-mooneye
-          - name: Mealybug
+          - name: mealybug
             command: make run-mealybug
 
     steps:
