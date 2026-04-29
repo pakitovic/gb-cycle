@@ -9,7 +9,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub const DEFAULT_BOOT_ROM_DIR: &str = ".roms/bootrom";
 pub const DEFAULT_WINDOW_SCALE: u8 = 4;
 pub const DEFAULT_AUDIO_SAMPLE_RATE_HZ: u32 = 48_000;
 pub const DEFAULT_AUDIO_BUFFER_FRAMES: u16 = 512;
@@ -202,10 +201,8 @@ pub struct BootRomOptions {
 }
 
 impl BootRomOptions {
-    pub fn resolved_search_path(&self) -> PathBuf {
-        self.search_path
-            .clone()
-            .unwrap_or_else(|| PathBuf::from(DEFAULT_BOOT_ROM_DIR))
+    pub fn resolved_search_path(&self) -> Option<PathBuf> {
+        self.search_path.clone()
     }
 
     pub fn load_assets(
@@ -217,7 +214,9 @@ impl BootRomOptions {
             return Ok(BootRomAssets::none());
         }
 
-        let path = self.resolved_search_path();
+        let Some(path) = self.resolved_search_path() else {
+            return Ok(BootRomAssets::none());
+        };
         if path.is_file() {
             let bytes = fs::read(&path).map_err(|source| BootRomAssetError::ReadFailed {
                 path: path.clone(),
@@ -1270,15 +1269,12 @@ mod tests {
     #[test]
     fn boot_rom_options_cover_default_custom_and_skip_boot_loading() {
         let mut options = BootRomOptions::default();
-        assert_eq!(
-            options.resolved_search_path(),
-            PathBuf::from(DEFAULT_BOOT_ROM_DIR)
-        );
+        assert_eq!(options.resolved_search_path(), None);
 
         options.search_path = Some(PathBuf::from("/tmp/firmware"));
         assert_eq!(
             options.resolved_search_path(),
-            PathBuf::from("/tmp/firmware")
+            Some(PathBuf::from("/tmp/firmware"))
         );
 
         assert!(

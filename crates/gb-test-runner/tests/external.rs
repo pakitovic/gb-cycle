@@ -9,7 +9,7 @@ use gb_core::{
 use gb_test_runner::{
     RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
     boot_rom_kind_for_console_model, cpp_dmg_curated_suite, daid_dmg_curated_suite,
-    discover_boot_rom_store_root, discover_test_rom_store_root, hacktix_dmg_curated_suite,
+    discover_boot_rom_root, discover_test_rom_store_root, hacktix_dmg_curated_suite,
     mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
     update_curated_test_report, verify_boot_rom_file,
 };
@@ -166,11 +166,8 @@ fn compute_header_checksum(rom: &[u8]) -> u8 {
 }
 
 fn load_verified_boot_rom_assets(console_model: ConsoleModel) -> Option<BootRomAssets> {
-    let workspace_root = workspace_root();
-    let Some(root) = discover_boot_rom_store_root(&workspace_root) else {
-        eprintln!(
-            "skipping ignored test because neither GB_CYCLE_BOOT_ROM_ROOT nor the default boot ROM store is configured"
-        );
+    let Some(root) = discover_boot_rom_root() else {
+        eprintln!("skipping ignored test because GB_CYCLE_BOOT_ROM_ROOT is not configured");
         return None;
     };
     let Some(kind) = boot_rom_kind_for_console_model(console_model) else {
@@ -514,43 +511,43 @@ fn run_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_labe
 }
 
 #[test]
-#[ignore = "requires verified local dmg0 boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg0 boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg0_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
-#[ignore = "requires verified local mgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local mgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_mgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoyPocket);
 }
 
 #[test]
-#[ignore = "requires verified local cgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_cgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_cgb_real_boot_handoff_smoke();
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_invalid_logo_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::InvalidLogo, "invalid logo");
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_invalid_checksum_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::InvalidChecksum, "invalid checksum");
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_ff_filled_header_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::FfFilledHeader, "ff-filled header");
 }

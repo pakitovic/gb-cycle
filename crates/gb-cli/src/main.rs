@@ -26,7 +26,6 @@ const DEFAULT_SKIP_BOOT_FRAME_LIMIT: u32 = 120;
 const DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT: u32 = 120;
 const DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT: u32 = 480;
 const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
-const DEFAULT_BOOT_ROM_DIR: &str = ".roms/bootrom";
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
@@ -1359,7 +1358,25 @@ fn load_boot_rom_assets(
         return Ok(BootRomAssets::none());
     }
 
-    let root = resolve_boot_rom_root(options.boot_rom_dir.as_deref(), current_dir);
+    let Some(root) = resolve_boot_rom_root(options.boot_rom_dir.as_deref(), current_dir) else {
+        match options.boot_rom_verify {
+            BootRomVerificationMode::Off => {}
+            BootRomVerificationMode::Warn => {
+                writeln_checked(
+                    stderr,
+                    &format!(
+                        "warning: boot ROM root is not configured; use --boot-rom-dir or set {DEFAULT_BOOT_ROM_ROOT_ENV_VAR}"
+                    ),
+                )?;
+            }
+            BootRomVerificationMode::Strict => {
+                return Err(format!(
+                    "boot ROM root is not configured; use --boot-rom-dir or set {DEFAULT_BOOT_ROM_ROOT_ENV_VAR}"
+                ));
+            }
+        }
+        return Ok(BootRomAssets::none());
+    };
     validate_explicit_directory_input("--boot-rom-dir", options.boot_rom_dir.as_deref(), &root)?;
     let image_path = root.join(BootRomAssets::filename(options.model.boot_rom_kind()));
     match options.boot_rom_verify {
@@ -1384,14 +1401,14 @@ fn load_boot_rom_assets(
     }
 }
 
-fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> PathBuf {
+fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> Option<PathBuf> {
     if let Some(explicit_root) = explicit_root {
-        return resolve_path(current_dir, explicit_root);
+        return Some(resolve_path(current_dir, explicit_root));
     }
     if let Some(root) = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR) {
-        return PathBuf::from(root);
+        return Some(PathBuf::from(root));
     }
-    current_dir.join(DEFAULT_BOOT_ROM_DIR)
+    None
 }
 
 fn resolve_path(current_dir: &Path, path: &Path) -> PathBuf {

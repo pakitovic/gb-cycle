@@ -17,7 +17,7 @@ use audio_recording::{
     DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder, DesktopAudioRecordingOptions,
     resolve_next_audio_recording_output_path,
 };
-use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
+use bootrom::{BOOT_ROM_ROOT_ENV_VAR, load_boot_rom_assets, missing_boot_rom_asset, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
@@ -31,12 +31,12 @@ use gb_core::{
     PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
-    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
-    DesktopDisplayPalette, DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy,
-    FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-    JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
-    RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -4898,7 +4898,7 @@ fn maybe_apply_missing_boot_rom_fallback(
     config
         .boot_rom
         .normalize_kind_for_model(config.launch.console_model);
-    let Some(missing_path) = missing_boot_rom_asset_path(
+    let Some(missing_asset) = missing_boot_rom_asset(
         config.boot_rom.search_path.as_deref(),
         config.boot_rom.kind,
         current_dir,
@@ -4908,10 +4908,7 @@ fn maybe_apply_missing_boot_rom_fallback(
     };
 
     config.launch.startup_mode = StartupMode::SkipBoot;
-    Ok(Some(format!(
-        "boot ROM asset missing at {}; falling back to skip-boot",
-        missing_path.display()
-    )))
+    Ok(Some(format!("{missing_asset}; falling back to skip-boot")))
 }
 
 fn log_boot_rom_fallback_warning(warning: Option<&str>) {
@@ -6876,7 +6873,18 @@ fn boot_rom_dialog_default_location(session: &DesktopSession) -> PathBuf {
             .parent()
             .unwrap_or(session.current_dir.as_path())
             .to_path_buf(),
-        None => session.current_dir.join(DEFAULT_BOOT_ROM_DIR),
+        None => env::var_os(BOOT_ROM_ROOT_ENV_VAR)
+            .map(PathBuf::from)
+            .map(|path| {
+                if path.is_dir() {
+                    path
+                } else {
+                    path.parent()
+                        .unwrap_or(session.current_dir.as_path())
+                        .to_path_buf()
+                }
+            })
+            .unwrap_or_else(|| session.current_dir.clone()),
     }
 }
 
@@ -10682,8 +10690,8 @@ fn display_palette_for_desktop_palette(display_palette: DesktopDisplayPalette) -
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR,
-        DesktopRunOptions, DesktopSettingsStore, GamepadActionBindingTarget, GamepadBindingTarget,
+        BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DesktopRunOptions,
+        DesktopSettingsStore, GamepadActionBindingTarget, GamepadBindingTarget,
         GamepadMenuBindingTarget, HostRtcSync, HotkeyAction, KeyboardBindingTarget,
         KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
         ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_action_binding,
@@ -11801,7 +11809,7 @@ mod tests {
             if with_gamepad {
                 config.input.gamepad.preferred_device.name = Some("Saved Pad".to_string());
             }
-            let boot_rom_root = root.join(DEFAULT_BOOT_ROM_DIR);
+            let boot_rom_root = root.join("bootroms");
             fs::create_dir_all(&boot_rom_root).expect("frontend harness boot ROM root");
             for file_name in ["dmg0_boot.bin", "dmg_boot.bin", "mgb_boot.bin"] {
                 fs::write(boot_rom_root.join(file_name), vec![0_u8; 0x0100])
@@ -16514,7 +16522,7 @@ mod tests {
         assert_eq!(super::gamepad_event_joystick_id(7).0, 7);
         assert_eq!(
             super::boot_rom_dialog_default_location(&harness.session),
-            harness.root.join(DEFAULT_BOOT_ROM_DIR)
+            harness.root
         );
         harness.session.config.boot_rom.search_path = Some(PathBuf::from("custom/boot.bin"));
         assert_eq!(
@@ -20405,6 +20413,7 @@ mod tests {
             harness.runtime.video_options.display_palette,
             DesktopDisplayPalette::Pocket
         );
+        harness.session.config.boot_rom.search_path = Some(harness.root.join("bootroms"));
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleStartupMode)
@@ -20433,6 +20442,10 @@ mod tests {
                 .is_none()
         );
         assert!(harness.session.config.boot_rom.search_path.is_none());
+        assert_eq!(
+            harness.session.config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleBootRomKind)
@@ -20448,7 +20461,7 @@ mod tests {
         );
         assert_eq!(
             harness.session.config.boot_rom.verification,
-            BootRomVerificationMode::Off
+            BootRomVerificationMode::Strict
         );
         assert!(
             harness
@@ -20958,6 +20971,6 @@ mod tests {
             .expect("actions test should persist settings");
         assert!(persisted.contains("console_model = \"pocket\""));
         assert!(persisted.contains("kind = \"mgb\""));
-        assert!(persisted.contains("startup_mode = \"real-boot\""));
+        assert!(persisted.contains("startup_mode = \"skip-boot\""));
     }
 }

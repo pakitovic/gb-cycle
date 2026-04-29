@@ -319,10 +319,9 @@ That suite compares retained synthetic `MBC1`, `MBC2`, `MBC3`, and `MBC5` Phase 
 
 Repo-managed local-only support assets live under gitignored roots:
 
-- `/.roms/bootrom/` — DMG/MGB boot ROM images.
 - `/.oracles/<oracle>/<layout>/` — imported differential oracle artifacts.
 
 ## Environment variables
 
-- `GB_CYCLE_BOOT_ROM_ROOT` — override boot ROM search path.
+- `GB_CYCLE_BOOT_ROM_ROOT` — boot ROM search path for private firmware assets; there is no repo-local default boot ROM directory.
 - `GB_CYCLE_TEST_ROM_ROOT` — override test ROM root; if unset, `gb-test-runner` falls back to the default curated store automatically.

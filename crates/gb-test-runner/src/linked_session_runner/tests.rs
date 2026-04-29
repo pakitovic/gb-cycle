@@ -1,9 +1,9 @@
 use super::*;
 use crate::{
-    BootRomVerificationMode, ExternalStimulus, ExternalStimulusAction, LinkedSessionCapturePlan,
-    LinkedSessionCase, LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant,
-    LinkedSessionPassCondition, LinkedSessionSuite, LinkedSessionTopology,
-    external_rom_source_manifest_path,
+    BOOT_ROM_ROOT_ENV_VAR, BootRomVerificationIssue, BootRomVerificationMode, ExternalStimulus,
+    ExternalStimulusAction, LinkedSessionCapturePlan, LinkedSessionCase,
+    LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant, LinkedSessionPassCondition,
+    LinkedSessionSuite, LinkedSessionTopology, external_rom_source_manifest_path,
 };
 use gb_core::{Dmg07Port, JoypadButton};
 use std::env;
@@ -1446,15 +1446,28 @@ fn linked_session_runner_real_boot_helpers_cover_missing_roots_and_stimulus_timi
             .with_startup_mode(gb_core::StartupMode::RealBoot),
     )
     .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+    let _env_guard = crate::test_support::lock_env();
+    let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
+    unsafe {
+        env::remove_var(BOOT_ROM_ROOT_ENV_VAR);
+    }
     let cgb_error =
         match LinkedSessionRunner::new().build_summary_linked_machines(&cgb_real_boot_session) {
-            Ok(_) => panic!("strict CGB real-boot should require the default CGB boot ROM asset"),
+            Ok(_) => panic!("strict CGB real-boot should require a configured CGB boot ROM root"),
             Err(error) => error,
         };
     assert!(matches!(
         cgb_error,
-        LinkedSessionExecutionError::BootRomVerification { .. }
+        LinkedSessionExecutionError::BootRomVerification {
+            issue,
+        } if matches!(*issue, BootRomVerificationIssue::MissingRoot { .. })
     ));
+    unsafe {
+        match previous_boot_rom_root {
+            Some(value) => env::set_var(BOOT_ROM_ROOT_ENV_VAR, value),
+            None => env::remove_var(BOOT_ROM_ROOT_ENV_VAR),
+        }
+    }
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
