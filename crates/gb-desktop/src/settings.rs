@@ -1,10 +1,10 @@
 use gb_core::{BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings, MachineStateOptions,
-    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
-    VideoOptions,
+    AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
+    DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
+    JoypadKeyboardBindings, MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity,
+    RewindOptions, SaveDirectoryPolicy, VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -110,6 +110,18 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_display_palette(
+        &mut self,
+        display_palette: DesktopDisplayPalette,
+    ) -> Result<(), String> {
+        if self.settings.video.display_palette == display_palette {
+            return Ok(());
+        }
+
+        self.settings.video.display_palette = display_palette;
+        self.save()
+    }
+
     pub fn set_show_background(&mut self, show_background: bool) -> Result<(), String> {
         if self.settings.video.show_background == show_background {
             return Ok(());
@@ -155,8 +167,11 @@ impl DesktopSettingsStore {
         self.save()
     }
 
-    pub fn reset_video_defaults(&mut self) -> Result<(), String> {
-        let defaults = VideoOptions::default();
+    pub fn reset_video_defaults(
+        &mut self,
+        console_model: DesktopConsoleModel,
+    ) -> Result<(), String> {
+        let defaults = VideoOptions::default_for_console_model(console_model);
         if self.settings.video == defaults {
             return Ok(());
         }
@@ -920,10 +935,11 @@ mod tests {
     };
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-        InputOptions, JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
-        RewindOptions, SaveDirectoryPolicy, VideoOptions,
+        DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
+        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
+        JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+        SaveDirectoryPolicy, VideoOptions,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1060,6 +1076,65 @@ mod tests {
     }
 
     #[test]
+    fn loading_video_block_without_display_palette_uses_game_boy_palette() {
+        let path = unique_test_path("missing-display-palette");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(
+            &path,
+            "\
+version = 1
+
+[video]
+window_scale = 5
+integer_scale = true
+presentation_filter = false
+show_background = true
+show_window = true
+show_objects = true
+vsync = true
+fullscreen = false
+show_performance_hud = true
+",
+        )
+        .expect("legacy video settings should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("legacy video settings should reload");
+
+        assert_eq!(settings.video.window_scale, 5);
+        assert_eq!(
+            settings.video.display_palette,
+            DesktopDisplayPalette::GameBoy
+        );
+    }
+
+    #[test]
+    fn display_palette_settings_round_trip_each_palette() {
+        for (index, display_palette) in [
+            DesktopDisplayPalette::Grey,
+            DesktopDisplayPalette::GameBoy,
+            DesktopDisplayPalette::Pocket,
+            DesktopDisplayPalette::Light,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = unique_test_path(&format!("display-palette-{index}"));
+            let mut settings = PersistedDesktopSettings::default();
+            settings.video.display_palette = display_palette;
+            settings
+                .save(&path)
+                .expect("display palette setting should be writable");
+
+            let reloaded =
+                PersistedDesktopSettings::load(&path).expect("display palette should reload");
+            assert_eq!(reloaded.video.display_palette, display_palette);
+        }
+    }
+
+    #[test]
     fn loading_rewind_block_without_speed_uses_speed_default() {
         let path = unique_test_path("missing-rewind-speed");
         if let Some(parent) = path.parent() {
@@ -1119,6 +1194,7 @@ max_memory_mib = 128
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.presentation_filter = true;
+        settings.video.display_palette = DesktopDisplayPalette::Pocket;
         settings.video.show_background = false;
         settings.video.show_window = false;
         settings.video.show_objects = false;
@@ -1183,6 +1259,7 @@ max_memory_mib = 128
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.presentation_filter);
+        assert_eq!(config.video.display_palette, DesktopDisplayPalette::Pocket);
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
         assert!(!config.video.show_objects);
@@ -1376,6 +1453,9 @@ max_memory_mib = 128
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
         store
+            .set_display_palette(DesktopDisplayPalette::Light)
+            .expect("display palette should persist");
+        store
             .set_show_background(false)
             .expect("background layer visibility should persist");
         store
@@ -1449,6 +1529,7 @@ max_memory_mib = 128
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
         assert!(reloaded.video.presentation_filter);
+        assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Light);
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
@@ -1545,7 +1626,7 @@ max_memory_mib = 128
             .expect("keyboard hotkey bindings should persist");
 
         store
-            .reset_video_defaults()
+            .reset_video_defaults(DesktopConsoleModel::GameBoy)
             .expect("video defaults should persist");
         store
             .reset_audio_defaults()
@@ -1559,6 +1640,30 @@ max_memory_mib = 128
         assert_eq!(reloaded.video, VideoOptions::default());
         assert_eq!(reloaded.audio, PersistedAudioSettings::default());
         assert_eq!(reloaded.input, InputOptions::default());
+    }
+
+    #[test]
+    fn reset_video_defaults_uses_the_active_console_model_palette() {
+        let path = unique_test_path("reset-video-color-defaults");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+
+        store
+            .set_display_palette(DesktopDisplayPalette::Light)
+            .expect("custom display palette should persist");
+        store
+            .reset_video_defaults(DesktopConsoleModel::GameBoyColor)
+            .expect("video defaults should persist");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(
+            reloaded.video,
+            VideoOptions::default_for_console_model(DesktopConsoleModel::GameBoyColor)
+        );
+        assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Grey);
     }
 
     #[test]

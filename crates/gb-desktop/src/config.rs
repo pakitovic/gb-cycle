@@ -129,6 +129,36 @@ impl DesktopConsoleModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesktopDisplayPalette {
+    Grey,
+    #[default]
+    GameBoy,
+    Pocket,
+    Light,
+}
+
+impl DesktopDisplayPalette {
+    pub fn default_for_console_model(console_model: DesktopConsoleModel) -> Self {
+        match console_model {
+            DesktopConsoleModel::GameBoy => Self::GameBoy,
+            DesktopConsoleModel::GameBoyPocket => Self::Pocket,
+            DesktopConsoleModel::GameBoyLight => Self::Light,
+            DesktopConsoleModel::GameBoyColor => Self::Grey,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Grey => Self::GameBoy,
+            Self::GameBoy => Self::Pocket,
+            Self::Pocket => Self::Light,
+            Self::Light => Self::Grey,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchOptions {
     pub console_model: DesktopConsoleModel,
@@ -402,6 +432,7 @@ pub struct VideoOptions {
     pub window_scale: u8,
     pub integer_scale: bool,
     pub presentation_filter: bool,
+    pub display_palette: DesktopDisplayPalette,
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
@@ -410,12 +441,22 @@ pub struct VideoOptions {
     pub show_performance_hud: bool,
 }
 
+impl VideoOptions {
+    pub fn default_for_console_model(console_model: DesktopConsoleModel) -> Self {
+        Self {
+            display_palette: DesktopDisplayPalette::default_for_console_model(console_model),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for VideoOptions {
     fn default() -> Self {
         Self {
             window_scale: DEFAULT_WINDOW_SCALE,
             integer_scale: true,
             presentation_filter: false,
+            display_palette: DesktopDisplayPalette::default(),
             show_background: true,
             show_window: true,
             show_objects: true,
@@ -824,6 +865,7 @@ mod tests {
         assert_eq!(config.video.window_scale, DEFAULT_WINDOW_SCALE);
         assert!(config.video.integer_scale);
         assert!(!config.video.presentation_filter);
+        assert_eq!(config.video.display_palette, DesktopDisplayPalette::GameBoy);
         assert!(config.video.show_background);
         assert!(config.video.show_window);
         assert!(config.video.show_objects);
@@ -1084,6 +1126,43 @@ mod tests {
         assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "pocket");
         assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "light");
         assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "color");
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoy),
+            DesktopDisplayPalette::GameBoy
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyPocket),
+            DesktopDisplayPalette::Pocket
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyLight),
+            DesktopDisplayPalette::Light
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            DesktopDisplayPalette::Grey.next(),
+            DesktopDisplayPalette::GameBoy
+        );
+        assert_eq!(
+            DesktopDisplayPalette::GameBoy.next(),
+            DesktopDisplayPalette::Pocket
+        );
+        assert_eq!(
+            DesktopDisplayPalette::Pocket.next(),
+            DesktopDisplayPalette::Light
+        );
+        assert_eq!(
+            DesktopDisplayPalette::Light.next(),
+            DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            VideoOptions::default_for_console_model(DesktopConsoleModel::GameBoyColor)
+                .display_palette,
+            DesktopDisplayPalette::Grey
+        );
     }
 
     #[test]

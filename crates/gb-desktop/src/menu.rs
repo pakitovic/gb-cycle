@@ -1,10 +1,11 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{ApuRecordedChannel, BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
-    BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
-    DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
-    GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
-    HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+    BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    MenuKeyboardBindings, RewindOptions,
 };
 use std::time::{Duration, Instant};
 
@@ -97,9 +98,10 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::ClearRecentList,
     MenuItem::Return,
 ];
-const VIDEO_MENU_ITEMS: [MenuItem; 12] = [
+const VIDEO_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::PerformanceHud,
     MenuItem::PresentationFilter,
+    MenuItem::DisplayPalette,
     MenuItem::Fullscreen,
     MenuItem::Vsync,
     MenuItem::WindowScale,
@@ -300,6 +302,7 @@ pub enum MenuAction {
     CycleWindowScale,
     ToggleIntegerScale,
     TogglePresentationFilter,
+    CycleDisplayPalette,
     ToggleBackgroundLayer,
     ToggleWindowLayer,
     ToggleObjectLayer,
@@ -532,6 +535,7 @@ pub struct MenuPresentation {
     pub window_scale: u8,
     pub integer_scale: bool,
     pub presentation_filter: bool,
+    pub display_palette: DesktopDisplayPalette,
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
@@ -738,6 +742,7 @@ impl MenuPresentation {
             | MenuItem::WindowScale
             | MenuItem::IntegerScale
             | MenuItem::PresentationFilter
+            | MenuItem::DisplayPalette
             | MenuItem::ShowBackground
             | MenuItem::ShowWindow
             | MenuItem::ShowObjects
@@ -936,6 +941,12 @@ impl MenuPresentation {
                     "FILTER OFF".to_string()
                 }
             }
+            MenuItem::DisplayPalette => match self.display_palette {
+                DesktopDisplayPalette::Grey => "PALETTE GREY".to_string(),
+                DesktopDisplayPalette::GameBoy => "PALETTE GB".to_string(),
+                DesktopDisplayPalette::Pocket => "PALETTE POCKET".to_string(),
+                DesktopDisplayPalette::Light => "PALETTE LIGHT".to_string(),
+            },
             MenuItem::ShowBackground => {
                 if self.show_background {
                     "BACKGROUND ON".to_string()
@@ -1377,6 +1388,7 @@ enum MenuItem {
     WindowScale,
     IntegerScale,
     PresentationFilter,
+    DisplayPalette,
     ShowBackground,
     ShowWindow,
     ShowObjects,
@@ -2095,6 +2107,7 @@ impl OverlayMenuState {
             MenuItem::WindowScale => Some(MenuAction::CycleWindowScale),
             MenuItem::IntegerScale => Some(MenuAction::ToggleIntegerScale),
             MenuItem::PresentationFilter => Some(MenuAction::TogglePresentationFilter),
+            MenuItem::DisplayPalette => Some(MenuAction::CycleDisplayPalette),
             MenuItem::ShowBackground => Some(MenuAction::ToggleBackgroundLayer),
             MenuItem::ShowWindow => Some(MenuAction::ToggleWindowLayer),
             MenuItem::ShowObjects => Some(MenuAction::ToggleObjectLayer),
@@ -3149,10 +3162,11 @@ mod tests {
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
-        BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
-        DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
-        GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
-        HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+        BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
+        DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+        GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
+        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+        JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
     };
     use std::time::Duration;
 
@@ -3176,6 +3190,7 @@ mod tests {
             window_scale: 4,
             integer_scale: true,
             presentation_filter: false,
+            display_palette: DesktopDisplayPalette::GameBoy,
             show_background: true,
             show_window: true,
             show_objects: true,
@@ -3381,6 +3396,19 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::TogglePresentationFilter)
+        );
+    }
+
+    #[test]
+    fn video_submenu_cycles_the_display_palette_after_filter() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        open_video_menu(&mut menu, presentation);
+
+        select_visible_item(&mut menu, presentation, MenuItem::DisplayPalette);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleDisplayPalette)
         );
     }
 
@@ -4235,8 +4263,9 @@ mod tests {
 
         assert_eq!(VIDEO_MENU_ITEMS[0], MenuItem::PerformanceHud);
         assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
-        assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
-        assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
+        assert_eq!(VIDEO_MENU_ITEMS[2], MenuItem::DisplayPalette);
+        assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::Screenshot);
+        assert_eq!(VIDEO_MENU_ITEMS[8], MenuItem::ShowBackground);
 
         assert_eq!(AUDIO_MENU_ITEMS[0], MenuItem::ToggleMute);
         assert_eq!(AUDIO_MENU_ITEMS[1], MenuItem::AudioVolume);
@@ -4554,6 +4583,17 @@ mod tests {
             presentation.item_label(MenuItem::PresentationFilter),
             "FILTER ON"
         );
+        for (display_palette, expected_label) in [
+            (DesktopDisplayPalette::Grey, "PALETTE GREY"),
+            (DesktopDisplayPalette::GameBoy, "PALETTE GB"),
+            (DesktopDisplayPalette::Pocket, "PALETTE POCKET"),
+            (DesktopDisplayPalette::Light, "PALETTE LIGHT"),
+        ] {
+            presentation.display_palette = display_palette;
+            let label = presentation.item_label(MenuItem::DisplayPalette);
+            assert_eq!(label, expected_label);
+            assert!(label.len() <= super::MENU_ITEM_TEXT_CAPACITY);
+        }
         presentation.show_background = false;
         assert_eq!(
             presentation.item_label(MenuItem::ShowBackground),

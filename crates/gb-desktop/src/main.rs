@@ -22,7 +22,7 @@ use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
-    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
+    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
     CpuExecutionState, CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
@@ -32,11 +32,11 @@ use gb_core::{
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
-    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    DesktopDisplayPalette, DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy,
+    FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+    JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
+    RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -150,6 +150,7 @@ struct RenderHudInput {
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DisplayPalette {
     shades: [[u8; 3]; 4],
@@ -186,6 +187,14 @@ const SAMEBOY_GBL_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
         [0x56, 0xB4, 0x95],
         [0x35, 0x78, 0x62],
         [0x0A, 0x1C, 0x15],
+    ],
+};
+const DMG_GREY_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+    shades: [
+        [DMG_GRAYSCALE_SHADES[0]; 3],
+        [DMG_GRAYSCALE_SHADES[1]; 3],
+        [DMG_GRAYSCALE_SHADES[2]; 3],
+        [DMG_GRAYSCALE_SHADES[3]; 3],
     ],
 };
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
@@ -4378,7 +4387,11 @@ fn run_desktop_with_startup_fallback_persistence(
         &mut canvas,
         &mut texture,
         &mut rgb_frame,
-        framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
+        framebuffer_render_input_for_session(
+            &machine,
+            current_framebuffer_dimensions,
+            &runtime.video_options,
+        ),
         &runtime.video_options,
         initial_menu_presentation,
         RenderHudInput::default(),
@@ -4440,7 +4453,11 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
+                    framebuffer_render_input_for_session(
+                        &machine,
+                        current_framebuffer_dimensions,
+                        &runtime.video_options,
+                    ),
                     &runtime.video_options,
                     menu_presentation,
                     RenderHudInput::default(),
@@ -4561,7 +4578,11 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
+                    framebuffer_render_input_for_session(
+                        &machine,
+                        current_framebuffer_dimensions,
+                        &runtime.video_options,
+                    ),
                     &runtime.video_options,
                     menu_presentation,
                     RenderHudInput::default(),
@@ -4585,7 +4606,11 @@ fn run_desktop_with_startup_fallback_persistence(
             &mut canvas,
             &mut texture,
             &mut rgb_frame,
-            framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
+            framebuffer_render_input_for_session(
+                &machine,
+                current_framebuffer_dimensions,
+                &runtime.video_options,
+            ),
             &runtime.video_options,
             None,
             RenderHudInput {
@@ -7990,12 +8015,21 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::CycleConsoleModel => {
+            let previous_model = context.session.config.launch.console_model;
             apply_machine_settings_change(canvas, context, "Console model", |config| {
                 config.launch.console_model = next_console_model(config.launch.console_model);
                 config
                     .boot_rom
                     .normalize_kind_for_model(config.launch.console_model);
             })?;
+            let next_model = context.session.config.launch.console_model;
+            if next_model != previous_model {
+                context.runtime.video_options.display_palette =
+                    DesktopDisplayPalette::default_for_console_model(next_model);
+                context
+                    .settings_store
+                    .set_display_palette(context.runtime.video_options.display_palette)?;
+            }
             Ok(None)
         }
         MenuAction::CycleBootRomKind => {
@@ -8353,6 +8387,14 @@ fn execute_menu_action(
                 .set_presentation_filter(context.runtime.video_options.presentation_filter)?;
             Ok(None)
         }
+        MenuAction::CycleDisplayPalette => {
+            context.runtime.video_options.display_palette =
+                context.runtime.video_options.display_palette.next();
+            context
+                .settings_store
+                .set_display_palette(context.runtime.video_options.display_palette)?;
+            Ok(None)
+        }
         MenuAction::ToggleBackgroundLayer => {
             context.runtime.video_options.show_background =
                 !context.runtime.video_options.show_background;
@@ -8385,7 +8427,9 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::ResetVideoDefaults => {
-            let defaults = VideoOptions::default();
+            let defaults = VideoOptions::default_for_console_model(
+                context.session.config.launch.console_model,
+            );
             context.runtime.video_options = defaults.clone();
             apply_renderer_vsync(canvas, context.frame_pacer, defaults.vsync)?;
             set_fullscreen_state(canvas.window_mut(), defaults.fullscreen)?;
@@ -8396,7 +8440,9 @@ fn execute_menu_action(
                     framebuffer_dimensions_for_session(context.machine),
                 )?;
             }
-            context.settings_store.reset_video_defaults()?;
+            context
+                .settings_store
+                .reset_video_defaults(context.session.config.launch.console_model)?;
             Ok(None)
         }
         MenuAction::ToggleMute => {
@@ -8774,6 +8820,7 @@ fn current_menu_presentation(
         window_scale: runtime.video_options.window_scale.max(1),
         integer_scale: runtime.video_options.integer_scale,
         presentation_filter: runtime.video_options.presentation_filter,
+        display_palette: runtime.video_options.display_palette,
         show_background: runtime.video_options.show_background,
         show_window: runtime.video_options.show_window,
         show_objects: runtime.video_options.show_objects,
@@ -9866,7 +9913,7 @@ fn save_screenshot_for_session(
 ) -> Result<PathBuf, String> {
     let dimensions = framebuffer_dimensions_for_session(machine);
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_render_input_for_session(machine, dimensions),
+        framebuffer_render_input_for_session(machine, dimensions, video_options),
         video_options,
     );
     let output_path = screenshot_output::resolve_next_screenshot_output_path(
@@ -10013,6 +10060,7 @@ fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> Fram
 fn framebuffer_panel_input_for_player_slot(
     machine: &DesktopEmulationSession,
     slot: PlayerSlot,
+    display_palette: DisplayPalette,
 ) -> Option<FramebufferPanelInput<'_>> {
     let machine = machine.machine_for_player_slot(slot)?;
     Some(FramebufferPanelInput {
@@ -10021,19 +10069,23 @@ fn framebuffer_panel_input_for_player_slot(
         bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
         backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
         bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
-        display_palette: display_palette_for_console_model(machine.config().console_model),
+        display_palette,
     })
 }
 
-fn framebuffer_render_input_for_session(
-    machine: &DesktopEmulationSession,
+fn framebuffer_render_input_for_session<'a>(
+    machine: &'a DesktopEmulationSession,
     dimensions: FramebufferDimensions,
-) -> FramebufferRenderInput<'_> {
+    video_options: &VideoOptions,
+) -> FramebufferRenderInput<'a> {
     let layout = view_layout_for_session(player_session_kind(machine));
+    let display_palette = display_palette_for_desktop_palette(video_options.display_palette);
     FramebufferRenderInput {
         dimensions,
         panels: layout.slots.map(|slot| {
-            slot.and_then(|slot| framebuffer_panel_input_for_player_slot(machine, slot))
+            slot.and_then(|slot| {
+                framebuffer_panel_input_for_player_slot(machine, slot, display_palette)
+            })
         }),
     }
 }
@@ -10618,12 +10670,12 @@ fn execution_mode_name(execution_mode: ExecutionMode) -> &'static str {
     }
 }
 
-fn display_palette_for_console_model(console_model: ConsoleModel) -> DisplayPalette {
-    match console_model {
-        ConsoleModel::GameBoy => SAMEBOY_DMG_DISPLAY_PALETTE,
-        ConsoleModel::GameBoyPocket => SAMEBOY_MGB_DISPLAY_PALETTE,
-        ConsoleModel::GameBoyLight => SAMEBOY_GBL_DISPLAY_PALETTE,
-        ConsoleModel::GameBoyColor => SAMEBOY_DMG_DISPLAY_PALETTE,
+fn display_palette_for_desktop_palette(display_palette: DesktopDisplayPalette) -> DisplayPalette {
+    match display_palette {
+        DesktopDisplayPalette::Grey => DMG_GREY_DISPLAY_PALETTE,
+        DesktopDisplayPalette::GameBoy => SAMEBOY_DMG_DISPLAY_PALETTE,
+        DesktopDisplayPalette::Pocket => SAMEBOY_MGB_DISPLAY_PALETTE,
+        DesktopDisplayPalette::Light => SAMEBOY_GBL_DISPLAY_PALETTE,
     }
 }
 
@@ -10672,9 +10724,10 @@ mod tests {
         PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
-        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
-        DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
+        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
+        DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
+        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
+        RewindOptions, SaveKeyPolicy,
     };
     use gb_persistence::{
         CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
@@ -15903,21 +15956,58 @@ mod tests {
     #[test]
     fn display_palette_selection_covers_visible_console_models() {
         assert_eq!(
-            super::display_palette_for_console_model(ConsoleModel::GameBoy).shade_rgb(0),
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoy),
+            DesktopDisplayPalette::GameBoy
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyPocket),
+            DesktopDisplayPalette::Pocket
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyLight),
+            DesktopDisplayPalette::Light
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            super::display_palette_for_desktop_palette(DesktopDisplayPalette::Grey).shade_rgb(0),
+            [super::DMG_GRAYSCALE_SHADES[0]; 3]
+        );
+        assert_eq!(
+            super::display_palette_for_desktop_palette(DesktopDisplayPalette::GameBoy).shade_rgb(0),
             super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0)
         );
         assert_eq!(
-            super::display_palette_for_console_model(ConsoleModel::GameBoyPocket).shade_rgb(1),
+            super::display_palette_for_desktop_palette(DesktopDisplayPalette::Pocket).shade_rgb(1),
             super::SAMEBOY_MGB_DISPLAY_PALETTE.shade_rgb(1)
         );
         assert_eq!(
-            super::display_palette_for_console_model(ConsoleModel::GameBoyLight).shade_rgb(2),
+            super::display_palette_for_desktop_palette(DesktopDisplayPalette::Light).shade_rgb(2),
             super::SAMEBOY_GBL_DISPLAY_PALETTE.shade_rgb(2)
         );
-        assert_eq!(
-            super::display_palette_for_console_model(ConsoleModel::GameBoyColor).shade_rgb(3),
-            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+    }
+
+    #[test]
+    fn framebuffer_render_input_uses_the_active_desktop_display_palette() {
+        let machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        ));
+        let video_options = gb_desktop::VideoOptions {
+            display_palette: DesktopDisplayPalette::Light,
+            ..gb_desktop::VideoOptions::default()
+        };
+
+        let render_input = super::framebuffer_render_input_for_session(
+            &machine,
+            super::framebuffer_dimensions_for_session(&machine),
+            &video_options,
         );
+
+        let panel = render_input.panels[0].expect("primary panel should be populated");
+        assert_eq!(panel.display_palette, super::SAMEBOY_GBL_DISPLAY_PALETTE);
+        assert!(render_input.panels[1..].iter().all(Option::is_none));
     }
 
     #[test]
@@ -20253,6 +20343,49 @@ mod tests {
     }
 
     #[test]
+    fn cycling_console_model_resets_the_runtime_display_palette_to_the_model_default() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("model-palette-defaults", true, false, false);
+
+        assert_eq!(
+            harness.runtime.video_options.display_palette,
+            DesktopDisplayPalette::GameBoy
+        );
+        for (expected_model, expected_palette) in [
+            (
+                DesktopConsoleModel::GameBoyPocket,
+                DesktopDisplayPalette::Pocket,
+            ),
+            (
+                DesktopConsoleModel::GameBoyLight,
+                DesktopDisplayPalette::Light,
+            ),
+            (
+                DesktopConsoleModel::GameBoyColor,
+                DesktopDisplayPalette::Grey,
+            ),
+            (DesktopConsoleModel::GameBoy, DesktopDisplayPalette::GameBoy),
+        ] {
+            harness.runtime.video_options.display_palette = DesktopDisplayPalette::Grey;
+            assert!(
+                harness
+                    .execute_action(super::MenuAction::CycleConsoleModel)
+                    .expect("model cycling should rebuild successfully")
+                    .is_none()
+            );
+            assert_eq!(harness.session.config.launch.console_model, expected_model);
+            assert_eq!(
+                harness.runtime.video_options.display_palette,
+                expected_palette
+            );
+            assert_eq!(
+                harness.settings_store.base_config().video.display_palette,
+                expected_palette
+            );
+        }
+    }
+
+    #[test]
     fn execute_menu_actions_update_runtime_machine_and_persisted_settings() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("actions", true, true, true);
@@ -20268,6 +20401,10 @@ mod tests {
             DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(harness.session.config.boot_rom.kind, BootRomKind::Mgb);
+        assert_eq!(
+            harness.runtime.video_options.display_palette,
+            DesktopDisplayPalette::Pocket
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleStartupMode)
@@ -20457,6 +20594,20 @@ mod tests {
         assert!(harness.runtime.video_options.presentation_filter);
         assert!(
             harness
+                .execute_action(super::MenuAction::CycleDisplayPalette)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.video_options.display_palette,
+            DesktopDisplayPalette::Light
+        );
+        assert_eq!(
+            harness.settings_store.base_config().video.display_palette,
+            DesktopDisplayPalette::Light
+        );
+        assert!(
+            harness
                 .execute_action(super::MenuAction::ToggleBackgroundLayer)
                 .unwrap()
                 .is_none()
@@ -20498,6 +20649,10 @@ mod tests {
         assert_eq!(info.width, super::FRAMEBUFFER_WIDTH);
         assert_eq!(info.height, super::FRAMEBUFFER_HEIGHT);
         assert_eq!(info.color_type, png::ColorType::Rgb);
+        assert_eq!(
+            &buffer[..3],
+            &super::SAMEBOY_GBL_DISPLAY_PALETTE.shade_rgb(0)
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::TogglePerformanceHud)
@@ -20760,7 +20915,13 @@ mod tests {
         );
         assert_eq!(
             harness.runtime.video_options,
-            gb_desktop::VideoOptions::default()
+            gb_desktop::VideoOptions::default_for_console_model(
+                harness.session.config.launch.console_model
+            )
+        );
+        assert_eq!(
+            harness.runtime.video_options.display_palette,
+            DesktopDisplayPalette::Pocket
         );
         assert!(
             harness

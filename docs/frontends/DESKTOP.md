@@ -72,7 +72,9 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 ## Display and performance
 
 - Opens a desktop window and renders the live `160x144` framebuffer for a single console. Local linked layouts render native panels side by side: `DMG-04` and 2-player `DMG-07` use `320x144`; 3- and 4-player `DMG-07` use a `2x2` `320x288` grid, leaving the unused fourth panel black for 3P.
-- `GameBoy`, `GameBoyPocket`, and `GameBoyLight` presentation applies SameBoy `Core/display.c` DMG/MGB/GBL RGB palettes in the desktop renderer and screenshots. The core framebuffer, CLI artifacts, ROM-test oracles, and rank-normalized test outputs remain shade/rank data rather than desktop presentation colors.
+- `VIDEO -> PALETTE` is a desktop-only presentation selector with `PALETTE GREY`, `PALETTE GB`, `PALETTE POCKET`, and `PALETTE LIGHT`; it changes the live window and `VIDEO -> SCREENSHOT` output immediately without changing `gb-core`, CLI artifacts, ROM-test oracles, or rank-normalized test outputs.
+- The model-aware default palette is `PALETTE GB` for `GameBoy`, `PALETTE POCKET` for `GameBoyPocket`, `PALETTE LIGHT` for `GameBoyLight`, and `PALETTE GREY` for `GameBoyColor` until native CGB color presentation is functional. `SYSTEM -> MODEL` resets the active desktop palette to the default for the new model only after the model change has been applied successfully, and `VIDEO -> DEFAULTS` restores the default for the currently active model.
+- `PALETTE GB`, `PALETTE POCKET`, and `PALETTE LIGHT` use SameBoy `Core/display.c` DMG/MGB/GBL RGB palettes in the desktop renderer and screenshots. The core framebuffer, CLI artifacts, ROM-test oracles, and rank-normalized test outputs remain shade/rank data rather than desktop presentation colors.
 - Host-side presentation filtering now defaults to `OFF`, so the SDL texture is sampled with nearest-neighbor scaling unless `VIDEO -> FILTER` is enabled for linear smoothing.
 - `VIDEO -> BACKGROUND`, `VIDEO -> WINDOW`, and `VIDEO -> OBJECTS` are debug presentation masks that do not touch core timing or `LCDC` state. Disabling `OBJECTS` reveals the stored BG/WIN plane underneath in both the live window and screenshots; if `BACKGROUND` and/or `WINDOW` are also masked away, the uncovered area now falls back to the per-pixel DMG backdrop shade (palette entry `0` under the historical `BGP` value) instead of a fixed solid fill, so OBJ-only captures track SameBoy's changing diagnostic backdrop more closely. Disabling `BACKGROUND` or `WINDOW` still masks that plane by source rather than recomputing a fresh behind-window raster.
 - `VIDEO -> SCREENSHOT` saves a native-size PNG next to the running ROM inside a `screenshots/` subdirectory using an `8-bit RGB` layout similar to SameBoy’s raw screenshots, without baking in host-side scaling, filtering, HUD, or menu overlays.
@@ -155,7 +157,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
 - Camera permission, device selection, native frame acquisition, RGB conversion, horizontal live-frame mirroring, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames and performs the deterministic `128x112` normalization.
 - If SDL opens a camera but no frames arrive, the desktop log reports whether SDL still considers camera permission `pending`, `approved`, or `denied`; this keeps OS permission stalls distinguishable from frame acquisition stalls.
-- **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
+- **`VIDEO`** — stats HUD visibility, host-side presentation filter, desktop palette selection, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).
 - **`EXT. PORT`** — `NONE`, `PRINTER`, `GAME LINK`, and `4P ADAPTER`. `GAME LINK` keeps the real two-cartridge `DMG-04` flow and asks for a second ROM. `4P ADAPTER` opens a `2 PLAYERS` / `3 PLAYERS` / `4 PLAYERS` submenu; selecting a count rebuilds a fresh local `DMG-07` session and clones the already-loaded `P1` ROM into every adapter slot instead of opening more ROM dialogs.
@@ -186,7 +188,7 @@ Persisted under the platform config directory by default, or under `GB_CYCLE_DES
 
 Persisted settings include:
 
-- Frontend video: scale, vsync, integer-presentation, host-side presentation filter, stats-HUD visibility.
+- Frontend video: scale, vsync, integer-presentation, host-side presentation filter, desktop palette selection, stats-HUD visibility.
 - Frontend audio: volume, mute state.
 - Audio channel selection and desktop `RECORD` state are intentionally **not** persisted, so new launches come up with the full mix selected and recording disabled unless the CLI recording flags explicitly requested otherwise.
 - Keyboard joypad bindings and keyboard menu bindings.
