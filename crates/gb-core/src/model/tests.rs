@@ -14,8 +14,8 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
         ConsoleModel::GameBoyColor.default_operating_mode(),
         OperatingMode::Cgb
     );
-    assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::CgbCompatibility));
-    assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::CgbCompatibility));
+    assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::GbCompatible));
+    assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::GbCompatible));
 }
 
 #[test]
@@ -45,10 +45,10 @@ fn console_models_publish_default_and_allowed_boot_rom_kinds() {
 #[test]
 fn operating_modes_and_host_platforms_keep_silicon_and_host_axes_separate() {
     assert!(OperatingMode::Dmg.uses_dmg_software_contract());
-    assert!(OperatingMode::CgbCompatibility.uses_dmg_software_contract());
+    assert!(OperatingMode::GbCompatible.uses_dmg_software_contract());
     assert!(!OperatingMode::Cgb.uses_dmg_software_contract());
     assert!(OperatingMode::Cgb.enables_cgb_extensions());
-    assert!(!OperatingMode::CgbCompatibility.enables_cgb_extensions());
+    assert!(!OperatingMode::GbCompatible.enables_cgb_extensions());
     assert!(HostPlatform::Sgb1.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());
@@ -63,7 +63,7 @@ fn capability_sets_distinguish_cgb_compatibility_from_dmg_silicon() {
     );
     let cgb_compat = CapabilitySet::from_model_axes(
         ConsoleModel::GameBoyColor,
-        OperatingMode::CgbCompatibility,
+        OperatingMode::GbCompatible,
         HostPlatform::Handheld,
     );
 
@@ -133,17 +133,17 @@ fn machine_config_tracks_boot_rom_kind_as_a_separate_axis() {
 #[test]
 fn with_console_model_preserves_an_explicit_operating_mode_override() {
     let config = MachineConfig::new(ConsoleModel::GameBoy)
-        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_operating_mode(OperatingMode::GbCompatible)
         .with_console_model(ConsoleModel::GameBoyColor);
 
     assert_eq!(config.console_model, ConsoleModel::GameBoyColor);
-    assert_eq!(config.operating_mode, OperatingMode::CgbCompatibility);
+    assert_eq!(config.operating_mode, OperatingMode::GbCompatible);
 }
 
 #[test]
 fn machine_config_capability_set_tracks_the_three_model_axes() {
     let config = MachineConfig::new(ConsoleModel::GameBoyColor)
-        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_operating_mode(OperatingMode::GbCompatible)
         .with_host_platform(HostPlatform::Sgb1);
 
     let capabilities = config.capability_set();
@@ -151,10 +151,7 @@ fn machine_config_capability_set_tracks_the_three_model_axes() {
     assert!(config.model_axes_are_coherent());
     assert_eq!(capabilities.console_model(), ConsoleModel::GameBoyColor);
     assert_eq!(capabilities.console_family(), ConsoleFamily::Cgb);
-    assert_eq!(
-        capabilities.operating_mode(),
-        OperatingMode::CgbCompatibility
-    );
+    assert_eq!(capabilities.operating_mode(), OperatingMode::GbCompatible);
     assert_eq!(capabilities.host_platform(), HostPlatform::Sgb1);
     assert!(capabilities.dmg_software_contract());
     assert!(!capabilities.cgb_extensions_enabled());

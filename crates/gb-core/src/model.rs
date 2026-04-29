@@ -76,7 +76,7 @@ impl ConsoleModel {
             ConsoleFamily::Cgb => {
                 matches!(
                     operating_mode,
-                    OperatingMode::Cgb | OperatingMode::CgbCompatibility
+                    OperatingMode::Cgb | OperatingMode::GbCompatible
                 )
             }
         }
@@ -89,7 +89,7 @@ impl ConsoleModel {
                 if cgb_flag.enables_cgb_native_mode() {
                     OperatingMode::Cgb
                 } else {
-                    OperatingMode::CgbCompatibility
+                    OperatingMode::GbCompatible
                 }
             }
         }
@@ -103,12 +103,12 @@ pub enum OperatingMode {
     #[default]
     Dmg,
     Cgb,
-    CgbCompatibility,
+    GbCompatible,
 }
 
 impl OperatingMode {
     pub const fn uses_dmg_software_contract(self) -> bool {
-        matches!(self, Self::Dmg | Self::CgbCompatibility)
+        matches!(self, Self::Dmg | Self::GbCompatible)
     }
 
     pub const fn enables_cgb_extensions(self) -> bool {

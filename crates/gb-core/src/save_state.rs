@@ -324,7 +324,7 @@ mod tests {
             (
                 MachineSaveStateRestoreError::OperatingModeMismatch {
                     expected: OperatingMode::Dmg,
-                    actual: OperatingMode::CgbCompatibility,
+                    actual: OperatingMode::GbCompatible,
                 },
                 "operating mode mismatch",
             ),

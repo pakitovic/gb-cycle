@@ -183,7 +183,7 @@ This matrix assigns every CGB-only or CGB-reinterpreted MMIO surface to one owni
 
 ## Slice 1 — CGB model, machine mode, and direct boot baseline
 
-- Consolidate `ConsoleModel::GameBoyColor`, `OperatingMode::Cgb`, `OperatingMode::CgbCompatibility`, and `CapabilitySet` as the only model/mode decision surface.
+- Consolidate `ConsoleModel::GameBoyColor`, `OperatingMode::Cgb`, `OperatingMode::GbCompatible`, and `CapabilitySet` as the only model/mode decision surface.
 - Choose CGB native versus CGB compatibility mode from the cartridge CGB header without conflating CGB compatibility mode with DMG silicon.
 - Validate the CGB initial state with `SkipBoot` before depending on a real CGB boot ROM.
 - Add a synthetic header/mode policy matrix before broader CGB bring-up so the project has one source of truth for `0x0143`, `ConsoleModel`, `OperatingMode`, `KEY0`, and loader policy.
@@ -196,7 +196,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 
 | cartridge/header scenario | `ConsoleModel::GameBoyColor` direct-boot policy | `ConsoleModel::GameBoy` policy | required validation |
 | --- | --- | --- | --- |
-| `0x0143` bit `7 = 0` | Start as `OperatingMode::CgbCompatibility`, synthesize `KEY0` DMG-compatibility state, defer boot-selected compatibility palette seed to Slice 6, and keep CGB-family silicon quirks rather than pretending the model is DMG | Stay Non-CGB/DMG; do not expose CGB MMIO or CGB-only capabilities | Synthetic direct-boot tests for mode, capabilities, CGB-only MMIO fallback, and no accidental DMG-silicon OAM corruption when the model is CGB |
+| `0x0143` bit `7 = 0` | Start as `OperatingMode::GbCompatible`, synthesize `KEY0` DMG-compatibility state, defer boot-selected compatibility palette seed to Slice 6, and keep CGB-family silicon quirks rather than pretending the model is DMG | Stay Non-CGB/DMG; do not expose CGB MMIO or CGB-only capabilities | Synthetic direct-boot tests for mode, capabilities, CGB-only MMIO fallback, and no accidental DMG-silicon OAM corruption when the model is CGB |
 | `0x0143 = 0x80` | Start as CGB native mode with CGB features unlocked and compatibility metadata preserved for loader/reporting | Stay DMG silicon; loader policy may warn or classify support, but hardware mode must not mutate to CGB | Synthetic direct-boot tests for CGB native mode, `KEY0` seed, `CapabilitySet`, and model-axis separation |
 | `0x0143 = 0xC0` | Treat as CGB native mode for ordinary Phase 10 behavior while preserving the CGB-only header classification in metadata | Stay DMG silicon; strict loader policy may reject or report unsupported runtime, but the core must not fake CGB hardware | Synthetic direct-boot tests for CGB-only metadata, native CGB capabilities, and DMG rejection/reporting policy |
 | `0x0143` bit `7 = 1` with PGB-like or otherwise unusual low bits | Do not silently enable PGB/PSM behavior in Phase 10; classify as unsupported or experimental until a dedicated post-Slice 10 hardware-research target defines behavior | Stay DMG silicon and keep CGB-only behavior unavailable | Unit tests that ordinary `$80`/`$C0` CGB behavior remains supported while PGB-like values do not mutate undocumented hardware state implicitly |

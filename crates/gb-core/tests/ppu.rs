@@ -138,7 +138,7 @@ fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
     let dmg_config =
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot);
     let cgb_compat_config = MachineConfig::new(ConsoleModel::GameBoyColor)
-        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_operating_mode(OperatingMode::GbCompatible)
         .with_startup_mode(StartupMode::SkipBoot);
 
     let (dmg_before, dmg_after) = run_live_bgp_write_prefix(dmg_config);

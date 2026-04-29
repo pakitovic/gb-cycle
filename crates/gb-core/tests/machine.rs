@@ -76,10 +76,7 @@ fn cgb_skip_boot_mode_follows_loaded_cartridge_header_without_becoming_dmg_silic
         .expect("DMG-compatible ROM should load on CGB");
 
     assert_eq!(machine.config().console_model, ConsoleModel::GameBoyColor);
-    assert_eq!(
-        machine.config().operating_mode,
-        OperatingMode::CgbCompatibility
-    );
+    assert_eq!(machine.config().operating_mode, OperatingMode::GbCompatible);
     let capabilities = machine.config().capability_set();
     assert_eq!(capabilities.console_model(), ConsoleModel::GameBoyColor);
     assert!(capabilities.dmg_software_contract());

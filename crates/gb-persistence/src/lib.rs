@@ -1627,7 +1627,7 @@ fn encode_operating_mode(value: OperatingMode) -> u8 {
     match value {
         OperatingMode::Dmg => 0,
         OperatingMode::Cgb => 1,
-        OperatingMode::CgbCompatibility => 2,
+        OperatingMode::GbCompatible => 2,
     }
 }
 
@@ -1638,7 +1638,7 @@ fn decode_operating_mode(
     match tag {
         0 => Ok(OperatingMode::Dmg),
         1 => Ok(OperatingMode::Cgb),
-        2 => Ok(OperatingMode::CgbCompatibility),
+        2 => Ok(OperatingMode::GbCompatible),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2313,7 +2313,7 @@ mod tests {
         for value in [
             OperatingMode::Dmg,
             OperatingMode::Cgb,
-            OperatingMode::CgbCompatibility,
+            OperatingMode::GbCompatible,
         ] {
             assert_eq!(
                 decode_operating_mode(encode_operating_mode(value), "operating_mode")
@@ -2460,7 +2460,7 @@ mod tests {
 
         let metadata = MachineSaveStateMetadata {
             console_model: ConsoleModel::GameBoyColor,
-            operating_mode: OperatingMode::CgbCompatibility,
+            operating_mode: OperatingMode::GbCompatible,
             host_platform: HostPlatform::Sgb2,
             startup_mode: StartupMode::RealBoot,
             compatibility: CompatibilityPolicy {
@@ -2600,7 +2600,7 @@ mod tests {
             encode_machine_save_state_envelope(&envelope).expect("encode should succeed");
 
         let operating_mode_offset = MACHINE_SAVE_STATE_MAGIC.len() + 3;
-        encoded[operating_mode_offset] = encode_operating_mode(OperatingMode::CgbCompatibility);
+        encoded[operating_mode_offset] = encode_operating_mode(OperatingMode::GbCompatible);
 
         assert!(matches!(
             decode_machine_save_state_envelope(&encoded),

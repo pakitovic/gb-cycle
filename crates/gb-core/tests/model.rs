@@ -64,11 +64,11 @@ fn public_model_api_exposes_boot_rom_defaults_and_allowed_sets() {
 fn direct_boot_cgb_header_policy_keeps_model_and_mode_axes_separate() {
     assert_eq!(
         ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::None),
-        OperatingMode::CgbCompatibility
+        OperatingMode::GbCompatible
     );
     assert_eq!(
         ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Unknown(0x42)),
-        OperatingMode::CgbCompatibility
+        OperatingMode::GbCompatible
     );
     assert_eq!(
         ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
@@ -103,10 +103,10 @@ fn cgb_flag_reports_native_mode_request_without_implying_special_hardware() {
 #[test]
 fn public_model_api_exposes_operating_modes_and_host_platforms() {
     assert!(OperatingMode::Dmg.uses_dmg_software_contract());
-    assert!(OperatingMode::CgbCompatibility.uses_dmg_software_contract());
+    assert!(OperatingMode::GbCompatible.uses_dmg_software_contract());
     assert!(!OperatingMode::Cgb.uses_dmg_software_contract());
     assert!(OperatingMode::Cgb.enables_cgb_extensions());
-    assert!(!OperatingMode::CgbCompatibility.enables_cgb_extensions());
+    assert!(!OperatingMode::GbCompatible.enables_cgb_extensions());
     assert!(HostPlatform::Sgb1.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());
@@ -115,13 +115,13 @@ fn public_model_api_exposes_operating_modes_and_host_platforms() {
 #[test]
 fn experimental_policy_keeps_future_cgb_extension_seams_explicit() {
     let config = MachineConfig::new(ConsoleModel::GameBoyColor)
-        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_operating_mode(OperatingMode::GbCompatible)
         .with_host_platform(HostPlatform::Sgb1)
         .with_startup_mode(StartupMode::RealBoot)
         .with_compatibility(CompatibilityPolicy::experimental());
 
     assert_eq!(config.console_model, ConsoleModel::GameBoyColor);
-    assert_eq!(config.operating_mode, OperatingMode::CgbCompatibility);
+    assert_eq!(config.operating_mode, OperatingMode::GbCompatible);
     assert_eq!(config.host_platform, HostPlatform::Sgb1);
     assert_eq!(config.startup_mode, StartupMode::RealBoot);
     assert_eq!(
@@ -162,7 +162,7 @@ fn override_policy_reports_when_explicit_overrides_exist() {
     };
     let operating_mode_override = OverridePolicy {
         forced_console_model: None,
-        forced_operating_mode: Some(OperatingMode::CgbCompatibility),
+        forced_operating_mode: Some(OperatingMode::GbCompatible),
         forced_host_platform: None,
         forced_startup_mode: None,
     };
@@ -237,7 +237,7 @@ fn capability_sets_keep_silicon_mode_and_host_axes_distinct() {
     );
     let cgb_compat = CapabilitySet::from_model_axes(
         ConsoleModel::GameBoyColor,
-        OperatingMode::CgbCompatibility,
+        OperatingMode::GbCompatible,
         HostPlatform::Sgb2,
     );
 

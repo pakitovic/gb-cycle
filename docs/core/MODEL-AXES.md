@@ -31,7 +31,7 @@ Examples:
 - `ConsoleModel::GameBoy` + `BootRomKind::Dmg0` = the same visible Game Boy product model with the earlier DMG0 firmware selected for `RealBoot`
 - `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `BootRomKind::Mgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot profile
 - `ConsoleModel::GameBoyColor` + `OperatingMode::Cgb` = native CGB
-- `ConsoleModel::GameBoyColor` + `OperatingMode::CgbCompatibility` = CGB-family silicon running monochrome software-visible mode
+- `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
 
 `CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
@@ -79,7 +79,7 @@ Typical uses:
 - mode-dependent boot handoff on CGB-family hardware
 - policy that should differ between "CGB hardware running CGB software" and "CGB hardware running DMG software"
 
-Do not treat `OperatingMode::CgbCompatibility` as shorthand for DMG silicon. The software contract may look DMG-like while the underlying hardware family is still CGB.
+Do not treat `OperatingMode::GbCompatible` as shorthand for DMG silicon. The software contract may look DMG-like while the underlying hardware family is still CGB.
 
 ### Use `HostPlatform` when the question is about the outer shell, not the GB silicon
 
@@ -172,7 +172,7 @@ This keeps behavior-neutral refactors small and makes later CGB bring-up easier 
 ## Anti-patterns
 
 - Do not use `ConsoleModel::GameBoy` as a synonym for "DMG-visible behavior".
-- Do not use `OperatingMode::CgbCompatibility` as a synonym for "DMG-family silicon".
+- Do not use `OperatingMode::GbCompatible` as a synonym for "DMG-family silicon".
 - Do not put SGB host-shell policy behind random `ConsoleModel` checks.
 - Do not re-derive the same semantic meaning from the raw axes in several subsystems.
 - Do not add a second emulator path just because one raw axis is insufficient.
