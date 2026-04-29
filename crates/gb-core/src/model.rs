@@ -1,4 +1,5 @@
 use crate::boot::BootRomAssets;
+use crate::cartridge::{CartridgeHeader, CgbFlag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ConsoleFamily {
@@ -48,6 +49,19 @@ impl ConsoleModel {
                     operating_mode,
                     OperatingMode::Cgb | OperatingMode::CgbCompatibility
                 )
+            }
+        }
+    }
+
+    pub const fn direct_boot_operating_mode_for_cgb_flag(self, cgb_flag: CgbFlag) -> OperatingMode {
+        match self.family() {
+            ConsoleFamily::Dmg => OperatingMode::Dmg,
+            ConsoleFamily::Cgb => {
+                if cgb_flag.enables_cgb_native_mode() {
+                    OperatingMode::Cgb
+                } else {
+                    OperatingMode::CgbCompatibility
+                }
             }
         }
     }
@@ -335,6 +349,22 @@ impl MachineConfig {
 
     pub const fn capability_set(&self) -> CapabilitySet {
         CapabilitySet::from_model_axes(self.console_model, self.operating_mode, self.host_platform)
+    }
+
+    pub fn apply_direct_boot_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
+        if self.startup_mode != StartupMode::SkipBoot {
+            return;
+        }
+
+        let cgb_flag = header.map_or(CgbFlag::None, |header| header.cgb_flag);
+        self.operating_mode = self
+            .compatibility
+            .override_policy
+            .forced_operating_mode
+            .unwrap_or_else(|| {
+                self.console_model
+                    .direct_boot_operating_mode_for_cgb_flag(cgb_flag)
+            });
     }
 
     pub const fn model_axes_are_coherent(&self) -> bool {

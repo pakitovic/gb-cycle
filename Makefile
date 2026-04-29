@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-cgb fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug run-cgb-smoke phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make coverage-check       Run one workspace coverage sweep, then enforce per-crate coverage gates"
 	@echo "  make coverage             Run complete workspace coverage and emit the HTML report"
 	@echo "  make test-roms            Fetch and run all local curated DMG ROM suites"
+	@echo "  make test-roms-cgb        Fetch and run all currently defined local curated CGB ROM suites"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated Acid DMG suite"
@@ -22,6 +23,7 @@ help:
 	@echo "  make run-hacktix          Fetch and run the curated Hacktix DMG suite"
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
+	@echo "  make run-cgb-smoke        Fetch and run the curated CGB smoke suite"
 	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
 	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
 	@echo "  make phase9-diff-cartridge    Compare Phase 6 cartridge oracle against SameBoy case-bundle artifacts"
@@ -74,6 +76,9 @@ test-roms:
 	$(MAKE) run-cpp
 	$(MAKE) run-mealybug
 
+test-roms-cgb:
+	$(MAKE) run-cgb-smoke
+
 fetch-test-roms:
 	cargo run -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
 
@@ -104,6 +109,10 @@ run-cpp:
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
 	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_passes_from_repo_store --no-capture
+
+run-cgb-smoke:
+	$(MAKE) fetch-test-roms FAMILIES="mooneye acid"
+	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
 
 phase9-determinism-smoke:
 	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing

@@ -1,8 +1,16 @@
 mod common;
 
-use gb_core::{ConsoleModel, Machine, MachineConfig, SchedulerPhase, StartupMode, TCycle};
+use gb_core::{
+    ConsoleModel, Machine, MachineConfig, OperatingMode, SchedulerPhase, StartupMode, TCycle,
+};
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
+
+fn build_header_mode_rom(cgb_flag: u8) -> Vec<u8> {
+    let mut rom = common::synthetic_cartridge::build_nom_bc_test_rom(&[0x00], 0x00, &[]);
+    rom[0x0143] = cgb_flag;
+    rom
+}
 
 #[test]
 fn machine_uses_a_single_step_t_cycle_entry_point() {
@@ -57,6 +65,76 @@ fn two_identical_machines_produce_the_same_two_cycle_trace() {
     assert_eq!(right.tracer().sink().render_text(), expected);
     assert_eq!(left.next_t_cycle(), TCycle::new(2));
     assert_eq!(right.next_t_cycle(), TCycle::new(2));
+}
+
+#[test]
+fn cgb_skip_boot_mode_follows_loaded_cartridge_header_without_becoming_dmg_silicon() {
+    let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Cgb));
+
+    machine
+        .load_cartridge(build_header_mode_rom(0x00))
+        .expect("DMG-compatible ROM should load on CGB");
+
+    assert_eq!(machine.config().console_model, ConsoleModel::Cgb);
+    assert_eq!(
+        machine.config().operating_mode,
+        OperatingMode::CgbCompatibility
+    );
+    let capabilities = machine.config().capability_set();
+    assert_eq!(capabilities.console_model(), ConsoleModel::Cgb);
+    assert!(capabilities.dmg_software_contract());
+    assert!(!capabilities.cgb_extensions_enabled());
+    assert!(!capabilities.dmg_family_quirks_enabled());
+}
+
+#[test]
+fn cgb_skip_boot_mode_treats_supported_only_and_high_bit_noncanonical_as_native_cgb() {
+    for cgb_flag in [0x80, 0xC0, 0xA0] {
+        let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Cgb));
+
+        machine
+            .load_cartridge(build_header_mode_rom(cgb_flag))
+            .expect("CGB ROM should load on CGB");
+
+        assert_eq!(machine.config().console_model, ConsoleModel::Cgb);
+        assert_eq!(machine.config().operating_mode, OperatingMode::Cgb);
+        let capabilities = machine.config().capability_set();
+        assert!(!capabilities.dmg_software_contract());
+        assert!(capabilities.cgb_extensions_enabled());
+        assert!(!capabilities.dmg_family_quirks_enabled());
+    }
+}
+
+#[test]
+fn dmg_skip_boot_mode_ignores_cgb_header_without_enabling_cgb_capabilities() {
+    for cgb_flag in [0x00, 0x80, 0xC0, 0xA0] {
+        let mut machine = Machine::new(MachineConfig::new(ConsoleModel::Dmg));
+
+        machine
+            .load_cartridge(build_header_mode_rom(cgb_flag))
+            .expect("header matrix ROM should load on DMG");
+
+        assert_eq!(machine.config().console_model, ConsoleModel::Dmg);
+        assert_eq!(machine.config().operating_mode, OperatingMode::Dmg);
+        let capabilities = machine.config().capability_set();
+        assert!(capabilities.dmg_software_contract());
+        assert!(!capabilities.cgb_extensions_enabled());
+        assert!(capabilities.dmg_family_quirks_enabled());
+    }
+}
+
+#[test]
+fn real_boot_keeps_operating_mode_boot_owned_until_cgb_handoff_work_lands() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Cgb).with_startup_mode(StartupMode::RealBoot),
+    );
+
+    machine
+        .load_cartridge(build_header_mode_rom(0x00))
+        .expect("ROM should load before real boot handoff");
+
+    assert_eq!(machine.config().console_model, ConsoleModel::Cgb);
+    assert_eq!(machine.config().operating_mode, OperatingMode::Cgb);
 }
 
 #[test]

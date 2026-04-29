@@ -108,6 +108,8 @@ impl<S: TraceSink> Machine<S> {
         let external_port = self.external_port.clone();
         let host_joypad_pressed_mask = self.pending_external_events.joypad_pressed_mask();
         self.cartridge = cartridge;
+        self.config
+            .apply_direct_boot_cartridge_header(self.cartridge.header());
         self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, external_port);
         Ok(diagnostics)
     }

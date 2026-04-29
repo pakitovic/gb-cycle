@@ -1,7 +1,7 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel,
-    DiagnosticPolicy, ExecutionMode, HeuristicPolicy, HostPlatform, MachineConfig, OperatingMode,
-    OverridePolicy, StartupMode, ValidationPolicy,
+    BootRomAssets, BootRomKind, CapabilitySet, CgbFlag, CompatibilityPolicy, ConsoleFamily,
+    ConsoleModel, DiagnosticPolicy, ExecutionMode, HeuristicPolicy, HostPlatform, MachineConfig,
+    OperatingMode, OverridePolicy, StartupMode, ValidationPolicy,
 };
 
 #[test]
@@ -33,6 +33,46 @@ fn public_model_api_exposes_dmg_and_cgb_families() {
         ConsoleModel::Cgb.default_operating_mode(),
         OperatingMode::Cgb
     );
+}
+
+#[test]
+fn direct_boot_cgb_header_policy_keeps_model_and_mode_axes_separate() {
+    assert_eq!(
+        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::None),
+        OperatingMode::CgbCompatibility
+    );
+    assert_eq!(
+        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Unknown(0x42)),
+        OperatingMode::CgbCompatibility
+    );
+    assert_eq!(
+        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
+        OperatingMode::Cgb
+    );
+    assert_eq!(
+        ConsoleModel::Cgb.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Only),
+        OperatingMode::Cgb
+    );
+    assert_eq!(
+        ConsoleModel::Cgb
+            .direct_boot_operating_mode_for_cgb_flag(CgbFlag::SupportedNonCanonical(0xA0)),
+        OperatingMode::Cgb
+    );
+    assert_eq!(
+        ConsoleModel::Dmg.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
+        OperatingMode::Dmg
+    );
+}
+
+#[test]
+fn cgb_flag_reports_native_mode_request_without_implying_special_hardware() {
+    assert!(!CgbFlag::None.enables_cgb_native_mode());
+    assert!(!CgbFlag::Unknown(0x42).enables_cgb_native_mode());
+    assert!(CgbFlag::Supported.enables_cgb_native_mode());
+    assert!(CgbFlag::Only.enables_cgb_native_mode());
+    assert!(CgbFlag::SupportedNonCanonical(0xA0).enables_cgb_native_mode());
+    assert!(CgbFlag::Only.is_cgb_only());
+    assert!(!CgbFlag::SupportedNonCanonical(0xA0).is_cgb_only());
 }
 
 #[test]

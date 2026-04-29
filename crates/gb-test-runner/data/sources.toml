@@ -164,6 +164,10 @@ path = "testroms/blargg/dmg_sound/12-wave_write_while_on.gb"
 sha256 = "2efbecd2c6d40928d44f45da4f634626bcd2790165b3949aedfe377c73913774"
 
 [[source.required_file]]
+path = "testroms/acid/which.gb"
+sha256 = "28db9aa9a4afe6d119cca38f9d5d4d9621451412a5ba514119b4a50b859e1061"
+
+[[source.required_file]]
 path = "testroms/acid/dmg-acid2.gb"
 sha256 = "464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
 
@@ -810,3 +814,7 @@ sha256 = "cba4b8b3a18f3a40c4b094119a88bb12ecb7c3bfc60d95f6c8db3d1eaa1f14cc"
 [[source.required_file]]
 path = "testroms/mooneye/manual-only/sprite_priority.gb"
 sha256 = "789024c8e81e252a289edf6c80bd0bc9cccfa54bc23f7dfe388dfe88f990f94e"
+
+[[source.required_file]]
+path = "testroms/mooneye/misc/boot_regs-cgb.gb"
+sha256 = "82938fa70b85a3197c4aea906000347770f0ee3773c84072b49d962e6d479062"

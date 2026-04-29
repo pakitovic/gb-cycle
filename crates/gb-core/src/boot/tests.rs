@@ -165,6 +165,29 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
 }
 
 #[test]
+fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
+    let boot = BootController::new(ConsoleModel::Cgb, StartupMode::SkipBoot, empty_assets());
+
+    for startup_state in [
+        boot.direct_boot_state(None)
+            .expect("SkipBoot should expose a direct-boot state"),
+        boot.machine_skip_boot_state(None)
+            .expect("SkipBoot should expose the machine skip-boot state"),
+    ] {
+        assert_eq!(startup_state.cpu.pc, 0x0100);
+        assert_eq!(startup_state.cpu.sp, 0xFFFE);
+        assert_eq!(startup_state.cpu.a, 0x11);
+        assert_eq!(startup_state.cpu.f, 0x80);
+        assert_eq!(startup_state.cpu.b, 0x00);
+        assert_eq!(startup_state.cpu.c, 0x00);
+        assert_eq!(startup_state.cpu.d, 0x00);
+        assert_eq!(startup_state.cpu.e, 0x08);
+        assert_eq!(startup_state.cpu.h, 0x00);
+        assert_eq!(startup_state.cpu.l, 0x7C);
+    }
+}
+
+#[test]
 fn direct_boot_helpers_share_the_common_skip_boot_builder() {
     let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
 

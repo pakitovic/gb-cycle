@@ -637,8 +637,16 @@ const fn build_skip_boot_cpu_state(
             pc: 0x0100,
         },
         ConsoleModel::Cgb => CpuStartupState {
+            a: 0x11,
+            f: 0x80,
+            b: 0x00,
+            c: 0x00,
+            d: 0x00,
+            e: 0x08,
+            h: 0x00,
+            l: 0x7C,
+            sp: 0xFFFE,
             pc: 0x0100,
-            ..CpuStartupState::power_on_reset()
         },
     }
 }

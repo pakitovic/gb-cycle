@@ -40,6 +40,8 @@ make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
 make run-mealybug      # exploratory mealybug-tearoom DMG subset
 make run-mooneye       # exploratory mooneye DMG acceptance subset
+make test-roms-cgb     # fetch if needed + run all currently defined local curated CGB suites
+make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
 make phase9-determinism-local # replay/save-load sample across CPU/interrupts, Mooneye Timer/DMA, Acid/Mealybug PPU, cartridge, and one APU Blargg case
 make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
@@ -86,7 +88,9 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
 
 ## Test report
 
-The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's curated ROM order from the manifest.
+The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned GBEmulatorShootout source order from `crates/gb-test-runner/data/sources.toml`. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
+
+For GBEmulatorShootout rows whose label includes a model suffix, the associated manifest case must carry both `console = "dmg"` or `console = "cgb"` and `report_model_suffix = true`; this keeps rows such as `which.gb (DMG)` and `which.gb (GBC)` visible without adding a suffix to rows whose upstream label has none.
 
 ## Curated family details
 
@@ -125,6 +129,15 @@ Do not treat those excluded cases as gb-cycle regressions just because `mealybug
 ### Mooneye
 
 Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix.
+
+## Exploratory CGB suites
+
+```sh
+make run-cgb-smoke
+```
+
+- `cgb-smoke` is the Phase `10` Slice `0`/Slice `1` exploratory CGB catalog suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite`.
+- Keep `cgb-smoke` outside the DMG `make test-roms` and GitHub `test-roms` workflow until it is promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices.
 
 ## CI integration
 

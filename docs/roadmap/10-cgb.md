@@ -1,6 +1,6 @@
 # Phase 10 — CGB implementation roadmap
 
-Implement CGB as an extension of the existing DMG core, not as a second emulator. Every CGB slice must close with the current DMG ROM suite still green at `167/167`, subsystem-level tests for the behavior touched by the slice, a dedicated CGB `gb-test-runner` suite that starts as exploratory and becomes repo-gated only once green and documented, and SameBoy or GBEmulatorShootout comparison whenever a clear observable exists.
+Implement CGB as an extension of the existing DMG core, not as a second emulator. Every CGB slice must close with the current DMG ROM suite still green at its `167/167` DMG baseline, subsystem-level tests for the behavior touched by the slice, a dedicated CGB `gb-test-runner` suite that starts as exploratory and becomes repo-gated only once green and documented, and SameBoy or GBEmulatorShootout comparison whenever a clear observable exists.
 
 Reference hierarchy: hardware behavior must come first from [Pan Docs](https://gbdev.io/pandocs/), [The Cycle-Accurate Game Boy Docs](https://github.com/AntonioND/giibiiadvance/blob/master/docs/TCAGBD.pdf), [Game Boy: Complete Technical Reference](https://gekkio.fi/files/gb-docs/gbctr.pdf), and the local subsystem rules in `docs/hardware/CGB.md`; `docs/core/MODEL-AXES.md`, `docs/TESTING.md`, and `docs/REFERENCES.md` define project routing, validation, and source-use policy.
 
@@ -9,15 +9,33 @@ ROM catalog and maturity signal: use [GBEmulatorShootout](https://gbdev.io/GBEmu
 ## Slice 0 — CGB infrastructure and DMG guardrail
 
 - Keep this CGB roadmap separate from the DMG closure signal.
-- Add dedicated CGB suites in the runner, but do not mix them into the default DMG `test-roms` workflow until each suite is green and intentionally promoted.
-- Preserve the current DMG report at `167/167` as a mandatory gate after every CGB slice.
+- Add dedicated CGB suites through the same repo-managed ROM-suite protocol as the current DMG suites, but do not mix them into the default DMG `test-roms` workflow until each suite is green and intentionally promoted.
+- Preserve the current DMG suite at its `167/167` baseline as a mandatory gate after every CGB slice; the persisted `.roms/test/test-report.md` may count additional CGB rows after `test-roms-cgb` runs, but those rows must not redefine the DMG gate.
 - Define the initial CGB suite buckets as `cgb-smoke`, `cgb-boot-div`, `cgb-boot-hwio`, `cgb-speed`, `cgb-ppu-basic`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, `cgb-rtc`, and `cgb-ppu-hard`.
 
 ### Initial CGB suite definitions
 
 The `slice_number` column lists every roadmap slice that uses the suite as an active CGB gate or explicitly documented exploratory/internal check; `suite_order` is the recommended implementation and promotion order inside each suite; `family` uses the same external ROM family naming convention as the `docs/hardware/PPU.md` `## Tests` table; `ROM` omits the leading family directory because `family` carries that namespace.
 
+This table is the planning inventory, not an executable suite definition. Every listed CGB suite must be implemented with the same manifest, source, materialization, Makefile, reporting, and documentation protocol used by existing DMG curated suites before it can be treated as an active slice gate, even while it is still exploratory.
+
 `cgb-boot-hwio` starts as exploratory/internal because GBEmulatorShootout currently carries `misc/boot_hwio-C.gb` as a commented Mooneye case; promote it to a blocking repo gate only after the expected post-boot HWIO values, pass/fail channel, and retained artifacts are documented in the CGB runner manifest.
+
+### CGB ROM-suite infrastructure contract
+
+- No Phase 10 CGB suite may be defined only as Rust code, ad hoc path lists, or one-off materialization logic; `cgb-smoke`, `cgb-boot-div`, `cgb-boot-hwio`, `cgb-speed`, `cgb-ppu-basic`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, `cgb-rtc`, and `cgb-ppu-hard` must each have a repo-owned manifest under `crates/gb-test-runner/data/` before the suite is used for slice closure.
+- `crates/gb-test-runner/data/sources.toml` is the authoritative upstream inventory for every ROM, fixture, screenshot, blob, or oracle artifact downloaded for those CGB suites; each entry must include the upstream path and `sha256`, and no CGB gate may depend on an undeclared file copied opportunistically from a fetched repository.
+- Each CGB suite manifest must follow the current DMG manifest contract used by files such as `crates/gb-test-runner/data/mooneye.toml` and `crates/gb-test-runner/data/blargg.toml`: `version`, `family` or per-case `family` for mixed-family suites, `suite_name`, `subsystem`, one `[[case]]` per ROM, explicit `id`, relative `rom`, timeout, oracle, expected value or fixture where applicable, `console = "cgb"` or equivalent model metadata, startup mode when it differs from the default, and failure-artifact policy when the default is not enough.
+- CGB suite materialization must reuse the existing curated-store pipeline: source selection filters by family, required files are verified before copying, missing or hash-mismatched files fail early, `.roms/test/<family>/...` remains the runner-facing layout, and `.roms/test/.status/<suite>.toml` plus `.roms/test/test-report.md` remain the persisted status/report outputs.
+- CGB report rows must use the upstream `family` from the roadmap inventory table and manifest case, not the suite name, so a mixed suite such as `cgb-smoke` reports `acid | which.gb (GBC) | ℹ️` and `mooneye | misc/boot_regs-cgb.gb | ✅` instead of inventing a `cgb-smoke` report family.
+- CGB manifests must carry enough console-family metadata to distinguish rows where GBEmulatorShootout labels the row with a model suffix; use `console = "dmg"` or `console = "cgb"` for the runner model and `report_model_suffix = true` only when the upstream row label includes `(DMG)` or `(GBC)`, as with `acid/which.gb (DMG)` and `acid/which.gb (GBC)`, and must not add a suffix to rows such as `mooneye/misc/boot_regs-cgb.gb` where the upstream row has none.
+- Report ordering must continue to follow GBEmulatorShootout rather than local suite grouping: sort by known family rank, then by the pinned `sources.toml` ROM order inside that family, then by model variant order DMG before GBC for same-ROM rows, then by manifest order and lexical fallback for unknowns; mixed-family CGB suites must merge into this ordering rather than rendering as one pseudo-family block.
+- Each suite needs a Makefile target with the `run-cgb-<suite-suffix>` naming pattern, for example `run-cgb-smoke`; the target must fetch or verify the required upstream families first through `make fetch-test-roms FAMILIES="..."`, then invoke `cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite> --failure-artifact-root .artifacts/<suite>` so the command used for slice closure is stable and reviewable.
+- The Makefile must maintain an aggregate `test-roms-cgb` target alongside the existing DMG `test-roms` target; each newly defined `run-cgb-*` suite target must be added to `test-roms-cgb` in the same slice that introduces it, so the aggregate grows incrementally from `run-cgb-smoke` through the later CGB suites without changing the DMG gate.
+- If a CGB suite uses a new upstream family such as SameSuite or AX6 RTC tests, add that family to `sources.toml`, curated-family selection, materialization tests, and the Makefile fetch/run target in the same change that introduces the suite manifest.
+- Adding or promoting a CGB suite must update the runner list/help coverage, manifest parser coverage when new metadata is required, source-filter/materialization tests, and docs in `docs/TESTING.md` or `docs/testing/ROM-SUITES.md` so CGB suites remain discoverable like the current DMG suites.
+- Exploratory status changes only the gate semantics, not the repo-management protocol: exploratory CGB suites still require `sources.toml` inventory, a data manifest, Makefile execution, local status reporting, and artifact retention before their results can be cited in a slice.
+- A slice cannot close on a CGB ROM gate until the corresponding Makefile target has been run and the resulting report has the expected PASS/INFO/FAIL meaning documented by the suite manifest; `make ci` alone is never sufficient for a CGB ROM-suite gate.
 
 | slice_number | suite | suite_order | family | ROM | domain | complexity |
 | --- | --- | ---: | --- | --- | --- | --- |
@@ -169,7 +187,7 @@ This matrix assigns every CGB-only or CGB-reinterpreted MMIO surface to one owni
 - Choose CGB native versus CGB compatibility mode from the cartridge CGB header without conflating CGB compatibility mode with DMG silicon.
 - Validate the CGB initial state with `SkipBoot` before depending on a real CGB boot ROM.
 - Add a synthetic header/mode policy matrix before broader CGB bring-up so the project has one source of truth for `0x0143`, `ConsoleModel`, `OperatingMode`, `KEY0`, and loader policy.
-- CGB gate: `cgb-smoke`.
+- CGB gate: `cgb-smoke` through `make run-cgb-smoke`.
 - Regression gate: DMG `167/167` plus model-axis and capability coherence tests.
 
 ### CGB cartridge header and mode policy matrix
@@ -198,7 +216,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Add internal PPU/lock observability tests for `STOP`: start `STOP` during Mode `0`, Mode `1`, Mode `2`, and Mode `3`, assert the documented visible memory-lock / black-pixel behavior exposed through the minimal PPU bridge, and keep these tests as the contract that Slice 4 must preserve when the full CGB PPU renderer lands.
 - Add scheduler-domain tests proving that the speed state changes CPU/timer/serial/OAM-DMA cadence while LCD timing, HDMA block duration, and APU frame sequencing remain on their documented CGB domains instead of being multiplied by a generic speed factor.
 - Add a CGB-mode CPU and interrupt smoke suite before treating timing bring-up as stable: run focused instruction/flag, `IME` / `EI` / `DI` / `RETI`, interrupt priority, `HALT`, timer IRQ, and `STOP` cases under `ConsoleModel::Cgb` and CGB operating modes to prove CGB mode reuses the proven SM83 core semantics instead of accidentally forking CPU behavior.
-- CGB gate order: first `cgb-speed`, then `cgb-boot-div`; `cgb-boot-div` must not be promoted until the speed-domain contract and `DIV`/timer edge semantics are already owned by this slice.
+- CGB gate order: first `cgb-speed` through `make run-cgb-speed`, then `cgb-boot-div` through `make run-cgb-boot-div`; `cgb-boot-div` must not be promoted until the speed-domain contract and `DIV`/timer edge semantics are already owned by this slice.
 - Regression gate: DMG `167/167` plus focused DMG `STOP` tests so the CGB path cannot rewrite DMG semantics.
 
 ## Slice 3 — VRAM/WRAM banking and CGB registers
@@ -208,7 +226,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Implement the Slice 3-owned CGB MMIO surface from the ownership matrix: `KEY0` descriptor behavior, direct-boot policy, and lockable state shape, plus `VBK`, `SVBK`, `FF72`, `FF73`, `FF74`, and `FF75`; treat `KEY1` as already owned by Slice 2, leave `OPRI` behavior to Slice 4, leave `RP` and `PCM12`/`PCM34` to Slice 7, and do not reimplement speed semantics here.
 - Do not model `KEY0` as an ordinary runtime CGB register in Slice 3: direct boot may derive the final operating mode from the cartridge header, but real boot writes, `FF50`-triggered lock, and post-lock immutability are Slice 6 responsibilities.
 - Keep DMG fallback explicit: CGB-only MMIO reads return `0xFF` or the documented non-CGB value and writes do not mutate nonexistent state.
-- CGB gate: `cgb-smoke`.
+- CGB gate: `cgb-smoke` through `make run-cgb-smoke`.
 - Add synthetic unit and integration tests for banking because GBEmulatorShootout does not cover enough of this layer in isolation.
 - Regression gate: DMG `167/167` plus DMG-only/CGB-only MMIO descriptor and read/write tests.
 
@@ -230,7 +248,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Add focused CGB fetcher latch timing probes before broad visual acceptance: BG/window tile number and VRAM-bank-1 attributes must be sampled at the documented fetch boundary, palette index, flips, priority, and VRAM tile bank must remain stable for already fetched pixels, mid-scanline attribute or `VBK` writes must affect only later fetches according to the fetcher contract, and window start/restart must latch its own attribute-map entry instead of reusing stale BG attributes.
 - Add synthetic tests before relying on broad visual ROMs: BG tile attribute decode, OBJ attribute decode, OBJ VRAM bank selection, BG and OBJ palette index selection, OBJ color `0` transparency, VRAM bank selection, palette RAM read/write, palette auto-increment, `BGPI`/`BGPD` blocking, `LCDC.0` CGB priority behavior, CGB compatibility palette seed injection, compatibility palette algorithm cases, `BGP` remapping through BG palette `0` in CGB compatibility mode, `OBP0`/`OBP1` remapping through OBJ palettes `0`/`1`, CGB native palette rendering ignoring DMG palette-register mappings, Non-CGB DMG grayscale remaining separate, `OPRI` read/write latch and boot-selected default, no ordinary post-boot `OPRI` visual priority mutation, Non-CGB X-coordinate OBJ priority, CGB OAM-order OBJ priority, CGB compatibility OBJ priority, BG-over-OBJ composition after object priority, horizontal flip, vertical flip, and CGB fetcher attribute latch timing.
 - Treat `cgb-acid2` as the primary visual acceptance target, not as the first implementation driver; every visible fix must map to a documented CGB PPU primitive and ROM-specific visual patching is not allowed.
-- CGB gate: `cgb-ppu-basic`, promoted in incremental order from palette-MMIO blocking and simple raster guards to `cgb-acid2` acceptance and Hacktix Bully hardening.
+- CGB gate: `cgb-ppu-basic` through `make run-cgb-ppu-basic`, promoted in incremental order from palette-MMIO blocking and simple raster guards to `cgb-acid2` acceptance and Hacktix Bully hardening.
 - Regression gate: DMG `167/167`, Acid DMG, and Mealybug DMG remain green.
 
 ## Slice 5 — CGB DMA, GDMA, and HDMA
@@ -259,7 +277,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Add internal timing/window tests for HDMA: one block per eligible HBlank on lines `0-143`, no block advance during VBlank, LCD-off behavior, no accidental transfer when started in forbidden HBlank seams unless explicitly documented as project policy, destination overflow stopping behavior, CPU blocking during each block, and normal-speed versus double-speed timing where the hardware transfer duration stays in the documented VRAM-DMA domain rather than CPU M-cycle count.
 - Add internal HDMA plus `HALT` tests: active HBlank DMA must pause while CPU execution is halted, resume only when the CPU resumes, preserve remaining-block readback while halted, and avoid leaking a second timing model into the CPU, PPU, or DMA controllers.
 - Publish bus impact and CPU blocking through the shared scheduler/bus contract.
-- CGB gate: `cgb-dma`.
+- CGB gate: `cgb-dma` through `make run-cgb-dma`.
 - Regression gate: DMG `167/167` plus current DMG OAM DMA tests.
 
 ## Slice 6 — CGB-family boot ROMs
@@ -288,7 +306,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Add a typed post-boot snapshot check for both `SkipBoot` and `RealBoot`, covering at minimum CPU registers, `KEY1`, `VBK`, `HDMA1-5`, `RP`, `BCPS`/`BCPD`, `OCPS`/`OCPD`, `SVBK`, `FF72-FF75`, `PCM12`/`PCM34` exposure policy, wave RAM, APU power/register readback state where deterministic, resolved compatibility palette ID, and any CGB-specific readback values that the direct-boot state seeds.
 - Validate boot-derived visible memory state against `SkipBoot`: compatibility palette RAM, boot logo tile/tilemap seed when the selected compatibility path writes it, VRAM bank state, and any deterministic boot-owned VRAM/OAM/HRAM-visible artifacts promoted into the runner manifest must match RealBoot, while WRAM/HRAM bytes that Pan Docs treats as random or unreliable must use an explicit deterministic test policy without claiming hardware constancy.
 - Add `cgb-boot-hwio` as the exploratory/internal Mooneye HWIO check for this slice; use `misc/boot_hwio-C.gb` when available, keep it out of strict blocking until the manifest records expected values and artifacts, and use it to detect divergence between RealBoot and the centralized `SkipBoot` handoff.
-- CGB gate: `cgb-smoke` and `cgb-boot-div` in standard `cgb_boot.bin` `RealBoot` mode plus a local `FF50` handoff smoke and negative no-handoff matrix; `cgb-boot-hwio` runs as exploratory/internal until promoted with documented HWIO expectations.
+- CGB gate: `cgb-smoke` through `make run-cgb-smoke` and `cgb-boot-div` through `make run-cgb-boot-div` in standard `cgb_boot.bin` `RealBoot` mode plus a local `FF50` handoff smoke and negative no-handoff matrix; `cgb-boot-hwio` runs through `make run-cgb-boot-hwio` as exploratory/internal until promoted with documented HWIO expectations.
 - Regression gate: existing real boot DMG0/DMG/MGB coverage plus DMG `167/167`.
 
 ## Slice 7 — CGB serial, APU, and timing regressions
@@ -309,15 +327,15 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Add dedicated `DIV`/APU scheduler regression tests proving that natural `DIV` edges and `DIV` writes produced by the Slice 2 timer contract feed the same APU event path, CH1/CH2/CH3/CH4 subscribe to the shared scheduling source, and double speed does not create a separate frame-sequencer route; failures here must be fixed by the APU subscriber or by returning to Slice 2 if the underlying timer contract is wrong, not by adding a Slice 7 timer fork.
 - SameSuite APU cases must not be fixed with channel-local hacks unless the behavior is genuinely channel-specific in hardware and documented at that channel boundary.
 - Keep DMG-family OAM corruption gated by silicon family; CGB must not inherit it, including in CGB compatibility mode.
-- CGB audio gate first: `cgb-audio-blargg`.
-- CGB advanced audio gate: `cgb-audio-samesuite`, promoted in coarse-to-fine implementation order: shared CH1/CH2 pulse-channel primitives plus coarse CH3/CH4 output, basic timing/frequency/restart behavior across channels, CH1 sweep, DIV/APU shared timing, fine channel-specific glitches, then speed-change-sensitive NRx2 cases.
+- CGB audio gate first: `cgb-audio-blargg` through `make run-cgb-audio-blargg`.
+- CGB advanced audio gate: `cgb-audio-samesuite` through `make run-cgb-audio-samesuite`, promoted in coarse-to-fine implementation order: shared CH1/CH2 pulse-channel primitives plus coarse CH3/CH4 output, basic timing/frequency/restart behavior across channels, CH1 sweep, DIV/APU shared timing, fine channel-specific glitches, then speed-change-sensitive NRx2 cases.
 - Regression gate: DMG `167/167` plus full Blargg `dmg_sound`.
 
 ## Slice 8 — CGB cartridge, RTC, and practical compatibility
 
 - Validate that CGB mode does not regress existing MBC1, MBC2, MBC3, and MBC5 behavior.
 - Keep `MBC30`, `MBC6`, and `MBC7` out of functional closure until the base CGB implementation is stable.
-- CGB gate: `cgb-rtc`.
+- CGB gate: `cgb-rtc` through `make run-cgb-rtc`.
 - Regression gate: DMG `167/167` plus the current Phase 6 cartridge oracle suite.
 
 ## Slice 9 — CGB PPU hardening closure
@@ -326,7 +344,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Keep `cgb-acid-hell` as a closure signal only; it must not pull architectural bring-up work earlier than the basic PPU, DMA, boot, and timer/serial/audio slices.
 - Add focused CGB palette-access microtiming probes before accepting `cgb-acid-hell` fixes: `BCPD`/`OCPD` data access during pixel transfer, index-register behavior separated from palette-data blocking, auto-increment or non-increment policy for blocked accesses, PPU-visible black-pixel or fallback-color artifacts where documented by Pan Docs/Gekkio/TCAGBD, and retained traces that identify the exact dot and LCD mode of the access.
 - Add focused VRAM-access microtiming probes around Mode `2`/`3`/`0` seams: CPU VRAM read/write visibility, fetcher-visible bank and attribute snapshots, failed-write retention, HDMA versus CPU access ordering, and no broad Mode `3` shortcut that hides the pixel-fetcher dot responsible for the result.
-- CGB final gate: `cgb-ppu-hard`.
+- CGB final gate: `cgb-ppu-hard` through `make run-cgb-ppu-hard`.
 - Promote this gate only after `cgb-ppu-basic`, `cgb-dma`, CGB boot, and CGB timer/serial/audio baseline gates are already green.
 - Regression gate: DMG `167/167` plus SameBoy framebuffer differential when a stable comparable oracle exists.
 
@@ -411,10 +429,11 @@ Practical header distinction: GB-compatible / CGB-enhanced dual-mode titles norm
 
 ## Test plan
 
-- Every CGB PR or slice must run `make ci`, `make test-roms`, and the relevant CGB suite for that slice.
-- When a CGB suite is promoted, record its cases in a dedicated manifest and document its family, model, oracle, and `exploratory` versus `repo-gated` status.
+- Every CGB PR or slice must run `make ci`, `make test-roms`, `make test-roms-cgb`, and the relevant `run-cgb-*` Makefile target for that slice after the target has fetched or verified its declared external ROM families.
+- When a CGB suite is introduced, record its cases in a dedicated `crates/gb-test-runner/data/<suite>.toml` manifest and document its family, model, oracle, and `exploratory` versus `repo-gated` status before citing it as roadmap evidence.
 - Promoting a CGB suite to repo-gated also requires a declared acceptance channel and retained artifacts; missing oracle-channel documentation blocks only promotion to blocking status, not exploratory execution or implementation progress.
 - Do not add CGB suites to the default DMG gate.
+- Treat `make test-roms` as the DMG gate even when the shared persisted report also contains rows from earlier CGB runs; CGB suite rows are produced only by `make test-roms-cgb` or the specific `run-cgb-*` targets.
 - Use SameBoy as the primary oracle when a comparable artifact exists, and use GBEmulatorShootout to decide whether a ROM belongs in the repo-managed CGB catalog.
 - Use `docboy-test-suite` as a late exploratory GBC precision oracle after the relevant CGB suites are already green; it must not become a blocking Phase 10 gate until each case has an explicit manifest entry, acceptance channel, retained artifact model, and source-of-truth mapping back to Pan Docs/Gekkio/TCAGBD.
 - When a slice introduces new CGB live state, add focused save/load continuation or determinism coverage for that state before treating the slice as closed; this is a cross-cutting CGB gate, not a separate future cleanup phase.

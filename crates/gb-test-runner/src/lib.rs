@@ -152,6 +152,19 @@ pub enum CaptureKind {
 pub const GBEMU_SHOOTOUT_ROOT_ENV_VAR: &str = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT";
 const DMG_FAMILY_FRAME_T_CYCLES: u64 = 70_224;
 
+pub const INITIAL_CGB_ROM_SUITE_NAMES: &[&str] = &[
+    "cgb-smoke",
+    "cgb-boot-div",
+    "cgb-boot-hwio",
+    "cgb-speed",
+    "cgb-ppu-basic",
+    "cgb-dma",
+    "cgb-audio-blargg",
+    "cgb-audio-samesuite",
+    "cgb-rtc",
+    "cgb-ppu-hard",
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Timeout {
     TCycles(u64),
@@ -887,12 +900,17 @@ pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mooneye_acceptance_dmg_curated_suite()
 }
 
+pub fn cgb_smoke_suite() -> RomSuite {
+    curated_test_roms::cgb_smoke_suite()
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     let mut suites = vec![
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
+        cgb_smoke_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
@@ -2392,16 +2410,16 @@ mod tests {
     use super::{
         BootRomAssets, BootRomVerificationMode, CaptureKind, CapturedArtifacts,
         CapturedMemoryTextOutput, CaseEvaluationInputs, DMG_FAMILY_FRAME_T_CYCLES,
-        FailureArtifactPolicy, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
-        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
-        RomExecutionError, RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR,
-        TestSubsystem, Timeout, artifact_file_name, blargg_console_text_complete,
-        blargg_dmg_repo_gated_suite, budget_exhausted, built_in_rom_suite_by_name,
-        capture_blargg_console_text, capture_memory_text_output, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output,
+        FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
+        MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
+        RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
+        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
+        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
+        cgb_smoke_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
+        memory_text_output_completion_reached, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output,
     };
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
@@ -2533,6 +2551,49 @@ mod tests {
         assert!(memory_text_output_completion_reached(
             &mut last_candidate,
             Some(final_failure)
+        ));
+    }
+
+    #[test]
+    fn cgb_smoke_suite_is_manifest_backed_cgb_model_catalog_entry() {
+        assert_eq!(
+            INITIAL_CGB_ROM_SUITE_NAMES,
+            &[
+                "cgb-smoke",
+                "cgb-boot-div",
+                "cgb-boot-hwio",
+                "cgb-speed",
+                "cgb-ppu-basic",
+                "cgb-dma",
+                "cgb-audio-blargg",
+                "cgb-audio-samesuite",
+                "cgb-rtc",
+                "cgb-ppu-hard",
+            ]
+        );
+
+        let suite = cgb_smoke_suite();
+
+        assert_eq!(suite.name, "cgb-smoke");
+        assert_eq!(suite.family.as_deref(), Some("cgb-smoke"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::Cgb
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        }));
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_regs-cgb.gb")
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::MooneyeResult
+        ));
+        assert_eq!(suite.cases[1].rom_path, PathBuf::from("acid/which.gb"));
+        assert!(matches!(
+            suite.cases[1].pass_condition,
+            PassCondition::Informational(CaptureKind::Framebuffer)
         ));
     }
 
