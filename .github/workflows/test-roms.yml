@@ -7,8 +7,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  acid:
+  test-roms:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Acid
+            command: make run-acid
+          - name: Blargg
+            command: make run-blargg
+          - name: Daid
+            command: make run-daid
+          - name: Hacktix
+            command: make run-hacktix
+          - name: CPP
+            command: make run-cpp
+          - name: Mooneye
+            command: make run-mooneye
+          - name: Mealybug
+            command: make run-mealybug
 
     steps:
       - name: Checkout
@@ -20,101 +40,5 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run Acid ROM suite
-        run: make run-acid
-
-  blargg:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Blargg ROM suite
-        run: make run-blargg
-
-  daid:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Daid ROM suite
-        run: make run-daid
-
-  hacktix:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Hacktix ROM suite
-        run: make run-hacktix
-
-  cpp:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run CPP ROM suite
-        run: make run-cpp
-
-  mooneye:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Mooneye ROM suite
-        run: make run-mooneye
-
-  mealybug:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Mealybug ROM suite
-        run: make run-mealybug
+      - name: Run ${{ matrix.name }} ROM suite
+        run: ${{ matrix.command }}
