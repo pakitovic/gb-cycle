@@ -96,9 +96,6 @@ jobs:
           )
 
           log_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-          pids=()
-          names=()
-
           run_check() {
             local check="$1"
             local log="${log_dir}/cov-check-${check}.log"
@@ -120,35 +117,16 @@ jobs:
           }
 
           exit_code=0
-          first="${checks[0]}"
 
-          # cargo-llvm-cov materializes target/llvm-cov-target/*.profdata during the first report.
-          # Keep that write serialized; the remaining report-only gates can read the stable file in parallel.
-          if run_check "${first}"; then
-            result=0
-          else
-            result=$?
-            exit_code=1
-          fi
-          print_log "${first}" "${result}"
-
-          for check in "${checks[@]:1}"; do
-            run_check "${check}" &
-            pids+=("$!")
-            names+=("${check}")
-          done
-
-          for i in "${!pids[@]}"; do
-            name="${names[$i]}"
-
-            if wait "${pids[$i]}"; then
+          for check in "${checks[@]}"; do
+            if run_check "${check}"; then
               result=0
             else
               result=$?
               exit_code=1
             fi
 
-            print_log "${name}" "${result}"
+            print_log "${check}" "${result}"
           done
 
           exit "${exit_code}"
