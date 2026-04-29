@@ -83,9 +83,49 @@ jobs:
         run: cargo deny-check
 
       - name: Coverage gate
+        shell: bash
         run: |
-          cargo cov-check-core
-          cargo cov-check-test-runner
-          cargo cov-check-persistence
-          cargo cov-check-cli
-          cargo cov-check-desktop
+          set -uo pipefail
+
+          checks=(
+            core
+            test-runner
+            persistence
+            cli
+            desktop
+          )
+
+          log_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+          pids=()
+          names=()
+
+          for check in "${checks[@]}"; do
+            log="${log_dir}/cov-check-${check}.log"
+            cargo "cov-check-${check}" >"${log}" 2>&1 &
+            pids+=("$!")
+            names+=("${check}")
+          done
+
+          exit_code=0
+
+          for i in "${!pids[@]}"; do
+            name="${names[$i]}"
+            log="${log_dir}/cov-check-${name}.log"
+
+            if wait "${pids[$i]}"; then
+              result=0
+            else
+              result=$?
+              exit_code=1
+            fi
+
+            echo "::group::Coverage gate: ${name}"
+            cat "${log}"
+            echo "::endgroup::"
+
+            if [ "${result}" -ne 0 ]; then
+              echo "::error title=Coverage gate failed::cargo cov-check-${name} exited with ${result}"
+            fi
+          done
+
+          exit "${exit_code}"
