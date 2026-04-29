@@ -10,6 +10,7 @@ This file is a code-facing usage and migration note. It exists to keep DMG, futu
 
 - `ARCHITECTURE.md` owns the existence of the separate axes and the high-level architectural reason for them.
 - `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that later consumes those axes.
+- This file owns the global model-profile reference table that aligns the public axes with hardware-profile names, without making those hardware-profile names functional behavior gates.
 - This file owns the practical "which type should I consult here?" guidance for production code and follow-up refactors.
 
 If this file conflicts with a subsystem handbook about hardware truth, the subsystem handbook wins.
@@ -36,6 +37,34 @@ Examples:
 
 `CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
 
+## Reference model profiles
+
+This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. CPU revision strings such as `DMG-CPU B` or `CPU CGB C` are documentation-only in this phase; they must not become behavior gates until a tested revision-specific difference is intentionally modeled. Rows that do not have current Rust enum variants are forward-looking documentation-only. `BootRomKind` defaults, allowed firmware sets, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
+
+| Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
+|---:|---|---:|---|---|---|---|---|
+| false | Game Boy | Handheld | `DMG-CPU` | `dmg0_boot.bin` | DMG | DMG green palette | Initial CPU without suffix; early DMG/DMG0-class unit. |
+| false | Game Boy | Handheld | `DMG-CPU A` | `dmg_boot.bin` | DMG | DMG green palette | Later DMG revision; standard DMG boot ROM. |
+| true | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
+| false | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
+| true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
+| true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
+| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
+| false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
+| false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
+| true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
+| false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
+| false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
+| true | Super Game Boy | Sgb1 | `SGB-CPU 01` | `sgb_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB1 host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side. |
+| false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB2 host; NTSC/JPN case; corrected clock versus SGB1; boot identifies SGB2 separately. |
+| false | Game Boy Advance | Handheld | `CPU AGB` | `gba_bios.bin` + `cgb_agb0_boot.bin` | AGB; GB/GBC Compatible on AGB0 | AGB color; GB/GBC with AGB0 profile | Initial CPU without suffix; early AGB. `AGB0` refers to the CGB-compatible boot ROM variant, not a confirmed separate native GBA BIOS here. |
+| true | Game Boy Advance | Handheld | `CPU AGB A` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB color; GB/GBC with AGB profile | Common AGB revision; CGB-compatible boot fixes logo-swap behavior and exposes GBA compatibility mode to software. |
+| true | Game Boy Advance SP | Handheld | `CPU AGB B` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Early AGS/AGS-001 family. |
+| false | Game Boy Advance SP | Handheld | `CPU AGB B E` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Late AGS/AGS-101 family; keep full GBHWDB CPU label. |
+| true | Game Boy Micro | Handheld | `CPU AGB E` | `gba_bios.bin` | AGB | AGB/OXY color | OXY-family CPU; GBA-only cartridge compatibility, with no physical GB/GBC compatibility. |
+| true | Game Boy Player | Gbs | `CPU AGB A` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | AGB-family hardware inside DOL-GBS; GameCube and Game Boy Player Start-up Disc are host/UI path, not a separate CPU mode. |
+| false | Game Boy Player | Gbs | `CPU AGB A E` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | Late DOL-GBS revision; keep full GBHWDB CPU label. |
+
 ## When to use each type
 
 ### Use `ConsoleModel` when the question is about the visible product model
@@ -58,14 +87,7 @@ Do not use `ConsoleModel` just because it is nearby in the API. If the real ques
 
 Reach for `BootRomKind` when the code needs to load, verify, route, or execute a concrete boot ROM image. `BootRomKind` is selected explicitly for `RealBoot`; `SkipBoot` does not require an asset and instead uses the synthetic startup profile for the selected `ConsoleModel`.
 
-Current defaults and allowed firmware sets are:
-
-| ConsoleModel | Default BootRomKind | Allowed BootRomKind values |
-|---|---|---|
-| `GameBoy` | `Dmg` | `Dmg0`, `Dmg` |
-| `GameBoyPocket` | `Mgb` | `Mgb` |
-| `GameBoyLight` | `Mgb` | `Mgb` |
-| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` |
+The authoritative default/allowed firmware matrix and the matching `SkipBoot` profiles live in [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles). Keep this file focused on which axis production code should consult, not on duplicating boot-profile data.
 
 ### Use `OperatingMode` when the question is about the active software-visible GB mode
 

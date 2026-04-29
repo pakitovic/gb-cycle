@@ -12,22 +12,7 @@ CGB should extend the shared core through model-aware behavior and capabilities,
 
 `ConsoleModel` is the visible product model, not the CPU revision string and not the boot ROM filename. The CGB product row is `ConsoleModel::GameBoyColor`; it defaults to `BootRomKind::Cgb`, allows `Cgb0`, `Cgb`, and `CgbE` for `RealBoot`, and uses the CGB skip-boot synthetic startup profile when `StartupMode::SkipBoot` is selected. CPU revisions such as `CPU CGB 0`, `CPU CGB A`, `CPU CGB C`, `CPU CGB D`, and `CPU CGB E` are documented hardware profiles only in this phase and must not enter behavior gates until a tested revision-specific difference is intentionally modeled.
 
-| Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
-|---:|---|---:|---|---|---|---|---|
-| false | Game Boy | Handheld | `DMG-CPU` | `dmg0_boot.bin` | DMG | DMG green palette | Initial CPU without suffix; early DMG/DMG0-class unit. |
-| false | Game Boy | Handheld | `DMG-CPU A` | `dmg_boot.bin` | DMG | DMG green palette | Later DMG revision; standard DMG boot ROM. |
-| true | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
-| false | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
-| true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
-| true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
-| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
-| false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
-| false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
-| true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
-| false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
-| false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB | CGB color; CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
-| true | Super Game Boy | Sgb1 | `SGB-CPU 01` | `sgb_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB1 host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side. |
-| false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB2 host; NTSC/JPN case; corrected clock versus SGB1; boot identifies SGB2 separately. |
+The cross-family model-profile table that aligns `ConsoleModel`, `HostPlatform`, CPU revision names, boot ROM filenames, operation mode, and display/color profile lives in [`core/MODEL-AXES.md`](../core/MODEL-AXES.md#reference-model-profiles). This CGB handbook owns the CGB behavior that consumes those axes, not the global product taxonomy.
 
 The desktop presentation palettes for `GameBoy`, `GameBoyPocket`, and `GameBoyLight` intentionally live in `gb-desktop`, not `gb-core`: the core framebuffer remains shade/rank data for tests and tooling, while desktop rendering and screenshots map shades through SameBoy's `Core/display.c` DMG, MGB, and GBL palettes. Shade mapping follows SameBoy: shade `0` uses palette entry `3`, shade `1` uses entry `2`, shade `2` uses entry `1`, and shade `3` uses entry `0`. `GameBoyColor` is reserved for native color rendering once CGB palettes are implemented and currently keeps the existing monochrome fallback path from breaking.
 
