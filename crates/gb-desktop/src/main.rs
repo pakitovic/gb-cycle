@@ -15901,6 +15901,58 @@ mod tests {
     }
 
     #[test]
+    fn display_palette_selection_covers_visible_console_models() {
+        assert_eq!(
+            super::display_palette_for_console_model(ConsoleModel::GameBoy).shade_rgb(0),
+            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0)
+        );
+        assert_eq!(
+            super::display_palette_for_console_model(ConsoleModel::GameBoyPocket).shade_rgb(1),
+            super::SAMEBOY_MGB_DISPLAY_PALETTE.shade_rgb(1)
+        );
+        assert_eq!(
+            super::display_palette_for_console_model(ConsoleModel::GameBoyLight).shade_rgb(2),
+            super::SAMEBOY_GBL_DISPLAY_PALETTE.shade_rgb(2)
+        );
+        assert_eq!(
+            super::display_palette_for_console_model(ConsoleModel::GameBoyColor).shade_rgb(3),
+            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+        );
+    }
+
+    #[test]
+    fn desktop_mode_labels_cover_all_public_variants() {
+        assert_eq!(super::EmulationProfileSessionKind::Single.label(), "single");
+        assert_eq!(
+            super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer.label(),
+            "linked-dmg04-2p"
+        );
+        assert_eq!(
+            super::EmulationProfileSessionKind::LinkedDmg07.label(),
+            "linked-dmg07"
+        );
+        assert_eq!(super::startup_mode_name(StartupMode::SkipBoot), "skip-boot");
+        assert_eq!(super::startup_mode_name(StartupMode::RealBoot), "real-boot");
+        assert_eq!(super::execution_mode_name(ExecutionMode::Strict), "strict");
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Permissive),
+            "permissive"
+        );
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Experimental),
+            "experimental"
+        );
+        assert_eq!(
+            super::diagnostic_severity_name(CartridgeDiagnosticSeverity::Warning),
+            "warning"
+        );
+        assert_eq!(
+            super::diagnostic_severity_name(CartridgeDiagnosticSeverity::Error),
+            "error"
+        );
+    }
+
+    #[test]
     fn run_desktop_supports_headless_startup_with_and_without_an_initial_rom() {
         let _guard = crate::lock_sdl_test();
         crate::configure_headless_sdl();
