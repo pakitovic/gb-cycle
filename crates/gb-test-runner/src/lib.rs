@@ -109,7 +109,10 @@ pub use workspace_paths::{
 pub(crate) fn boot_rom_kind_is_required_for_runner_gate(kind: gb_core::BootRomKind) -> bool {
     matches!(
         kind,
-        gb_core::BootRomKind::Dmg0 | gb_core::BootRomKind::Dmg | gb_core::BootRomKind::Mgb
+        gb_core::BootRomKind::Dmg0
+            | gb_core::BootRomKind::Dmg
+            | gb_core::BootRomKind::Mgb
+            | gb_core::BootRomKind::Cgb
     )
 }
 
@@ -3565,12 +3568,13 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
         )
         .with_console_model(ConsoleModel::GameBoyColor)
         .with_startup_mode(StartupMode::RealBoot);
-        assert!(
-            runner
-                .load_boot_rom_assets(&cgb_real_boot_case)
-                .expect("cgb real-boot lookup should succeed")
-                .is_empty()
-        );
+        let cgb_error = runner
+            .load_boot_rom_assets(&cgb_real_boot_case)
+            .expect_err("strict CGB real-boot should require the default CGB boot ROM asset");
+        assert!(matches!(
+            cgb_error,
+            RomExecutionError::BootRomVerification { .. }
+        ));
 
         let missing_boot_root = workspace.join("missing-bootrom");
         let dmg_real_boot_case = RomTestCase::new(
