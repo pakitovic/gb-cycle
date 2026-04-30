@@ -27,8 +27,9 @@ id = "cgb-speed-interrupt-time"
 rom = "interrupt_time.gb"
 console = "cgb"
 execution_mode = "permissive"
-timeout_frames = 5
-oracle = "info-serial"
+timeout_frames = 1800
+oracle = "blargg-console-contains"
+expected = "Passed"
 
 [[case]]
 family = "daid"

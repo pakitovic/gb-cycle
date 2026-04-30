@@ -2692,7 +2692,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_speed_suite_promotes_initial_daid_cases_to_framebuffer_fixtures() {
+    fn cgb_speed_suite_promotes_slice2_cases_to_blocking_oracles() {
         let suite = cgb_speed_suite();
 
         assert_eq!(suite.name, "cgb-speed");
@@ -2749,6 +2749,50 @@ mod tests {
                 .contains(CaptureKind::Framebuffer)
         );
         assert!(div_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let interrupt_time_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-interrupt-time")
+            .expect("interrupt_time.gb CGB case should exist");
+
+        assert_eq!(
+            interrupt_time_case.console_model,
+            ConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            interrupt_time_case.rom_path,
+            PathBuf::from("blargg/interrupt_time.gb")
+        );
+        assert_eq!(
+            interrupt_time_case.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert_eq!(interrupt_time_case.timeout, Timeout::Frames(1800));
+        assert_eq!(
+            interrupt_time_case.pass_condition,
+            PassCondition::BlarggConsoleTextContains("Passed".to_string())
+        );
+        assert!(
+            interrupt_time_case
+                .capture_plan
+                .contains(CaptureKind::BlarggConsoleText)
+        );
+        assert!(
+            interrupt_time_case
+                .capture_plan
+                .contains(CaptureKind::Snapshot)
+        );
+        assert!(
+            interrupt_time_case
+                .failure_artifacts
+                .contains(CaptureKind::BlarggConsoleText)
+        );
+        assert!(
+            interrupt_time_case
+                .failure_artifacts
+                .contains(CaptureKind::Snapshot)
+        );
     }
 
     #[test]

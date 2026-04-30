@@ -682,7 +682,7 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
     assert_eq!(stop_case.rom_path, PathBuf::from("daid/stop_instr.gb"));
     assert!(matches!(
         stop_case.pass_condition,
-        PassCondition::FramebufferFixture(_)
+        PassCondition::FramebufferGrayscaleFixture(_)
     ));
 
     let info_case = suite
