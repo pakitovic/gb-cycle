@@ -932,6 +932,10 @@ pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mooneye_acceptance_dmg_curated_suite()
 }
 
+pub fn mooneye_dmg_curated_split_suites() -> Vec<RomSuite> {
+    curated_test_roms::mooneye_dmg_curated_split_suites()
+}
+
 pub fn cgb_smoke_suite() -> RomSuite {
     curated_test_roms::cgb_smoke_suite()
 }
@@ -945,6 +949,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
+    suites.extend(mooneye_dmg_curated_split_suites());
     suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
     suites
 }
@@ -2455,14 +2460,16 @@ mod tests {
         built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
         cgb_smoke_suite, detect_mooneye_result, early_phase_9_partial_checklist,
         external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        memory_text_output_completion_reached, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output,
+        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output,
     };
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
         ExecutionMode, StartupMode,
     };
+    use std::collections::BTreeSet;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2993,6 +3000,47 @@ mod tests {
                     && matches!(case.pass_condition, PassCondition::MooneyeResult)
             }
         }));
+    }
+
+    #[test]
+    fn built_in_mooneye_split_suites_partition_the_curated_lane() {
+        let full_suite = built_in_rom_suite_by_name("mooneye-acceptance-dmg-curated")
+            .expect("known full suite should exist");
+        let split_suites = mooneye_dmg_curated_split_suites();
+
+        let split_ids = split_suites
+            .iter()
+            .flat_map(|suite| suite.cases.iter().map(|case| case.id.as_str()))
+            .collect::<BTreeSet<_>>();
+        let full_ids = full_suite
+            .cases
+            .iter()
+            .map(|case| case.id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(split_suites.len(), 3);
+        assert_eq!(split_ids, full_ids);
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+                .expect("acceptance split should exist")
+                .cases
+                .len(),
+            67
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc1-mbc5")
+                .expect("MBC1/MBC5 split should exist")
+                .cases
+                .len(),
+            21
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc2")
+                .expect("MBC2 split should exist")
+                .cases
+                .len(),
+            7
+        );
     }
 
     #[test]

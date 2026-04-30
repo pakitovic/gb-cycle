@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-cgb fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug run-cgb-smoke phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-cgb fetch-test-roms run-acid run-blargg run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -20,6 +20,9 @@ help:
 	@echo "  make run-blargg           Fetch and run the curated Blargg DMG suite"
 	@echo "  make run-daid             Fetch and run the local Daid DMG suite"
 	@echo "  make run-mooneye          Fetch and run the local Mooneye DMG suite"
+	@echo "  make run-mooneye-acceptance Fetch and run the Mooneye acceptance/manual chunk"
+	@echo "  make run-mooneye-mbc1-mbc5 Fetch and run the Mooneye emulator-only MBC1/MBC5 chunk"
+	@echo "  make run-mooneye-mbc2     Fetch and run the Mooneye emulator-only MBC2 chunk"
 	@echo "  make run-hacktix          Fetch and run the curated Hacktix DMG suite"
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
@@ -96,7 +99,21 @@ run-daid:
 
 run-mooneye:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_curated_suite_passes_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_acceptance_chunk_passes_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc1_mbc5_chunk_passes_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc2_chunk_passes_from_repo_store --no-capture
+
+run-mooneye-acceptance:
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_acceptance_chunk_passes_from_repo_store --no-capture
+
+run-mooneye-mbc1-mbc5:
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc1_mbc5_chunk_passes_from_repo_store --no-capture
+
+run-mooneye-mbc2:
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc2_chunk_passes_from_repo_store --no-capture
 
 run-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix

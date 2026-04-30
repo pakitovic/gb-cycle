@@ -227,6 +227,51 @@ pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     manifest_suite("mooneye")
 }
 
+pub fn mooneye_dmg_acceptance_manual_suite() -> RomSuite {
+    filtered_mooneye_suite("mooneye-dmg-acceptance-manual", |case| {
+        case_rom_path_has_prefix(case, &["mooneye", "acceptance"])
+            || case_rom_path_has_prefix(case, &["mooneye", "manual-only"])
+    })
+}
+
+pub fn mooneye_dmg_emulator_mbc1_mbc5_suite() -> RomSuite {
+    filtered_mooneye_suite("mooneye-dmg-emulator-mbc1-mbc5", |case| {
+        case_rom_path_has_prefix(case, &["mooneye", "emulator-only", "mbc1"])
+            || case_rom_path_has_prefix(case, &["mooneye", "emulator-only", "mbc5"])
+    })
+}
+
+pub fn mooneye_dmg_emulator_mbc2_suite() -> RomSuite {
+    filtered_mooneye_suite("mooneye-dmg-emulator-mbc2", |case| {
+        case_rom_path_has_prefix(case, &["mooneye", "emulator-only", "mbc2"])
+    })
+}
+
+pub fn mooneye_dmg_curated_split_suites() -> Vec<RomSuite> {
+    [
+        mooneye_dmg_acceptance_manual_suite(),
+        mooneye_dmg_emulator_mbc1_mbc5_suite(),
+        mooneye_dmg_emulator_mbc2_suite(),
+    ]
+    .into()
+}
+
+fn filtered_mooneye_suite(name: &str, include_case: impl Fn(&RomTestCase) -> bool) -> RomSuite {
+    let mut suite = mooneye_acceptance_dmg_curated_suite();
+    suite.name = name.to_string();
+    suite.cases.retain(include_case);
+    suite
+}
+
+fn case_rom_path_has_prefix(case: &RomTestCase, prefix: &[&str]) -> bool {
+    let mut components = case.rom_path.components();
+    prefix.iter().all(|segment| {
+        components
+            .next()
+            .is_some_and(|component| component.as_os_str() == std::ffi::OsStr::new(segment))
+    })
+}
+
 pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
     [
         acid_dmg_curated_suite(),

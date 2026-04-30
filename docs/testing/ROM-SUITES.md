@@ -40,6 +40,9 @@ make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
 make run-mealybug      # exploratory mealybug-tearoom DMG subset
 make run-mooneye       # exploratory mooneye DMG acceptance subset
+make run-mooneye-acceptance # Mooneye acceptance/manual chunk used by CI
+make run-mooneye-mbc1-mbc5 # Mooneye emulator-only MBC1/MBC5 chunk used by CI
+make run-mooneye-mbc2  # Mooneye emulator-only MBC2 chunk used by CI
 make test-roms-cgb     # fetch if needed + run all currently defined local curated CGB suites
 make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
@@ -128,7 +131,7 @@ Do not treat those excluded cases as gb-cycle regressions just because `mealybug
 
 ### Mooneye
 
-Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix.
+Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix. The full built-in suite remains `mooneye-acceptance-dmg-curated`; CI runs the same case set through three filtered chunks, `mooneye-dmg-acceptance-manual`, `mooneye-dmg-emulator-mbc1-mbc5`, and `mooneye-dmg-emulator-mbc2`, so the mapper-heavy cases do not keep one Mooneye matrix job much longer than the smaller ROM-suite jobs.
 
 ## Exploratory CGB suites
 
@@ -142,8 +145,8 @@ make run-cgb-smoke
 ## CI integration
 
 - `make ci` stays as the fast local pre-push gate and does not fetch or run external ROM suites; it includes the Rust checks plus the coverage threshold gate through `cargo cov-check`.
-- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG suites currently wired in `Makefile`: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and `mooneye`.
-- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mooneye`, and `mealybug-tearoom-tests`.
+- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG suites currently wired in `Makefile`: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and the full Mooneye lane via the three `run-mooneye-*` chunks.
+- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mooneye-acceptance`, `mooneye-mbc1-mbc5`, `mooneye-mbc2`, and `mealybug-tearoom-tests`.
 - The GitHub `test-roms` workflow fans those suites out through a matrix; every matrix child performs its own checkout, Rust toolchain setup, and Rust cache restore because GitHub-hosted runners are isolated per job.
 
 ## Commercial ROM testing

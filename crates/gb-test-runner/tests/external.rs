@@ -8,10 +8,10 @@ use gb_core::{
 };
 use gb_test_runner::{
     RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
-    boot_rom_kind_for_console_model, cpp_dmg_curated_suite, daid_dmg_curated_suite,
-    discover_boot_rom_root, discover_test_rom_store_root, hacktix_dmg_curated_suite,
-    mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
-    update_curated_test_report, verify_boot_rom_file,
+    boot_rom_kind_for_console_model, built_in_rom_suite_by_name, cpp_dmg_curated_suite,
+    daid_dmg_curated_suite, discover_boot_rom_root, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    mooneye_acceptance_dmg_curated_suite, update_curated_test_report, verify_boot_rom_file,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -602,6 +602,45 @@ fn mooneye_curated_suite_passes_from_repo_store() {
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_acceptance_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye acceptance chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 67, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_mbc1_mbc5_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc1-mbc5")
+        .expect("Mooneye MBC1/MBC5 split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye MBC1/MBC5 chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 21, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_mbc2_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc2")
+        .expect("Mooneye MBC2 split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye MBC2 chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 7, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
 }
 
