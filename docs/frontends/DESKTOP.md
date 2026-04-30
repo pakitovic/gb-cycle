@@ -29,6 +29,10 @@ Use `--release` for normal gameplay and timing-sensitive validation. Unoptimized
 
 Reuses the same visible console model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`. `SYSTEM -> MODEL` selects the product model (`GAME BOY`, `POCKET`, `LIGHT`, `COLOR`), while `BOOT ROM -> ROM` selects the concrete firmware image used only by `RealBoot`; if the selected firmware is invalid for the model, the desktop configuration normalizes it back to that model's default.
 
+`--mode` and `SYSTEM -> MODE` apply the complete `Strict`, `Permissive`, or `Experimental` compatibility preset, including validation, heuristic, override, and diagnostic policy, so desktop ROM loading follows the same cartridge-admission behavior as the automated runner for matching execution modes.
+
+When a ROM is already loaded, `SYSTEM -> MODE` rebuilds the session under the next compatible preset. If the next preset in the cycle would reject the currently loaded cartridge metadata, desktop skips that preset, logs the skipped-mode reason to `stderr`, and tries the following preset instead of interrupting the menu flow with a modal cartridge-load error.
+
 Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-core`, so the desktop frontend only performs final host-side `f32` normalization and SDL3 queueing instead of owning APU semantics.
 
 ## Audio investigation
