@@ -1,10 +1,9 @@
 use super::*;
 
-#[test]
-fn hblank_ly_scx_probe_matches_mooneye_thresholds() {
+fn assert_hblank_ly_scx_probe_matches_mooneye_thresholds(scx_start: u8, scx_end: u8) {
     let mut failures = Vec::new();
 
-    for scx in 0x00..=0x08 {
+    for scx in scx_start..=scx_end {
         let (delay_a, delay_b) = match scx & 0x07 {
             0 => (2, 3),
             1..=4 => (1, 2),
@@ -42,6 +41,21 @@ fn hblank_ly_scx_probe_matches_mooneye_thresholds() {
         "hblank_ly_scx mismatches:\n{}",
         failures.join("\n")
     );
+}
+
+#[test]
+fn hblank_ly_scx_probe_matches_mooneye_thresholds_for_scx_0_to_2() {
+    assert_hblank_ly_scx_probe_matches_mooneye_thresholds(0x00, 0x02);
+}
+
+#[test]
+fn hblank_ly_scx_probe_matches_mooneye_thresholds_for_scx_3_to_5() {
+    assert_hblank_ly_scx_probe_matches_mooneye_thresholds(0x03, 0x05);
+}
+
+#[test]
+fn hblank_ly_scx_probe_matches_mooneye_thresholds_for_scx_6_to_8() {
+    assert_hblank_ly_scx_probe_matches_mooneye_thresholds(0x06, 0x08);
 }
 
 #[test]

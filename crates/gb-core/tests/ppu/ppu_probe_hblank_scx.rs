@@ -2,16 +2,9 @@ fn build_hblank_ly_scx_probe_rom(scx: u8, scanline: u8, delay_nops: usize) -> Ve
     let mut program = Vec::new();
 
     program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
-    let wait_ly_143_pc = 0x0100_u16 + program.len() as u16;
-    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
-    program.extend_from_slice(&[0xFE, 0x8F]); // cp $8F
-    emit_jr_nz(&mut program, wait_ly_143_pc); // jr nz,wait_ly_143
-
-    let wait_ly_144_pc = 0x0100_u16 + program.len() as u16;
-    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
-    program.extend_from_slice(&[0xFE, 0x90]); // cp $90
-    emit_jr_nz(&mut program, wait_ly_144_pc); // jr nz,wait_ly_144
-
+    // SkipBoot starts from the live LY=0 raster; the probe only needs the target scanline's
+    // HBlank edge, so it can wait for that scanline directly instead of burning a full warm-up
+    // frame before arming STAT.
     program.extend_from_slice(&[0x21, 0x44, 0xFF]); // ld hl,$FF44
     program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
     program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a

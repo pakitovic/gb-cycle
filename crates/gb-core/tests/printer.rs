@@ -122,23 +122,6 @@ fn printer_attachment_supports_the_documented_detection_sequence() {
 }
 
 #[test]
-fn printer_attachment_produces_a_typed_printed_page() {
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-    );
-    machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
-
-    let tile_row = vec![0xFF; 320];
-
-    let page = run_print_sequence(&mut machine, &tile_row, [0x01, 0x13, 0xE4, 0x40]);
-
-    assert_eq!(page.width, 160);
-    assert_eq!(page.height, 8);
-    assert_eq!(page.print_args.palette, 0xE4);
-    assert_eq!(page.print_args.exposure, 0x40);
-}
-
-#[test]
 fn printer_typed_page_fixture_matches_the_golden_output() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
@@ -151,6 +134,11 @@ fn printer_typed_page_fixture_matches_the_golden_output() {
     ];
 
     let page = run_print_sequence(&mut machine, &tile_bytes, [0x01, 0x13, 0xE4, 0x40]);
+    assert_eq!(page.width, 160);
+    assert_eq!(page.height, 8);
+    assert_eq!(page.print_args.palette, 0xE4);
+    assert_eq!(page.print_args.exposure, 0x40);
+
     let rendered = render_printed_page_fixture(&page);
     let fixture_path = common::paths::trace_fixture_path(PRINTED_PAGE_FIXTURE_NAME);
     common::fixtures::ensure_text_fixture(&fixture_path, &rendered, FIXTURE_ACCEPT_ENV);
