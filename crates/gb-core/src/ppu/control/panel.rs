@@ -12,15 +12,20 @@ impl PpuPanelState {
     }
 
     pub(in crate::ppu) fn clear_visible_buffers(&mut self) {
+        self.fill_visible_buffers_with_panel_shade(0);
+    }
+
+    pub(in crate::ppu) fn fill_visible_buffers_with_panel_shade(&mut self, shade: u8) {
+        let shade = shade.min(3);
         self.current_scanline_bg_dot_contexts.fill(None);
-        self.current_scanline_pixels.fill(0);
-        self.framebuffer.fill(0);
+        self.current_scanline_pixels.fill(shade);
+        self.framebuffer.fill(shade);
         self.framebuffer_layer_sources
             .fill(PpuFramebufferLayerSource::Backdrop);
-        self.framebuffer_bgwin_colors.fill(0);
+        self.framebuffer_bgwin_colors.fill(shade);
         self.framebuffer_bgwin_forced_white.fill(false);
-        self.framebuffer_bgwin_panel_shades.fill(0);
-        self.framebuffer_backdrop_panel_shades.fill(0);
+        self.framebuffer_bgwin_panel_shades.fill(shade);
+        self.framebuffer_backdrop_panel_shades.fill(shade);
         self.framebuffer_bgwin_layer_sources
             .fill(PpuFramebufferLayerSource::Backdrop);
         self.pending_dmg_window_lcdc4_output_repaint = None;

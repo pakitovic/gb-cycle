@@ -124,7 +124,7 @@ Curated `cpp` MBC3 subset; exercised by the GitHub `test-roms` workflow.
 
 ### Daid
 
-Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and one informational framebuffer capture case `rom_and_ram.gb`.
+Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, an absolute grayscale fixture for `stop_instr.gb (DMG)`, and one informational framebuffer capture case `rom_and_ram.gb`.
 
 ### Mealybug-tearoom
 
@@ -149,7 +149,7 @@ make run-cgb-speed
 
 - `cgb-smoke` is the Phase `10` Slice `0`/Slice `1` exploratory CGB catalog suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite`.
 - `cgb-speed` is the Phase `10` Slice `2` exploratory CGB speed-domain suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-speed.toml`, and `make run-cgb-speed` fetches `daid blargg` before invoking `run_rom_suite`.
-- `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` and `speed_switch_timing_div.gbc` to blocking framebuffer fixtures using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png` and `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png`; both use a `180`-frame budget so the terminal tilemap has been presented to the framebuffer before comparison. The remaining CGB speed cases still use informational framebuffer or serial capture for bring-up artifacts, so the suite as a whole does not strictly close Slice `2` until those remaining Daid and Blargg cases are promoted to explicit pass/fail trace, framebuffer, serial, or ROM-declared output oracles.
+- `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` to a blocking final `framebuffer-grayscale-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png`, preserving the absolute solid-black STOP result instead of rank-normalizing it against white; `speed_switch_timing_div.gbc` remains a blocking rank-normalized framebuffer fixture using `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png`. Both use a `180`-frame budget so the terminal tilemap has been presented to the framebuffer before comparison. The remaining CGB speed cases still use informational framebuffer or serial capture for bring-up artifacts, so the suite as a whole does not strictly close Slice `2` until those remaining Daid and Blargg cases are promoted to explicit pass/fail trace, framebuffer, serial, or ROM-declared output oracles.
 - Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices.
 
 ## CI integration

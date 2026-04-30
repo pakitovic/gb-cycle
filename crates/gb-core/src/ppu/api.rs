@@ -1096,7 +1096,12 @@ impl Ppu {
 
         self.system_stop_active = active;
         if active {
-            self.clear_visible_buffers();
+            let stop_panel_shade = if self.console_model.is_cgb_family() {
+                3
+            } else {
+                0
+            };
+            self.fill_visible_buffers_with_panel_shade(stop_panel_shade);
         }
         self.refresh_visible_output();
     }

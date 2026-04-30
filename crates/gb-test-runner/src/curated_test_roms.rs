@@ -872,6 +872,9 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         "framebuffer-fixture" => PassCondition::FramebufferFixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-grayscale-fixture" => PassCondition::FramebufferGrayscaleFixture(
+            fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
+        ),
         "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
             fixtures.unwrap_or_else(|| panic!("missing fixture paths for case {id}")),
         ),
@@ -953,11 +956,11 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::Informational(capture) => CapturePlan::new()
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            CapturePlan::new()
-                .with_capture(CaptureKind::Framebuffer)
-                .with_capture(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => CapturePlan::debugging_minimum_for(pass_condition),
     }
 }
@@ -984,11 +987,11 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
             .with_artifact(*capture)
             .with_artifact(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            FailureArtifactPolicy::new()
-                .with_artifact(CaptureKind::Framebuffer)
-                .with_artifact(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => {
             FailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }

@@ -5909,6 +5909,7 @@ fn step_until_next_frame(
     let mut at_frame_origin = frame_start_ly == 0 && frame_start_dot == 0;
     let mut previous_ly = frame_start_ly;
     let mut previous_dot = frame_start_dot;
+    let mut previous_cpu_execution_state = context.machine.cpu().execution_state();
     let profile_this_frame = context.performance_counter.should_profile_next_frame();
     let mut profile_request = None::<EmulationProfileRequest>;
     let mut pending_event_poll_duration = Duration::ZERO;
@@ -6045,6 +6046,14 @@ fn step_until_next_frame(
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
+            let current_cpu_execution_state = context.machine.cpu().execution_state();
+            let stop_forced_blank_present_requested = !matches!(
+                previous_cpu_execution_state,
+                CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            ) && matches!(
+                current_cpu_execution_state,
+                CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            );
             record_desktop_rewind_point(context.session, context.machine, context.runtime);
             if collect_frame_telemetry {
                 let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
@@ -6053,7 +6062,6 @@ fn step_until_next_frame(
                 let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
                 let blank_frame_active = context.machine.ppu().is_blank_frame_active();
                 let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
-                let current_cpu_execution_state = context.machine.cpu().execution_state();
                 current_scanline_t_cycles += 1;
                 if !current_lcd_enabled {
                     lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
@@ -6194,38 +6202,46 @@ fn step_until_next_frame(
             }
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
-            if now_at_frame_origin && !at_frame_origin {
-                if collect_frame_telemetry {
+            let frame_boundary_reached = now_at_frame_origin && !at_frame_origin;
+            // STOP forces the core framebuffer into the visible blank state and can
+            // also freeze PPU frame-origin progress. Return once for presentation
+            // so the SDL texture does not keep showing the last diagnostic frame.
+            if frame_boundary_reached || stop_forced_blank_present_requested {
+                if collect_frame_telemetry && frame_boundary_reached {
                     frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 }
-                if context.runtime.audio_output.is_some()
-                    || context.runtime.audio_recorder.is_some()
-                {
-                    let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
-                    if let Some(audio_output) = &mut context.runtime.audio_output {
-                        audio_output.submit_captured_samples()?;
+                if frame_boundary_reached {
+                    if context.runtime.audio_output.is_some()
+                        || context.runtime.audio_recorder.is_some()
+                    {
+                        let audio_submit_started_at =
+                            profile_request.as_ref().map(|_| Instant::now());
+                        if let Some(audio_output) = &mut context.runtime.audio_output {
+                            audio_output.submit_captured_samples()?;
+                        }
+                        if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                            audio_recorder.write_captured_samples()?;
+                        }
+                        if let Some(audio_submit_started_at) = audio_submit_started_at
+                            && let Some(profile_request) = &mut profile_request
+                        {
+                            profile_request.record_host_audio_submit_duration(
+                                audio_submit_started_at.elapsed(),
+                            );
+                        }
                     }
-                    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
-                        audio_recorder.write_captured_samples()?;
-                    }
-                    if let Some(audio_submit_started_at) = audio_submit_started_at
+                    let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
+                    maybe_flush_runtime_save_sessions_at_frame_boundary(
+                        context.runtime,
+                        context.machine,
+                        Instant::now(),
+                    )?;
+                    if let Some(save_flush_started_at) = save_flush_started_at
                         && let Some(profile_request) = &mut profile_request
                     {
                         profile_request
-                            .record_host_audio_submit_duration(audio_submit_started_at.elapsed());
+                            .record_host_save_flush_duration(save_flush_started_at.elapsed());
                     }
-                }
-                let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
-                maybe_flush_runtime_save_sessions_at_frame_boundary(
-                    context.runtime,
-                    context.machine,
-                    Instant::now(),
-                )?;
-                if let Some(save_flush_started_at) = save_flush_started_at
-                    && let Some(profile_request) = &mut profile_request
-                {
-                    profile_request
-                        .record_host_save_flush_duration(save_flush_started_at.elapsed());
                 }
                 return Ok(StepUntilNextFrameResult {
                     signal: LoopSignal::Continue,
@@ -6281,6 +6297,7 @@ fn step_until_next_frame(
                 });
             }
             at_frame_origin = now_at_frame_origin;
+            previous_cpu_execution_state = current_cpu_execution_state;
         }
     }
 }
@@ -10820,10 +10837,11 @@ mod tests {
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, BootRomKind,
         CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
         CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
-        Dmg07Port, ExecutionMode, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
-        JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine, MachineConfig,
-        MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource,
-        PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
+        CpuExecutionState, Dmg07Port, ExecutionMode, ExternalPortAttachmentKind,
+        ExternalPortAttachmentSnapshot, JoypadButton, JoypadSnapshot, JoypadStatus,
+        LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
+        PocketCameraFrame, PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState,
+        PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -10901,6 +10919,15 @@ mod tests {
         fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
             .expect("test ROM should be writable");
         rom_path
+    }
+
+    fn build_stop_test_rom() -> Vec<u8> {
+        let mut rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        rom[ENTRY_POINT_START..ENTRY_POINT_START + 4].copy_from_slice(&[
+            0x10, 0x00, // STOP + padding byte
+            0x18, 0xFE, // JR $0102 if STOP wakes
+        ]);
+        rom
     }
 
     fn write_test_camera_rom(root: &Path, name: &str) -> PathBuf {
@@ -13113,6 +13140,59 @@ mod tests {
             result.frame_loop_telemetry,
             super::FrameLoopTelemetry::default()
         );
+    }
+
+    #[test]
+    fn step_until_next_frame_returns_to_present_stop_forced_blank_without_frame_boundary() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-stop-forced-blank", true, false, false);
+        harness.performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | step-stop-forced-blank".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 2,
+            },
+        );
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_stop_test_rom())
+            .expect("STOP test ROM should load");
+        harness.machine = super::DesktopEmulationSession::new_single(machine);
+
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("STOP forced blank should return for presentation");
+
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert!(matches!(
+            context.machine.cpu().execution_state(),
+            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+        ));
+        assert_eq!(
+            context.machine.ppu().snapshot().visible_output,
+            PpuVisibleOutputState::ForcedBlank
+        );
+        assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 0);
+        assert!(result.frame_loop_telemetry.stepped_t_cycles < 70_224);
     }
 
     #[test]

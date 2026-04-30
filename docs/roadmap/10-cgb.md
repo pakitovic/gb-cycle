@@ -41,7 +41,7 @@ This table is the planning inventory, not an executable suite definition. Every 
 | --- | --- | ---: | --- | --- | --- | --- |
 | 1, 3, 6 | `cgb-smoke` | 1 | mooneye | `misc/boot_regs-cgb.gb` | Boot / startup registers | MEDIUM |
 | 1, 3, 6 | `cgb-smoke` | 2 | acid | `which.gb (GBC)` | Model detection / informational framebuffer | VERY LOW |
-| 2 | `cgb-speed` | 1 | daid | `stop_instr.gb (GBC)` | STOP / CGB PPU access / blocking framebuffer fixture | MEDIUM |
+| 2 | `cgb-speed` | 1 | daid | `stop_instr.gb (GBC)` | STOP / CGB forced blank / blocking absolute grayscale framebuffer fixture | MEDIUM |
 | 2 | `cgb-speed` | 2 | daid | `speed_switch_timing_div.gbc` | KEY1 / DIV timing / blocking framebuffer fixture | HIGH |
 | 2 | `cgb-speed` | 3 | blargg | `interrupt_time.gb` | CPU / interrupt timing | HIGH |
 | 2 | `cgb-speed` | 4 | daid | `stop_instr_gbc_mode3.gb` | STOP / CGB Mode 3 | HIGH |
@@ -156,7 +156,7 @@ This table defines the default acceptance channel and retained artifacts expecte
 
 Repo-gated CGB framebuffer suites must declare the color-space channel used for pass/fail comparison before promotion. The preferred core oracle is a raw logical `RGB555` framebuffer hash or snapshot; PNG artifacts may be retained for human review only after conversion through one documented deterministic runner profile, and frontend display correction, CGB LCD pigment simulation, GBA correction, host monitor profiles, or post-processing must not become the implicit oracle for core PPU correctness.
 
-When a suite intentionally validates a converted image instead of raw `RGB555`, its manifest must name the conversion profile and keep that profile stable with the oracle artifact. This keeps `cgb-acid2`, Hacktix Bully, and `cgb-acid-hell` from mixing hardware PPU semantics with frontend color-management choices.
+When a suite intentionally validates a converted image instead of raw `RGB555`, its manifest must name the conversion profile and keep that profile stable with the oracle artifact. Transitional monochrome CGB cases may use `framebuffer-grayscale-fixture` only when the expected hardware-visible result is an absolute shade such as `STOP` forced black; ordinary visual CGB PPU promotion should prefer raw logical color once Slice 4 owns palettes. This keeps `cgb-acid2`, Hacktix Bully, and `cgb-acid-hell` from mixing hardware PPU semantics with frontend color-management choices.
 
 ### CGB MMIO ownership matrix
 
@@ -216,7 +216,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Add internal PPU/lock observability tests for `STOP`: start `STOP` during Mode `0`, Mode `1`, Mode `2`, and Mode `3`, assert the documented visible memory-lock / black-pixel behavior exposed through the minimal PPU bridge, and keep these tests as the contract that Slice 4 must preserve when the full CGB PPU renderer lands.
 - Add scheduler-domain tests proving that the speed state changes CPU-visible speed-domain behavior and serial/OAM-DMA cadence while LCD timing, HDMA block duration, CPU-visible `DIV` read cadence, and APU frame sequencing remain on their documented CGB domains instead of being multiplied by a generic speed factor.
 - Add a CGB-mode CPU and interrupt smoke suite before treating timing bring-up as stable: run focused instruction/flag, `IME` / `EI` / `DI` / `RETI`, interrupt priority, `HALT`, timer IRQ, and `STOP` cases under `ConsoleModel::GameBoyColor` and CGB operating modes to prove CGB mode reuses the proven SM83 core semantics instead of accidentally forking CPU behavior.
-- Status note while Slice `2` is under implementation: the `cgb-speed` manifest and `make run-cgb-speed` target may mix promoted and exploratory cases during strict promotion. Daid `stop_instr.gb (GBC)` and `speed_switch_timing_div.gbc` are promoted to blocking framebuffer fixtures; informational framebuffer/serial outcomes in the remaining rows are not sufficient to claim this slice is strictly closed.
+- Status note while Slice `2` is under implementation: the `cgb-speed` manifest and `make run-cgb-speed` target may mix promoted and exploratory cases during strict promotion. Daid `stop_instr.gb (GBC)` is promoted to a blocking absolute grayscale framebuffer fixture for final solid-black STOP output, and `speed_switch_timing_div.gbc` is promoted to a blocking rank-normalized framebuffer fixture; informational framebuffer/serial outcomes in the remaining rows are not sufficient to claim this slice is strictly closed.
 - CGB gate order: first `cgb-speed` through `make run-cgb-speed`, then `cgb-boot-div` through `make run-cgb-boot-div`; `cgb-boot-div` must not be promoted until the speed-domain contract and `DIV`/timer edge semantics are already owned by this slice.
 - Regression gate: DMG `167/167` plus focused DMG `STOP` tests so the CGB path cannot rewrite DMG semantics.
 

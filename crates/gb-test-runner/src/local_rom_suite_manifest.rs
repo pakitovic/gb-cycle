@@ -251,6 +251,12 @@ fn parse_pass_condition(
             manifest_dir,
             fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
         ))),
+        "framebuffer-grayscale-fixture" => Ok(PassCondition::FramebufferGrayscaleFixture(
+            resolve_fixture_path(
+                manifest_dir,
+                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            ),
+        )),
         "framebuffer-fixture-set" => {
             if fixtures.is_empty() {
                 return Err(format!("case {case_id} is missing fixtures for {oracle}"));
@@ -370,11 +376,11 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::Informational(capture) => CapturePlan::new()
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            CapturePlan::new()
-                .with_capture(CaptureKind::Framebuffer)
-                .with_capture(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => CapturePlan::debugging_minimum_for(pass_condition),
         PassCondition::MemoryTextOutputContains { .. }
         | PassCondition::BlarggConsoleTextContains(_)
@@ -395,11 +401,11 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
             .with_artifact(*capture)
             .with_artifact(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            FailureArtifactPolicy::new()
-                .with_artifact(CaptureKind::Framebuffer)
-                .with_artifact(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => {
             FailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }
@@ -621,6 +627,14 @@ button = "select"
 pressed = false
 
 [[case]]
+id = "cgb-grayscale-framebuffer"
+rom = "commercial/stop-window.gb"
+console = "cgb"
+timeout_frames = 60
+oracle = "framebuffer-grayscale-fixture"
+fixture = "fixtures/grayscale.png"
+
+[[case]]
 id = "cgb-serial-hex"
 rom = "commercial/metroid2.gb"
 console = "cgb"
@@ -637,7 +651,7 @@ expected = "DEADBEEF"
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
-        assert_eq!(suite.cases.len(), 4);
+        assert_eq!(suite.cases.len(), 5);
 
         let serial_case = &suite.cases[0];
         assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
@@ -696,7 +710,20 @@ expected = "DEADBEEF"
             }
         );
 
-        let serial_hex_case = &suite.cases[3];
+        let grayscale_case = &suite.cases[3];
+        assert_eq!(
+            grayscale_case.pass_condition,
+            PassCondition::FramebufferGrayscaleFixture(
+                workspace.join("fixtures").join("grayscale.png")
+            )
+        );
+        assert!(
+            grayscale_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+
+        let serial_hex_case = &suite.cases[4];
         assert_eq!(
             serial_hex_case.pass_condition,
             PassCondition::SerialHexExact("DEADBEEF".to_string())

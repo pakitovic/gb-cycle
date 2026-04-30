@@ -8,7 +8,7 @@ use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
-use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion};
+use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion, PpuVisibleOutputState};
 use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
@@ -326,6 +326,44 @@ fn cgb_stop_with_prepared_key1_switches_speed_and_freezes_domains_during_pause()
         machine.timer().snapshot().system_counter,
         resumed_timer_counter.wrapping_add(1)
     );
+}
+
+#[test]
+fn stop_forces_model_specific_visible_framebuffer_shade() {
+    for (model, expected_stop_shade) in [
+        (ConsoleModel::GameBoy, 0_u8),
+        (ConsoleModel::GameBoyColor, 3_u8),
+    ] {
+        let mut machine =
+            Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+        machine
+            .load_cartridge(build_test_rom(&[
+                0x10, 0x00, // STOP + padding byte
+                0x18, 0xFE, // JR $0102 if STOP wakes unexpectedly
+            ]))
+            .expect("NoMBC STOP test ROM should load");
+
+        step_until_cpu_state(&mut machine, 128, "STOP state", |state| {
+            matches!(
+                state,
+                CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            )
+        });
+
+        assert_eq!(
+            machine.ppu().snapshot().visible_output,
+            PpuVisibleOutputState::ForcedBlank,
+            "{model:?} STOP should force visible output off the normal pixel pipeline"
+        );
+        assert!(
+            machine
+                .ppu()
+                .framebuffer()
+                .iter()
+                .all(|&shade| shade == expected_stop_shade),
+            "{model:?} STOP framebuffer should be filled with panel shade {expected_stop_shade}"
+        );
+    }
 }
 
 #[test]

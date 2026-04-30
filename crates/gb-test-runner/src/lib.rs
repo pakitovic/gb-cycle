@@ -28,8 +28,8 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use framebuffer_oracle::{
-    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_local_pgm_framebuffer,
-    encode_framebuffer_pgm,
+    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_fixture_grayscale_framebuffer_path,
+    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
@@ -333,6 +333,7 @@ pub enum PassCondition {
     MooneyeResult,
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
+    FramebufferGrayscaleFixture(PathBuf),
     FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
 }
@@ -346,9 +347,9 @@ impl PassCondition {
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
             Self::Informational(capture) => *capture,
-            Self::FramebufferFixture(_) | Self::FramebufferFixtureSet(_) => {
-                CaptureKind::Framebuffer
-            }
+            Self::FramebufferFixture(_)
+            | Self::FramebufferGrayscaleFixture(_)
+            | Self::FramebufferFixtureSet(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
     }
@@ -2028,6 +2029,49 @@ impl RomRunner {
                     })
                 }
             }
+            PassCondition::FramebufferGrayscaleFixture(fixture_path) => {
+                let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_pgm_grayscale_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_pgm
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
+                            operation: "decode local framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
+                let expected = decode_fixture_grayscale_framebuffer_path(&resolved_fixture)
+                    .map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer grayscale fixture",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+
+                if actual == expected {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                        fixture_path: resolved_fixture,
+                    })
+                }
+            }
             PassCondition::FramebufferFixtureSet(fixture_paths) => {
                 let resolved_fixtures = fixture_paths
                     .iter()
@@ -2666,7 +2710,7 @@ mod tests {
         assert_eq!(stop_case.timeout, Timeout::Frames(180));
         assert_eq!(
             stop_case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferGrayscaleFixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png"
             ))
         );
@@ -3536,6 +3580,47 @@ mod tests {
                 .expect("framebuffer mismatch should evaluate"),
             RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
                 fixture_path: fixture_path.clone(),
+            })
+        );
+
+        let grayscale_fixture_path = temp_dir.join("white.pgm");
+        fs::write(
+            &grayscale_fixture_path,
+            encode_framebuffer_pgm(&vec![0; 160 * 144]),
+        )
+        .expect("grayscale fixture should be writable");
+        let grayscale_case = RomTestCase::new(
+            "grayscale-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferGrayscaleFixture(grayscale_fixture_path.clone()),
+        );
+        let grayscale_white_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![0; 160 * 144])),
+            ..CapturedArtifacts::default()
+        };
+        let grayscale_black_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![3; 160 * 144])),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &grayscale_case,
+                    &evaluation_inputs(&grayscale_white_artifacts, 1, 0)
+                )
+                .expect("grayscale framebuffer fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &grayscale_case,
+                    &evaluation_inputs(&grayscale_black_artifacts, 1, 0)
+                )
+                .expect("grayscale framebuffer mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: grayscale_fixture_path.clone(),
             })
         );
 
