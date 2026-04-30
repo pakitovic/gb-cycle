@@ -4879,7 +4879,7 @@ fn prepare_machine_config(
     Ok(PreparedMachineConfig {
         machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
             .with_startup_mode(effective_config.launch.startup_mode)
-            .with_execution_mode(effective_config.launch.execution_mode)
+            .with_compatibility(effective_config.launch.compatibility_policy())
             .with_boot_rom_kind(boot_rom_kind)
             .with_boot_rom_assets(boot_rom_assets),
         effective_config,
@@ -6617,6 +6617,102 @@ fn apply_machine_settings_change(
     Ok(())
 }
 
+fn apply_execution_mode_cycle_change(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let previous_mode = context.session.config.launch.execution_mode;
+    let mut candidate_mode = next_execution_mode(previous_mode);
+    let mut skipped_errors = Vec::new();
+
+    for _ in 0..2 {
+        let mut candidate_config = context.session.config.clone();
+        candidate_config.launch.execution_mode = candidate_mode;
+
+        match check_current_session_rebuilds_with_config(context.session, &candidate_config) {
+            Ok(()) => {
+                for (skipped_mode, error) in skipped_errors {
+                    eprintln!(
+                        "warning: skipping execution mode {} for current session: {error}",
+                        execution_mode_name(skipped_mode)
+                    );
+                }
+                return apply_machine_settings_change(
+                    canvas,
+                    context,
+                    "Execution mode",
+                    |config| {
+                        config.launch.execution_mode = candidate_mode;
+                    },
+                );
+            }
+            Err(error) => {
+                skipped_errors.push((candidate_mode, error));
+                candidate_mode = next_execution_mode(candidate_mode);
+            }
+        }
+    }
+
+    let message = skipped_errors
+        .into_iter()
+        .map(|(mode, error)| format!("{}: {error}", execution_mode_name(mode)))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let message =
+        format!("No alternate execution mode can reload the current session.\n\n{message}");
+    show_warning_message(Some(canvas.window()), "Execution mode", &message);
+    eprintln!("warning: {message}");
+    Ok(())
+}
+
+fn check_current_session_rebuilds_with_config(
+    session: &DesktopSession,
+    config: &DesktopConfig,
+) -> Result<(), String> {
+    match (
+        session.rom_bytes(),
+        session.linked_secondary_rom_bytes(),
+        session.external_port_selection,
+        session.dmg07_player_count,
+    ) {
+        (
+            Some(primary_rom_bytes),
+            Some(secondary_rom_bytes),
+            DesktopExternalPortSelection::GameLink,
+            _,
+        ) => {
+            let primary_loaded =
+                load_machine_for_rom(config, &session.current_dir, primary_rom_bytes)?;
+            let secondary_loaded =
+                load_machine_for_rom(config, &session.current_dir, secondary_rom_bytes)?;
+            if primary_loaded.effective_config != secondary_loaded.effective_config {
+                return Err(
+                    "checking a linked DMG-04 session produced divergent effective configs between the primary and secondary machines"
+                        .to_string(),
+                );
+            }
+            Ok(())
+        }
+        (
+            Some(primary_rom_bytes),
+            _,
+            DesktopExternalPortSelection::FourPlayerAdapter,
+            Some(player_count),
+        ) => load_dmg07_machines_for_rom(
+            config,
+            &session.current_dir,
+            primary_rom_bytes,
+            player_count,
+            "checking a DMG-07 session",
+        )
+        .map(|_| ()),
+        (Some(rom_bytes), _, _, _) => {
+            load_machine_for_rom(config, &session.current_dir, rom_bytes).map(|_| ())
+        }
+        (None, _, _, _) => prepare_machine_config(config, &session.current_dir).map(|_| ()),
+    }
+}
+
 fn rebuild_machine_for_config(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
@@ -8054,9 +8150,7 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::CycleExecutionMode => {
-            apply_machine_settings_change(canvas, context, "Execution mode", |config| {
-                config.launch.execution_mode = next_execution_mode(config.launch.execution_mode);
-            })?;
+            apply_execution_mode_cycle_change(canvas, context)?;
             Ok(None)
         }
         MenuAction::ClearBootRomPath => {
@@ -16223,6 +16317,31 @@ mod tests {
     }
 
     #[test]
+    fn prepare_machine_config_applies_full_execution_mode_policy() {
+        let root = temp_test_root("desktop-permissive-policy");
+        let mut config = DesktopConfig::default();
+        config.launch.execution_mode = ExecutionMode::Permissive;
+
+        let prepared = super::prepare_machine_config(&config, &root)
+            .expect("skip-boot permissive machine config should prepare");
+        assert_eq!(
+            prepared.machine_config.compatibility,
+            config.launch.compatibility_policy()
+        );
+
+        let legacy_mbc1_ram_header = build_test_rom(32 * 1024, 0x02, 0x00, 0x00);
+        let loaded = super::load_machine_for_rom(&config, &root, &legacy_mbc1_ram_header)
+            .expect("permissive desktop loading should warn instead of rejecting");
+
+        assert!(loaded.diagnostics.iter().any(|diagnostic| {
+            diagnostic.severity == CartridgeDiagnosticSeverity::Warning
+                && diagnostic
+                    .message
+                    .contains("contradicts the current MBC1+RAM Standard wiring baseline")
+        }));
+    }
+
+    #[test]
     fn run_desktop_persists_skip_boot_after_missing_boot_rom_startup_fallback() {
         let _guard = crate::lock_sdl_test();
         crate::configure_headless_sdl();
@@ -20391,6 +20510,91 @@ mod tests {
                 expected_palette
             );
         }
+    }
+
+    #[test]
+    fn execution_mode_cycle_skips_modes_that_reject_the_loaded_rom() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness =
+            FrontendHarness::new("execution-mode-skip-unloadable", false, false, false);
+        let legacy_mbc1_ram_header = build_test_rom(32 * 1024, 0x02, 0x00, 0x00);
+        let rom_path = harness.root.join("halt_bug_like.gb");
+        fs::write(&rom_path, &legacy_mbc1_ram_header).expect("legacy test ROM should be writable");
+
+        harness.session.config.launch.execution_mode = ExecutionMode::Experimental;
+        harness.session.loaded_rom = Some(super::LoadedRom {
+            path: rom_path,
+            bytes: legacy_mbc1_ram_header.clone(),
+        });
+        harness.machine = super::DesktopEmulationSession::new_single(
+            super::load_machine_for_rom(
+                &harness.session.config,
+                &harness.session.current_dir,
+                &legacy_mbc1_ram_header,
+            )
+            .expect("experimental mode should load the legacy MBC1+RAM header")
+            .machine,
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleExecutionMode)
+                .expect("execution mode action should complete")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+    }
+
+    #[test]
+    fn rebuild_preflight_covers_launcher_linked_and_adapter_sessions() {
+        let root = temp_test_root("rebuild-preflight-session-kinds");
+        let config = DesktopConfig::default();
+        let primary_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        let secondary_rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        let primary_loaded = super::LoadedRom {
+            path: root.join("primary.gb"),
+            bytes: primary_rom,
+        };
+        let secondary_loaded = super::LoadedRom {
+            path: root.join("secondary.gb"),
+            bytes: secondary_rom,
+        };
+
+        let launcher_session = super::DesktopSession {
+            config: config.clone(),
+            current_dir: root.clone(),
+            loaded_rom: None,
+            linked_secondary_rom: None,
+            dmg07_player_count: None,
+            last_open_directory: Some(root.clone()),
+            recent_roms: Vec::new(),
+            pocket_camera_frame: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+        };
+        super::check_current_session_rebuilds_with_config(&launcher_session, &config)
+            .expect("launcher preflight should prepare an empty machine");
+
+        let linked_session = super::DesktopSession {
+            loaded_rom: Some(primary_loaded.clone()),
+            linked_secondary_rom: Some(secondary_loaded),
+            external_port_selection: DesktopExternalPortSelection::GameLink,
+            ..launcher_session.clone()
+        };
+        super::check_current_session_rebuilds_with_config(&linked_session, &config)
+            .expect("DMG-04 preflight should load both cartridges");
+
+        let adapter_session = super::DesktopSession {
+            loaded_rom: Some(primary_loaded),
+            external_port_selection: DesktopExternalPortSelection::FourPlayerAdapter,
+            dmg07_player_count: Some(super::DesktopDmg07PlayerCount::Two),
+            ..launcher_session
+        };
+        super::check_current_session_rebuilds_with_config(&adapter_session, &config)
+            .expect("DMG-07 preflight should load cloned cartridges");
     }
 
     #[test]
