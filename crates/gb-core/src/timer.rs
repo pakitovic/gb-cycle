@@ -1,5 +1,6 @@
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, DerivedEdge, InterruptSource};
+use crate::speed::CgbSpeedMode;
 
 const TIMER_ENABLE_MASK: u8 = 0x04;
 const TIMER_CONTROL_MASK: u8 = 0x07;
@@ -123,12 +124,21 @@ impl Timer {
     }
 
     pub(crate) fn write_div_with_effects(&mut self, _value: u8) -> DividerResetEffects {
+        self.write_div_with_effects_for_speed(_value, CgbSpeedMode::Normal)
+    }
+
+    pub(crate) fn write_div_with_effects_for_speed(
+        &mut self,
+        _value: u8,
+        speed_mode: CgbSpeedMode,
+    ) -> DividerResetEffects {
         let previous_signal = self.current_timer_signal();
-        let previous_div_apu_signal = self.current_div_apu_signal();
+        let previous_div_apu_signal = self.current_div_apu_signal_for_speed(speed_mode);
         self.system_counter = 0;
         self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
         DividerResetEffects {
-            apu_frame_sequencer_edge: previous_div_apu_signal && !self.current_div_apu_signal(),
+            apu_frame_sequencer_edge: previous_div_apu_signal
+                && !self.current_div_apu_signal_for_speed(speed_mode),
         }
     }
 
@@ -199,13 +209,24 @@ impl Timer {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
+        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal);
+    }
+
+    pub(crate) fn tick_t_cycle_for_speed(
+        &mut self,
+        context: &mut CycleContext,
+        speed_mode: CgbSpeedMode,
+    ) {
         self.reloaded_this_t_cycle = false;
         self.advance_overflow_pipeline(context);
 
         let previous_timer_signal = self.current_timer_signal();
-        let previous_div_apu_signal = self.current_div_apu_signal();
-        self.system_counter = self.system_counter.wrapping_add(1);
+        let previous_div_apu_signal = self.current_div_apu_signal_for_speed(speed_mode);
+        self.system_counter = self
+            .system_counter
+            .wrapping_add(speed_mode.timer_increment_per_scheduler_t_cycle());
         context.push_derived_edge(DerivedEdge::DividerTick);
         let current_signal = self.current_timer_signal();
         self.process_timer_signal_edge(
@@ -219,7 +240,7 @@ impl Timer {
             context.push_derived_edge(DerivedEdge::TimerInputFallingEdge);
         }
 
-        if previous_div_apu_signal && !self.current_div_apu_signal() {
+        if previous_div_apu_signal && !self.current_div_apu_signal_for_speed(speed_mode) {
             context.push_derived_edge(DerivedEdge::ApuFrameSequencerEdge);
         }
     }
@@ -292,8 +313,8 @@ impl Timer {
         self.system_counter & (1 << bit) != 0
     }
 
-    fn current_div_apu_signal(&self) -> bool {
-        self.system_counter & (1 << 12) != 0
+    fn current_div_apu_signal_for_speed(&self, speed_mode: CgbSpeedMode) -> bool {
+        self.system_counter & (1 << speed_mode.div_apu_counter_bit()) != 0
     }
 }
 

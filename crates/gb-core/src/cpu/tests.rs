@@ -75,6 +75,7 @@ fn tick_cpu(
             None => Some(0),
         },
         CpuExternalOperation::StopWakeLineAsserted => Some(0),
+        CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0),
         CpuExternalOperation::AcknowledgeInterrupt { source } => {
             if let Some(ic) = &mut interrupts {
                 ic.clear(source);

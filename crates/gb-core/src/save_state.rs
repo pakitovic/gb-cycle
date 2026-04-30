@@ -15,6 +15,7 @@ use crate::model::{CompatibilityPolicy, ConsoleModel, HostPlatform, OperatingMod
 pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
 pub use crate::serial::SerialSaveState;
+pub use crate::speed::SpeedSaveState;
 pub use crate::timer::TimerSaveState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -90,6 +91,7 @@ pub(crate) struct MachineCoreSaveState {
     pub(crate) dma: DmaSaveState,
     pub(crate) timer: TimerSaveState,
     pub(crate) serial: SerialSaveState,
+    pub(crate) speed: SpeedSaveState,
     pub(crate) external_port: ExternalPortSaveState,
     pub(crate) boot: BootSaveState,
     pub(crate) interrupts: InterruptSaveState,
@@ -140,6 +142,7 @@ impl MachineCoreSaveState {
             .saturating_add(self.dma.dynamic_payload_bytes())
             .saturating_add(self.timer.dynamic_payload_bytes())
             .saturating_add(self.serial.dynamic_payload_bytes())
+            .saturating_add(self.speed.dynamic_payload_bytes())
             .saturating_add(self.external_port.dynamic_payload_bytes())
             .saturating_add(self.boot.dynamic_payload_bytes())
             .saturating_add(self.interrupts.dynamic_payload_bytes())

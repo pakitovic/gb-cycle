@@ -211,6 +211,33 @@ fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_
 }
 
 #[test]
+fn cgb_double_speed_internal_clock_uses_the_faster_edge_bit() {
+    let mut serial = Serial::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    serial.apply_startup_state(
+        SerialStartupState::from_registers(0x80, 0x7E).with_clock_counter(0x00FC),
+    );
+    serial.write_sc(0x81);
+
+    for _ in 0..3 {
+        serial.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Double);
+        assert_eq!(
+            serial.transfer_state(),
+            SerialTransferState::TransferRequested { bits_shifted: 0 }
+        );
+    }
+
+    serial.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Double);
+
+    assert_eq!(serial.read_sb(), 0x01);
+    assert_eq!(
+        serial.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+}
+
+#[test]
 fn transfer_reuses_the_last_staged_outgoing_byte_until_sb_is_rewritten() {
     let mut serial = Serial::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);

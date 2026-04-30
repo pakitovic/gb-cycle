@@ -92,6 +92,13 @@ impl CpuCore {
         bus_operation(CpuExternalOperation::StopWakeLineAsserted).unwrap_or(0) != 0
     }
 
+    pub(super) fn cgb_speed_switch_prepared(
+        &mut self,
+        bus_operation: &mut CpuExternalCallback<'_>,
+    ) -> bool {
+        bus_operation(CpuExternalOperation::CgbSpeedSwitchPrepared).unwrap_or(0) != 0
+    }
+
     pub(super) fn write_byte(
         &mut self,
         address: u16,

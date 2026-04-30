@@ -407,11 +407,10 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Key0,
             ),
-            0xFF4D => non_functional_io(
+            0xFF4D => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Key1,
             ),

@@ -260,6 +260,13 @@ impl CpuCore {
             CpuInstructionKind::Stop => match StopPhase::from_step(step) {
                 Some(StopPhase::ResolveEntry) => {
                     self.request_stop_div_reset();
+                    if self.cgb_speed_switch_prepared(bus_operation) {
+                        let _ = self.read_pc_u8(bus_operation);
+                        self.request_cgb_speed_switch();
+                        self.enter_speed_switch_pause_state();
+                        return;
+                    }
+
                     let wake_line_asserted = self.stop_wake_line_asserted(bus_operation);
                     let pending_interrupt = if self.ime() {
                         false

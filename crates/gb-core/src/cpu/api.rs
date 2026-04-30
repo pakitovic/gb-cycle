@@ -18,6 +18,7 @@ impl CpuCore {
             last_bus_activity: None,
             last_address_event: None,
             stop_div_reset_requested: false,
+            cgb_speed_switch_requested: false,
         }
     }
 
@@ -63,6 +64,12 @@ impl CpuCore {
         requested
     }
 
+    pub(crate) fn take_cgb_speed_switch_request(&mut self) -> bool {
+        let requested = self.cgb_speed_switch_requested;
+        self.cgb_speed_switch_requested = false;
+        requested
+    }
+
     pub fn apply_startup_state(&mut self, startup_state: CpuStartupState) {
         self.startup_state = startup_state;
         self.registers = CpuRegisters::from_startup_state(startup_state);
@@ -73,6 +80,7 @@ impl CpuCore {
         self.last_bus_activity = None;
         self.last_address_event = None;
         self.stop_div_reset_requested = false;
+        self.cgb_speed_switch_requested = false;
     }
 
     pub fn snapshot(&self) -> CpuSnapshot {

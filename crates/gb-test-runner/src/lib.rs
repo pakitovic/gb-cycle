@@ -44,7 +44,7 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cpp_dmg_curated_suite,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_speed_suite, cpp_dmg_curated_suite,
     curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
     discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
@@ -951,6 +951,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
         cgb_smoke_suite(),
+        cgb_speed_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
@@ -2463,7 +2464,7 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_smoke_suite, detect_mooneye_result,
+        capture_memory_text_output, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
         early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
@@ -2644,6 +2645,66 @@ mod tests {
             suite.cases[1].pass_condition,
             PassCondition::Informational(CaptureKind::Framebuffer)
         ));
+    }
+
+    #[test]
+    fn cgb_speed_suite_promotes_initial_daid_cases_to_framebuffer_fixtures() {
+        let suite = cgb_speed_suite();
+
+        assert_eq!(suite.name, "cgb-speed");
+        assert_eq!(suite.family.as_deref(), Some("cgb-speed"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+
+        let stop_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-stop-instr-gbc")
+            .expect("stop_instr.gb CGB case should exist");
+
+        assert_eq!(stop_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(stop_case.rom_path, PathBuf::from("daid/stop_instr.gb"));
+        assert_eq!(stop_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            stop_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png"
+            ))
+        );
+        assert!(stop_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(stop_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(stop_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let div_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-div")
+            .expect("speed_switch_timing_div.gbc case should exist");
+
+        assert_eq!(div_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            div_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_div.gbc")
+        );
+        assert_eq!(div_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            div_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png"
+            ))
+        );
+        assert!(div_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(div_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            div_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(div_case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 
     #[test]

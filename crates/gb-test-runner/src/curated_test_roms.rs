@@ -683,6 +683,10 @@ pub fn cgb_smoke_suite() -> RomSuite {
     manifest_suite_by_name("cgb-smoke")
 }
 
+pub fn cgb_speed_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-speed")
+}
+
 fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
     let manifest = curated_test_rom_manifests()
         .into_iter()
@@ -709,7 +713,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 8] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 9] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -718,6 +722,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 8] {
         (
             "crates/gb-test-runner/data/cgb-smoke.toml",
             include_str!("../data/cgb-smoke.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-speed.toml",
+            include_str!("../data/cgb-speed.toml"),
         ),
         (
             "crates/gb-test-runner/data/blargg.toml",
@@ -1591,7 +1599,11 @@ mod tests {
             let case = manifests
                 .iter()
                 .flat_map(|manifest| &manifest.cases)
-                .find(|case| case.family == family && case.rom == Path::new(rom))
+                .find(|case| {
+                    case.family == family
+                        && case.rom == Path::new(rom)
+                        && case.console_model == ConsoleModel::GameBoy
+                })
                 .unwrap_or_else(|| panic!("missing GBEmulatorShootout DMG row {family}/{rom}"));
 
             assert_eq!(case.console_model, ConsoleModel::GameBoy, "{family}/{rom}");

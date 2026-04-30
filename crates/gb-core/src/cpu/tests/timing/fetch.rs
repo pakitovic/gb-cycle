@@ -52,6 +52,7 @@ fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
                     assert_eq!(address, 0x0100);
                     Some(0x10)
                 }
+                CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
                 CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
                 CpuExternalOperation::PendingInterruptMask => Some(0x01),
                 other => panic!("unexpected STOP fetch operation: {other:?}"),
@@ -63,6 +64,7 @@ fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
         operations,
         vec![
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
         ]
@@ -94,6 +96,7 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
                     assert_eq!(address, 0x0100);
                     Some(0x10)
                 }
+                CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
                 CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
                 other => panic!("unexpected IME=1 STOP fetch operation: {other:?}"),
             }
@@ -104,6 +107,7 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
         operations,
         vec![
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
         ]
     );
@@ -135,6 +139,7 @@ fn stop_real_path_fetches_the_padding_byte_before_entering_stopped() {
                     0x0101 => Some(0x00),
                     other => panic!("unexpected STOP real-path read address: {other:#06X}"),
                 },
+                CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
                 CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
                 CpuExternalOperation::PendingInterruptMask => Some(0x00),
                 other => panic!("unexpected STOP real-path operation: {other:?}"),
@@ -146,7 +151,9 @@ fn stop_real_path_fetches_the_padding_byte_before_entering_stopped() {
         operations,
         vec![
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
@@ -176,6 +183,7 @@ fn stop_zombie_path_skips_the_padding_fetch_and_keeps_pc_at_post_opcode() {
                     assert_eq!(address, 0x0100);
                     Some(0x10)
                 }
+                CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
                 CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
                 CpuExternalOperation::PendingInterruptMask => Some(0x01),
                 other => panic!("unexpected STOP zombie-path operation: {other:?}"),
@@ -187,7 +195,9 @@ fn stop_zombie_path_skips_the_padding_fetch_and_keeps_pc_at_post_opcode() {
         operations,
         vec![
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
         ]
@@ -219,6 +229,7 @@ fn stop_halt_like_path_fetches_the_padding_byte_before_halting() {
                     0x0101 => Some(0x00),
                     other => panic!("unexpected STOP halt-like read address: {other:#06X}"),
                 },
+                CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
                 CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
                 CpuExternalOperation::PendingInterruptMask => Some(0x00),
                 other => panic!("unexpected STOP halt-like operation: {other:?}"),
@@ -230,8 +241,10 @@ fn stop_halt_like_path_fetches_the_padding_byte_before_halting() {
         operations,
         vec![
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),

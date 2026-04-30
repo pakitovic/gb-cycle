@@ -64,6 +64,10 @@ path = "testroms/blargg/instr_timing.gb"
 sha256 = "2aa8d6b38ff55f44edfb438db7938fc446c0645cf47cab7b570a97d353c4bece"
 
 [[source.required_file]]
+path = "testroms/blargg/interrupt_time.gb"
+sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
+
+[[source.required_file]]
 path = "testroms/blargg/mem_timing/01-read_timing.gb"
 sha256 = "1dae5349e184f47b966fe1bf6dffab567b04e401dc02d2ff2cdb64188ad865d0"
 
@@ -198,6 +202,42 @@ sha256 = "7807e380ce4531f4f9425427b47d7216a92ef2283ab706ea4a33eb84f589ac42"
 [[source.required_file]]
 path = "testroms/daid/stop_instr.dmg.png"
 sha256 = "4a17cdbaa7d108eab02da64e95bb08b350f32b290819319af9d6c611b66bb1b0"
+
+[[source.required_file]]
+path = "testroms/daid/stop_instr.gbc.png"
+sha256 = "dde322b8d635522880d31e8a336c3f6d2308e0b943456bf13279faab89502614"
+
+[[source.required_file]]
+path = "testroms/daid/stop_instr_gbc_mode3.gb"
+sha256 = "a16550bc85a2f5f8462694094e49cfd087780d731a4148e9056adfa3fbda7cff"
+
+[[source.required_file]]
+path = "testroms/daid/stop_instr_gbc_mode3.png"
+sha256 = "63bab5e13e22dadaa1257de56a02e5dc0a51f5cb7239cb83133d3daa5aeea37d"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_div.gbc"
+sha256 = "7569d79d9bf2918f8f5a930f01643358a87f58a5fb0dfd33ee82d5b4badc5e94"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_div.png"
+sha256 = "acb8bd2ccb3e0c720946d6c2365eb58116e627cceea74dd02c06408859253184"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_ly.gbc"
+sha256 = "acbe324c11b5e168d34c546cb9f3e641f3e85faffac3108fa0a933f6e6b95fb2"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_ly.png"
+sha256 = "a64252ec9e245773ffc8dc1dab3712fe3be11fd5a5081cc722dab61461165dc0"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_stat.gbc"
+sha256 = "21e088c4d4c110ef76912a2c4fd05293ac8cbf22740b35f2e362ee7b5450c1be"
+
+[[source.required_file]]
+path = "testroms/daid/speed_switch_timing_stat.png"
+sha256 = "9bc6fd0feef711611423f047ce8d3d0bceb9894ec96de6ac5b96938ad6691b3c"
 
 [[source.required_file]]
 path = "testroms/daid/rom_and_ram.gb"

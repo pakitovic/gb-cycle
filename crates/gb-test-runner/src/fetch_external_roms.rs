@@ -473,8 +473,9 @@ mod tests {
     use std::process::Command;
 
     use crate::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_smoke_suite, curated_test_rom_families,
-        curated_test_rom_family_suites, external_rom_store_root, test_rom_store_root,
+        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_smoke_suite, cgb_speed_suite,
+        curated_test_rom_families, curated_test_rom_family_suites, external_rom_store_root,
+        test_rom_store_root,
     };
 
     use super::{
@@ -596,7 +597,7 @@ mod tests {
     fn build_curated_source(git_url: String, git_rev: String, root: &Path) -> ExternalRomSource {
         let required_files = curated_test_rom_family_suites()
             .into_iter()
-            .chain([cgb_smoke_suite()])
+            .chain([cgb_smoke_suite(), cgb_speed_suite()])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| ExternalRomRequiredFile {
                 path: PathBuf::from("testroms").join(&path),
@@ -620,7 +621,7 @@ mod tests {
     fn write_curated_shootout_repo(root: &Path) {
         for suite in curated_test_rom_family_suites()
             .into_iter()
-            .chain([cgb_smoke_suite()])
+            .chain([cgb_smoke_suite(), cgb_speed_suite()])
         {
             for case in suite.cases {
                 let source_path = root.join("testroms").join(&case.rom_path);

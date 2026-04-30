@@ -61,13 +61,23 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - Keep the ownership split explicit: timer owns `DIV` and the shared counter; APU owns `div_apu`, frame-sequencer phase, and the downstream sound clocks.
 - The timer-owned divider path should expose enough explicit edge information that autonomous ticks can publish `DIV`-derived events to the scheduler and `DIV` reset writes can synchronously report whether an immediate `DIV-APU` edge occurred on that write.
 
+## CGB speed-domain baseline
+
+- Phase 10 Slice 2 keeps the timer-owned `system_counter` as the source of truth across speed changes instead of introducing a second double-speed accumulator.
+- In the current CPU-visible timing baseline, both normal speed and native CGB double speed advance the timer-owned internal counter by `1` per CPU-visible scheduler T-cycle. This preserves the `DIV` cadence observed by Daid `speed_switch_timing_div.gbc`; later scheduler work may refine CPU-vs-LCD wall-clock domains without changing the CPU-visible `DIV` read sequence.
+- `DIV` remains a derived view of the internal counter, and TIMA still increments from falling-edge detection on `timer_enable && selected_counter_bit`; speed mode changes domain selection for downstream consumers, not the edge rule.
+- `DIV` writes and `STOP` divider resets use the same speed-aware edge path as autonomous ticks, including immediate TIMA glitch effects and the synchronous report of whether an APU frame-sequencer edge occurred.
+- To keep the APU frame sequencer in its documented undoubled timing domain relative to the CGB speed switch, the shared `DIV-APU` source is counter bit `12` in normal speed and counter bit `13` in double speed.
+- The serial controller consumes the same speed-domain contract for its baseline internal-clock edge selection, but full CGB serial high-speed `SC.1` behavior belongs to the later serial-owned CGB slice.
+- LCD/PPU LY/STAT timing must not derive from this counter cadence directly; CGB speed state is a published scheduler-domain input, not a generic multiplier for every subsystem.
+
 ## Timing / accuracy requirements
 
 - Explain edges, glitches, and event ordering explicitly.
 - Do not reduce the model to "increment every X instructions" if finer timing matters.
 - Preserve the interaction with interrupt timing and writes to timer registers.
 - Express timer behavior on the shared T-cycle timeline of the core.
-- The internal timer system counter must advance at `1` step per T-cycle on that shared timeline.
+- The internal timer system counter must advance through the shared speed-domain contract: `1` step per scheduler T-cycle in normal speed and `2` steps per scheduler T-cycle in native CGB double speed.
 - Keep `DIV`, `TIMA`, and `TAC` coupled through the internal counter and edge logic; do not split them into desynchronized derived counters.
 - A write to `DIV` can cause an immediate TIMA increment when it changes the effective timer signal through the relevant falling edge.
 - The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle.
@@ -115,6 +125,7 @@ Priority order:
 - focused write-order and overflow tests
 - TIMA overflow-window tests, including reads and writes around pending reload
 - delayed timer-request tests that verify `IF.Timer` becomes visible `4` T-cycles (`1` M-cycle) after logical overflow
+- CGB speed-domain tests that verify CPU-visible double-speed divider cadence, unchanged falling-edge semantics, speed-aware `DIV` write effects, `STOP` switch reset behavior, and the undoubled APU frame-sequencer edge domain
 - separate TIMA-write tests for before overflow, at overflow, during reload, and after reload
 - TMA-write timing tests around reload
 - separate TMA-write tests for before overflow, just before reload, at reload, and after reload
