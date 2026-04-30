@@ -16,8 +16,12 @@ jobs:
         include:
           - name: acid
             command: make run-acid
-          - name: blargg
-            command: make run-blargg
+          - name: blargg-cpu-instrs
+            command: make run-blargg-cpu-instrs
+          - name: blargg-dmg-sound
+            command: make run-blargg-dmg-sound
+          - name: blargg-timing-memory-oam
+            command: make run-blargg-timing-memory-oam
           - name: daid
             command: make run-daid
           - name: hacktix

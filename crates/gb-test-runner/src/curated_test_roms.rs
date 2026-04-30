@@ -198,6 +198,44 @@ pub fn blargg_dmg_repo_gated_suite() -> RomSuite {
     blargg_dmg_curated_suite()
 }
 
+pub fn blargg_dmg_cpu_instrs_suite() -> RomSuite {
+    filtered_blargg_suite("blargg-dmg-cpu-instrs", |case| {
+        case_rom_path_has_prefix(case, &["blargg", "cpu_instrs"])
+    })
+}
+
+pub fn blargg_dmg_sound_suite() -> RomSuite {
+    filtered_blargg_suite("blargg-dmg-sound", |case| {
+        case_rom_path_has_prefix(case, &["blargg", "dmg_sound"])
+    })
+}
+
+pub fn blargg_dmg_timing_memory_oam_suite() -> RomSuite {
+    filtered_blargg_suite("blargg-dmg-timing-memory-oam", |case| {
+        case_rom_path_has_prefix(case, &["blargg", "halt_bug.gb"])
+            || case_rom_path_has_prefix(case, &["blargg", "instr_timing.gb"])
+            || case_rom_path_has_prefix(case, &["blargg", "mem_timing"])
+            || case_rom_path_has_prefix(case, &["blargg", "mem_timing-2"])
+            || case_rom_path_has_prefix(case, &["blargg", "oam_bug"])
+    })
+}
+
+pub fn blargg_dmg_curated_split_suites() -> Vec<RomSuite> {
+    [
+        blargg_dmg_cpu_instrs_suite(),
+        blargg_dmg_sound_suite(),
+        blargg_dmg_timing_memory_oam_suite(),
+    ]
+    .into()
+}
+
+fn filtered_blargg_suite(name: &str, include_case: impl Fn(&RomTestCase) -> bool) -> RomSuite {
+    let mut suite = blargg_dmg_curated_suite();
+    suite.name = name.to_string();
+    suite.cases.retain(include_case);
+    suite
+}
+
 pub fn daid_dmg_curated_suite() -> RomSuite {
     manifest_suite("daid")
 }

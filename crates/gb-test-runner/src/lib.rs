@@ -920,6 +920,10 @@ pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
         ))
 }
 
+pub fn blargg_dmg_curated_split_suites() -> Vec<RomSuite> {
+    curated_test_roms::blargg_dmg_curated_split_suites()
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mealybug_tearoom_dmg_curated_suite()
 }
@@ -949,6 +953,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
+    suites.extend(blargg_dmg_curated_split_suites());
     suites.extend(mooneye_dmg_curated_split_suites());
     suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
     suites
@@ -2456,13 +2461,13 @@ mod tests {
         MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
         PassCondition, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase,
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
-        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
-        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
-        cgb_smoke_suite, detect_mooneye_result, early_phase_9_partial_checklist,
-        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output,
+        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
+        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
+        capture_memory_text_output, cgb_smoke_suite, detect_mooneye_result,
+        early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
+        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output,
     };
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
@@ -2687,6 +2692,47 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
+        );
+    }
+
+    #[test]
+    fn built_in_blargg_split_suites_partition_the_curated_lane() {
+        let full_suite = built_in_rom_suite_by_name("blargg-dmg-curated")
+            .expect("known full suite should exist");
+        let split_suites = blargg_dmg_curated_split_suites();
+
+        let split_ids = split_suites
+            .iter()
+            .flat_map(|suite| suite.cases.iter().map(|case| case.id.as_str()))
+            .collect::<BTreeSet<_>>();
+        let full_ids = full_suite
+            .cases
+            .iter()
+            .map(|case| case.id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(split_suites.len(), 3);
+        assert_eq!(split_ids, full_ids);
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-cpu-instrs")
+                .expect("CPU instruction split should exist")
+                .cases
+                .len(),
+            11
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-sound")
+                .expect("DMG sound split should exist")
+                .cases
+                .len(),
+            12
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-timing-memory-oam")
+                .expect("timing/memory/OAM split should exist")
+                .cases
+                .len(),
+            15
         );
     }
 

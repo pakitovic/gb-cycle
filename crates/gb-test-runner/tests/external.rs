@@ -567,6 +567,47 @@ fn blargg_curated_suite_passes_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_cpu_instrs_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-cpu-instrs")
+        .expect("Blargg CPU instruction split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg CPU instruction chunk", true)
+    else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 11, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_dmg_sound_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-sound")
+        .expect("Blargg DMG sound split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg DMG sound chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 12, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_timing_memory_oam_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-timing-memory-oam")
+        .expect("Blargg timing/memory/OAM split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg timing/memory/OAM chunk", true)
+    else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 15, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn acid_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&acid_dmg_curated_suite(), "curated acid suite", true)
     else {
