@@ -24,6 +24,10 @@ impl BootRomVerificationMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootRomVerificationIssue {
+    MissingRoot {
+        kind: BootRomKind,
+        env_var: &'static str,
+    },
     MissingFile {
         kind: BootRomKind,
         path: PathBuf,
@@ -44,6 +48,11 @@ pub enum BootRomVerificationIssue {
 impl fmt::Display for BootRomVerificationIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingRoot { kind, env_var } => write!(
+                f,
+                "boot ROM root is not configured for {:?}; set {}",
+                kind, env_var
+            ),
             Self::MissingFile { kind, path } => write!(
                 f,
                 "boot ROM asset {:?} is missing or unreadable at {}",

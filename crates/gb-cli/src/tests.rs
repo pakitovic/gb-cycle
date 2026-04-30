@@ -1695,27 +1695,45 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
 
     assert_eq!(
         resolve_boot_rom_root(Some(Path::new("custom-assets")), &current_dir),
-        current_dir.join("custom-assets")
+        Some(current_dir.join("custom-assets"))
     );
     {
         let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let previous_boot_rom_root = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR);
         // SAFETY: tests guard process-wide environment mutations with a mutex.
         unsafe {
             env::set_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR, &explicit_dir);
         }
         assert_eq!(
             resolve_boot_rom_root(None, &current_dir),
-            explicit_dir.clone()
+            Some(explicit_dir.clone())
         );
         // SAFETY: tests guard process-wide environment mutations with a mutex.
         unsafe {
             env::remove_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR);
         }
+        assert_eq!(resolve_boot_rom_root(None, &current_dir), None);
+
+        options.boot_rom_dir = None;
+        options.boot_rom_verify = BootRomVerificationMode::Strict;
+        let unconfigured_error = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
+            .expect_err("strict real-boot should reject missing boot ROM configuration");
+        assert!(unconfigured_error.contains("boot ROM root is not configured"));
+
+        options.boot_rom_verify = BootRomVerificationMode::Off;
+        let unconfigured_assets = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
+            .expect("verification-off should allow unconfigured boot ROM roots");
+        assert!(unconfigured_assets.is_empty());
+
+        // SAFETY: tests guard process-wide environment mutations with a mutex.
+        unsafe {
+            match previous_boot_rom_root {
+                Some(value) => env::set_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR, value),
+                None => env::remove_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR),
+            }
+        }
     }
-    assert_eq!(
-        resolve_boot_rom_root(None, &current_dir),
-        current_dir.join(DEFAULT_BOOT_ROM_DIR)
-    );
+
     assert_eq!(
         resolve_path(&current_dir, Path::new("relative/demo.gb")),
         current_dir.join("relative/demo.gb")

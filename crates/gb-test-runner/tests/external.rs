@@ -8,10 +8,10 @@ use gb_core::{
 };
 use gb_test_runner::{
     RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
-    boot_rom_kind_for_console_model, cpp_dmg_curated_suite, daid_dmg_curated_suite,
-    discover_boot_rom_store_root, discover_test_rom_store_root, hacktix_dmg_curated_suite,
-    mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
-    update_curated_test_report, verify_boot_rom_file,
+    boot_rom_kind_for_console_model, built_in_rom_suite_by_name, cpp_dmg_curated_suite,
+    daid_dmg_curated_suite, discover_boot_rom_root, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    mooneye_acceptance_dmg_curated_suite, update_curated_test_report, verify_boot_rom_file,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -166,11 +166,8 @@ fn compute_header_checksum(rom: &[u8]) -> u8 {
 }
 
 fn load_verified_boot_rom_assets(console_model: ConsoleModel) -> Option<BootRomAssets> {
-    let workspace_root = workspace_root();
-    let Some(root) = discover_boot_rom_store_root(&workspace_root) else {
-        eprintln!(
-            "skipping ignored test because neither GB_CYCLE_BOOT_ROM_ROOT nor the default boot ROM store is configured"
-        );
+    let Some(root) = discover_boot_rom_root() else {
+        eprintln!("skipping ignored test because GB_CYCLE_BOOT_ROM_ROOT is not configured");
         return None;
     };
     let Some(kind) = boot_rom_kind_for_console_model(console_model) else {
@@ -514,43 +511,43 @@ fn run_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_labe
 }
 
 #[test]
-#[ignore = "requires verified local dmg0 boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg0 boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg0_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoy);
 }
 
 #[test]
-#[ignore = "requires verified local mgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local mgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_mgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_real_boot_validation(ConsoleModel::GameBoyPocket);
 }
 
 #[test]
-#[ignore = "requires verified local cgb boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_cgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_cgb_real_boot_handoff_smoke();
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_invalid_logo_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::InvalidLogo, "invalid logo");
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_invalid_checksum_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::InvalidChecksum, "invalid checksum");
 }
 
 #[test]
-#[ignore = "requires verified local dmg boot ROM asset under .roms/bootrom or GB_CYCLE_BOOT_ROM_ROOT"]
+#[ignore = "requires verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_dmg_boot_rom_rejects_an_ff_filled_header_without_ff50_handoff() {
     run_real_boot_non_handoff_validation(ValidationRomProfile::FfFilledHeader, "ff-filled header");
 }
@@ -565,6 +562,47 @@ fn blargg_curated_suite_passes_from_repo_store() {
     ) else {
         return;
     };
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_cpu_instrs_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-cpu-instrs")
+        .expect("Blargg CPU instruction split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg CPU instruction chunk", true)
+    else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 11, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_dmg_sound_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-sound")
+        .expect("Blargg DMG sound split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg DMG sound chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 12, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_timing_memory_oam_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("blargg-dmg-timing-memory-oam")
+        .expect("Blargg timing/memory/OAM split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated blargg timing/memory/OAM chunk", true)
+    else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("blargg"), "{report:#?}");
+    assert_eq!(report.cases.len(), 15, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
 }
 
@@ -605,6 +643,45 @@ fn mooneye_curated_suite_passes_from_repo_store() {
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_acceptance_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye acceptance chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 67, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_mbc1_mbc5_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc1-mbc5")
+        .expect("Mooneye MBC1/MBC5 split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye MBC1/MBC5 chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 21, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_mbc2_chunk_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc2")
+        .expect("Mooneye MBC2 split suite should exist");
+    let Some(report) = run_curated_suite(&suite, "curated mooneye MBC2 chunk", true) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 7, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
 }
 

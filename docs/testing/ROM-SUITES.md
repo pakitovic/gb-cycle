@@ -34,12 +34,18 @@ Each curated family directory contains only the ROMs currently listed in the mat
 ```bash
 make test-roms         # fetch if needed + run all local curated DMG suites
 make run-blargg        # curated Blargg DMG family (includes dmg_sound 01..12)
+make run-blargg-cpu-instrs # Blargg CPU instruction chunk used by CI
+make run-blargg-dmg-sound # Blargg DMG sound chunk used by CI
+make run-blargg-timing-memory-oam # Blargg timing/memory/OAM chunk used by CI
 make run-acid          # curated Acid DMG family
 make run-daid          # exploratory daid DMG subset
 make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
 make run-mealybug      # exploratory mealybug-tearoom DMG subset
 make run-mooneye       # exploratory mooneye DMG acceptance subset
+make run-mooneye-acceptance # Mooneye acceptance/manual chunk used by CI
+make run-mooneye-mbc1-mbc5 # Mooneye emulator-only MBC1/MBC5 chunk used by CI
+make run-mooneye-mbc2  # Mooneye emulator-only MBC2 chunk used by CI
 make test-roms-cgb     # fetch if needed + run all currently defined local curated CGB suites
 make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
@@ -61,6 +67,9 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated
 
 # Run full Blargg family (including dmg_sound)
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite blargg-dmg-curated
+
+# Run a CI-sized Blargg chunk
+cargo run -p gb-test-runner --bin run_rom_suite -- --suite blargg-dmg-cpu-instrs
 
 # List all built-in suites and oracle channels
 cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
@@ -100,7 +109,7 @@ Mixes one blocking framebuffer oracle `dmg-acid2.gb` with one informational fram
 
 ### Blargg
 
-Uses only individual ROMs from `GBEmulatorShootout` (not multi-ROM bundles such as `cpu_instrs.gb`). Includes the DMG `dmg_sound 01..12` individual ROMs.
+Uses only individual ROMs from `GBEmulatorShootout` (not multi-ROM bundles such as `cpu_instrs.gb`). Includes the DMG `dmg_sound 01..12` individual ROMs. The full built-in suite remains `blargg-dmg-curated`; CI runs the same case set through three filtered chunks, `blargg-dmg-cpu-instrs`, `blargg-dmg-sound`, and `blargg-dmg-timing-memory-oam`, so the CPU-heavy and APU-heavy cases do not keep one Blargg matrix job much longer than the smaller ROM-suite jobs.
 
 The upstream `oam_bug/7-timing_effect.gb`, CGB-only ROMs, and other still-red cases stay outside the default managed block until intentionally promoted.
 
@@ -128,7 +137,7 @@ Do not treat those excluded cases as gb-cycle regressions just because `mealybug
 
 ### Mooneye
 
-Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix.
+Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix. The full built-in suite remains `mooneye-acceptance-dmg-curated`; CI runs the same case set through three filtered chunks, `mooneye-dmg-acceptance-manual`, `mooneye-dmg-emulator-mbc1-mbc5`, and `mooneye-dmg-emulator-mbc2`, so the mapper-heavy cases do not keep one Mooneye matrix job much longer than the smaller ROM-suite jobs.
 
 ## Exploratory CGB suites
 
@@ -142,8 +151,9 @@ make run-cgb-smoke
 ## CI integration
 
 - `make ci` stays as the fast local pre-push gate and does not fetch or run external ROM suites; it includes the Rust checks plus the coverage threshold gate through `cargo cov-check`.
-- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG suites currently wired in `Makefile`: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and `mooneye`.
-- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mooneye`, and `mealybug-tearoom-tests`.
+- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG suites currently wired in `Makefile`: `acid`, the full Blargg lane via the three `run-blargg-*` chunks, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and the full Mooneye lane via the three `run-mooneye-*` chunks.
+- GitHub uses two workflows: `ci` for Rust checks plus coverage, `test-roms` for the workflow-managed ROM subset currently exercised in CI: `acid`, `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam`, `daid`, `hacktix`, `cpp`, `mooneye-acceptance`, `mooneye-mbc1-mbc5`, `mooneye-mbc2`, and `mealybug-tearoom-tests`.
+- The GitHub `test-roms` workflow fans those suites out through a matrix; every matrix child performs its own checkout, Rust toolchain setup, and Rust cache restore because GitHub-hosted runners are isolated per job.
 
 ## Commercial ROM testing
 
@@ -319,10 +329,9 @@ That suite compares retained synthetic `MBC1`, `MBC2`, `MBC3`, and `MBC5` Phase 
 
 Repo-managed local-only support assets live under gitignored roots:
 
-- `/.roms/bootrom/` — DMG/MGB boot ROM images.
 - `/.oracles/<oracle>/<layout>/` — imported differential oracle artifacts.
 
 ## Environment variables
 
-- `GB_CYCLE_BOOT_ROM_ROOT` — override boot ROM search path.
+- `GB_CYCLE_BOOT_ROM_ROOT` — boot ROM search path for private firmware assets; there is no repo-local default boot ROM directory.
 - `GB_CYCLE_TEST_ROM_ROOT` — override test ROM root; if unset, `gb-test-runner` falls back to the default curated store automatically.

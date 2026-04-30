@@ -1,11 +1,30 @@
 use gb_core::{BootRomAssets, BootRomKind, StartupMode};
-use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR};
+use gb_desktop::BootRomVerificationMode;
 use sha2::{Digest, Sha256};
 use std::env;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
+pub const BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MissingBootRomAsset {
+    SourceUnconfigured,
+    Path(PathBuf),
+}
+
+impl fmt::Display for MissingBootRomAsset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SourceUnconfigured => write!(
+                f,
+                "boot ROM root is not configured; set {BOOT_ROM_ROOT_ENV_VAR} or choose a boot ROM file/directory"
+            ),
+            Self::Path(path) => write!(f, "boot ROM asset missing at {}", path.display()),
+        }
+    }
+}
 
 pub fn load_boot_rom_assets(
     search_path: Option<&Path>,
@@ -18,7 +37,18 @@ pub fn load_boot_rom_assets(
         return Ok(BootRomAssets::none());
     }
 
-    let source = resolve_boot_rom_source(search_path, current_dir);
+    let Some(source) = resolve_boot_rom_source(search_path, current_dir) else {
+        match verification_mode {
+            BootRomVerificationMode::Off => {}
+            BootRomVerificationMode::Warn => {
+                eprintln!("warning: {}", MissingBootRomAsset::SourceUnconfigured)
+            }
+            BootRomVerificationMode::Strict => {
+                return Err(MissingBootRomAsset::SourceUnconfigured.to_string());
+            }
+        }
+        return Ok(BootRomAssets::none());
+    };
     let kind = boot_rom_kind;
     let image_path = boot_rom_image_path(&source, kind);
     match verification_mode {
@@ -49,16 +79,18 @@ pub fn load_boot_rom_assets(
     })
 }
 
-pub fn missing_boot_rom_asset_path(
+pub fn missing_boot_rom_asset(
     search_path: Option<&Path>,
     boot_rom_kind: BootRomKind,
     current_dir: &Path,
-) -> Result<Option<PathBuf>, String> {
-    let source = resolve_boot_rom_source(search_path, current_dir);
+) -> Result<Option<MissingBootRomAsset>, String> {
+    let Some(source) = resolve_boot_rom_source(search_path, current_dir) else {
+        return Ok(Some(MissingBootRomAsset::SourceUnconfigured));
+    };
     let kind = boot_rom_kind;
 
     if !path_exists(&source)? {
-        return Ok(Some(source));
+        return Ok(Some(MissingBootRomAsset::Path(source)));
     }
     if source.is_file() {
         return Ok(None);
@@ -66,21 +98,21 @@ pub fn missing_boot_rom_asset_path(
     if source.is_dir() {
         let image_path = boot_rom_image_path(&source, kind);
         if !path_exists(&image_path)? {
-            return Ok(Some(image_path));
+            return Ok(Some(MissingBootRomAsset::Path(image_path)));
         }
     }
 
     Ok(None)
 }
 
-fn resolve_boot_rom_source(explicit_source: Option<&Path>, current_dir: &Path) -> PathBuf {
+fn resolve_boot_rom_source(explicit_source: Option<&Path>, current_dir: &Path) -> Option<PathBuf> {
     if let Some(explicit_source) = explicit_source {
-        return resolve_path(current_dir, explicit_source);
+        return Some(resolve_path(current_dir, explicit_source));
     }
-    if let Some(root) = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR) {
-        return PathBuf::from(root);
+    if let Some(root) = env::var_os(BOOT_ROM_ROOT_ENV_VAR) {
+        return Some(PathBuf::from(root));
     }
-    current_dir.join(DEFAULT_BOOT_ROM_DIR)
+    None
 }
 
 pub fn resolve_path(current_dir: &Path, path: &Path) -> PathBuf {
@@ -172,12 +204,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_BOOT_ROM_ROOT_ENV_VAR, boot_rom_image_path, expected_boot_rom_sha256,
-        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset_path, path_exists,
+        BOOT_ROM_ROOT_ENV_VAR, MissingBootRomAsset, boot_rom_image_path, expected_boot_rom_sha256,
+        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset, path_exists,
         resolve_boot_rom_source, resolve_path, sha256_hex, verify_boot_rom_file,
     };
     use gb_core::{BootRomAssets, BootRomKind, StartupMode};
-    use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR};
+    use gb_desktop::BootRomVerificationMode;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -202,30 +234,35 @@ mod tests {
     }
 
     #[test]
-    fn resolve_boot_rom_source_prefers_explicit_paths_then_env_then_default_directory() {
+    fn resolve_boot_rom_source_prefers_explicit_paths_then_env() {
         let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
         let current_dir = Path::new("/tmp/gb-cycle");
 
         assert_eq!(
             resolve_boot_rom_source(Some(Path::new("firmware")), current_dir),
-            PathBuf::from("/tmp/gb-cycle/firmware")
+            Some(PathBuf::from("/tmp/gb-cycle/firmware"))
         );
 
         unsafe {
-            env::set_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR, "/tmp/env-bootrom");
+            env::set_var(BOOT_ROM_ROOT_ENV_VAR, "/tmp/env-bootrom");
         }
         assert_eq!(
             resolve_boot_rom_source(None, current_dir),
-            PathBuf::from("/tmp/env-bootrom")
+            Some(PathBuf::from("/tmp/env-bootrom"))
         );
         unsafe {
-            env::remove_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR);
+            env::remove_var(BOOT_ROM_ROOT_ENV_VAR);
         }
 
-        assert_eq!(
-            resolve_boot_rom_source(None, current_dir),
-            PathBuf::from("/tmp/gb-cycle").join(DEFAULT_BOOT_ROM_DIR)
-        );
+        assert_eq!(resolve_boot_rom_source(None, current_dir), None);
+
+        unsafe {
+            match previous_boot_rom_root {
+                Some(value) => env::set_var(BOOT_ROM_ROOT_ENV_VAR, value),
+                None => env::remove_var(BOOT_ROM_ROOT_ENV_VAR),
+            }
+        }
     }
 
     #[test]
@@ -433,19 +470,19 @@ mod tests {
     }
 
     #[test]
-    fn missing_boot_rom_asset_path_detects_missing_exact_files() {
+    fn missing_boot_rom_asset_detects_missing_exact_files() {
         let root = temp_root("missing-exact");
         let exact_file = root.join("mgb_boot.bin");
 
         assert_eq!(
-            missing_boot_rom_asset_path(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
+            missing_boot_rom_asset(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
                 .expect("missing exact files should resolve cleanly"),
-            Some(exact_file.clone())
+            Some(MissingBootRomAsset::Path(exact_file.clone()))
         );
 
         write_boot_rom_image(&exact_file, 0x33);
         assert_eq!(
-            missing_boot_rom_asset_path(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
+            missing_boot_rom_asset(Some(&exact_file), BootRomKind::Mgb, Path::new("/unused"),)
                 .expect("existing exact files should not trigger fallback"),
             None
         );
@@ -454,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_boot_rom_asset_path_detects_missing_active_model_images_in_directories() {
+    fn missing_boot_rom_asset_detects_missing_active_model_images_in_directories() {
         let root = temp_root("missing-directory-image");
         let directory = root.join("bootrom");
         fs::create_dir_all(&directory).expect("boot ROM directory should be creatable");
@@ -464,32 +501,56 @@ mod tests {
         );
 
         assert_eq!(
-            missing_boot_rom_asset_path(Some(&directory), BootRomKind::Dmg, Path::new("/unused"),)
+            missing_boot_rom_asset(Some(&directory), BootRomKind::Dmg, Path::new("/unused"),)
                 .expect("present active-model image should not trigger fallback"),
             None
         );
         assert_eq!(
-            missing_boot_rom_asset_path(Some(&directory), BootRomKind::Mgb, Path::new("/unused"),)
+            missing_boot_rom_asset(Some(&directory), BootRomKind::Mgb, Path::new("/unused"),)
                 .expect("missing active-model image should surface the expected path"),
-            Some(directory.join(BootRomAssets::filename(BootRomKind::Mgb)))
+            Some(MissingBootRomAsset::Path(
+                directory.join(BootRomAssets::filename(BootRomKind::Mgb))
+            ))
         );
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }
 
     #[test]
-    fn missing_boot_rom_asset_path_returns_the_missing_directory_when_the_source_root_is_gone() {
+    fn missing_boot_rom_asset_returns_the_missing_directory_when_the_source_root_is_gone() {
         let missing_directory = PathBuf::from("/definitely/missing/desktop-bootrom-root");
 
         assert_eq!(
-            missing_boot_rom_asset_path(
+            missing_boot_rom_asset(
                 Some(&missing_directory),
                 BootRomKind::Dmg,
                 Path::new("/unused"),
             )
             .expect("missing directory roots should resolve cleanly"),
-            Some(missing_directory)
+            Some(MissingBootRomAsset::Path(missing_directory))
         );
+    }
+
+    #[test]
+    fn missing_boot_rom_asset_reports_unconfigured_sources() {
+        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
+        unsafe {
+            env::remove_var(BOOT_ROM_ROOT_ENV_VAR);
+        }
+
+        assert_eq!(
+            missing_boot_rom_asset(None, BootRomKind::Dmg, Path::new("/unused"))
+                .expect("unconfigured sources should resolve cleanly"),
+            Some(MissingBootRomAsset::SourceUnconfigured)
+        );
+
+        unsafe {
+            match previous_boot_rom_root {
+                Some(value) => env::set_var(BOOT_ROM_ROOT_ENV_VAR, value),
+                None => env::remove_var(BOOT_ROM_ROOT_ENV_VAR),
+            }
+        }
     }
 
     fn temp_root(label: &str) -> PathBuf {

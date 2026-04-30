@@ -100,9 +100,8 @@ pub use sameboy_tester::{
     SameBoyTesterSuiteReport,
 };
 pub use workspace_paths::{
-    BOOT_ROM_ROOT_ENV_VAR, BOOT_ROM_STORE_DIR, ORACLE_STORE_DIR, boot_rom_image_path,
-    boot_rom_kind_for_console_model, boot_rom_store_root, discover_boot_rom_store_root,
-    oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
+    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path, boot_rom_kind_for_console_model,
+    discover_boot_rom_root, oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
     sameboy_tester_oracle_root,
 };
 
@@ -114,6 +113,29 @@ pub(crate) fn boot_rom_kind_is_required_for_runner_gate(kind: gb_core::BootRomKi
             | gb_core::BootRomKind::Mgb
             | gb_core::BootRomKind::Cgb
     )
+}
+
+pub(crate) fn enforce_missing_boot_rom_root_verification(
+    mode: BootRomVerificationMode,
+    kind: gb_core::BootRomKind,
+) -> Result<(), BootRomVerificationIssue> {
+    match mode {
+        BootRomVerificationMode::Off => Ok(()),
+        BootRomVerificationMode::Warn => {
+            eprintln!(
+                "warning: {}",
+                BootRomVerificationIssue::MissingRoot {
+                    kind,
+                    env_var: BOOT_ROM_ROOT_ENV_VAR,
+                }
+            );
+            Ok(())
+        }
+        BootRomVerificationMode::Strict => Err(BootRomVerificationIssue::MissingRoot {
+            kind,
+            env_var: BOOT_ROM_ROOT_ENV_VAR,
+        }),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -898,6 +920,10 @@ pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
         ))
 }
 
+pub fn blargg_dmg_curated_split_suites() -> Vec<RomSuite> {
+    curated_test_roms::blargg_dmg_curated_split_suites()
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mealybug_tearoom_dmg_curated_suite()
 }
@@ -908,6 +934,10 @@ pub fn mealybug_tearoom_dmg_sameboy_differential_suite() -> RomSuite {
 
 pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mooneye_acceptance_dmg_curated_suite()
+}
+
+pub fn mooneye_dmg_curated_split_suites() -> Vec<RomSuite> {
+    curated_test_roms::mooneye_dmg_curated_split_suites()
 }
 
 pub fn cgb_smoke_suite() -> RomSuite {
@@ -923,6 +953,8 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
+    suites.extend(blargg_dmg_curated_split_suites());
+    suites.extend(mooneye_dmg_curated_split_suites());
     suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
     suites
 }
@@ -1680,11 +1712,13 @@ impl RomRunner {
             return Ok(BootRomAssets::none());
         };
 
-        let root = self
-            .boot_rom_root
-            .clone()
-            .or_else(|| discover_boot_rom_store_root(&self.workspace_root))
-            .unwrap_or_else(|| boot_rom_store_root(&self.workspace_root));
+        let Some(root) = self.boot_rom_root.clone().or_else(discover_boot_rom_root) else {
+            if boot_rom_kind_is_required_for_runner_gate(kind) {
+                enforce_missing_boot_rom_root_verification(self.boot_rom_verification_mode, kind)
+                    .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+            }
+            return Ok(BootRomAssets::none());
+        };
         let image_path = boot_rom_image_path(&root, kind);
         if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
             return Ok(BootRomAssets::none());
@@ -2421,17 +2455,18 @@ fn discard_trace_events_if_needed(trace_buffer: &mut TraceBuffer, executed_t_cyc
 #[cfg(test)]
 mod tests {
     use super::{
-        BootRomAssets, BootRomVerificationMode, CaptureKind, CapturedArtifacts,
-        CapturedMemoryTextOutput, CaseEvaluationInputs, DMG_FAMILY_FRAME_T_CYCLES,
-        FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
-        MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
-        RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
-        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
-        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
-        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
-        cgb_smoke_suite, detect_mooneye_result, early_phase_9_partial_checklist,
-        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        memory_text_output_completion_reached, mooneye_result_completion_candidate,
+        BOOT_ROM_ROOT_ENV_VAR, BootRomAssets, BootRomVerificationIssue, BootRomVerificationMode,
+        CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, CaseEvaluationInputs,
+        DMG_FAMILY_FRAME_T_CYCLES, FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES,
+        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
+        PassCondition, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase,
+        RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
+        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
+        capture_memory_text_output, cgb_smoke_suite, detect_mooneye_result,
+        early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
+        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output,
     };
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
@@ -2439,6 +2474,7 @@ mod tests {
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
         ExecutionMode, StartupMode,
     };
+    use std::collections::BTreeSet;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2656,6 +2692,47 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
+        );
+    }
+
+    #[test]
+    fn built_in_blargg_split_suites_partition_the_curated_lane() {
+        let full_suite = built_in_rom_suite_by_name("blargg-dmg-curated")
+            .expect("known full suite should exist");
+        let split_suites = blargg_dmg_curated_split_suites();
+
+        let split_ids = split_suites
+            .iter()
+            .flat_map(|suite| suite.cases.iter().map(|case| case.id.as_str()))
+            .collect::<BTreeSet<_>>();
+        let full_ids = full_suite
+            .cases
+            .iter()
+            .map(|case| case.id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(split_suites.len(), 3);
+        assert_eq!(split_ids, full_ids);
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-cpu-instrs")
+                .expect("CPU instruction split should exist")
+                .cases
+                .len(),
+            11
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-sound")
+                .expect("DMG sound split should exist")
+                .cases
+                .len(),
+            12
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("blargg-dmg-timing-memory-oam")
+                .expect("timing/memory/OAM split should exist")
+                .cases
+                .len(),
+            15
         );
     }
 
@@ -2969,6 +3046,47 @@ mod tests {
                     && matches!(case.pass_condition, PassCondition::MooneyeResult)
             }
         }));
+    }
+
+    #[test]
+    fn built_in_mooneye_split_suites_partition_the_curated_lane() {
+        let full_suite = built_in_rom_suite_by_name("mooneye-acceptance-dmg-curated")
+            .expect("known full suite should exist");
+        let split_suites = mooneye_dmg_curated_split_suites();
+
+        let split_ids = split_suites
+            .iter()
+            .flat_map(|suite| suite.cases.iter().map(|case| case.id.as_str()))
+            .collect::<BTreeSet<_>>();
+        let full_ids = full_suite
+            .cases
+            .iter()
+            .map(|case| case.id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(split_suites.len(), 3);
+        assert_eq!(split_ids, full_ids);
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+                .expect("acceptance split should exist")
+                .cases
+                .len(),
+            67
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc1-mbc5")
+                .expect("MBC1/MBC5 split should exist")
+                .cases
+                .len(),
+            21
+        );
+        assert_eq!(
+            built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc2")
+                .expect("MBC2 split should exist")
+                .cases
+                .len(),
+            7
+        );
     }
 
     #[test]
@@ -3494,7 +3612,7 @@ mod tests {
     }
 
     #[test]
-    fn runner_path_resolution_and_boot_rom_loading_cover_repo_local_fallbacks() {
+    fn runner_path_resolution_and_boot_rom_loading_cover_explicit_roots() {
         let workspace = unique_temp_dir("path-resolution");
         fs::create_dir_all(&workspace).expect("workspace dir should be creatable");
         let runner = RomRunner::new().with_workspace_root(&workspace);
@@ -3509,7 +3627,9 @@ mod tests {
 
         let _guard = crate::test_support::lock_env();
         let previous_test_root = env::var_os(TEST_ROM_ROOT_ENV_VAR);
+        let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
         remove_env_var(TEST_ROM_ROOT_ENV_VAR);
+        remove_env_var(BOOT_ROM_ROOT_ENV_VAR);
 
         let missing_default = runner
             .resolve_case_path(Path::new("acid/dmg-acid2.gb"), Some(TEST_ROM_ROOT_ENV_VAR))
@@ -3570,10 +3690,12 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
         .with_startup_mode(StartupMode::RealBoot);
         let cgb_error = runner
             .load_boot_rom_assets(&cgb_real_boot_case)
-            .expect_err("strict CGB real-boot should require the default CGB boot ROM asset");
+            .expect_err("strict CGB real-boot should require a configured CGB boot ROM root");
         assert!(matches!(
             cgb_error,
-            RomExecutionError::BootRomVerification { .. }
+            RomExecutionError::BootRomVerification {
+                issue: BootRomVerificationIssue::MissingRoot { .. },
+            }
         ));
 
         let missing_boot_root = workspace.join("missing-bootrom");
@@ -3593,6 +3715,11 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
                 .expect("missing boot root should fall back to no assets")
                 .is_empty()
         );
+
+        match previous_boot_rom_root {
+            Some(value) => set_env_var(BOOT_ROM_ROOT_ENV_VAR, value),
+            None => remove_env_var(BOOT_ROM_ROOT_ENV_VAR),
+        }
 
         fs::remove_dir_all(workspace).expect("workspace dir should be removable");
     }

@@ -38,7 +38,7 @@ Both commands load the ROM first, then validate the save payload against the car
 ## Startup and compatibility
 
 - `run` supports `skip-boot` and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
-- `real-boot` looks for boot ROM assets in `GB_CYCLE_BOOT_ROM_ROOT` or the repo-local `/.roms/bootrom/` store and can verify the expected DMG-family SHA-256 hashes.
+- `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir` and can verify the expected boot ROM SHA-256 hashes.
 
 ## Output options
 

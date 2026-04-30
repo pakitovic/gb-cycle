@@ -528,9 +528,9 @@ fn runner_resolves_roms_from_the_default_repo_managed_test_rom_store() {
 }
 
 #[test]
-fn runner_uses_repo_local_boot_rom_store_for_real_boot_cases() {
+fn runner_uses_explicit_boot_rom_root_for_real_boot_cases() {
     let temp_dir = unique_temp_dir("real-boot-store");
-    let boot_rom_root = temp_dir.join(".roms/bootrom");
+    let boot_rom_root = temp_dir.join("bootroms");
     fs::create_dir_all(&boot_rom_root).expect("boot rom root should be creatable");
     fs::write(
         boot_rom_root.join("dmg_boot.bin"),
@@ -552,6 +552,7 @@ fn runner_uses_repo_local_boot_rom_store_for_real_boot_cases() {
 
     let report = RomRunner::new()
         .with_workspace_root(&temp_dir)
+        .with_boot_rom_root(&boot_rom_root)
         .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
         .run_case(&case)
         .expect("real-boot case should execute");
@@ -565,7 +566,7 @@ fn runner_uses_repo_local_boot_rom_store_for_real_boot_cases() {
 #[test]
 fn runner_rejects_unexpected_boot_rom_hashes_in_strict_real_boot_mode() {
     let temp_dir = unique_temp_dir("real-boot-hash-mismatch");
-    let boot_rom_root = temp_dir.join(".roms/bootrom");
+    let boot_rom_root = temp_dir.join("bootroms");
     fs::create_dir_all(&boot_rom_root).expect("boot rom root should be creatable");
     fs::write(
         boot_rom_root.join("dmg_boot.bin"),
@@ -586,6 +587,7 @@ fn runner_rejects_unexpected_boot_rom_hashes_in_strict_real_boot_mode() {
 
     let error = RomRunner::new()
         .with_workspace_root(&temp_dir)
+        .with_boot_rom_root(&boot_rom_root)
         .run_case(&case)
         .expect_err("strict real-boot should reject unexpected boot rom hashes");
 
