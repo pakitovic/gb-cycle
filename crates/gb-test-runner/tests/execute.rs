@@ -183,12 +183,43 @@ fn runner_executes_phase_2_interrupt_suite_with_typed_external_stimuli() {
 }
 
 #[test]
-fn runner_executes_phase_6_cartridge_oracle_suite_against_reserved_fixtures() {
-    let report = RomRunner::new()
-        .run_suite(&phase_6_cartridge_oracle_suite())
-        .expect("phase 6 cartridge suite should execute");
+fn runner_executes_phase_6_mbc1_standard_banking_fixture() {
+    assert_phase_6_cartridge_oracle_case_passes("phase6-mbc1-standard-banking");
+}
 
-    assert!(report.all_passed(), "{report:#?}");
+#[test]
+fn runner_executes_phase_6_mbc1_small_rom_mask_and_ram_fixture() {
+    assert_phase_6_cartridge_oracle_case_passes("phase6-mbc1-small-rom-mask-and-ram");
+}
+
+#[test]
+fn runner_executes_phase_6_mbc2_control_decode_and_nibble_ram_fixture() {
+    assert_phase_6_cartridge_oracle_case_passes("phase6-mbc2-control-decode-and-nibble-ram");
+}
+
+#[test]
+fn runner_executes_phase_6_mbc3_banking_ram_and_rtc_fixture() {
+    assert_phase_6_cartridge_oracle_case_passes("phase6-mbc3-banking-ram-and-rtc");
+}
+
+#[test]
+fn runner_executes_phase_6_mbc5_rom_banking_rumble_and_ram_fixture() {
+    assert_phase_6_cartridge_oracle_case_passes("phase6-mbc5-rom-banking-rumble-and-ram");
+}
+
+fn assert_phase_6_cartridge_oracle_case_passes(case_id: &str) {
+    let suite = phase_6_cartridge_oracle_suite();
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == case_id)
+        .expect("phase 6 cartridge suite should include the requested case");
+
+    let report = RomRunner::new()
+        .run_case(case)
+        .expect("phase 6 cartridge case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed, "{report:#?}");
 }
 
 #[test]

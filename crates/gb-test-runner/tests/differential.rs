@@ -1,14 +1,40 @@
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_core::ExecutionMode;
 use gb_test_runner::{
     DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialExecutionError,
-    DifferentialOracle, DifferentialRunner, phase_2_cpu_timing_suite,
-    phase_6_cartridge_oracle_suite,
+    DifferentialOracle, DifferentialRunner, PassCondition, RomSuite, RomTestCase, TestSubsystem,
+    Timeout, phase_2_cpu_timing_suite,
 };
+
+const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+const SERIAL_HEX_CASE_ID: &str = "serial-hex-differential";
+const SERIAL_HEX_EXPECTED: &str = "4F";
+
+fn build_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    for (offset, byte) in program.iter().copied().enumerate() {
+        rom[0x0100 + offset] = byte;
+    }
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_single_byte_serial_rom(byte: u8) -> Vec<u8> {
+    build_test_rom(&[
+        0x3E, byte, // LD A,d8
+        0xE0, 0x01, // LDH (SB),A
+        0x3E, 0x81, // LD A,$81
+        0xE0, 0x02, // LDH (SC),A
+        0xC3, 0x08, 0x01, // JP $0108
+    ])
+}
 
 fn unique_temp_dir(label: &str) -> PathBuf {
     env::temp_dir().join(format!(
@@ -28,8 +54,20 @@ fn single_phase_2_case_suite() -> gb_test_runner::RomSuite {
     suite
 }
 
-fn phase_6_cartridge_suite() -> gb_test_runner::RomSuite {
-    phase_6_cartridge_oracle_suite()
+fn serial_hex_suite(rom_path: impl Into<PathBuf>) -> RomSuite {
+    RomSuite::new("serial-hex-differential", TestSubsystem::Serial).with_case(RomTestCase::new(
+        SERIAL_HEX_CASE_ID,
+        rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialHexExact(SERIAL_HEX_EXPECTED.to_string()),
+    ))
+}
+
+fn write_serial_hex_oracle(oracle_root: &Path) {
+    let case_dir = oracle_root.join(SERIAL_HEX_CASE_ID);
+    fs::create_dir_all(&case_dir).expect("oracle case dir should be creatable");
+    fs::write(case_dir.join("serial_hex.txt"), SERIAL_HEX_EXPECTED)
+        .expect("oracle serial hex should be writable");
 }
 
 #[test]
@@ -122,26 +160,20 @@ fn differential_runner_rejects_non_strict_cases() {
 }
 
 #[test]
-fn differential_runner_matches_imported_trace_artifacts_for_phase_6_cartridge_suite() {
-    let oracle_root = unique_temp_dir("phase6-match");
+fn differential_runner_matches_imported_serial_hex_artifact() {
+    let oracle_root = unique_temp_dir("serial-hex-match");
     fs::create_dir_all(&oracle_root).expect("oracle root should be creatable");
-    let suite = phase_6_cartridge_suite();
+    write_serial_hex_oracle(&oracle_root);
 
-    for case in &suite.cases {
-        let case_dir = oracle_root.join(&case.id);
-        fs::create_dir_all(&case_dir).expect("oracle case dir should be creatable");
-        let expected_serial = match &case.pass_condition {
-            gb_test_runner::PassCondition::SerialHexExact(expected) => expected,
-            _ => panic!("phase 6 cartridge oracle suite should be serial-hex based"),
-        };
-        fs::write(case_dir.join("serial_hex.txt"), expected_serial)
-            .expect("oracle serial hex should be writable");
-    }
+    let rom_path = oracle_root.join("serial_hex.gb");
+    fs::write(&rom_path, build_single_byte_serial_rom(b'O')).expect("ROM should be writable");
+    let suite = serial_hex_suite(&rom_path);
 
     let report = DifferentialRunner::new(DifferentialOracle::SameBoy, &oracle_root)
         .run_suite(&suite)
         .expect("differential suite should run");
 
     assert!(report.all_matched(), "{report:#?}");
+    assert_eq!(report.cases.len(), 1);
     assert!(report.cases.iter().all(|case| case.local_report.passed()));
 }

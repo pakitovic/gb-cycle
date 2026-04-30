@@ -1,5 +1,51 @@
 use super::*;
 
+const LCD_ENABLE_READ_PROBE_M_CYCLES: [u16; 24] = [
+    0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112, 132,
+    176, 226, 246,
+];
+const EXPECTED_LCD_ENABLE_READ_LY: [u8; 24] = [
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
+    0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
+];
+const EXPECTED_LCD_ENABLE_READ_STAT_LYC0: [u8; 24] = [
+    0x84, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x84, 0x87, 0x84, 0x80, 0x82, 0x80, 0x80, 0x82,
+    0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x83,
+];
+const EXPECTED_LCD_ENABLE_READ_STAT_LYC1: [u8; 24] = [
+    0x80, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x80, 0x83, 0x80, 0x80, 0x86, 0x84, 0x80, 0x82,
+    0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x83,
+];
+const EXPECTED_LCD_ENABLE_READ_OAM: [u8; 24] = [
+    0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
+    0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
+];
+const EXPECTED_LCD_ENABLE_READ_VRAM: [u8; 24] = [
+    0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+];
+
+fn run_lcd_enable_read_probe(address: u16, delay_nops: u16, lyc: Option<u8>) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_enable_read_probe_rom(
+            address,
+            delay_nops as usize,
+        ))
+        .expect("probe ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+    if let Some(lyc) = lyc {
+        machine.write_bus(0xFF45, lyc);
+    }
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn assert_lcd_enable_read_probe_points(label: &str, actual: [u8; 24], expected: [u8; 24]) {
+    assert_eq!(actual, expected, "{label}={actual:?}");
+}
+
 #[test]
 fn lcd_reenable_lyc_rise_services_lcd_stat_before_the_second_di_in_the_mooneye_round4_sequence() {
     assert!(observe_lcd_reenable_lyc_irq_service_window(0x00, None));
@@ -117,82 +163,46 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
 }
 
 #[test]
-fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
-    const PROBE_M_CYCLES: [u16; 24] = [
-        0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112,
-        132, 176, 226, 246,
-    ];
-    const EXPECTED_LY: [u8; 24] = [
-        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
-        0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
-    ];
-    const EXPECTED_STAT_LYC0: [u8; 24] = [
-        0x84, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x84, 0x87, 0x84, 0x80, 0x82, 0x80, 0x80,
-        0x82, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x83,
-    ];
-    const EXPECTED_STAT_LYC1: [u8; 24] = [
-        0x80, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x80, 0x83, 0x80, 0x80, 0x86, 0x84, 0x80,
-        0x82, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x83,
-    ];
-    const EXPECTED_OAM: [u8; 24] = [
-        0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF,
-        0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
-    ];
-    const EXPECTED_VRAM: [u8; 24] = [
-        0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
-        0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
-    ];
+fn cpu_path_lcd_enable_read_ly_probe_matches_the_mooneye_probe_points() {
+    let actual =
+        LCD_ENABLE_READ_PROBE_M_CYCLES.map(|delay| run_lcd_enable_read_probe(0xFF44, delay, None));
+    assert_lcd_enable_read_probe_points("actual_ly", actual, EXPECTED_LCD_ENABLE_READ_LY);
+}
 
-    let run_probe = |address: u16, delay_nops: u16| -> u8 {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine
-            .load_cartridge(build_lcd_enable_read_probe_rom(
-                address,
-                delay_nops as usize,
-            ))
-            .expect("probe ROM should load");
-        machine.write_bus(0xFF40, 0x00);
-        run_until_halted(&mut machine, 1_000_000)
-    };
+#[test]
+fn cpu_path_lcd_enable_read_stat_lyc0_probe_matches_the_mooneye_probe_points() {
+    let actual = LCD_ENABLE_READ_PROBE_M_CYCLES
+        .map(|delay| run_lcd_enable_read_probe(0xFF41, delay, Some(0x00)));
+    assert_lcd_enable_read_probe_points(
+        "actual_stat_lyc0",
+        actual,
+        EXPECTED_LCD_ENABLE_READ_STAT_LYC0,
+    );
+}
 
-    let actual_ly = PROBE_M_CYCLES.map(|delay| run_probe(0xFF44, delay));
-    let actual_stat_lyc0 = PROBE_M_CYCLES.map(|delay| {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine
-            .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
-            .expect("probe ROM should load");
-        machine.write_bus(0xFF40, 0x00);
-        machine.write_bus(0xFF45, 0x00);
-        run_until_halted(&mut machine, 1_000_000)
-    });
-    let actual_stat_lyc1 = PROBE_M_CYCLES.map(|delay| {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine
-            .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
-            .expect("probe ROM should load");
-        machine.write_bus(0xFF40, 0x00);
-        machine.write_bus(0xFF45, 0x01);
-        run_until_halted(&mut machine, 1_000_000)
-    });
-    let actual_oam = PROBE_M_CYCLES.map(|delay| run_probe(0xFE00, delay));
-    let actual_vram = PROBE_M_CYCLES.map(|delay| run_probe(0x8000, delay));
+#[test]
+fn cpu_path_lcd_enable_read_stat_lyc1_probe_matches_the_mooneye_probe_points() {
+    let actual = LCD_ENABLE_READ_PROBE_M_CYCLES
+        .map(|delay| run_lcd_enable_read_probe(0xFF41, delay, Some(0x01)));
+    assert_lcd_enable_read_probe_points(
+        "actual_stat_lyc1",
+        actual,
+        EXPECTED_LCD_ENABLE_READ_STAT_LYC1,
+    );
+}
 
-    if actual_ly != EXPECTED_LY
-        || actual_stat_lyc0 != EXPECTED_STAT_LYC0
-        || actual_stat_lyc1 != EXPECTED_STAT_LYC1
-        || actual_oam != EXPECTED_OAM
-        || actual_vram != EXPECTED_VRAM
-    {
-        panic!(
-            "actual_ly={actual_ly:?}\nactual_stat_lyc0={actual_stat_lyc0:?}\nactual_stat_lyc1={actual_stat_lyc1:?}\nactual_oam={actual_oam:?}\nactual_vram={actual_vram:?}"
-        );
-    }
+#[test]
+fn cpu_path_lcd_enable_read_oam_probe_matches_the_mooneye_probe_points() {
+    let actual =
+        LCD_ENABLE_READ_PROBE_M_CYCLES.map(|delay| run_lcd_enable_read_probe(0xFE00, delay, None));
+    assert_lcd_enable_read_probe_points("actual_oam", actual, EXPECTED_LCD_ENABLE_READ_OAM);
+}
+
+#[test]
+fn cpu_path_lcd_enable_read_vram_probe_matches_the_mooneye_probe_points() {
+    let actual =
+        LCD_ENABLE_READ_PROBE_M_CYCLES.map(|delay| run_lcd_enable_read_probe(0x8000, delay, None));
+    assert_lcd_enable_read_probe_points("actual_vram", actual, EXPECTED_LCD_ENABLE_READ_VRAM);
 }
 
 #[test]

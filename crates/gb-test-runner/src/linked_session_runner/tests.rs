@@ -135,7 +135,7 @@ fn linked_session_runner_executes_a_sparse_dmg07_session_and_captures_adapter_tr
     let session = LinkedSessionCase::new(
         "dmg07-sparse",
         LinkedSessionTopology::Dmg07,
-        Timeout::TCycles(500_000),
+        Timeout::TCycles(330_000),
         LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
     )
     .with_participant(
@@ -222,36 +222,64 @@ fn linked_session_runner_does_not_treat_dmg07_internal_clock_as_valid_adapter_in
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
 
-#[test]
-fn linked_session_runner_executes_dmg07_three_and_four_player_sessions_deterministically() {
-    let build_session = |id: &str, ports: &[(&str, &str, Dmg07Port)]| {
-        let mut session = LinkedSessionCase::new(
-            id,
-            LinkedSessionTopology::Dmg07,
-            Timeout::TCycles(180_000),
-            LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+fn dmg07_session(id: &str, ports: &[(&str, &str, Dmg07Port)]) -> LinkedSessionCase {
+    let mut session = LinkedSessionCase::new(
+        id,
+        LinkedSessionTopology::Dmg07,
+        Timeout::TCycles(180_000),
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+    );
+    for (participant_id, fixture, port) in ports {
+        session = session.with_participant(
+            LinkedSessionParticipant::new(
+                *participant_id,
+                data_path(&format!("data/fixtures/linked/dmg07/{fixture}")),
+            )
+            .with_adapter_port(*port),
         );
-        for (participant_id, fixture, port) in ports {
-            session = session.with_participant(
-                LinkedSessionParticipant::new(
-                    *participant_id,
-                    data_path(&format!("data/fixtures/linked/dmg07/{fixture}")),
-                )
-                .with_adapter_port(*port),
-            );
-        }
-        session
-    };
+    }
+    session
+}
 
-    let three_player = build_session(
+fn assert_dmg07_session_runs_deterministically(session: LinkedSessionCase) {
+    let first = LinkedSessionRunner::new()
+        .run_session(&session)
+        .expect("first dmg07 run should execute");
+    let second = LinkedSessionRunner::new()
+        .run_session(&session)
+        .expect("second dmg07 run should execute");
+
+    assert_eq!(first.outcome, LinkedSessionCaseOutcome::Informational);
+    assert_eq!(first.artifacts.trace, second.artifacts.trace);
+    assert_eq!(
+        first
+            .participants
+            .iter()
+            .map(|participant| participant.artifacts.serial_hex.as_str())
+            .collect::<Vec<_>>(),
+        second
+            .participants
+            .iter()
+            .map(|participant| participant.artifacts.serial_hex.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn linked_session_runner_executes_dmg07_three_player_session_deterministically() {
+    assert_dmg07_session_runs_deterministically(dmg07_session(
         "dmg07-three-player",
         &[
             ("p1", "p1-basic.gb", Dmg07Port::P1),
             ("p2", "p2-basic.gb", Dmg07Port::P2),
             ("p4", "p4-basic.gb", Dmg07Port::P4),
         ],
-    );
-    let four_player = build_session(
+    ));
+}
+
+#[test]
+fn linked_session_runner_executes_dmg07_four_player_session_deterministically() {
+    assert_dmg07_session_runs_deterministically(dmg07_session(
         "dmg07-four-player",
         &[
             ("p1", "p1-basic.gb", Dmg07Port::P1),
@@ -259,31 +287,7 @@ fn linked_session_runner_executes_dmg07_three_and_four_player_sessions_determini
             ("p3", "p3-basic.gb", Dmg07Port::P3),
             ("p4", "p4-basic.gb", Dmg07Port::P4),
         ],
-    );
-
-    for session in [three_player, four_player] {
-        let first = LinkedSessionRunner::new()
-            .run_session(&session)
-            .expect("first dmg07 run should execute");
-        let second = LinkedSessionRunner::new()
-            .run_session(&session)
-            .expect("second dmg07 run should execute");
-
-        assert_eq!(first.outcome, LinkedSessionCaseOutcome::Informational);
-        assert_eq!(first.artifacts.trace, second.artifacts.trace);
-        assert_eq!(
-            first
-                .participants
-                .iter()
-                .map(|participant| participant.artifacts.serial_hex.as_str())
-                .collect::<Vec<_>>(),
-            second
-                .participants
-                .iter()
-                .map(|participant| participant.artifacts.serial_hex.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
+    ));
 }
 
 #[test]
