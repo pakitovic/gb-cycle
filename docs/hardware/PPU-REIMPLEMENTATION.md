@@ -60,6 +60,8 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep DMG panel live-write owner state explicit for `LCDC.0`, CPU-path `BGP`, and recent panel-dot history.
 - Keep palette-conflict handling as `classify -> plan -> apply`, with panel-history and CPU-commit history owned by the palette-conflict subsystem.
 - Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, DMG-only, and fed only by the delayed pipeline-visible write class.
+- A delayed CPU-commit `BGP` write exposes the ORed transient palette for one panel dot at the delayed onset before the committed palette becomes visible; the same transient dot is used when repainting an eligible previous-line boundary.
+- If a scanline already has delayed `BGP` CPU-commit writes, a later write whose recent BG tail is color `0` must not automatically backdate that tail unless the line is one of the explicitly modeled early selected-retroactive seams; this keeps Daid `ppu_scanline_bgp.gb` RealBoot aligned with the SameBoy `ppu_scanline_bgp_1.dmg.png` oracle.
 - Keep `BGP` and `OBP*` conflict handling separate; do not assume shared retroactive spans or conflict windows.
 - Keep `LCDC.0` repaint rules BG-only. Dots already emitted as forced white are not palette-conflict candidates, and OBJ dots must not be repainted as BG.
 - Do not use fill-only or materialized-slice-only `LCDC.0` overrides as generic fixes; keep onset rules localized per write class and per boundary.

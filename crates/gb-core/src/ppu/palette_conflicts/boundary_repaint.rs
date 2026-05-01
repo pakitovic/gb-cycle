@@ -177,10 +177,14 @@ impl Ppu {
                     let repaint_threshold_x = write
                         .repaint_visible_x
                         .saturating_add(write.transfer_lead_pixels);
-                    if x >= usize::from(repaint_threshold_x) {
-                        palette = write.value;
-                    } else {
+                    if x < usize::from(repaint_threshold_x) {
                         break;
+                    }
+
+                    if x == usize::from(repaint_threshold_x) {
+                        palette = write.transient_palette;
+                    } else {
+                        palette = write.value;
                     }
                 }
                 PpuDmgBgpCpuCommitEffectKind::RetroactivePanel => {
