@@ -19,6 +19,11 @@ fn dmg_lcd_rig(lcdc: u8, stat: u8, ly: u8, lyc: u8, bgp: u8) -> PpuTestRig {
     PpuTestRig::dmg().with_startup_state(lcd_startup_state(lcdc, stat, ly, lyc, bgp))
 }
 
+fn cgb_lcd_rig(lcdc: u8, stat: u8, ly: u8, lyc: u8, bgp: u8) -> PpuTestRig {
+    PpuTestRig::with_model(ConsoleModel::GameBoyColor)
+        .with_startup_state(lcd_startup_state(lcdc, stat, ly, lyc, bgp))
+}
+
 #[test]
 fn startup_state_recreates_the_documented_post_boot_lcd_snapshot() {
     let ppu = dmg_lcd_rig(0x91, 0x08, 0x00, 0x00, 0xFC);
@@ -109,6 +114,59 @@ fn lcd_disabled_state_freezes_the_raster_and_forces_blank_output() {
     assert_eq!(snapshot.line_dot, 0);
     assert_eq!(snapshot.mode, PpuAccessMode::HBlank);
     assert_eq!(ppu.bus_state(), PpuBusState::lcd_disabled());
+}
+
+#[test]
+fn cgb_system_stop_in_mode3_preserves_visible_framebuffer() {
+    let mut ppu = cgb_lcd_rig(0x91, 0x82, 0x00, 0x00, 0xFC);
+    ppu.tick_n(80);
+
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::Drawing);
+
+    ppu.framebuffer.fill(0);
+    ppu.framebuffer[0] = 3;
+    ppu.framebuffer[17] = 1;
+
+    ppu.set_system_stop_active(true);
+
+    assert_eq!(
+        ppu.snapshot().visible_output,
+        PpuVisibleOutputState::Driving
+    );
+    assert_eq!(ppu.framebuffer[0], 3);
+    assert_eq!(ppu.framebuffer[17], 1);
+}
+
+#[test]
+fn cgb_system_stop_outside_mode3_forces_black_framebuffer() {
+    let mut ppu = cgb_lcd_rig(0x91, 0x81, 0x90, 0x00, 0xFC);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+
+    ppu.framebuffer.fill(1);
+    ppu.set_system_stop_active(true);
+
+    assert_eq!(
+        ppu.snapshot().visible_output,
+        PpuVisibleOutputState::ForcedBlank
+    );
+    assert!(ppu.framebuffer.iter().all(|&shade| shade == 3));
+}
+
+#[test]
+fn dmg_system_stop_in_mode3_still_forces_white_framebuffer() {
+    let mut ppu = dmg_lcd_rig(0x91, 0x82, 0x00, 0x00, 0xFC);
+    ppu.tick_n(80);
+
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::Drawing);
+
+    ppu.framebuffer.fill(3);
+    ppu.set_system_stop_active(true);
+
+    assert_eq!(
+        ppu.snapshot().visible_output,
+        PpuVisibleOutputState::ForcedBlank
+    );
+    assert!(ppu.framebuffer.iter().all(|&shade| shade == 0));
 }
 
 #[test]

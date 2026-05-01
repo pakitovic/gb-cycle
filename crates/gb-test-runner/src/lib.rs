@@ -2793,6 +2793,41 @@ mod tests {
                 .failure_artifacts
                 .contains(CaptureKind::Snapshot)
         );
+
+        let mode3_stop_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-stop-instr-gbc-mode3")
+            .expect("stop_instr_gbc_mode3.gb CGB case should exist");
+
+        assert_eq!(mode3_stop_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            mode3_stop_case.rom_path,
+            PathBuf::from("daid/stop_instr_gbc_mode3.gb")
+        );
+        assert_eq!(mode3_stop_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            mode3_stop_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png"
+            ))
+        );
+        assert!(
+            mode3_stop_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(mode3_stop_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            mode3_stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            mode3_stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Snapshot)
+        );
     }
 
     #[test]

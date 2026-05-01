@@ -1095,7 +1095,7 @@ impl Ppu {
         }
 
         self.system_stop_active = active;
-        if active {
+        if active && !self.cgb_stop_preserves_mode3_output() {
             let stop_panel_shade = if self.console_model.is_cgb_family() {
                 3
             } else {
@@ -1104,6 +1104,10 @@ impl Ppu {
             self.fill_visible_buffers_with_panel_shade(stop_panel_shade);
         }
         self.refresh_visible_output();
+    }
+
+    pub(in crate::ppu) fn cgb_stop_preserves_mode3_output(&self) -> bool {
+        self.console_model.is_cgb_family() && self.current_access_mode() == PpuAccessMode::Drawing
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {

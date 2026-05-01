@@ -119,9 +119,11 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn refresh_visible_output(&mut self) {
+        let system_stop_forces_blank =
+            self.runtime.system_stop_active && !self.cgb_stop_preserves_mode3_output();
         self.runtime.panel.visible_output = if self.is_lcd_enabled()
             && !self.runtime.blank_frame_active
-            && !self.runtime.system_stop_active
+            && !system_stop_forces_blank
         {
             PpuVisibleOutputState::Driving
         } else {
