@@ -12,6 +12,7 @@ use crate::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
+use crate::speed::SpeedController;
 use crate::timer::Timer;
 
 impl<S: TraceSink> Machine<S> {
@@ -33,6 +34,7 @@ impl<S: TraceSink> Machine<S> {
                 interrupt_flag_pending_mask: 0,
                 joypad: Some(&self.joypad),
                 ppu: Some(&self.ppu),
+                speed: Some(&self.speed),
                 ppu_cpu_visible_read: false,
             },
         );
@@ -85,6 +87,7 @@ impl<S: TraceSink> Machine<S> {
                 interrupts: Some(&mut self.interrupts),
                 joypad: Some(&mut self.joypad),
                 ppu: Some(&mut self.ppu),
+                speed: Some(&mut self.speed),
             },
         );
         self.bus.route_cpu_address_event(
@@ -148,6 +151,7 @@ impl<S: TraceSink> Machine<S> {
         external_port: crate::external_port::ExternalPort,
     ) {
         let console_model = self.config.console_model;
+        let operating_mode = self.config.operating_mode;
         let startup_mode = self.config.startup_mode;
         let boot_rom_kind = self.config.boot_rom_kind;
         let boot_rom_assets = self.config.boot_rom_assets.clone();
@@ -161,6 +165,7 @@ impl<S: TraceSink> Machine<S> {
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
         self.serial = Serial::new(console_model);
+        self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
         self.boot =
             BootController::new(console_model, startup_mode, boot_rom_kind, boot_rom_assets);

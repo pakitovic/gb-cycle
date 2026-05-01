@@ -28,8 +28,8 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use framebuffer_oracle::{
-    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_local_pgm_framebuffer,
-    encode_framebuffer_pgm,
+    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_fixture_grayscale_framebuffer_path,
+    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
@@ -44,10 +44,11 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cpp_dmg_curated_suite,
-    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
-    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_speed_suite,
+    cpp_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
+    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
+    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
+    update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -333,6 +334,7 @@ pub enum PassCondition {
     MooneyeResult,
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
+    FramebufferGrayscaleFixture(PathBuf),
     FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
 }
@@ -346,9 +348,9 @@ impl PassCondition {
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
             Self::Informational(capture) => *capture,
-            Self::FramebufferFixture(_) | Self::FramebufferFixtureSet(_) => {
-                CaptureKind::Framebuffer
-            }
+            Self::FramebufferFixture(_)
+            | Self::FramebufferGrayscaleFixture(_)
+            | Self::FramebufferFixtureSet(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
     }
@@ -951,6 +953,8 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
         cgb_smoke_suite(),
+        cgb_boot_div_suite(),
+        cgb_speed_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
@@ -2027,6 +2031,49 @@ impl RomRunner {
                     })
                 }
             }
+            PassCondition::FramebufferGrayscaleFixture(fixture_path) => {
+                let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_pgm_grayscale_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_pgm
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
+                            operation: "decode local framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
+                let expected = decode_fixture_grayscale_framebuffer_path(&resolved_fixture)
+                    .map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer grayscale fixture",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+
+                if actual == expected {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                        fixture_path: resolved_fixture,
+                    })
+                }
+            }
             PassCondition::FramebufferFixtureSet(fixture_paths) => {
                 let resolved_fixtures = fixture_paths
                     .iter()
@@ -2463,8 +2510,8 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_smoke_suite, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        capture_memory_text_output, cgb_boot_div_suite, cgb_smoke_suite, cgb_speed_suite,
+        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output,
@@ -2644,6 +2691,223 @@ mod tests {
             suite.cases[1].pass_condition,
             PassCondition::Informational(CaptureKind::Framebuffer)
         ));
+    }
+
+    #[test]
+    fn cgb_boot_div_suite_is_manifest_backed_slice2_gate() {
+        let suite = cgb_boot_div_suite();
+
+        assert_eq!(suite.name, "cgb-boot-div");
+        assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cgb-boot-div-boot-div-cgbabcde");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            case.rom_path,
+            PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
+        );
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.capture_plan.contains(CaptureKind::Serial));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Serial));
+    }
+
+    #[test]
+    fn cgb_speed_suite_promotes_slice2_cases_to_blocking_oracles() {
+        let suite = cgb_speed_suite();
+
+        assert_eq!(suite.name, "cgb-speed");
+        assert_eq!(suite.family.as_deref(), Some("cgb-speed"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+
+        let stop_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-stop-instr-gbc")
+            .expect("stop_instr.gb CGB case should exist");
+
+        assert_eq!(stop_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(stop_case.rom_path, PathBuf::from("daid/stop_instr.gb"));
+        assert_eq!(stop_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            stop_case.pass_condition,
+            PassCondition::FramebufferGrayscaleFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png"
+            ))
+        );
+        assert!(stop_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(stop_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(stop_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let div_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-div")
+            .expect("speed_switch_timing_div.gbc case should exist");
+
+        assert_eq!(div_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            div_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_div.gbc")
+        );
+        assert_eq!(div_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            div_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png"
+            ))
+        );
+        assert!(div_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(div_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            div_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(div_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let interrupt_time_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-interrupt-time")
+            .expect("interrupt_time.gb CGB case should exist");
+
+        assert_eq!(
+            interrupt_time_case.console_model,
+            ConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            interrupt_time_case.rom_path,
+            PathBuf::from("blargg/interrupt_time.gb")
+        );
+        assert_eq!(
+            interrupt_time_case.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert_eq!(interrupt_time_case.timeout, Timeout::Frames(1800));
+        assert_eq!(
+            interrupt_time_case.pass_condition,
+            PassCondition::BlarggConsoleTextContains("Passed".to_string())
+        );
+        assert!(
+            interrupt_time_case
+                .capture_plan
+                .contains(CaptureKind::BlarggConsoleText)
+        );
+        assert!(
+            interrupt_time_case
+                .capture_plan
+                .contains(CaptureKind::Snapshot)
+        );
+        assert!(
+            interrupt_time_case
+                .failure_artifacts
+                .contains(CaptureKind::BlarggConsoleText)
+        );
+        assert!(
+            interrupt_time_case
+                .failure_artifacts
+                .contains(CaptureKind::Snapshot)
+        );
+
+        let mode3_stop_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-stop-instr-gbc-mode3")
+            .expect("stop_instr_gbc_mode3.gb CGB case should exist");
+
+        assert_eq!(mode3_stop_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            mode3_stop_case.rom_path,
+            PathBuf::from("daid/stop_instr_gbc_mode3.gb")
+        );
+        assert_eq!(mode3_stop_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            mode3_stop_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png"
+            ))
+        );
+        assert!(
+            mode3_stop_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(mode3_stop_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            mode3_stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            mode3_stop_case
+                .failure_artifacts
+                .contains(CaptureKind::Snapshot)
+        );
+
+        let ly_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-ly")
+            .expect("speed_switch_timing_ly.gbc case should exist");
+
+        assert_eq!(ly_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            ly_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_ly.gbc")
+        );
+        assert_eq!(ly_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            ly_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_ly.png"
+            ))
+        );
+        assert!(ly_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(ly_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(ly_case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(ly_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let stat_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-stat")
+            .expect("speed_switch_timing_stat.gbc case should exist");
+
+        assert_eq!(stat_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            stat_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_stat.gbc")
+        );
+        assert_eq!(stat_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            stat_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_stat.png"
+            ))
+        );
+        assert!(stat_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(stat_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            stat_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(stat_case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 
     #[test]
@@ -3475,6 +3739,47 @@ mod tests {
                 .expect("framebuffer mismatch should evaluate"),
             RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
                 fixture_path: fixture_path.clone(),
+            })
+        );
+
+        let grayscale_fixture_path = temp_dir.join("white.pgm");
+        fs::write(
+            &grayscale_fixture_path,
+            encode_framebuffer_pgm(&vec![0; 160 * 144]),
+        )
+        .expect("grayscale fixture should be writable");
+        let grayscale_case = RomTestCase::new(
+            "grayscale-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferGrayscaleFixture(grayscale_fixture_path.clone()),
+        );
+        let grayscale_white_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![0; 160 * 144])),
+            ..CapturedArtifacts::default()
+        };
+        let grayscale_black_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![3; 160 * 144])),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &grayscale_case,
+                    &evaluation_inputs(&grayscale_white_artifacts, 1, 0)
+                )
+                .expect("grayscale framebuffer fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &grayscale_case,
+                    &evaluation_inputs(&grayscale_black_artifacts, 1, 0)
+                )
+                .expect("grayscale framebuffer mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: grayscale_fixture_path.clone(),
             })
         );
 

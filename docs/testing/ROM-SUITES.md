@@ -48,6 +48,7 @@ make run-mooneye-mbc1-mbc5 # Mooneye emulator-only MBC1/MBC5 chunk used by CI
 make run-mooneye-mbc2  # Mooneye emulator-only MBC2 chunk used by CI
 make test-roms-cgb     # fetch if needed + run all currently defined local curated CGB suites
 make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
+make run-cgb-speed     # manifest-backed Phase 10 CGB KEY1/speed suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
 make phase9-determinism-local # replay/save-load sample across CPU/interrupts, Mooneye Timer/DMA, Acid/Mealybug PPU, cartridge, and one APU Blargg case
 make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
@@ -123,7 +124,7 @@ Curated `cpp` MBC3 subset; exercised by the GitHub `test-roms` workflow.
 
 ### Daid
 
-Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and one informational framebuffer capture case `rom_and_ram.gb`.
+Workflow-managed DMG subset; mixes framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, an absolute grayscale fixture for `stop_instr.gb (DMG)`, and one informational framebuffer capture case `rom_and_ram.gb`.
 
 ### Mealybug-tearoom
 
@@ -143,10 +144,16 @@ Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout`
 
 ```sh
 make run-cgb-smoke
+make run-cgb-boot-div
+make run-cgb-speed
 ```
 
 - `cgb-smoke` is the Phase `10` Slice `0`/Slice `1` exploratory CGB catalog suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite`.
-- Keep `cgb-smoke` outside the DMG `make test-roms` and GitHub `test-roms` workflow until it is promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices.
+- `cgb-boot-div` is the Phase `10` Slice `2` CGB boot/DIV timing gate, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-boot-div.toml`, and `make run-cgb-boot-div` fetches `mooneye` before invoking `run_rom_suite`.
+- `cgb-boot-div` currently runs Mooneye `misc/boot_div-cgbABCDE.gb` on `ConsoleModel::GameBoyColor` with a blocking `mooneye-result` oracle. It validates the CGB direct-boot DIV/timer contract for Slice `2`; full CGB `RealBoot` equivalence remains a Slice `6` responsibility.
+- `cgb-speed` is the Phase `10` Slice `2` exploratory CGB speed-domain suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-speed.toml`, and `make run-cgb-speed` fetches `daid blargg` before invoking `run_rom_suite`.
+- `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` to a blocking final `framebuffer-grayscale-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png`, preserving the absolute solid-black STOP result instead of rank-normalizing it against white; `stop_instr_gbc_mode3.gb` is a blocking rank-normalized framebuffer fixture using `crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png`, matching the SameBoy/GBEmulatorShootout PASS screen where CGB STOP entered during Mode `3` leaves the LCD displaying the PASS text; `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized framebuffer fixtures using their matching `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_*.png` oracles. These Daid cases use a `180`-frame budget so the terminal STOP or timing output has been presented to the framebuffer before comparison. Blargg `interrupt_time.gb` is promoted to a blocking `blargg-console-contains` oracle with expected text `Passed` and a `1800`-frame budget, because the CGB run emits its result through the upstream BG-map console rather than serial. Every current `cgb-speed` row now has a blocking oracle.
+- Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices.
 
 ## CI integration
 

@@ -18,6 +18,7 @@ ppu.window_wy_latch=true ppu.window_started_this_line=false ppu.window_line_coun
 dma.console_model=GameBoy dma.status=Ready
 timer.console_model=GameBoy timer.status=Ready
 serial.console_model=GameBoy serial.status=Ready serial.sb=0x3C serial.clock_mode=Internal serial.transfer_state=Idle
+speed.console_model=GameBoy speed.operating_mode=Dmg speed.status=Ready speed.current_speed=Normal speed.switch_armed=false speed.cgb_speed_switch_enabled=false
 external_port.attachment_kind=GameLinkDmg04 external_port.reset_policy=PreserveAttachmentKind
 boot.console_model=GameBoy boot.startup_mode=SkipBoot boot.status=Ready boot.boot_rom_kind=Dmg boot.boot_rom_mapped=false boot.asset_configured=false boot.memory_policy=DeterministicPatterned
 interrupts.console_model=GameBoy interrupts.status=Ready

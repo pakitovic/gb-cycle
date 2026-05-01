@@ -7,8 +7,8 @@ use crate::debugger::BreakpointCondition;
 use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
-use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
-use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion};
+use crate::model::{ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
+use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion, PpuVisibleOutputState};
 use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
@@ -23,6 +23,12 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom[0x0147] = 0x00;
     rom[0x0148] = 0x00;
     rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_cgb_native_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0143] = 0x80;
     rom
 }
 
@@ -112,6 +118,22 @@ fn step_until(
     }
 
     panic!("timed out before reaching save-state hardening point: {description}");
+}
+
+fn step_until_cpu_state(
+    machine: &mut Machine,
+    max_t_cycles: u64,
+    description: &str,
+    predicate: impl Fn(CpuExecutionState) -> bool,
+) {
+    for _ in 0..max_t_cycles {
+        if predicate(machine.cpu().execution_state()) {
+            return;
+        }
+        machine.step_t_cycle();
+    }
+
+    panic!("timed out before reaching CPU state: {description}");
 }
 
 fn assert_save_state_restores_continuation(
@@ -211,6 +233,137 @@ fn machine_new_starts_on_the_first_t_cycle() {
         machine.external_port().attachment_kind(),
         ExternalPortAttachmentKind::None
     );
+}
+
+#[test]
+fn key1_mmio_is_live_only_for_native_cgb_mode() {
+    let mut cgb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    assert_eq!(cgb.read_bus(0xFF4D), 0x7E);
+    cgb.write_bus(0xFF4D, 0x01);
+    assert_eq!(cgb.read_bus(0xFF4D), 0x7F);
+
+    let mut cgb_compat = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_operating_mode(OperatingMode::GbCompatible)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    cgb_compat.write_bus(0xFF4D, 0x01);
+    assert_eq!(cgb_compat.read_bus(0xFF4D), 0xFF);
+    assert_eq!(
+        cgb_compat.speed().current_speed(),
+        crate::speed::CgbSpeedMode::Normal
+    );
+
+    let mut dmg = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    dmg.write_bus(0xFF4D, 0x01);
+    assert_eq!(dmg.read_bus(0xFF4D), 0xFF);
+    assert_eq!(
+        dmg.speed().current_speed(),
+        crate::speed::CgbSpeedMode::Normal
+    );
+}
+
+#[test]
+fn cgb_stop_with_prepared_key1_switches_speed_and_preserves_lcd_domain_during_pause() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[
+            0x3E, 0x01, // LD A,$01
+            0xE0, 0x4D, // LDH ($FF4D),A
+            0x10, 0x00, // STOP + padding byte
+            0x00, // NOP after the speed-switch pause
+        ]))
+        .expect("CGB native test ROM should load");
+
+    step_until_cpu_state(
+        &mut machine,
+        128,
+        "prepared STOP speed-switch pause",
+        |state| matches!(state, CpuExecutionState::SpeedSwitchPause { .. }),
+    );
+
+    assert_eq!(machine.read_bus(0xFF4D), 0xFE);
+    assert_eq!(
+        machine.speed().current_speed(),
+        crate::speed::CgbSpeedMode::Double
+    );
+    assert_eq!(machine.cpu().registers().pc, 0x0106);
+
+    let paused_timer_counter = machine.timer().snapshot().system_counter;
+    let paused_ppu = machine.ppu().snapshot();
+    step_t_cycles(&mut machine, 16);
+    assert!(matches!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::SpeedSwitchPause { .. }
+    ));
+    assert_eq!(
+        machine.timer().snapshot().system_counter,
+        paused_timer_counter
+    );
+    assert_eq!(machine.ppu().snapshot().ly, paused_ppu.ly);
+    assert_eq!(machine.ppu().snapshot().line_dot, paused_ppu.line_dot + 16);
+
+    step_until_cpu_state(
+        &mut machine,
+        u64::from(crate::speed::CGB_SPEED_SWITCH_PAUSE_T_CYCLES) + 128,
+        "speed-switch pause completion",
+        |state| matches!(state, CpuExecutionState::FetchOpcode { .. }),
+    );
+    assert_eq!(
+        machine.speed().current_speed(),
+        crate::speed::CgbSpeedMode::Double
+    );
+
+    let resumed_timer_counter = machine.timer().snapshot().system_counter;
+    machine.step_t_cycle();
+    assert_eq!(
+        machine.timer().snapshot().system_counter,
+        resumed_timer_counter.wrapping_add(1)
+    );
+}
+
+#[test]
+fn stop_forces_model_specific_visible_framebuffer_shade() {
+    for (model, expected_stop_shade) in [
+        (ConsoleModel::GameBoy, 0_u8),
+        (ConsoleModel::GameBoyColor, 3_u8),
+    ] {
+        let mut machine =
+            Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+        machine
+            .load_cartridge(build_test_rom(&[
+                0x10, 0x00, // STOP + padding byte
+                0x18, 0xFE, // JR $0102 if STOP wakes unexpectedly
+            ]))
+            .expect("NoMBC STOP test ROM should load");
+
+        step_until_cpu_state(&mut machine, 128, "STOP state", |state| {
+            matches!(
+                state,
+                CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            )
+        });
+
+        assert_eq!(
+            machine.ppu().snapshot().visible_output,
+            PpuVisibleOutputState::ForcedBlank,
+            "{model:?} STOP should force visible output off the normal pixel pipeline"
+        );
+        assert!(
+            machine
+                .ppu()
+                .framebuffer()
+                .iter()
+                .all(|&shade| shade == expected_stop_shade),
+            "{model:?} STOP framebuffer should be filled with panel shade {expected_stop_shade}"
+        );
+    }
 }
 
 #[test]

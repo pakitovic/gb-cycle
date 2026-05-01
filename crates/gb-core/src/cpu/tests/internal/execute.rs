@@ -341,6 +341,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     cpu.complete_execute_machine_cycle(0, &mut |operation| {
         operations.push(operation);
         match operation {
+            CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
             CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
             CpuExternalOperation::PendingInterruptMask => Some(0x00),
             CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
@@ -353,6 +354,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     assert_eq!(
         operations,
         vec![
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
@@ -369,6 +371,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     cpu.complete_execute_machine_cycle(0, &mut |operation| {
         operations.push(operation);
         match operation {
+            CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
             CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
             CpuExternalOperation::PendingInterruptMask => Some(0x01),
             other => panic!("unexpected STOP zombie bus operation: {other:?}"),
@@ -377,6 +380,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     assert_eq!(
         operations,
         vec![
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
         ]
@@ -392,6 +396,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     cpu.complete_execute_machine_cycle(0, &mut |operation| {
         operations.push(operation);
         match operation {
+            CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
             CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
             CpuExternalOperation::PendingInterruptMask => Some(0x00),
             CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
@@ -404,6 +409,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     assert_eq!(
         operations,
         vec![
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
             CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
@@ -421,6 +427,7 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     cpu.complete_execute_machine_cycle(0, &mut |operation| {
         operations.push(operation);
         match operation {
+            CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x00),
             CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
             CpuExternalOperation::PendingInterruptMask => Some(0x01),
             other => panic!("unexpected STOP nop-like bus operation: {other:?}"),
@@ -429,11 +436,60 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     assert_eq!(
         operations,
         vec![
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
             CpuExternalOperation::StopWakeLineAsserted,
             CpuExternalOperation::PendingInterruptMask,
         ]
     );
     assert_eq!(cpu.registers.pc, 0x0101);
+    assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+    let mut cpu = power_on_cpu();
+    cpu.registers.pc = 0x0101;
+    cpu.in_flight.kind = Some(CpuInstructionKind::Stop);
+    let mut operations = Vec::new();
+    cpu.complete_execute_machine_cycle(0, &mut |operation| {
+        operations.push(operation);
+        match operation {
+            CpuExternalOperation::CgbSpeedSwitchPrepared => Some(0x01),
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
+                assert_eq!(address, 0x0101);
+                Some(0x00)
+            }
+            other => panic!("unexpected prepared speed-switch STOP operation: {other:?}"),
+        }
+    });
+    assert_eq!(
+        operations,
+        vec![
+            CpuExternalOperation::CgbSpeedSwitchPrepared,
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
+        ]
+    );
+    assert_eq!(cpu.registers.pc, 0x0102);
+    assert_eq!(
+        cpu.execution_state,
+        CpuExecutionState::SpeedSwitchPause {
+            remaining_t_cycles: crate::speed::CGB_SPEED_SWITCH_PAUSE_T_CYCLES,
+        }
+    );
+    assert!(cpu.take_stop_div_reset_request());
+    assert!(cpu.take_cgb_speed_switch_request());
+    cpu.execution_state = CpuExecutionState::SpeedSwitchPause {
+        remaining_t_cycles: 2,
+    };
+    cpu.tick_t_cycle(|operation| {
+        panic!("speed-switch pause must not touch the bus: {operation:?}")
+    });
+    assert_eq!(
+        cpu.execution_state,
+        CpuExecutionState::SpeedSwitchPause {
+            remaining_t_cycles: 1,
+        }
+    );
+    cpu.tick_t_cycle(|operation| {
+        panic!("speed-switch pause must not touch the bus: {operation:?}")
+    });
     assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
 
     let mut cpu = power_on_cpu();

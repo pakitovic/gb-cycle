@@ -49,6 +49,16 @@ fn tick_timer(timer: &mut Timer, t_cycle: u64) -> CycleContext {
     context
 }
 
+fn tick_timer_for_speed(
+    timer: &mut Timer,
+    t_cycle: u64,
+    speed_mode: crate::speed::CgbSpeedMode,
+) -> CycleContext {
+    let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
+    timer.tick_t_cycle_for_speed(&mut context, speed_mode);
+    context
+}
+
 #[test]
 fn bit_3_timer_frequency_increments_tima_on_falling_edges() {
     let mut timer = Timer::new(ConsoleModel::GameBoy);
@@ -274,4 +284,75 @@ fn shared_divider_tick_publishes_timer_and_apu_edges_into_the_cycle_context() {
     );
     assert_eq!(timer.snapshot().system_counter, 0x2000);
     assert_eq!(timer.read_tima(), 0x10);
+}
+
+#[test]
+fn cgb_double_speed_keeps_divider_cpu_visible_cadence() {
+    let mut timer = Timer::new(ConsoleModel::GameBoyColor);
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x00FF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+
+    let context = tick_timer_for_speed(&mut timer, 0, crate::speed::CgbSpeedMode::Double);
+
+    assert_eq!(timer.snapshot().system_counter, 0x0100);
+    assert_eq!(timer.read_div(), 0x01);
+    assert_eq!(context.derived_edges(), &[DerivedEdge::DividerTick]);
+}
+
+#[test]
+fn cgb_double_speed_keeps_apu_frame_sequencer_on_undoubled_divider_domain() {
+    let mut timer = Timer::new(ConsoleModel::GameBoyColor);
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x1FFF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+
+    let normal_context = tick_timer_for_speed(&mut timer, 0, crate::speed::CgbSpeedMode::Double);
+    assert_eq!(timer.snapshot().system_counter, 0x2000);
+    assert_eq!(normal_context.derived_edges(), &[DerivedEdge::DividerTick]);
+
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x3FFF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+    let apu_context = tick_timer_for_speed(&mut timer, 1, crate::speed::CgbSpeedMode::Double);
+
+    assert_eq!(timer.snapshot().system_counter, 0x4000);
+    assert_eq!(
+        apu_context.derived_edges(),
+        &[DerivedEdge::DividerTick, DerivedEdge::ApuFrameSequencerEdge]
+    );
+}
+
+#[test]
+fn cgb_double_speed_div_write_uses_double_speed_apu_divider_bit() {
+    let mut timer = Timer::new(ConsoleModel::GameBoyColor);
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x1000,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+
+    let normal_effects =
+        timer.write_div_with_effects_for_speed(0x00, crate::speed::CgbSpeedMode::Double);
+    assert!(!normal_effects.apu_frame_sequencer_edge);
+
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x2000,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+    let double_effects =
+        timer.write_div_with_effects_for_speed(0x00, crate::speed::CgbSpeedMode::Double);
+    assert!(double_effects.apu_frame_sequencer_edge);
 }

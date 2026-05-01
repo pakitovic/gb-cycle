@@ -14,6 +14,13 @@ pub(crate) struct NormalizedFramebuffer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GrayscaleFramebuffer {
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    pub(crate) pixels: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FramebufferOracleError {
     pub(crate) path: PathBuf,
     pub(crate) message: String,
@@ -49,12 +56,44 @@ pub(crate) fn decode_fixture_framebuffer_bytes(
     }
 }
 
+pub(crate) fn decode_fixture_grayscale_framebuffer_path(
+    path: &Path,
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let bytes = std::fs::read(path).map_err(|source| FramebufferOracleError {
+        path: path.to_path_buf(),
+        message: source.to_string(),
+    })?;
+    decode_fixture_grayscale_framebuffer_bytes(path, &bytes)
+}
+
+pub(crate) fn decode_fixture_grayscale_framebuffer_bytes(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("pgm") => decode_pgm_grayscale_framebuffer(path, bytes),
+        Some("png") => decode_png_grayscale_framebuffer(path, bytes),
+        _ => Err(FramebufferOracleError {
+            path: path.to_path_buf(),
+            message: "unsupported framebuffer fixture extension".to_string(),
+        }),
+    }
+}
+
 pub(crate) fn decode_local_pgm_framebuffer(
     case_id: &str,
     bytes: &[u8],
 ) -> Result<NormalizedFramebuffer, FramebufferOracleError> {
     let path = PathBuf::from(format!("<local framebuffer for {case_id}>"));
     decode_pgm_framebuffer(&path, bytes)
+}
+
+pub(crate) fn decode_local_pgm_grayscale_framebuffer(
+    case_id: &str,
+    bytes: &[u8],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local framebuffer for {case_id}>"));
+    decode_pgm_grayscale_framebuffer(&path, bytes)
 }
 
 pub(crate) fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
@@ -99,6 +138,18 @@ fn decode_pgm_framebuffer(
 ) -> Result<NormalizedFramebuffer, FramebufferOracleError> {
     let (width, height, pixels) = parse_pgm(path, bytes)?;
     Ok(normalize_indexed_pixels(width, height, pixels))
+}
+
+fn decode_pgm_grayscale_framebuffer(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let (width, height, pixels) = parse_pgm(path, bytes)?;
+    Ok(GrayscaleFramebuffer {
+        width,
+        height,
+        pixels: pixels.to_vec(),
+    })
 }
 
 fn decode_png_framebuffer(
@@ -158,6 +209,61 @@ fn decode_png_framebuffer(
             message: "indexed PNG framebuffer fixtures are not supported".to_string(),
         }),
     }
+}
+
+fn decode_png_grayscale_framebuffer(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder
+        .read_info()
+        .map_err(|source| FramebufferOracleError {
+            path: path.to_path_buf(),
+            message: source.to_string(),
+        })?;
+    let output_buffer_size = reader
+        .output_buffer_size()
+        .ok_or_else(|| FramebufferOracleError {
+            path: path.to_path_buf(),
+            message: "PNG decoder did not expose an output buffer size".to_string(),
+        })?;
+    let mut buffer = vec![0; output_buffer_size];
+    let info = reader
+        .next_frame(&mut buffer)
+        .map_err(|source| FramebufferOracleError {
+            path: path.to_path_buf(),
+            message: source.to_string(),
+        })?;
+    let pixels = &buffer[..info.buffer_size()];
+    let width = info.width as usize;
+    let height = info.height as usize;
+
+    let pixels = match info.color_type {
+        png::ColorType::Grayscale => pixels.to_vec(),
+        png::ColorType::Rgb => pixels
+            .chunks_exact(3)
+            .map(|chunk| grayscale_luma([chunk[0], chunk[1], chunk[2]]))
+            .collect(),
+        png::ColorType::Rgba => pixels
+            .chunks_exact(4)
+            .map(|chunk| grayscale_luma([chunk[0], chunk[1], chunk[2]]))
+            .collect(),
+        png::ColorType::GrayscaleAlpha => pixels.chunks_exact(2).map(|chunk| chunk[0]).collect(),
+        png::ColorType::Indexed => {
+            return Err(FramebufferOracleError {
+                path: path.to_path_buf(),
+                message: "indexed PNG framebuffer fixtures are not supported".to_string(),
+            });
+        }
+    };
+
+    Ok(GrayscaleFramebuffer {
+        width,
+        height,
+        pixels,
+    })
 }
 
 fn parse_pgm<'a>(
@@ -310,6 +416,11 @@ fn luminance(color: &[u8; 3]) -> u16 {
     color.iter().map(|component| u16::from(*component)).sum()
 }
 
+fn grayscale_luma(color: [u8; 3]) -> u8 {
+    ((u32::from(color[0]) * 299 + u32::from(color[1]) * 587 + u32::from(color[2]) * 114 + 500)
+        / 1_000) as u8
+}
+
 fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> Result<Vec<u8>, io::Error> {
     let mut encoded = Vec::new();
     {
@@ -332,7 +443,8 @@ fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
 mod tests {
     use super::{
         DMG_GRAYSCALE_SHADES, decode_fixture_framebuffer_bytes, decode_fixture_framebuffer_path,
-        decode_local_pgm_framebuffer, encode_framebuffer_pgm, encode_framebuffer_png,
+        decode_fixture_grayscale_framebuffer_bytes, decode_local_pgm_framebuffer,
+        decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm, encode_framebuffer_png,
     };
     use std::fs;
     use std::path::Path;
@@ -379,6 +491,33 @@ mod tests {
         let png_decoded = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &png)
             .expect("PNG should decode");
         assert_eq!(pgm_decoded, png_decoded);
+    }
+
+    #[test]
+    fn grayscale_framebuffer_decoding_preserves_absolute_shades() {
+        let white = vec![0_u8; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        let black = vec![3_u8; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        let white_pgm = encode_framebuffer_pgm(&white);
+        let black_pgm = encode_framebuffer_pgm(&black);
+        let white_png = encode_framebuffer_png(&white).expect("white PNG should encode");
+        let black_png = encode_framebuffer_png(&black).expect("black PNG should encode");
+
+        let local_white = decode_local_pgm_grayscale_framebuffer("white", &white_pgm)
+            .expect("white local PGM should decode");
+        let local_black = decode_local_pgm_grayscale_framebuffer("black", &black_pgm)
+            .expect("black local PGM should decode");
+        let fixture_white =
+            decode_fixture_grayscale_framebuffer_bytes(Path::new("white.png"), &white_png)
+                .expect("white fixture PNG should decode");
+        let fixture_black =
+            decode_fixture_grayscale_framebuffer_bytes(Path::new("black.png"), &black_png)
+                .expect("black fixture PNG should decode");
+
+        assert!(local_white.pixels.iter().all(|pixel| *pixel == 0xFF));
+        assert!(local_black.pixels.iter().all(|pixel| *pixel == 0x00));
+        assert_eq!(local_white, fixture_white);
+        assert_eq!(local_black, fixture_black);
+        assert_ne!(local_white, local_black);
     }
 
     #[test]

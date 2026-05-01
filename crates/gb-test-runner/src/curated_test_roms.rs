@@ -683,6 +683,14 @@ pub fn cgb_smoke_suite() -> RomSuite {
     manifest_suite_by_name("cgb-smoke")
 }
 
+pub fn cgb_boot_div_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-boot-div")
+}
+
+pub fn cgb_speed_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-speed")
+}
+
 fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
     let manifest = curated_test_rom_manifests()
         .into_iter()
@@ -709,15 +717,23 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 8] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 10] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
             include_str!("../data/acid.toml"),
         ),
         (
+            "crates/gb-test-runner/data/cgb-boot-div.toml",
+            include_str!("../data/cgb-boot-div.toml"),
+        ),
+        (
             "crates/gb-test-runner/data/cgb-smoke.toml",
             include_str!("../data/cgb-smoke.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-speed.toml",
+            include_str!("../data/cgb-speed.toml"),
         ),
         (
             "crates/gb-test-runner/data/blargg.toml",
@@ -864,6 +880,9 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         "framebuffer-fixture" => PassCondition::FramebufferFixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-grayscale-fixture" => PassCondition::FramebufferGrayscaleFixture(
+            fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
+        ),
         "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
             fixtures.unwrap_or_else(|| panic!("missing fixture paths for case {id}")),
         ),
@@ -945,11 +964,11 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::Informational(capture) => CapturePlan::new()
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            CapturePlan::new()
-                .with_capture(CaptureKind::Framebuffer)
-                .with_capture(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => CapturePlan::debugging_minimum_for(pass_condition),
     }
 }
@@ -976,11 +995,11 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
             .with_artifact(*capture)
             .with_artifact(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
-            FailureArtifactPolicy::new()
-                .with_artifact(CaptureKind::Framebuffer)
-                .with_artifact(CaptureKind::Snapshot)
-        }
+        PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot),
         PassCondition::TraceFixture(_) => {
             FailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }
@@ -1304,7 +1323,7 @@ mod tests {
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
         blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
-        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
+        cgb_boot_div_suite, cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
         curated_test_rom_family_suites, curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
@@ -1539,6 +1558,29 @@ mod tests {
     }
 
     #[test]
+    fn cgb_boot_div_suite_is_manifest_backed_and_uses_mooneye_result() {
+        let suite = cgb_boot_div_suite();
+
+        assert_eq!(suite.name, "cgb-boot-div");
+        assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
+        );
+        assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            suite.cases[0].external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::MooneyeResult
+        ));
+    }
+
+    #[test]
     fn manifests_mark_current_gbemu_shootout_model_suffixed_rows() {
         let dmg_rows = [
             ("acid", "which.gb"),
@@ -1591,7 +1633,11 @@ mod tests {
             let case = manifests
                 .iter()
                 .flat_map(|manifest| &manifest.cases)
-                .find(|case| case.family == family && case.rom == Path::new(rom))
+                .find(|case| {
+                    case.family == family
+                        && case.rom == Path::new(rom)
+                        && case.console_model == ConsoleModel::GameBoy
+                })
                 .unwrap_or_else(|| panic!("missing GBEmulatorShootout DMG row {family}/{rom}"));
 
             assert_eq!(case.console_model, ConsoleModel::GameBoy, "{family}/{rom}");

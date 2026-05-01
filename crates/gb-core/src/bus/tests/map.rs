@@ -222,6 +222,9 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff4c.availability(), IoRegisterAvailability::CgbOnly);
     assert_eq!(ff4c.implementation(), IoRegisterImplementation::Stubbed);
     assert_eq!(ff4c.kind(), IoRegisterKind::Key0);
+    assert_eq!(ff4d.owner(), IoRegisterOwner::CgbSystem);
+    assert_eq!(ff4d.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff4d.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff4d.kind(), IoRegisterKind::Key1);
     assert_eq!(ff51.owner(), IoRegisterOwner::Dma);
     assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);

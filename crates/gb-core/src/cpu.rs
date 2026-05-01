@@ -41,6 +41,7 @@ pub(crate) enum CpuExternalOperation {
     PendingInterruptMask,
     InterruptEnableMask,
     StopWakeLineAsserted,
+    CgbSpeedSwitchPrepared,
     AcknowledgeInterrupt { source: InterruptSource },
     RequestInterrupt { source: InterruptSource },
 }
@@ -136,6 +137,9 @@ pub enum CpuExecutionState {
         step: u8,
         t_cycle: u8,
     },
+    SpeedSwitchPause {
+        remaining_t_cycles: u32,
+    },
     DiagnosticTrap {
         trap: CpuDiagnosticTrap,
     },
@@ -207,6 +211,7 @@ pub struct CpuCore {
     last_bus_activity: Option<CpuTraceBusActivity>,
     last_address_event: Option<CpuAddressEvent>,
     stop_div_reset_requested: bool,
+    cgb_speed_switch_requested: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -222,6 +227,7 @@ pub struct CpuSaveState {
     last_bus_activity: Option<CpuTraceBusActivity>,
     last_address_event: Option<CpuAddressEvent>,
     stop_div_reset_requested: bool,
+    cgb_speed_switch_requested: bool,
 }
 
 impl CpuSaveState {
@@ -244,6 +250,7 @@ impl CpuCore {
             last_bus_activity: self.last_bus_activity,
             last_address_event: self.last_address_event,
             stop_div_reset_requested: self.stop_div_reset_requested,
+            cgb_speed_switch_requested: self.cgb_speed_switch_requested,
         }
     }
 
@@ -259,6 +266,7 @@ impl CpuCore {
         self.last_bus_activity = state.last_bus_activity;
         self.last_address_event = state.last_address_event;
         self.stop_div_reset_requested = state.stop_div_reset_requested;
+        self.cgb_speed_switch_requested = state.cgb_speed_switch_requested;
     }
 }
 

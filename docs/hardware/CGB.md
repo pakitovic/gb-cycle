@@ -125,6 +125,15 @@ Priority order:
 - Phase 10 direct boot applies the loaded cartridge header byte at `0x0143` to `ConsoleModel::GameBoyColor` after cartridge load in `SkipBoot`: flags with bit `7` clear select `OperatingMode::GbCompatible`, canonical CGB-supported/CGB-only values select `OperatingMode::Cgb`, noncanonical high-bit values select native CGB without enabling PGB/PSM behavior, and DMG-family models stay `OperatingMode::Dmg`.
 - Phase 10 CGB `SkipBoot` seeds the CPU entry registers to the `boot_regs-cgb` contract (`AF=$1180`, `BC=$0000`, `DE=$0008`, `HL=$007C`, `SP=$FFFE`, `PC=$0100`) so direct boot starts from the same observable CGB register baseline before real boot-ROM handoff is implemented.
 - CGB `RealBoot` operating-mode handoff remains boot-owned until the Slice 6 boot-ROM work validates `KEY0`, `FF50`, and RealBoot versus SkipBoot equivalence; do not fake a real-boot mode switch from the loader path before that handoff exists.
+- Phase 10 Slice 2 introduces `SpeedController` as the explicit owner of `KEY1` / `FF4D` and CGB speed state. The controller is active only on CGB-family silicon running native `OperatingMode::Cgb`; Non-CGB models and CGB-family `GbCompatible` mode read `KEY1` as `0xFF`, ignore writes, and publish normal speed to shared consumers.
+- The Slice 2 CGB direct-boot timer baseline seeds visible `DIV` to `0x26` and the hidden timer counter to `0x2674`, matching Mooneye `misc/boot_div-cgbABCDE.gb`; this is the minimal direct-boot CGB DIV phase needed by the speed-domain foundation, while full CGB `RealBoot` / `SkipBoot` equivalence remains Slice 6-owned.
+- Native CGB `KEY1` reads keep unused bits high (`0x7E`), publish current speed in bit `7`, and publish the armed prepare bit in bit `0`. Writes latch only bit `0`; all other written bits are ignored.
+- A `STOP` executed while `KEY1` is armed follows the CGB speed-switch path: fetch the padding byte, reset the shared divider through the speed-aware `DIV` write-effect path, clear the prepare bit, toggle normal/double speed, and enter the explicit `65_540` scheduler T-cycle speed-switch pause before resuming from the post-padding `PC`; this local timing constant is anchored by Daid `speed_switch_timing_ly.gbc` and `speed_switch_timing_stat.gbc` and may be revisited only with stronger hardware evidence.
+- During the speed-switch pause, the scheduler treats CPU-visible domains as stop-active: CPU bus traffic is absent and timer/serial/APU advancement is gated, while the LCD/PPU scan domain continues at normal dot cadence with the CGB STOP visible-output contract active for the pause.
+- The shared speed-domain contract is centralized in `CgbSpeedMode`: normal speed and double speed both advance the timer counter by `1` per CPU-visible scheduler T-cycle so CPU-visible `DIV` reads match Daid `speed_switch_timing_div.gbc`, the APU frame sequencer derives its undoubled domain from counter bit `12` in normal speed and bit `13` in double speed, and the baseline internal serial edge consumes bit `8` in normal speed and bit `7` in double speed.
+- LCD/PPU timing must continue to use its own scheduler-domain contract; after a completed switch into double speed, the LCD domain ticks every other CPU-visible scheduler T-cycle, and double speed must not be modeled as a generic frame, LY, STAT, or LCD-dot multiplier.
+- CGB-family `STOP` entered outside PPU Mode `3` forced blank fills the visible framebuffer with panel shade `3` (black), while DMG-family `STOP` keeps shade `0` (white); CGB-family `STOP` entered during Mode `3` preserves the currently displayed framebuffer because the CGB PPU keeps displaying the same data and can still access VRAM in that phase. This is a small STOP/visible-output bridge for current monochrome framebuffer data, not the full Slice 4 CGB palette renderer.
+- The Phase 10 `cgb-speed` ROM suite is manifest-backed; Daid `stop_instr.gb (GBC)` is a blocking absolute grayscale framebuffer fixture, `stop_instr_gbc_mode3.gb` is a blocking rank-normalized framebuffer fixture against the SameBoy/GBEmulatorShootout PASS screen, and `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized framebuffer fixtures.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
 
@@ -136,9 +145,8 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - VRAM bank 1 behavior
 - WRAM banks 2-7
 - `KEY0` boot-time semantics and lock behavior
-- `KEY1` and double speed behavior
-- APU `DIV-APU` / frame-sequencer behavior under CGB double speed
-- timer behavior under CGB double-speed timing
+- strict `cgb-speed` oracle promotion for the remaining Daid framebuffer cases and Blargg timing output
+- full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
 - CGB OAM DMA duration differences in double speed
 - HDMA and GDMA
 - CGB tile attributes

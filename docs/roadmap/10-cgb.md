@@ -41,14 +41,13 @@ This table is the planning inventory, not an executable suite definition. Every 
 | --- | --- | ---: | --- | --- | --- | --- |
 | 1, 3, 6 | `cgb-smoke` | 1 | mooneye | `misc/boot_regs-cgb.gb` | Boot / startup registers | MEDIUM |
 | 1, 3, 6 | `cgb-smoke` | 2 | acid | `which.gb (GBC)` | Model detection / informational framebuffer | VERY LOW |
-| 2 | `cgb-speed` | 1 | daid | `stop_instr.gb (GBC)` | STOP / CGB PPU access | MEDIUM |
-| 2 | `cgb-speed` | 2 | daid | `speed_switch_timing_div.gbc` | KEY1 / DIV timing | HIGH |
+| 2 | `cgb-speed` | 1 | daid | `stop_instr.gb (GBC)` | STOP / CGB forced blank / blocking absolute grayscale framebuffer fixture | MEDIUM |
+| 2 | `cgb-speed` | 2 | daid | `speed_switch_timing_div.gbc` | KEY1 / DIV timing / blocking framebuffer fixture | HIGH |
 | 2 | `cgb-speed` | 3 | blargg | `interrupt_time.gb` | CPU / interrupt timing | HIGH |
 | 2 | `cgb-speed` | 4 | daid | `stop_instr_gbc_mode3.gb` | STOP / CGB Mode 3 | HIGH |
-| 2 | `cgb-speed` | 5 | daid | `speed_switch_timing_ly.gbc` | KEY1 / LY timing | VERY HIGH |
-| 2 | `cgb-speed` | 6 | daid | `speed_switch_timing_stat.gbc` | KEY1 / STAT timing | VERY HIGH |
-| 2, 6 | `cgb-boot-div` | 1 | mooneye | `misc/boot_div-cgbABCDE.gb` | Boot / timer DIV | MEDIUM |
-| 6 | `cgb-boot-hwio` | 1 | mooneye | `misc/boot_hwio-C.gb` | Boot / post-boot HWIO registers | HIGH |
+| 2 | `cgb-speed` | 5 | daid | `speed_switch_timing_ly.gbc` | KEY1 / LY timing / blocking framebuffer fixture | VERY HIGH |
+| 2 | `cgb-speed` | 6 | daid | `speed_switch_timing_stat.gbc` | KEY1 / STAT timing / blocking framebuffer fixture | VERY HIGH |
+| 2, 6 | `cgb-boot-div` | 1 | mooneye | `misc/boot_div-cgbABCDE.gb` | Boot / timer DIV / blocking Mooneye result | MEDIUM |
 | 4 | `cgb-ppu-basic` | 1 | samesuite | `ppu/blocking_bgpi_increase.gb` | PPU / palette MMIO | HIGH |
 | 4 | `cgb-ppu-basic` | 2 | daid | `ppu_scanline_bgp.gb (GBC)` | PPU / live BGP | MEDIUM |
 | 4 | `cgb-ppu-basic` | 3 | acid | `cgb-acid2.gbc` | PPU / CGB raster | HIGH |
@@ -57,6 +56,7 @@ This table is the planning inventory, not an executable suite definition. Every 
 | 5 | `cgb-dma` | 2 | samesuite | `dma/hdma_lcd_off.gb` | DMA / HDMA LCD off | HIGH |
 | 5 | `cgb-dma` | 3 | samesuite | `dma/hdma_mode0.gb` | DMA / HDMA HBlank | HIGH |
 | 5 | `cgb-dma` | 4 | samesuite | `dma/gbc_dma_cont.gb` | DMA / CGB continuation | VERY HIGH |
+| 6 | `cgb-boot-hwio` | 1 | mooneye | `misc/boot_hwio-C.gb` | Boot / post-boot HWIO registers | HIGH |
 | 7 | `cgb-audio-blargg` | 1 | blargg | `cgb_sound/01-registers.gb` | APU / registers | MEDIUM |
 | 7 | `cgb-audio-blargg` | 2 | blargg | `cgb_sound/02-len_ctr.gb` | APU / length counter | MEDIUM |
 | 7 | `cgb-audio-blargg` | 3 | blargg | `cgb_sound/03-trigger.gb` | APU / trigger | HIGH |
@@ -156,7 +156,7 @@ This table defines the default acceptance channel and retained artifacts expecte
 
 Repo-gated CGB framebuffer suites must declare the color-space channel used for pass/fail comparison before promotion. The preferred core oracle is a raw logical `RGB555` framebuffer hash or snapshot; PNG artifacts may be retained for human review only after conversion through one documented deterministic runner profile, and frontend display correction, CGB LCD pigment simulation, GBA correction, host monitor profiles, or post-processing must not become the implicit oracle for core PPU correctness.
 
-When a suite intentionally validates a converted image instead of raw `RGB555`, its manifest must name the conversion profile and keep that profile stable with the oracle artifact. This keeps `cgb-acid2`, Hacktix Bully, and `cgb-acid-hell` from mixing hardware PPU semantics with frontend color-management choices.
+When a suite intentionally validates a converted image instead of raw `RGB555`, its manifest must name the conversion profile and keep that profile stable with the oracle artifact. Transitional monochrome CGB cases may use `framebuffer-grayscale-fixture` only when the expected hardware-visible result is an absolute shade such as `STOP` forced black; ordinary visual CGB PPU promotion should prefer raw logical color once Slice 4 owns palettes. This keeps `cgb-acid2`, Hacktix Bully, and `cgb-acid-hell` from mixing hardware PPU semantics with frontend color-management choices.
 
 ### CGB MMIO ownership matrix
 
@@ -164,7 +164,7 @@ This matrix assigns every CGB-only or CGB-reinterpreted MMIO surface to one owni
 
 | address | register | owner slice | state owner | required coverage |
 | --- | --- | --- | --- | --- |
-| `FF04-FF07` | `DIV`, `TIMA`, `TMA`, `TAC` CGB double-speed semantics | 2 only; Slice 7 may add regression tests but must not change ownership | Timer / divider counter and edge detector | Unit/integration tests for double-speed divider cadence, timer input-bit selection, edge detection across speed switches, `DIV` write effects, `TIMA` overflow/reload/IRQ ordering, STOP switch freeze/reset behavior, and proof that later serial/APU work consumes this contract without redefining it |
+| `FF04-FF07` | `DIV`, `TIMA`, `TMA`, `TAC` CGB double-speed semantics | 2 only; Slice 7 may add regression tests but must not change ownership | Timer / divider counter and edge detector | Unit/integration tests for CPU-visible double-speed divider cadence, timer input-bit selection, edge detection across speed switches, `DIV` write effects, `TIMA` overflow/reload/IRQ ordering, STOP switch freeze/reset behavior, and proof that later serial/APU work consumes this contract without redefining it |
 | `FF40` | `LCDC` CGB-reinterpreted bit `0` priority behavior | 4 | PPU layer-priority composer | Synthetic PPU tests for CGB native BG/window master priority, Non-CGB BG/window enable semantics, CGB compatibility policy that keeps CGB-family color/prioritization state separate from DMG silicon, and final BG/OBJ composition after object drawing priority has already selected the winning OBJ pixel |
 | `FF46` | `DMA` / OAM DMA with CGB double-speed behavior | 5 functional DMA behavior, consuming the Slice 2 speed-domain contract | DMA controller / OAM DMA state | Unit/integration tests for OAM DMA duration and CPU blocking in normal speed versus double speed, first-byte commit timing, completion timing, HRAM accessibility, CGB bus arbitration by source bus, and proof that LCD timing, HDMA block duration, and APU frame sequencing do not inherit the OAM-DMA speed change |
 | `FF47-FF49` | `BGP`, `OBP0`, `OBP1` in CGB compatibility mode | 4 runtime palette routing, boot-selected compatibility palette seed algorithm and override policy validated again in 6 | PPU compatibility palette adapter over CGB palette RAM | Synthetic tests for CGB compatibility rendering through CGB palette RAM, `BGP` indexing BG palette `0`, `OBP0`/`OBP1` indexing OBJ palettes `0`/`1`, CGB native color rendering not depending on DMG palette registers, Non-CGB still using the DMG grayscale path, deterministic compatibility palette seed selection, and no collapse from CGB compatibility mode to DMG silicon behavior |
@@ -214,9 +214,10 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Add internal CGB `STOP` joypad-wake tests for the non-speed-switch path: selected `P1` rows must allow P10-P13 lines to wake STOP, disabled rows must not invent a wake source, IF/IE/IME handling must remain CPU/interrupt-owned, and the DMG STOP wake regression must stay green.
 - Add internal `DIV` / timer tests for double-speed switching: `DIV` reset or freeze during the switch window, timer edge detection across the speed transition, `TIMA` overflow/reload/IRQ ordering when the selected timer bit changes, and parity between natural divider ticks and switch-induced divider effects.
 - Add internal PPU/lock observability tests for `STOP`: start `STOP` during Mode `0`, Mode `1`, Mode `2`, and Mode `3`, assert the documented visible memory-lock / black-pixel behavior exposed through the minimal PPU bridge, and keep these tests as the contract that Slice 4 must preserve when the full CGB PPU renderer lands.
-- Add scheduler-domain tests proving that the speed state changes CPU/timer/serial/OAM-DMA cadence while LCD timing, HDMA block duration, and APU frame sequencing remain on their documented CGB domains instead of being multiplied by a generic speed factor.
+- Add scheduler-domain tests proving that the speed state changes CPU-visible speed-domain behavior and serial/OAM-DMA cadence while LCD timing, HDMA block duration, CPU-visible `DIV` read cadence, and APU frame sequencing remain on their documented CGB domains instead of being multiplied by a generic speed factor.
 - Add a CGB-mode CPU and interrupt smoke suite before treating timing bring-up as stable: run focused instruction/flag, `IME` / `EI` / `DI` / `RETI`, interrupt priority, `HALT`, timer IRQ, and `STOP` cases under `ConsoleModel::GameBoyColor` and CGB operating modes to prove CGB mode reuses the proven SM83 core semantics instead of accidentally forking CPU behavior.
-- CGB gate order: first `cgb-speed` through `make run-cgb-speed`, then `cgb-boot-div` through `make run-cgb-boot-div`; `cgb-boot-div` must not be promoted until the speed-domain contract and `DIV`/timer edge semantics are already owned by this slice.
+- Status note while Slice `2` is under implementation: the `cgb-speed` manifest and `make run-cgb-speed` target now have blocking oracles for every current row. Daid `stop_instr.gb (GBC)` is promoted to a blocking absolute grayscale framebuffer fixture for final solid-black STOP output, `stop_instr_gbc_mode3.gb` is promoted to a blocking framebuffer fixture for the SameBoy/GBEmulatorShootout PASS screen that remains visible when CGB STOP enters during Mode `3`, `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are promoted to blocking rank-normalized framebuffer fixtures, and Blargg `interrupt_time.gb` is promoted to a blocking BG-map console-text `Passed` oracle. The `cgb-boot-div` manifest and `make run-cgb-boot-div` target are now wired as the Slice `2` direct-boot DIV/timer gate with Mooneye `misc/boot_div-cgbABCDE.gb` and a blocking `mooneye-result` oracle; Slice `6` still owns full CGB `RealBoot` equivalence for the same domain.
+- CGB gate order: first `cgb-speed` through `make run-cgb-speed`, then `cgb-boot-div` through `make run-cgb-boot-div`; both targets must pass before claiming strict Slice `2` closure.
 - Regression gate: DMG `167/167` plus focused DMG `STOP` tests so the CGB path cannot rewrite DMG semantics.
 
 ## Slice 3 — VRAM/WRAM banking and CGB registers

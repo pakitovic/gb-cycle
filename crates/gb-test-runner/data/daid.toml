@@ -22,7 +22,7 @@ rom = "stop_instr.gb"
 console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-grayscale-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr.dmg.png"
 
 [[case]]

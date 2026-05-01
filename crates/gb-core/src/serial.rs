@@ -1,10 +1,10 @@
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, InterruptSource};
+use crate::speed::CgbSpeedMode;
 
 const SC_TRANSFER_REQUEST_BIT: u8 = 0x80;
 const SC_FORCED_HIGH_BITS: u8 = 0x7E;
 const SC_CLOCK_MODE_BIT: u8 = 0x01;
-const DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SerialStatus {
@@ -279,13 +279,20 @@ impl Serial {
         self.latest_completed_output_byte
     }
 
-    pub(crate) fn internal_clock_edge_pending_this_t_cycle(&self) -> bool {
+    pub(crate) fn internal_clock_edge_pending_this_t_cycle_for_speed(
+        &self,
+        speed_mode: CgbSpeedMode,
+    ) -> bool {
         self.clock_mode == SerialClockMode::Internal
             && matches!(
                 self.transfer_state,
                 SerialTransferState::TransferRequested { .. }
             )
-            && serial_internal_clock_edge(self.clock_counter, self.clock_counter.wrapping_add(1))
+            && serial_internal_clock_edge(
+                self.clock_counter,
+                self.clock_counter.wrapping_add(1),
+                speed_mode,
+            )
     }
 
     pub(crate) fn endpoint_outgoing_byte(&self) -> u8 {
@@ -308,13 +315,22 @@ impl Serial {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
+        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal);
+    }
+
+    pub(crate) fn tick_t_cycle_for_speed(
+        &mut self,
+        context: &mut CycleContext,
+        speed_mode: CgbSpeedMode,
+    ) {
         self.latest_completed_output_byte = None;
 
         let previous_clock_counter = self.clock_counter;
         self.clock_counter = self.clock_counter.wrapping_add(1);
         let internal_clock_edge =
-            serial_internal_clock_edge(previous_clock_counter, self.clock_counter);
+            serial_internal_clock_edge(previous_clock_counter, self.clock_counter, speed_mode);
 
         let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
             return;
@@ -432,9 +448,10 @@ fn incoming_bit_from_peer(
 const fn serial_internal_clock_edge(
     previous_clock_counter: u16,
     current_clock_counter: u16,
+    speed_mode: CgbSpeedMode,
 ) -> bool {
-    previous_clock_counter & (1 << DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT) != 0
-        && current_clock_counter & (1 << DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT) == 0
+    previous_clock_counter & (1 << speed_mode.serial_internal_clock_edge_bit()) != 0
+        && current_clock_counter & (1 << speed_mode.serial_internal_clock_edge_bit()) == 0
 }
 
 #[cfg(test)]

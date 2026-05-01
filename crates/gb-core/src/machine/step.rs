@@ -4,7 +4,7 @@ use super::{
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
-    Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
+    Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester, DmaBusState,
 };
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
@@ -19,6 +19,8 @@ use crate::scheduler::{
     scheduler_phase_trace_message,
 };
 use crate::serial::Serial;
+use crate::speed::CgbSpeedMode;
+use crate::speed::SpeedController;
 use crate::timer::Timer;
 
 const CPU_OAM_ADDRESS_START: u16 = 0xFE00;
@@ -106,6 +108,7 @@ fn finalize_cpu_micro_operation(
     apu: &mut Apu,
     ppu: &mut Ppu,
     timer: &mut Timer,
+    speed: &mut SpeedController,
     arbitration_state: &BusArbitrationState,
 ) {
     if let Some(event) = cpu.last_address_event() {
@@ -113,7 +116,11 @@ fn finalize_cpu_micro_operation(
     }
 
     if cpu.take_stop_div_reset_request() {
-        apply_stop_div_reset(apu, timer);
+        apply_stop_div_reset(apu, timer, speed.current_speed());
+    }
+
+    if cpu.take_cgb_speed_switch_request() {
+        let _ = speed.begin_prepared_speed_switch();
     }
 }
 
@@ -141,8 +148,8 @@ pub(super) fn commit_pending_ppu_mmio_write(
     }
 }
 
-fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer) {
-    let effects = timer.write_div_with_effects(0);
+fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer, speed_mode: CgbSpeedMode) {
+    let effects = timer.write_div_with_effects_for_speed(0, speed_mode);
     if effects.apu_frame_sequencer_edge {
         apu.on_div_apu_edge();
     }
@@ -170,6 +177,7 @@ struct MachinePhaseRunner<'a> {
     dma: &'a mut DmaController,
     timer: &'a mut Timer,
     serial: &'a mut Serial,
+    speed: &'a mut SpeedController,
     external_port: &'a mut ExternalPort,
     boot: &'a mut BootController,
     interrupts: &'a mut InterruptController,
@@ -273,7 +281,8 @@ impl MachinePhaseRunner<'_> {
     {
         if !self.cpu_stop_active() {
             observe_machine_step_region(observer, MachineStepRegion::Timer, || {
-                self.timer.tick_t_cycle(context);
+                self.timer
+                    .tick_t_cycle_for_speed(context, self.speed.current_speed());
             });
         }
         tracer.emit_with(TraceSubsystem::Timer, TraceLevel::Trace, || {
@@ -324,6 +333,7 @@ impl MachinePhaseRunner<'_> {
                                 interrupt_flag_pending_mask: 0,
                                 joypad: Some(self.joypad),
                                 ppu: Some(self.ppu),
+                                speed: Some(self.speed),
                                 ppu_cpu_visible_read: false,
                             },
                         )
@@ -339,26 +349,23 @@ impl MachinePhaseRunner<'_> {
                     });
             let dma_oam_active = dma_bus_state.active_region().is_some();
 
-            observer.begin_region(MachineStepRegion::Ppu);
-            self.bus
-                .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
-            let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
-            self.ppu.tick_t_cycle_with_observer(
-                context,
-                oam_view,
-                vram_view,
-                dma_oam_active,
-                dma_oam_conflict,
-                observer,
-            );
-            let ppu_bus_states_after = self.ppu_bus_state_snapshot();
-            let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
-            self.bus
-                .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
-            observer.end_region(MachineStepRegion::Ppu);
+            if self
+                .speed
+                .current_speed()
+                .lcd_tick_due_at_scheduler_t_cycle(context.t_cycle().get())
+            {
+                self.tick_ppu_video_domain(
+                    context,
+                    dma_bus_state,
+                    dma_oam_active,
+                    dma_oam_conflict,
+                    observer,
+                );
+            }
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
                 self.external_port.tick_t_cycle();
-                self.serial.tick_t_cycle(context);
+                self.serial
+                    .tick_t_cycle_for_speed(context, self.speed.current_speed());
                 if let Some(output_byte) = self.serial.latest_completed_output_byte() {
                     self.external_port.handle_completed_serial_byte(output_byte);
                 }
@@ -377,6 +384,15 @@ impl MachinePhaseRunner<'_> {
                     );
                 });
             }
+        } else if self.cpu_speed_switch_pause_active() {
+            let dma_bus_state = self.dma.bus_state();
+            self.tick_ppu_video_domain(
+                context,
+                dma_bus_state,
+                dma_bus_state.active_region().is_some(),
+                None,
+                observer,
+            );
         }
 
         tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
@@ -391,6 +407,36 @@ impl MachinePhaseRunner<'_> {
         tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
             self.serial.scheduler_trace_message(context)
         });
+    }
+
+    fn tick_ppu_video_domain<O>(
+        &mut self,
+        context: &mut CycleContext,
+        dma_bus_state: DmaBusState,
+        dma_oam_active: bool,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+        observer: &mut O,
+    ) where
+        O: MachineStepObserver,
+    {
+        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+        observer.begin_region(MachineStepRegion::Ppu);
+        self.bus
+            .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
+        let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
+        self.ppu.tick_t_cycle_with_observer(
+            context,
+            oam_view,
+            vram_view,
+            dma_oam_active,
+            dma_oam_conflict,
+            observer,
+        );
+        let ppu_bus_states_after = self.ppu_bus_state_snapshot();
+        let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
+        self.bus
+            .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
+        observer.end_region(MachineStepRegion::Ppu);
     }
 
     fn step_bus_arbitration<S: TraceSink>(
@@ -427,6 +473,7 @@ impl MachinePhaseRunner<'_> {
             let dma = &mut self.dma;
             let timer = &mut self.timer;
             let serial = &mut self.serial;
+            let speed = &mut self.speed;
             let boot = &mut self.boot;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
@@ -456,6 +503,7 @@ impl MachinePhaseRunner<'_> {
                             interrupt_flag_pending_mask,
                             joypad: Some(joypad),
                             ppu: Some(ppu),
+                            speed: Some(speed),
                             ppu_cpu_visible_read: true,
                         },
                     ))
@@ -483,6 +531,7 @@ impl MachinePhaseRunner<'_> {
                                 interrupts: Some(interrupts),
                                 joypad: Some(joypad),
                                 ppu: Some(ppu),
+                                speed: Some(speed),
                             },
                         );
                     }
@@ -492,6 +541,9 @@ impl MachinePhaseRunner<'_> {
                 CpuExternalOperation::InterruptEnableMask => Some(interrupts.read_ie()),
                 CpuExternalOperation::StopWakeLineAsserted => {
                     Some(u8::from(joypad.stop_wake_line_asserted()))
+                }
+                CpuExternalOperation::CgbSpeedSwitchPrepared => {
+                    Some(u8::from(speed.switch_armed()))
                 }
                 CpuExternalOperation::AcknowledgeInterrupt { source } => {
                     interrupts.clear(source);
@@ -503,7 +555,15 @@ impl MachinePhaseRunner<'_> {
                 }
             });
 
-            finalize_cpu_micro_operation(cpu, bus, apu, ppu, timer, &arbitration_states.pre_cpu);
+            finalize_cpu_micro_operation(
+                cpu,
+                bus,
+                apu,
+                ppu,
+                timer,
+                speed,
+                &arbitration_states.pre_cpu,
+            );
         });
 
         let stop_active_after = self.cpu_stop_active();
@@ -642,10 +702,19 @@ impl MachinePhaseRunner<'_> {
         states
     }
 
+    fn cpu_speed_switch_pause_active(&self) -> bool {
+        matches!(
+            self.cpu.execution_state(),
+            CpuExecutionState::SpeedSwitchPause { .. }
+        )
+    }
+
     fn cpu_stop_active(&self) -> bool {
         matches!(
             self.cpu.execution_state(),
-            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            CpuExecutionState::Stopped
+                | CpuExecutionState::ZombieStopped
+                | CpuExecutionState::SpeedSwitchPause { .. }
         )
     }
 }
@@ -671,6 +740,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,
             interrupts: &mut self.interrupts,
@@ -707,6 +777,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,
             interrupts: &mut self.interrupts,

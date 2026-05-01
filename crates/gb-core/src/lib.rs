@@ -16,6 +16,7 @@ pub mod rewind;
 pub mod save_state;
 pub mod scheduler;
 pub mod serial;
+pub mod speed;
 pub mod timer;
 
 pub use apu::{
@@ -115,5 +116,8 @@ pub use scheduler::{
 pub use serial::{
     Serial, SerialClockMode, SerialPeer, SerialSnapshot, SerialStartupState, SerialStatus,
     SerialTransferState,
+};
+pub use speed::{
+    CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,
 };
 pub use timer::{Timer, TimerSnapshot, TimerStartupState, TimerStatus};

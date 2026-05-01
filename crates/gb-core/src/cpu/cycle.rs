@@ -1,5 +1,6 @@
 use super::decode::{CpuInstructionKind, DecodedOpcode, FetchCompletionKind};
 use super::*;
+use crate::speed::CGB_SPEED_SWITCH_PAUSE_T_CYCLES;
 
 impl CpuCore {
     pub(crate) fn tick_t_cycle<F>(&mut self, mut bus_operation: F)
@@ -47,6 +48,9 @@ impl CpuCore {
 
                 self.complete_stop_wake_bugged_interrupt_service_machine_cycle(step, bus_operation);
             }
+            CpuExecutionState::SpeedSwitchPause { remaining_t_cycles } => {
+                self.advance_speed_switch_pause(remaining_t_cycles);
+            }
             CpuExecutionState::DiagnosticTrap { .. }
             | CpuExecutionState::Halted
             | CpuExecutionState::ZombieStopped
@@ -83,6 +87,16 @@ impl CpuCore {
                     "STOP wake bugged interrupt T-cycle advance requested outside service state"
                 )
             }
+        }
+    }
+
+    fn advance_speed_switch_pause(&mut self, remaining_t_cycles: u32) {
+        if remaining_t_cycles <= 1 {
+            self.execution_state = CpuExecutionState::fetch_opcode();
+        } else {
+            self.execution_state = CpuExecutionState::SpeedSwitchPause {
+                remaining_t_cycles: remaining_t_cycles - 1,
+            };
         }
     }
 
@@ -205,6 +219,10 @@ impl CpuCore {
         &mut self,
         bus_operation: &mut CpuExternalCallback<'_>,
     ) -> bool {
+        if self.cgb_speed_switch_prepared(bus_operation) {
+            return false;
+        }
+
         let wake_line_asserted = self.stop_wake_line_asserted(bus_operation);
         if !wake_line_asserted {
             return false;
@@ -262,6 +280,10 @@ impl CpuCore {
         self.stop_div_reset_requested = true;
     }
 
+    pub(super) fn request_cgb_speed_switch(&mut self) {
+        self.cgb_speed_switch_requested = true;
+    }
+
     pub(super) fn advance_instruction(&mut self, _opcode: u8, next_step: u8) {
         match &mut self.execution_state {
             CpuExecutionState::Execute { step, t_cycle } => {
@@ -311,6 +333,14 @@ impl CpuCore {
         self.clear_in_flight_instruction_state();
         self.advance_delayed_ime_enable();
         self.execution_state = CpuExecutionState::ZombieStopped;
+    }
+
+    pub(super) fn enter_speed_switch_pause_state(&mut self) {
+        self.clear_in_flight_instruction_state();
+        self.advance_delayed_ime_enable();
+        self.execution_state = CpuExecutionState::SpeedSwitchPause {
+            remaining_t_cycles: CGB_SPEED_SWITCH_PAUSE_T_CYCLES,
+        };
     }
 
     fn enter_invalid_opcode_trap(&mut self, opcode: u8) {

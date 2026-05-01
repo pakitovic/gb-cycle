@@ -13,6 +13,7 @@ use crate::model::MachineConfig;
 use crate::ppu::PpuSnapshot;
 use crate::scheduler::SchedulerSnapshot;
 use crate::serial::SerialSnapshot;
+use crate::speed::SpeedSnapshot;
 use crate::timer::TimerSnapshot;
 
 pub const TRACE_FORMAT_VERSION: u16 = 2;
@@ -542,6 +543,7 @@ pub struct MachineSnapshot {
     pub dma: DmaSnapshot,
     pub timer: TimerSnapshot,
     pub serial: SerialSnapshot,
+    pub speed: SpeedSnapshot,
     pub external_port: ExternalPortSnapshot,
     pub boot: BootSnapshot,
     pub interrupts: InterruptControllerSnapshot,
@@ -580,6 +582,7 @@ impl MachineSnapshot {
                 "dma.console_model={:?} dma.status={:?}\n",
                 "timer.console_model={:?} timer.status={:?}\n",
                 "serial.console_model={:?} serial.status={:?} serial.sb={:#04X} serial.clock_mode={:?} serial.transfer_state={:?}\n",
+                "speed.console_model={:?} speed.operating_mode={:?} speed.status={:?} speed.current_speed={:?} speed.switch_armed={} speed.cgb_speed_switch_enabled={}\n",
                 "external_port.attachment_kind={:?} external_port.reset_policy={:?}\n",
                 "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_kind={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
@@ -660,6 +663,12 @@ impl MachineSnapshot {
             self.serial.sb,
             self.serial.clock_mode,
             self.serial.transfer_state,
+            self.speed.console_model,
+            self.speed.operating_mode,
+            self.speed.status,
+            self.speed.current_speed,
+            self.speed.switch_armed,
+            self.speed.cgb_speed_switch_enabled,
             self.external_port.attachment_kind(),
             self.external_port.reset_policy,
             self.boot.console_model,

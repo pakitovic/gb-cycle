@@ -27,6 +27,7 @@ use crate::save_state::{
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTransferState};
+use crate::speed::SpeedController;
 use crate::timer::Timer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -135,6 +136,7 @@ pub struct Machine<S = TraceBuffer> {
     dma: DmaController,
     timer: Timer,
     serial: Serial,
+    speed: SpeedController,
     external_port: ExternalPort,
     boot: BootController,
     interrupts: InterruptController,
@@ -157,6 +159,7 @@ pub struct MachineParts<S = TraceBuffer> {
     pub dma: DmaController,
     pub timer: Timer,
     pub serial: Serial,
+    pub speed: SpeedController,
     pub external_port: ExternalPort,
     pub boot: BootController,
     pub interrupts: InterruptController,
@@ -230,6 +233,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
             dma: self.dma.snapshot(),
             timer: self.timer.snapshot(),
             serial: self.serial.snapshot(),
+            speed: self.speed.snapshot(),
             external_port: self.external_port.snapshot(),
             boot: self.boot.snapshot(),
             interrupts: self.interrupts.snapshot(),
@@ -242,6 +246,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
 impl<S: TraceSink> Machine<S> {
     pub fn with_tracer(config: MachineConfig, tracer: Tracer<S>) -> Self {
         let console_model = config.console_model;
+        let operating_mode = config.operating_mode;
         let startup_mode = config.startup_mode;
         let boot_rom_kind = config.boot_rom_kind;
         let boot_rom_assets = config.boot_rom_assets.clone();
@@ -258,6 +263,7 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new(console_model),
+            speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
             boot: BootController::new(console_model, startup_mode, boot_rom_kind, boot_rom_assets),
             interrupts: InterruptController::new(console_model),
@@ -349,6 +355,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn serial(&self) -> &Serial {
         &self.serial
+    }
+
+    pub fn speed(&self) -> &SpeedController {
+        &self.speed
     }
 
     pub fn external_port(&self) -> &ExternalPort {
@@ -451,6 +461,7 @@ impl<S: TraceSink> Machine<S> {
                 dma: self.dma.capture_save_state(),
                 timer: self.timer.capture_save_state(),
                 serial: self.serial.capture_save_state(),
+                speed: self.speed.capture_save_state(),
                 external_port: self.external_port.capture_save_state(),
                 boot: self.boot.capture_save_state(),
                 interrupts: self.interrupts.capture_save_state(),
@@ -476,6 +487,7 @@ impl<S: TraceSink> Machine<S> {
         self.dma.restore_save_state(&core.dma);
         self.timer.restore_save_state(&core.timer);
         self.serial.restore_save_state(&core.serial);
+        self.speed.restore_save_state(&core.speed);
         self.external_port.restore_save_state(&core.external_port);
         self.boot.restore_save_state(&core.boot);
         self.interrupts.restore_save_state(&core.interrupts);
@@ -584,6 +596,7 @@ impl<S: TraceSink> Machine<S> {
             dma: self.dma,
             timer: self.timer,
             serial: self.serial,
+            speed: self.speed,
             external_port: self.external_port,
             boot: self.boot,
             interrupts: self.interrupts,
@@ -609,7 +622,9 @@ impl<S: TraceSink> Machine<S> {
                 && self.serial.clock_mode() == SerialClockMode::External,
             internal_clock_edge_pending: active_transfer
                 && self.serial.clock_mode() == SerialClockMode::Internal
-                && self.serial.internal_clock_edge_pending_this_t_cycle(),
+                && self
+                    .serial
+                    .internal_clock_edge_pending_this_t_cycle_for_speed(self.speed.current_speed()),
         }
     }
 
@@ -656,7 +671,9 @@ impl<S: TraceSink> Machine<S> {
     fn cpu_stop_active(&self) -> bool {
         matches!(
             self.cpu.execution_state(),
-            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+            CpuExecutionState::Stopped
+                | CpuExecutionState::ZombieStopped
+                | CpuExecutionState::SpeedSwitchPause { .. }
         )
     }
 }

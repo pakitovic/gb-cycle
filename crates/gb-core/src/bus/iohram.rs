@@ -6,6 +6,7 @@ use crate::joypad::Joypad;
 use crate::model::ConsoleModel;
 use crate::ppu::Ppu;
 use crate::serial::Serial;
+use crate::speed::SpeedController;
 use crate::timer::Timer;
 
 use super::{
@@ -24,6 +25,7 @@ pub(crate) struct BusIoReadView<'a> {
     pub interrupt_flag_pending_mask: u8,
     pub joypad: Option<&'a Joypad>,
     pub ppu: Option<&'a Ppu>,
+    pub speed: Option<&'a SpeedController>,
     pub ppu_cpu_visible_read: bool,
 }
 
@@ -37,6 +39,7 @@ pub(crate) struct BusIoWriteView<'a> {
     pub interrupts: Option<&'a mut InterruptController>,
     pub joypad: Option<&'a mut Joypad>,
     pub ppu: Option<&'a mut Ppu>,
+    pub speed: Option<&'a mut SpeedController>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -120,6 +123,9 @@ impl IoHramDomain {
             IoRegisterKind::Tima => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tima),
             IoRegisterKind::Tma => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tma),
             IoRegisterKind::Tac => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tac),
+            IoRegisterKind::Key1 => io
+                .speed
+                .map_or(BLOCKED_READ_VALUE, SpeedController::read_key1),
             IoRegisterKind::InterruptFlag => {
                 io.interrupts.map_or(BLOCKED_READ_VALUE, |interrupts| {
                     interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
@@ -191,9 +197,15 @@ impl IoHramDomain {
                 }
             }
             IoRegisterKind::Div => {
-                let BusIoWriteView { apu, timer, .. } = io;
+                let BusIoWriteView {
+                    apu, timer, speed, ..
+                } = io;
                 if let Some(timer) = timer {
-                    let effects = timer.write_div_with_effects(value);
+                    let speed_mode = speed.as_deref().map_or(
+                        crate::speed::CgbSpeedMode::Normal,
+                        SpeedController::current_speed,
+                    );
+                    let effects = timer.write_div_with_effects_for_speed(value, speed_mode);
                     if effects.apu_frame_sequencer_edge
                         && let Some(apu) = apu
                     {
@@ -214,6 +226,11 @@ impl IoHramDomain {
             IoRegisterKind::Tac => {
                 if let Some(timer) = io.timer {
                     timer.write_tac(value);
+                }
+            }
+            IoRegisterKind::Key1 => {
+                if let Some(speed) = io.speed {
+                    speed.write_key1(value);
                 }
             }
             IoRegisterKind::InterruptFlag => {
