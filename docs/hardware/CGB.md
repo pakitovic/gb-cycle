@@ -117,9 +117,8 @@ Priority order:
 - The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
-- Even before functional CGB work starts, routed MMIO metadata should already classify `KEY0` / `FF4C` as an explicit CGB-only register rather than as a reserved shared-model hole.
-- Even before functional CGB work starts, the routed MMIO metadata should keep nominal future ownership for stubbed CGB registers, such as PPU-owned palettes, DMA-owned `HDMA*`, and system-owned `KEY0` / `KEY1`, rather than collapsing all of them into one generic "CGB-only owner".
-- Even before functional CGB work starts, the routed MMIO metadata should keep `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. In the current descriptor baseline, `FF72-FF74` should publish nominal `ReadWrite` access, while `FF75` should remain `Mixed` because only bits `4-6` are writable in CGB mode.
+- Slice 3 routes `KEY0` / `FF4C`, `VBK` / `FF4F`, `SVBK` / `FF70`, and `FF72-FF75` as implemented CGB-only MMIO through the shared bus contract rather than as generic `FFxx` storage; PPU palettes, `HDMA*`, `OPRI`, `RP`, and `PCM12`/`PCM34` remain explicitly owned by later slices.
+- Slice 3 keeps `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. `FF72-FF74` are native-CGB read/write bytes initialized to `$00`, while `FF75` exposes only bits `4-6` as writable and reads back those bits over forced `$8F`.
 - The public model surface may already expose an explicit `OperatingMode`, but routed MMIO and subsystem behavior may still stage runtime consultation incrementally; until a specific register path consumes that mode directly, descriptors such as `BGP` / `OBP*` may continue to publish nominal `DMG-compatible` availability without claiming full runtime mode routing.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - Phase 10 direct boot applies the loaded cartridge header byte at `0x0143` to `ConsoleModel::GameBoyColor` after cartridge load in `SkipBoot`: flags with bit `7` clear select `OperatingMode::GbCompatible`, canonical CGB-supported/CGB-only values select `OperatingMode::Cgb`, noncanonical high-bit values select native CGB without enabling PGB/PSM behavior, and DMG-family models stay `OperatingMode::Dmg`.
@@ -134,6 +133,9 @@ Priority order:
 - LCD/PPU timing must continue to use its own scheduler-domain contract; after a completed switch into double speed, the LCD domain ticks every other CPU-visible scheduler T-cycle, and double speed must not be modeled as a generic frame, LY, STAT, or LCD-dot multiplier.
 - CGB-family `STOP` entered outside PPU Mode `3` forced blank fills the visible framebuffer with panel shade `3` (black), while DMG-family `STOP` keeps shade `0` (white); CGB-family `STOP` entered during Mode `3` preserves the currently displayed framebuffer because the CGB PPU keeps displaying the same data and can still access VRAM in that phase. This is a small STOP/visible-output bridge for current monochrome framebuffer data, not the full Slice 4 CGB palette renderer.
 - The Phase 10 `cgb-speed` ROM suite is manifest-backed; Daid `stop_instr.gb (GBC)` is a blocking absolute grayscale framebuffer fixture, `stop_instr_gbc_mode3.gb` is a blocking rank-normalized framebuffer fixture against the SameBoy/GBEmulatorShootout PASS screen, and `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized framebuffer fixtures.
+- Phase 10 Slice 3 implements native-CGB VRAM and WRAM banking in the bus/memory layer: `VBK` selects CPU-visible VRAM bank `0` or `1` with `$FE | bank` readback, `SVBK` stores the written low three bits with `$F8 | value` readback, and an effective `SVBK` value of `0` maps bank `1` into `D000-DFFF` and its echo alias.
+- CGB bank selection is enabled only when `ConsoleModel::GameBoyColor` is running native `OperatingMode::Cgb`; DMG-family models and CGB-family `GbCompatible` mode read these Slice 3 CGB-only MMIO registers as `$FF`, ignore writes, and keep CPU-visible VRAM/WRAM on the non-banked path.
+- Slice 3 synthesizes locked direct-boot `KEY0` state from the cartridge header for `SkipBoot` so native CGB and CGB compatibility mode have an internal boot-owned mode record, but ordinary runtime `KEY0` reads remain `$FF` and writes are ignored after direct boot. Full real-boot `KEY0` writes, `FF50` handoff locking, and post-lock validation remain Slice 6-owned.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
 
@@ -142,10 +144,8 @@ Priority order:
 These can stay unimplemented in the first DMG-family core as long as the architecture leaves them a clear place:
 
 - real CGB palettes
-- VRAM bank 1 behavior
-- WRAM banks 2-7
-- `KEY0` boot-time semantics and lock behavior
-- strict `cgb-speed` oracle promotion for the remaining Daid framebuffer cases and Blargg timing output
+- CGB PPU consumption of VRAM bank `1` tile attributes and palette state
+- CGB RealBoot `KEY0` writes, `FF50` handoff locking, and RealBoot versus SkipBoot equivalence
 - full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
 - CGB OAM DMA duration differences in double speed
 - HDMA and GDMA

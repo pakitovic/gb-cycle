@@ -220,7 +220,7 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff4e.access(), IoRegisterAccess::Mixed);
     assert_eq!(ff4c.owner(), IoRegisterOwner::CgbSystem);
     assert_eq!(ff4c.availability(), IoRegisterAvailability::CgbOnly);
-    assert_eq!(ff4c.implementation(), IoRegisterImplementation::Stubbed);
+    assert_eq!(ff4c.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff4c.kind(), IoRegisterKind::Key0);
     assert_eq!(ff4d.owner(), IoRegisterOwner::CgbSystem);
     assert_eq!(ff4d.availability(), IoRegisterAvailability::CgbOnly);
@@ -230,9 +230,10 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);
     assert_eq!(ff68.owner(), IoRegisterOwner::Ppu);
     assert_eq!(ff70.owner(), IoRegisterOwner::MemoryController);
+    assert_eq!(ff70.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff72.owner(), IoRegisterOwner::CgbSystem);
     assert_eq!(ff72.availability(), IoRegisterAvailability::CgbOnly);
-    assert_eq!(ff72.implementation(), IoRegisterImplementation::Stubbed);
+    assert_eq!(ff72.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff72.access(), IoRegisterAccess::ReadWrite);
     assert_eq!(ff72.kind(), IoRegisterKind::CgbUndocumented72);
     assert_eq!(ff73.kind(), IoRegisterKind::CgbUndocumented73);
@@ -261,14 +262,50 @@ fn dmg_cgb_only_io_fallback_reads_as_ff() {
 }
 
 #[test]
-fn cgb_ready_stubbed_io_registers_still_read_as_ff_until_implemented() {
+fn native_cgb_bus_owned_io_registers_publish_slice3_readback() {
     let bus = Bus::new(ConsoleModel::GameBoyColor);
 
     assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF4F, BusIoReadView::default()), 0xFE);
+    assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xF8);
+    assert_eq!(bus.read_io_target(0xFF72, BusIoReadView::default()), 0x00);
+    assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0x8F);
+
     assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF68, BusIoReadView::default()), 0xFF);
-    assert_eq!(bus.read_io_target(0xFF72, BusIoReadView::default()), 0xFF);
-    assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0xFF);
+}
+
+#[test]
+fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
+    let bus = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::GbCompatible,
+    );
+
+    for address in [0xFF4C, 0xFF4F, 0xFF70, 0xFF72, 0xFF75] {
+        assert_eq!(bus.read_io_target(address, BusIoReadView::default()), 0xFF);
+    }
+}
+
+#[test]
+fn cgb_key0_direct_boot_state_tracks_header_policy_without_runtime_mutability() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+
+    bus.apply_cgb_startup_state(crate::model::StartupMode::SkipBoot, None);
+    assert_eq!(bus.iohram.key0_state().value(), 0x80);
+    assert!(bus.iohram.key0_state().is_locked());
+
+    bus.iohram.write_key0(0x04);
+    assert_eq!(bus.iohram.key0_state().value(), 0x80);
+
+    let mut cgb_compat = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::GbCompatible,
+    );
+    cgb_compat.apply_cgb_startup_state(crate::model::StartupMode::SkipBoot, None);
+    assert_eq!(cgb_compat.iohram.key0_state().value(), 0x04);
+    assert!(cgb_compat.iohram.key0_state().is_locked());
 }
 
 #[test]

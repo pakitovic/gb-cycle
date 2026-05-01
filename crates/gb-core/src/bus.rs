@@ -11,7 +11,8 @@ mod video;
 mod view;
 mod wram;
 
-use crate::model::ConsoleModel;
+use crate::cartridge::{CartridgeHeader, CgbFlag};
+use crate::model::{ConsoleModel, OperatingMode, StartupMode};
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
@@ -25,12 +26,16 @@ pub use state::{
     BusBlockReason, BusMaster, BusRequester, BusStatus, DmaBusState, DmaCpuAccessPolicy,
     DmaMemoryRegionImpact,
 };
-pub(crate) use video::{OamDomain, VramDomain};
+pub(crate) use video::{OamDomain, VramDomain, VramSaveState};
 pub(crate) use view::{OamBusView, VramBusView};
-pub(crate) use wram::WramDomain;
+pub(crate) use wram::{WramDomain, WramSaveState};
 
-const VRAM_LEN: usize = 0x2000;
-const WRAM_LEN: usize = 0x2000;
+const DMG_VRAM_LEN: usize = 0x2000;
+const CGB_VRAM_LEN: usize = 0x4000;
+const DMG_WRAM_LEN: usize = 0x2000;
+const CGB_WRAM_LEN: usize = 0x8000;
+#[cfg(test)]
+const VRAM_LEN: usize = DMG_VRAM_LEN;
 const OAM_LEN: usize = 0x00A0;
 const HRAM_LEN: usize = 0x007F;
 
@@ -40,6 +45,7 @@ const DMG_UNUSABLE_READ_VALUE: u8 = 0x00;
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Bus {
     console_model: ConsoleModel,
+    operating_mode: OperatingMode,
     status: BusStatus,
     router: AddressRouter,
     vram: VramDomain,
@@ -51,28 +57,39 @@ pub struct Bus {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusSaveState {
     console_model: ConsoleModel,
+    operating_mode: OperatingMode,
     status: BusStatus,
     router: AddressRouter,
-    vram: VramDomain,
-    wram: WramDomain,
+    vram: VramSaveState,
+    wram: WramSaveState,
     oam: OamDomain,
     iohram: IoHramDomain,
 }
 
 impl BusSaveState {
-    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
-        0
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.vram
+            .dynamic_payload_bytes()
+            .saturating_add(self.wram.dynamic_payload_bytes())
     }
 }
 
 impl Bus {
     pub fn new(console_model: ConsoleModel) -> Self {
+        Self::new_with_operating_mode(console_model, console_model.default_operating_mode())
+    }
+
+    pub fn new_with_operating_mode(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) -> Self {
         Self {
             console_model,
+            operating_mode,
             status: BusStatus::Ready,
             router: AddressRouter::new(),
-            vram: VramDomain::new(),
-            wram: WramDomain::new(),
+            vram: VramDomain::new_for_model(console_model),
+            wram: WramDomain::new_for_model(console_model),
             oam: OamDomain::new(),
             iohram: IoHramDomain::new(),
         }
@@ -82,6 +99,14 @@ impl Bus {
         self.console_model
     }
 
+    pub fn operating_mode(&self) -> OperatingMode {
+        self.operating_mode
+    }
+
+    pub fn cgb_extensions_enabled(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
+    }
+
     pub fn status(&self) -> BusStatus {
         self.status
     }
@@ -89,10 +114,11 @@ impl Bus {
     pub(crate) fn capture_save_state(&self) -> BusSaveState {
         BusSaveState {
             console_model: self.console_model,
+            operating_mode: self.operating_mode,
             status: self.status,
             router: self.router,
-            vram: self.vram.clone(),
-            wram: self.wram.clone(),
+            vram: self.vram.capture_save_state(),
+            wram: self.wram.capture_save_state(),
             oam: self.oam.clone(),
             iohram: self.iohram.clone(),
         }
@@ -100,10 +126,11 @@ impl Bus {
 
     pub(crate) fn restore_save_state(&mut self, state: &BusSaveState) {
         self.console_model = state.console_model;
+        self.operating_mode = state.operating_mode;
         self.status = state.status;
         self.router = state.router;
-        self.vram = state.vram.clone();
-        self.wram = state.wram.clone();
+        self.vram.restore_save_state(&state.vram);
+        self.wram.restore_save_state(&state.wram);
         self.oam = state.oam.clone();
         self.iohram = state.iohram.clone();
     }
@@ -129,7 +156,7 @@ impl Bus {
     ///
     /// This is intentionally not a CPU bus read: it bypasses live PPU/DMA arbitration so external tooling can compare emulator state without perturbing the machine or conflating blocked CPU visibility with actual storage.
     pub fn debug_vram_bytes(&self) -> &[u8] {
-        self.vram.bytes()
+        self.vram.debug_bytes()
     }
 
     /// Returns the raw OAM backing bytes for deterministic debug probes.
@@ -143,7 +170,26 @@ impl Bus {
     ///
     /// This is intentionally not a CPU bus read: it bypasses echo routing and arbitration side effects so external tooling can compare storage state directly.
     pub fn debug_wram_bytes(&self) -> &[u8] {
-        self.wram.bytes()
+        self.wram.debug_bytes()
+    }
+
+    pub(crate) fn apply_cgb_startup_state(
+        &mut self,
+        startup_mode: StartupMode,
+        header: Option<&CartridgeHeader>,
+    ) {
+        self.vram.reset_bank_select();
+        self.wram.reset_bank_select();
+        self.iohram.reset_cgb_misc_io();
+
+        if startup_mode == StartupMode::SkipBoot {
+            let cgb_flag = header.map_or(CgbFlag::Supported, |header| header.cgb_flag);
+            self.iohram
+                .apply_direct_boot_key0(self.console_model, self.operating_mode, cgb_flag);
+        } else {
+            self.iohram
+                .reset_real_boot_key0(self.console_model, self.operating_mode);
+        }
     }
 
     /// Returns the raw HRAM backing bytes for deterministic debug probes.

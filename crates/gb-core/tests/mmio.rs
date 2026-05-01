@@ -63,7 +63,7 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
     );
     assert_eq!(
         bus.describe_io_register(0xFF4C).unwrap().implementation(),
-        IoRegisterImplementation::Stubbed
+        IoRegisterImplementation::Implemented
     );
     assert_eq!(
         bus.describe_io_register(0xFF51).unwrap().owner(),
@@ -355,6 +355,176 @@ fn serial_snapshot_and_debug_view_expose_the_pending_transfer_shape() {
     assert!(rendered.contains("serial.sb=0x3C"));
     assert!(rendered.contains("serial.clock_mode=External"));
     assert!(rendered.contains("serial.transfer_state=TransferRequested { bits_shifted: 0 }"));
+}
+
+#[test]
+fn native_cgb_vbk_selects_independent_vram_banks() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.debug_vram_bytes().len(), 0x4000);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFE);
+
+    machine.write_bus(0x8000, 0x11);
+    machine.write_bus(0x9FFF, 0x12);
+    machine.write_bus(0xFF4F, 0x01);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+    machine.write_bus(0x8000, 0x21);
+    machine.write_bus(0x9FFF, 0x22);
+
+    assert_eq!(machine.read_bus(0x8000), 0x21);
+    assert_eq!(machine.read_bus(0x9FFF), 0x22);
+    machine.write_bus(0xFF4F, 0x00);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFE);
+    assert_eq!(machine.read_bus(0x8000), 0x11);
+    assert_eq!(machine.read_bus(0x9FFF), 0x12);
+
+    let vram = machine.debug_vram_bytes();
+    assert_eq!(vram[0x0000], 0x11);
+    assert_eq!(vram[0x1FFF], 0x12);
+    assert_eq!(vram[0x2000], 0x21);
+    assert_eq!(vram[0x3FFF], 0x22);
+}
+
+#[test]
+fn native_cgb_svbk_selects_wram_banks_and_echo_aliases_selected_bank() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.debug_wram_bytes().len(), 0x8000);
+    assert_eq!(machine.read_bus(0xFF70), 0xF8);
+
+    machine.write_bus(0xC123, 0x10);
+    machine.write_bus(0xD123, 0x11);
+    machine.write_bus(0xFF70, 0x02);
+    assert_eq!(machine.read_bus(0xFF70), 0xFA);
+    machine.write_bus(0xD123, 0x22);
+    machine.write_bus(0xF123, 0x33);
+    assert_eq!(machine.read_bus(0xD123), 0x33);
+
+    machine.write_bus(0xE123, 0x44);
+    assert_eq!(machine.read_bus(0xC123), 0x44);
+
+    machine.write_bus(0xFF70, 0x01);
+    assert_eq!(machine.read_bus(0xD123), 0x11);
+    machine.write_bus(0xFF70, 0x00);
+    assert_eq!(machine.read_bus(0xFF70), 0xF8);
+    assert_eq!(machine.read_bus(0xD123), 0x11);
+    machine.write_bus(0xFF70, 0x02);
+    assert_eq!(machine.read_bus(0xD123), 0x33);
+
+    let wram = machine.debug_wram_bytes();
+    assert_eq!(wram[0x0123], 0x44);
+    assert_eq!(wram[0x1123], 0x11);
+    assert_eq!(wram[0x2123], 0x33);
+}
+
+#[test]
+fn native_cgb_undocumented_slice3_registers_keep_mixed_bit_readback() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.read_bus(0xFF72), 0x00);
+    assert_eq!(machine.read_bus(0xFF73), 0x00);
+    assert_eq!(machine.read_bus(0xFF74), 0x00);
+    assert_eq!(machine.read_bus(0xFF75), 0x8F);
+
+    machine.write_bus(0xFF72, 0xA5);
+    machine.write_bus(0xFF73, 0x5A);
+    machine.write_bus(0xFF74, 0x3C);
+    machine.write_bus(0xFF75, 0x70);
+
+    assert_eq!(machine.read_bus(0xFF72), 0xA5);
+    assert_eq!(machine.read_bus(0xFF73), 0x5A);
+    assert_eq!(machine.read_bus(0xFF74), 0x3C);
+    assert_eq!(machine.read_bus(0xFF75), 0xFF);
+
+    machine.write_bus(0xFF75, 0x20);
+    assert_eq!(machine.read_bus(0xFF75), 0xAF);
+}
+
+#[test]
+fn native_cgb_slice3_state_survives_save_restore() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0x8000, 0x11);
+    machine.write_bus(0xFF4F, 0x01);
+    machine.write_bus(0x8000, 0x22);
+    machine.write_bus(0xD123, 0x31);
+    machine.write_bus(0xFF70, 0x02);
+    machine.write_bus(0xD123, 0x42);
+    machine.write_bus(0xFF72, 0xA5);
+    machine.write_bus(0xFF73, 0x5A);
+    machine.write_bus(0xFF74, 0x3C);
+    machine.write_bus(0xFF75, 0x70);
+
+    let saved = machine.capture_save_state();
+    assert!(
+        saved.deep_size_bytes() > std::mem::size_of_val(&saved),
+        "CGB VRAM/WRAM save-state payloads must remain accounted as dynamic storage"
+    );
+
+    machine.write_bus(0xFF4F, 0x00);
+    machine.write_bus(0x8000, 0x99);
+    machine.write_bus(0xFF70, 0x03);
+    machine.write_bus(0xD123, 0x88);
+    machine.write_bus(0xFF72, 0x00);
+    machine.write_bus(0xFF75, 0x00);
+
+    machine
+        .restore_save_state(&saved)
+        .expect("matching CGB save state should restore");
+
+    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+    assert_eq!(machine.read_bus(0x8000), 0x22);
+    machine.write_bus(0xFF4F, 0x00);
+    assert_eq!(machine.read_bus(0x8000), 0x11);
+
+    assert_eq!(machine.read_bus(0xFF70), 0xFA);
+    assert_eq!(machine.read_bus(0xD123), 0x42);
+    machine.write_bus(0xFF70, 0x01);
+    assert_eq!(machine.read_bus(0xD123), 0x31);
+
+    assert_eq!(machine.read_bus(0xFF72), 0xA5);
+    assert_eq!(machine.read_bus(0xFF73), 0x5A);
+    assert_eq!(machine.read_bus(0xFF74), 0x3C);
+    assert_eq!(machine.read_bus(0xFF75), 0xFF);
+}
+
+#[test]
+fn non_cgb_modes_ignore_slice3_cgb_banking_and_misc_writes() {
+    let mut dmg = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    assert_eq!(dmg.debug_vram_bytes().len(), 0x2000);
+    assert_eq!(dmg.debug_wram_bytes().len(), 0x2000);
+    dmg.write_bus(0x8000, 0x11);
+    dmg.write_bus(0xFF4F, 0x01);
+    dmg.write_bus(0x8000, 0x22);
+    assert_eq!(dmg.read_bus(0xFF4F), 0xFF);
+    assert_eq!(dmg.read_bus(0x8000), 0x22);
+    dmg.write_bus(0xFF72, 0xA5);
+    assert_eq!(dmg.read_bus(0xFF72), 0xFF);
+
+    let mut cgb_compat = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_operating_mode(gb_core::OperatingMode::GbCompatible)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    cgb_compat.write_bus(0x8000, 0x31);
+    cgb_compat.write_bus(0xFF4F, 0x01);
+    cgb_compat.write_bus(0x8000, 0x32);
+    assert_eq!(cgb_compat.read_bus(0xFF4F), 0xFF);
+    assert_eq!(cgb_compat.read_bus(0x8000), 0x32);
+    cgb_compat.write_bus(0xFF70, 0x03);
+    assert_eq!(cgb_compat.read_bus(0xFF70), 0xFF);
+    cgb_compat.write_bus(0xFF75, 0x70);
+    assert_eq!(cgb_compat.read_bus(0xFF75), 0xFF);
 }
 
 #[test]

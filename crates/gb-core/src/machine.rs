@@ -257,7 +257,7 @@ impl<S: TraceSink> Machine<S> {
             tracer,
             debug_controls: DebugControl::new(),
             cpu: CpuCore::new(console_model),
-            bus: Bus::new(console_model),
+            bus: Bus::new_with_operating_mode(console_model, operating_mode),
             apu: Apu::new(console_model),
             ppu: Ppu::new(console_model),
             dma: DmaController::new(console_model),
