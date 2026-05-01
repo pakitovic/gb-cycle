@@ -94,6 +94,15 @@ const CGB_BG_ATTR_Y_FLIP_BIT: u8 = 0x40;
 #[allow(dead_code)]
 const CGB_BG_ATTR_PRIORITY_BIT: u8 = 0x80;
 const CGB_BG_ATTR_BANK: u8 = 1;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_PALETTE_MASK: u8 = 0x07;
+const CGB_OBJ_ATTR_VRAM_BANK_BIT: u8 = 0x08;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_DMG_PALETTE_BIT: u8 = 0x10;
+const CGB_OBJ_ATTR_X_FLIP_BIT: u8 = 0x20;
+const CGB_OBJ_ATTR_Y_FLIP_BIT: u8 = 0x40;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_BG_OVER_OBJ_BIT: u8 = 0x80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {

@@ -1,6 +1,7 @@
 use super::*;
 
 mod arbitration;
+mod cgb;
 mod fetch;
 mod render;
 mod same_x;

@@ -69,6 +69,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - Keep MMIO-owned storage separate from the register view currently visible to the active pixel pipeline.
 - That active-pipeline-visible register view should drive Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other in-flight pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
 - In CGB-family BG/window fetch, the tile-number byte comes from VRAM bank `0` and the corresponding tile-map attribute byte comes from VRAM bank `1` at the same map offset; the fetched slice must keep the raw attribute byte stable for already-fetched pixels, use bit `3` for tile-data bank selection, apply bits `5` and `6` before producing the two-bit logical color index, and carry bits `0-2` plus bit `7` forward without requiring RGB555 rendering in the same step.
+- In the CGB-family OBJ fetch baseline, the tile index and attribute byte come from the existing live Mode `3` OAM metadata read; the fetched OBJ tile data must ignore CPU `VBK` and use the attribute bit `3` VRAM bank, the logical OBJ color index must apply bits `5` and `6` for horizontal and vertical flips, and the winning OBJ FIFO pixel must carry the raw CGB OBJ attribute sideband so bits `0-2` and `7` remain available for later RGB555 palette lookup and final BG/OBJ composition.
 - The design should also leave room for a previous-dot or pipeline-visible snapshot where live-write-sensitive DMG behavior needs it, especially for window activation, tile-data selection, and palette-conflict handling.
 - Mode `3` live `SCY` writes should distinguish the BG tilemap row (`(SCY + LY) / 8`) from the tile-data row (`(SCY + LY) % 8`). A write that changes only the tile-data row can retarget pending BG tiledata without rereading the tilemap; a write that crosses a tilemap row can request a full BG tilemap/tiledata refetch while the slice is still in an explicit live-refetch window.
 - Live `SCY` handling must preserve independent low-plane and high-plane tiledata provenance when a write lands between the two plane reads. Startup-alignment and early visible-tile seams need explicit latch/retarget state rather than a generic cached-slice recomputation, because hardware-visible pixels can combine old and new row sources within one 8-pixel slice.
@@ -188,7 +189,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - A sprite with `Y = 0` or `Y >= 160` should be treated as vertically hidden.
 - A sprite with `X = 0` or `X >= 168` should be treated as horizontally off-screen.
 - In `8x16` mode, bit `0` of the tile index should always be ignored so the upper tile is even-aligned and the lower tile is the following odd tile.
-- Per-sprite attributes should explicitly include at least BG-over-OBJ priority, X flip, Y flip, and DMG palette selection `OBP0` or `OBP1`.
+- Per-sprite attributes should explicitly include at least BG-over-OBJ priority, X flip, Y flip, DMG palette selection `OBP0` or `OBP1`, and the CGB-only OBJ tile VRAM bank plus OBJ palette index sideband.
 
 ## Mode 2 sprite-selection baseline
 

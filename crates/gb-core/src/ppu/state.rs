@@ -226,6 +226,7 @@ impl CgbBgTileAttributes {
         Self { raw }
     }
 
+    #[allow(dead_code)]
     pub(super) const fn raw(self) -> u8 {
         self.raw
     }
@@ -259,6 +260,57 @@ impl CgbBgTileAttributes {
     #[allow(dead_code)]
     pub(super) const fn bg_priority(self) -> bool {
         self.raw & CGB_BG_ATTR_PRIORITY_BIT != 0
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) struct CgbObjAttributes {
+    raw: u8,
+}
+
+impl CgbObjAttributes {
+    pub(super) const fn new(raw: u8) -> Self {
+        Self { raw }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn raw(self) -> u8 {
+        self.raw
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn palette_index(self) -> u8 {
+        self.raw & CGB_OBJ_ATTR_PALETTE_MASK
+    }
+
+    pub(super) const fn tile_vram_bank(self) -> u8 {
+        if self.raw & CGB_OBJ_ATTR_VRAM_BANK_BIT != 0 {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn dmg_palette_obp1(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_DMG_PALETTE_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn horizontal_flip(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_X_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn vertical_flip(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_Y_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn bg_over_obj(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_BG_OVER_OBJ_BIT != 0
     }
 }
 
@@ -3422,6 +3474,8 @@ pub(super) struct ObjPixel {
     pub(super) color: u8,
     pub(super) palette_obp1: bool,
     pub(super) bg_over_obj: bool,
+    #[serde(default)]
+    pub(super) cgb_obj_attrs: Option<CgbObjAttributes>,
     pub(super) sprite_x: u8,
     pub(super) oam_index: u8,
 }
@@ -3432,6 +3486,7 @@ impl ObjPixel {
             color: 0,
             palette_obp1: false,
             bg_over_obj: false,
+            cgb_obj_attrs: None,
             sprite_x: u8::MAX,
             oam_index: u8::MAX,
         }

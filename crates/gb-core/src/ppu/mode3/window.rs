@@ -294,20 +294,13 @@ impl Ppu {
                 continue;
             };
             let tile_address = tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES;
-            let tile_low = vram.read(tile_address as usize).unwrap_or(0);
-            let tile_high = vram.read(tile_address as usize + 1).unwrap_or(0);
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel as u8
-            } else {
-                7 - tile_pixel as u8
-            };
-            let candidate = ObjPixel {
-                color: (((tile_high >> bit) & 0x01) << 1) | ((tile_low >> bit) & 0x01),
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let bank = self.obj_tile_data_vram_bank(sprite);
+            let tile_low = vram.read_bank(bank, tile_address as usize).unwrap_or(0);
+            let tile_high = vram.read_bank(bank, tile_address as usize + 1).unwrap_or(0);
+            let candidate = self.obj_pixel_from_sprite(
+                sprite,
+                obj_tile_pixel_value(tile_low, tile_high, tile_pixel as u8, sprite.attributes),
+            );
             if obj_pixel_has_priority(candidate, front) {
                 front = candidate;
             }

@@ -169,6 +169,7 @@ fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 8,
         oam_index: 0,
     });
@@ -193,6 +194,7 @@ fn later_visible_pixels_use_the_delayed_lcdc_copy() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 9,
         oam_index: 0,
     });
@@ -635,6 +637,7 @@ fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 8,
         oam_index: 0,
     });
@@ -671,6 +674,7 @@ fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 8,
         oam_index: 0,
     });
@@ -711,6 +715,7 @@ fn later_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 9,
         oam_index: 0,
     });
@@ -2943,6 +2948,7 @@ fn cpu_mmio_bgp_write_with_future_obj_pixels_starts_and_consumes_the_bg_visible_
         color: 1,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 12,
         oam_index: 0,
     });
@@ -2950,6 +2956,7 @@ fn cpu_mmio_bgp_write_with_future_obj_pixels_starts_and_consumes_the_bg_visible_
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 13,
         oam_index: 0,
     });

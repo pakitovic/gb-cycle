@@ -204,15 +204,41 @@ impl Ppu {
     pub(super) fn read_obj_tile_data_byte_for_resolved_tile(
         &mut self,
         vram: &VramBusView<'_>,
+        sprite: PpuSelectedSprite,
         tile_index: u8,
         tile_row: u8,
         plane: u16,
     ) -> u8 {
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
-        let tile_data = vram.read(byte_address as usize).unwrap_or(0);
+        let tile_data = vram
+            .read_bank(self.obj_tile_data_vram_bank(sprite), byte_address as usize)
+            .unwrap_or(0);
         self.last_unsigned_tile_data_fetch = tile_data;
         tile_data
+    }
+
+    pub(super) fn obj_tile_data_vram_bank(&self, sprite: PpuSelectedSprite) -> u8 {
+        self.cgb_obj_attributes(sprite)
+            .map(CgbObjAttributes::tile_vram_bank)
+            .unwrap_or(0)
+    }
+
+    pub(super) fn cgb_obj_attributes(&self, sprite: PpuSelectedSprite) -> Option<CgbObjAttributes> {
+        self.console_model
+            .is_cgb_family()
+            .then_some(CgbObjAttributes::new(sprite.attributes))
+    }
+
+    pub(super) fn obj_pixel_from_sprite(&self, sprite: PpuSelectedSprite, color: u8) -> ObjPixel {
+        ObjPixel {
+            color,
+            palette_obp1: sprite.attributes & CGB_OBJ_ATTR_DMG_PALETTE_BIT != 0,
+            bg_over_obj: sprite.attributes & CGB_OBJ_ATTR_BG_OVER_OBJ_BIT != 0,
+            cgb_obj_attrs: self.cgb_obj_attributes(sprite),
+            sprite_x: sprite.x,
+            oam_index: sprite.oam_index,
+        }
     }
 
     pub(super) fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
@@ -229,7 +255,7 @@ impl Ppu {
         if row >= height {
             return None;
         }
-        if sprite.attributes & 0x40 != 0 {
+        if sprite.attributes & CGB_OBJ_ATTR_Y_FLIP_BIT != 0 {
             row = height - 1 - row;
         }
 
@@ -262,7 +288,7 @@ impl Ppu {
         }
 
         let mut row = raw_row & 0x07;
-        if sprite.attributes & 0x40 != 0 {
+        if sprite.attributes & CGB_OBJ_ATTR_Y_FLIP_BIT != 0 {
             row = 7 - row;
         }
 
@@ -280,14 +306,7 @@ impl Ppu {
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
         for tile_pixel in 0..BG_TILE_WIDTH {
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel
-            } else {
-                7 - tile_pixel
-            };
-            let low_bit = (tile_low >> bit) & 0x01;
-            let high_bit = (tile_high >> bit) & 0x01;
-            let color = (high_bit << 1) | low_bit;
+            let color = obj_tile_pixel_value(tile_low, tile_high, tile_pixel, sprite.attributes);
             let screen_x = sprite_screen_x + tile_pixel as i16;
             if screen_x < fifo_front_screen_x || screen_x >= SCREEN_WIDTH as i16 {
                 continue;
@@ -303,13 +322,7 @@ impl Ppu {
                     .push_back(ObjPixel::transparent());
             }
 
-            let candidate = ObjPixel {
-                color,
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let candidate = self.obj_pixel_from_sprite(sprite, color);
 
             let slot = self
                 .obj_pipeline_state
@@ -333,20 +346,10 @@ impl Ppu {
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
         for tile_pixel in 0..BG_TILE_WIDTH {
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel
-            } else {
-                7 - tile_pixel
-            };
-            let low_bit = (tile_low >> bit) & 0x01;
-            let high_bit = (tile_high >> bit) & 0x01;
-            let candidate = ObjPixel {
-                color: (high_bit << 1) | low_bit,
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let candidate = self.obj_pixel_from_sprite(
+                sprite,
+                obj_tile_pixel_value(tile_low, tile_high, tile_pixel, sprite.attributes),
+            );
             let screen_x = sprite_screen_x + tile_pixel as i16;
             if screen_x < fifo_front_screen_x || screen_x >= SCREEN_WIDTH as i16 {
                 continue;

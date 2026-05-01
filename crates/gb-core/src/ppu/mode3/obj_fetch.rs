@@ -296,8 +296,11 @@ impl Ppu {
         self.runtime.obj_pipeline_state.fetch.tile_low = fetch
             .resolved_tile_index
             .zip(fetch.resolved_tile_row)
-            .map(|(tile_index, tile_row)| {
-                self.read_obj_tile_data_byte_for_resolved_tile(vram, tile_index, tile_row, 0)
+            .zip(fetch.resolved_sprite)
+            .map(|((tile_index, tile_row), sprite)| {
+                self.read_obj_tile_data_byte_for_resolved_tile(
+                    vram, sprite, tile_index, tile_row, 0,
+                )
             })
             .unwrap_or(0);
         self.runtime.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
@@ -316,8 +319,11 @@ impl Ppu {
         self.runtime.obj_pipeline_state.fetch.tile_high = fetch
             .resolved_tile_index
             .zip(fetch.resolved_tile_row)
-            .map(|(tile_index, tile_row)| {
-                self.read_obj_tile_data_byte_for_resolved_tile(vram, tile_index, tile_row, 1)
+            .zip(fetch.resolved_sprite)
+            .map(|((tile_index, tile_row), sprite)| {
+                self.read_obj_tile_data_byte_for_resolved_tile(
+                    vram, sprite, tile_index, tile_row, 1,
+                )
             })
             .unwrap_or(0);
         self.runtime.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
@@ -453,20 +459,10 @@ impl Ppu {
                 continue;
             }
 
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel as u8
-            } else {
-                7 - tile_pixel as u8
-            };
-            let low_bit = (tile_low >> bit) & 0x01;
-            let high_bit = (tile_high >> bit) & 0x01;
-            let candidate = ObjPixel {
-                color: (high_bit << 1) | low_bit,
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let candidate = self.obj_pixel_from_sprite(
+                sprite,
+                obj_tile_pixel_value(tile_low, tile_high, tile_pixel as u8, sprite.attributes),
+            );
             if background_only && candidate.is_transparent() {
                 continue;
             }

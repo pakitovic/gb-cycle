@@ -1670,6 +1670,7 @@ fn startup_scy_visible_tile2_placeholder_preserves_obj_mixing_priority() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 16,
         oam_index: 0,
     });
