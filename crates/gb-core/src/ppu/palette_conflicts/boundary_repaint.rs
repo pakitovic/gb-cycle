@@ -139,12 +139,12 @@ impl Ppu {
                 continue;
             }
             let mixed_pixel = self.previous_scanline_mixed_pixels[x];
-            self.framebuffer[row_start + x] = self
-                .map_mixed_pixel_to_panel_shade_with_palette_override(
-                    mixed_pixel,
-                    PpuPaletteRegister::Bgp,
-                    palette,
-                );
+            let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
+                mixed_pixel,
+                PpuPaletteRegister::Bgp,
+                palette,
+            );
+            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
         }
     }
 

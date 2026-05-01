@@ -476,11 +476,18 @@ impl Ppu {
             }
 
             let bg_pixel = self.runtime.panel.current_scanline_bg_pixels[visible_x];
+            let cgb_bg_attrs =
+                self.runtime.panel.current_scanline_mixed_pixels[visible_x].cgb_bg_attrs;
             let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
             let output_pixel = if candidate.is_transparent() {
-                MixedPixel::background(bg_pixel)
+                MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs)
             } else {
-                self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, candidate)
+                self.mix_bg_and_obj(
+                    bg_pixel,
+                    cgb_bg_attrs,
+                    effective_bg_priority_pixel,
+                    candidate,
+                )
             };
             let dmg_bg_forced_white =
                 self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);

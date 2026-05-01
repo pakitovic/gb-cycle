@@ -140,6 +140,7 @@ Priority order:
 - Native CGB palette MMIO is enabled only when `ConsoleModel::GameBoyColor` is running `OperatingMode::Cgb`; DMG-family models and CGB-family `GbCompatible` mode keep these CGB-only palette data/index registers unavailable until the later compatibility-palette rendering path is modeled explicitly.
 - Phase 10 Slice 4B latches CGB BG/window tile-map attributes from VRAM bank `1` alongside the corresponding tile-number entry from VRAM bank `0`, preserves the raw attribute byte including writable/readable ignored bit `4`, uses bit `3` to select the tile-data VRAM bank, applies horizontal and vertical flips to the logical two-bit color index path, and carries palette index plus BG priority as fetcher/FIFO sideband for later RGB555 and BG/OBJ composition work.
 - Phase 10 Slice 4C consumes CGB OBJ attributes from the Mode `3` live OAM metadata path, uses bit `3` to select OBJ tile data from VRAM bank `0` or `1`, applies horizontal and vertical flip bits before producing logical two-bit OBJ color indices, preserves OBJ palette index and BG-over-OBJ priority as OBJ FIFO sideband, and keeps color index `0` transparent without enabling full RGB555 output or final CGB BG/OBJ priority composition yet.
+- Phase 10 Slice 4D adds a parallel CGB framebuffer surface containing raw logical RGB555 pixels: visible CGB BG/window pixels look up `BCPD` palette RAM through the latched BG attribute palette index, visible CGB OBJ pixels look up `OCPD` palette RAM through the latched OBJ attribute palette index, OBJ color index `0` still resolves as transparency before any OBJ palette lookup, and the existing grayscale framebuffer remains unchanged for DMG/frontends while broader compatibility palettes, `LCDC.0`, `OPRI`, and final CGB BG/OBJ priority composition remain deferred.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
 
@@ -147,8 +148,8 @@ Priority order:
 
 These can stay unimplemented in the first DMG-family core as long as the architecture leaves them a clear place:
 
-- CGB RGB555 palette rendering through latched fetcher attributes and compatibility palette seeding
-- final CGB OBJ RGB555 palette lookup and BG/OBJ priority composition
+- CGB compatibility palette seeding and routing
+- final CGB BG/OBJ priority composition, including `LCDC.0`, OBJ priority policy, and `OPRI`
 - CGB RealBoot `KEY0` writes, `FF50` handoff locking, and RealBoot versus SkipBoot equivalence
 - full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
 - CGB OAM DMA duration differences in double speed

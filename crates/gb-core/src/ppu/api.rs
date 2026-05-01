@@ -1051,6 +1051,12 @@ impl Ppu {
         &self.framebuffer
     }
 
+    pub fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+        self.console_model
+            .is_cgb_family()
+            .then_some(self.framebuffer_rgb555.as_slice())
+    }
+
     pub fn framebuffer_layer_sources(&self) -> &[PpuFramebufferLayerSource] {
         &self.framebuffer_layer_sources
     }
@@ -1093,8 +1099,29 @@ impl Ppu {
     ) {
         let framebuffer_index = row_start + visible_x;
         self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] =
+            self.framebuffer_rgb555_pixel(output_pixel, panel_pixel);
         self.framebuffer_layer_sources[framebuffer_index] =
             self.framebuffer_layer_source_for_output_pixel(visible_x, output_pixel);
+    }
+
+    pub(super) fn write_framebuffer_panel_shade(
+        &mut self,
+        framebuffer_index: usize,
+        panel_pixel: u8,
+    ) {
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] = panel_shade_to_rgb555(panel_pixel);
+    }
+
+    fn framebuffer_rgb555_pixel(&self, output_pixel: MixedPixel, panel_pixel: u8) -> u16 {
+        if self.console_model.is_cgb_family()
+            && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
+        {
+            self.map_mixed_pixel_to_cgb_rgb555(output_pixel)
+        } else {
+            panel_shade_to_rgb555(panel_pixel)
+        }
     }
 
     pub(super) fn write_bgwin_framebuffer_pixel(

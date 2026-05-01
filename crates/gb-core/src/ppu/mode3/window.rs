@@ -221,7 +221,13 @@ impl Ppu {
             self.runtime.panel.visible_output == PpuVisibleOutputState::Driving;
         let obj_pixel = self.observed_obj_pixel_for_visible_x(visible_x as u8, vram);
         let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
-        let output_pixel = self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
+        let cgb_bg_attrs = self.runtime.panel.current_scanline_mixed_pixels[visible_x].cgb_bg_attrs;
+        let output_pixel = self.mix_bg_and_obj(
+            bg_pixel,
+            cgb_bg_attrs,
+            effective_bg_priority_pixel,
+            obj_pixel,
+        );
         let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
             output_pixel.color

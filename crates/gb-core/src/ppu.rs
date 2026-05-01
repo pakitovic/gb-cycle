@@ -45,6 +45,10 @@ const STAT_MODE0_INTERRUPT_ENABLE_BIT: u8 = 0x08;
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
+const RGB555_WHITE: u16 = 0x7FFF;
+const RGB555_LIGHT_GRAY: u16 = 0x5294;
+const RGB555_DARK_GRAY: u16 = 0x294A;
+const RGB555_BLACK: u16 = 0x0000;
 const DOTS_PER_SCANLINE: u16 = 456;
 const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 0;
@@ -103,6 +107,15 @@ const CGB_OBJ_ATTR_X_FLIP_BIT: u8 = 0x20;
 const CGB_OBJ_ATTR_Y_FLIP_BIT: u8 = 0x40;
 #[allow(dead_code)]
 const CGB_OBJ_ATTR_BG_OVER_OBJ_BIT: u8 = 0x80;
+
+const fn panel_shade_to_rgb555(shade: u8) -> u16 {
+    match shade {
+        0 => RGB555_WHITE,
+        1 => RGB555_LIGHT_GRAY,
+        2 => RGB555_DARK_GRAY,
+        _ => RGB555_BLACK,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {
@@ -389,6 +402,8 @@ pub struct PpuPanelState {
     previous_scanline_ly: Option<u8>,
     pending_dmg_window_lcdc4_output_repaint: Option<BgTileDataSelect>,
     framebuffer: Vec<u8>,
+    #[serde(default = "default_framebuffer_rgb555")]
+    framebuffer_rgb555: Vec<u16>,
     framebuffer_layer_sources: Vec<PpuFramebufferLayerSource>,
     framebuffer_bgwin_colors: Vec<u8>,
     framebuffer_bgwin_forced_white: Vec<bool>,
@@ -412,6 +427,7 @@ impl Default for PpuPanelState {
             previous_scanline_ly: None,
             pending_dmg_window_lcdc4_output_repaint: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_rgb555: vec![RGB555_WHITE; FRAMEBUFFER_PIXELS],
             framebuffer_layer_sources: vec![
                 PpuFramebufferLayerSource::Backdrop;
                 FRAMEBUFFER_PIXELS
@@ -428,11 +444,20 @@ impl Default for PpuPanelState {
     }
 }
 
+fn default_framebuffer_rgb555() -> Vec<u16> {
+    vec![RGB555_WHITE; FRAMEBUFFER_PIXELS]
+}
+
 impl PpuPanelState {
     fn dynamic_payload_bytes(&self) -> usize {
         self.dmg_panel_live_write_state
             .dynamic_payload_bytes()
             .saturating_add(self.framebuffer.len())
+            .saturating_add(
+                self.framebuffer_rgb555
+                    .len()
+                    .saturating_mul(mem::size_of::<u16>()),
+            )
             .saturating_add(
                 self.framebuffer_layer_sources
                     .len()

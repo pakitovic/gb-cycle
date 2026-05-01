@@ -465,17 +465,22 @@ impl Ppu {
     pub(super) fn mix_bg_and_obj(
         &self,
         bg_pixel: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
         effective_bg_priority_pixel: u8,
         obj_pixel: ObjPixel,
     ) -> MixedPixel {
         if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
-            return MixedPixel::background(bg_pixel);
+            return MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs);
         }
 
         if obj_pixel.bg_over_obj && effective_bg_priority_pixel != 0 {
-            MixedPixel::background(bg_pixel)
+            MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs)
         } else {
-            MixedPixel::object(obj_pixel.color, obj_pixel.palette_obp1)
+            MixedPixel::object_with_cgb_attrs(
+                obj_pixel.color,
+                obj_pixel.palette_obp1,
+                obj_pixel.cgb_obj_attrs,
+            )
         }
     }
 
@@ -487,6 +492,23 @@ impl Ppu {
             self.obj_palette_read_policy,
         );
         self.apply_dmg_palette(palette, pixel.color)
+    }
+
+    pub(super) fn map_mixed_pixel_to_cgb_rgb555(&self, pixel: MixedPixel) -> u16 {
+        match pixel.source {
+            MixedPixelSource::Background => {
+                let attrs = pixel.cgb_bg_attrs.unwrap_or_default();
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Background)
+                    .rgb555(attrs.palette_index(), pixel.color)
+            }
+            MixedPixelSource::Object { .. } => {
+                let attrs = pixel.cgb_obj_attrs.unwrap_or_default();
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Object)
+                    .rgb555(attrs.palette_index(), pixel.color)
+            }
+        }
     }
 
     pub(super) fn dmg_bg_panel_dot_is_forced_white(

@@ -180,6 +180,11 @@ impl CgbPalettePort {
     fn address(&self) -> usize {
         usize::from(self.index & CGB_PALETTE_INDEX_ADDRESS_MASK)
     }
+
+    pub(super) fn rgb555(&self, palette_index: u8, color_index: u8) -> u16 {
+        let address = usize::from((palette_index & 0x07) * 8 + (color_index & 0x03) * 2);
+        u16::from_le_bytes([self.data[address], self.data[address + 1]]) & 0x7FFF
+    }
 }
 
 impl Default for CgbPalettePort {
@@ -3061,6 +3066,28 @@ impl BgFifoPixel {
     pub(super) const fn color(self) -> u8 {
         self.color
     }
+
+    pub(super) const fn cgb_bg_attrs(self) -> Option<CgbBgTileAttributes> {
+        match self.cached {
+            Some(cached) => cached.cached.cgb_bg_attrs,
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct BgOutputPixel {
+    pub(super) color: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
+}
+
+impl BgOutputPixel {
+    pub(super) const fn new(color: u8, cgb_bg_attrs: Option<CgbBgTileAttributes>) -> Self {
+        Self {
+            color,
+            cgb_bg_attrs,
+        }
+    }
 }
 
 pub(super) fn recompute_live_background_cached_slice(
@@ -3501,20 +3528,44 @@ impl ObjPixel {
 pub(super) struct MixedPixel {
     pub(super) color: u8,
     pub(super) source: MixedPixelSource,
+    #[serde(default)]
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
+    #[serde(default)]
+    pub(super) cgb_obj_attrs: Option<CgbObjAttributes>,
 }
 
 impl MixedPixel {
     pub(super) const fn background(color: u8) -> Self {
+        Self::background_with_cgb_attrs(color, None)
+    }
+
+    pub(super) const fn background_with_cgb_attrs(
+        color: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
+    ) -> Self {
         Self {
             color,
             source: MixedPixelSource::Background,
+            cgb_bg_attrs,
+            cgb_obj_attrs: None,
         }
     }
 
+    #[allow(dead_code)]
     pub(super) const fn object(color: u8, palette_obp1: bool) -> Self {
+        Self::object_with_cgb_attrs(color, palette_obp1, None)
+    }
+
+    pub(super) const fn object_with_cgb_attrs(
+        color: u8,
+        palette_obp1: bool,
+        cgb_obj_attrs: Option<CgbObjAttributes>,
+    ) -> Self {
         Self {
             color,
             source: MixedPixelSource::Object { palette_obp1 },
+            cgb_bg_attrs: None,
+            cgb_obj_attrs,
         }
     }
 }

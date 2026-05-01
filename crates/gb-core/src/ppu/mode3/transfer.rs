@@ -107,14 +107,23 @@ impl Ppu {
             .expect("visible transfer plans must carry a BG pixel");
         let bg_enabled = self.pixel_transfer_bg_enabled();
         let visible_x = self.runtime.bg_pipeline_state.visible_pixels_output;
-        let bg_pixel = self
-            .compute_startup_visible_tile2_scy_placeholder_pixel(visible_x, vram)
-            .unwrap_or(bg_pixel);
-        let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
+        let bg_pixel = if let Some(override_color) =
+            self.compute_startup_visible_tile2_scy_placeholder_pixel(visible_x, vram)
+        {
+            BgOutputPixel::new(override_color, None)
+        } else {
+            bg_pixel
+        };
+        let effective_bg_priority_pixel = if bg_enabled { bg_pixel.color } else { 0 };
         let obj_pixel = self.pop_obj_fifo_pixel();
         let obj_pixel =
             self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram);
-        let output_pixel = self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
+        let output_pixel = self.mix_bg_and_obj(
+            bg_pixel.color,
+            bg_pixel.cgb_bg_attrs,
+            effective_bg_priority_pixel,
+            obj_pixel,
+        );
         let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let panel_pixel = if self.runtime.panel.visible_output == PpuVisibleOutputState::Driving {
             if dmg_bg_forced_white {
@@ -133,11 +142,11 @@ impl Ppu {
             0
         };
         let visible_x_index = visible_x as usize;
-        self.runtime.panel.current_scanline_bg_pixels[visible_x_index] = bg_pixel;
+        self.runtime.panel.current_scanline_bg_pixels[visible_x_index] = bg_pixel.color;
         self.write_bgwin_framebuffer_pixel(
             self.ly as usize * SCREEN_WIDTH,
             visible_x_index,
-            bg_pixel,
+            bg_pixel.color,
             bg_enabled,
         );
         self.runtime.panel.current_scanline_mixed_pixels[visible_x_index] = output_pixel;
@@ -151,7 +160,7 @@ impl Ppu {
             panel_pixel,
         );
         self.record_dmg_recent_panel_dot(visible_x_index as u8, output_pixel, dmg_bg_forced_white);
-        self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel);
+        self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
         self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
         self.consume_dmg_lcdc0_bg_enable_visible_hold();
         self.consume_dmg_lcdc1_obj_enable_visible_hold();
@@ -168,9 +177,10 @@ impl Ppu {
     pub(in crate::ppu) fn pop_visible_bg_fifo_pixel(
         &mut self,
         vram: &VramBusView<'_>,
-    ) -> Option<u8> {
+    ) -> Option<BgOutputPixel> {
         let visible_x = self.runtime.bg_pipeline_state.visible_pixels_output as usize;
         let mut pixel = self.runtime.bg_pipeline_state.pop_visible_fifo_pixel()?;
+        let mut cgb_bg_attrs = pixel.cgb_bg_attrs();
         if self
             .runtime
             .bg_pipeline_state
@@ -179,7 +189,10 @@ impl Ppu {
             .is_some_and(|onset_x| self.runtime.bg_pipeline_state.visible_pixels_output >= onset_x)
         {
             self.runtime.panel.current_scanline_bg_dot_contexts[visible_x] = None;
-            return Some(self.dmg_bg_color_for_panel_shade(0));
+            return Some(BgOutputPixel::new(
+                self.dmg_bg_color_for_panel_shade(0),
+                None,
+            ));
         }
         let Some(cached) = pixel.cached.as_mut() else {
             self.runtime.panel.current_scanline_bg_dot_contexts[visible_x] = None;
@@ -187,10 +200,11 @@ impl Ppu {
                 self.runtime.bg_pipeline_state.visible_pixels_output,
                 vram,
             ) {
-                return Some(override_pixel);
+                return Some(BgOutputPixel::new(override_pixel, None));
             }
-            return Some(pixel.color);
+            return Some(BgOutputPixel::new(pixel.color, cgb_bg_attrs));
         };
+        cgb_bg_attrs = cached.cached.cgb_bg_attrs;
         let visible_tile2_scy_tilemap_override = self
             .compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
                 cached.cached,
@@ -249,20 +263,20 @@ impl Ppu {
                     pixel_index: cached.pixel_index,
                     tile_index: cached.cached.tile_index,
                 });
-            return Some(
-                old_pixel_override
-                    .or(window_activation_tilemap_override)
-                    .or(window_tiledata_selector_override)
-                    .or(low_band_shifted_override)
-                    .or(visible_tile2_scy_tilemap_override)
-                    .or(visible_tile2_previous_row_override)
-                    .or(visible_tile3_previous_row_override)
-                    .or(next_tile_output_retarget)
-                    .unwrap_or(pixel.color),
-            );
+            let color = old_pixel_override
+                .or(window_activation_tilemap_override)
+                .or(window_tiledata_selector_override)
+                .or(low_band_shifted_override)
+                .or(visible_tile2_scy_tilemap_override)
+                .or(visible_tile2_previous_row_override)
+                .or(visible_tile3_previous_row_override)
+                .or(next_tile_output_retarget)
+                .unwrap_or(pixel.color);
+            return Some(BgOutputPixel::new(color, cgb_bg_attrs));
         };
 
         cached.cached = recomputed;
+        cgb_bg_attrs = cached.cached.cgb_bg_attrs;
         self.runtime.panel.current_scanline_bg_dot_contexts[visible_x] =
             Some(PpuRecentBgDotContext {
                 source: cached.cached.source,
@@ -279,7 +293,7 @@ impl Ppu {
             .or(visible_tile3_previous_row_override)
             .or(next_tile_output_retarget)
             .unwrap_or_else(|| recomputed.pixel_value(cached.pixel_index));
-        Some(pixel.color)
+        Some(BgOutputPixel::new(pixel.color, cgb_bg_attrs))
     }
 
     pub(in crate::ppu) fn compute_startup_visible_tile2_scy_placeholder_pixel(

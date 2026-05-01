@@ -1,5 +1,39 @@
 use super::*;
 
+fn write_cgb_palette_rgb555(
+    ppu: &mut Ppu,
+    kind: CgbPaletteKind,
+    palette_index: u8,
+    color_index: u8,
+    rgb555: u16,
+) {
+    let index_register = match kind {
+        CgbPaletteKind::Background => 0xFF68,
+        CgbPaletteKind::Object => 0xFF6A,
+    };
+    let data_register = match kind {
+        CgbPaletteKind::Background => 0xFF69,
+        CgbPaletteKind::Object => 0xFF6B,
+    };
+    let address = (palette_index & 0x07) * 8 + (color_index & 0x03) * 2;
+    let [low, high] = rgb555.to_le_bytes();
+
+    ppu.write_register(index_register, address);
+    ppu.write_register(data_register, low);
+    ppu.write_register(index_register, address + 1);
+    ppu.write_register(data_register, high);
+}
+
+fn enable_cgb_obj_transfer(ppu: &mut Ppu) {
+    let registers = PpuVisibleRegisters {
+        lcdc: LCDC_BG_ENABLE_BIT | LCDC_OBJ_ENABLE_BIT,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    };
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(registers));
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+}
+
 #[test]
 fn cgb_palette_index_registers_force_unused_bit_and_mask_address() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
@@ -89,6 +123,72 @@ fn dmg_family_ppu_ignores_cgb_palette_registers_directly() {
 
     assert_eq!(ppu.read_register(0xFF68), 0xFF);
     assert_eq!(ppu.read_register(0xFF69), 0xFF);
+}
+
+#[test]
+fn cgb_rgb555_lookup_decodes_little_endian_palette_entries() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let attrs = CgbBgTileAttributes::new(0x05);
+
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 5, 2, 0x9234);
+
+    let pixel = MixedPixel::background_with_cgb_attrs(2, Some(attrs));
+    assert_eq!(ppu.map_mixed_pixel_to_cgb_rgb555(pixel), 0x1234);
+}
+
+#[test]
+fn cgb_framebuffer_rgb555_uses_bg_and_obj_palette_attributes() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 3, 1, 0x001F);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Object, 6, 2, 0x03E0);
+
+    let bg_pixel = MixedPixel::background_with_cgb_attrs(1, Some(CgbBgTileAttributes::new(0x03)));
+    let obj_pixel = MixedPixel::object_with_cgb_attrs(2, false, Some(CgbObjAttributes::new(0x06)));
+
+    ppu.write_framebuffer_pixel(0, 0, bg_pixel, 2);
+    ppu.write_framebuffer_pixel(0, 1, obj_pixel, 3);
+
+    let rgb555 = ppu
+        .cgb_framebuffer_rgb555()
+        .expect("CGB model should expose the RGB555 framebuffer");
+    assert_eq!(&rgb555[..2], &[0x001F, 0x03E0]);
+    assert_eq!(&ppu.framebuffer()[..2], &[2, 3]);
+}
+
+#[test]
+fn cgb_obj_color_zero_remains_transparent_before_rgb555_lookup() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+    enable_cgb_obj_transfer(&mut ppu);
+
+    let bg_attrs = CgbBgTileAttributes::new(0x02);
+    let obj_attrs = CgbObjAttributes::new(0x07);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 2, 1, 0x4210);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Object, 7, 0, 0x001F);
+
+    let obj_pixel = ObjPixel {
+        color: 0,
+        palette_obp1: false,
+        bg_over_obj: false,
+        cgb_obj_attrs: Some(obj_attrs),
+        sprite_x: 8,
+        oam_index: 0,
+    };
+    let output_pixel = ppu.mix_bg_and_obj(1, Some(bg_attrs), 1, obj_pixel);
+
+    ppu.write_framebuffer_pixel(0, 0, output_pixel, 0);
+
+    assert_eq!(
+        output_pixel,
+        MixedPixel::background_with_cgb_attrs(1, Some(bg_attrs))
+    );
+    assert_eq!(
+        ppu.cgb_framebuffer_rgb555()
+            .expect("CGB model should expose the RGB555 framebuffer")[0],
+        0x4210
+    );
 }
 
 #[test]

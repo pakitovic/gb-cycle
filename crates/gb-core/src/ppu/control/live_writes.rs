@@ -423,7 +423,7 @@ impl Ppu {
 
         self.runtime.panel.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
         self.runtime.panel.current_scanline_pixels[x] = scanline_pixel;
-        self.runtime.panel.framebuffer[framebuffer_index] = panel_pixel;
+        self.write_framebuffer_panel_shade(framebuffer_index, panel_pixel);
         self.runtime.panel.framebuffer_layer_sources[framebuffer_index] = bgwin_source;
         self.runtime.panel.framebuffer_bgwin_colors[framebuffer_index] = pixel_color;
         self.runtime.panel.framebuffer_bgwin_forced_white[framebuffer_index] = dmg_bg_forced_white;
