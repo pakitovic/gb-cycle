@@ -33,12 +33,14 @@ Each curated family directory contains only the ROMs currently listed in the mat
 
 ```bash
 make test-roms         # fetch if needed + run all local curated DMG suites
+make test-roms-real-boot # fetch if needed + run all local curated DMG suites through verified RealBoot
 make run-blargg        # curated Blargg DMG family (includes dmg_sound 01..12)
 make run-blargg-cpu-instrs # Blargg CPU instruction chunk used by CI
 make run-blargg-dmg-sound # Blargg DMG sound chunk used by CI
 make run-blargg-timing-memory-oam # Blargg timing/memory/OAM chunk used by CI
 make run-acid          # curated Acid DMG family
 make run-daid          # exploratory daid DMG subset
+make run-daid-real-boot # exploratory daid DMG subset through verified RealBoot
 make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
 make run-mealybug      # exploratory mealybug-tearoom DMG subset
@@ -57,6 +59,8 @@ make phase9-diff-mealybug     # compare the SameBoy-PASS Mealybug framebuffer su
 make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against LibSameBoy case-bundle output
 make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
 ```
+
+The `*-real-boot` ROM-suite targets are local-only DMG validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` for the ignored external harness, run clean `RealBoot` without the synthetic `SkipBoot` startup-memory profiles used by some Mealybug/Hacktix cases, start each case timeout after the `FF50` handoff, and update the same `/.roms/test/test-report.md` rows as the default targets. Re-run `make test-roms` after a RealBoot pass if you want the report to reflect the default SkipBoot baseline again.
 
 Each `make run-*` target is autosufficient and materializes its own curated family before execution.
 
@@ -342,3 +346,4 @@ Repo-managed local-only support assets live under gitignored roots:
 
 - `GB_CYCLE_BOOT_ROM_ROOT` — boot ROM search path for private firmware assets; there is no repo-local default boot ROM directory.
 - `GB_CYCLE_TEST_ROM_ROOT` — override test ROM root; if unset, `gb-test-runner` falls back to the default curated store automatically.
+- `GB_CYCLE_TEST_ROM_STARTUP` — ignored external ROM-suite harness override for local runs; omit it or use `skip-boot` for the default synthetic startup path, and use `real-boot` only with `GB_CYCLE_BOOT_ROM_ROOT` for clean boot-ROM execution.

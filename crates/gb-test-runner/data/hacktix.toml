@@ -16,6 +16,7 @@ startup_memory_profile = "dmg-boot-logo-vram"
 [[case]]
 id = "hacktix-strikethrough"
 rom = "strikethrough.gb"
+console = "dmg"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/hacktix/strikethrough.dmg.png"

@@ -7,6 +7,7 @@ subsystem = "CrossSubsystem"
 [[case]]
 id = "blargg-cpu-instrs-01-special"
 rom = "cpu_instrs/01-special.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -14,6 +15,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-02-interrupts"
 rom = "cpu_instrs/02-interrupts.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -21,6 +23,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-03-op-sp-hl"
 rom = "cpu_instrs/03-op_sp,hl.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -28,6 +31,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-04-op-r-imm"
 rom = "cpu_instrs/04-op_r,imm.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -35,6 +39,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-05-op-rp"
 rom = "cpu_instrs/05-op_rp.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -42,6 +47,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-06-ld-r-r"
 rom = "cpu_instrs/06-ld_r,r.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -49,6 +55,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-07-jr-jp-call-ret-rst"
 rom = "cpu_instrs/07-jr,jp,call,ret,rst.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -56,6 +63,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-08-misc-instrs"
 rom = "cpu_instrs/08-misc_instrs.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -63,6 +71,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-09-op-r-r"
 rom = "cpu_instrs/09-op_r,r.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -70,6 +79,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-10-bit-ops"
 rom = "cpu_instrs/10-bit_ops.gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -77,6 +87,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-cpu-instrs-11-op-a-hl"
 rom = "cpu_instrs/11-op_a,(hl).gb"
+console = "dmg"
 timeout_frames = 1800
 oracle = "serial-contains"
 expected = "Passed"
@@ -84,6 +95,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-halt-bug"
 rom = "halt_bug.gb"
+console = "dmg"
 execution_mode = "permissive"
 timeout_frames = 3600
 oracle = "blargg-console-contains"
@@ -92,6 +104,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-instr-timing"
 rom = "instr_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "serial-contains"
 expected = "Passed"
@@ -100,6 +113,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-01-read"
 rom = "mem_timing/01-read_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "serial-contains"
 expected = "Passed"
@@ -107,6 +121,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-02-write"
 rom = "mem_timing/02-write_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "serial-contains"
 expected = "Passed"
@@ -114,6 +129,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-03-modify"
 rom = "mem_timing/03-modify_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "serial-contains"
 expected = "Passed"
@@ -121,6 +137,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-2-01-read"
 rom = "mem_timing-2/01-read_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -128,6 +145,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-2-02-write"
 rom = "mem_timing-2/02-write_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -135,6 +153,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-mem-timing-2-03-modify"
 rom = "mem_timing-2/03-modify_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -143,6 +162,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-1-lcd-sync"
 rom = "oam_bug/1-lcd_sync.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -150,6 +170,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-2-causes"
 rom = "oam_bug/2-causes.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -157,6 +178,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-3-non-causes"
 rom = "oam_bug/3-non_causes.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -164,6 +186,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-4-scanline-timing"
 rom = "oam_bug/4-scanline_timing.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -171,6 +194,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-5-timing-bug"
 rom = "oam_bug/5-timing_bug.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -178,6 +202,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-6-timing-no-bug"
 rom = "oam_bug/6-timing_no_bug.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -185,6 +210,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-oam-bug-8-instr-effect"
 rom = "oam_bug/8-instr_effect.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -193,6 +219,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-01-registers"
 rom = "dmg_sound/01-registers.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -200,6 +227,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-02-len-ctr"
 rom = "dmg_sound/02-len_ctr.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -207,6 +235,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-03-trigger"
 rom = "dmg_sound/03-trigger.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -214,6 +243,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-04-sweep"
 rom = "dmg_sound/04-sweep.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -221,6 +251,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-05-sweep-details"
 rom = "dmg_sound/05-sweep_details.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -228,6 +259,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-06-overflow-on-trigger"
 rom = "dmg_sound/06-overflow_on_trigger.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -235,6 +267,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-07-len-sweep-period-sync"
 rom = "dmg_sound/07-len_sweep_period_sync.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -242,6 +275,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-08-len-ctr-during-power"
 rom = "dmg_sound/08-len_ctr_during_power.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -249,6 +283,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-09-wave-read-while-on"
 rom = "dmg_sound/09-wave_read_while_on.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -256,6 +291,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-10-wave-trigger-while-on"
 rom = "dmg_sound/10-wave_trigger_while_on.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -263,6 +299,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-11-regs-after-power"
 rom = "dmg_sound/11-regs_after_power.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
@@ -270,6 +307,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-dmg-sound-12-wave-write-while-on"
 rom = "dmg_sound/12-wave_write_while_on.gb"
+console = "dmg"
 timeout_frames = 3600
 oracle = "blargg-memory-text-contains"
 expected = "Passed"
