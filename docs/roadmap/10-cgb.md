@@ -252,6 +252,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - Treat `cgb-acid2` as the primary visual acceptance target, not as the first implementation driver; every visible fix must map to a documented CGB PPU primitive and ROM-specific visual patching is not allowed.
 - CGB gate: `cgb-ppu-basic` through `make run-cgb-ppu-basic`, promoted in incremental order from palette-MMIO blocking and simple raster guards to `cgb-acid2` acceptance and Hacktix Bully hardening.
 - Regression gate: DMG `167/167`, Acid DMG, and Mealybug DMG remain green.
+- Status note: Slice `4A` palette-MMIO baseline is implemented for native CGB. The PPU owns `BCPS`/`BCPD` and `OCPS`/`OCPD`, keeps background and object `64`-byte RGB555 palette RAM separate, forces index bit `6` high on reads, supports write-only auto-increment, blocks palette data reads/writes during Mode `3`, preserves failed-write auto-increment, and keeps Non-CGB plus CGB-family `GbCompatible` fallback explicit. Remaining Slice `4` work still owns tile/OAM attribute consumption, RGB555 rendering, compatibility palette seeding, `LCDC.0` priority reinterpretation, `OPRI`, focused visual probes, and eventual `cgb-ppu-basic` promotion.
 
 ## Slice 5 — CGB DMA, GDMA, and HDMA
 

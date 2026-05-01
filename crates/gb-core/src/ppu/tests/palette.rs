@@ -1,6 +1,97 @@
 use super::*;
 
 #[test]
+fn cgb_palette_index_registers_force_unused_bit_and_mask_address() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    assert_eq!(ppu.read_register(0xFF68), 0x40);
+    assert_eq!(ppu.read_register(0xFF6A), 0x40);
+
+    ppu.write_register(0xFF68, 0x3F);
+    assert_eq!(ppu.read_register(0xFF68), 0x7F);
+
+    ppu.write_register(0xFF68, 0xFF);
+    assert_eq!(ppu.read_register(0xFF68), 0xFF);
+
+    ppu.write_register(0xFF69, 0x12);
+    assert_eq!(ppu.read_register(0xFF68), 0xC0);
+
+    ppu.write_register(0xFF6A, 0x81);
+    assert_eq!(ppu.read_register(0xFF6A), 0xC1);
+
+    ppu.write_register(0xFF6B, 0x34);
+    assert_eq!(ppu.read_register(0xFF6A), 0xC2);
+}
+
+#[test]
+fn cgb_palette_data_ports_keep_background_and_object_memory_separate() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    ppu.write_register(0xFF68, 0x02);
+    ppu.write_register(0xFF69, 0xAA);
+    ppu.write_register(0xFF6A, 0x02);
+
+    assert_eq!(ppu.read_register(0xFF69), 0xAA);
+    assert_eq!(ppu.read_register(0xFF6B), 0x00);
+
+    ppu.write_register(0xFF6B, 0x55);
+
+    assert_eq!(ppu.read_register(0xFF69), 0xAA);
+    assert_eq!(ppu.read_register(0xFF6B), 0x55);
+}
+
+#[test]
+fn cgb_palette_reads_do_not_increment_the_selected_address() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    ppu.write_register(0xFF68, 0x80);
+    ppu.write_register(0xFF69, 0x11);
+    ppu.write_register(0xFF68, 0x80);
+
+    assert_eq!(ppu.read_register(0xFF69), 0x11);
+    assert_eq!(ppu.read_register(0xFF68), 0xC0);
+    assert_eq!(ppu.read_register(0xFF69), 0x11);
+    assert_eq!(ppu.read_register(0xFF68), 0xC0);
+}
+
+#[test]
+fn cgb_palette_data_access_blocks_in_mode3_but_blocked_writes_still_increment() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.lcdc = 0x80;
+    ppu.lcd_state = PpuLcdState::Enabled;
+    ppu.ly = 0;
+    ppu.line_dot = MODE2_DOTS + 1;
+
+    ppu.write_register(0xFF68, 0x80);
+
+    assert_eq!(
+        ppu.read_register_with_source(0xFF69, PpuRegisterReadSource::CpuBusOperation),
+        0xFF
+    );
+
+    ppu.write_register_with_source(0xFF69, 0x12, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.read_register(0xFF68), 0xC1);
+
+    ppu.lcd_state = PpuLcdState::Disabled;
+    ppu.write_register(0xFF68, 0x00);
+    assert_eq!(ppu.read_register(0xFF69), 0x00);
+}
+
+#[test]
+fn dmg_family_ppu_ignores_cgb_palette_registers_directly() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+
+    assert_eq!(ppu.read_register(0xFF68), 0xFF);
+
+    ppu.write_register(0xFF68, 0x80);
+    ppu.write_register(0xFF69, 0x12);
+
+    assert_eq!(ppu.read_register(0xFF68), 0xFF);
+    assert_eq!(ppu.read_register(0xFF69), 0xFF);
+}
+
+#[test]
 fn framebuffer_applies_bgp_without_changing_logical_scanline_colors() {
     let mut vram_bytes = [0; TEST_VRAM_BYTES];
 

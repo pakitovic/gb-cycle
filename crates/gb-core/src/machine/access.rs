@@ -54,7 +54,7 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
-        if cpu_write_targets_ppu_mmio(address) {
+        if cpu_write_targets_ppu_mmio(&self.bus, address) {
             let mut pending = Some(PendingPpuMmioWrite { address, value });
 
             self.bus.route_cpu_address_event(

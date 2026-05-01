@@ -33,6 +33,7 @@ impl Ppu {
             obp1: None,
             wy: 0,
             wx: 0,
+            cgb_palettes: CgbPaletteState::default(),
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             runtime: PpuRuntimeState::default(),
         }
@@ -543,6 +544,10 @@ impl Ppu {
                 .unwrap_or(self.obj_palette_read_policy.default_read_value()),
             PpuRegister::Wy => self.wy,
             PpuRegister::Wx => self.wx,
+            PpuRegister::Bcps => self.read_cgb_palette_index(CgbPaletteKind::Background),
+            PpuRegister::Bcpd => self.read_cgb_palette_data(CgbPaletteKind::Background, source),
+            PpuRegister::Ocps => self.read_cgb_palette_index(CgbPaletteKind::Object),
+            PpuRegister::Ocpd => self.read_cgb_palette_data(CgbPaletteKind::Object, source),
         }
     }
 
@@ -554,6 +559,11 @@ impl Ppu {
     ) {
         if let Some(palette_register) = register.palette_register() {
             self.write_dmg_palette_register(palette_register, value, source);
+            return;
+        }
+
+        if let Some(palette_register) = register.cgb_palette_register() {
+            self.write_cgb_palette_register(palette_register, value, source);
             return;
         }
 
@@ -574,7 +584,64 @@ impl Ppu {
             PpuRegister::Bgp | PpuRegister::Obp0 | PpuRegister::Obp1 => {
                 unreachable!("palette writes return early")
             }
+            PpuRegister::Bcps | PpuRegister::Bcpd | PpuRegister::Ocps | PpuRegister::Ocpd => {
+                unreachable!("CGB palette writes return early")
+            }
         }
+    }
+
+    fn read_cgb_palette_index(&self, kind: CgbPaletteKind) -> u8 {
+        if !self.console_model.is_cgb_family() {
+            return 0xFF;
+        }
+
+        self.cgb_palettes.port(kind).read_index()
+    }
+
+    fn read_cgb_palette_data(&self, kind: CgbPaletteKind, source: PpuRegisterReadSource) -> u8 {
+        if !self.console_model.is_cgb_family() {
+            return 0xFF;
+        }
+
+        let blocked = self.cgb_palette_data_read_blocked(source);
+        self.cgb_palettes.port(kind).read_data(blocked)
+    }
+
+    fn write_cgb_palette_register(
+        &mut self,
+        register: CgbPaletteRegister,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
+        if !self.console_model.is_cgb_family() {
+            return;
+        }
+
+        let kind = register.kind();
+        if register.is_data() {
+            let blocked = self.cgb_palette_data_write_blocked(source);
+            self.cgb_palettes.port_mut(kind).write_data(value, blocked);
+        } else {
+            self.cgb_palettes.port_mut(kind).write_index(value);
+        }
+    }
+
+    fn cgb_palette_data_read_blocked(&self, source: PpuRegisterReadSource) -> bool {
+        let mode = match source {
+            PpuRegisterReadSource::Immediate => self.current_access_mode(),
+            PpuRegisterReadSource::CpuBusOperation => self.current_published_bus_access_mode(),
+        };
+        mode == PpuAccessMode::Drawing
+    }
+
+    fn cgb_palette_data_write_blocked(&self, source: PpuRegisterWriteSource) -> bool {
+        let mode = match source {
+            PpuRegisterWriteSource::Immediate => self.current_access_mode(),
+            PpuRegisterWriteSource::CpuMmioCommit => {
+                self.current_published_video_write_access_mode()
+            }
+        };
+        mode == PpuAccessMode::Drawing
     }
 
     pub fn apply_startup_state(&mut self, startup_state: PpuStartupState) {
@@ -594,6 +661,7 @@ impl Ppu {
         self.wx = startup_state.wx;
         self.obp0 = None;
         self.obp1 = None;
+        self.cgb_palettes.reset();
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.runtime.reset_for_startup(startup_state.bgp);
         self.reload_mode3_register_latches_from_mmio();

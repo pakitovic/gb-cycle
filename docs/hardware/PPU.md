@@ -63,7 +63,9 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - `LYC` is readable and writable storage, but its comparison effect belongs to the live PPU state and should be evaluated continuously against `LY`.
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
+- `BCPS`/`BCPD` and `OCPS`/`OCPD` should remain PPU-owned CGB palette access registers rather than generic bus storage: each side has its own `64`-byte RGB555 palette RAM, the index registers read back with bit `6` forced high and address bits `0-5`, data reads/writes are blocked while the CPU-visible PPU mode is Mode `3`, and a blocked data write still performs the documented auto-increment when bit `7` is set.
 - On the shared scheduler path, CPU-originated writes to PPU MMIO registers should stage during the CPU micro-operation phase and commit on the same T-cycle during a dedicated MMIO-commit phase.
+- The staged PPU MMIO commit route must still respect model/mode availability before bypassing the generic bus route; native-CGB palette writes may stage through this path, while Non-CGB and CGB-family `GbCompatible` mode must keep CGB-only palette MMIO unavailable.
 - Keep MMIO-owned storage separate from the register view currently visible to the active pixel pipeline.
 - That active-pipeline-visible register view should drive Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other in-flight pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
 - The design should also leave room for a previous-dot or pipeline-visible snapshot where live-write-sensitive DMG behavior needs it, especially for window activation, tile-data selection, and palette-conflict handling.

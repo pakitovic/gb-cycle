@@ -95,8 +95,13 @@ impl Bus {
             return value;
         }
 
-        self.iohram
-            .read(&self.router, self.console_model, target, io)
+        self.iohram.read(
+            &self.router,
+            self.console_model,
+            self.operating_mode,
+            target,
+            io,
+        )
     }
 
     fn write_iohram_target(&mut self, target: BusAddressInfo, value: u8, io: BusIoWriteView<'_>) {
@@ -106,8 +111,14 @@ impl Bus {
             return;
         }
 
-        self.iohram
-            .write(&self.router, self.console_model, target, value, io);
+        self.iohram.write(
+            &self.router,
+            self.console_model,
+            self.operating_mode,
+            target,
+            value,
+            io,
+        );
     }
 
     fn read_cgb_bus_owned_io(&self, address: u16) -> Option<u8> {

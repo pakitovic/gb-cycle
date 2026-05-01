@@ -32,6 +32,10 @@ pub(super) enum PpuRegister {
     Obp1,
     Wy,
     Wx,
+    Bcps,
+    Bcpd,
+    Ocps,
+    Ocpd,
 }
 
 impl PpuRegister {
@@ -48,6 +52,10 @@ impl PpuRegister {
             0xFF49 => Some(Self::Obp1),
             0xFF4A => Some(Self::Wy),
             0xFF4B => Some(Self::Wx),
+            0xFF68 => Some(Self::Bcps),
+            0xFF69 => Some(Self::Bcpd),
+            0xFF6A => Some(Self::Ocps),
+            0xFF6B => Some(Self::Ocpd),
             _ => None,
         }
     }
@@ -64,7 +72,144 @@ impl PpuRegister {
             | Self::Ly
             | Self::Lyc
             | Self::Wy
+            | Self::Wx
+            | Self::Bcps
+            | Self::Bcpd
+            | Self::Ocps
+            | Self::Ocpd => None,
+        }
+    }
+
+    pub(super) const fn cgb_palette_register(self) -> Option<CgbPaletteRegister> {
+        match self {
+            Self::Bcps => Some(CgbPaletteRegister::BgIndex),
+            Self::Bcpd => Some(CgbPaletteRegister::BgData),
+            Self::Ocps => Some(CgbPaletteRegister::ObjIndex),
+            Self::Ocpd => Some(CgbPaletteRegister::ObjData),
+            Self::Lcdc
+            | Self::Stat
+            | Self::Scy
+            | Self::Scx
+            | Self::Ly
+            | Self::Lyc
+            | Self::Bgp
+            | Self::Obp0
+            | Self::Obp1
+            | Self::Wy
             | Self::Wx => None,
+        }
+    }
+}
+
+const CGB_PALETTE_RAM_BYTES: usize = 64;
+const CGB_PALETTE_INDEX_ADDRESS_MASK: u8 = 0x3F;
+const CGB_PALETTE_INDEX_FORCED_READ_BITS: u8 = 0x40;
+const CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT: u8 = 0x80;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum CgbPaletteKind {
+    Background,
+    Object,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum CgbPaletteRegister {
+    BgIndex,
+    BgData,
+    ObjIndex,
+    ObjData,
+}
+
+impl CgbPaletteRegister {
+    pub(super) const fn kind(self) -> CgbPaletteKind {
+        match self {
+            Self::BgIndex | Self::BgData => CgbPaletteKind::Background,
+            Self::ObjIndex | Self::ObjData => CgbPaletteKind::Object,
+        }
+    }
+
+    pub(super) const fn is_data(self) -> bool {
+        matches!(self, Self::BgData | Self::ObjData)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct CgbPalettePort {
+    index: u8,
+    #[serde(with = "serde_big_array::BigArray")]
+    data: [u8; CGB_PALETTE_RAM_BYTES],
+}
+
+impl CgbPalettePort {
+    pub(super) const fn new() -> Self {
+        Self {
+            index: 0,
+            data: [0; CGB_PALETTE_RAM_BYTES],
+        }
+    }
+
+    pub(super) const fn read_index(&self) -> u8 {
+        self.index | CGB_PALETTE_INDEX_FORCED_READ_BITS
+    }
+
+    pub(super) fn write_index(&mut self, value: u8) {
+        self.index =
+            value & (CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT | CGB_PALETTE_INDEX_ADDRESS_MASK);
+    }
+
+    pub(super) fn read_data(&self, blocked: bool) -> u8 {
+        if blocked {
+            return 0xFF;
+        }
+
+        self.data[self.address()]
+    }
+
+    pub(super) fn write_data(&mut self, value: u8, blocked: bool) {
+        if !blocked {
+            let address = self.address();
+            self.data[address] = value;
+        }
+
+        if self.index & CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT != 0 {
+            let next_address = self.index.wrapping_add(1) & CGB_PALETTE_INDEX_ADDRESS_MASK;
+            self.index = CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT | next_address;
+        }
+    }
+
+    fn address(&self) -> usize {
+        usize::from(self.index & CGB_PALETTE_INDEX_ADDRESS_MASK)
+    }
+}
+
+impl Default for CgbPalettePort {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub(super) struct CgbPaletteState {
+    background: CgbPalettePort,
+    object: CgbPalettePort,
+}
+
+impl CgbPaletteState {
+    pub(super) fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(super) const fn port(&self, kind: CgbPaletteKind) -> &CgbPalettePort {
+        match kind {
+            CgbPaletteKind::Background => &self.background,
+            CgbPaletteKind::Object => &self.object,
+        }
+    }
+
+    pub(super) fn port_mut(&mut self, kind: CgbPaletteKind) -> &mut CgbPalettePort {
+        match kind {
+            CgbPaletteKind::Background => &mut self.background,
+            CgbPaletteKind::Object => &mut self.object,
         }
     }
 }
@@ -89,7 +234,11 @@ impl PpuMode3LiveBackgroundRegister {
             | PpuRegister::Obp0
             | PpuRegister::Obp1
             | PpuRegister::Wy
-            | PpuRegister::Wx => None,
+            | PpuRegister::Wx
+            | PpuRegister::Bcps
+            | PpuRegister::Bcpd
+            | PpuRegister::Ocps
+            | PpuRegister::Ocpd => None,
         }
     }
 }

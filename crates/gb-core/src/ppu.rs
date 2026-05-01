@@ -570,6 +570,7 @@ pub struct Ppu {
     obp1: Option<u8>,
     wy: u8,
     wx: u8,
+    cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeState,
 }
@@ -593,6 +594,7 @@ pub struct PpuSaveState {
     obp1: Option<u8>,
     wy: u8,
     wx: u8,
+    cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,
 }
@@ -632,6 +634,7 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
+            cgb_palettes: self.cgb_palettes.clone(),
             obj_palette_read_policy: self.obj_palette_read_policy,
             runtime: self.runtime.capture_save_state(),
         }
@@ -655,6 +658,7 @@ impl Ppu {
         self.obp1 = state.obp1;
         self.wy = state.wy;
         self.wx = state.wx;
+        self.cgb_palettes = state.cgb_palettes.clone();
         self.obj_palette_read_policy = state.obj_palette_read_policy;
         self.runtime.restore_save_state(&state.runtime);
     }

@@ -124,12 +124,30 @@ fn finalize_cpu_micro_operation(
     }
 }
 
-pub(super) fn cpu_write_targets_ppu_mmio(address: u16) -> bool {
+pub(super) fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
     if !address_is_cpu_mmio(address) {
         return false;
     }
 
-    Ppu::owns_mmio_register(address)
+    if !Ppu::owns_mmio_register(address) {
+        return false;
+    }
+
+    let Some(info) = bus.describe_io_register(address) else {
+        return false;
+    };
+
+    if info.owner() != crate::bus::IoRegisterOwner::Ppu
+        || info.implementation() != crate::bus::IoRegisterImplementation::Implemented
+    {
+        return false;
+    }
+
+    match info.availability() {
+        crate::bus::IoRegisterAvailability::Shared
+        | crate::bus::IoRegisterAvailability::DmgCompatible => true,
+        crate::bus::IoRegisterAvailability::CgbOnly => bus.cgb_extensions_enabled(),
+    }
 }
 
 pub(super) fn commit_pending_ppu_mmio_write(
@@ -509,7 +527,7 @@ impl MachinePhaseRunner<'_> {
                     ))
                 }
                 CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
-                    if cpu_write_targets_ppu_mmio(address) {
+                    if cpu_write_targets_ppu_mmio(bus, address) {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {

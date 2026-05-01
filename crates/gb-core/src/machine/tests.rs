@@ -1,4 +1,4 @@
-use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
+use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -1421,6 +1421,24 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
 
     assert_eq!(ppu.read_register(0xFF42), 0x12);
     assert!(pending.is_none());
+}
+
+#[test]
+fn cgb_palette_ppu_mmio_commit_route_is_native_cgb_only() {
+    let native =
+        crate::bus::Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+    let compatible = crate::bus::Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        OperatingMode::GbCompatible,
+    );
+    let dmg = crate::bus::Bus::new(ConsoleModel::GameBoy);
+
+    assert!(cpu_write_targets_ppu_mmio(&native, 0xFF68));
+    assert!(cpu_write_targets_ppu_mmio(&native, 0xFF69));
+    assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF68));
+    assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF69));
+    assert!(!cpu_write_targets_ppu_mmio(&dmg, 0xFF68));
+    assert!(!cpu_write_targets_ppu_mmio(&dmg, 0xFF69));
 }
 
 #[test]
