@@ -25,13 +25,28 @@ fn write_cgb_palette_rgb555(
 }
 
 fn enable_cgb_obj_transfer(ppu: &mut Ppu) {
+    set_cgb_transfer_lcdc(ppu, LCDC_BG_ENABLE_BIT | LCDC_OBJ_ENABLE_BIT);
+}
+
+fn set_cgb_transfer_lcdc(ppu: &mut Ppu, lcdc: u8) {
     let registers = PpuVisibleRegisters {
-        lcdc: LCDC_BG_ENABLE_BIT | LCDC_OBJ_ENABLE_BIT,
+        lcdc,
         bgp: 0xE4,
         ..PpuVisibleRegisters::default()
     };
     ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(registers));
     ppu.bg_pipeline_state.current_transfer_x = 8;
+}
+
+fn cgb_obj_pixel(color: u8, attrs: CgbObjAttributes) -> ObjPixel {
+    ObjPixel {
+        color,
+        palette_obp1: false,
+        bg_over_obj: attrs.bg_over_obj(),
+        cgb_obj_attrs: Some(attrs),
+        sprite_x: 8,
+        oam_index: 0,
+    }
 }
 
 #[test]
@@ -188,6 +203,64 @@ fn cgb_obj_color_zero_remains_transparent_before_rgb555_lookup() {
         ppu.cgb_framebuffer_rgb555()
             .expect("CGB model should expose the RGB555 framebuffer")[0],
         0x4210
+    );
+}
+
+#[test]
+fn cgb_bg_obj_priority_uses_lcdc_bg_and_oam_attribute_bits() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    enable_cgb_obj_transfer(&mut ppu);
+
+    let bg_attrs = CgbBgTileAttributes::new(CGB_BG_ATTR_PRIORITY_BIT | 0x02);
+    let obj_attrs = CgbObjAttributes::new(0x05);
+    let output = ppu.mix_bg_and_obj(1, Some(bg_attrs), 1, cgb_obj_pixel(2, obj_attrs));
+    assert_eq!(
+        output,
+        MixedPixel::background_with_cgb_attrs(1, Some(bg_attrs))
+    );
+
+    let bg_attrs = CgbBgTileAttributes::new(0x02);
+    let obj_attrs = CgbObjAttributes::new(CGB_OBJ_ATTR_BG_OVER_OBJ_BIT | 0x05);
+    let output = ppu.mix_bg_and_obj(1, Some(bg_attrs), 1, cgb_obj_pixel(2, obj_attrs));
+    assert_eq!(
+        output,
+        MixedPixel::background_with_cgb_attrs(1, Some(bg_attrs))
+    );
+
+    let bg_attrs = CgbBgTileAttributes::new(0x02);
+    let obj_attrs = CgbObjAttributes::new(0x05);
+    let output = ppu.mix_bg_and_obj(1, Some(bg_attrs), 1, cgb_obj_pixel(2, obj_attrs));
+    assert_eq!(
+        output,
+        MixedPixel::object_with_cgb_attrs(2, false, Some(obj_attrs))
+    );
+}
+
+#[test]
+fn cgb_bg_color_zero_and_lcdc0_clear_let_obj_win_priority() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    enable_cgb_obj_transfer(&mut ppu);
+
+    let bg_attrs = CgbBgTileAttributes::new(CGB_BG_ATTR_PRIORITY_BIT | 0x02);
+    let obj_attrs = CgbObjAttributes::new(CGB_OBJ_ATTR_BG_OVER_OBJ_BIT | 0x05);
+    let output = ppu.mix_bg_and_obj(0, Some(bg_attrs), 0, cgb_obj_pixel(2, obj_attrs));
+    assert_eq!(
+        output,
+        MixedPixel::object_with_cgb_attrs(2, false, Some(obj_attrs))
+    );
+
+    set_cgb_transfer_lcdc(&mut ppu, LCDC_OBJ_ENABLE_BIT);
+    let output = ppu.mix_bg_and_obj(1, Some(bg_attrs), 0, cgb_obj_pixel(2, obj_attrs));
+    assert_eq!(
+        output,
+        MixedPixel::object_with_cgb_attrs(2, false, Some(obj_attrs))
+    );
+
+    let transparent_obj = cgb_obj_pixel(0, obj_attrs);
+    let output = ppu.mix_bg_and_obj(1, Some(bg_attrs), 0, transparent_obj);
+    assert_eq!(
+        output,
+        MixedPixel::background_with_cgb_attrs(1, Some(bg_attrs))
     );
 }
 

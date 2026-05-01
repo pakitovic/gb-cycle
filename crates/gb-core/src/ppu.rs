@@ -1,5 +1,5 @@
 use crate::bus::{BusMaster, OamBusView, VramBusView};
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, OperatingMode};
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
 use std::mem;
@@ -598,6 +598,10 @@ impl DerefMut for PpuRuntimeState {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Ppu {
     console_model: ConsoleModel,
+    #[serde(default)]
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+    #[serde(default)]
+    cgb_opri_latch: u8,
     status: PpuStatus,
     lcdc: u8,
     stat_interrupt_enable: u8,
@@ -622,6 +626,10 @@ pub struct Ppu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuSaveState {
     console_model: ConsoleModel,
+    #[serde(default)]
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+    #[serde(default)]
+    cgb_opri_latch: u8,
     status: PpuStatus,
     lcdc: u8,
     stat_interrupt_enable: u8,
@@ -662,6 +670,8 @@ impl Ppu {
     pub(crate) fn capture_save_state(&self) -> PpuSaveState {
         PpuSaveState {
             console_model: self.console_model,
+            cgb_obj_priority_mode: self.cgb_obj_priority_mode,
+            cgb_opri_latch: self.cgb_opri_latch,
             status: self.status,
             lcdc: self.lcdc,
             stat_interrupt_enable: self.stat_interrupt_enable,
@@ -686,6 +696,8 @@ impl Ppu {
 
     pub(crate) fn restore_save_state(&mut self, state: &PpuSaveState) {
         self.console_model = state.console_model;
+        self.cgb_obj_priority_mode = state.cgb_obj_priority_mode;
+        self.cgb_opri_latch = state.cgb_opri_latch & 0x01;
         self.status = state.status;
         self.lcdc = state.lcdc;
         self.stat_interrupt_enable = state.stat_interrupt_enable;

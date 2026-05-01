@@ -195,6 +195,8 @@ impl<S: TraceSink> Machine<S> {
             self.serial.apply_startup_state(startup_state.serial);
             self.joypad.apply_startup_state(startup_state.joypad);
         }
+        self.ppu
+            .apply_operating_mode_state(self.config.operating_mode);
         self.bus
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.external_port.apply_startup_reset();

@@ -36,6 +36,7 @@ pub(super) enum PpuRegister {
     Bcpd,
     Ocps,
     Ocpd,
+    Opri,
 }
 
 impl PpuRegister {
@@ -56,6 +57,7 @@ impl PpuRegister {
             0xFF69 => Some(Self::Bcpd),
             0xFF6A => Some(Self::Ocps),
             0xFF6B => Some(Self::Ocpd),
+            0xFF6C => Some(Self::Opri),
             _ => None,
         }
     }
@@ -76,7 +78,8 @@ impl PpuRegister {
             | Self::Bcps
             | Self::Bcpd
             | Self::Ocps
-            | Self::Ocpd => None,
+            | Self::Ocpd
+            | Self::Opri => None,
         }
     }
 
@@ -96,7 +99,37 @@ impl PpuRegister {
             | Self::Obp0
             | Self::Obp1
             | Self::Wy
-            | Self::Wx => None,
+            | Self::Wx
+            | Self::Opri => None,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) enum CgbObjPriorityMode {
+    #[default]
+    CgbOamOrder,
+    DmgXCoordinate,
+}
+
+impl CgbObjPriorityMode {
+    pub(super) const fn for_model_and_mode(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) -> Self {
+        if console_model.is_cgb_family() && matches!(operating_mode, OperatingMode::Cgb) {
+            Self::CgbOamOrder
+        } else {
+            Self::DmgXCoordinate
+        }
+    }
+
+    pub(super) const fn opri_bit(self) -> u8 {
+        match self {
+            Self::CgbOamOrder => 0,
+            Self::DmgXCoordinate => 1,
         }
     }
 }
@@ -343,7 +376,8 @@ impl PpuMode3LiveBackgroundRegister {
             | PpuRegister::Bcps
             | PpuRegister::Bcpd
             | PpuRegister::Ocps
-            | PpuRegister::Ocpd => None,
+            | PpuRegister::Ocpd
+            | PpuRegister::Opri => None,
         }
     }
 }

@@ -196,7 +196,7 @@ fn owns_mmio_register_matches_the_ppu_register_window() {
     for address in 0xFF00..=0xFF7F {
         let expected = matches!(
             address,
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6B
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C
         );
         assert_eq!(Ppu::owns_mmio_register(address), expected, "{address:#06X}");
     }

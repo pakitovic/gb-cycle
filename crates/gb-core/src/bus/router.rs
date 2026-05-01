@@ -496,12 +496,11 @@ impl AddressRouter {
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::Ocpd,
             ),
-            0xFF6C => non_functional_io(
+            0xFF6C => implemented_io(
                 address,
                 IoRegisterOwner::Ppu,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
-                IoRegisterAccess::Mixed,
+                IoRegisterAccess::ReadWrite,
                 IoRegisterKind::Opri,
             ),
             0xFF70 => implemented_io(

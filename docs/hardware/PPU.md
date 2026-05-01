@@ -64,13 +64,15 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
 - `BCPS`/`BCPD` and `OCPS`/`OCPD` should remain PPU-owned CGB palette access registers rather than generic bus storage: each side has its own `64`-byte RGB555 palette RAM, the index registers read back with bit `6` forced high and address bits `0-5`, data reads/writes are blocked while the CPU-visible PPU mode is Mode `3`, and a blocked data write still performs the documented auto-increment when bit `7` is set.
+- `OPRI` / `FF6C` should remain a PPU-owned native-CGB MMIO latch rather than generic bus storage: reads return `$FE | bit0`, writes store bit `0`, and the visual OBJ/OBJ priority mode remains the boot-latched PPU mode until hardware-backed evidence justifies treating ordinary post-boot writes as a live visual switch.
 - On the shared scheduler path, CPU-originated writes to PPU MMIO registers should stage during the CPU micro-operation phase and commit on the same T-cycle during a dedicated MMIO-commit phase.
 - The staged PPU MMIO commit route must still respect model/mode availability before bypassing the generic bus route; native-CGB palette writes may stage through this path, while Non-CGB and CGB-family `GbCompatible` mode must keep CGB-only palette MMIO unavailable.
 - Keep MMIO-owned storage separate from the register view currently visible to the active pixel pipeline.
 - That active-pipeline-visible register view should drive Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other in-flight pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
-- In CGB-family BG/window fetch, the tile-number byte comes from VRAM bank `0` and the corresponding tile-map attribute byte comes from VRAM bank `1` at the same map offset; the fetched slice must keep the raw attribute byte stable for already-fetched pixels, use bit `3` for tile-data bank selection, apply bits `5` and `6` before producing the two-bit logical color index, carry bits `0-2` into native RGB555 palette lookup, and keep bit `7` available for final BG/OBJ composition.
-- In the CGB-family OBJ fetch baseline, the tile index and attribute byte come from the existing live Mode `3` OAM metadata read; the fetched OBJ tile data must ignore CPU `VBK` and use the attribute bit `3` VRAM bank, the logical OBJ color index must apply bits `5` and `6` for horizontal and vertical flips, and the winning OBJ FIFO pixel must carry the raw CGB OBJ attribute sideband so bits `0-2` feed native RGB555 palette lookup while bit `7` remains available for final BG/OBJ composition.
+- In CGB-family BG/window fetch, the tile-number byte comes from VRAM bank `0` and the corresponding tile-map attribute byte comes from VRAM bank `1` at the same map offset; the fetched slice must keep the raw attribute byte stable for already-fetched pixels, use bit `3` for tile-data bank selection, apply bits `5` and `6` before producing the two-bit logical color index, carry bits `0-2` into native RGB555 palette lookup, and feed bit `7` into final BG/OBJ composition.
+- In the CGB-family OBJ fetch baseline, the tile index and attribute byte come from the existing live Mode `3` OAM metadata read; the fetched OBJ tile data must ignore CPU `VBK` and use the attribute bit `3` VRAM bank, the logical OBJ color index must apply bits `5` and `6` for horizontal and vertical flips, and the winning OBJ FIFO pixel must carry the raw CGB OBJ attribute sideband so bits `0-2` feed native RGB555 palette lookup while bit `7` feeds final BG/OBJ composition.
 - Native CGB RGB555 output should be a parallel core framebuffer surface, not a replacement for the existing grayscale framebuffer: BG/window pixels use `BCPD` palette RAM selected by latched BG attribute bits `0-2`, OBJ pixels use `OCPD` palette RAM selected by latched OBJ attribute bits `0-2`, and OBJ color index `0` stays transparent before any OBJ palette lookup.
+- Native CGB BG/OBJ composition should resolve the winning OBJ pixel before comparing against BG/window: BG color index `0` always lets an eligible OBJ win, `LCDC.0 = 0` makes eligible OBJs win regardless of BG/OAM priority bits while keeping BG/window pixels visible when no OBJ wins, and `LCDC.0 = 1` lets BG/window color indices `1-3` win when either BG attribute bit `7` or OAM attribute bit `7` is set.
 - The design should also leave room for a previous-dot or pipeline-visible snapshot where live-write-sensitive DMG behavior needs it, especially for window activation, tile-data selection, and palette-conflict handling.
 - Mode `3` live `SCY` writes should distinguish the BG tilemap row (`(SCY + LY) / 8`) from the tile-data row (`(SCY + LY) % 8`). A write that changes only the tile-data row can retarget pending BG tiledata without rereading the tilemap; a write that crosses a tilemap row can request a full BG tilemap/tiledata refetch while the slice is still in an explicit live-refetch window.
 - Live `SCY` handling must preserve independent low-plane and high-plane tiledata provenance when a write lands between the two plane reads. Startup-alignment and early visible-tile seams need explicit latch/retarget state rather than a generic cached-slice recomputation, because hardware-visible pixels can combine old and new row sources within one 8-pixel slice.
@@ -209,6 +211,13 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - If overlapping OBJ pixels have the same `X`, drawing priority should prefer the earlier OAM entry.
 - Do not reuse CGB's OBJ-priority policy for DMG OBJ/OBJ conflicts.
 
+## CGB OBJ priority baseline
+
+- Keep object selection, OBJ/OBJ drawing priority, and final BG/OBJ composition separate in CGB-family rendering too.
+- In native CGB mode, the boot-latched OBJ drawing priority mode prefers the earlier OAM entry for overlapping non-transparent OBJ pixels.
+- In CGB compatibility mode, the boot-latched OBJ drawing priority mode prefers the smaller `X` coordinate, with OAM order only breaking same-`X` ties, but this does not enable DMG-family silicon quirks such as OAM corruption.
+- Runtime `OPRI` writes update the MMIO latch/readback only in ordinary Phase 10 behavior; the boot-latched visual priority mode remains stable unless a future hardware-backed test proves a live visual switch.
+
 ## OBJ transparency and BG/OBJ mixing baseline
 
 - OBJ color index `0` must always be treated as transparent.
@@ -221,6 +230,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - In DMG mode with `LCDC.0 = 0`, BG and window output should be forced to white while OBJ output can still remain visible when `LCDC.1 = 1`.
 - In DMG mode with `LCDC.0 = 0`, visible transfer dots should still consume the BG/window FIFO and advance the same `Mode 3` pipeline timing; only the presented BG/window color is forced to white.
 - In DMG mode, `LCDC.0` BG/window gating during pixel output should follow the live visible register copy even after the first visible pixel; this bit does not share the later-pixel delayed-copy rule used by `LCDC.1` OBJ enable.
+- In CGB-family rendering, `LCDC.0` must not force BG/window pixels to white or suppress window activation; it is a BG/window master priority bit for OBJ composition, so BG/window pixels remain visible whenever no eligible OBJ wins the final mix.
 - A BG pixel of color `0` should not block an eligible OBJ pixel as if the BG were opaque.
 
 ## Object fetch and stall baseline

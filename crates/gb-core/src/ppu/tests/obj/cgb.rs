@@ -31,6 +31,17 @@ fn cgb_obj_fetch_ppu() -> Ppu {
     ppu
 }
 
+fn priority_test_obj_pixel(color: u8, sprite_x: u8, oam_index: u8) -> ObjPixel {
+    ObjPixel {
+        color,
+        palette_obp1: false,
+        bg_over_obj: false,
+        cgb_obj_attrs: Some(CgbObjAttributes::new(0)),
+        sprite_x,
+        oam_index,
+    }
+}
+
 #[test]
 fn cgb_obj_attribute_byte_decodes_all_hardware_fields() {
     let attrs = CgbObjAttributes::new(0xFF);
@@ -42,6 +53,39 @@ fn cgb_obj_attribute_byte_decodes_all_hardware_fields() {
     assert!(attrs.horizontal_flip());
     assert!(attrs.vertical_flip());
     assert!(attrs.bg_over_obj());
+}
+
+#[test]
+fn cgb_obj_priority_mode_prefers_oam_order_over_lower_x() {
+    let ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let current = priority_test_obj_pixel(1, 20, 0);
+    let candidate = priority_test_obj_pixel(2, 18, 1);
+
+    assert!(!ppu.obj_pixel_has_priority(candidate, current));
+}
+
+#[test]
+fn cgb_compatibility_obj_priority_mode_prefers_lower_x_without_dmg_silicon() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
+    let current = priority_test_obj_pixel(1, 20, 0);
+    let candidate = priority_test_obj_pixel(2, 18, 1);
+
+    assert_eq!(ppu.read_register(0xFF6C), 0xFF);
+    assert!(ppu.obj_pixel_has_priority(candidate, current));
+}
+
+#[test]
+fn cgb_opri_write_updates_latch_without_runtime_visual_priority_mutation() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let current = priority_test_obj_pixel(1, 20, 0);
+    let candidate = priority_test_obj_pixel(2, 18, 1);
+
+    assert_eq!(ppu.read_register(0xFF6C), 0xFE);
+    ppu.write_register(0xFF6C, 0x01);
+
+    assert_eq!(ppu.read_register(0xFF6C), 0xFF);
+    assert!(!ppu.obj_pixel_has_priority(candidate, current));
 }
 
 #[test]

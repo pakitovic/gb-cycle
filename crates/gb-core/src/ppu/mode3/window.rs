@@ -307,7 +307,7 @@ impl Ppu {
                 sprite,
                 obj_tile_pixel_value(tile_low, tile_high, tile_pixel as u8, sprite.attributes),
             );
-            if obj_pixel_has_priority(candidate, front) {
+            if self.obj_pixel_has_priority(candidate, front) {
                 front = candidate;
             }
         }

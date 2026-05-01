@@ -15,8 +15,14 @@ impl Ppu {
     }
 
     pub fn new(console_model: ConsoleModel) -> Self {
+        let cgb_obj_priority_mode = CgbObjPriorityMode::for_model_and_mode(
+            console_model,
+            console_model.default_operating_mode(),
+        );
         Self {
             console_model,
+            cgb_obj_priority_mode,
+            cgb_opri_latch: cgb_obj_priority_mode.opri_bit(),
             status: PpuStatus::RegistersReady,
             lcdc: 0,
             stat_interrupt_enable: 0,
@@ -548,6 +554,7 @@ impl Ppu {
             PpuRegister::Bcpd => self.read_cgb_palette_data(CgbPaletteKind::Background, source),
             PpuRegister::Ocps => self.read_cgb_palette_index(CgbPaletteKind::Object),
             PpuRegister::Ocpd => self.read_cgb_palette_data(CgbPaletteKind::Object, source),
+            PpuRegister::Opri => self.read_cgb_opri(),
         }
     }
 
@@ -581,6 +588,7 @@ impl Ppu {
             }
             PpuRegister::Wy => self.wy = value,
             PpuRegister::Wx => self.wx = value,
+            PpuRegister::Opri => self.write_cgb_opri(value),
             PpuRegister::Bgp | PpuRegister::Obp0 | PpuRegister::Obp1 => {
                 unreachable!("palette writes return early")
             }
@@ -588,6 +596,29 @@ impl Ppu {
                 unreachable!("CGB palette writes return early")
             }
         }
+    }
+
+    pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        let priority_mode =
+            CgbObjPriorityMode::for_model_and_mode(self.console_model, operating_mode);
+        self.cgb_obj_priority_mode = priority_mode;
+        self.cgb_opri_latch = priority_mode.opri_bit();
+    }
+
+    fn read_cgb_opri(&self) -> u8 {
+        if !self.console_model.is_cgb_family() {
+            return 0xFF;
+        }
+
+        0xFE | (self.cgb_opri_latch & 0x01)
+    }
+
+    fn write_cgb_opri(&mut self, value: u8) {
+        if !self.console_model.is_cgb_family() {
+            return;
+        }
+
+        self.cgb_opri_latch = value & 0x01;
     }
 
     fn read_cgb_palette_index(&self, kind: CgbPaletteKind) -> u8 {

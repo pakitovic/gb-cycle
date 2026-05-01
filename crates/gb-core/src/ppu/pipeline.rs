@@ -305,6 +305,7 @@ impl Ppu {
         let sprite_screen_x = sprite_screen_x(sprite);
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
+        let priority_mode = self.current_obj_priority_mode();
         for tile_pixel in 0..BG_TILE_WIDTH {
             let color = obj_tile_pixel_value(tile_low, tile_high, tile_pixel, sprite.attributes);
             let screen_x = sprite_screen_x + tile_pixel as i16;
@@ -329,7 +330,7 @@ impl Ppu {
                 .fifo
                 .get_mut(offset)
                 .expect("OBJ FIFO was extended to cover the target offset");
-            if obj_pixel_has_priority(candidate, *slot) {
+            if obj_pixel_has_priority_for_mode(priority_mode, candidate, *slot) {
                 *slot = candidate;
             }
         }
@@ -345,6 +346,7 @@ impl Ppu {
         let sprite_screen_x = sprite_screen_x(sprite);
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
+        let priority_mode = self.current_obj_priority_mode();
         for tile_pixel in 0..BG_TILE_WIDTH {
             let candidate = self.obj_pixel_from_sprite(
                 sprite,
@@ -371,7 +373,7 @@ impl Ppu {
                 .get_mut(offset)
                 .expect("OBJ FIFO was extended to cover the target offset");
             let same_sprite = slot.sprite_x == sprite.x && slot.oam_index == sprite.oam_index;
-            if same_sprite || obj_pixel_has_priority(candidate, *slot) {
+            if same_sprite || obj_pixel_has_priority_for_mode(priority_mode, candidate, *slot) {
                 *slot = candidate;
             }
         }
@@ -462,6 +464,18 @@ impl Ppu {
             .unwrap_or_else(ObjPixel::transparent)
     }
 
+    pub(super) fn obj_pixel_has_priority(&self, candidate: ObjPixel, current: ObjPixel) -> bool {
+        obj_pixel_has_priority_for_mode(self.current_obj_priority_mode(), candidate, current)
+    }
+
+    fn current_obj_priority_mode(&self) -> CgbObjPriorityMode {
+        if self.console_model.is_cgb_family() {
+            self.cgb_obj_priority_mode
+        } else {
+            CgbObjPriorityMode::DmgXCoordinate
+        }
+    }
+
     pub(super) fn mix_bg_and_obj(
         &self,
         bg_pixel: u8,
@@ -473,7 +487,11 @@ impl Ppu {
             return MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs);
         }
 
-        if obj_pixel.bg_over_obj && effective_bg_priority_pixel != 0 {
+        if self.cgb_bg_has_priority_over_obj(bg_pixel, cgb_bg_attrs, obj_pixel)
+            || (!self.console_model.is_cgb_family()
+                && obj_pixel.bg_over_obj
+                && effective_bg_priority_pixel != 0)
+        {
             MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs)
         } else {
             MixedPixel::object_with_cgb_attrs(
@@ -482,6 +500,24 @@ impl Ppu {
                 obj_pixel.cgb_obj_attrs,
             )
         }
+    }
+
+    fn cgb_bg_has_priority_over_obj(
+        &self,
+        bg_pixel: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
+        obj_pixel: ObjPixel,
+    ) -> bool {
+        if !self.console_model.is_cgb_family() || bg_pixel == 0 {
+            return false;
+        }
+
+        let visible_lcdc = self.mode3_register_latches().visible().lcdc;
+        if visible_lcdc & LCDC_BG_ENABLE_BIT == 0 {
+            return false;
+        }
+
+        cgb_bg_attrs.unwrap_or_default().bg_priority() || obj_pixel.bg_over_obj
     }
 
     pub(super) fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {

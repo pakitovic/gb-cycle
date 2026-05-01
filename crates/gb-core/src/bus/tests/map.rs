@@ -286,7 +286,9 @@ fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
     );
     let ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
-    for address in [0xFF4C, 0xFF4F, 0xFF68, 0xFF69, 0xFF70, 0xFF72, 0xFF75] {
+    for address in [
+        0xFF4C, 0xFF4F, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
+    ] {
         assert_eq!(
             bus.read_io_target(
                 address,
@@ -304,7 +306,7 @@ fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
 fn native_cgb_palette_registers_route_to_ppu_owner() {
     let bus =
         Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
-    let ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
     assert_eq!(
         bus.read_io_target(
@@ -315,6 +317,40 @@ fn native_cgb_palette_registers_route_to_ppu_owner() {
             }
         ),
         0x40
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFE
+    );
+
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    bus.write_with_context(
+        0xFF6C,
+        0x01,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            ppu: Some(&mut ppu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
     );
 }
 

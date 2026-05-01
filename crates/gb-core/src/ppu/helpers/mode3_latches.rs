@@ -64,11 +64,15 @@ impl PpuMode3RegisterLatches {
         self,
         console_model: ConsoleModel,
     ) -> PpuVisibleRegisters {
-        if console_model.is_dmg_family() {
+        let mut registers = if console_model.is_dmg_family() {
             self.pipeline
         } else {
             self.visible
+        };
+        if !console_model.is_dmg_family() {
+            registers.lcdc |= LCDC_BG_ENABLE_BIT;
         }
+        registers
     }
 
     pub(in crate::ppu) const fn mode3_start_scx(self) -> u8 {

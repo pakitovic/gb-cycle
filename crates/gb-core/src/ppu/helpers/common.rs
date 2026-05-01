@@ -215,7 +215,11 @@ pub(in crate::ppu) fn sprite_trigger_x(sprite: PpuSelectedSprite) -> Option<u8> 
     Some(sprite.x)
 }
 
-pub(in crate::ppu) fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPixel) -> bool {
+pub(in crate::ppu) fn obj_pixel_has_priority_for_mode(
+    priority_mode: CgbObjPriorityMode,
+    candidate: ObjPixel,
+    current: ObjPixel,
+) -> bool {
     if current.is_transparent() {
         return !candidate.is_transparent();
     }
@@ -223,6 +227,12 @@ pub(in crate::ppu) fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPi
         return false;
     }
 
-    candidate.sprite_x < current.sprite_x
-        || (candidate.sprite_x == current.sprite_x && candidate.oam_index < current.oam_index)
+    match priority_mode {
+        CgbObjPriorityMode::CgbOamOrder => candidate.oam_index < current.oam_index,
+        CgbObjPriorityMode::DmgXCoordinate => {
+            candidate.sprite_x < current.sprite_x
+                || (candidate.sprite_x == current.sprite_x
+                    && candidate.oam_index < current.oam_index)
+        }
+    }
 }
