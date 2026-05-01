@@ -147,6 +147,10 @@ impl Ppu {
         if !fetch_policy.should_delay_background_tileindex_read(fetcher.source) {
             self.runtime.bg_pipeline_state.fetcher.tile_index =
                 vram.read(tile_map_address as usize).unwrap_or(0);
+            self.runtime.bg_pipeline_state.fetcher.cgb_bg_attrs =
+                self.read_cgb_bg_tile_attributes(vram, tile_map_address);
+        } else {
+            self.runtime.bg_pipeline_state.fetcher.cgb_bg_attrs = None;
         }
         if fetcher.source == PpuBgFetcherSource::Window {
             self.runtime.bg_pipeline_state.fetcher.window_tilemap_x = self
@@ -190,6 +194,10 @@ impl Ppu {
             self.runtime.bg_pipeline_state.fetcher.tile_index = vram
                 .read(self.runtime.bg_pipeline_state.fetcher.tile_map_address as usize)
                 .unwrap_or(0);
+            self.runtime.bg_pipeline_state.fetcher.cgb_bg_attrs = self.read_cgb_bg_tile_attributes(
+                vram,
+                self.runtime.bg_pipeline_state.fetcher.tile_map_address,
+            );
         }
         self.maybe_apply_bgwin_tilemap_selector_glitch(vram, fetcher.source);
         self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
@@ -217,24 +225,26 @@ impl Ppu {
                         )
                     },
                     |selector| {
-                        self.compute_window_fetch_tile_data_address_with_selector(
+                        self.compute_window_fetch_tile_data_address_with_selector_and_attributes(
                             fetcher.tile_index,
                             0,
                             selector,
+                            fetcher.cgb_bg_attrs,
                         )
                     },
                 )
         } else {
-            self.compute_fetch_tile_data_address(
+            self.compute_fetch_tile_data_address_with_attributes(
                 fetcher.source,
                 fetcher.fetch_x,
                 fetcher.tile_index,
                 0,
+                fetcher.cgb_bg_attrs,
             )
         };
         self.runtime.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
         self.runtime.bg_pipeline_state.fetcher.tile_low_address = tile_data_address;
-        let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+        let tile_data = self.read_bg_tile_data_byte(vram, fetcher.cgb_bg_attrs, tile_data_address);
         self.runtime.bg_pipeline_state.fetcher.tile_low = tile_data;
         self.maybe_cache_unsigned_bgwin_tile_data_fetch(
             fetcher.source,
@@ -260,15 +270,16 @@ impl Ppu {
         fetcher: BgFetcherState,
         vram: &VramBusView<'_>,
     ) {
-        let tile_data_address = self.compute_fetch_tile_data_address(
+        let tile_data_address = self.compute_fetch_tile_data_address_with_attributes(
             fetcher.source,
             fetcher.fetch_x,
             fetcher.tile_index,
             1,
+            fetcher.cgb_bg_attrs,
         );
         self.runtime.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
         self.runtime.bg_pipeline_state.fetcher.tile_high_address = tile_data_address;
-        let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+        let tile_data = self.read_bg_tile_data_byte(vram, fetcher.cgb_bg_attrs, tile_data_address);
         self.runtime.bg_pipeline_state.fetcher.tile_high = tile_data;
         self.maybe_cache_unsigned_bgwin_tile_data_fetch(
             fetcher.source,

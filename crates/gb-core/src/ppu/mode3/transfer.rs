@@ -278,13 +278,7 @@ impl Ppu {
             .or(visible_tile2_previous_row_override)
             .or(visible_tile3_previous_row_override)
             .or(next_tile_output_retarget)
-            .unwrap_or_else(|| {
-                bg_tile_pixel_value(
-                    recomputed.tile_low,
-                    recomputed.tile_high,
-                    cached.pixel_index,
-                )
-            });
+            .unwrap_or_else(|| recomputed.pixel_value(cached.pixel_index));
         Some(pixel.color)
     }
 

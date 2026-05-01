@@ -214,6 +214,54 @@ impl CgbPaletteState {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) struct CgbBgTileAttributes {
+    raw: u8,
+}
+
+impl CgbBgTileAttributes {
+    pub(super) const fn new(raw: u8) -> Self {
+        Self { raw }
+    }
+
+    pub(super) const fn raw(self) -> u8 {
+        self.raw
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn palette_index(self) -> u8 {
+        self.raw & CGB_BG_ATTR_PALETTE_MASK
+    }
+
+    pub(super) const fn tile_vram_bank(self) -> u8 {
+        if self.raw & CGB_BG_ATTR_VRAM_BANK_BIT != 0 {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn ignored_bit4(self) -> bool {
+        self.raw & CGB_BG_ATTR_IGNORED_BIT != 0
+    }
+
+    pub(super) const fn horizontal_flip(self) -> bool {
+        self.raw & CGB_BG_ATTR_X_FLIP_BIT != 0
+    }
+
+    pub(super) const fn vertical_flip(self) -> bool {
+        self.raw & CGB_BG_ATTR_Y_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn bg_priority(self) -> bool {
+        self.raw & CGB_BG_ATTR_PRIORITY_BIT != 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum PpuMode3LiveBackgroundRegister {
     Lcdc,
@@ -1946,7 +1994,7 @@ impl BgPipelineState {
     ) {
         for pixel_index in leading_pixel_skip.min(BG_TILE_WIDTH)..BG_TILE_WIDTH {
             self.fifo.push_back_pixel(BgFifoPixel::new(
-                bg_tile_pixel_value(cached.tile_low, cached.tile_high, pixel_index),
+                cached.pixel_value(pixel_index),
                 Some(BgFifoPixelCached::new(cached, pixel_index)),
             ));
         }
@@ -2269,6 +2317,7 @@ pub(super) struct BgFetcherState {
     pub(super) tile_low_address: u16,
     pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
 }
@@ -2324,6 +2373,7 @@ impl BgFetcherState {
         self.tile_low_address = 0;
         self.tile_high_address = 0;
         self.tile_index = 0;
+        self.cgb_bg_attrs = None;
         self.tile_low = 0;
         self.tile_high = 0;
     }
@@ -2358,6 +2408,7 @@ impl BgFetcherState {
         self.tile_low_address = 0;
         self.tile_high_address = 0;
         self.tile_index = 0;
+        self.cgb_bg_attrs = None;
         self.tile_low = 0;
         self.tile_high = 0;
     }
@@ -2388,6 +2439,7 @@ impl BgFetcherState {
         self.window_tilemap_x = 0;
         self.first_window_tile_after_activation = false;
         self.first_window_tile_leading_pixel_skip = 0;
+        self.cgb_bg_attrs = None;
     }
 
     pub(super) fn mark_live_register_write_for_current_background_fetch(
@@ -2643,6 +2695,7 @@ pub(super) struct BgCachedSlice {
     pub(super) tile_low_address: u16,
     pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
 }
@@ -2684,6 +2737,7 @@ impl BgCachedSlice {
             tile_low_address: fetcher.tile_low_address,
             tile_high_address: fetcher.tile_high_address,
             tile_index: fetcher.tile_index,
+            cgb_bg_attrs: fetcher.cgb_bg_attrs,
             tile_low: fetcher.tile_low,
             tile_high: fetcher.tile_high,
         }
@@ -2742,6 +2796,22 @@ impl BgCachedSlice {
 
     pub(super) const fn is_startup_alignment_seed(self) -> bool {
         matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
+    }
+
+    pub(super) const fn cgb_bg_attrs_or_default(self) -> CgbBgTileAttributes {
+        match self.cgb_bg_attrs {
+            Some(attrs) => attrs,
+            None => CgbBgTileAttributes::new(0),
+        }
+    }
+
+    pub(super) const fn pixel_value(self, pixel_index: u8) -> u8 {
+        bg_tile_pixel_value_with_cgb_attrs(
+            self.tile_low,
+            self.tile_high,
+            pixel_index,
+            self.cgb_bg_attrs_or_default(),
+        )
     }
 
     pub(super) const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
@@ -2960,6 +3030,7 @@ pub(super) fn recompute_live_background_cached_slice(
     let registers = context.registers();
     let mut tile_map_address = cached.tile_map_address;
     let mut tile_index = cached.tile_index;
+    let mut cgb_bg_attrs = cached.cgb_bg_attrs;
     if cached.needs_live_tilemap_refetch {
         let tilemap_select_override = cached.dmg_lcdc3_tilemap_select_override;
         let full_refetch_fetch_x =
@@ -3009,8 +3080,15 @@ pub(super) fn recompute_live_background_cached_slice(
             tile_map_base | tile_map_offset
         };
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        if cgb_bg_attrs.is_some() {
+            cgb_bg_attrs = Some(CgbBgTileAttributes::new(
+                vram.read_bank(CGB_BG_ATTR_BANK, tile_map_address as usize)
+                    .unwrap_or(0),
+            ));
+        }
     }
 
+    let attributes = cgb_bg_attrs.unwrap_or_default();
     let cached_tile_low_address = cached_tile_low_address(cached);
     let cached_tile_high_address = cached_tile_high_address(cached);
     let current_tile_row = match cached.source {
@@ -3020,14 +3098,14 @@ pub(super) fn recompute_live_background_cached_slice(
     let tile_low_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_low_current_row_refetch
     {
-        current_tile_row
+        cgb_bg_effective_tile_row(current_tile_row, attributes)
     } else {
         bg_tile_data_address_row(cached_tile_low_address)
     };
     let tile_high_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_high_current_row_refetch
     {
-        current_tile_row
+        cgb_bg_effective_tile_row(current_tile_row, attributes)
     } else {
         bg_tile_data_address_row(cached_tile_high_address)
     };
@@ -3053,8 +3131,10 @@ pub(super) fn recompute_live_background_cached_slice(
             )
         } else {
             (
-                vram.read(tile_low_address as usize).unwrap_or(0),
-                vram.read(tile_high_address as usize).unwrap_or(0),
+                vram.read_bank(attributes.tile_vram_bank(), tile_low_address as usize)
+                    .unwrap_or(0),
+                vram.read_bank(attributes.tile_vram_bank(), tile_high_address as usize)
+                    .unwrap_or(0),
             )
         };
 
@@ -3063,6 +3143,7 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.tile_low_address = tile_low_address;
     cached.tile_high_address = tile_high_address;
     cached.tile_index = tile_index;
+    cached.cgb_bg_attrs = cgb_bg_attrs;
     cached.tile_low = tile_low;
     cached.tile_high = tile_high;
     cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;

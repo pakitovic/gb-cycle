@@ -131,6 +131,7 @@ pub struct PpuBgFifoCachedPixelSnapshot {
     pub tile_map_address: u16,
     pub tile_data_address: u16,
     pub tile_index: u8,
+    pub cgb_bg_attrs: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -141,6 +142,7 @@ pub struct PpuBgCachedSliceSnapshot {
     pub tile_map_address: u16,
     pub tile_data_address: u16,
     pub tile_index: u8,
+    pub cgb_bg_attrs: Option<u8>,
     pub tile_low: u8,
     pub tile_high: u8,
 }
@@ -259,6 +261,7 @@ pub(super) fn snapshot_bg_fifo_cached_pixel(
         tile_map_address: cached.cached.tile_map_address,
         tile_data_address: cached.cached.tile_data_address,
         tile_index: cached.cached.tile_index,
+        cgb_bg_attrs: cached.cached.cgb_bg_attrs.map(CgbBgTileAttributes::raw),
     })
 }
 
@@ -270,6 +273,10 @@ pub(super) const fn snapshot_bg_cached_slice(cached: BgCachedSlice) -> PpuBgCach
         tile_map_address: cached.tile_map_address,
         tile_data_address: cached.tile_data_address,
         tile_index: cached.tile_index,
+        cgb_bg_attrs: match cached.cgb_bg_attrs {
+            Some(attrs) => Some(attrs.raw()),
+            None => None,
+        },
         tile_low: cached.tile_low,
         tile_high: cached.tile_high,
     }

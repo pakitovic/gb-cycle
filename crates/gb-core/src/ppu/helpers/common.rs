@@ -66,6 +66,41 @@ pub(in crate::ppu) const fn bg_tile_pixel_value(
     (high_bit << 1) | low_bit
 }
 
+pub(in crate::ppu) const fn cgb_bg_effective_tile_row(
+    tile_row: u16,
+    attributes: CgbBgTileAttributes,
+) -> u16 {
+    if attributes.vertical_flip() {
+        (BG_TILE_WIDTH - 1) as u16 - tile_row
+    } else {
+        tile_row
+    }
+}
+
+pub(in crate::ppu) const fn cgb_bg_effective_pixel_index(
+    pixel_index: u8,
+    attributes: CgbBgTileAttributes,
+) -> u8 {
+    if attributes.horizontal_flip() {
+        BG_TILE_WIDTH - 1 - pixel_index
+    } else {
+        pixel_index
+    }
+}
+
+pub(in crate::ppu) const fn bg_tile_pixel_value_with_cgb_attrs(
+    tile_low: u8,
+    tile_high: u8,
+    pixel_index: u8,
+    attributes: CgbBgTileAttributes,
+) -> u8 {
+    bg_tile_pixel_value(
+        tile_low,
+        tile_high,
+        cgb_bg_effective_pixel_index(pixel_index, attributes),
+    )
+}
+
 pub(in crate::ppu) fn read_oam_sprite(
     oam: &OamBusView<'_>,
     oam_index: u8,

@@ -292,5 +292,6 @@ impl Ppu {
         self.runtime.bg_pipeline_state.fetcher.tile_high_address = recomputed.tile_high_address;
         self.runtime.bg_pipeline_state.fetcher.tile_low = recomputed.tile_low;
         self.runtime.bg_pipeline_state.fetcher.tile_high = recomputed.tile_high;
+        self.runtime.bg_pipeline_state.fetcher.cgb_bg_attrs = recomputed.cgb_bg_attrs;
     }
 }

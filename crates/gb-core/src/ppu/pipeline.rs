@@ -21,30 +21,87 @@ impl Ppu {
         tile_index: u8,
         plane: u16,
     ) -> u16 {
+        self.compute_fetch_tile_data_address_with_attributes(
+            source, fetch_x, tile_index, plane, None,
+        )
+    }
+
+    pub(super) fn compute_fetch_tile_data_address_with_attributes(
+        &self,
+        source: PpuBgFetcherSource,
+        fetch_x: u16,
+        tile_index: u8,
+        plane: u16,
+        attributes: Option<CgbBgTileAttributes>,
+    ) -> u16 {
+        let attributes = attributes.unwrap_or_default();
         match source {
-            PpuBgFetcherSource::Background => self
-                .background_fetch_context(fetch_x)
-                .tile_data_address(tile_index, plane),
-            PpuBgFetcherSource::Window => self
-                .window_fetch_context()
-                .tile_data_address(tile_index, plane),
+            PpuBgFetcherSource::Background => {
+                let context = self.background_fetch_context(fetch_x);
+                context.tile_data_address_for_row(
+                    tile_index,
+                    cgb_bg_effective_tile_row(context.tile_data_row(), attributes),
+                    plane,
+                )
+            }
+            PpuBgFetcherSource::Window => {
+                let context = self.window_fetch_context();
+                context.tile_data_address_for_row(
+                    tile_index,
+                    cgb_bg_effective_tile_row(context.tile_data_row(), attributes),
+                    plane,
+                )
+            }
         }
     }
 
-    pub(super) fn compute_window_fetch_tile_data_address_with_selector(
+    pub(super) fn compute_window_fetch_tile_data_address_with_selector_and_attributes(
         &self,
         tile_index: u8,
         plane: u16,
         selector: BgTileDataSelect,
+        attributes: Option<CgbBgTileAttributes>,
     ) -> u16 {
         let mut registers = self.mode3_register_latches().visible();
         registers.lcdc = selector.apply_to_lcdc(registers.lcdc);
-        PpuMode3WindowFetchContext::new(
+        let context = PpuMode3WindowFetchContext::new(
             registers,
             self.current_window_line_counter(),
             self.bg_pipeline_state.fetcher.window_tilemap_x,
+        );
+        context.tile_data_address_for_row(
+            tile_index,
+            cgb_bg_effective_tile_row(context.tile_data_row(), attributes.unwrap_or_default()),
+            plane,
         )
-        .tile_data_address(tile_index, plane)
+    }
+
+    pub(super) fn read_cgb_bg_tile_attributes(
+        &self,
+        vram: &VramBusView<'_>,
+        tile_map_address: u16,
+    ) -> Option<CgbBgTileAttributes> {
+        if !self.console_model.is_cgb_family() {
+            return None;
+        }
+
+        Some(CgbBgTileAttributes::new(
+            vram.read_bank(CGB_BG_ATTR_BANK, tile_map_address as usize)
+                .unwrap_or(0),
+        ))
+    }
+
+    pub(super) fn read_bg_tile_data_byte(
+        &self,
+        vram: &VramBusView<'_>,
+        attributes: Option<CgbBgTileAttributes>,
+        address: u16,
+    ) -> u8 {
+        vram.read_bank(
+            attributes.unwrap_or_default().tile_vram_bank(),
+            address as usize,
+        )
+        .unwrap_or(0)
     }
 
     pub(super) fn maybe_cache_unsigned_bgwin_tile_data_fetch(
@@ -98,13 +155,15 @@ impl Ppu {
         }
 
         let tile_index = self.bg_pipeline_state.fetcher.tile_index;
-        let tile_data_address = self.compute_fetch_tile_data_address(
+        let attributes = self.bg_pipeline_state.fetcher.cgb_bg_attrs;
+        let tile_data_address = self.compute_fetch_tile_data_address_with_attributes(
             source,
             self.bg_pipeline_state.fetcher.fetch_x,
             tile_index,
             plane,
+            attributes,
         );
-        let tile_byte = vram.read(tile_data_address as usize).unwrap_or(0);
+        let tile_byte = self.read_bg_tile_data_byte(vram, attributes, tile_data_address);
 
         let fetcher = &mut self.bg_pipeline_state.fetcher;
         fetcher.tile_data_address = tile_data_address;
@@ -135,9 +194,11 @@ impl Ppu {
         let tile_map_address =
             self.compute_fetch_tile_index_address(source, self.bg_pipeline_state.fetcher.fetch_x);
         let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let cgb_bg_attrs = self.read_cgb_bg_tile_attributes(vram, tile_map_address);
         let fetcher = &mut self.bg_pipeline_state.fetcher;
         fetcher.tile_map_address = tile_map_address;
         fetcher.tile_index = tile_index;
+        fetcher.cgb_bg_attrs = cgb_bg_attrs;
     }
 
     pub(super) fn read_obj_tile_data_byte_for_resolved_tile(

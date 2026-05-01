@@ -84,6 +84,16 @@ const OAM_CORRUPTION_DOTS_PER_ROW: u16 = 4;
 const OAM_CORRUPTION_ROW_BYTES: usize = 8;
 const OAM_CORRUPTION_ROW_WORDS: usize = 4;
 const OAM_CORRUPTION_ROW_COUNT: u8 = 20;
+#[allow(dead_code)]
+const CGB_BG_ATTR_PALETTE_MASK: u8 = 0x07;
+const CGB_BG_ATTR_VRAM_BANK_BIT: u8 = 0x08;
+#[allow(dead_code)]
+const CGB_BG_ATTR_IGNORED_BIT: u8 = 0x10;
+const CGB_BG_ATTR_X_FLIP_BIT: u8 = 0x20;
+const CGB_BG_ATTR_Y_FLIP_BIT: u8 = 0x40;
+#[allow(dead_code)]
+const CGB_BG_ATTR_PRIORITY_BIT: u8 = 0x80;
+const CGB_BG_ATTR_BANK: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {

@@ -1,3 +1,4 @@
+mod cgb_fetch;
 mod fetch;
 mod latches;
 mod lcdc_bg_toggles;

@@ -138,6 +138,7 @@ Priority order:
 - Slice 3 synthesizes locked direct-boot `KEY0` state from the cartridge header for `SkipBoot` so native CGB and CGB compatibility mode have an internal boot-owned mode record, but ordinary runtime `KEY0` reads remain `$FF` and writes are ignored after direct boot. Full real-boot `KEY0` writes, `FF50` handoff locking, and post-lock validation remain Slice 6-owned.
 - Phase 10 Slice 4 begins with PPU-owned CGB palette MMIO: native CGB routes `BCPS`/`BCPD` and `OCPS`/`OCPD` through separate background/object `64`-byte RGB555 palette RAM, index reads force bit `6` high, data writes auto-increment only when bit `7` is set, and Mode `3` blocks data reads/writes while preserving the documented failed-write auto-increment.
 - Native CGB palette MMIO is enabled only when `ConsoleModel::GameBoyColor` is running `OperatingMode::Cgb`; DMG-family models and CGB-family `GbCompatible` mode keep these CGB-only palette data/index registers unavailable until the later compatibility-palette rendering path is modeled explicitly.
+- Phase 10 Slice 4B latches CGB BG/window tile-map attributes from VRAM bank `1` alongside the corresponding tile-number entry from VRAM bank `0`, preserves the raw attribute byte including writable/readable ignored bit `4`, uses bit `3` to select the tile-data VRAM bank, applies horizontal and vertical flips to the logical two-bit color index path, and carries palette index plus BG priority as fetcher/FIFO sideband for later RGB555 and BG/OBJ composition work.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
 
@@ -145,13 +146,13 @@ Priority order:
 
 These can stay unimplemented in the first DMG-family core as long as the architecture leaves them a clear place:
 
-- CGB palette rendering through fetcher attributes and compatibility palette seeding
-- CGB PPU consumption of VRAM bank `1` tile attributes, palette indices, and RGB555 output
+- CGB RGB555 palette rendering through latched fetcher attributes and compatibility palette seeding
+- CGB OBJ attribute consumption and final CGB BG/OBJ priority composition
 - CGB RealBoot `KEY0` writes, `FF50` handoff locking, and RealBoot versus SkipBoot equivalence
 - full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
 - CGB OAM DMA duration differences in double speed
 - HDMA and GDMA
-- CGB tile attributes
+- Remaining CGB OBJ tile attributes
 - CGB boot ROM behavior
 - DMG-on-CGB compatibility details
 - functional support for CGB-only special cartridges such as `MBC30`, `MBC7`, and `MBC6`
