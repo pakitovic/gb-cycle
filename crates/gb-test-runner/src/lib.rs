@@ -2828,6 +2828,29 @@ mod tests {
                 .failure_artifacts
                 .contains(CaptureKind::Snapshot)
         );
+
+        let ly_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-ly")
+            .expect("speed_switch_timing_ly.gbc case should exist");
+
+        assert_eq!(ly_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            ly_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_ly.gbc")
+        );
+        assert_eq!(ly_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            ly_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_ly.png"
+            ))
+        );
+        assert!(ly_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(ly_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(ly_case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(ly_case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 
     #[test]

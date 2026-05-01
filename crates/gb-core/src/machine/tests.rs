@@ -268,7 +268,7 @@ fn key1_mmio_is_live_only_for_native_cgb_mode() {
 }
 
 #[test]
-fn cgb_stop_with_prepared_key1_switches_speed_and_freezes_domains_during_pause() {
+fn cgb_stop_with_prepared_key1_switches_speed_and_preserves_lcd_domain_during_pause() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -307,11 +307,11 @@ fn cgb_stop_with_prepared_key1_switches_speed_and_freezes_domains_during_pause()
         paused_timer_counter
     );
     assert_eq!(machine.ppu().snapshot().ly, paused_ppu.ly);
-    assert_eq!(machine.ppu().snapshot().line_dot, paused_ppu.line_dot);
+    assert_eq!(machine.ppu().snapshot().line_dot, paused_ppu.line_dot + 16);
 
     step_until_cpu_state(
         &mut machine,
-        8_300,
+        u64::from(crate::speed::CGB_SPEED_SWITCH_PAUSE_T_CYCLES) + 128,
         "speed-switch pause completion",
         |state| matches!(state, CpuExecutionState::FetchOpcode { .. }),
     );

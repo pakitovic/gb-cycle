@@ -1,6 +1,11 @@
 use crate::model::{ConsoleModel, OperatingMode};
 
-pub const CGB_SPEED_SWITCH_PAUSE_T_CYCLES: u16 = 8_200;
+/// CPU-visible scheduler T-cycles consumed by a prepared CGB speed-switch `STOP` pause.
+///
+/// The pause length is anchored to Daid/GBEmulatorShootout `speed_switch_timing_ly.gbc`:
+/// CPU-visible domains remain stopped while the LCD domain keeps scanning at normal
+/// dot cadence, and the first post-switch `LY` samples land on the upstream $85-$88 oracle.
+pub const CGB_SPEED_SWITCH_PAUSE_T_CYCLES: u32 = 65_540;
 const KEY1_UNUSED_READ_MASK: u8 = 0x7E;
 const KEY1_CURRENT_SPEED_BIT: u8 = 0x80;
 const KEY1_PREPARE_SWITCH_BIT: u8 = 0x01;
@@ -38,6 +43,13 @@ impl CgbSpeedMode {
         match self {
             Self::Normal => 8,
             Self::Double => 7,
+        }
+    }
+
+    pub const fn lcd_tick_due_at_scheduler_t_cycle(self, scheduler_t_cycle: u64) -> bool {
+        match self {
+            Self::Normal => true,
+            Self::Double => scheduler_t_cycle & 1 == 0,
         }
     }
 
@@ -288,5 +300,10 @@ mod tests {
         assert_eq!(CgbSpeedMode::Double.div_apu_counter_bit(), 13);
         assert_eq!(CgbSpeedMode::Normal.serial_internal_clock_edge_bit(), 8);
         assert_eq!(CgbSpeedMode::Double.serial_internal_clock_edge_bit(), 7);
+        assert!(CgbSpeedMode::Normal.lcd_tick_due_at_scheduler_t_cycle(0));
+        assert!(CgbSpeedMode::Normal.lcd_tick_due_at_scheduler_t_cycle(1));
+        assert!(CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(0));
+        assert!(!CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(1));
+        assert!(CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(2));
     }
 }

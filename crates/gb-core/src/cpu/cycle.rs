@@ -90,7 +90,7 @@ impl CpuCore {
         }
     }
 
-    fn advance_speed_switch_pause(&mut self, remaining_t_cycles: u16) {
+    fn advance_speed_switch_pause(&mut self, remaining_t_cycles: u32) {
         if remaining_t_cycles <= 1 {
             self.execution_state = CpuExecutionState::fetch_opcode();
         } else {

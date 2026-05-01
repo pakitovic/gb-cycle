@@ -4,7 +4,7 @@ use super::{
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
-    Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
+    Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester, DmaBusState,
 };
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
@@ -349,23 +349,19 @@ impl MachinePhaseRunner<'_> {
                     });
             let dma_oam_active = dma_bus_state.active_region().is_some();
 
-            observer.begin_region(MachineStepRegion::Ppu);
-            self.bus
-                .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
-            let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
-            self.ppu.tick_t_cycle_with_observer(
-                context,
-                oam_view,
-                vram_view,
-                dma_oam_active,
-                dma_oam_conflict,
-                observer,
-            );
-            let ppu_bus_states_after = self.ppu_bus_state_snapshot();
-            let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
-            self.bus
-                .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
-            observer.end_region(MachineStepRegion::Ppu);
+            if self
+                .speed
+                .current_speed()
+                .lcd_tick_due_at_scheduler_t_cycle(context.t_cycle().get())
+            {
+                self.tick_ppu_video_domain(
+                    context,
+                    dma_bus_state,
+                    dma_oam_active,
+                    dma_oam_conflict,
+                    observer,
+                );
+            }
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
                 self.external_port.tick_t_cycle();
                 self.serial
@@ -388,6 +384,15 @@ impl MachinePhaseRunner<'_> {
                     );
                 });
             }
+        } else if self.cpu_speed_switch_pause_active() {
+            let dma_bus_state = self.dma.bus_state();
+            self.tick_ppu_video_domain(
+                context,
+                dma_bus_state,
+                dma_bus_state.active_region().is_some(),
+                None,
+                observer,
+            );
         }
 
         tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
@@ -402,6 +407,36 @@ impl MachinePhaseRunner<'_> {
         tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
             self.serial.scheduler_trace_message(context)
         });
+    }
+
+    fn tick_ppu_video_domain<O>(
+        &mut self,
+        context: &mut CycleContext,
+        dma_bus_state: DmaBusState,
+        dma_oam_active: bool,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+        observer: &mut O,
+    ) where
+        O: MachineStepObserver,
+    {
+        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+        observer.begin_region(MachineStepRegion::Ppu);
+        self.bus
+            .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
+        let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
+        self.ppu.tick_t_cycle_with_observer(
+            context,
+            oam_view,
+            vram_view,
+            dma_oam_active,
+            dma_oam_conflict,
+            observer,
+        );
+        let ppu_bus_states_after = self.ppu_bus_state_snapshot();
+        let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
+        self.bus
+            .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
+        observer.end_region(MachineStepRegion::Ppu);
     }
 
     fn step_bus_arbitration<S: TraceSink>(
@@ -665,6 +700,13 @@ impl MachinePhaseRunner<'_> {
         };
         self.cached_cpu_bus_arbitration_states = Some(states);
         states
+    }
+
+    fn cpu_speed_switch_pause_active(&self) -> bool {
+        matches!(
+            self.cpu.execution_state(),
+            CpuExecutionState::SpeedSwitchPause { .. }
+        )
     }
 
     fn cpu_stop_active(&self) -> bool {

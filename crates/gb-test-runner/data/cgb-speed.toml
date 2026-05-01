@@ -45,8 +45,9 @@ family = "daid"
 id = "cgb-speed-speed-switch-timing-ly"
 rom = "speed_switch_timing_ly.gbc"
 console = "cgb"
-timeout_frames = 5
-oracle = "info-framebuffer"
+timeout_frames = 180
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_ly.png"
 
 [[case]]
 family = "daid"

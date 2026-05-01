@@ -138,7 +138,7 @@ pub enum CpuExecutionState {
         t_cycle: u8,
     },
     SpeedSwitchPause {
-        remaining_t_cycles: u16,
+        remaining_t_cycles: u32,
     },
     DiagnosticTrap {
         trap: CpuDiagnosticTrap,
