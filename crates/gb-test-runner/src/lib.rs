@@ -2851,6 +2851,33 @@ mod tests {
         assert!(ly_case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(ly_case.failure_artifacts.contains(CaptureKind::Framebuffer));
         assert!(ly_case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let stat_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "cgb-speed-speed-switch-timing-stat")
+            .expect("speed_switch_timing_stat.gbc case should exist");
+
+        assert_eq!(stat_case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            stat_case.rom_path,
+            PathBuf::from("daid/speed_switch_timing_stat.gbc")
+        );
+        assert_eq!(stat_case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            stat_case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_stat.png"
+            ))
+        );
+        assert!(stat_case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(stat_case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(
+            stat_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(stat_case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 
     #[test]
