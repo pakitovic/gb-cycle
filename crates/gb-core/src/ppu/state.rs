@@ -218,6 +218,11 @@ impl CgbPalettePort {
         let address = usize::from((palette_index & 0x07) * 8 + (color_index & 0x03) * 2);
         u16::from_le_bytes([self.data[address], self.data[address + 1]]) & 0x7FFF
     }
+
+    pub(super) fn write_palette_bytes(&mut self, palette_index: u8, bytes: [u8; 8]) {
+        let address = usize::from((palette_index & 0x07) * 8);
+        self.data[address..address + 8].copy_from_slice(&bytes);
+    }
 }
 
 impl Default for CgbPalettePort {
@@ -249,6 +254,15 @@ impl CgbPaletteState {
             CgbPaletteKind::Background => &mut self.background,
             CgbPaletteKind::Object => &mut self.object,
         }
+    }
+
+    pub(super) fn apply_cgb_compatibility_palette_seed(
+        &mut self,
+        seed: CgbCompatibilityPaletteSeed,
+    ) {
+        self.background.write_palette_bytes(0, seed.bg_palette0);
+        self.object.write_palette_bytes(0, seed.obj_palette0);
+        self.object.write_palette_bytes(1, seed.obj_palette1);
     }
 }
 

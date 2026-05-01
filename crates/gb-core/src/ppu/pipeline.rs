@@ -531,6 +531,10 @@ impl Ppu {
     }
 
     pub(super) fn map_mixed_pixel_to_cgb_rgb555(&self, pixel: MixedPixel) -> u16 {
+        if self.is_cgb_compatibility_mode() {
+            return self.map_mixed_pixel_to_cgb_compatibility_rgb555(pixel);
+        }
+
         match pixel.source {
             MixedPixelSource::Background => {
                 let attrs = pixel.cgb_bg_attrs.unwrap_or_default();
@@ -543,6 +547,28 @@ impl Ppu {
                 self.cgb_palettes
                     .port(CgbPaletteKind::Object)
                     .rgb555(attrs.palette_index(), pixel.color)
+            }
+        }
+    }
+
+    fn map_mixed_pixel_to_cgb_compatibility_rgb555(&self, pixel: MixedPixel) -> u16 {
+        let visible_registers = self.mode3_register_latches().visible();
+
+        match pixel.source {
+            MixedPixelSource::Background => {
+                let color = self.apply_dmg_palette(visible_registers.bgp, pixel.color);
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Background)
+                    .rgb555(0, color)
+            }
+            MixedPixelSource::Object { palette_obp1 } => {
+                let palette =
+                    visible_registers.obj_palette(palette_obp1, self.obj_palette_read_policy);
+                let color = self.apply_dmg_palette(palette, pixel.color);
+                let cgb_palette_index = u8::from(palette_obp1);
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Object)
+                    .rgb555(cgb_palette_index, color)
             }
         }
     }

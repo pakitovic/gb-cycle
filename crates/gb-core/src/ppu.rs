@@ -1,11 +1,13 @@
 use crate::bus::{BusMaster, OamBusView, VramBusView};
-use crate::model::{ConsoleModel, OperatingMode};
+use crate::cartridge::CartridgeHeader;
+use crate::model::{ConsoleModel, OperatingMode, StartupMode};
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 
 mod api;
+mod compat_palettes;
 mod control;
 mod helpers;
 mod mode3;
@@ -14,6 +16,7 @@ mod pipeline;
 mod snapshot;
 mod state;
 
+use self::compat_palettes::*;
 use self::helpers::*;
 use self::palette_conflicts::*;
 pub use self::snapshot::{
@@ -115,6 +118,36 @@ const fn panel_shade_to_rgb555(shade: u8) -> u16 {
         2 => RGB555_DARK_GRAY,
         _ => RGB555_BLACK,
     }
+}
+
+const fn normalize_ppu_operating_mode(
+    console_model: ConsoleModel,
+    operating_mode: OperatingMode,
+) -> OperatingMode {
+    if console_model.supports_operating_mode(operating_mode) {
+        operating_mode
+    } else {
+        console_model.default_operating_mode()
+    }
+}
+
+fn normalize_saved_ppu_operating_mode(
+    console_model: ConsoleModel,
+    operating_mode: OperatingMode,
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+) -> OperatingMode {
+    if console_model.supports_operating_mode(operating_mode) {
+        return operating_mode;
+    }
+
+    if console_model.is_cgb_family()
+        && operating_mode == OperatingMode::Dmg
+        && cgb_obj_priority_mode == CgbObjPriorityMode::DmgXCoordinate
+    {
+        return OperatingMode::GbCompatible;
+    }
+
+    console_model.default_operating_mode()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -599,6 +632,8 @@ impl DerefMut for PpuRuntimeState {
 pub struct Ppu {
     console_model: ConsoleModel,
     #[serde(default)]
+    operating_mode: OperatingMode,
+    #[serde(default)]
     cgb_obj_priority_mode: CgbObjPriorityMode,
     #[serde(default)]
     cgb_opri_latch: u8,
@@ -626,6 +661,8 @@ pub struct Ppu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuSaveState {
     console_model: ConsoleModel,
+    #[serde(default)]
+    operating_mode: OperatingMode,
     #[serde(default)]
     cgb_obj_priority_mode: CgbObjPriorityMode,
     #[serde(default)]
@@ -670,6 +707,7 @@ impl Ppu {
     pub(crate) fn capture_save_state(&self) -> PpuSaveState {
         PpuSaveState {
             console_model: self.console_model,
+            operating_mode: self.operating_mode,
             cgb_obj_priority_mode: self.cgb_obj_priority_mode,
             cgb_opri_latch: self.cgb_opri_latch,
             status: self.status,
@@ -696,6 +734,11 @@ impl Ppu {
 
     pub(crate) fn restore_save_state(&mut self, state: &PpuSaveState) {
         self.console_model = state.console_model;
+        self.operating_mode = normalize_saved_ppu_operating_mode(
+            state.console_model,
+            state.operating_mode,
+            state.cgb_obj_priority_mode,
+        );
         self.cgb_obj_priority_mode = state.cgb_obj_priority_mode;
         self.cgb_opri_latch = state.cgb_opri_latch & 0x01;
         self.status = state.status;

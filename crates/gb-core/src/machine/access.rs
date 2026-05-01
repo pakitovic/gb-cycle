@@ -197,6 +197,12 @@ impl<S: TraceSink> Machine<S> {
         }
         self.ppu
             .apply_operating_mode_state(self.config.operating_mode);
+        self.ppu.apply_cgb_compatibility_palette_startup_state(
+            self.config.startup_mode,
+            self.config.operating_mode,
+            self.cartridge.header(),
+            host_joypad_pressed_mask,
+        );
         self.bus
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.external_port.apply_startup_reset();

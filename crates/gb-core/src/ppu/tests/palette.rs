@@ -49,6 +49,18 @@ fn cgb_obj_pixel(color: u8, attrs: CgbObjAttributes) -> ObjPixel {
     }
 }
 
+fn cgb_compatibility_test_header(
+    title_bytes: [u8; 16],
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> crate::cartridge::CartridgeHeader {
+    let mut rom = vec![0; 0x150];
+    rom[0x0134..0x0144].copy_from_slice(&title_bytes);
+    rom[0x0144..0x0146].copy_from_slice(&new_licensee_code);
+    rom[0x014B] = old_licensee_code;
+    crate::cartridge::CartridgeHeader::parse(&rom).expect("test header should parse")
+}
+
 #[test]
 fn cgb_palette_index_registers_force_unused_bit_and_mask_address() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
@@ -141,6 +153,141 @@ fn dmg_family_ppu_ignores_cgb_palette_registers_directly() {
 }
 
 #[test]
+fn cgb_compatibility_mode_keeps_cgb_palette_mmio_unavailable_directly() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
+
+    assert_eq!(ppu.read_register(0xFF68), 0xFF);
+    assert_eq!(ppu.read_register(0xFF69), 0xFF);
+
+    ppu.write_register(0xFF68, 0x80);
+    ppu.write_register(0xFF69, 0x12);
+
+    assert_eq!(
+        ppu.cgb_palettes
+            .port(CgbPaletteKind::Background)
+            .rgb555(0, 0),
+        0
+    );
+}
+
+#[test]
+fn cgb_compatibility_palette_seed_uses_nintendo_licensee_and_title_checksum() {
+    let mut title = [0; 16];
+    title[0] = 0x88;
+    let old_licensee = cgb_compatibility_test_header(title, 0x01, *b"00");
+    let new_licensee = cgb_compatibility_test_header(title, 0x33, *b"01");
+    let non_nintendo = cgb_compatibility_test_header(title, 0x33, *b"02");
+
+    let old_seed = resolve_cgb_compatibility_palette_seed(Some(&old_licensee));
+    let new_seed = resolve_cgb_compatibility_palette_seed(Some(&new_licensee));
+    let fallback_seed = resolve_cgb_compatibility_palette_seed(Some(&non_nintendo));
+
+    assert_eq!(old_seed.lookup_index, 1);
+    assert_eq!(old_seed.palette_index_and_flags, 0x08);
+    assert_eq!(old_seed.palette_triplet_index, 8);
+    assert_eq!(old_seed.shuffle_flags, 0);
+    assert_eq!(
+        old_seed.obj_palette0,
+        [0x74, 0x7E, 0xFF, 0x03, 0x80, 0x01, 0x00, 0x00]
+    );
+    assert_eq!(old_seed, new_seed);
+    assert_eq!(fallback_seed.lookup_index, 0);
+}
+
+#[test]
+fn cgb_compatibility_palette_seed_applies_fourth_title_byte_correction() {
+    let mut title = [0; 16];
+    title[0] = 0x5E;
+    title[3] = b'U';
+    let header = cgb_compatibility_test_header(title, 0x01, *b"00");
+    let seed = resolve_cgb_compatibility_palette_seed(Some(&header));
+
+    assert_eq!(seed.lookup_index, 79);
+    assert_eq!(seed.palette_index_and_flags, 0x60);
+    assert_eq!(seed.palette_triplet_index, 0);
+    assert_eq!(seed.shuffle_flags, 3);
+    assert_eq!(
+        seed.bg_palette0,
+        [0xFF, 0x7F, 0xB5, 0x42, 0xC8, 0x3D, 0x00, 0x00]
+    );
+
+    title[0] = 0x5B;
+    title[3] = b'X';
+    let unmatched = cgb_compatibility_test_header(title, 0x01, *b"00");
+    assert_eq!(
+        resolve_cgb_compatibility_palette_seed(Some(&unmatched)).lookup_index,
+        0
+    );
+}
+
+#[test]
+fn cgb_compatibility_startup_seed_writes_bg0_and_obj0_obj1_palette_ram() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let mut title = [0; 16];
+    title[0] = 0x88;
+    let header = cgb_compatibility_test_header(title, 0x01, *b"00");
+
+    let seed = ppu
+        .apply_cgb_compatibility_palette_startup_state(
+            crate::model::StartupMode::SkipBoot,
+            crate::model::OperatingMode::GbCompatible,
+            Some(&header),
+            0,
+        )
+        .expect("CGB compatibility skip boot should seed palettes");
+
+    assert_eq!(
+        ppu.cgb_palettes
+            .port(CgbPaletteKind::Background)
+            .rgb555(0, 0),
+        seed.bg_rgb555(0)
+    );
+    assert_eq!(
+        ppu.cgb_palettes.port(CgbPaletteKind::Object).rgb555(0, 0),
+        seed.obj_rgb555(false, 0)
+    );
+    assert_eq!(
+        ppu.cgb_palettes.port(CgbPaletteKind::Object).rgb555(1, 0),
+        seed.obj_rgb555(true, 0)
+    );
+    assert_eq!(
+        ppu.cgb_palettes.port(CgbPaletteKind::Object).rgb555(2, 0),
+        0
+    );
+}
+
+#[test]
+fn cgb_compatibility_palette_seed_has_runner_controlled_boot_input_override_seam() {
+    let mut title = [0; 16];
+    title[0] = 0x88;
+    let header = cgb_compatibility_test_header(title, 0x01, *b"00");
+    let pressed_mask = crate::joypad::button_mask(crate::joypad::JoypadButton::Up);
+    let seed = resolve_cgb_compatibility_palette_seed_with_input(
+        Some(&header),
+        CgbCompatibilityPaletteBootInput::from_pressed_mask(pressed_mask),
+    );
+
+    assert_eq!(seed.lookup_index, 1);
+    assert_eq!(seed.boot_input_override_index, Some(0));
+    assert_eq!(seed.palette_index_and_flags, 0x12);
+    assert_eq!(seed.palette_triplet_index, 18);
+    assert_eq!(seed.shuffle_flags, 0);
+
+    let extra_button_mask =
+        pressed_mask | crate::joypad::button_mask(crate::joypad::JoypadButton::Start);
+    assert_eq!(
+        resolve_cgb_compatibility_palette_seed_with_input(
+            Some(&header),
+            CgbCompatibilityPaletteBootInput::from_pressed_mask(extra_button_mask),
+        )
+        .boot_input_override_index,
+        None
+    );
+}
+
+#[test]
 fn cgb_rgb555_lookup_decodes_little_endian_palette_entries() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     let attrs = CgbBgTileAttributes::new(0x05);
@@ -170,6 +317,41 @@ fn cgb_framebuffer_rgb555_uses_bg_and_obj_palette_attributes() {
         .expect("CGB model should expose the RGB555 framebuffer");
     assert_eq!(&rgb555[..2], &[0x001F, 0x03E0]);
     assert_eq!(&ppu.framebuffer()[..2], &[2, 3]);
+}
+
+#[test]
+fn cgb_native_rgb555_ignores_dmg_palette_register_mappings() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 3, 1, 0x4210);
+    ppu.write_register(0xFF47, 0b0000_1100);
+
+    let pixel = MixedPixel::background_with_cgb_attrs(1, Some(CgbBgTileAttributes::new(0x03)));
+    assert_eq!(ppu.map_mixed_pixel_to_cgb_rgb555(pixel), 0x4210);
+}
+
+#[test]
+fn cgb_compatibility_rgb555_routes_dmg_palettes_through_fixed_cgb_palettes() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 7, 1, 0x4210);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Object, 0, 2, 0x03E0);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Object, 1, 1, 0x7C00);
+    write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Object, 6, 2, 0x1234);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
+    ppu.write_register(0xFF47, 0b0000_1100);
+    ppu.write_register(0xFF48, 0b0010_0000);
+    ppu.write_register(0xFF49, 0b0001_0000);
+
+    let bg_pixel = MixedPixel::background_with_cgb_attrs(1, Some(CgbBgTileAttributes::new(0x07)));
+    let obj0_pixel = MixedPixel::object_with_cgb_attrs(2, false, Some(CgbObjAttributes::new(0x06)));
+    let obj1_pixel = MixedPixel::object_with_cgb_attrs(2, true, Some(CgbObjAttributes::new(0x06)));
+
+    assert_eq!(ppu.map_mixed_pixel_to_cgb_rgb555(bg_pixel), 0x001F);
+    assert_eq!(ppu.map_mixed_pixel_to_cgb_rgb555(obj0_pixel), 0x03E0);
+    assert_eq!(ppu.map_mixed_pixel_to_cgb_rgb555(obj1_pixel), 0x7C00);
 }
 
 #[test]

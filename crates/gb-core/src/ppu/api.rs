@@ -15,12 +15,12 @@ impl Ppu {
     }
 
     pub fn new(console_model: ConsoleModel) -> Self {
-        let cgb_obj_priority_mode = CgbObjPriorityMode::for_model_and_mode(
-            console_model,
-            console_model.default_operating_mode(),
-        );
+        let operating_mode = console_model.default_operating_mode();
+        let cgb_obj_priority_mode =
+            CgbObjPriorityMode::for_model_and_mode(console_model, operating_mode);
         Self {
             console_model,
+            operating_mode,
             cgb_obj_priority_mode,
             cgb_opri_latch: cgb_obj_priority_mode.opri_bit(),
             status: PpuStatus::RegistersReady,
@@ -599,10 +599,43 @@ impl Ppu {
     }
 
     pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        self.operating_mode = operating_mode;
         let priority_mode =
             CgbObjPriorityMode::for_model_and_mode(self.console_model, operating_mode);
         self.cgb_obj_priority_mode = priority_mode;
         self.cgb_opri_latch = priority_mode.opri_bit();
+    }
+
+    pub(crate) fn apply_cgb_compatibility_palette_startup_state(
+        &mut self,
+        startup_mode: StartupMode,
+        operating_mode: OperatingMode,
+        header: Option<&CartridgeHeader>,
+        host_joypad_pressed_mask: u8,
+    ) -> Option<CgbCompatibilityPaletteSeed> {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        if startup_mode != StartupMode::SkipBoot
+            || !self.console_model.is_cgb_family()
+            || operating_mode != OperatingMode::GbCompatible
+        {
+            return None;
+        }
+
+        let seed = resolve_cgb_compatibility_palette_seed_with_input(
+            header,
+            CgbCompatibilityPaletteBootInput::from_pressed_mask(host_joypad_pressed_mask),
+        );
+        self.cgb_palettes.apply_cgb_compatibility_palette_seed(seed);
+        Some(seed)
+    }
+
+    pub(super) fn is_cgb_native_mode(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::Cgb
+    }
+
+    pub(super) fn is_cgb_compatibility_mode(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::GbCompatible
     }
 
     fn read_cgb_opri(&self) -> u8 {
@@ -622,7 +655,7 @@ impl Ppu {
     }
 
     fn read_cgb_palette_index(&self, kind: CgbPaletteKind) -> u8 {
-        if !self.console_model.is_cgb_family() {
+        if !self.is_cgb_native_mode() {
             return 0xFF;
         }
 
@@ -630,7 +663,7 @@ impl Ppu {
     }
 
     fn read_cgb_palette_data(&self, kind: CgbPaletteKind, source: PpuRegisterReadSource) -> u8 {
-        if !self.console_model.is_cgb_family() {
+        if !self.is_cgb_native_mode() {
             return 0xFF;
         }
 
@@ -644,7 +677,7 @@ impl Ppu {
         value: u8,
         source: PpuRegisterWriteSource,
     ) {
-        if !self.console_model.is_cgb_family() {
+        if !self.is_cgb_native_mode() {
             return;
         }
 
