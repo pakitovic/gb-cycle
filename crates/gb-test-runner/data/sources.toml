@@ -856,5 +856,9 @@ path = "testroms/mooneye/manual-only/sprite_priority.gb"
 sha256 = "789024c8e81e252a289edf6c80bd0bc9cccfa54bc23f7dfe388dfe88f990f94e"
 
 [[source.required_file]]
+path = "testroms/mooneye/misc/boot_div-cgbABCDE.gb"
+sha256 = "bc7bf65fdf9a09899e1f6d63f463ebb585777069903c48408e0ce8ed9d73bb6c"
+
+[[source.required_file]]
 path = "testroms/mooneye/misc/boot_regs-cgb.gb"
 sha256 = "82938fa70b85a3197c4aea906000347770f0ee3773c84072b49d962e6d479062"

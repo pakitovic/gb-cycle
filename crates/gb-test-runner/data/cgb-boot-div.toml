@@ -1,0 +1,11 @@
+version = 1
+suite_name = "cgb-boot-div"
+subsystem = "CrossSubsystem"
+
+[[case]]
+family = "mooneye"
+id = "cgb-boot-div-boot-div-cgbabcde"
+rom = "misc/boot_div-cgbABCDE.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"

@@ -249,6 +249,8 @@ fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
         assert_eq!(startup_state.cpu.e, 0x08);
         assert_eq!(startup_state.cpu.h, 0x00);
         assert_eq!(startup_state.cpu.l, 0x7C);
+        assert_eq!(startup_state.io.div, 0x26);
+        assert_eq!(startup_state.timer.system_counter, 0x2674);
     }
 }
 

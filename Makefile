@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-cgb fetch-test-roms run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-speed phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-cgb fetch-test-roms run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-speed phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -30,6 +30,7 @@ help:
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
 	@echo "  make run-cgb-smoke        Fetch and run the curated CGB smoke suite"
+	@echo "  make run-cgb-boot-div     Fetch and run the curated CGB boot DIV suite"
 	@echo "  make run-cgb-speed        Fetch and run the curated CGB KEY1/speed suite"
 	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
 	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
@@ -85,6 +86,7 @@ test-roms:
 
 test-roms-cgb:
 	$(MAKE) run-cgb-smoke
+	$(MAKE) run-cgb-boot-div
 	$(MAKE) run-cgb-speed
 
 fetch-test-roms:
@@ -149,6 +151,10 @@ run-mealybug:
 run-cgb-smoke:
 	$(MAKE) fetch-test-roms FAMILIES="mooneye acid"
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
+
+run-cgb-boot-div:
+	$(MAKE) fetch-test-roms FAMILIES="mooneye"
+	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-div --failure-artifact-root .artifacts/cgb-boot-div
 
 run-cgb-speed:
 	$(MAKE) fetch-test-roms FAMILIES="daid blargg"

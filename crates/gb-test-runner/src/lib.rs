@@ -44,10 +44,11 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_speed_suite, cpp_dmg_curated_suite,
-    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
-    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_speed_suite,
+    cpp_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
+    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
+    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
+    update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -952,6 +953,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
         cgb_smoke_suite(),
+        cgb_boot_div_suite(),
         cgb_speed_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
@@ -2508,8 +2510,8 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        capture_memory_text_output, cgb_boot_div_suite, cgb_smoke_suite, cgb_speed_suite,
+        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output,
@@ -2689,6 +2691,34 @@ mod tests {
             suite.cases[1].pass_condition,
             PassCondition::Informational(CaptureKind::Framebuffer)
         ));
+    }
+
+    #[test]
+    fn cgb_boot_div_suite_is_manifest_backed_slice2_gate() {
+        let suite = cgb_boot_div_suite();
+
+        assert_eq!(suite.name, "cgb-boot-div");
+        assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cgb-boot-div-boot-div-cgbabcde");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            case.rom_path,
+            PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
+        );
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.capture_plan.contains(CaptureKind::Serial));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Serial));
     }
 
     #[test]

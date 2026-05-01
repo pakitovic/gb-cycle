@@ -683,6 +683,10 @@ pub fn cgb_smoke_suite() -> RomSuite {
     manifest_suite_by_name("cgb-smoke")
 }
 
+pub fn cgb_boot_div_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-boot-div")
+}
+
 pub fn cgb_speed_suite() -> RomSuite {
     manifest_suite_by_name("cgb-speed")
 }
@@ -713,11 +717,15 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 9] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 10] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
             include_str!("../data/acid.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-boot-div.toml",
+            include_str!("../data/cgb-boot-div.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-smoke.toml",
@@ -1315,7 +1323,7 @@ mod tests {
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
         blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
-        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
+        cgb_boot_div_suite, cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
         curated_test_rom_family_suites, curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
@@ -1546,6 +1554,29 @@ mod tests {
         assert!(matches!(
             suite.cases[1].pass_condition,
             PassCondition::Informational(CaptureKind::Framebuffer)
+        ));
+    }
+
+    #[test]
+    fn cgb_boot_div_suite_is_manifest_backed_and_uses_mooneye_result() {
+        let suite = cgb_boot_div_suite();
+
+        assert_eq!(suite.name, "cgb-boot-div");
+        assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
+        );
+        assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            suite.cases[0].external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::MooneyeResult
         ));
     }
 

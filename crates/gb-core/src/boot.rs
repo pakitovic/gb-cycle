@@ -514,9 +514,8 @@ impl BootController {
             return None;
         }
 
-        let io = synthetic_skip_boot_io_snapshot();
-        let system_counter =
-            (u16::from(io.div) << 8) | u16::from(DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW);
+        let io = synthetic_skip_boot_io_snapshot(self.console_model);
+        let system_counter = synthetic_skip_boot_system_counter(self.console_model);
         let apu = build_skip_boot_apu_state(system_counter, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
@@ -659,7 +658,7 @@ const fn dmg_family_skip_boot_flags(header_checksum: Option<u8>) -> u8 {
     }
 }
 
-const fn synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
+const fn dmg_family_synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
     BootIoSnapshot {
         p1: 0xCF,
         sb: 0x00,
@@ -681,6 +680,19 @@ const fn synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
         wx: 0x00,
         interrupt_enable: 0x00,
         audio: dmg_family_skip_boot_audio_snapshot(),
+    }
+}
+
+const fn synthetic_skip_boot_io_snapshot(console_model: ConsoleModel) -> BootIoSnapshot {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            dmg_family_synthetic_skip_boot_io_snapshot()
+        }
+        ConsoleModel::GameBoyColor => {
+            let mut io = dmg_family_synthetic_skip_boot_io_snapshot();
+            io.div = CGB_SKIP_BOOT_DIV;
+            io
+        }
     }
 }
 
@@ -710,7 +722,7 @@ const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoS
                 audio: dmg_family_skip_boot_audio_snapshot(),
             }
         }
-        ConsoleModel::GameBoyColor => synthetic_skip_boot_io_snapshot(),
+        ConsoleModel::GameBoyColor => synthetic_skip_boot_io_snapshot(console_model),
     }
 }
 
@@ -822,17 +834,28 @@ const fn minimum_boot_rom_len(kind: BootRomKind) -> usize {
 
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
+const CGB_SKIP_BOOT_DIV: u8 = 0x26;
+const CGB_SKIP_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
 const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xBD04;
-const SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 = ((synthetic_skip_boot_io_snapshot().div as u16)
-    << 8)
-    | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
+    ((dmg_family_synthetic_skip_boot_io_snapshot().div as u16) << 8)
+        | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+
+const fn synthetic_skip_boot_system_counter(console_model: ConsoleModel) -> u16 {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
+        }
+        ConsoleModel::GameBoyColor => CGB_SKIP_BOOT_SYSTEM_COUNTER,
+    }
+}
 
 const fn verified_boot_entry_system_counter(console_model: ConsoleModel) -> u16 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor => SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER,
+        ConsoleModel::GameBoyColor => synthetic_skip_boot_system_counter(console_model),
     }
 }
 
@@ -840,7 +863,7 @@ const fn verified_boot_entry_div_apu(console_model: ConsoleModel) -> u8 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
         ConsoleModel::GameBoyColor => {
-            div_apu_phase_from_system_counter(SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER)
+            div_apu_phase_from_system_counter(synthetic_skip_boot_system_counter(console_model))
         }
     }
 }
