@@ -399,11 +399,10 @@ impl AddressRouter {
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::Wx,
             ),
-            0xFF4C => non_functional_io(
+            0xFF4C => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Key0,
             ),
@@ -414,11 +413,10 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Key1,
             ),
-            0xFF4F => non_functional_io(
+            0xFF4F => implemented_io(
                 address,
                 IoRegisterOwner::Ppu,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Vbk,
             ),
@@ -510,43 +508,38 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Opri,
             ),
-            0xFF70 => non_functional_io(
+            0xFF70 => implemented_io(
                 address,
                 IoRegisterOwner::MemoryController,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Svbk,
             ),
-            0xFF72 => non_functional_io(
+            0xFF72 => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::CgbUndocumented72,
             ),
-            0xFF73 => non_functional_io(
+            0xFF73 => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::CgbUndocumented73,
             ),
-            0xFF74 => non_functional_io(
+            0xFF74 => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::CgbUndocumented74,
             ),
-            0xFF75 => non_functional_io(
+            0xFF75 => implemented_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::CgbUndocumented75,
             ),

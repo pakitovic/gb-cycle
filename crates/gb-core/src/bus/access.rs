@@ -2,7 +2,10 @@ use crate::boot::StartupMemoryPolicy;
 use crate::cartridge::CartridgeSlot;
 use crate::scheduler::TCycle;
 
-use super::{BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion};
+use super::{
+    BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion,
+    IoRegisterAvailability, IoRegisterImplementation, IoRegisterKind,
+};
 
 impl Bus {
     pub(super) fn perform_allowed_read(
@@ -25,8 +28,7 @@ impl Bus {
             BusRegion::Oam => self.oam.read(target.region_offset() as usize),
             BusRegion::Unusable => self.read_unusable_placeholder(target.address()),
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
-                self.iohram
-                    .read(&self.router, self.console_model, target, io)
+                self.read_iohram_target(target, io)
             }
         }
     }
@@ -55,8 +57,7 @@ impl Bus {
             BusRegion::Oam => self.oam.read(target.region_offset() as usize),
             BusRegion::Unusable => self.read_unusable_placeholder(target.address()),
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
-                self.iohram
-                    .read(&self.router, self.console_model, target, io)
+                self.read_iohram_target(target, io)
             }
         }
     }
@@ -82,9 +83,102 @@ impl Bus {
             BusRegion::Oam => self.oam.write(target.region_offset() as usize, value),
             BusRegion::Unusable => {}
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
-                self.iohram
-                    .write(&self.router, self.console_model, target, value, io)
+                self.write_iohram_target(target, value, io)
             }
+        }
+    }
+
+    fn read_iohram_target(&self, target: BusAddressInfo, io: BusIoReadView<'_>) -> u8 {
+        if target.region() == BusRegion::Mmio
+            && let Some(value) = self.read_cgb_bus_owned_io(target.address())
+        {
+            return value;
+        }
+
+        self.iohram
+            .read(&self.router, self.console_model, target, io)
+    }
+
+    fn write_iohram_target(&mut self, target: BusAddressInfo, value: u8, io: BusIoWriteView<'_>) {
+        if target.region() == BusRegion::Mmio
+            && self.write_cgb_bus_owned_io(target.address(), value)
+        {
+            return;
+        }
+
+        self.iohram
+            .write(&self.router, self.console_model, target, value, io);
+    }
+
+    fn read_cgb_bus_owned_io(&self, address: u16) -> Option<u8> {
+        let info = self.router.describe_io_register(address)?;
+        match info.kind() {
+            IoRegisterKind::Key0
+            | IoRegisterKind::Vbk
+            | IoRegisterKind::Svbk
+            | IoRegisterKind::CgbUndocumented72
+            | IoRegisterKind::CgbUndocumented73
+            | IoRegisterKind::CgbUndocumented74
+            | IoRegisterKind::CgbUndocumented75 => {}
+            _ => return None,
+        }
+
+        if !self.io_register_is_live(info.availability())
+            || info.implementation() != IoRegisterImplementation::Implemented
+        {
+            return Some(BLOCKED_READ_VALUE);
+        }
+
+        Some(match info.kind() {
+            IoRegisterKind::Key0 => self.iohram.read_key0(),
+            IoRegisterKind::Vbk => self.vram.read_vbk(),
+            IoRegisterKind::Svbk => self.wram.read_svbk(),
+            IoRegisterKind::CgbUndocumented72
+            | IoRegisterKind::CgbUndocumented73
+            | IoRegisterKind::CgbUndocumented74
+            | IoRegisterKind::CgbUndocumented75 => self.iohram.read_cgb_misc_io(address),
+            _ => unreachable!("filtered CGB bus-owned IO kind changed"),
+        })
+    }
+
+    fn write_cgb_bus_owned_io(&mut self, address: u16, value: u8) -> bool {
+        let Some(info) = self.router.describe_io_register(address) else {
+            return false;
+        };
+        match info.kind() {
+            IoRegisterKind::Key0
+            | IoRegisterKind::Vbk
+            | IoRegisterKind::Svbk
+            | IoRegisterKind::CgbUndocumented72
+            | IoRegisterKind::CgbUndocumented73
+            | IoRegisterKind::CgbUndocumented74
+            | IoRegisterKind::CgbUndocumented75 => {}
+            _ => return false,
+        }
+
+        if !self.io_register_is_live(info.availability())
+            || info.implementation() != IoRegisterImplementation::Implemented
+        {
+            return true;
+        }
+
+        match info.kind() {
+            IoRegisterKind::Key0 => self.iohram.write_key0(value),
+            IoRegisterKind::Vbk => self.vram.write_vbk(value),
+            IoRegisterKind::Svbk => self.wram.write_svbk(value),
+            IoRegisterKind::CgbUndocumented72
+            | IoRegisterKind::CgbUndocumented73
+            | IoRegisterKind::CgbUndocumented74
+            | IoRegisterKind::CgbUndocumented75 => self.iohram.write_cgb_misc_io(address, value),
+            _ => unreachable!("filtered CGB bus-owned IO kind changed"),
+        }
+        true
+    }
+
+    fn io_register_is_live(&self, availability: IoRegisterAvailability) -> bool {
+        match availability {
+            IoRegisterAvailability::Shared | IoRegisterAvailability::DmgCompatible => true,
+            IoRegisterAvailability::CgbOnly => self.cgb_extensions_enabled(),
         }
     }
 
@@ -198,8 +292,7 @@ impl Bus {
             BusRegion::Oam => self.oam.write(target.region_offset() as usize, value),
             BusRegion::Unusable => {}
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
-                self.iohram
-                    .write(&self.router, self.console_model, target, value, io)
+                self.write_iohram_target(target, value, io)
             }
         }
     }
@@ -213,7 +306,6 @@ impl Bus {
     #[cfg(test)]
     pub(super) fn read_io_target(&self, address: u16, io: BusIoReadView<'_>) -> u8 {
         let target = self.decode_address(address);
-        self.iohram
-            .read(&self.router, self.console_model, target, io)
+        self.read_iohram_target(target, io)
     }
 }

@@ -8,7 +8,7 @@ Own internal memory regions and the backing storage behind WRAM, HRAM, and their
 
 Memory should reflect distinct hardware regions, not a single flat array with ad hoc exceptions.
 
-DMG may expose only simple WRAM behavior today, but the overall memory architecture should leave room for future bank-selectable regions where the hardware family later requires them. VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions, aliasing, and backing storage rather than complex MMIO semantics.
+DMG exposes simple WRAM behavior, while native CGB mode exposes banked WRAM through the same memory domain. VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions, aliasing, and backing storage rather than complex MMIO semantics.
 
 ## Responsibilities
 
@@ -23,10 +23,10 @@ DMG may expose only simple WRAM behavior today, but the overall memory architect
 - HRAM
 - WRAM storage reached through the echo-RAM alias
 
-## DMG memory baseline
+## DMG and CGB memory baseline
 
 - On DMG, `0xC000-0xDFFF` should behave as linear internal WRAM with no active banking.
-- `0xD000-0xDFFF` should still be kept structurally ready for future CGB banking without changing current DMG semantics.
+- In native CGB mode, `0xC000-0xCFFF` maps fixed WRAM bank `0`, `0xD000-0xDFFF` maps the `SVBK`-selected bank, and an `SVBK` value of `0` effectively maps bank `1`.
 - `0xE000-0xFDFF` must not be backed by a second RAM allocation; it should resolve to the same observable storage as `0xC000-0xDDFF`.
 - Initialization policy for WRAM and HRAM contents is separate from the fact that subsequent access semantics are ordinary RAM behavior.
 
@@ -62,7 +62,7 @@ DMG may expose only simple WRAM behavior today, but the overall memory architect
 
 - Keep plain storage separate from device-backed MMIO.
 - If a mapped field has mixed bits, timing-sensitive readback, or access side effects, its semantics belong to the owning subsystem or routed MMIO contract rather than to `memory/`.
-- Avoid closed abstractions that assume WRAM and VRAM can never gain bank-selection behavior.
+- Avoid closed abstractions that assume WRAM and VRAM cannot be bank-selected; native CGB mode now keeps hidden WRAM banks in the same storage domain while DMG and CGB compatibility mode remain on the non-banked path.
 - Treat extensibility of the I/O block and memory-backed regions as part of the baseline design, even before CGB functionality exists.
 - Prefer designs where extra CGB banks can be disabled by machine mode rather than requiring a different memory architecture.
 - Keep VRAM readiness as an architectural concern without moving VRAM locking or access rules out of the PPU/bus boundary.

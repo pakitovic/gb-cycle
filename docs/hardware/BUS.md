@@ -80,6 +80,7 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 ### VRAM `0x8000-0x9FFF`
 
 - VRAM should be treated as a dedicated graphics-memory region rather than generic RAM with no access policy.
+- In native CGB mode, CPU reads and writes to `0x8000-0x9FFF` use the `VBK`-selected VRAM bank; DMG-family models and CGB-family `GbCompatible` mode keep the CPU-visible path on bank `0`.
 - CPU reads and writes to VRAM must respect PPU access timing.
 - On DMG, CPU VRAM access should be allowed in Modes `0`, `1`, and `2`, and blocked during Mode `3`.
 - With the LCD disabled through `LCDC.7 = 0`, ordinary PPU-mode VRAM restrictions should be lifted immediately because the active raster pipeline is no longer running.
@@ -98,13 +99,13 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 
 - WRAM should be treated as internal console RAM.
 - On DMG, `0xC000-0xDFFF` should behave as a linear `8 KiB` working RAM region.
-- Future CGB bankability of `0xD000-0xDFFF` should remain an extension seam without changing current DMG behavior.
+- In native CGB mode, `0xC000-0xCFFF` maps fixed bank `0`, `0xD000-0xDFFF` maps the `SVBK`-selected bank, and selecting bank `0` maps bank `1` while preserving the raw `$F8 | value` register readback.
 - Initialization policy for WRAM contents is separate from access semantics; once initialized, reads and writes should behave like normal internal RAM.
 
 ### Echo RAM `0xE000-0xFDFF`
 
 - Echo RAM must not be modeled as independent storage.
-- It should behave as a real alias of `0xC000-0xDDFF`.
+- It should behave as a real alias of `0xC000-0xDDFF`; in native CGB mode, the `0xF000-0xFDFF` portion aliases the currently selected switchable WRAM bank for `0xD000-0xDDFF`.
 - Writes through echo addresses should affect the mirrored WRAM bytes and vice versa because the observable storage is shared.
 - The alias relationship should be expressed in bus decode and routing rather than by duplicating memory buffers.
 

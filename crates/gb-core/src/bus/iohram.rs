@@ -1,9 +1,10 @@
 use crate::apu::Apu;
 use crate::boot::{BootController, StartupMemoryPolicy};
+use crate::cartridge::CgbFlag;
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, OperatingMode};
 use crate::ppu::Ppu;
 use crate::serial::Serial;
 use crate::speed::SpeedController;
@@ -46,12 +47,16 @@ pub(crate) struct BusIoWriteView<'a> {
 pub(crate) struct IoHramDomain {
     #[serde(with = "serde_big_array::BigArray")]
     hram: [u8; HRAM_LEN],
+    key0: CgbKey0State,
+    cgb_misc: CgbMiscIoState,
 }
 
 impl IoHramDomain {
     pub(crate) fn new() -> Self {
         Self {
             hram: [0; HRAM_LEN],
+            key0: CgbKey0State::new(),
+            cgb_misc: CgbMiscIoState::new(),
         }
     }
 
@@ -61,6 +66,48 @@ impl IoHramDomain {
 
     pub(crate) fn hram_bytes(&self) -> &[u8] {
         &self.hram
+    }
+
+    pub(crate) fn reset_cgb_misc_io(&mut self) {
+        self.cgb_misc = CgbMiscIoState::new();
+    }
+
+    pub(crate) fn apply_direct_boot_key0(
+        &mut self,
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+        cgb_flag: CgbFlag,
+    ) {
+        self.key0 = CgbKey0State::direct_boot(console_model, operating_mode, cgb_flag);
+    }
+
+    pub(crate) fn reset_real_boot_key0(
+        &mut self,
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) {
+        self.key0 = CgbKey0State::real_boot_entry(console_model, operating_mode);
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn key0_state(&self) -> CgbKey0State {
+        self.key0
+    }
+
+    pub(crate) fn read_key0(&self) -> u8 {
+        self.key0.read_runtime()
+    }
+
+    pub(crate) fn write_key0(&mut self, value: u8) {
+        self.key0.write_runtime(value);
+    }
+
+    pub(crate) fn read_cgb_misc_io(&self, address: u16) -> u8 {
+        self.cgb_misc.read(address)
+    }
+
+    pub(crate) fn write_cgb_misc_io(&mut self, address: u16, value: u8) {
+        self.cgb_misc.write(address, value);
     }
 
     pub(crate) fn read(
@@ -271,6 +318,130 @@ impl IoHramDomain {
                 | IoRegisterOwner::Reserved => {}
                 _ => unreachable!("MMIO descriptor kind/owner mismatch for {address:#06X}"),
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CgbKey0State {
+    value: u8,
+    locked: bool,
+}
+
+impl CgbKey0State {
+    const DMG_COMPATIBILITY_MODE_BIT: u8 = 0x04;
+
+    const fn new() -> Self {
+        Self {
+            value: 0,
+            locked: true,
+        }
+    }
+
+    pub(crate) const fn direct_boot(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+        cgb_flag: CgbFlag,
+    ) -> Self {
+        if !console_model.is_cgb_family() {
+            return Self::new();
+        }
+
+        let value = if matches!(operating_mode, OperatingMode::GbCompatible) {
+            Self::DMG_COMPATIBILITY_MODE_BIT
+        } else {
+            match cgb_flag {
+                CgbFlag::Supported => 0x80,
+                CgbFlag::Only => 0xC0,
+                CgbFlag::SupportedNonCanonical(value) => value,
+                CgbFlag::None | CgbFlag::Unknown(_) => Self::DMG_COMPATIBILITY_MODE_BIT,
+            }
+        };
+
+        Self {
+            value,
+            locked: true,
+        }
+    }
+
+    pub(crate) const fn real_boot_entry(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) -> Self {
+        if !console_model.is_cgb_family() {
+            return Self::new();
+        }
+
+        Self {
+            value: if matches!(operating_mode, OperatingMode::GbCompatible) {
+                Self::DMG_COMPATIBILITY_MODE_BIT
+            } else {
+                0
+            },
+            locked: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn value(self) -> u8 {
+        self.value
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn is_locked(self) -> bool {
+        self.locked
+    }
+
+    pub(crate) const fn read_runtime(self) -> u8 {
+        // Pan Docs treats KEY0 as boot-owned and effectively unavailable to ordinary software after handoff. Keep the internal state for boot/mode ownership, but expose the ordinary unavailable readback until Slice 6 validates RealBoot read effects.
+        super::BLOCKED_READ_VALUE
+    }
+
+    pub(crate) fn write_runtime(&mut self, value: u8) {
+        if !self.locked {
+            self.value = value;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct CgbMiscIoState {
+    ff72: u8,
+    ff73: u8,
+    ff74: u8,
+    ff75_bits_4_6: u8,
+}
+
+impl CgbMiscIoState {
+    const FF75_FORCED_BITS: u8 = 0x8F;
+    const FF75_WRITABLE_MASK: u8 = 0x70;
+
+    const fn new() -> Self {
+        Self {
+            ff72: 0,
+            ff73: 0,
+            ff74: 0,
+            ff75_bits_4_6: 0,
+        }
+    }
+
+    fn read(self, address: u16) -> u8 {
+        match address {
+            0xFF72 => self.ff72,
+            0xFF73 => self.ff73,
+            0xFF74 => self.ff74,
+            0xFF75 => Self::FF75_FORCED_BITS | self.ff75_bits_4_6,
+            _ => super::BLOCKED_READ_VALUE,
+        }
+    }
+
+    fn write(&mut self, address: u16, value: u8) {
+        match address {
+            0xFF72 => self.ff72 = value,
+            0xFF73 => self.ff73 = value,
+            0xFF74 => self.ff74 = value,
+            0xFF75 => self.ff75_bits_4_6 = value & Self::FF75_WRITABLE_MASK,
+            _ => {}
         }
     }
 }

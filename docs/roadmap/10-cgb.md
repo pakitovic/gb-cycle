@@ -230,6 +230,7 @@ This matrix belongs to Slice 1 for direct boot and is revalidated by Slice 6 und
 - CGB gate: `cgb-smoke` through `make run-cgb-smoke`.
 - Add synthetic unit and integration tests for banking because GBEmulatorShootout does not cover enough of this layer in isolation.
 - Regression gate: DMG `167/167` plus DMG-only/CGB-only MMIO descriptor and read/write tests.
+- Status: Slice `3` is implemented and validated. The core has native-CGB CPU-visible VRAM bank switching through `VBK`, WRAM bank switching through `SVBK` with raw bank `0` mapping to effective bank `1`, bus-owned `FF72-FF75` read/write behavior, and locked direct-boot `KEY0` state synthesized from the loaded cartridge header; closure validation covered focused synthetic tests, `make run-cgb-smoke`, the DMG `make test-roms` no-regression gate, `make test-roms-cgb` with report `176/176`, and `make ci`.
 
 ## Slice 4 — CGB PPU baseline, palettes, and tile attributes
 

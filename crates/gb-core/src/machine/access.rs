@@ -159,7 +159,7 @@ impl<S: TraceSink> Machine<S> {
         self.scheduler.reset();
         self.tracer.reset();
         self.cpu = CpuCore::new(console_model);
-        self.bus = crate::bus::Bus::new(console_model);
+        self.bus = crate::bus::Bus::new_with_operating_mode(console_model, operating_mode);
         self.apu = Apu::new(console_model);
         self.ppu = Ppu::new(console_model);
         self.dma = DmaController::new(console_model);
@@ -190,6 +190,8 @@ impl<S: TraceSink> Machine<S> {
             self.bus
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
+        self.bus
+            .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.external_port.apply_startup_reset();
         self.sync_serial_peer_from_external_port();
         self.pending_external_events

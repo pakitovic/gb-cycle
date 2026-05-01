@@ -1,10 +1,12 @@
+use crate::model::ConsoleModel;
 use crate::ppu::{PpuAccessMode, PpuBusState};
 
 #[cfg(any(debug_assertions, test))]
 use super::DmaMemoryRegionImpact;
 use super::{
     BLOCKED_READ_VALUE, Bus, BusAccessDisposition, BusAccessKind, BusBlockReason, BusMaster,
-    BusRequester, DmaBusState, DmaCpuAccessPolicy, OAM_LEN, OamBusView, VRAM_LEN, VramBusView,
+    BusRequester, CGB_VRAM_LEN, DMG_VRAM_LEN, DmaBusState, DmaCpuAccessPolicy, OAM_LEN, OamBusView,
+    VramBusView,
 };
 
 type BusMasterMask = u16;
@@ -109,15 +111,38 @@ impl OamDomain {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct VramDomain {
+    console_model: ConsoleModel,
+    selected_bank: u8,
     #[serde(with = "serde_big_array::BigArray")]
-    bytes: [u8; VRAM_LEN],
+    bytes: [u8; CGB_VRAM_LEN],
     acquired_by: BusMasterMask,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct VramSaveState {
+    console_model: ConsoleModel,
+    selected_bank: u8,
+    bytes: Vec<u8>,
+    acquired_by: BusMasterMask,
+}
+
+impl VramSaveState {
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
 impl VramDomain {
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
+        Self::new_for_model(ConsoleModel::GameBoy)
+    }
+
+    pub(crate) fn new_for_model(console_model: ConsoleModel) -> Self {
         Self {
-            bytes: [0; VRAM_LEN],
+            console_model,
+            selected_bank: 0,
+            bytes: [0; CGB_VRAM_LEN],
             acquired_by: 0,
         }
     }
@@ -125,21 +150,73 @@ impl VramDomain {
     #[cfg(test)]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
         let mut domain = Self::new();
-        let copy_len = bytes.len().min(domain.bytes.len());
+        let copy_len = bytes.len().min(DMG_VRAM_LEN);
         domain.bytes[..copy_len].copy_from_slice(&bytes[..copy_len]);
         domain
     }
 
     pub(crate) fn read(&self, offset: usize) -> u8 {
-        self.bytes[offset]
+        self.bytes[self.storage_index(offset)]
     }
 
     pub(crate) fn write(&mut self, offset: usize, value: u8) {
-        self.bytes[offset] = value;
+        let index = self.storage_index(offset);
+        self.bytes[index] = value;
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {
-        &self.bytes
+        &self.bytes[..DMG_VRAM_LEN]
+    }
+
+    pub(crate) fn debug_bytes(&self) -> &[u8] {
+        let len = if self.console_model.is_cgb_family() {
+            CGB_VRAM_LEN
+        } else {
+            DMG_VRAM_LEN
+        };
+        &self.bytes[..len]
+    }
+
+    pub(crate) fn capture_save_state(&self) -> VramSaveState {
+        VramSaveState {
+            console_model: self.console_model,
+            selected_bank: self.selected_bank,
+            bytes: self.debug_bytes().to_vec(),
+            acquired_by: self.acquired_by,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &VramSaveState) {
+        self.console_model = state.console_model;
+        self.selected_bank = state.selected_bank & 0x01;
+        self.bytes.fill(0);
+        let copy_len = state.bytes.len().min(self.bytes.len());
+        self.bytes[..copy_len].copy_from_slice(&state.bytes[..copy_len]);
+        self.acquired_by = state.acquired_by;
+    }
+
+    pub(crate) fn read_vbk(&self) -> u8 {
+        0xFE | self.selected_bank
+    }
+
+    pub(crate) fn write_vbk(&mut self, value: u8) {
+        if self.console_model.is_cgb_family() {
+            self.selected_bank = value & 0x01;
+        }
+    }
+
+    pub(crate) fn reset_bank_select(&mut self) {
+        self.selected_bank = 0;
+    }
+
+    fn storage_index(&self, offset: usize) -> usize {
+        debug_assert!(offset < DMG_VRAM_LEN);
+        let bank = if self.console_model.is_cgb_family() {
+            usize::from(self.selected_bank)
+        } else {
+            0
+        };
+        bank * DMG_VRAM_LEN + offset
     }
 
     #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
