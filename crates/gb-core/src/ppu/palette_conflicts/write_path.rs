@@ -284,6 +284,11 @@ impl Ppu {
             selected_retroactive_line && !subsequent_selected_retroactive_write;
         let effect_kind = if subsequent_selected_retroactive_write {
             PpuDmgBgpCpuCommitEffectKind::CurrentDotTransient
+        } else if base_effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
+            && line_has_pipeline_delayed
+            && !selected_retroactive_line
+        {
+            PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
         } else {
             base_effect_kind
         };
@@ -457,6 +462,12 @@ impl Ppu {
             plan.output_override.palette_override,
             plan.output_override.pixels_remaining,
         );
+        if plan.recorded_write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+            && plan.output_override.pixels_remaining > 0
+            && plan.recorded_write.transient_palette != plan.recorded_write.value
+        {
+            self.queue_dmg_bgp_cpu_commit_output_followup(plan.recorded_write.transient_palette, 1);
+        }
     }
 
     fn apply_dmg_retroactive_palette_write_plan(&mut self, plan: DmgRetroactivePaletteWritePlan) {

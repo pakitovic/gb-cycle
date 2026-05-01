@@ -816,6 +816,18 @@ fn cpu_mmio_bgp_write_uses_pipeline_delay_when_recent_pixels_are_not_all_bg_colo
             .output_palette_override,
         Some(0xE4)
     );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_palette_override,
+        Some(0xEE)
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_pixels_remaining,
+        1
+    );
 
     for _ in 0..5 {
         ppu.sync_pipeline_registers();
@@ -823,7 +835,7 @@ fn cpu_mmio_bgp_write_uses_pipeline_delay_when_recent_pixels_are_not_all_bg_colo
         let _ = ppu.advance_mode3_output_phase();
     }
 
-    assert_eq!(&ppu.framebuffer()[25..30], &[1, 1, 1, 1, 2]);
+    assert_eq!(&ppu.framebuffer()[25..30], &[1, 1, 1, 1, 3]);
 }
 
 #[test]
@@ -1757,7 +1769,7 @@ fn cpu_mmio_bgp_burst_with_visible_progress_slides_the_pipeline_delayed_window_f
         ppu.dmg_panel_live_write_state
             .bgp_cpu_commit
             .output_palette_override,
-        Some(0x03)
+        Some(0xAB)
     );
 
     for _ in 0..4 {
@@ -1771,7 +1783,7 @@ fn cpu_mmio_bgp_burst_with_visible_progress_slides_the_pipeline_delayed_window_f
 
     assert_eq!(
         &ppu.framebuffer()[25..38],
-        &[1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 3]
+        &[1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 3]
     );
 }
 
@@ -1991,6 +2003,86 @@ fn cpu_mmio_bgp_write_after_the_first_selected_retroactive_write_keeps_the_recen
             .bgp_cpu_commit
             .output_palette_override,
         None
+    );
+}
+
+#[test]
+fn cpu_mmio_bgp_late_bg_color0_write_after_delayed_writes_stays_pipeline_delayed() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x55,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 212;
+    ppu.bg_pipeline_state.visible_pixels_output = 121;
+    ppu.bg_pipeline_state.current_transfer_x = 129;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.current_scanline_mixed_pixels[117..121].fill(MixedPixel::background(0));
+    ppu.framebuffer[117..121].fill(1);
+    let existing_delayed_write = PpuDmgBgpCpuCommitWrite {
+        effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+        transient_visible_x: 21,
+        transient_palette: 0xFF,
+        repaint_visible_x: 29,
+        transfer_lead_pixels: 0,
+        value: 0x55,
+    };
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .current_line_writes = vec![existing_delayed_write];
+
+    ppu.write_register_with_source(0xFF47, 0xAA, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[117..121], &[1, 1, 1, 1]);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes
+            .last()
+            .copied(),
+        Some(PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 117,
+            transient_palette: 0xFF,
+            repaint_visible_x: 125,
+            transfer_lead_pixels: 0,
+            value: 0xAA,
+        })
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_palette_override,
+        Some(0x55)
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining,
+        4
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_palette_override,
+        Some(0xFF)
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_pixels_remaining,
+        1
     );
 }
 
@@ -3168,7 +3260,8 @@ fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
     let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
     assert_eq!(row[0], 0);
     assert!(row[1..13].iter().all(|&shade| shade == 1));
-    assert!(row[13..].iter().all(|&shade| shade == 0));
+    assert_eq!(row[13], 1);
+    assert!(row[14..].iter().all(|&shade| shade == 0));
 }
 
 #[test]
@@ -3211,7 +3304,8 @@ fn dmg_bgp_row_family_change_keeps_lcdc0_forced_white_previous_boundary_pixels_w
     let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
     assert_eq!(&row[..4], &[0, 0, 0, 0]);
     assert!(row[4..13].iter().all(|&shade| shade == 1));
-    assert!(row[13..].iter().all(|&shade| shade == 0));
+    assert_eq!(row[13], 1);
+    assert!(row[14..].iter().all(|&shade| shade == 0));
 }
 
 #[test]
