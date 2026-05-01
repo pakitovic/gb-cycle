@@ -190,6 +190,11 @@ impl<S: TraceSink> Machine<S> {
             self.bus
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
+        if let Some(startup_state) = self.boot.real_boot_power_on_state() {
+            self.timer.apply_startup_state(startup_state.timer);
+            self.serial.apply_startup_state(startup_state.serial);
+            self.joypad.apply_startup_state(startup_state.joypad);
+        }
         self.bus
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.external_port.apply_startup_reset();

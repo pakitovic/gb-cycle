@@ -1318,13 +1318,15 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CuratedTestRomCase, CuratedTestRomCaseFile, GBEMU_SHOOTOUT_TESTROMS_DIR,
-        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
-        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
-        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
-        blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
-        cgb_boot_div_suite, cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
-        curated_test_rom_family_suites, curated_test_rom_manifests, discover_test_rom_store_root,
+        CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
+        GBEMU_SHOOTOUT_TESTROMS_DIR, MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS,
+        PersistedCaseStatus, PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI,
+        REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_REPORT_FILE_NAME,
+        TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
+        blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition, cgb_boot_div_suite,
+        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
+        curated_test_rom_family_suites, curated_test_rom_manifest_texts,
+        curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
@@ -1528,6 +1530,25 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mealybug-m3-window-timing")
         );
+    }
+
+    #[test]
+    fn curated_manifest_cases_declare_console_explicitly() {
+        for (source_path, source_text) in curated_test_rom_manifest_texts() {
+            let manifest: CuratedTestRomManifestFile = toml::from_str(source_text)
+                .unwrap_or_else(|error| panic!("failed to parse {source_path}: {error}"));
+            let missing_console = manifest
+                .cases
+                .iter()
+                .filter(|case| case.console.is_none())
+                .map(|case| case.id.as_str())
+                .collect::<Vec<_>>();
+
+            assert!(
+                missing_console.is_empty(),
+                "{source_path} cases missing explicit console: {missing_console:?}"
+            );
+        }
     }
 
     #[test]

@@ -206,8 +206,8 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     assert_eq!(direct_boot.cpu.pc, 0x0100);
     assert_eq!(direct_boot.cpu.a, 0x01);
     assert_eq!(direct_boot.cpu.f, 0xB0);
-    assert_eq!(direct_boot.io.p1, 0xFF);
-    assert_eq!(direct_boot.io.div, 0xBD);
+    assert_eq!(direct_boot.io.p1, 0xCF);
+    assert_eq!(direct_boot.io.div, 0xAB);
     assert_eq!(direct_boot.serial.sb, 0x00);
     assert_eq!(
         direct_boot.serial.clock_mode,
@@ -223,6 +223,30 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
         direct_boot.startup_memory_policy,
         StartupMemoryPolicy::DeterministicPatterned
     );
+}
+
+#[test]
+fn real_boot_power_on_state_seeds_dmg_hidden_clock_phases() {
+    let real_boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
+    let startup_state = real_boot
+        .real_boot_power_on_state()
+        .expect("RealBoot should expose power-on hidden clock state");
+
+    assert_eq!(startup_state.timer.system_counter, 0x0024);
+    assert_eq!(startup_state.timer.tima, 0x00);
+    assert_eq!(startup_state.timer.tma, 0x00);
+    assert_eq!(startup_state.timer.tac, 0x00);
+    assert_eq!(startup_state.serial.sb, 0x00);
+    assert_eq!(
+        startup_state.serial.clock_mode,
+        crate::serial::SerialClockMode::External
+    );
+    assert_eq!(startup_state.serial.clock_counter, 0x0028);
+    assert_eq!(startup_state.joypad.selection_bits, 0x00);
+    assert_eq!(startup_state.joypad.pressed_mask, 0x00);
+
+    let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
+    assert!(skip_boot.real_boot_power_on_state().is_none());
 }
 
 #[test]
@@ -274,9 +298,9 @@ fn direct_boot_helpers_share_the_common_skip_boot_builder() {
         machine_skip_boot.startup_memory_policy
     );
 
-    assert_eq!(direct_boot.io.div, 0xBD);
+    assert_eq!(direct_boot.io.div, 0xAB);
     assert_eq!(machine_skip_boot.io.div, 0xAB);
-    assert_eq!(direct_boot.timer.system_counter, 0xBD04);
+    assert_eq!(direct_boot.timer.system_counter, 0xABC8);
     assert_eq!(machine_skip_boot.timer.system_counter, 0xABC8);
     assert_eq!(direct_boot.ppu.ly, 153);
     assert_eq!(machine_skip_boot.ppu.ly, 0);

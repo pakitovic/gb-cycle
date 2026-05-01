@@ -147,8 +147,30 @@ fn build_blargg_console_text_rom() -> Vec<u8> {
 fn build_real_boot_jump_stub() -> Vec<u8> {
     let mut boot_rom = vec![0x00; 0x0100];
     boot_rom[0] = 0xC3;
-    boot_rom[1] = 0x00;
-    boot_rom[2] = 0x01;
+    boot_rom[1] = 0xFC;
+    boot_rom[2] = 0x00;
+    boot_rom[0xFC] = 0x3E;
+    boot_rom[0xFD] = 0x01;
+    boot_rom[0xFE] = 0xE0;
+    boot_rom[0xFF] = 0x50;
+    boot_rom
+}
+
+fn build_delayed_real_boot_handoff_stub() -> Vec<u8> {
+    let mut boot_rom = build_real_boot_jump_stub();
+    boot_rom[0] = 0x06; // LD B,$02
+    boot_rom[1] = 0x02;
+    boot_rom[2] = 0x0E; // LD C,$FF
+    boot_rom[3] = 0xFF;
+    boot_rom[4] = 0x0D; // DEC C
+    boot_rom[5] = 0x20; // JR NZ,$0004
+    boot_rom[6] = 0xFD;
+    boot_rom[7] = 0x05; // DEC B
+    boot_rom[8] = 0x20; // JR NZ,$0002
+    boot_rom[9] = 0xF8;
+    boot_rom[10] = 0xC3; // JP $00FC
+    boot_rom[11] = 0xFC;
+    boot_rom[12] = 0x00;
     boot_rom
 }
 
@@ -590,6 +612,46 @@ fn runner_uses_explicit_boot_rom_root_for_real_boot_cases() {
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("B"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_starts_case_timeout_after_real_boot_handoff() {
+    let temp_dir = unique_temp_dir("real-boot-timeout-after-handoff");
+    let boot_rom_root = temp_dir.join("bootroms");
+    fs::create_dir_all(&boot_rom_root).expect("boot rom root should be creatable");
+    fs::write(
+        boot_rom_root.join("dmg_boot.bin"),
+        build_delayed_real_boot_handoff_stub(),
+    )
+    .expect("boot rom should be writable");
+
+    let rom_path = temp_dir.join("real_boot_serial_after_delay.gb");
+    fs::write(&rom_path, build_single_byte_serial_rom(b'B'))
+        .expect("real boot rom should be writable");
+
+    let case = RomTestCase::new(
+        "real-boot-timeout-after-handoff",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("B".to_string()),
+    )
+    .with_startup_mode(gb_core::StartupMode::RealBoot);
+
+    let report = RomRunner::new()
+        .with_workspace_root(&temp_dir)
+        .with_boot_rom_root(&boot_rom_root)
+        .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
+        .run_case(&case)
+        .expect("real-boot case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("B"));
+    assert!(
+        report.executed_t_cycles < 5_000,
+        "post-handoff budget should exclude boot-ROM delay: {report:#?}"
+    );
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

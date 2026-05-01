@@ -1156,6 +1156,9 @@ pub enum RomExecutionError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RomCaseFailure {
     TimeoutExceeded,
+    RealBootHandoffTimeout {
+        t_cycle_limit: u64,
+    },
     CpuDiagnosticTrap {
         trap: CpuDiagnosticTrap,
     },
@@ -1322,6 +1325,7 @@ const MOONEYE_MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
 const MOONEYE_PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const MOONEYE_FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
 const MOONEYE_HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
+const REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: u64 = 25_000_000;
 
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
@@ -1433,6 +1437,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.take_serial_output_bytes(),
             Self::Summary(machine) => machine.take_serial_output_bytes(),
+        }
+    }
+
+    fn boot_rom_mapped(&self) -> bool {
+        match self {
+            Self::Buffered(machine) => machine.boot().is_boot_rom_mapped(),
+            Self::Summary(machine) => machine.boot().is_boot_rom_mapped(),
         }
     }
 
@@ -1595,8 +1606,11 @@ impl RomRunner {
                 source,
             }
         })?;
-        self.apply_startup_cartridge_state(case, &mut machine);
-        self.apply_startup_memory_writes(case, &mut machine);
+        let startup_failure = self.advance_real_boot_to_handoff_if_needed(case, &mut machine);
+        if startup_failure.is_none() {
+            self.apply_startup_cartridge_state(case, &mut machine);
+            self.apply_startup_memory_writes(case, &mut machine);
+        }
 
         let mut executed_t_cycles = 0_u64;
         let mut completed_frames = 0_u32;
@@ -1608,7 +1622,9 @@ impl RomRunner {
         let mut last_memory_text_output_completion_candidate = None;
         let mut mooneye_result = None;
 
-        while !budget_exhausted(case.timeout, executed_t_cycles, completed_frames) {
+        while startup_failure.is_none()
+            && !budget_exhausted(case.timeout, executed_t_cycles, completed_frames)
+        {
             if stop_condition_satisfied(case.stop_condition, &mut machine) {
                 break;
             }
@@ -1680,7 +1696,11 @@ impl RomRunner {
             executed_t_cycles,
             completed_frames,
         };
-        let outcome = self.evaluate_case(case, &evaluation)?;
+        let outcome = if let Some(failure) = startup_failure {
+            RomCaseOutcome::Failed(failure)
+        } else {
+            self.evaluate_case(case, &evaluation)?
+        };
         let retained_failure_artifacts = if outcome.failed() {
             self.persist_failure_artifacts(case, &artifacts)?
         } else {
@@ -1705,6 +1725,33 @@ impl RomRunner {
 
     pub fn workspace_root(&self) -> &Path {
         &self.workspace_root
+    }
+
+    fn advance_real_boot_to_handoff_if_needed(
+        &self,
+        case: &RomTestCase,
+        machine: &mut RunnerMachine,
+    ) -> Option<RomCaseFailure> {
+        if case.startup_mode != StartupMode::RealBoot || !machine.boot_rom_mapped() {
+            return None;
+        }
+
+        for _ in 0..REAL_BOOT_HANDOFF_T_CYCLE_LIMIT {
+            machine.step_t_cycle();
+
+            if let CpuExecutionState::DiagnosticTrap { trap } = machine.cpu_execution_state() {
+                return Some(RomCaseFailure::CpuDiagnosticTrap { trap });
+            }
+
+            if !machine.boot_rom_mapped() {
+                let _ = machine.take_serial_output_bytes();
+                return None;
+            }
+        }
+
+        Some(RomCaseFailure::RealBootHandoffTimeout {
+            t_cycle_limit: REAL_BOOT_HANDOFF_T_CYCLE_LIMIT,
+        })
     }
 
     fn load_boot_rom_assets(&self, case: &RomTestCase) -> Result<BootRomAssets, RomExecutionError> {

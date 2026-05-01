@@ -28,6 +28,7 @@ fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr.dmg.png"
 [[case]]
 id = "daid-rom-and-ram"
 rom = "rom_and_ram.gb"
+console = "dmg"
 timeout_frames = 180
 oracle = "info-framebuffer"
 execution_mode = "permissive"

@@ -14,10 +14,12 @@ expected = "A5"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/basic-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/basic-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-right-serial-hex"
@@ -30,10 +32,12 @@ expected = "3C"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/basic-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/basic-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-left-snapshot"
@@ -46,10 +50,12 @@ fixture = "fixtures/linked/dmg04/basic-left.snapshot"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/basic-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/basic-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-stale-left-serial-hex"
@@ -62,10 +68,12 @@ expected = "A5A5"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/stale-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/stale-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-stale-right-serial-hex"
@@ -78,10 +86,12 @@ expected = "3CF0"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/stale-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/stale-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-double-master-left-snapshot"
@@ -94,10 +104,12 @@ fixture = "fixtures/linked/dmg04/double-master-left.snapshot"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/double-master-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/double-master-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-double-master-right-snapshot"
@@ -110,10 +122,12 @@ fixture = "fixtures/linked/dmg04/double-master-right.snapshot"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/double-master-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/double-master-right.gb"
+  console = "dmg"
 
 [[session]]
 id = "dmg04-open-line-left-snapshot"
@@ -126,7 +140,9 @@ fixture = "fixtures/linked/dmg04/open-line-left.snapshot"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/basic-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/open-line-right.gb"
+  console = "dmg"

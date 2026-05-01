@@ -6,6 +6,7 @@ use super::{
 };
 use crate::{
     ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan, StimulusTime, TestSubsystem,
+    built_in_linked_session_suite_catalog, default_workspace_root,
 };
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use std::fs;
@@ -29,6 +30,53 @@ fn write_manifest(dir: &Path, name: &str, body: &str) -> PathBuf {
     fs::create_dir_all(dir).expect("manifest parent should be creatable");
     fs::write(&manifest_path, body).expect("manifest should be writable");
     manifest_path
+}
+
+fn participant_blocks_missing_console(source_text: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    let mut in_participant = false;
+    let mut has_console = false;
+    let mut participant_id = None;
+
+    for line in source_text.lines().chain(std::iter::once("[[end]]")) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("[[") && trimmed.ends_with("]]") {
+            if in_participant && !has_console {
+                missing.push(participant_id.unwrap_or_else(|| "<missing-id>".to_string()));
+            }
+            in_participant = trimmed == "[[session.participant]]";
+            has_console = false;
+            participant_id = None;
+            continue;
+        }
+
+        if in_participant {
+            if let Some(id) = trimmed.strip_prefix("id = ") {
+                participant_id = Some(id.trim_matches('"').to_string());
+            } else if trimmed.starts_with("console = ") {
+                has_console = true;
+            }
+        }
+    }
+
+    missing
+}
+
+#[test]
+fn built_in_linked_session_participants_declare_console_explicitly() {
+    let workspace_root = default_workspace_root();
+
+    for (suite_name, manifest_path) in built_in_linked_session_suite_catalog() {
+        let source_path = workspace_root.join(&manifest_path);
+        let source_text = fs::read_to_string(&source_path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", source_path.display()));
+        let missing_console = participant_blocks_missing_console(&source_text);
+
+        assert!(
+            missing_console.is_empty(),
+            "{suite_name} participants missing explicit console: {missing_console:?}"
+        );
+    }
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use gb_core::{
     BootDirectBootState, BootRomAssets, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState,
@@ -16,6 +17,7 @@ use gb_test_runner::{
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: usize = 25_000_000;
+const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
 const VALIDATION_ENTRY_OPCODE: u8 = 0xC3;
 const VALIDATION_PROGRAM_ADDRESS: u16 = 0x0150;
 const VALIDATION_TRAP_OPCODE: u8 = 0xD3;
@@ -67,6 +69,30 @@ enum ValidationRomProfile {
     FfFilledHeader,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfiguredTestRomStartup {
+    SkipBoot,
+    RealBoot,
+}
+
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+fn lock_env() -> MutexGuard<'static, ()> {
+    ENV_MUTEX.lock().expect("env mutex should not be poisoned")
+}
+
+fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+    unsafe {
+        env::set_var(key, value);
+    }
+}
+
+fn remove_env_var(key: &str) {
+    unsafe {
+        env::remove_var(key);
+    }
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -75,12 +101,125 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn configured_test_rom_startup() -> Result<ConfiguredTestRomStartup, String> {
+    match env::var(TEST_ROM_STARTUP_ENV_VAR) {
+        Ok(value) => match value.as_str() {
+            "skip-boot" => Ok(ConfiguredTestRomStartup::SkipBoot),
+            "real-boot" => Ok(ConfiguredTestRomStartup::RealBoot),
+            other => Err(format!(
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+            )),
+        },
+        Err(env::VarError::NotPresent) => Ok(ConfiguredTestRomStartup::SkipBoot),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+        )),
+    }
+}
+
+fn suite_for_configured_startup(suite: &RomSuite) -> Result<RomSuite, String> {
+    let mut suite = suite.clone();
+    match configured_test_rom_startup()? {
+        ConfiguredTestRomStartup::SkipBoot => {}
+        ConfiguredTestRomStartup::RealBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = StartupMode::RealBoot;
+                case.startup_memory_writes.clear();
+            }
+        }
+    }
+    Ok(suite)
+}
+
+#[test]
+fn test_rom_startup_defaults_to_skip_boot_and_preserves_startup_writes() {
+    let _guard = lock_env();
+    let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
+    remove_env_var(TEST_ROM_STARTUP_ENV_VAR);
+
+    let suite = hacktix_dmg_curated_suite();
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| !case.startup_memory_writes.is_empty()),
+        "fixture should cover a SkipBoot startup-memory profile"
+    );
+
+    let configured =
+        suite_for_configured_startup(&suite).expect("default startup configuration should parse");
+
+    assert_eq!(configured, suite);
+
+    match previous_startup {
+        Some(value) => set_env_var(TEST_ROM_STARTUP_ENV_VAR, value),
+        None => remove_env_var(TEST_ROM_STARTUP_ENV_VAR),
+    }
+}
+
+#[test]
+fn test_rom_startup_real_boot_overrides_cases_and_clears_startup_writes() {
+    let _guard = lock_env();
+    let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
+    set_env_var(TEST_ROM_STARTUP_ENV_VAR, "real-boot");
+
+    let suite = hacktix_dmg_curated_suite();
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| !case.startup_memory_writes.is_empty()),
+        "fixture should cover a SkipBoot startup-memory profile"
+    );
+
+    let configured =
+        suite_for_configured_startup(&suite).expect("real-boot startup configuration should parse");
+
+    assert!(
+        configured
+            .cases
+            .iter()
+            .all(|case| case.startup_mode == StartupMode::RealBoot)
+    );
+    assert!(
+        configured
+            .cases
+            .iter()
+            .all(|case| case.startup_memory_writes.is_empty())
+    );
+
+    match previous_startup {
+        Some(value) => set_env_var(TEST_ROM_STARTUP_ENV_VAR, value),
+        None => remove_env_var(TEST_ROM_STARTUP_ENV_VAR),
+    }
+}
+
+#[test]
+fn test_rom_startup_rejects_unknown_values() {
+    let _guard = lock_env();
+    let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
+    set_env_var(TEST_ROM_STARTUP_ENV_VAR, "warm-boot");
+
+    let error = configured_test_rom_startup().expect_err("unknown startup mode should fail");
+
+    assert!(error.contains(TEST_ROM_STARTUP_ENV_VAR));
+    assert!(error.contains("skip-boot"));
+    assert!(error.contains("real-boot"));
+
+    match previous_startup {
+        Some(value) => set_env_var(TEST_ROM_STARTUP_ENV_VAR, value),
+        None => remove_env_var(TEST_ROM_STARTUP_ENV_VAR),
+    }
+}
+
 fn run_curated_suite(
     suite: &RomSuite,
     suite_label: &str,
     update_report: bool,
 ) -> Option<gb_test_runner::RomSuiteReport> {
     let workspace_root = workspace_root();
+    let suite = suite_for_configured_startup(suite)
+        .unwrap_or_else(|error| panic!("{suite_label} startup configuration failed: {error}"));
 
     let Some(store_root) = discover_test_rom_store_root(&workspace_root) else {
         eprintln!(
@@ -100,13 +239,68 @@ fn run_curated_suite(
     }
 
     let report = RomRunner::new()
-        .run_suite(suite)
-        .unwrap_or_else(|_| panic!("{suite_label} should execute"));
+        .run_suite(&suite)
+        .unwrap_or_else(|error| panic!("{suite_label} should execute: {error:?}"));
     if update_report {
         update_curated_test_report(&workspace_root, &report)
             .expect("curated report should update after a repo-managed suite run");
     }
     Some(report)
+}
+
+fn run_curated_case_without_report_update(
+    suite: &RomSuite,
+    case_id: &str,
+    suite_label: &str,
+) -> Option<gb_test_runner::RomCaseReport> {
+    let workspace_root = workspace_root();
+
+    let Some(store_root) = discover_test_rom_store_root(&workspace_root) else {
+        eprintln!(
+            "skipping ignored test because neither GB_CYCLE_TEST_ROM_ROOT nor the default curated test ROM store is configured"
+        );
+        return None;
+    };
+    let Some(family) = suite.family.as_deref() else {
+        panic!("{suite_label} should declare its curated family");
+    };
+    if !store_root.join(family).exists() {
+        eprintln!(
+            "skipping ignored test because curated family {family} is not materialized under {}",
+            store_root.display()
+        );
+        return None;
+    }
+
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == case_id)
+        .unwrap_or_else(|| panic!("{suite_label} should contain case {case_id}"));
+
+    let report = RomRunner::new()
+        .run_case(case)
+        .unwrap_or_else(|error| panic!("{suite_label} case {case_id} should execute: {error:?}"));
+    Some(report)
+}
+
+fn run_curated_case_as_clean_real_boot(
+    suite: &RomSuite,
+    case_id: &str,
+    suite_label: &str,
+) -> Option<gb_test_runner::RomCaseReport> {
+    if discover_boot_rom_root().is_none() {
+        eprintln!("skipping ignored test because GB_CYCLE_BOOT_ROM_ROOT is not configured");
+        return None;
+    }
+
+    let mut suite = suite.clone();
+    for case in &mut suite.cases {
+        case.startup_mode = StartupMode::RealBoot;
+        case.startup_memory_writes.clear();
+    }
+
+    run_curated_case_without_report_update(&suite, case_id, suite_label)
 }
 
 fn build_real_boot_validation_rom(profile: ValidationRomProfile) -> Vec<u8> {
@@ -657,6 +851,51 @@ fn mooneye_acceptance_chunk_passes_from_repo_store() {
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), 67, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_boot_div_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-boot-div-dmgabcmgb",
+        "curated mooneye boot_div RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_boot_hwio_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-boot-hwio-dmgabcmgb",
+        "curated mooneye boot_hwio RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_serial_boot_sclk_align_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-serial-boot-sclk-align-dmgabcmgb",
+        "curated mooneye boot_sclk_align RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
 }
 
 #[test]

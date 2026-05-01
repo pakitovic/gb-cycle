@@ -13,7 +13,9 @@ fixture = "fixtures/linked/dmg04/basic-exchange.snapshot"
   [[session.participant]]
   id = "left"
   rom = "fixtures/linked/dmg04/basic-left.gb"
+  console = "dmg"
 
   [[session.participant]]
   id = "right"
   rom = "fixtures/linked/dmg04/basic-right.gb"
+  console = "dmg"
