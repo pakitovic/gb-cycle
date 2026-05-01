@@ -351,6 +351,13 @@ pub struct BootDirectBootState {
     pub startup_memory_policy: StartupMemoryPolicy,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BootRealBootPowerOnState {
+    pub timer: TimerStartupState,
+    pub serial: SerialStartupState,
+    pub joypad: JoypadStartupState,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BootStatus {
     Ready,
@@ -504,6 +511,24 @@ impl BootController {
         let apu = build_verified_boot_entry_apu_state(self.console_model, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
+    }
+
+    pub(crate) fn real_boot_power_on_state(&self) -> Option<BootRealBootPowerOnState> {
+        if self.startup_mode != StartupMode::RealBoot {
+            return None;
+        }
+
+        Some(BootRealBootPowerOnState {
+            timer: TimerStartupState {
+                system_counter: real_boot_power_on_system_counter(self.console_model),
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0x00,
+            },
+            serial: SerialStartupState::from_registers(0x00, 0x00)
+                .with_clock_counter(real_boot_power_on_serial_clock_counter(self.console_model)),
+            joypad: real_boot_power_on_joypad_state(self.console_model),
+        })
     }
 
     pub(crate) fn machine_skip_boot_state(
@@ -700,10 +725,10 @@ const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoS
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             BootIoSnapshot {
-                p1: 0xFF,
+                p1: 0xCF,
                 sb: 0x00,
                 sc: 0x7E,
-                div: 0xBD,
+                div: 0xAB,
                 tima: 0x00,
                 tma: 0x00,
                 tac: 0xF8,
@@ -836,7 +861,9 @@ const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 const CGB_SKIP_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
-const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xBD04;
+const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0024;
+const DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER: u16 = 0x0028;
+const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xABC8;
 const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
     ((dmg_family_synthetic_skip_boot_io_snapshot().div as u16) << 8)
         | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
@@ -847,6 +874,39 @@ const fn synthetic_skip_boot_system_counter(console_model: ConsoleModel) -> u16 
             DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
         }
         ConsoleModel::GameBoyColor => CGB_SKIP_BOOT_SYSTEM_COUNTER,
+    }
+}
+
+const fn real_boot_power_on_system_counter(console_model: ConsoleModel) -> u16 {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER
+        }
+        ConsoleModel::GameBoyColor => 0,
+    }
+}
+
+const fn real_boot_power_on_serial_clock_counter(console_model: ConsoleModel) -> u16 {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER
+        }
+        ConsoleModel::GameBoyColor => 0,
+    }
+}
+
+const fn real_boot_power_on_joypad_state(console_model: ConsoleModel) -> JoypadStartupState {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+            JoypadStartupState {
+                selection_bits: 0x00,
+                pressed_mask: 0x00,
+            }
+        }
+        ConsoleModel::GameBoyColor => JoypadStartupState {
+            selection_bits: 0x30,
+            pressed_mask: 0x00,
+        },
     }
 }
 

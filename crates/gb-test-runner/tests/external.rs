@@ -248,6 +248,61 @@ fn run_curated_suite(
     Some(report)
 }
 
+fn run_curated_case_without_report_update(
+    suite: &RomSuite,
+    case_id: &str,
+    suite_label: &str,
+) -> Option<gb_test_runner::RomCaseReport> {
+    let workspace_root = workspace_root();
+
+    let Some(store_root) = discover_test_rom_store_root(&workspace_root) else {
+        eprintln!(
+            "skipping ignored test because neither GB_CYCLE_TEST_ROM_ROOT nor the default curated test ROM store is configured"
+        );
+        return None;
+    };
+    let Some(family) = suite.family.as_deref() else {
+        panic!("{suite_label} should declare its curated family");
+    };
+    if !store_root.join(family).exists() {
+        eprintln!(
+            "skipping ignored test because curated family {family} is not materialized under {}",
+            store_root.display()
+        );
+        return None;
+    }
+
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == case_id)
+        .unwrap_or_else(|| panic!("{suite_label} should contain case {case_id}"));
+
+    let report = RomRunner::new()
+        .run_case(case)
+        .unwrap_or_else(|error| panic!("{suite_label} case {case_id} should execute: {error:?}"));
+    Some(report)
+}
+
+fn run_curated_case_as_clean_real_boot(
+    suite: &RomSuite,
+    case_id: &str,
+    suite_label: &str,
+) -> Option<gb_test_runner::RomCaseReport> {
+    if discover_boot_rom_root().is_none() {
+        eprintln!("skipping ignored test because GB_CYCLE_BOOT_ROM_ROOT is not configured");
+        return None;
+    }
+
+    let mut suite = suite.clone();
+    for case in &mut suite.cases {
+        case.startup_mode = StartupMode::RealBoot;
+        case.startup_memory_writes.clear();
+    }
+
+    run_curated_case_without_report_update(&suite, case_id, suite_label)
+}
+
 fn build_real_boot_validation_rom(profile: ValidationRomProfile) -> Vec<u8> {
     let fill_byte = match profile {
         ValidationRomProfile::FfFilledHeader => 0xFF,
@@ -796,6 +851,51 @@ fn mooneye_acceptance_chunk_passes_from_repo_store() {
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), 67, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_boot_div_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-boot-div-dmgabcmgb",
+        "curated mooneye boot_div RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_boot_hwio_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-boot-hwio-dmgabcmgb",
+        "curated mooneye boot_hwio RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets and verified local dmg boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn mooneye_serial_boot_sclk_align_real_boot_passes_from_repo_store() {
+    let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
+        .expect("Mooneye acceptance/manual split suite should exist");
+    let Some(report) = run_curated_case_as_clean_real_boot(
+        &suite,
+        "mooneye-serial-boot-sclk-align-dmgabcmgb",
+        "curated mooneye boot_sclk_align RealBoot case",
+    ) else {
+        return;
+    };
+    assert_eq!(report.outcome, gb_test_runner::RomCaseOutcome::Passed);
 }
 
 #[test]
