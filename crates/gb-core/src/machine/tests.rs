@@ -1,4 +1,4 @@
-use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
+use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -96,6 +96,28 @@ fn build_pocket_camera_rom() -> Vec<u8> {
     }
 
     rom
+}
+
+#[test]
+fn timer_startup_state_override_keeps_apu_div_phase_coherent() {
+    let mut machine = Machine::new(crate::model::MachineConfig::new(ConsoleModel::GameBoy));
+    machine
+        .load_cartridge(build_test_rom(&[0x00]))
+        .expect("test ROM should load");
+
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x2000,
+        tima: 0x12,
+        tma: 0x34,
+        tac: 0xF8,
+    });
+
+    let timer = machine.timer().snapshot();
+    assert_eq!(timer.system_counter, 0x2000);
+    assert_eq!(timer.tima, 0x12);
+    assert_eq!(timer.tma, 0x34);
+    assert_eq!(timer.tac, 0x00);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
 }
 
 fn step_t_cycles(machine: &mut Machine, t_cycles: u64) {
@@ -1421,6 +1443,24 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
 
     assert_eq!(ppu.read_register(0xFF42), 0x12);
     assert!(pending.is_none());
+}
+
+#[test]
+fn cgb_palette_ppu_mmio_commit_route_is_native_cgb_only() {
+    let native =
+        crate::bus::Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+    let compatible = crate::bus::Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        OperatingMode::GbCompatible,
+    );
+    let dmg = crate::bus::Bus::new(ConsoleModel::GameBoy);
+
+    assert!(cpu_write_targets_ppu_mmio(&native, 0xFF68));
+    assert!(cpu_write_targets_ppu_mmio(&native, 0xFF69));
+    assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF68));
+    assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF69));
+    assert!(!cpu_write_targets_ppu_mmio(&dmg, 0xFF68));
+    assert!(!cpu_write_targets_ppu_mmio(&dmg, 0xFF69));
 }
 
 #[test]

@@ -1838,6 +1838,7 @@ mod tests {
             framebuffer_pgm: Some(vec![
                 b'P', b'5', b'\n', b'1', b' ', b'1', b'\n', b'2', b'5', b'5', b'\n', 0,
             ]),
+            framebuffer_rgb555: None,
             trace: Some("trace".to_string()),
             snapshot_text: Some("snapshot".to_string()),
         };
@@ -2588,6 +2589,7 @@ mod tests {
             framebuffer_pgm: Some(load_fixture_as_local_pgm(
                 "data/fixtures/acid/dmg-acid2-dmg.png",
             )),
+            framebuffer_rgb555: None,
         };
 
         for (capture, operation) in [

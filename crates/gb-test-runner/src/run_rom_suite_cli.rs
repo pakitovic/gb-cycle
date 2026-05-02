@@ -251,7 +251,9 @@ fn write_manifest_framebuffer_exports<W: Write>(
     report: &RomSuiteReport,
 ) -> Result<(), String> {
     for case_report in &report.cases {
-        let Some(framebuffer_pgm) = &case_report.artifacts.framebuffer_pgm else {
+        let Some((framebuffer_png, channel)) =
+            encode_manifest_framebuffer_export(&case_report.artifacts)?
+        else {
             continue;
         };
 
@@ -270,13 +272,6 @@ fn write_manifest_framebuffer_exports<W: Write>(
             format!("failed to resolve ROM path for case {}: {error:?}", case.id)
         })?;
         let png_path = rom_path.with_extension("png");
-        let framebuffer_png = crate::framebuffer_oracle::convert_pgm_to_png(framebuffer_pgm)
-            .map_err(|error| {
-                format!(
-                    "failed to convert framebuffer capture for case {}: {}",
-                    case.id, error.message
-                )
-            })?;
         fs::write(&png_path, framebuffer_png).map_err(|error| {
             format!(
                 "failed to write framebuffer PNG {}: {error}",
@@ -285,11 +280,33 @@ fn write_manifest_framebuffer_exports<W: Write>(
         })?;
         writeln_checked(
             output,
-            &format!("case={} framebuffer_png={}", case.id, png_path.display()),
+            &format!(
+                "case={} framebuffer_png={} channel={channel}",
+                case.id,
+                png_path.display()
+            ),
         )?;
     }
 
     Ok(())
+}
+
+fn encode_manifest_framebuffer_export(
+    artifacts: &CapturedArtifacts,
+) -> Result<Option<(Vec<u8>, &'static str)>, String> {
+    if let Some(framebuffer_rgb555) = &artifacts.framebuffer_rgb555 {
+        return crate::framebuffer_oracle::encode_rgb555_framebuffer_png(framebuffer_rgb555)
+            .map(|png| Some((png, "rgb555")))
+            .map_err(|error| format!("failed to encode CGB RGB555 framebuffer capture: {error}"));
+    }
+
+    let Some(framebuffer_pgm) = &artifacts.framebuffer_pgm else {
+        return Ok(None);
+    };
+
+    crate::framebuffer_oracle::convert_pgm_to_png(framebuffer_pgm)
+        .map(|png| Some((png, "grayscale")))
+        .map_err(|error| format!("failed to convert framebuffer capture: {}", error.message))
 }
 
 fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
@@ -438,7 +455,12 @@ fn write_artifacts<W: Write>(output: &mut W, artifacts: &CapturedArtifacts) -> R
         writeln_checked(output, &format!("trace=\n{trace}"))?;
     }
 
-    if let Some(framebuffer) = &artifacts.framebuffer_pgm {
+    if let Some(framebuffer_rgb555) = &artifacts.framebuffer_rgb555 {
+        writeln_checked(
+            output,
+            &format!("framebuffer_rgb555_pixels={}", framebuffer_rgb555.len()),
+        )?;
+    } else if let Some(framebuffer) = &artifacts.framebuffer_pgm {
         writeln_checked(
             output,
             &format!("framebuffer_pgm_bytes={}", framebuffer.len()),
@@ -533,6 +555,10 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
         crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
+        crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
+        crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
+            "framebuffer-rgb555-grayscale-fixture"
+        }
         crate::PassCondition::FramebufferFixtureSet(_) => "framebuffer-fixture-set",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }
@@ -877,6 +903,7 @@ mod tests {
                     }),
                     blargg_console_text: Some("console-text".to_string()),
                     framebuffer_pgm: Some(vec![0; 8]),
+                    framebuffer_rgb555: None,
                     trace: Some("trace-text".to_string()),
                     snapshot_text: Some("snapshot-text".to_string()),
                 },
@@ -897,6 +924,39 @@ mod tests {
         assert!(output.contains("trace=\ntrace-text"));
         assert!(output.contains("framebuffer_pgm_bytes=8"));
         assert!(output.contains("retained_failure_artifacts="));
+    }
+
+    #[test]
+    fn report_writer_prefers_cgb_rgb555_framebuffer_channel() {
+        let report = RomSuiteReport {
+            suite_name: "synthetic-cgb".to_string(),
+            family: None,
+            subsystem: TestSubsystem::Ppu,
+            cases: vec![RomCaseReport {
+                case_id: "case-cgb".to_string(),
+                rom_path: PathBuf::from("synthetic/case-cgb.gbc"),
+                outcome: RomCaseOutcome::Passed,
+                executed_t_cycles: 64,
+                completed_frames: 1,
+                diagnostics: Vec::new(),
+                artifacts: CapturedArtifacts {
+                    framebuffer_pgm: Some(vec![0; 8]),
+                    framebuffer_rgb555: Some(vec![0x7FFF; 160 * 144]),
+                    ..CapturedArtifacts::default()
+                },
+                retained_failure_artifacts: Vec::new(),
+            }],
+        };
+
+        let mut output = Vec::new();
+        write_suite_report(&mut output, &report).expect("report writer should succeed");
+        let output = String::from_utf8(output).expect("report output should be utf-8");
+
+        assert!(output.contains("framebuffer_rgb555_pixels=23040"));
+        assert!(
+            !output.contains("framebuffer_pgm_bytes="),
+            "CGB reports should not advertise the legacy grayscale framebuffer channel"
+        );
     }
 
     #[test]
@@ -974,7 +1034,7 @@ oracle = "info-framebuffer"
         assert!(rendered.contains("suite=local-case subsystem=CrossSubsystem"));
         assert!(rendered.contains("case=phase2-export outcome=Informational"));
         assert!(rendered.contains(&format!(
-            "case=phase2-export framebuffer_png={}",
+            "case=phase2-export framebuffer_png={} channel=grayscale",
             png_path.display()
         )));
         assert!(png_path.is_file());

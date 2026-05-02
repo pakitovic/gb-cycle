@@ -29,13 +29,15 @@ use std::{fs, io};
 use external_roms::ExternalRomSourceManifestError;
 use framebuffer_oracle::{
     convert_pgm_to_png, decode_fixture_framebuffer_path, decode_fixture_grayscale_framebuffer_path,
-    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm,
+    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer,
+    decode_local_rgb555_framebuffer, decode_local_rgb555_grayscale_framebuffer,
+    encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
     ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton,
     Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
-    TraceBuffer, TraceSummaryBuffer,
+    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 
 pub use boot_rom_verification::{
@@ -44,11 +46,11 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_speed_suite,
-    cpp_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
-    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
-    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
-    update_curated_test_report,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_ppu_basic_suite,
+    cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
+    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -335,6 +337,8 @@ pub enum PassCondition {
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
     FramebufferGrayscaleFixture(PathBuf),
+    FramebufferRgb555Fixture(PathBuf),
+    FramebufferRgb555GrayscaleFixture(PathBuf),
     FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
 }
@@ -350,6 +354,8 @@ impl PassCondition {
             Self::Informational(capture) => *capture,
             Self::FramebufferFixture(_)
             | Self::FramebufferGrayscaleFixture(_)
+            | Self::FramebufferRgb555Fixture(_)
+            | Self::FramebufferRgb555GrayscaleFixture(_)
             | Self::FramebufferFixtureSet(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
@@ -440,6 +446,7 @@ pub struct RomTestCase {
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub startup_cartridge_rtc_seconds: Option<u64>,
+    pub startup_timer_state: Option<TimerStartupState>,
     pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
@@ -467,6 +474,7 @@ impl RomTestCase {
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
+            startup_timer_state: None,
             startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
@@ -494,6 +502,11 @@ impl RomTestCase {
 
     pub fn with_startup_cartridge_rtc_seconds(mut self, seconds: u64) -> Self {
         self.startup_cartridge_rtc_seconds = Some(seconds);
+        self
+    }
+
+    pub fn with_startup_timer_state(mut self, startup_timer_state: TimerStartupState) -> Self {
+        self.startup_timer_state = Some(startup_timer_state);
         self
     }
 
@@ -955,6 +968,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_speed_suite(),
+        cgb_ppu_basic_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
@@ -1234,6 +1248,7 @@ pub struct CapturedArtifacts {
     pub memory_text_output: Option<CapturedMemoryTextOutput>,
     pub blargg_console_text: Option<String>,
     pub framebuffer_pgm: Option<Vec<u8>>,
+    pub framebuffer_rgb555: Option<Vec<u16>>,
     pub trace: Option<String>,
     pub snapshot_text: Option<String>,
 }
@@ -1461,6 +1476,13 @@ impl RunnerMachine {
         }
     }
 
+    fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+        match self {
+            Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+        }
+    }
+
     fn cpu_execution_state(&self) -> CpuExecutionState {
         match self {
             Self::Buffered(machine) => machine.cpu().snapshot().execution_state,
@@ -1519,6 +1541,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.advance_cartridge_rtc_seconds(seconds),
             Self::Summary(machine) => machine.advance_cartridge_rtc_seconds(seconds),
+        }
+    }
+
+    fn apply_timer_startup_state(&mut self, startup_timer_state: TimerStartupState) {
+        match self {
+            Self::Buffered(machine) => machine.apply_timer_startup_state(startup_timer_state),
+            Self::Summary(machine) => machine.apply_timer_startup_state(startup_timer_state),
         }
     }
 }
@@ -1609,6 +1638,7 @@ impl RomRunner {
         let startup_failure = self.advance_real_boot_to_handoff_if_needed(case, &mut machine);
         if startup_failure.is_none() {
             self.apply_startup_cartridge_state(case, &mut machine);
+            self.apply_startup_timer_state(case, &mut machine);
             self.apply_startup_memory_writes(case, &mut machine);
         }
 
@@ -1874,6 +1904,12 @@ impl RomRunner {
         }
     }
 
+    fn apply_startup_timer_state(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        if let Some(startup_timer_state) = case.startup_timer_state {
+            machine.apply_timer_startup_state(startup_timer_state);
+        }
+    }
+
     fn apply_startup_memory_writes(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
         for write in &case.startup_memory_writes {
             machine.write_bus(write.address, write.value);
@@ -1907,7 +1943,11 @@ impl RomRunner {
         }
 
         if case.capture_plan.contains(CaptureKind::Framebuffer) {
-            artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
+            if let Some(framebuffer_rgb555) = machine.cgb_framebuffer_rgb555() {
+                artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.to_vec());
+            } else {
+                artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
+            }
         }
 
         if case.capture_plan.contains(CaptureKind::Trace) {
@@ -2121,6 +2161,98 @@ impl RomRunner {
                     })
                 }
             }
+            PassCondition::FramebufferRgb555Fixture(fixture_path) => {
+                let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_rgb555_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_rgb555
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!(
+                                "<local CGB RGB555 framebuffer for {}>",
+                                case.id
+                            )),
+                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local CGB RGB555 framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
+                let expected =
+                    decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer fixture",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+
+                if actual == expected {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                        fixture_path: resolved_fixture,
+                    })
+                }
+            }
+            PassCondition::FramebufferRgb555GrayscaleFixture(fixture_path) => {
+                let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_rgb555_grayscale_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_rgb555
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!(
+                                "<local CGB RGB555 framebuffer for {}>",
+                                case.id
+                            )),
+                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local CGB RGB555 framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
+                let expected = decode_fixture_grayscale_framebuffer_path(&resolved_fixture)
+                    .map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer grayscale fixture",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+
+                if actual == expected {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                        fixture_path: resolved_fixture,
+                    })
+                }
+            }
             PassCondition::FramebufferFixtureSet(fixture_paths) => {
                 let resolved_fixtures = fixture_paths
                     .iter()
@@ -2244,6 +2376,25 @@ impl RomRunner {
                     written_paths.push(path);
                 }
                 CaptureKind::Framebuffer => {
+                    if let Some(framebuffer_rgb555) = &artifacts.framebuffer_rgb555 {
+                        let png_path = case_dir.join("framebuffer.png");
+                        let rgb555_png = encode_rgb555_framebuffer_png(framebuffer_rgb555)
+                            .map_err(|source| RomExecutionError::ReadFile {
+                                path: png_path.clone(),
+                                operation: "encode CGB RGB555 framebuffer artifact",
+                                source,
+                            })?;
+                        fs::write(&png_path, rgb555_png).map_err(|source| {
+                            RomExecutionError::ReadFile {
+                                path: png_path.clone(),
+                                operation: "write CGB RGB555 framebuffer artifact",
+                                source,
+                            }
+                        })?;
+                        written_paths.push(png_path);
+                        continue;
+                    }
+
                     let Some(framebuffer_pgm) = &artifacts.framebuffer_pgm else {
                         continue;
                     };
@@ -2557,16 +2708,19 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_boot_div_suite, cgb_smoke_suite, cgb_speed_suite,
-        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output,
+        capture_memory_text_output, cgb_boot_div_suite, cgb_ppu_basic_suite, cgb_smoke_suite,
+        cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
+        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output,
     };
-    use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
+    use crate::framebuffer_oracle::{
+        decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
+    };
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
-        ExecutionMode, StartupMode,
+        ExecutionMode, StartupMode, TimerStartupState,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -2769,6 +2923,93 @@ mod tests {
     }
 
     #[test]
+    fn cgb_ppu_basic_suite_promotes_initial_slice4_rows() {
+        let suite = cgb_ppu_basic_suite();
+
+        assert_eq!(suite.name, "cgb-ppu-basic");
+        assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 4);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            case.rom_path,
+            PathBuf::from("samesuite/ppu/blocking_bgpi_increase.gb")
+        );
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[1];
+        assert_eq!(case.id, "cgb-ppu-basic-ppu-scanline-bgp-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("daid/ppu_scanline_bgp.gb"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[2];
+        assert_eq!(case.id, "cgb-ppu-basic-cgb-acid2");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("acid/cgb-acid2.gbc"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[3];
+        assert_eq!(case.id, "cgb-ppu-basic-hacktix-bully-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("hacktix/bully.gb"));
+        assert_eq!(case.timeout, Timeout::Frames(30));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+            ))
+        );
+        assert_eq!(
+            case.startup_timer_state,
+            Some(TimerStartupState {
+                system_counter: 0x1E74,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0xF8,
+            })
+        );
+        assert_eq!(case.startup_memory_writes.len(), 244);
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+    }
+
+    #[test]
     fn cgb_speed_suite_promotes_slice2_cases_to_blocking_oracles() {
         let suite = cgb_speed_suite();
 
@@ -2787,7 +3028,7 @@ mod tests {
         assert_eq!(stop_case.timeout, Timeout::Frames(180));
         assert_eq!(
             stop_case.pass_condition,
-            PassCondition::FramebufferGrayscaleFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555GrayscaleFixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png"
             ))
         );
@@ -2814,7 +3055,7 @@ mod tests {
         assert_eq!(div_case.timeout, Timeout::Frames(180));
         assert_eq!(
             div_case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png"
             ))
         );
@@ -2885,7 +3126,7 @@ mod tests {
         assert_eq!(mode3_stop_case.timeout, Timeout::Frames(180));
         assert_eq!(
             mode3_stop_case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png"
             ))
         );
@@ -2920,7 +3161,7 @@ mod tests {
         assert_eq!(ly_case.timeout, Timeout::Frames(180));
         assert_eq!(
             ly_case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_ly.png"
             ))
         );
@@ -2943,7 +3184,7 @@ mod tests {
         assert_eq!(stat_case.timeout, Timeout::Frames(180));
         assert_eq!(
             stat_case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_stat.png"
             ))
         );
@@ -3830,6 +4071,88 @@ mod tests {
             })
         );
 
+        let mut rgb555_pixels = vec![0x0000_u16; 160 * 144];
+        rgb555_pixels[0] = 0x7FFF;
+        let rgb555_fixture_path = temp_dir.join("rgb555.png");
+        fs::write(
+            &rgb555_fixture_path,
+            encode_rgb555_framebuffer_png(&rgb555_pixels)
+                .expect("RGB555 fixture should encode to PNG"),
+        )
+        .expect("RGB555 fixture should be writable");
+        let rgb555_case = RomTestCase::new(
+            "rgb555-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferRgb555Fixture(rgb555_fixture_path.clone()),
+        );
+        let rgb555_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(rgb555_pixels.clone()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&rgb555_case, &evaluation_inputs(&rgb555_artifacts, 1, 0))
+                .expect("RGB555 fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        let rgb555_mismatch_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x0000; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_case,
+                    &evaluation_inputs(&rgb555_mismatch_artifacts, 1, 0)
+                )
+                .expect("RGB555 fixture mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: rgb555_fixture_path.clone(),
+            })
+        );
+
+        let rgb555_grayscale_fixture_path = temp_dir.join("rgb555-white.pgm");
+        fs::write(
+            &rgb555_grayscale_fixture_path,
+            encode_framebuffer_pgm(&vec![0; 160 * 144]),
+        )
+        .expect("RGB555 grayscale fixture should be writable");
+        let rgb555_grayscale_case = RomTestCase::new(
+            "rgb555-grayscale-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferRgb555GrayscaleFixture(rgb555_grayscale_fixture_path.clone()),
+        );
+        let rgb555_white_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x7FFF; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        let rgb555_black_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x0000; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_grayscale_case,
+                    &evaluation_inputs(&rgb555_white_artifacts, 1, 0)
+                )
+                .expect("RGB555 grayscale fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_grayscale_case,
+                    &evaluation_inputs(&rgb555_black_artifacts, 1, 0)
+                )
+                .expect("RGB555 grayscale mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: rgb555_grayscale_fixture_path.clone(),
+            })
+        );
+
         let missing_local_artifacts = CapturedArtifacts::default();
         let missing_local = runner
             .evaluate_case(
@@ -3841,6 +4164,19 @@ mod tests {
             missing_local,
             RomExecutionError::ReadFile {
                 operation: "decode local framebuffer artifact",
+                ..
+            }
+        ));
+        let missing_rgb555_local = runner
+            .evaluate_case(
+                &rgb555_case,
+                &evaluation_inputs(&missing_local_artifacts, 1, 0),
+            )
+            .expect_err("missing local RGB555 framebuffer should fail");
+        assert!(matches!(
+            missing_rgb555_local,
+            RomExecutionError::ReadFile {
+                operation: "decode local CGB RGB555 framebuffer artifact",
                 ..
             }
         ));
@@ -3905,6 +4241,7 @@ mod tests {
             }),
             blargg_console_text: Some("console".to_string()),
             framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![0; 160 * 144])),
+            framebuffer_rgb555: Some(vec![0x7FFF; 160 * 144]),
             trace: Some("trace".to_string()),
             snapshot_text: Some("snapshot".to_string()),
         };
@@ -3917,7 +4254,7 @@ mod tests {
         let written = runner
             .persist_failure_artifacts(&case, &artifacts)
             .expect("persisting failure artifacts should succeed");
-        assert_eq!(written.len(), 8);
+        assert_eq!(written.len(), 7);
         for capture in [
             CaptureKind::Serial,
             CaptureKind::SerialHex,
@@ -3935,10 +4272,10 @@ mod tests {
             );
         }
         assert!(
-            written
+            !written
                 .iter()
                 .any(|path| path.ends_with(Path::new("framebuffer.pgm"))),
-            "missing legacy framebuffer artifact"
+            "CGB RGB555 framebuffer artifacts should not persist a legacy PGM"
         );
 
         let case_dir = artifact_root.join("artifact-case");
@@ -3958,7 +4295,8 @@ mod tests {
             )
         );
         assert!(case_dir.join("framebuffer.png").is_file());
-        assert!(case_dir.join("framebuffer.pgm").is_file());
+        assert!(!case_dir.join("framebuffer.pgm").exists());
+        assert!(!case_dir.join("framebuffer_rgb555.png").exists());
 
         fs::remove_dir_all(artifact_root).expect("artifact root should be removable");
     }

@@ -114,13 +114,14 @@ impl IoHramDomain {
         &self,
         router: &AddressRouter,
         console_model: ConsoleModel,
+        operating_mode: OperatingMode,
         target: BusAddressInfo,
         io: BusIoReadView<'_>,
     ) -> u8 {
         match target.region() {
             BusRegion::Hram => self.hram[target.region_offset() as usize],
             BusRegion::Mmio | BusRegion::InterruptEnable => {
-                self.read_io_target(router, console_model, target.address(), io)
+                self.read_io_target(router, console_model, operating_mode, target.address(), io)
             }
             _ => unreachable!("non-IoHram target routed to IoHramDomain"),
         }
@@ -130,6 +131,7 @@ impl IoHramDomain {
         &mut self,
         router: &AddressRouter,
         console_model: ConsoleModel,
+        operating_mode: OperatingMode,
         target: BusAddressInfo,
         value: u8,
         io: BusIoWriteView<'_>,
@@ -138,9 +140,14 @@ impl IoHramDomain {
             BusRegion::Hram => {
                 self.hram[target.region_offset() as usize] = value;
             }
-            BusRegion::Mmio | BusRegion::InterruptEnable => {
-                self.write_io_target(router, console_model, target.address(), value, io)
-            }
+            BusRegion::Mmio | BusRegion::InterruptEnable => self.write_io_target(
+                router,
+                console_model,
+                operating_mode,
+                target.address(),
+                value,
+                io,
+            ),
             _ => unreachable!("non-IoHram target routed to IoHramDomain"),
         }
     }
@@ -149,6 +156,7 @@ impl IoHramDomain {
         &self,
         router: &AddressRouter,
         console_model: ConsoleModel,
+        operating_mode: OperatingMode,
         address: u16,
         io: BusIoReadView<'_>,
     ) -> u8 {
@@ -156,7 +164,7 @@ impl IoHramDomain {
             return BLOCKED_READ_VALUE;
         };
 
-        if !io_register_is_available(info.availability(), console_model)
+        if !io_register_is_available(info.availability(), console_model, operating_mode)
             || info.implementation() != IoRegisterImplementation::Implemented
         {
             return BLOCKED_READ_VALUE;
@@ -213,6 +221,7 @@ impl IoHramDomain {
         &mut self,
         router: &AddressRouter,
         console_model: ConsoleModel,
+        operating_mode: OperatingMode,
         address: u16,
         value: u8,
         io: BusIoWriteView<'_>,
@@ -221,7 +230,7 @@ impl IoHramDomain {
             return;
         };
 
-        if !io_register_is_available(info.availability(), console_model)
+        if !io_register_is_available(info.availability(), console_model, operating_mode)
             || info.implementation() != IoRegisterImplementation::Implemented
         {
             return;
@@ -449,9 +458,12 @@ impl CgbMiscIoState {
 fn io_register_is_available(
     availability: IoRegisterAvailability,
     console_model: ConsoleModel,
+    operating_mode: OperatingMode,
 ) -> bool {
     match availability {
         IoRegisterAvailability::Shared | IoRegisterAvailability::DmgCompatible => true,
-        IoRegisterAvailability::CgbOnly => console_model.is_cgb_family(),
+        IoRegisterAvailability::CgbOnly => {
+            console_model.is_cgb_family() && operating_mode.enables_cgb_extensions()
+        }
     }
 }

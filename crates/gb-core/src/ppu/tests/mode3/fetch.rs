@@ -1217,7 +1217,7 @@ fn visible_tile3_scx_boundary_old_tail_window_preserves_old_pixels_on_output() {
         let pixel = ppu
             .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
             .expect("queued slice should still expose a visible pixel");
-        pixels.push(pixel);
+        pixels.push(pixel.color);
     }
 
     assert_eq!(pixels, vec![1, 1, 1, 1, 1, 1, 0, 0]);
@@ -1256,7 +1256,7 @@ fn ordinary_slice_after_visible_tile3_scx_boundary_preserves_old_prefix_pixel_on
         let pixel = ppu
             .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
             .expect("queued slice should still expose a visible pixel");
-        pixels.push(pixel);
+        pixels.push(pixel.color);
     }
 
     assert_eq!(pixels, vec![0, 1, 1, 1, 1, 1, 1, 1]);
@@ -1294,7 +1294,7 @@ fn first_window_activation_pixel_can_use_the_previous_tilemap_on_window_line_25(
         .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
         .expect("queued window slice should expose a visible pixel");
 
-    assert_eq!(pixel, 0);
+    assert_eq!(pixel.color, 0);
 }
 
 #[test]
@@ -1329,6 +1329,7 @@ fn first_window_activation_first_tile_uses_the_oracle_mask_on_window_line_32() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1367,6 +1368,7 @@ fn first_window_activation_first_tile_uses_the_oracle_mask_on_window_line_56() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1405,6 +1407,7 @@ fn second_window_tile_uses_the_oracle_mask_on_window_line_32() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1443,6 +1446,7 @@ fn second_window_tile_uses_the_oracle_mask_on_window_line_64() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1481,6 +1485,7 @@ fn third_window_tile_uses_the_oracle_mask_on_window_line_112() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1519,6 +1524,7 @@ fn third_window_tile_uses_the_oracle_mask_on_window_line_128() {
         .map(|_| {
             ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
                 .expect("queued window slice should expose a visible pixel")
+                .color
         })
         .collect::<Vec<_>>();
 
@@ -1557,7 +1563,7 @@ fn first_window_activation_pixel_keeps_the_current_tilemap_on_window_line_27() {
         .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
         .expect("queued window slice should expose a visible pixel");
 
-    assert_eq!(pixel, 3);
+    assert_eq!(pixel.color, 3);
 }
 
 #[test]
@@ -1670,6 +1676,7 @@ fn startup_scy_visible_tile2_placeholder_preserves_obj_mixing_priority() {
         color: 2,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 16,
         oam_index: 0,
     });

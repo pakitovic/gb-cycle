@@ -229,6 +229,9 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff51.owner(), IoRegisterOwner::Dma);
     assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);
     assert_eq!(ff68.owner(), IoRegisterOwner::Ppu);
+    assert_eq!(ff68.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff68.implementation(), IoRegisterImplementation::Implemented);
+    assert_eq!(ff68.kind(), IoRegisterKind::Bcps);
     assert_eq!(ff70.owner(), IoRegisterOwner::MemoryController);
     assert_eq!(ff70.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff72.owner(), IoRegisterOwner::CgbSystem);
@@ -281,10 +284,74 @@ fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
         ConsoleModel::GameBoyColor,
         crate::model::OperatingMode::GbCompatible,
     );
+    let ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
-    for address in [0xFF4C, 0xFF4F, 0xFF70, 0xFF72, 0xFF75] {
-        assert_eq!(bus.read_io_target(address, BusIoReadView::default()), 0xFF);
+    for address in [
+        0xFF4C, 0xFF4F, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
+    ] {
+        assert_eq!(
+            bus.read_io_target(
+                address,
+                BusIoReadView {
+                    ppu: Some(&ppu),
+                    ..BusIoReadView::default()
+                }
+            ),
+            0xFF
+        );
     }
+}
+
+#[test]
+fn native_cgb_palette_registers_route_to_ppu_owner() {
+    let bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF68,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x40
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFE
+    );
+
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    bus.write_with_context(
+        0xFF6C,
+        0x01,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            ppu: Some(&mut ppu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
 }
 
 #[test]

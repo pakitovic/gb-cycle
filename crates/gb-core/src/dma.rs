@@ -579,6 +579,12 @@ impl DmaController {
                 });
 
                 match progress.transfer().source_bus() {
+                    DmaSourceBus::External if self.console_model.is_cgb_family() => {
+                        DmaBusState::external_bus_only_blocked(Some(
+                            progress.transfer().memory_region_impact(),
+                        ))
+                        .with_cpu_conflict_source_address(cpu_conflict_source_address)
+                    }
                     DmaSourceBus::External => DmaBusState::external_bus_blocked(Some(
                         progress.transfer().memory_region_impact(),
                     ))

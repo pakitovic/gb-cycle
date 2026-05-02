@@ -149,14 +149,23 @@ impl VramDomain {
 
     #[cfg(test)]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
-        let mut domain = Self::new();
-        let copy_len = bytes.len().min(DMG_VRAM_LEN);
+        Self::from_bytes_for_model(ConsoleModel::GameBoy, bytes)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_bytes_for_model(console_model: ConsoleModel, bytes: &[u8]) -> Self {
+        let mut domain = Self::new_for_model(console_model);
+        let copy_len = bytes.len().min(domain.debug_bytes().len());
         domain.bytes[..copy_len].copy_from_slice(&bytes[..copy_len]);
         domain
     }
 
     pub(crate) fn read(&self, offset: usize) -> u8 {
         self.bytes[self.storage_index(offset)]
+    }
+
+    pub(crate) fn read_bank(&self, bank: u8, offset: usize) -> u8 {
+        self.bytes[self.storage_index_for_bank(bank, offset)]
     }
 
     pub(crate) fn write(&mut self, offset: usize, value: u8) {
@@ -210,9 +219,13 @@ impl VramDomain {
     }
 
     fn storage_index(&self, offset: usize) -> usize {
+        self.storage_index_for_bank(self.selected_bank, offset)
+    }
+
+    fn storage_index_for_bank(&self, bank: u8, offset: usize) -> usize {
         debug_assert!(offset < DMG_VRAM_LEN);
         let bank = if self.console_model.is_cgb_family() {
-            usize::from(self.selected_bank)
+            usize::from(bank & 0x01)
         } else {
             0
         };

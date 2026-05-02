@@ -145,3 +145,21 @@ fn mode3_fetch_and_window_helper_contexts_keep_addressing_rules_explicit() {
     assert!(!prepared.wy_latch());
     assert!(prepared.force_x0_this_line());
 }
+
+#[test]
+fn cgb_window_activation_does_not_treat_lcdc0_as_bg_window_disable() {
+    let visible = PpuVisibleRegisters {
+        lcdc: LCDC_ENABLE_BIT | LCDC_WINDOW_ENABLE_BIT,
+        wx: 7,
+        ..PpuVisibleRegisters::default()
+    };
+    let latches = PpuMode3RegisterLatches::from_mmio(visible);
+
+    let activation = PpuMode3WindowActivationState::new(
+        latches.window_activation_registers(ConsoleModel::GameBoyColor),
+        false,
+    );
+
+    assert!(activation.runtime_enabled());
+    assert_eq!(activation.trigger_x(), Some(0));
+}

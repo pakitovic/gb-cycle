@@ -64,11 +64,15 @@ impl PpuMode3RegisterLatches {
         self,
         console_model: ConsoleModel,
     ) -> PpuVisibleRegisters {
-        if console_model.is_dmg_family() {
+        let mut registers = if console_model.is_dmg_family() {
             self.pipeline
         } else {
             self.visible
+        };
+        if !console_model.is_dmg_family() {
+            registers.lcdc |= LCDC_BG_ENABLE_BIT;
         }
+        registers
     }
 
     pub(in crate::ppu) const fn mode3_start_scx(self) -> u8 {
@@ -288,8 +292,21 @@ impl PpuMode3BackgroundFetchContext {
         (tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x) as u16
     }
 
+    #[allow(dead_code)]
     pub(in crate::ppu) const fn tile_data_address(self, tile_index: u8, plane: u16) -> u16 {
-        let tile_row = (self.tiledata_registers.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16;
+        self.tile_data_address_for_row(tile_index, self.tile_data_row(), plane)
+    }
+
+    pub(in crate::ppu) const fn tile_data_row(self) -> u16 {
+        (self.tiledata_registers.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
+    }
+
+    pub(in crate::ppu) const fn tile_data_address_for_row(
+        self,
+        tile_index: u8,
+        tile_row: u16,
+        plane: u16,
+    ) -> u16 {
         let tile_data_base = bg_tile_data_base(self.tiledata_registers.lcdc, tile_index);
         tile_data_base + tile_row * TILE_ROW_BYTES + plane
     }
@@ -330,8 +347,21 @@ impl PpuMode3WindowFetchContext {
         (tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x) as u16
     }
 
+    #[allow(dead_code)]
     pub(in crate::ppu) const fn tile_data_address(self, tile_index: u8, plane: u16) -> u16 {
-        let tile_row = (self.window_line_counter % BG_TILE_WIDTH) as u16;
+        self.tile_data_address_for_row(tile_index, self.tile_data_row(), plane)
+    }
+
+    pub(in crate::ppu) const fn tile_data_row(self) -> u16 {
+        (self.window_line_counter % BG_TILE_WIDTH) as u16
+    }
+
+    pub(in crate::ppu) const fn tile_data_address_for_row(
+        self,
+        tile_index: u8,
+        tile_row: u16,
+        plane: u16,
+    ) -> u16 {
         let tile_data_base = bg_tile_data_base(self.registers.lcdc, tile_index);
         tile_data_base + tile_row * TILE_ROW_BYTES + plane
     }

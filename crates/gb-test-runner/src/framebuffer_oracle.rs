@@ -111,6 +111,71 @@ pub(crate) fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
     encoded
 }
 
+pub(crate) fn decode_local_rgb555_framebuffer(
+    case_id: &str,
+    pixels: &[u16],
+) -> Result<NormalizedFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local CGB RGB555 framebuffer for {case_id}>"));
+    let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+    if pixels.len() != expected_len {
+        return Err(FramebufferOracleError {
+            path,
+            message: format!(
+                "CGB RGB555 framebuffer length {} does not match expected {expected_len}",
+                pixels.len()
+            ),
+        });
+    }
+
+    let colors = pixels
+        .iter()
+        .copied()
+        .map(rgb555_to_rgb888)
+        .collect::<Vec<_>>();
+    Ok(normalize_rgb_pixels(
+        FRAMEBUFFER_WIDTH,
+        FRAMEBUFFER_HEIGHT,
+        &colors,
+    ))
+}
+
+pub(crate) fn decode_local_rgb555_grayscale_framebuffer(
+    case_id: &str,
+    pixels: &[u16],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local CGB RGB555 framebuffer for {case_id}>"));
+    let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+    if pixels.len() != expected_len {
+        return Err(FramebufferOracleError {
+            path,
+            message: format!(
+                "CGB RGB555 framebuffer length {} does not match expected {expected_len}",
+                pixels.len()
+            ),
+        });
+    }
+
+    Ok(GrayscaleFramebuffer {
+        width: FRAMEBUFFER_WIDTH,
+        height: FRAMEBUFFER_HEIGHT,
+        pixels: pixels
+            .iter()
+            .copied()
+            .map(rgb555_to_rgb888)
+            .map(grayscale_luma)
+            .collect(),
+    })
+}
+
+pub(crate) fn encode_rgb555_framebuffer_png(pixels: &[u16]) -> io::Result<Vec<u8>> {
+    let colors = pixels
+        .iter()
+        .copied()
+        .map(rgb555_to_rgb888)
+        .collect::<Vec<_>>();
+    encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &colors)
+}
+
 #[cfg(test)]
 pub(crate) fn encode_framebuffer_png(framebuffer: &[u8]) -> Result<Vec<u8>, io::Error> {
     let pixels = framebuffer
@@ -421,6 +486,21 @@ fn grayscale_luma(color: [u8; 3]) -> u8 {
         / 1_000) as u8
 }
 
+fn rgb555_to_rgb888(color: u16) -> [u8; 3] {
+    let red = (color & 0x001F) as u8;
+    let green = ((color >> 5) & 0x001F) as u8;
+    let blue = ((color >> 10) & 0x001F) as u8;
+    [
+        scale_5_bit_to_8_bit(red),
+        scale_5_bit_to_8_bit(green),
+        scale_5_bit_to_8_bit(blue),
+    ]
+}
+
+fn scale_5_bit_to_8_bit(component: u8) -> u8 {
+    (component << 3) | (component >> 2)
+}
+
 fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> Result<Vec<u8>, io::Error> {
     let mut encoded = Vec::new();
     {
@@ -435,6 +515,24 @@ fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> Result<Ve
     Ok(encoded)
 }
 
+fn encode_rgb_png(width: usize, height: usize, pixels: &[[u8; 3]]) -> Result<Vec<u8>, io::Error> {
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
+        let mut bytes = Vec::with_capacity(pixels.len() * 3);
+        for pixel in pixels {
+            bytes.extend_from_slice(pixel);
+        }
+        writer
+            .write_image_data(&bytes)
+            .map_err(png_encoding_io_error)?;
+    }
+    Ok(encoded)
+}
+
 fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
     io::Error::other(source.to_string())
 }
@@ -443,8 +541,10 @@ fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
 mod tests {
     use super::{
         DMG_GRAYSCALE_SHADES, decode_fixture_framebuffer_bytes, decode_fixture_framebuffer_path,
-        decode_fixture_grayscale_framebuffer_bytes, decode_local_pgm_framebuffer,
-        decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm, encode_framebuffer_png,
+        decode_fixture_grayscale_framebuffer_bytes, decode_fixture_grayscale_framebuffer_path,
+        decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer,
+        decode_local_rgb555_framebuffer, decode_local_rgb555_grayscale_framebuffer,
+        encode_framebuffer_pgm, encode_framebuffer_png, encode_rgb555_framebuffer_png,
     };
     use std::fs;
     use std::path::Path;
@@ -518,6 +618,119 @@ mod tests {
         assert_eq!(local_white, fixture_white);
         assert_eq!(local_black, fixture_black);
         assert_ne!(local_white, local_black);
+    }
+
+    #[test]
+    fn rgb555_grayscale_decoding_preserves_absolute_black_and_white() {
+        let white = vec![0x7FFF_u16; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        let black = vec![0x0000_u16; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+
+        let local_white = decode_local_rgb555_grayscale_framebuffer("white", &white)
+            .expect("white RGB555 framebuffer should decode");
+        let local_black = decode_local_rgb555_grayscale_framebuffer("black", &black)
+            .expect("black RGB555 framebuffer should decode");
+
+        assert!(local_white.pixels.iter().all(|pixel| *pixel == 0xFF));
+        assert!(local_black.pixels.iter().all(|pixel| *pixel == 0x00));
+        assert_ne!(local_white, local_black);
+    }
+
+    #[test]
+    fn rgb555_framebuffer_decoding_normalizes_colors_and_reports_bad_lengths() {
+        let mut pixels = vec![0x0000_u16; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        pixels[0] = 0x7FFF;
+        pixels[1] = 0x001F;
+        pixels[2] = 0x03E0;
+        pixels[3] = 0x7C00;
+
+        let decoded = decode_local_rgb555_framebuffer("rgb555", &pixels)
+            .expect("RGB555 framebuffer should decode");
+        assert_eq!(decoded.width, super::FRAMEBUFFER_WIDTH);
+        assert_eq!(decoded.height, super::FRAMEBUFFER_HEIGHT);
+        assert_eq!(decoded.palette_ranks[0], 0);
+        assert_ne!(decoded.palette_ranks[1], decoded.palette_ranks[2]);
+
+        let png = encode_rgb555_framebuffer_png(&pixels).expect("RGB555 PNG should encode");
+        let fixture = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &png)
+            .expect("encoded RGB555 PNG should decode as a fixture");
+        assert_eq!(decoded, fixture);
+
+        let color_error = decode_local_rgb555_framebuffer("short", &pixels[..1])
+            .expect_err("short RGB555 framebuffer should fail");
+        assert!(
+            color_error
+                .message
+                .contains("CGB RGB555 framebuffer length 1")
+        );
+        let grayscale_error = decode_local_rgb555_grayscale_framebuffer("short", &pixels[..1])
+            .expect_err("short RGB555 grayscale framebuffer should fail");
+        assert!(
+            grayscale_error
+                .message
+                .contains("CGB RGB555 framebuffer length 1")
+        );
+    }
+
+    #[test]
+    fn grayscale_fixture_path_and_rgb_png_inputs_preserve_absolute_luma() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "gb-cycle-grayscale-framebuffer-oracle-{}-{}",
+            std::process::id(),
+            super::FRAMEBUFFER_HEIGHT
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let png_path = temp_dir.join("fixture.png");
+        let png = encode_png(
+            2,
+            1,
+            png::ColorType::Rgb,
+            &[0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00],
+            None,
+        );
+        fs::write(&png_path, &png).expect("fixture PNG should be writable");
+
+        let from_path = decode_fixture_grayscale_framebuffer_path(&png_path)
+            .expect("fixture grayscale path should decode");
+        let from_bytes = decode_fixture_grayscale_framebuffer_bytes(Path::new("fixture.png"), &png)
+            .expect("RGB fixture grayscale bytes should decode");
+        assert_eq!(from_path, from_bytes);
+        assert_eq!(from_bytes.pixels, vec![0xFF, 0x00]);
+
+        let rgba = encode_png(
+            2,
+            1,
+            png::ColorType::Rgba,
+            &[0xFF, 0x00, 0x00, 0x7F, 0x00, 0x00, 0xFF, 0x80],
+            None,
+        );
+        let rgba = decode_fixture_grayscale_framebuffer_bytes(Path::new("fixture.png"), &rgba)
+            .expect("RGBA fixture grayscale bytes should decode");
+        assert_eq!(rgba.pixels, vec![76, 29]);
+
+        let gray_alpha = encode_png(
+            2,
+            1,
+            png::ColorType::GrayscaleAlpha,
+            &[0xAA, 0x00, 0x11, 0xFF],
+            None,
+        );
+        let gray_alpha =
+            decode_fixture_grayscale_framebuffer_bytes(Path::new("fixture.png"), &gray_alpha)
+                .expect("grayscale-alpha fixture grayscale bytes should decode");
+        assert_eq!(gray_alpha.pixels, vec![0xAA, 0x11]);
+
+        let unsupported = decode_fixture_grayscale_framebuffer_bytes(Path::new("fixture.bmp"), b"")
+            .expect_err("unsupported grayscale fixture extension should fail");
+        assert!(
+            unsupported
+                .message
+                .contains("unsupported framebuffer fixture extension")
+        );
+        let missing = decode_fixture_grayscale_framebuffer_path(&temp_dir.join("missing.png"))
+            .expect_err("missing grayscale fixture should fail");
+        assert!(missing.path.ends_with("missing.png"));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
     }
 
     #[test]
@@ -625,6 +838,10 @@ mod tests {
             .expect_err("missing max token should fail");
         assert!(missing_max.message.contains("missing PGM max token"));
 
+        let invalid_magic = decode_local_pgm_framebuffer("case", b"P2\n1 1\n255\n\x00")
+            .expect_err("invalid magic should fail");
+        assert!(invalid_magic.message.contains("unsupported PGM magic"));
+
         let invalid_utf8 = decode_local_pgm_framebuffer("case", b"P5\n\xFF 1\n255\n\x00")
             .expect_err("invalid UTF-8 width should fail");
         assert!(
@@ -633,9 +850,18 @@ mod tests {
                 .contains("invalid UTF-8 in PGM width token")
         );
 
+        let invalid_height = decode_local_pgm_framebuffer("case", b"P5\n1 nope\n255\n\x00")
+            .expect_err("invalid numeric height should fail");
+        assert!(invalid_height.message.contains("invalid PGM height token"));
+
         let invalid_max = decode_local_pgm_framebuffer("case", b"P5\n1 1\n1\n\x00")
             .expect_err("unsupported max value should fail");
         assert!(invalid_max.message.contains("unsupported PGM max value"));
+
+        let overflow =
+            decode_local_pgm_framebuffer("case", format!("P5\n{} 2\n255\n", usize::MAX).as_bytes())
+                .expect_err("overflowing dimensions should fail");
+        assert!(overflow.message.contains("PGM dimensions overflow"));
 
         let short_payload = decode_local_pgm_framebuffer("case", b"P5\n2 1\n255\n\x00")
             .expect_err("short payload should fail");

@@ -13,7 +13,7 @@ use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
 use crate::speed::SpeedController;
-use crate::timer::Timer;
+use crate::timer::{Timer, TimerStartupState};
 
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
@@ -54,7 +54,7 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
-        if cpu_write_targets_ppu_mmio(address) {
+        if cpu_write_targets_ppu_mmio(&self.bus, address) {
             let mut pending = Some(PendingPpuMmioWrite { address, value });
 
             self.bus.route_cpu_address_event(
@@ -100,6 +100,15 @@ impl<S: TraceSink> Machine<S> {
             &state,
             &mut self.ppu,
         );
+    }
+
+    /// Applies an explicit timer startup profile after machine construction or cartridge-load reset.
+    ///
+    /// This is intentionally narrower than a full machine startup state and is meant for deterministic ROM-runner profiles that need to isolate a specific test-ROM assumption without changing the core `SkipBoot` contract.
+    pub fn apply_timer_startup_state(&mut self, startup_state: TimerStartupState) {
+        self.timer.apply_startup_state(startup_state);
+        self.apu
+            .apply_div_apu_startup_phase_from_system_counter(startup_state.system_counter);
     }
 
     pub fn load_cartridge(
@@ -195,6 +204,18 @@ impl<S: TraceSink> Machine<S> {
             self.serial.apply_startup_state(startup_state.serial);
             self.joypad.apply_startup_state(startup_state.joypad);
         }
+        self.ppu
+            .apply_operating_mode_state(self.config.operating_mode);
+        self.ppu.apply_cgb_compatibility_palette_startup_state(
+            self.config.startup_mode,
+            self.config.operating_mode,
+            self.cartridge.header(),
+            host_joypad_pressed_mask,
+        );
+        self.ppu.apply_cgb_native_palette_startup_state(
+            self.config.startup_mode,
+            self.config.operating_mode,
+        );
         self.bus
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.external_port.apply_startup_reset();

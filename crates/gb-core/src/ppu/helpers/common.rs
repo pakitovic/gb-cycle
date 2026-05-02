@@ -66,6 +66,62 @@ pub(in crate::ppu) const fn bg_tile_pixel_value(
     (high_bit << 1) | low_bit
 }
 
+pub(in crate::ppu) const fn cgb_bg_effective_tile_row(
+    tile_row: u16,
+    attributes: CgbBgTileAttributes,
+) -> u16 {
+    if attributes.vertical_flip() {
+        (BG_TILE_WIDTH - 1) as u16 - tile_row
+    } else {
+        tile_row
+    }
+}
+
+pub(in crate::ppu) const fn cgb_bg_effective_pixel_index(
+    pixel_index: u8,
+    attributes: CgbBgTileAttributes,
+) -> u8 {
+    if attributes.horizontal_flip() {
+        BG_TILE_WIDTH - 1 - pixel_index
+    } else {
+        pixel_index
+    }
+}
+
+pub(in crate::ppu) const fn bg_tile_pixel_value_with_cgb_attrs(
+    tile_low: u8,
+    tile_high: u8,
+    pixel_index: u8,
+    attributes: CgbBgTileAttributes,
+) -> u8 {
+    bg_tile_pixel_value(
+        tile_low,
+        tile_high,
+        cgb_bg_effective_pixel_index(pixel_index, attributes),
+    )
+}
+
+pub(in crate::ppu) const fn obj_effective_pixel_index(pixel_index: u8, attributes: u8) -> u8 {
+    if attributes & CGB_OBJ_ATTR_X_FLIP_BIT != 0 {
+        BG_TILE_WIDTH - 1 - pixel_index
+    } else {
+        pixel_index
+    }
+}
+
+pub(in crate::ppu) const fn obj_tile_pixel_value(
+    tile_low: u8,
+    tile_high: u8,
+    pixel_index: u8,
+    attributes: u8,
+) -> u8 {
+    bg_tile_pixel_value(
+        tile_low,
+        tile_high,
+        obj_effective_pixel_index(pixel_index, attributes),
+    )
+}
+
 pub(in crate::ppu) fn read_oam_sprite(
     oam: &OamBusView<'_>,
     oam_index: u8,
@@ -159,7 +215,11 @@ pub(in crate::ppu) fn sprite_trigger_x(sprite: PpuSelectedSprite) -> Option<u8> 
     Some(sprite.x)
 }
 
-pub(in crate::ppu) fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPixel) -> bool {
+pub(in crate::ppu) fn obj_pixel_has_priority_for_mode(
+    priority_mode: CgbObjPriorityMode,
+    candidate: ObjPixel,
+    current: ObjPixel,
+) -> bool {
     if current.is_transparent() {
         return !candidate.is_transparent();
     }
@@ -167,6 +227,12 @@ pub(in crate::ppu) fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPi
         return false;
     }
 
-    candidate.sprite_x < current.sprite_x
-        || (candidate.sprite_x == current.sprite_x && candidate.oam_index < current.oam_index)
+    match priority_mode {
+        CgbObjPriorityMode::CgbOamOrder => candidate.oam_index < current.oam_index,
+        CgbObjPriorityMode::DmgXCoordinate => {
+            candidate.sprite_x < current.sprite_x
+                || (candidate.sprite_x == current.sprite_x
+                    && candidate.oam_index < current.oam_index)
+        }
+    }
 }

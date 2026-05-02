@@ -180,6 +180,14 @@ path = "testroms/acid/dmg-acid2.png"
 sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"
 
 [[source.required_file]]
+path = "testroms/acid/cgb-acid2.gbc"
+sha256 = "197fb0bcec544f0400527fc707e0a94f55435974986e6986b424ace5de81720e"
+
+[[source.required_file]]
+path = "testroms/acid/cgb-acid2.png"
+sha256 = "38cd6e43c30c0e6d0bd078ffaa57015e03bee185c0ee588f042745ab0fcdcca8"
+
+[[source.required_file]]
 path = "testroms/daid/ppu_scanline_bgp.gb"
 sha256 = "3a32e875d4cdc1defd28a601a64a9a3f1f7965a6679a8f16af45781520b57379"
 
@@ -194,6 +202,10 @@ sha256 = "a07067f06285f94180a246b04208223a01040014b750996de1bbed3eaf56b572"
 [[source.required_file]]
 path = "testroms/daid/ppu_scanline_bgp_2.dmg.png"
 sha256 = "2400f19f5a82d1c28726cdbb9793f86f01cadb1bbc5ef624e37e69de272241cc"
+
+[[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp.gbc.png"
+sha256 = "49e0438aca7c762b8392db65ee77a59e55155925624461a161e9530a982fb25b"
 
 [[source.required_file]]
 path = "testroms/daid/stop_instr.gb"
@@ -242,6 +254,14 @@ sha256 = "9bc6fd0feef711611423f047ce8d3d0bceb9894ec96de6ac5b96938ad6691b3c"
 [[source.required_file]]
 path = "testroms/daid/rom_and_ram.gb"
 sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
+
+[[source.required_file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
+sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
+
+[[source.required_file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
+sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
 
 [[source.required_file]]
 path = "testroms/hacktix/bully.gb"

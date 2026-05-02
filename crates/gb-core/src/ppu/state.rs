@@ -32,6 +32,11 @@ pub(super) enum PpuRegister {
     Obp1,
     Wy,
     Wx,
+    Bcps,
+    Bcpd,
+    Ocps,
+    Ocpd,
+    Opri,
 }
 
 impl PpuRegister {
@@ -48,6 +53,11 @@ impl PpuRegister {
             0xFF49 => Some(Self::Obp1),
             0xFF4A => Some(Self::Wy),
             0xFF4B => Some(Self::Wx),
+            0xFF68 => Some(Self::Bcps),
+            0xFF69 => Some(Self::Bcpd),
+            0xFF6A => Some(Self::Ocps),
+            0xFF6B => Some(Self::Ocpd),
+            0xFF6C => Some(Self::Opri),
             _ => None,
         }
     }
@@ -64,8 +74,302 @@ impl PpuRegister {
             | Self::Ly
             | Self::Lyc
             | Self::Wy
-            | Self::Wx => None,
+            | Self::Wx
+            | Self::Bcps
+            | Self::Bcpd
+            | Self::Ocps
+            | Self::Ocpd
+            | Self::Opri => None,
         }
+    }
+
+    pub(super) const fn cgb_palette_register(self) -> Option<CgbPaletteRegister> {
+        match self {
+            Self::Bcps => Some(CgbPaletteRegister::BgIndex),
+            Self::Bcpd => Some(CgbPaletteRegister::BgData),
+            Self::Ocps => Some(CgbPaletteRegister::ObjIndex),
+            Self::Ocpd => Some(CgbPaletteRegister::ObjData),
+            Self::Lcdc
+            | Self::Stat
+            | Self::Scy
+            | Self::Scx
+            | Self::Ly
+            | Self::Lyc
+            | Self::Bgp
+            | Self::Obp0
+            | Self::Obp1
+            | Self::Wy
+            | Self::Wx
+            | Self::Opri => None,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) enum CgbObjPriorityMode {
+    #[default]
+    CgbOamOrder,
+    DmgXCoordinate,
+}
+
+impl CgbObjPriorityMode {
+    pub(super) const fn for_model_and_mode(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) -> Self {
+        if console_model.is_cgb_family() && matches!(operating_mode, OperatingMode::Cgb) {
+            Self::CgbOamOrder
+        } else {
+            Self::DmgXCoordinate
+        }
+    }
+
+    pub(super) const fn opri_bit(self) -> u8 {
+        match self {
+            Self::CgbOamOrder => 0,
+            Self::DmgXCoordinate => 1,
+        }
+    }
+}
+
+const CGB_PALETTE_RAM_BYTES: usize = 64;
+const CGB_PALETTE_INDEX_ADDRESS_MASK: u8 = 0x3F;
+const CGB_PALETTE_INDEX_FORCED_READ_BITS: u8 = 0x40;
+const CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT: u8 = 0x80;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum CgbPaletteKind {
+    Background,
+    Object,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum CgbPaletteRegister {
+    BgIndex,
+    BgData,
+    ObjIndex,
+    ObjData,
+}
+
+const CGB_NATIVE_BOOT_BG_PALETTE0_BYTES: [u8; 8] = [0xFF, 0xFF, 0xFF, 0x7F, 0x00, 0x00, 0x00, 0x00];
+
+impl CgbPaletteRegister {
+    pub(super) const fn kind(self) -> CgbPaletteKind {
+        match self {
+            Self::BgIndex | Self::BgData => CgbPaletteKind::Background,
+            Self::ObjIndex | Self::ObjData => CgbPaletteKind::Object,
+        }
+    }
+
+    pub(super) const fn is_data(self) -> bool {
+        matches!(self, Self::BgData | Self::ObjData)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct CgbPalettePort {
+    index: u8,
+    #[serde(with = "serde_big_array::BigArray")]
+    data: [u8; CGB_PALETTE_RAM_BYTES],
+}
+
+impl CgbPalettePort {
+    pub(super) const fn new() -> Self {
+        Self {
+            index: 0,
+            data: [0; CGB_PALETTE_RAM_BYTES],
+        }
+    }
+
+    pub(super) const fn read_index(&self) -> u8 {
+        self.index | CGB_PALETTE_INDEX_FORCED_READ_BITS
+    }
+
+    pub(super) fn write_index(&mut self, value: u8) {
+        self.index =
+            value & (CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT | CGB_PALETTE_INDEX_ADDRESS_MASK);
+    }
+
+    pub(super) fn read_data(&self, blocked: bool) -> u8 {
+        if blocked {
+            return 0xFF;
+        }
+
+        self.data[self.address()]
+    }
+
+    pub(super) fn write_data(&mut self, value: u8, blocked: bool) {
+        if !blocked {
+            let address = self.address();
+            self.data[address] = value;
+        }
+
+        if self.index & CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT != 0 {
+            let next_address = self.index.wrapping_add(1) & CGB_PALETTE_INDEX_ADDRESS_MASK;
+            self.index = CGB_PALETTE_INDEX_AUTO_INCREMENT_BIT | next_address;
+        }
+    }
+
+    fn address(&self) -> usize {
+        usize::from(self.index & CGB_PALETTE_INDEX_ADDRESS_MASK)
+    }
+
+    pub(super) fn rgb555(&self, palette_index: u8, color_index: u8) -> u16 {
+        let address = usize::from((palette_index & 0x07) * 8 + (color_index & 0x03) * 2);
+        u16::from_le_bytes([self.data[address], self.data[address + 1]]) & 0x7FFF
+    }
+
+    pub(super) fn write_palette_bytes(&mut self, palette_index: u8, bytes: [u8; 8]) {
+        let address = usize::from((palette_index & 0x07) * 8);
+        self.data[address..address + 8].copy_from_slice(&bytes);
+    }
+}
+
+impl Default for CgbPalettePort {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub(super) struct CgbPaletteState {
+    background: CgbPalettePort,
+    object: CgbPalettePort,
+}
+
+impl CgbPaletteState {
+    pub(super) fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(super) const fn port(&self, kind: CgbPaletteKind) -> &CgbPalettePort {
+        match kind {
+            CgbPaletteKind::Background => &self.background,
+            CgbPaletteKind::Object => &self.object,
+        }
+    }
+
+    pub(super) fn port_mut(&mut self, kind: CgbPaletteKind) -> &mut CgbPalettePort {
+        match kind {
+            CgbPaletteKind::Background => &mut self.background,
+            CgbPaletteKind::Object => &mut self.object,
+        }
+    }
+
+    pub(super) fn apply_cgb_compatibility_palette_seed(
+        &mut self,
+        seed: CgbCompatibilityPaletteSeed,
+    ) {
+        self.background.write_palette_bytes(0, seed.bg_palette0);
+        self.object.write_palette_bytes(0, seed.obj_palette0);
+        self.object.write_palette_bytes(1, seed.obj_palette1);
+    }
+
+    pub(super) fn apply_cgb_native_boot_palette_seed(&mut self) {
+        self.background
+            .write_palette_bytes(0, CGB_NATIVE_BOOT_BG_PALETTE0_BYTES);
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) struct CgbBgTileAttributes {
+    raw: u8,
+}
+
+impl CgbBgTileAttributes {
+    pub(super) const fn new(raw: u8) -> Self {
+        Self { raw }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn raw(self) -> u8 {
+        self.raw
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn palette_index(self) -> u8 {
+        self.raw & CGB_BG_ATTR_PALETTE_MASK
+    }
+
+    pub(super) const fn tile_vram_bank(self) -> u8 {
+        if self.raw & CGB_BG_ATTR_VRAM_BANK_BIT != 0 {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn ignored_bit4(self) -> bool {
+        self.raw & CGB_BG_ATTR_IGNORED_BIT != 0
+    }
+
+    pub(super) const fn horizontal_flip(self) -> bool {
+        self.raw & CGB_BG_ATTR_X_FLIP_BIT != 0
+    }
+
+    pub(super) const fn vertical_flip(self) -> bool {
+        self.raw & CGB_BG_ATTR_Y_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn bg_priority(self) -> bool {
+        self.raw & CGB_BG_ATTR_PRIORITY_BIT != 0
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(super) struct CgbObjAttributes {
+    raw: u8,
+}
+
+impl CgbObjAttributes {
+    pub(super) const fn new(raw: u8) -> Self {
+        Self { raw }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn raw(self) -> u8 {
+        self.raw
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn palette_index(self) -> u8 {
+        self.raw & CGB_OBJ_ATTR_PALETTE_MASK
+    }
+
+    pub(super) const fn tile_vram_bank(self) -> u8 {
+        if self.raw & CGB_OBJ_ATTR_VRAM_BANK_BIT != 0 {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn dmg_palette_obp1(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_DMG_PALETTE_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn horizontal_flip(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_X_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn vertical_flip(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_Y_FLIP_BIT != 0
+    }
+
+    #[allow(dead_code)]
+    pub(super) const fn bg_over_obj(self) -> bool {
+        self.raw & CGB_OBJ_ATTR_BG_OVER_OBJ_BIT != 0
     }
 }
 
@@ -89,7 +393,12 @@ impl PpuMode3LiveBackgroundRegister {
             | PpuRegister::Obp0
             | PpuRegister::Obp1
             | PpuRegister::Wy
-            | PpuRegister::Wx => None,
+            | PpuRegister::Wx
+            | PpuRegister::Bcps
+            | PpuRegister::Bcpd
+            | PpuRegister::Ocps
+            | PpuRegister::Ocpd
+            | PpuRegister::Opri => None,
         }
     }
 }
@@ -1797,7 +2106,7 @@ impl BgPipelineState {
     ) {
         for pixel_index in leading_pixel_skip.min(BG_TILE_WIDTH)..BG_TILE_WIDTH {
             self.fifo.push_back_pixel(BgFifoPixel::new(
-                bg_tile_pixel_value(cached.tile_low, cached.tile_high, pixel_index),
+                cached.pixel_value(pixel_index),
                 Some(BgFifoPixelCached::new(cached, pixel_index)),
             ));
         }
@@ -2120,6 +2429,7 @@ pub(super) struct BgFetcherState {
     pub(super) tile_low_address: u16,
     pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
 }
@@ -2175,6 +2485,7 @@ impl BgFetcherState {
         self.tile_low_address = 0;
         self.tile_high_address = 0;
         self.tile_index = 0;
+        self.cgb_bg_attrs = None;
         self.tile_low = 0;
         self.tile_high = 0;
     }
@@ -2209,6 +2520,7 @@ impl BgFetcherState {
         self.tile_low_address = 0;
         self.tile_high_address = 0;
         self.tile_index = 0;
+        self.cgb_bg_attrs = None;
         self.tile_low = 0;
         self.tile_high = 0;
     }
@@ -2239,6 +2551,7 @@ impl BgFetcherState {
         self.window_tilemap_x = 0;
         self.first_window_tile_after_activation = false;
         self.first_window_tile_leading_pixel_skip = 0;
+        self.cgb_bg_attrs = None;
     }
 
     pub(super) fn mark_live_register_write_for_current_background_fetch(
@@ -2494,6 +2807,7 @@ pub(super) struct BgCachedSlice {
     pub(super) tile_low_address: u16,
     pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
 }
@@ -2535,6 +2849,7 @@ impl BgCachedSlice {
             tile_low_address: fetcher.tile_low_address,
             tile_high_address: fetcher.tile_high_address,
             tile_index: fetcher.tile_index,
+            cgb_bg_attrs: fetcher.cgb_bg_attrs,
             tile_low: fetcher.tile_low,
             tile_high: fetcher.tile_high,
         }
@@ -2593,6 +2908,22 @@ impl BgCachedSlice {
 
     pub(super) const fn is_startup_alignment_seed(self) -> bool {
         matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
+    }
+
+    pub(super) const fn cgb_bg_attrs_or_default(self) -> CgbBgTileAttributes {
+        match self.cgb_bg_attrs {
+            Some(attrs) => attrs,
+            None => CgbBgTileAttributes::new(0),
+        }
+    }
+
+    pub(super) const fn pixel_value(self, pixel_index: u8) -> u8 {
+        bg_tile_pixel_value_with_cgb_attrs(
+            self.tile_low,
+            self.tile_high,
+            pixel_index,
+            self.cgb_bg_attrs_or_default(),
+        )
     }
 
     pub(super) const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
@@ -2790,6 +3121,28 @@ impl BgFifoPixel {
     pub(super) const fn color(self) -> u8 {
         self.color
     }
+
+    pub(super) const fn cgb_bg_attrs(self) -> Option<CgbBgTileAttributes> {
+        match self.cached {
+            Some(cached) => cached.cached.cgb_bg_attrs,
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct BgOutputPixel {
+    pub(super) color: u8,
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
+}
+
+impl BgOutputPixel {
+    pub(super) const fn new(color: u8, cgb_bg_attrs: Option<CgbBgTileAttributes>) -> Self {
+        Self {
+            color,
+            cgb_bg_attrs,
+        }
+    }
 }
 
 pub(super) fn recompute_live_background_cached_slice(
@@ -2811,6 +3164,7 @@ pub(super) fn recompute_live_background_cached_slice(
     let registers = context.registers();
     let mut tile_map_address = cached.tile_map_address;
     let mut tile_index = cached.tile_index;
+    let mut cgb_bg_attrs = cached.cgb_bg_attrs;
     if cached.needs_live_tilemap_refetch {
         let tilemap_select_override = cached.dmg_lcdc3_tilemap_select_override;
         let full_refetch_fetch_x =
@@ -2860,8 +3214,15 @@ pub(super) fn recompute_live_background_cached_slice(
             tile_map_base | tile_map_offset
         };
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        if cgb_bg_attrs.is_some() {
+            cgb_bg_attrs = Some(CgbBgTileAttributes::new(
+                vram.read_bank(CGB_BG_ATTR_BANK, tile_map_address as usize)
+                    .unwrap_or(0),
+            ));
+        }
     }
 
+    let attributes = cgb_bg_attrs.unwrap_or_default();
     let cached_tile_low_address = cached_tile_low_address(cached);
     let cached_tile_high_address = cached_tile_high_address(cached);
     let current_tile_row = match cached.source {
@@ -2871,14 +3232,14 @@ pub(super) fn recompute_live_background_cached_slice(
     let tile_low_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_low_current_row_refetch
     {
-        current_tile_row
+        cgb_bg_effective_tile_row(current_tile_row, attributes)
     } else {
         bg_tile_data_address_row(cached_tile_low_address)
     };
     let tile_high_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_high_current_row_refetch
     {
-        current_tile_row
+        cgb_bg_effective_tile_row(current_tile_row, attributes)
     } else {
         bg_tile_data_address_row(cached_tile_high_address)
     };
@@ -2904,8 +3265,10 @@ pub(super) fn recompute_live_background_cached_slice(
             )
         } else {
             (
-                vram.read(tile_low_address as usize).unwrap_or(0),
-                vram.read(tile_high_address as usize).unwrap_or(0),
+                vram.read_bank(attributes.tile_vram_bank(), tile_low_address as usize)
+                    .unwrap_or(0),
+                vram.read_bank(attributes.tile_vram_bank(), tile_high_address as usize)
+                    .unwrap_or(0),
             )
         };
 
@@ -2914,6 +3277,7 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.tile_low_address = tile_low_address;
     cached.tile_high_address = tile_high_address;
     cached.tile_index = tile_index;
+    cached.cgb_bg_attrs = cgb_bg_attrs;
     cached.tile_low = tile_low;
     cached.tile_high = tile_high;
     cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
@@ -3192,6 +3556,8 @@ pub(super) struct ObjPixel {
     pub(super) color: u8,
     pub(super) palette_obp1: bool,
     pub(super) bg_over_obj: bool,
+    #[serde(default)]
+    pub(super) cgb_obj_attrs: Option<CgbObjAttributes>,
     pub(super) sprite_x: u8,
     pub(super) oam_index: u8,
 }
@@ -3202,6 +3568,7 @@ impl ObjPixel {
             color: 0,
             palette_obp1: false,
             bg_over_obj: false,
+            cgb_obj_attrs: None,
             sprite_x: u8::MAX,
             oam_index: u8::MAX,
         }
@@ -3216,20 +3583,44 @@ impl ObjPixel {
 pub(super) struct MixedPixel {
     pub(super) color: u8,
     pub(super) source: MixedPixelSource,
+    #[serde(default)]
+    pub(super) cgb_bg_attrs: Option<CgbBgTileAttributes>,
+    #[serde(default)]
+    pub(super) cgb_obj_attrs: Option<CgbObjAttributes>,
 }
 
 impl MixedPixel {
     pub(super) const fn background(color: u8) -> Self {
+        Self::background_with_cgb_attrs(color, None)
+    }
+
+    pub(super) const fn background_with_cgb_attrs(
+        color: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
+    ) -> Self {
         Self {
             color,
             source: MixedPixelSource::Background,
+            cgb_bg_attrs,
+            cgb_obj_attrs: None,
         }
     }
 
+    #[allow(dead_code)]
     pub(super) const fn object(color: u8, palette_obp1: bool) -> Self {
+        Self::object_with_cgb_attrs(color, palette_obp1, None)
+    }
+
+    pub(super) const fn object_with_cgb_attrs(
+        color: u8,
+        palette_obp1: bool,
+        cgb_obj_attrs: Option<CgbObjAttributes>,
+    ) -> Self {
         Self {
             color,
             source: MixedPixelSource::Object { palette_obp1 },
+            cgb_bg_attrs: None,
+            cgb_obj_attrs,
         }
     }
 }

@@ -1,11 +1,13 @@
 use crate::bus::{BusMaster, OamBusView, VramBusView};
-use crate::model::ConsoleModel;
+use crate::cartridge::CartridgeHeader;
+use crate::model::{ConsoleModel, OperatingMode, StartupMode};
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 
 mod api;
+mod compat_palettes;
 mod control;
 mod helpers;
 mod mode3;
@@ -14,6 +16,7 @@ mod pipeline;
 mod snapshot;
 mod state;
 
+use self::compat_palettes::*;
 use self::helpers::*;
 use self::palette_conflicts::*;
 pub use self::snapshot::{
@@ -45,6 +48,10 @@ const STAT_MODE0_INTERRUPT_ENABLE_BIT: u8 = 0x08;
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
+const RGB555_WHITE: u16 = 0x7FFF;
+const RGB555_LIGHT_GRAY: u16 = 0x5294;
+const RGB555_DARK_GRAY: u16 = 0x294A;
+const RGB555_BLACK: u16 = 0x0000;
 const DOTS_PER_SCANLINE: u16 = 456;
 const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 0;
@@ -56,6 +63,7 @@ const LCD_REENABLE_LINE0_MODE0_RESTORE_DOT: u16 =
 const CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES: u8 = 5;
 const VISIBLE_SCANLINES: u8 = 144;
 const TOTAL_SCANLINES: u8 = 154;
+const LINE_153_LY0_DOT: u16 = 8;
 const MODE2_DOTS: u16 = 80;
 const MODE3_BASELINE_DOTS: u16 = 172;
 const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
@@ -84,6 +92,64 @@ const OAM_CORRUPTION_DOTS_PER_ROW: u16 = 4;
 const OAM_CORRUPTION_ROW_BYTES: usize = 8;
 const OAM_CORRUPTION_ROW_WORDS: usize = 4;
 const OAM_CORRUPTION_ROW_COUNT: u8 = 20;
+#[allow(dead_code)]
+const CGB_BG_ATTR_PALETTE_MASK: u8 = 0x07;
+const CGB_BG_ATTR_VRAM_BANK_BIT: u8 = 0x08;
+#[allow(dead_code)]
+const CGB_BG_ATTR_IGNORED_BIT: u8 = 0x10;
+const CGB_BG_ATTR_X_FLIP_BIT: u8 = 0x20;
+const CGB_BG_ATTR_Y_FLIP_BIT: u8 = 0x40;
+#[allow(dead_code)]
+const CGB_BG_ATTR_PRIORITY_BIT: u8 = 0x80;
+const CGB_BG_ATTR_BANK: u8 = 1;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_PALETTE_MASK: u8 = 0x07;
+const CGB_OBJ_ATTR_VRAM_BANK_BIT: u8 = 0x08;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_DMG_PALETTE_BIT: u8 = 0x10;
+const CGB_OBJ_ATTR_X_FLIP_BIT: u8 = 0x20;
+const CGB_OBJ_ATTR_Y_FLIP_BIT: u8 = 0x40;
+#[allow(dead_code)]
+const CGB_OBJ_ATTR_BG_OVER_OBJ_BIT: u8 = 0x80;
+
+const fn panel_shade_to_rgb555(shade: u8) -> u16 {
+    match shade {
+        0 => RGB555_WHITE,
+        1 => RGB555_LIGHT_GRAY,
+        2 => RGB555_DARK_GRAY,
+        _ => RGB555_BLACK,
+    }
+}
+
+const fn normalize_ppu_operating_mode(
+    console_model: ConsoleModel,
+    operating_mode: OperatingMode,
+) -> OperatingMode {
+    if console_model.supports_operating_mode(operating_mode) {
+        operating_mode
+    } else {
+        console_model.default_operating_mode()
+    }
+}
+
+fn normalize_saved_ppu_operating_mode(
+    console_model: ConsoleModel,
+    operating_mode: OperatingMode,
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+) -> OperatingMode {
+    if console_model.supports_operating_mode(operating_mode) {
+        return operating_mode;
+    }
+
+    if console_model.is_cgb_family()
+        && operating_mode == OperatingMode::Dmg
+        && cgb_obj_priority_mode == CgbObjPriorityMode::DmgXCoordinate
+    {
+        return OperatingMode::GbCompatible;
+    }
+
+    console_model.default_operating_mode()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {
@@ -370,6 +436,8 @@ pub struct PpuPanelState {
     previous_scanline_ly: Option<u8>,
     pending_dmg_window_lcdc4_output_repaint: Option<BgTileDataSelect>,
     framebuffer: Vec<u8>,
+    #[serde(default = "default_framebuffer_rgb555")]
+    framebuffer_rgb555: Vec<u16>,
     framebuffer_layer_sources: Vec<PpuFramebufferLayerSource>,
     framebuffer_bgwin_colors: Vec<u8>,
     framebuffer_bgwin_forced_white: Vec<bool>,
@@ -393,6 +461,7 @@ impl Default for PpuPanelState {
             previous_scanline_ly: None,
             pending_dmg_window_lcdc4_output_repaint: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_rgb555: vec![RGB555_WHITE; FRAMEBUFFER_PIXELS],
             framebuffer_layer_sources: vec![
                 PpuFramebufferLayerSource::Backdrop;
                 FRAMEBUFFER_PIXELS
@@ -409,11 +478,20 @@ impl Default for PpuPanelState {
     }
 }
 
+fn default_framebuffer_rgb555() -> Vec<u16> {
+    vec![RGB555_WHITE; FRAMEBUFFER_PIXELS]
+}
+
 impl PpuPanelState {
     fn dynamic_payload_bytes(&self) -> usize {
         self.dmg_panel_live_write_state
             .dynamic_payload_bytes()
             .saturating_add(self.framebuffer.len())
+            .saturating_add(
+                self.framebuffer_rgb555
+                    .len()
+                    .saturating_mul(mem::size_of::<u16>()),
+            )
             .saturating_add(
                 self.framebuffer_layer_sources
                     .len()
@@ -554,6 +632,12 @@ impl DerefMut for PpuRuntimeState {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Ppu {
     console_model: ConsoleModel,
+    #[serde(default)]
+    operating_mode: OperatingMode,
+    #[serde(default)]
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+    #[serde(default)]
+    cgb_opri_latch: u8,
     status: PpuStatus,
     lcdc: u8,
     stat_interrupt_enable: u8,
@@ -570,6 +654,7 @@ pub struct Ppu {
     obp1: Option<u8>,
     wy: u8,
     wx: u8,
+    cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeState,
 }
@@ -577,6 +662,12 @@ pub struct Ppu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuSaveState {
     console_model: ConsoleModel,
+    #[serde(default)]
+    operating_mode: OperatingMode,
+    #[serde(default)]
+    cgb_obj_priority_mode: CgbObjPriorityMode,
+    #[serde(default)]
+    cgb_opri_latch: u8,
     status: PpuStatus,
     lcdc: u8,
     stat_interrupt_enable: u8,
@@ -593,6 +684,8 @@ pub struct PpuSaveState {
     obp1: Option<u8>,
     wy: u8,
     wx: u8,
+    #[serde(default)]
+    cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,
 }
@@ -616,6 +709,9 @@ impl Ppu {
     pub(crate) fn capture_save_state(&self) -> PpuSaveState {
         PpuSaveState {
             console_model: self.console_model,
+            operating_mode: self.operating_mode,
+            cgb_obj_priority_mode: self.cgb_obj_priority_mode,
+            cgb_opri_latch: self.cgb_opri_latch,
             status: self.status,
             lcdc: self.lcdc,
             stat_interrupt_enable: self.stat_interrupt_enable,
@@ -632,6 +728,7 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
+            cgb_palettes: self.cgb_palettes.clone(),
             obj_palette_read_policy: self.obj_palette_read_policy,
             runtime: self.runtime.capture_save_state(),
         }
@@ -639,6 +736,13 @@ impl Ppu {
 
     pub(crate) fn restore_save_state(&mut self, state: &PpuSaveState) {
         self.console_model = state.console_model;
+        self.operating_mode = normalize_saved_ppu_operating_mode(
+            state.console_model,
+            state.operating_mode,
+            state.cgb_obj_priority_mode,
+        );
+        self.cgb_obj_priority_mode = state.cgb_obj_priority_mode;
+        self.cgb_opri_latch = state.cgb_opri_latch & 0x01;
         self.status = state.status;
         self.lcdc = state.lcdc;
         self.stat_interrupt_enable = state.stat_interrupt_enable;
@@ -655,6 +759,7 @@ impl Ppu {
         self.obp1 = state.obp1;
         self.wy = state.wy;
         self.wx = state.wx;
+        self.cgb_palettes = state.cgb_palettes.clone();
         self.obj_palette_read_policy = state.obj_palette_read_policy;
         self.runtime.restore_save_state(&state.runtime);
     }

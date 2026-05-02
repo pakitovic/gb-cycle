@@ -73,6 +73,7 @@ pub enum DmaCpuAccessPolicy {
     #[default]
     Unrestricted,
     ExternalBusBlocked,
+    ExternalBusOnlyBlocked,
     VideoBusBlocked,
 }
 
@@ -103,6 +104,14 @@ impl DmaBusState {
     pub const fn external_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
         Self {
             cpu_access_policy: DmaCpuAccessPolicy::ExternalBusBlocked,
+            active_region,
+            cpu_conflict_source_address: None,
+        }
+    }
+
+    pub const fn external_bus_only_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
+        Self {
+            cpu_access_policy: DmaCpuAccessPolicy::ExternalBusOnlyBlocked,
             active_region,
             cpu_conflict_source_address: None,
         }

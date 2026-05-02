@@ -215,6 +215,7 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - During an external-bus OAM-DMA conflict, the current baseline keeps CPU `HRAM` plus the explicit `FF46` exception accessible while other CPU accesses observe DMA-blocked semantics.
 - During a video-bus OAM-DMA conflict, the current baseline keeps CPU access to non-VRAM, non-OAM regions available while VRAM and OAM observe DMA-blocked semantics.
 - During either DMG OAM-DMA conflict shape, the dedicated `FF46` MMIO path should remain accessible for DMA readback and restart writes.
+- On CGB-family silicon, an external-source OAM-DMA conflict is narrower than the DMG-family external-source policy: cartridge ROM/RAM and OAM observe DMA conflict semantics, while internal WRAM, HRAM, and MMIO remain CPU-accessible.
 - HRAM initialization policy is separate from its access semantics.
 
 ### `IE` at `0xFFFF`
@@ -233,6 +234,7 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
 - During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while DMA-published source-bus conflicts determine whether the blocked set is "everything except HRAM and `FF46`" or "VRAM and OAM only".
+- During CGB-family external-source OAM DMA, CPU-visible arbitration should not reuse the DMG-family broad block for internal memory: WRAM, HRAM, and MMIO remain available, while cartridge-bus accesses are redirected to the DMA conflict source and OAM remains blocked.
 - DMA-visible blocking and DMA data movement should remain separable on the T-cycle timeline; a transfer may affect CPU-visible access policy on a cycle even if no byte commit occurs on that same cycle.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.

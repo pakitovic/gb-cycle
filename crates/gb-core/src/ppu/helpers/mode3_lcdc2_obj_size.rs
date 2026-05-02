@@ -66,18 +66,30 @@ impl Ppu {
     ) -> Option<(u8, u8)> {
         let live8_tile = self.obj_tile_index_and_row_for_mode3_fetch(sprite, 16, 8)?;
         let line_start16_tile = self.obj_tile_index_and_row_for_height(sprite, 16)?;
-        let live8_low =
-            self.read_obj_tile_data_byte_for_resolved_tile(vram, live8_tile.0, live8_tile.1, 0);
-        let live8_high =
-            self.read_obj_tile_data_byte_for_resolved_tile(vram, live8_tile.0, live8_tile.1, 1);
+        let live8_low = self.read_obj_tile_data_byte_for_resolved_tile(
+            vram,
+            sprite,
+            live8_tile.0,
+            live8_tile.1,
+            0,
+        );
+        let live8_high = self.read_obj_tile_data_byte_for_resolved_tile(
+            vram,
+            sprite,
+            live8_tile.0,
+            live8_tile.1,
+            1,
+        );
         let line_start16_low = self.read_obj_tile_data_byte_for_resolved_tile(
             vram,
+            sprite,
             line_start16_tile.0,
             line_start16_tile.1,
             0,
         );
         let line_start16_high = self.read_obj_tile_data_byte_for_resolved_tile(
             vram,
+            sprite,
             line_start16_tile.0,
             line_start16_tile.1,
             1,
@@ -218,15 +230,8 @@ impl Ppu {
             return obj_pixel;
         }
 
-        let bit = if sprite.attributes & 0x20 != 0 {
-            tile_pixel as u8
-        } else {
-            7 - tile_pixel as u8
-        };
-        let low_bit = (tile_low >> bit) & 0x01;
-        let high_bit = (tile_high >> bit) & 0x01;
         ObjPixel {
-            color: (high_bit << 1) | low_bit,
+            color: obj_tile_pixel_value(tile_low, tile_high, tile_pixel as u8, sprite.attributes),
             ..obj_pixel
         }
     }

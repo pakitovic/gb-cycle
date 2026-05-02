@@ -9,7 +9,7 @@ rom = "stop_instr.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 180
-oracle = "framebuffer-grayscale-fixture"
+oracle = "framebuffer-rgb555-grayscale-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png"
 
 [[case]]
@@ -18,7 +18,7 @@ id = "cgb-speed-speed-switch-timing-div"
 rom = "speed_switch_timing_div.gbc"
 console = "cgb"
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_div.png"
 
 [[case]]
@@ -37,7 +37,7 @@ id = "cgb-speed-stop-instr-gbc-mode3"
 rom = "stop_instr_gbc_mode3.gb"
 console = "cgb"
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png"
 
 [[case]]
@@ -46,7 +46,7 @@ id = "cgb-speed-speed-switch-timing-ly"
 rom = "speed_switch_timing_ly.gbc"
 console = "cgb"
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_ly.png"
 
 [[case]]
@@ -55,5 +55,5 @@ id = "cgb-speed-speed-switch-timing-stat"
 rom = "speed_switch_timing_stat.gbc"
 console = "cgb"
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_stat.png"

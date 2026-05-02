@@ -45,17 +45,31 @@ impl Ppu {
         let context = self.background_fetch_context(fetch_x);
         let tile_map_address = context.tile_index_address();
         let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
-        let tile_low_address = context.tile_data_address(tile_index, 0);
-        let tile_high_address = context.tile_data_address(tile_index, 1);
+        let cgb_bg_attrs = self.read_cgb_bg_tile_attributes(vram, tile_map_address);
+        let tile_low_address = self.compute_fetch_tile_data_address_with_attributes(
+            PpuBgFetcherSource::Background,
+            fetch_x,
+            tile_index,
+            0,
+            cgb_bg_attrs,
+        );
+        let tile_high_address = self.compute_fetch_tile_data_address_with_attributes(
+            PpuBgFetcherSource::Background,
+            fetch_x,
+            tile_index,
+            1,
+            cgb_bg_attrs,
+        );
         self.runtime.bg_pipeline_state.fetcher.tile_map_address = tile_map_address;
         self.runtime.bg_pipeline_state.fetcher.tile_index = tile_index;
+        self.runtime.bg_pipeline_state.fetcher.cgb_bg_attrs = cgb_bg_attrs;
         self.runtime.bg_pipeline_state.fetcher.tile_data_address = tile_low_address;
         self.runtime.bg_pipeline_state.fetcher.tile_low_address = tile_low_address;
         self.runtime.bg_pipeline_state.fetcher.tile_high_address = tile_high_address;
         self.runtime.bg_pipeline_state.fetcher.tile_low =
-            vram.read(tile_low_address as usize).unwrap_or(0);
+            self.read_bg_tile_data_byte(vram, cgb_bg_attrs, tile_low_address);
         self.runtime.bg_pipeline_state.fetcher.tile_high =
-            vram.read(tile_high_address as usize).unwrap_or(0);
+            self.read_bg_tile_data_byte(vram, cgb_bg_attrs, tile_high_address);
     }
 
     fn maybe_arm_dmg_wx0_window_disable_prefix_override(&mut self) {
@@ -207,7 +221,13 @@ impl Ppu {
             self.runtime.panel.visible_output == PpuVisibleOutputState::Driving;
         let obj_pixel = self.observed_obj_pixel_for_visible_x(visible_x as u8, vram);
         let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
-        let output_pixel = self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
+        let cgb_bg_attrs = self.runtime.panel.current_scanline_mixed_pixels[visible_x].cgb_bg_attrs;
+        let output_pixel = self.mix_bg_and_obj(
+            bg_pixel,
+            cgb_bg_attrs,
+            effective_bg_priority_pixel,
+            obj_pixel,
+        );
         let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
             output_pixel.color
@@ -280,21 +300,14 @@ impl Ppu {
                 continue;
             };
             let tile_address = tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES;
-            let tile_low = vram.read(tile_address as usize).unwrap_or(0);
-            let tile_high = vram.read(tile_address as usize + 1).unwrap_or(0);
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel as u8
-            } else {
-                7 - tile_pixel as u8
-            };
-            let candidate = ObjPixel {
-                color: (((tile_high >> bit) & 0x01) << 1) | ((tile_low >> bit) & 0x01),
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
-            if obj_pixel_has_priority(candidate, front) {
+            let bank = self.obj_tile_data_vram_bank(sprite);
+            let tile_low = vram.read_bank(bank, tile_address as usize).unwrap_or(0);
+            let tile_high = vram.read_bank(bank, tile_address as usize + 1).unwrap_or(0);
+            let candidate = self.obj_pixel_from_sprite(
+                sprite,
+                obj_tile_pixel_value(tile_low, tile_high, tile_pixel as u8, sprite.attributes),
+            );
+            if self.obj_pixel_has_priority(candidate, front) {
                 front = candidate;
             }
         }
@@ -490,11 +503,19 @@ impl Ppu {
         let tile_index = vram
             .read(context.tile_index_address() as usize)
             .unwrap_or(0);
-        let tile_low_address = context.tile_data_address(tile_index, 0);
-        let tile_high_address = context.tile_data_address(tile_index, 1);
-        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
-        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
-        Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
+        let cgb_bg_attrs = self.read_cgb_bg_tile_attributes(vram, context.tile_index_address());
+        let attributes = cgb_bg_attrs.unwrap_or_default();
+        let tile_row = cgb_bg_effective_tile_row(context.tile_data_row(), attributes);
+        let tile_low_address = context.tile_data_address_for_row(tile_index, tile_row, 0);
+        let tile_high_address = context.tile_data_address_for_row(tile_index, tile_row, 1);
+        let tile_low = self.read_bg_tile_data_byte(vram, cgb_bg_attrs, tile_low_address);
+        let tile_high = self.read_bg_tile_data_byte(vram, cgb_bg_attrs, tile_high_address);
+        Some(bg_tile_pixel_value_with_cgb_attrs(
+            tile_low,
+            tile_high,
+            pixel_index,
+            attributes,
+        ))
     }
 
     fn visible_window_origin_x(&self) -> Option<u8> {

@@ -134,6 +134,7 @@ struct FramebufferPanelInput<'a> {
     backdrop_framebuffer: &'a [u8],
     bgwin_framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
     display_palette: DisplayPalette,
+    cgb_framebuffer_rgb555: Option<&'a [u16]>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -8507,6 +8508,9 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::CycleDisplayPalette => {
+            if context.session.config.launch.console_model == DesktopConsoleModel::GameBoyColor {
+                return Ok(None);
+            }
             context.runtime.video_options.display_palette =
                 context.runtime.video_options.display_palette.next();
             context
@@ -10189,6 +10193,7 @@ fn framebuffer_panel_input_for_player_slot(
         backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
         bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
         display_palette,
+        cgb_framebuffer_rgb555: machine.ppu().cgb_framebuffer_rgb555(),
     })
 }
 
@@ -10309,6 +10314,83 @@ fn sync_framebuffer_presentation_resources<'a>(
     Ok(())
 }
 
+fn write_framebuffer_region(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    target_origin_x: usize,
+    target_origin_y: usize,
+    source_panel: FramebufferPanelInput<'_>,
+    video_options: &VideoOptions,
+) {
+    if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
+        write_cgb_rgb555_framebuffer_region(
+            target_rgb_frame,
+            target_dimensions,
+            target_origin_x,
+            target_origin_y,
+            cgb_framebuffer_rgb555,
+        );
+        return;
+    }
+
+    write_monochrome_framebuffer_region(
+        target_rgb_frame,
+        target_dimensions,
+        target_origin_x,
+        target_origin_y,
+        source_panel,
+        video_options,
+    );
+}
+
+fn write_cgb_rgb555_framebuffer_region(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    target_origin_x: usize,
+    target_origin_y: usize,
+    cgb_framebuffer_rgb555: &[u16],
+) {
+    let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
+    let target_width = target_dimensions.width as usize;
+    let target_height = target_dimensions.height as usize;
+    for y in 0..FRAMEBUFFER_HEIGHT as usize {
+        if target_origin_y + y >= target_height {
+            break;
+        }
+        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+            if target_origin_x + x >= target_width {
+                break;
+            }
+
+            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
+            let Some(&rgb555_pixel) = cgb_framebuffer_rgb555.get(source_index) else {
+                continue;
+            };
+            let target_pixel_index =
+                (target_origin_y + y) * target_pitch_bytes + ((target_origin_x + x) * 3);
+            let [r, g, b] = rgb555_to_rgb888(rgb555_pixel);
+            target_rgb_frame[target_pixel_index] = r;
+            target_rgb_frame[target_pixel_index + 1] = g;
+            target_rgb_frame[target_pixel_index + 2] = b;
+        }
+    }
+}
+
+fn rgb555_to_rgb888(color: u16) -> [u8; 3] {
+    let red = (color & 0x001F) as u8;
+    let green = ((color >> 5) & 0x001F) as u8;
+    let blue = ((color >> 10) & 0x001F) as u8;
+    [
+        scale_5_bit_to_8_bit(red),
+        scale_5_bit_to_8_bit(green),
+        scale_5_bit_to_8_bit(blue),
+    ]
+}
+
+fn scale_5_bit_to_8_bit(component: u8) -> u8 {
+    (component << 3) | (component >> 2)
+}
+
 fn write_monochrome_framebuffer_region(
     target_rgb_frame: &mut [u8],
     target_dimensions: FramebufferDimensions,
@@ -10367,7 +10449,7 @@ fn render_frame(
         };
         let column = panel_index % columns;
         let row = panel_index / columns;
-        write_monochrome_framebuffer_region(
+        write_framebuffer_region(
             rgb_frame,
             framebuffer.dimensions,
             column * FRAMEBUFFER_WIDTH as usize,
@@ -16193,6 +16275,47 @@ mod tests {
     }
 
     #[test]
+    fn cgb_framebuffer_rendering_uses_rgb555_without_desktop_display_palette() {
+        let panel_len = (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize;
+        let framebuffer = vec![0_u8; panel_len];
+        let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
+        let mut cgb_framebuffer_rgb555 = vec![0x7FFF_u16; panel_len];
+        cgb_framebuffer_rgb555[0] = 0x001F;
+        cgb_framebuffer_rgb555[1] = 0x03E0;
+        cgb_framebuffer_rgb555[2] = 0x7C00;
+        let mut rgb_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+
+        super::write_framebuffer_region(
+            &mut rgb_frame,
+            super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            },
+            0,
+            0,
+            super::FramebufferPanelInput {
+                framebuffer: &framebuffer,
+                framebuffer_layer_sources: &layer_sources,
+                bgwin_framebuffer: &framebuffer,
+                backdrop_framebuffer: &framebuffer,
+                bgwin_framebuffer_layer_sources: &layer_sources,
+                display_palette: super::SAMEBOY_GBL_DISPLAY_PALETTE,
+                cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
+            },
+            &gb_desktop::VideoOptions {
+                display_palette: DesktopDisplayPalette::Light,
+                ..gb_desktop::VideoOptions::default()
+            },
+        );
+
+        assert_eq!(
+            &rgb_frame[..9],
+            &[0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF]
+        );
+    }
+
+    #[test]
     fn desktop_mode_labels_cover_all_public_variants() {
         assert_eq!(super::EmulationProfileSessionKind::Single.label(), "single");
         assert_eq!(
@@ -19168,6 +19291,7 @@ mod tests {
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -19209,6 +19333,7 @@ mod tests {
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -19268,6 +19393,7 @@ mod tests {
                     backdrop_framebuffer: &framebuffer,
                     bgwin_framebuffer_layer_sources: &layer_sources,
                     display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                    cgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -19645,6 +19771,7 @@ mod tests {
                         backdrop_framebuffer: &left_framebuffer,
                         bgwin_framebuffer_layer_sources: &left_sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &right_framebuffer,
@@ -19653,6 +19780,7 @@ mod tests {
                         backdrop_framebuffer: &right_framebuffer,
                         bgwin_framebuffer_layer_sources: &right_sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -19733,6 +19861,7 @@ mod tests {
                         backdrop_framebuffer: &panel_0,
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_1,
@@ -19741,6 +19870,7 @@ mod tests {
                         backdrop_framebuffer: &panel_1,
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_2,
@@ -19749,6 +19879,7 @@ mod tests {
                         backdrop_framebuffer: &panel_2,
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
                         framebuffer: &panel_3,
@@ -19757,6 +19888,7 @@ mod tests {
                         backdrop_framebuffer: &panel_3,
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                 ],
             },
@@ -19826,6 +19958,7 @@ mod tests {
                         backdrop_framebuffer: &bgwin_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -19890,6 +20023,7 @@ mod tests {
                         backdrop_framebuffer: &backdrop_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -19946,6 +20080,7 @@ mod tests {
                         .ppu()
                         .framebuffer_bgwin_layer_sources(),
                     display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                    cgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -20903,6 +21038,22 @@ mod tests {
             harness.settings_store.base_config().video.display_palette,
             DesktopDisplayPalette::Light
         );
+        harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyColor;
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleDisplayPalette)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.video_options.display_palette,
+            DesktopDisplayPalette::Light
+        );
+        assert_eq!(
+            harness.settings_store.base_config().video.display_palette,
+            DesktopDisplayPalette::Light
+        );
+        harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyPocket;
         assert!(
             harness
                 .execute_action(super::MenuAction::ToggleBackgroundLayer)

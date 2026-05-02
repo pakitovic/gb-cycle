@@ -54,6 +54,14 @@ impl<'a> VideoBusView<'a, OamDomain> {
 }
 
 impl<'a> VideoBusView<'a, VramDomain> {
+    pub(crate) fn read_bank(&self, bank: u8, offset: usize) -> Option<u8> {
+        if offset >= crate::bus::DMG_VRAM_LEN {
+            return None;
+        }
+
+        Some(self.domain.read_bank(bank, offset))
+    }
+
     #[cfg(test)]
     pub(crate) fn acquire(&mut self) {
         self.domain.acquire(self.master);

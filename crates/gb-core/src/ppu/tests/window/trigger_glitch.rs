@@ -66,7 +66,8 @@ fn previsible_wx_cancel_background_override_forces_white_fifo_output_at_its_onse
     ppu.bg_pipeline_state.fifo.push_back(2);
 
     assert_eq!(
-        ppu.pop_visible_bg_fifo_pixel(&VramBusView::new(BusMaster::Ppu, &mut vram)),
+        ppu.pop_visible_bg_fifo_pixel(&VramBusView::new(BusMaster::Ppu, &mut vram))
+            .map(|pixel| pixel.color),
         Some(3)
     );
     assert_eq!(ppu.current_scanline_bg_dot_contexts[3], None);

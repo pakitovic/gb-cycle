@@ -15,8 +15,14 @@ impl Ppu {
     }
 
     pub fn new(console_model: ConsoleModel) -> Self {
+        let operating_mode = console_model.default_operating_mode();
+        let cgb_obj_priority_mode =
+            CgbObjPriorityMode::for_model_and_mode(console_model, operating_mode);
         Self {
             console_model,
+            operating_mode,
+            cgb_obj_priority_mode,
+            cgb_opri_latch: cgb_obj_priority_mode.opri_bit(),
             status: PpuStatus::RegistersReady,
             lcdc: 0,
             stat_interrupt_enable: 0,
@@ -33,6 +39,7 @@ impl Ppu {
             obp1: None,
             wy: 0,
             wx: 0,
+            cgb_palettes: CgbPaletteState::default(),
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             runtime: PpuRuntimeState::default(),
         }
@@ -543,6 +550,11 @@ impl Ppu {
                 .unwrap_or(self.obj_palette_read_policy.default_read_value()),
             PpuRegister::Wy => self.wy,
             PpuRegister::Wx => self.wx,
+            PpuRegister::Bcps => self.read_cgb_palette_index(CgbPaletteKind::Background),
+            PpuRegister::Bcpd => self.read_cgb_palette_data(CgbPaletteKind::Background, source),
+            PpuRegister::Ocps => self.read_cgb_palette_index(CgbPaletteKind::Object),
+            PpuRegister::Ocpd => self.read_cgb_palette_data(CgbPaletteKind::Object, source),
+            PpuRegister::Opri => self.read_cgb_opri(),
         }
     }
 
@@ -554,6 +566,11 @@ impl Ppu {
     ) {
         if let Some(palette_register) = register.palette_register() {
             self.write_dmg_palette_register(palette_register, value, source);
+            return;
+        }
+
+        if let Some(palette_register) = register.cgb_palette_register() {
+            self.write_cgb_palette_register(palette_register, value, source);
             return;
         }
 
@@ -571,10 +588,141 @@ impl Ppu {
             }
             PpuRegister::Wy => self.wy = value,
             PpuRegister::Wx => self.wx = value,
+            PpuRegister::Opri => self.write_cgb_opri(value),
             PpuRegister::Bgp | PpuRegister::Obp0 | PpuRegister::Obp1 => {
                 unreachable!("palette writes return early")
             }
+            PpuRegister::Bcps | PpuRegister::Bcpd | PpuRegister::Ocps | PpuRegister::Ocpd => {
+                unreachable!("CGB palette writes return early")
+            }
         }
+    }
+
+    pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        self.operating_mode = operating_mode;
+        let priority_mode =
+            CgbObjPriorityMode::for_model_and_mode(self.console_model, operating_mode);
+        self.cgb_obj_priority_mode = priority_mode;
+        self.cgb_opri_latch = priority_mode.opri_bit();
+    }
+
+    pub(crate) fn apply_cgb_compatibility_palette_startup_state(
+        &mut self,
+        startup_mode: StartupMode,
+        operating_mode: OperatingMode,
+        header: Option<&CartridgeHeader>,
+        host_joypad_pressed_mask: u8,
+    ) -> Option<CgbCompatibilityPaletteSeed> {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        if startup_mode != StartupMode::SkipBoot
+            || !self.console_model.is_cgb_family()
+            || operating_mode != OperatingMode::GbCompatible
+        {
+            return None;
+        }
+
+        let seed = resolve_cgb_compatibility_palette_seed_with_input(
+            header,
+            CgbCompatibilityPaletteBootInput::from_pressed_mask(host_joypad_pressed_mask),
+        );
+        self.cgb_palettes.apply_cgb_compatibility_palette_seed(seed);
+        Some(seed)
+    }
+
+    pub(crate) fn apply_cgb_native_palette_startup_state(
+        &mut self,
+        startup_mode: StartupMode,
+        operating_mode: OperatingMode,
+    ) -> bool {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        if startup_mode != StartupMode::SkipBoot
+            || !self.console_model.is_cgb_family()
+            || operating_mode != OperatingMode::Cgb
+        {
+            return false;
+        }
+
+        self.cgb_palettes.apply_cgb_native_boot_palette_seed();
+        true
+    }
+
+    pub(super) fn is_cgb_native_mode(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::Cgb
+    }
+
+    pub(super) fn is_cgb_compatibility_mode(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::GbCompatible
+    }
+
+    fn read_cgb_opri(&self) -> u8 {
+        if !self.console_model.is_cgb_family() {
+            return 0xFF;
+        }
+
+        0xFE | (self.cgb_opri_latch & 0x01)
+    }
+
+    fn write_cgb_opri(&mut self, value: u8) {
+        if !self.console_model.is_cgb_family() {
+            return;
+        }
+
+        self.cgb_opri_latch = value & 0x01;
+    }
+
+    fn read_cgb_palette_index(&self, kind: CgbPaletteKind) -> u8 {
+        if !self.is_cgb_native_mode() {
+            return 0xFF;
+        }
+
+        self.cgb_palettes.port(kind).read_index()
+    }
+
+    fn read_cgb_palette_data(&self, kind: CgbPaletteKind, source: PpuRegisterReadSource) -> u8 {
+        if !self.is_cgb_native_mode() {
+            return 0xFF;
+        }
+
+        let blocked = self.cgb_palette_data_read_blocked(source);
+        self.cgb_palettes.port(kind).read_data(blocked)
+    }
+
+    fn write_cgb_palette_register(
+        &mut self,
+        register: CgbPaletteRegister,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
+        if !self.is_cgb_native_mode() {
+            return;
+        }
+
+        let kind = register.kind();
+        if register.is_data() {
+            let blocked = self.cgb_palette_data_write_blocked(source);
+            self.cgb_palettes.port_mut(kind).write_data(value, blocked);
+        } else {
+            self.cgb_palettes.port_mut(kind).write_index(value);
+        }
+    }
+
+    fn cgb_palette_data_read_blocked(&self, source: PpuRegisterReadSource) -> bool {
+        let mode = match source {
+            PpuRegisterReadSource::Immediate => self.current_access_mode(),
+            PpuRegisterReadSource::CpuBusOperation => self.current_published_bus_access_mode(),
+        };
+        mode == PpuAccessMode::Drawing
+    }
+
+    fn cgb_palette_data_write_blocked(&self, source: PpuRegisterWriteSource) -> bool {
+        let mode = match source {
+            PpuRegisterWriteSource::Immediate => self.current_access_mode(),
+            PpuRegisterWriteSource::CpuMmioCommit => {
+                self.current_published_video_write_access_mode()
+            }
+        };
+        mode == PpuAccessMode::Drawing
     }
 
     pub fn apply_startup_state(&mut self, startup_state: PpuStartupState) {
@@ -594,6 +742,7 @@ impl Ppu {
         self.wx = startup_state.wx;
         self.obp0 = None;
         self.obp1 = None;
+        self.cgb_palettes.reset();
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.runtime.reset_for_startup(startup_state.bgp);
         self.reload_mode3_register_latches_from_mmio();
@@ -983,6 +1132,12 @@ impl Ppu {
         &self.framebuffer
     }
 
+    pub fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+        self.console_model
+            .is_cgb_family()
+            .then_some(self.framebuffer_rgb555.as_slice())
+    }
+
     pub fn framebuffer_layer_sources(&self) -> &[PpuFramebufferLayerSource] {
         &self.framebuffer_layer_sources
     }
@@ -1025,8 +1180,29 @@ impl Ppu {
     ) {
         let framebuffer_index = row_start + visible_x;
         self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] =
+            self.framebuffer_rgb555_pixel(output_pixel, panel_pixel);
         self.framebuffer_layer_sources[framebuffer_index] =
             self.framebuffer_layer_source_for_output_pixel(visible_x, output_pixel);
+    }
+
+    pub(super) fn write_framebuffer_panel_shade(
+        &mut self,
+        framebuffer_index: usize,
+        panel_pixel: u8,
+    ) {
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] = panel_shade_to_rgb555(panel_pixel);
+    }
+
+    fn framebuffer_rgb555_pixel(&self, output_pixel: MixedPixel, panel_pixel: u8) -> u16 {
+        if self.console_model.is_cgb_family()
+            && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
+        {
+            self.map_mixed_pixel_to_cgb_rgb555(output_pixel)
+        } else {
+            panel_shade_to_rgb555(panel_pixel)
+        }
     }
 
     pub(super) fn write_bgwin_framebuffer_pixel(

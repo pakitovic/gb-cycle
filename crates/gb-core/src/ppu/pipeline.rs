@@ -14,37 +14,82 @@ impl Ppu {
         }
     }
 
-    pub(super) fn compute_fetch_tile_data_address(
+    pub(super) fn compute_fetch_tile_data_address_with_attributes(
         &self,
         source: PpuBgFetcherSource,
         fetch_x: u16,
         tile_index: u8,
         plane: u16,
+        attributes: Option<CgbBgTileAttributes>,
     ) -> u16 {
+        let attributes = attributes.unwrap_or_default();
         match source {
-            PpuBgFetcherSource::Background => self
-                .background_fetch_context(fetch_x)
-                .tile_data_address(tile_index, plane),
-            PpuBgFetcherSource::Window => self
-                .window_fetch_context()
-                .tile_data_address(tile_index, plane),
+            PpuBgFetcherSource::Background => {
+                let context = self.background_fetch_context(fetch_x);
+                context.tile_data_address_for_row(
+                    tile_index,
+                    cgb_bg_effective_tile_row(context.tile_data_row(), attributes),
+                    plane,
+                )
+            }
+            PpuBgFetcherSource::Window => {
+                let context = self.window_fetch_context();
+                context.tile_data_address_for_row(
+                    tile_index,
+                    cgb_bg_effective_tile_row(context.tile_data_row(), attributes),
+                    plane,
+                )
+            }
         }
     }
 
-    pub(super) fn compute_window_fetch_tile_data_address_with_selector(
+    pub(super) fn compute_window_fetch_tile_data_address_with_selector_and_attributes(
         &self,
         tile_index: u8,
         plane: u16,
         selector: BgTileDataSelect,
+        attributes: Option<CgbBgTileAttributes>,
     ) -> u16 {
         let mut registers = self.mode3_register_latches().visible();
         registers.lcdc = selector.apply_to_lcdc(registers.lcdc);
-        PpuMode3WindowFetchContext::new(
+        let context = PpuMode3WindowFetchContext::new(
             registers,
             self.current_window_line_counter(),
             self.bg_pipeline_state.fetcher.window_tilemap_x,
+        );
+        context.tile_data_address_for_row(
+            tile_index,
+            cgb_bg_effective_tile_row(context.tile_data_row(), attributes.unwrap_or_default()),
+            plane,
         )
-        .tile_data_address(tile_index, plane)
+    }
+
+    pub(super) fn read_cgb_bg_tile_attributes(
+        &self,
+        vram: &VramBusView<'_>,
+        tile_map_address: u16,
+    ) -> Option<CgbBgTileAttributes> {
+        if !self.console_model.is_cgb_family() {
+            return None;
+        }
+
+        Some(CgbBgTileAttributes::new(
+            vram.read_bank(CGB_BG_ATTR_BANK, tile_map_address as usize)
+                .unwrap_or(0),
+        ))
+    }
+
+    pub(super) fn read_bg_tile_data_byte(
+        &self,
+        vram: &VramBusView<'_>,
+        attributes: Option<CgbBgTileAttributes>,
+        address: u16,
+    ) -> u8 {
+        vram.read_bank(
+            attributes.unwrap_or_default().tile_vram_bank(),
+            address as usize,
+        )
+        .unwrap_or(0)
     }
 
     pub(super) fn maybe_cache_unsigned_bgwin_tile_data_fetch(
@@ -98,13 +143,15 @@ impl Ppu {
         }
 
         let tile_index = self.bg_pipeline_state.fetcher.tile_index;
-        let tile_data_address = self.compute_fetch_tile_data_address(
+        let attributes = self.bg_pipeline_state.fetcher.cgb_bg_attrs;
+        let tile_data_address = self.compute_fetch_tile_data_address_with_attributes(
             source,
             self.bg_pipeline_state.fetcher.fetch_x,
             tile_index,
             plane,
+            attributes,
         );
-        let tile_byte = vram.read(tile_data_address as usize).unwrap_or(0);
+        let tile_byte = self.read_bg_tile_data_byte(vram, attributes, tile_data_address);
 
         let fetcher = &mut self.bg_pipeline_state.fetcher;
         fetcher.tile_data_address = tile_data_address;
@@ -135,23 +182,51 @@ impl Ppu {
         let tile_map_address =
             self.compute_fetch_tile_index_address(source, self.bg_pipeline_state.fetcher.fetch_x);
         let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let cgb_bg_attrs = self.read_cgb_bg_tile_attributes(vram, tile_map_address);
         let fetcher = &mut self.bg_pipeline_state.fetcher;
         fetcher.tile_map_address = tile_map_address;
         fetcher.tile_index = tile_index;
+        fetcher.cgb_bg_attrs = cgb_bg_attrs;
     }
 
     pub(super) fn read_obj_tile_data_byte_for_resolved_tile(
         &mut self,
         vram: &VramBusView<'_>,
+        sprite: PpuSelectedSprite,
         tile_index: u8,
         tile_row: u8,
         plane: u16,
     ) -> u8 {
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
-        let tile_data = vram.read(byte_address as usize).unwrap_or(0);
+        let tile_data = vram
+            .read_bank(self.obj_tile_data_vram_bank(sprite), byte_address as usize)
+            .unwrap_or(0);
         self.last_unsigned_tile_data_fetch = tile_data;
         tile_data
+    }
+
+    pub(super) fn obj_tile_data_vram_bank(&self, sprite: PpuSelectedSprite) -> u8 {
+        self.cgb_obj_attributes(sprite)
+            .map(CgbObjAttributes::tile_vram_bank)
+            .unwrap_or(0)
+    }
+
+    pub(super) fn cgb_obj_attributes(&self, sprite: PpuSelectedSprite) -> Option<CgbObjAttributes> {
+        self.console_model
+            .is_cgb_family()
+            .then_some(CgbObjAttributes::new(sprite.attributes))
+    }
+
+    pub(super) fn obj_pixel_from_sprite(&self, sprite: PpuSelectedSprite, color: u8) -> ObjPixel {
+        ObjPixel {
+            color,
+            palette_obp1: sprite.attributes & CGB_OBJ_ATTR_DMG_PALETTE_BIT != 0,
+            bg_over_obj: sprite.attributes & CGB_OBJ_ATTR_BG_OVER_OBJ_BIT != 0,
+            cgb_obj_attrs: self.cgb_obj_attributes(sprite),
+            sprite_x: sprite.x,
+            oam_index: sprite.oam_index,
+        }
     }
 
     pub(super) fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
@@ -168,7 +243,7 @@ impl Ppu {
         if row >= height {
             return None;
         }
-        if sprite.attributes & 0x40 != 0 {
+        if sprite.attributes & CGB_OBJ_ATTR_Y_FLIP_BIT != 0 {
             row = height - 1 - row;
         }
 
@@ -201,7 +276,7 @@ impl Ppu {
         }
 
         let mut row = raw_row & 0x07;
-        if sprite.attributes & 0x40 != 0 {
+        if sprite.attributes & CGB_OBJ_ATTR_Y_FLIP_BIT != 0 {
             row = 7 - row;
         }
 
@@ -218,15 +293,9 @@ impl Ppu {
         let sprite_screen_x = sprite_screen_x(sprite);
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
+        let priority_mode = self.current_obj_priority_mode();
         for tile_pixel in 0..BG_TILE_WIDTH {
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel
-            } else {
-                7 - tile_pixel
-            };
-            let low_bit = (tile_low >> bit) & 0x01;
-            let high_bit = (tile_high >> bit) & 0x01;
-            let color = (high_bit << 1) | low_bit;
+            let color = obj_tile_pixel_value(tile_low, tile_high, tile_pixel, sprite.attributes);
             let screen_x = sprite_screen_x + tile_pixel as i16;
             if screen_x < fifo_front_screen_x || screen_x >= SCREEN_WIDTH as i16 {
                 continue;
@@ -242,20 +311,14 @@ impl Ppu {
                     .push_back(ObjPixel::transparent());
             }
 
-            let candidate = ObjPixel {
-                color,
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let candidate = self.obj_pixel_from_sprite(sprite, color);
 
             let slot = self
                 .obj_pipeline_state
                 .fifo
                 .get_mut(offset)
                 .expect("OBJ FIFO was extended to cover the target offset");
-            if obj_pixel_has_priority(candidate, *slot) {
+            if obj_pixel_has_priority_for_mode(priority_mode, candidate, *slot) {
                 *slot = candidate;
             }
         }
@@ -271,21 +334,12 @@ impl Ppu {
         let sprite_screen_x = sprite_screen_x(sprite);
         let fifo_front_screen_x =
             self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
+        let priority_mode = self.current_obj_priority_mode();
         for tile_pixel in 0..BG_TILE_WIDTH {
-            let bit = if sprite.attributes & 0x20 != 0 {
-                tile_pixel
-            } else {
-                7 - tile_pixel
-            };
-            let low_bit = (tile_low >> bit) & 0x01;
-            let high_bit = (tile_high >> bit) & 0x01;
-            let candidate = ObjPixel {
-                color: (high_bit << 1) | low_bit,
-                palette_obp1: sprite.attributes & 0x10 != 0,
-                bg_over_obj: sprite.attributes & 0x80 != 0,
-                sprite_x: sprite.x,
-                oam_index: sprite.oam_index,
-            };
+            let candidate = self.obj_pixel_from_sprite(
+                sprite,
+                obj_tile_pixel_value(tile_low, tile_high, tile_pixel, sprite.attributes),
+            );
             let screen_x = sprite_screen_x + tile_pixel as i16;
             if screen_x < fifo_front_screen_x || screen_x >= SCREEN_WIDTH as i16 {
                 continue;
@@ -307,7 +361,7 @@ impl Ppu {
                 .get_mut(offset)
                 .expect("OBJ FIFO was extended to cover the target offset");
             let same_sprite = slot.sprite_x == sprite.x && slot.oam_index == sprite.oam_index;
-            if same_sprite || obj_pixel_has_priority(candidate, *slot) {
+            if same_sprite || obj_pixel_has_priority_for_mode(priority_mode, candidate, *slot) {
                 *slot = candidate;
             }
         }
@@ -398,21 +452,60 @@ impl Ppu {
             .unwrap_or_else(ObjPixel::transparent)
     }
 
+    pub(super) fn obj_pixel_has_priority(&self, candidate: ObjPixel, current: ObjPixel) -> bool {
+        obj_pixel_has_priority_for_mode(self.current_obj_priority_mode(), candidate, current)
+    }
+
+    fn current_obj_priority_mode(&self) -> CgbObjPriorityMode {
+        if self.console_model.is_cgb_family() {
+            self.cgb_obj_priority_mode
+        } else {
+            CgbObjPriorityMode::DmgXCoordinate
+        }
+    }
+
     pub(super) fn mix_bg_and_obj(
         &self,
         bg_pixel: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
         effective_bg_priority_pixel: u8,
         obj_pixel: ObjPixel,
     ) -> MixedPixel {
         if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
-            return MixedPixel::background(bg_pixel);
+            return MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs);
         }
 
-        if obj_pixel.bg_over_obj && effective_bg_priority_pixel != 0 {
-            MixedPixel::background(bg_pixel)
+        if self.cgb_bg_has_priority_over_obj(bg_pixel, cgb_bg_attrs, obj_pixel)
+            || (!self.console_model.is_cgb_family()
+                && obj_pixel.bg_over_obj
+                && effective_bg_priority_pixel != 0)
+        {
+            MixedPixel::background_with_cgb_attrs(bg_pixel, cgb_bg_attrs)
         } else {
-            MixedPixel::object(obj_pixel.color, obj_pixel.palette_obp1)
+            MixedPixel::object_with_cgb_attrs(
+                obj_pixel.color,
+                obj_pixel.palette_obp1,
+                obj_pixel.cgb_obj_attrs,
+            )
         }
+    }
+
+    fn cgb_bg_has_priority_over_obj(
+        &self,
+        bg_pixel: u8,
+        cgb_bg_attrs: Option<CgbBgTileAttributes>,
+        obj_pixel: ObjPixel,
+    ) -> bool {
+        if !self.console_model.is_cgb_family() || bg_pixel == 0 {
+            return false;
+        }
+
+        let visible_lcdc = self.mode3_register_latches().visible().lcdc;
+        if visible_lcdc & LCDC_BG_ENABLE_BIT == 0 {
+            return false;
+        }
+
+        cgb_bg_attrs.unwrap_or_default().bg_priority() || obj_pixel.bg_over_obj
     }
 
     pub(super) fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
@@ -423,6 +516,49 @@ impl Ppu {
             self.obj_palette_read_policy,
         );
         self.apply_dmg_palette(palette, pixel.color)
+    }
+
+    pub(super) fn map_mixed_pixel_to_cgb_rgb555(&self, pixel: MixedPixel) -> u16 {
+        if self.is_cgb_compatibility_mode() {
+            return self.map_mixed_pixel_to_cgb_compatibility_rgb555(pixel);
+        }
+
+        match pixel.source {
+            MixedPixelSource::Background => {
+                let attrs = pixel.cgb_bg_attrs.unwrap_or_default();
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Background)
+                    .rgb555(attrs.palette_index(), pixel.color)
+            }
+            MixedPixelSource::Object { .. } => {
+                let attrs = pixel.cgb_obj_attrs.unwrap_or_default();
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Object)
+                    .rgb555(attrs.palette_index(), pixel.color)
+            }
+        }
+    }
+
+    fn map_mixed_pixel_to_cgb_compatibility_rgb555(&self, pixel: MixedPixel) -> u16 {
+        let visible_registers = self.mode3_register_latches().visible();
+
+        match pixel.source {
+            MixedPixelSource::Background => {
+                let color = self.apply_dmg_palette(visible_registers.bgp, pixel.color);
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Background)
+                    .rgb555(0, color)
+            }
+            MixedPixelSource::Object { palette_obp1 } => {
+                let palette =
+                    visible_registers.obj_palette(palette_obp1, self.obj_palette_read_policy);
+                let color = self.apply_dmg_palette(palette, pixel.color);
+                let cgb_palette_index = u8::from(palette_obp1);
+                self.cgb_palettes
+                    .port(CgbPaletteKind::Object)
+                    .rgb555(cgb_palette_index, color)
+            }
+        }
     }
 
     pub(super) fn dmg_bg_panel_dot_is_forced_white(

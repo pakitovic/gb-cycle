@@ -20,6 +20,7 @@ impl PpuPanelState {
         self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_pixels.fill(shade);
         self.framebuffer.fill(shade);
+        self.framebuffer_rgb555.fill(panel_shade_to_rgb555(shade));
         self.framebuffer_layer_sources
             .fill(PpuFramebufferLayerSource::Backdrop);
         self.framebuffer_bgwin_colors.fill(shade);
@@ -45,6 +46,7 @@ impl PpuPanelState {
         self.previous_scanline_ly = None;
         self.pending_dmg_window_lcdc4_output_repaint = None;
         self.framebuffer.fill(0);
+        self.framebuffer_rgb555.fill(RGB555_WHITE);
     }
 
     pub(in crate::ppu) fn reset_for_scanline_start(&mut self, bgp: u8) {

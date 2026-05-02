@@ -27,6 +27,9 @@ pub enum SameBoyCaseBundleExecutionError {
         case_id: String,
         actual: StartupMode,
     },
+    UnsupportedStartupTimerState {
+        case_id: String,
+    },
     UnsupportedExternalStimuli {
         case_id: String,
     },
@@ -172,6 +175,14 @@ impl SameBoyCaseBundleRunner {
             });
         }
 
+        if case.startup_timer_state.is_some() {
+            return Err(
+                SameBoyCaseBundleExecutionError::UnsupportedStartupTimerState {
+                    case_id: case.id.clone(),
+                },
+            );
+        }
+
         if !case.external_stimuli.stimuli().is_empty() {
             return Err(
                 SameBoyCaseBundleExecutionError::UnsupportedExternalStimuli {
@@ -279,6 +290,14 @@ impl SameBoyCaseBundleRunner {
                 case_id: case.id.clone(),
                 actual: case.startup_mode,
             });
+        }
+
+        if case.startup_timer_state.is_some() {
+            return Err(
+                SameBoyCaseBundleExecutionError::UnsupportedStartupTimerState {
+                    case_id: case.id.clone(),
+                },
+            );
         }
 
         let model = model_arg(case);

@@ -25,6 +25,14 @@ fn address_uses_hot_cpu_timed_fast_path(address: u16) -> bool {
     )
 }
 
+#[inline(always)]
+fn address_uses_hot_cpu_external_bus(address: u16) -> bool {
+    matches!(
+        address,
+        0x0000..=HOT_CPU_TIMED_ROM_END | HOT_CPU_TIMED_EXTERNAL_START..=HOT_CPU_TIMED_EXTERNAL_END
+    )
+}
+
 impl Bus {
     // Public observability is CPU-visible. This surface is mapping-aware and
     // layers live boot, DMA, PPU, MMIO-owner, and cartridge state on top of
@@ -56,7 +64,7 @@ impl Bus {
             self.describe_cartridge_external_access(nominal_target, cartridge);
 
         if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
+            self.cpu_dma_conflict_source_address(requester, address, nominal_target, state)
         {
             let target = self.resolve_nominal_target(kind, conflict_source_address, state);
             let cartridge_external = self.describe_cartridge_external_access(target, cartridge);
@@ -281,16 +289,34 @@ impl Bus {
         &self,
         requester: BusRequester,
         address: u16,
+        nominal_target: BusAddressInfo,
         state: &BusArbitrationState,
     ) -> Option<u16> {
-        if requester != BusRequester::Cpu
-            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::ExternalBusBlocked
-        {
+        if requester != BusRequester::Cpu {
             return None;
         }
 
-        if !address_uses_hot_cpu_timed_fast_path(address) {
-            return None;
+        match state.dma.cpu_access_policy() {
+            DmaCpuAccessPolicy::ExternalBusBlocked => {
+                if !address_uses_hot_cpu_timed_fast_path(address) {
+                    return None;
+                }
+            }
+            DmaCpuAccessPolicy::ExternalBusOnlyBlocked => {
+                if !address_uses_hot_cpu_external_bus(address)
+                    || !matches!(
+                        nominal_target.region(),
+                        BusRegion::CartridgeRomBank0
+                            | BusRegion::CartridgeRomBankN
+                            | BusRegion::CartridgeExternal
+                    )
+                {
+                    return None;
+                }
+            }
+            DmaCpuAccessPolicy::Unrestricted | DmaCpuAccessPolicy::VideoBusBlocked => {
+                return None;
+            }
         }
 
         state.dma.cpu_conflict_source_address()
@@ -391,7 +417,7 @@ impl Bus {
 
 #[cfg(test)]
 mod hot_path_tests {
-    use super::address_uses_hot_cpu_timed_fast_path;
+    use super::{address_uses_hot_cpu_external_bus, address_uses_hot_cpu_timed_fast_path};
 
     #[test]
     fn address_uses_hot_cpu_timed_fast_path_covers_the_fast_ranges() {
@@ -402,5 +428,16 @@ mod hot_path_tests {
         assert!(address_uses_hot_cpu_timed_fast_path(0xFDFF));
         assert!(!address_uses_hot_cpu_timed_fast_path(0x9FFF));
         assert!(!address_uses_hot_cpu_timed_fast_path(0xFE00));
+    }
+
+    #[test]
+    fn address_uses_hot_cpu_external_bus_excludes_internal_wram() {
+        assert!(address_uses_hot_cpu_external_bus(0x0000));
+        assert!(address_uses_hot_cpu_external_bus(0x4000));
+        assert!(address_uses_hot_cpu_external_bus(0xA000));
+        assert!(!address_uses_hot_cpu_external_bus(0x8000));
+        assert!(!address_uses_hot_cpu_external_bus(0xC000));
+        assert!(!address_uses_hot_cpu_external_bus(0xFDFF));
+        assert!(!address_uses_hot_cpu_external_bus(0xFE00));
     }
 }

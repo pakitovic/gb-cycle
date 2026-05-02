@@ -19,7 +19,18 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn live_lyc_coincidence(&self) -> bool {
-        self.ly == self.lyc
+        self.live_ly_for_lyc_compare() == self.lyc
+    }
+
+    pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> u8 {
+        if self.console_model.is_cgb_family()
+            && self.ly == TOTAL_SCANLINES - 1
+            && self.line_dot >= LINE_153_LY0_DOT
+        {
+            0
+        } else {
+            self.ly
+        }
     }
 
     pub(in crate::ppu) fn effective_lyc_coincidence(&self) -> bool {

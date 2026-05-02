@@ -1,0 +1,43 @@
+version = 1
+suite_name = "cgb-ppu-basic"
+subsystem = "Ppu"
+
+[[case]]
+family = "samesuite"
+id = "cgb-ppu-basic-blocking-bgpi-increase"
+rom = "ppu/blocking_bgpi_increase.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
+
+[[case]]
+family = "daid"
+id = "cgb-ppu-basic-ppu-scanline-bgp-gbc"
+rom = "ppu_scanline_bgp.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
+
+[[case]]
+family = "acid"
+id = "cgb-ppu-basic-cgb-acid2"
+rom = "cgb-acid2.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
+
+[[case]]
+family = "hacktix"
+id = "cgb-ppu-basic-hacktix-bully-gbc"
+rom = "bully.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 30
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+startup_timer_profile = "hacktix-cgb-bully-div"
+startup_memory_profile = "dmg-boot-logo-vram"

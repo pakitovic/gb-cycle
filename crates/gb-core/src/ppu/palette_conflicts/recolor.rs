@@ -46,7 +46,10 @@ impl Ppu {
                 let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
                     dot.pixel, register, palette,
                 );
-                self.framebuffer[row_start + usize::from(dot.visible_x)] = panel_pixel;
+                self.write_framebuffer_panel_shade(
+                    row_start + usize::from(dot.visible_x),
+                    panel_pixel,
+                );
             }
             return;
         }
@@ -78,7 +81,7 @@ impl Ppu {
                 register,
                 palette,
             );
-            self.framebuffer[row_start + x] = panel_pixel;
+            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
         }
     }
 

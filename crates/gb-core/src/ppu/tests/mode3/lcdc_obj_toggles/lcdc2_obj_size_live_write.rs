@@ -134,6 +134,7 @@ fn rewriting_the_obj_fifo_can_clear_same_sprite_pixels_but_keeps_higher_priority
         color: 3,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: sprite.x,
         oam_index: sprite.oam_index,
     });
@@ -146,6 +147,7 @@ fn rewriting_the_obj_fifo_can_clear_same_sprite_pixels_but_keeps_higher_priority
         color: 3,
         palette_obp1: false,
         bg_over_obj: false,
+        cgb_obj_attrs: None,
         sprite_x: 10,
         oam_index: 0,
     });
@@ -156,6 +158,7 @@ fn rewriting_the_obj_fifo_can_clear_same_sprite_pixels_but_keeps_higher_priority
             color: 3,
             palette_obp1: false,
             bg_over_obj: false,
+            cgb_obj_attrs: None,
             sprite_x: 10,
             oam_index: 0,
         }
@@ -187,6 +190,7 @@ fn lcdc2_push_bytes_cover_each_plane_selection_variant() {
                 color: 1,
                 palette_obp1: false,
                 bg_over_obj: false,
+                cgb_obj_attrs: None,
                 sprite_x: sprite.x,
                 oam_index: sprite.oam_index,
             },
@@ -265,6 +269,7 @@ fn retained_pending_lcdc2_write_can_still_drive_output_override_after_a_newer_wr
                 color: 2,
                 palette_obp1: false,
                 bg_over_obj: false,
+                cgb_obj_attrs: None,
                 sprite_x: 32,
                 oam_index: 0,
             },
@@ -304,6 +309,7 @@ fn retained_pending_lcdc2_write_does_not_override_scx0_sprite32_upper_half() {
                 color: 2,
                 palette_obp1: false,
                 bg_over_obj: false,
+                cgb_obj_attrs: None,
                 sprite_x: 32,
                 oam_index: 0,
             },

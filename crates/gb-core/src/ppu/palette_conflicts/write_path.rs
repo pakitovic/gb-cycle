@@ -879,7 +879,7 @@ impl Ppu {
                     register,
                     value,
                 );
-                self.framebuffer[row_start + x] = panel_pixel;
+                self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
             }
         }
 
@@ -1061,7 +1061,7 @@ impl Ppu {
                 register,
                 palette,
             );
-            self.framebuffer[row_start + x] = panel_pixel;
+            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
         }
 
         let hold_pixels = transient_start_x.saturating_sub(visible_pixels_output);
