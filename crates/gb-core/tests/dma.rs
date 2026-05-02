@@ -12,6 +12,10 @@ fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
 fn seed_dma_source_page(machine: &mut Machine, source_page: u8, seed: u8) {
     let source_start = (source_page as u16) << 8;
 
+    seed_dma_source_range(machine, source_start, seed);
+}
+
+fn seed_dma_source_range(machine: &mut Machine, source_start: u16, seed: u8) {
     for byte_index in 0..160u16 {
         machine.write_bus(source_start + byte_index, dma_source_byte(seed, byte_index));
     }

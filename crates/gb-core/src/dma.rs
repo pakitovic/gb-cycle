@@ -231,9 +231,7 @@ impl DmaTransfer {
 
     pub const fn source_address_for_byte(self, byte_index: u16) -> u16 {
         match self.kind {
-            DmaTransferKind::Oam => {
-                normalize_dmg_oam_source_address(self.source_start + byte_index)
-            }
+            DmaTransferKind::Oam => normalize_oam_source_address(self.source_start + byte_index),
             DmaTransferKind::Gdma | DmaTransferKind::Hdma => self.source_start + byte_index,
         }
     }
@@ -1342,7 +1340,7 @@ impl DmaController {
     }
 }
 
-const fn normalize_dmg_oam_source_address(address: u16) -> u16 {
+const fn normalize_oam_source_address(address: u16) -> u16 {
     if address >= 0xE000 {
         address - DMG_OAM_DMA_ECHO_ALIAS_OFFSET
     } else {

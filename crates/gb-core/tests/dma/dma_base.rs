@@ -198,6 +198,62 @@ fn oam_dma_copies_the_latched_source_page_contents_into_oam_after_completion() {
 }
 
 #[test]
+fn cgb_oam_dma_edge_source_pages_copy_wram_echo_aliases_not_raw_edge_ranges() {
+    for (source_page, effective_source_start, seed) in [
+        (0xE0, 0xC000, 0x21),
+        (0xFD, 0xDD00, 0x37),
+        (0xFE, 0xDE00, 0x53),
+        (0xFF, 0xDF00, 0x69),
+    ] {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.write_bus(0xFF40, 0x00);
+        seed_dma_source_range(&mut machine, effective_source_start, seed);
+
+        for byte_index in 0..160u16 {
+            machine.write_bus(0xFE00 + byte_index, 0xA5 ^ byte_index as u8);
+        }
+        for byte_index in 0..0x20u16 {
+            machine.write_bus(0xFF80 + byte_index, 0x5A ^ byte_index as u8);
+        }
+
+        machine.write_bus(0xFF46, source_page);
+        for _ in 0..649 {
+            machine.step_t_cycle();
+        }
+
+        let expected_oam: Vec<_> = (0..160u16)
+            .map(|byte_index| dma_source_byte(seed, byte_index))
+            .collect();
+        assert_eq!(
+            &machine.debug_oam_bytes()[..160],
+            expected_oam.as_slice(),
+            "CGB OAM DMA page {source_page:02X} should copy from the normalized WRAM echo source {effective_source_start:04X}, not from the raw edge page"
+        );
+    }
+}
+
+#[test]
+fn cgb_oam_dma_edge_source_trace_retains_the_wram_bus_policy() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF46, 0xFF);
+    for _ in 0..8 {
+        machine.step_t_cycle();
+    }
+
+    let trace = machine.tracer().sink().render_text();
+    assert!(trace.contains(
+        "console_model=GameBoyColor status=Ready transfer_state=Active transfer_kind=Oam"
+    ));
+    assert!(trace.contains("cpu_access_policy=WramBusBlocked active_region=Some(Oam)"));
+    assert!(trace.contains("dma_cpu_access_policy=WramBusBlocked dma_active_region=Some(Oam) dma_cpu_conflict_source_address=Some(57088)"));
+}
+
+#[test]
 fn dma_status_view_reports_lifecycle_progress_and_bus_impact_without_ff46_readback() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
