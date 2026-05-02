@@ -269,8 +269,40 @@ fn lyc_coincidence_tracks_vblank_lines_and_the_153_to_0_wrap() {
     ppu.write_register(0xFF45, 0);
     assert!(!ppu.snapshot().lyc_coincidence);
 
+    ppu.tick_n(u64::from(LINE_153_LY0_DOT));
+    assert_eq!(ppu.snapshot().ly, 153);
+    assert_eq!(ppu.read_register(0xFF44), 153);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
     ppu.advance_until_line_start(0);
     assert_eq!(ppu.snapshot().ly, 0);
+    assert!(ppu.snapshot().lyc_coincidence);
+}
+
+#[test]
+fn cgb_lyc_zero_coincidence_rises_during_the_line_153_ly0_window() {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 153,
+        lyc: 0,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    assert_eq!(ppu.snapshot().ly, 153);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
+    ppu.tick_n(u64::from(LINE_153_LY0_DOT));
+
+    assert_eq!(ppu.snapshot().ly, 153);
+    assert_eq!(ppu.read_register(0xFF44), 0);
     assert!(ppu.snapshot().lyc_coincidence);
 }
 

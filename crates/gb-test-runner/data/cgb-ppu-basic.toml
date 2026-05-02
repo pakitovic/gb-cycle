@@ -10,3 +10,13 @@ console = "cgb"
 timeout_frames = 180
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
+
+[[case]]
+family = "daid"
+id = "cgb-ppu-basic-ppu-scanline-bgp-gbc"
+rom = "ppu_scanline_bgp.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"

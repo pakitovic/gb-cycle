@@ -891,6 +891,9 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         "framebuffer-grayscale-fixture" => PassCondition::FramebufferGrayscaleFixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-rgb555-fixture" => PassCondition::FramebufferRgb555Fixture(
+            fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
+        ),
         "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
             fixtures.unwrap_or_else(|| panic!("missing fixture paths for case {id}")),
         ),
@@ -974,6 +977,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
             .with_capture(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
             .with_capture(CaptureKind::Snapshot),
@@ -1005,6 +1009,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
             .with_artifact(CaptureKind::Snapshot),
@@ -1610,13 +1615,13 @@ mod tests {
     }
 
     #[test]
-    fn cgb_ppu_basic_suite_starts_with_samesuite_palette_mmio_probe() {
+    fn cgb_ppu_basic_suite_promotes_initial_slice4_rows_in_order() {
         let suite = cgb_ppu_basic_suite();
 
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases.len(), 2);
 
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
@@ -1633,6 +1638,21 @@ mod tests {
             case.pass_condition,
             PassCondition::FramebufferFixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
+            ))
+        );
+
+        let case = &suite.cases[1];
+        assert_eq!(case.id, "cgb-ppu-basic-ppu-scanline-bgp-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("daid/ppu_scanline_bgp.gb"));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
             ))
         );
     }
@@ -1718,6 +1738,21 @@ mod tests {
         assert_eq!(
             manifest_case_report_rom_display(cgb_which),
             "which.gb (GBC)"
+        );
+
+        let cgb_scanline_bgp = manifests
+            .iter()
+            .flat_map(|manifest| &manifest.cases)
+            .find(|case| {
+                case.family == "daid"
+                    && case.rom == Path::new("ppu_scanline_bgp.gb")
+                    && case.console_model == ConsoleModel::GameBoyColor
+            })
+            .expect("CGB Daid ppu_scanline_bgp row should exist");
+        assert!(cgb_scanline_bgp.report_model_suffix);
+        assert_eq!(
+            manifest_case_report_rom_display(cgb_scanline_bgp),
+            "ppu_scanline_bgp.gb (GBC)"
         );
 
         let cgb_boot_regs = manifests

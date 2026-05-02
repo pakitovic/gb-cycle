@@ -29,7 +29,8 @@ use std::{fs, io};
 use external_roms::ExternalRomSourceManifestError;
 use framebuffer_oracle::{
     convert_pgm_to_png, decode_fixture_framebuffer_path, decode_fixture_grayscale_framebuffer_path,
-    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm,
+    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer,
+    decode_local_rgb555_framebuffer, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
@@ -335,6 +336,7 @@ pub enum PassCondition {
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
     FramebufferGrayscaleFixture(PathBuf),
+    FramebufferRgb555Fixture(PathBuf),
     FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
 }
@@ -350,6 +352,7 @@ impl PassCondition {
             Self::Informational(capture) => *capture,
             Self::FramebufferFixture(_)
             | Self::FramebufferGrayscaleFixture(_)
+            | Self::FramebufferRgb555Fixture(_)
             | Self::FramebufferFixtureSet(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
@@ -1235,6 +1238,7 @@ pub struct CapturedArtifacts {
     pub memory_text_output: Option<CapturedMemoryTextOutput>,
     pub blargg_console_text: Option<String>,
     pub framebuffer_pgm: Option<Vec<u8>>,
+    pub framebuffer_rgb555: Option<Vec<u16>>,
     pub trace: Option<String>,
     pub snapshot_text: Option<String>,
 }
@@ -1459,6 +1463,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.ppu().framebuffer(),
             Self::Summary(machine) => machine.ppu().framebuffer(),
+        }
+    }
+
+    fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+        match self {
+            Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
         }
     }
 
@@ -1909,6 +1920,7 @@ impl RomRunner {
 
         if case.capture_plan.contains(CaptureKind::Framebuffer) {
             artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
+            artifacts.framebuffer_rgb555 = machine.cgb_framebuffer_rgb555().map(<[u16]>::to_vec);
         }
 
         if case.capture_plan.contains(CaptureKind::Trace) {
@@ -2122,6 +2134,52 @@ impl RomRunner {
                     })
                 }
             }
+            PassCondition::FramebufferRgb555Fixture(fixture_path) => {
+                let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_rgb555_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_rgb555
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!(
+                                "<local CGB RGB555 framebuffer for {}>",
+                                case.id
+                            )),
+                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local CGB RGB555 framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
+                let expected =
+                    decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer fixture",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+
+                if actual == expected {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                        fixture_path: resolved_fixture,
+                    })
+                }
+            }
             PassCondition::FramebufferFixtureSet(fixture_paths) => {
                 let resolved_fixtures = fixture_paths
                     .iter()
@@ -2275,6 +2333,24 @@ impl RomRunner {
                         }
                     })?;
                     written_paths.push(pgm_path);
+
+                    if let Some(framebuffer_rgb555) = &artifacts.framebuffer_rgb555 {
+                        let rgb555_path = case_dir.join("framebuffer_rgb555.png");
+                        let rgb555_png = encode_rgb555_framebuffer_png(framebuffer_rgb555)
+                            .map_err(|source| RomExecutionError::ReadFile {
+                                path: rgb555_path.clone(),
+                                operation: "encode CGB RGB555 framebuffer artifact",
+                                source,
+                            })?;
+                        fs::write(&rgb555_path, rgb555_png).map_err(|source| {
+                            RomExecutionError::ReadFile {
+                                path: rgb555_path.clone(),
+                                operation: "write CGB RGB555 framebuffer artifact",
+                                source,
+                            }
+                        })?;
+                        written_paths.push(rgb555_path);
+                    }
                 }
                 CaptureKind::Trace => {
                     let Some(trace) = &artifacts.trace else {
@@ -2771,13 +2847,13 @@ mod tests {
     }
 
     #[test]
-    fn cgb_ppu_basic_suite_promotes_first_slice4_palette_mmio_probe() {
+    fn cgb_ppu_basic_suite_promotes_initial_slice4_rows() {
         let suite = cgb_ppu_basic_suite();
 
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases.len(), 2);
 
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
@@ -2791,6 +2867,22 @@ mod tests {
             case.pass_condition,
             PassCondition::FramebufferFixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[1];
+        assert_eq!(case.id, "cgb-ppu-basic-ppu-scanline-bgp-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("daid/ppu_scanline_bgp.gb"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
             ))
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
@@ -3936,6 +4028,7 @@ mod tests {
             }),
             blargg_console_text: Some("console".to_string()),
             framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![0; 160 * 144])),
+            framebuffer_rgb555: Some(vec![0x7FFF; 160 * 144]),
             trace: Some("trace".to_string()),
             snapshot_text: Some("snapshot".to_string()),
         };
@@ -3948,7 +4041,7 @@ mod tests {
         let written = runner
             .persist_failure_artifacts(&case, &artifacts)
             .expect("persisting failure artifacts should succeed");
-        assert_eq!(written.len(), 8);
+        assert_eq!(written.len(), 9);
         for capture in [
             CaptureKind::Serial,
             CaptureKind::SerialHex,
@@ -3990,6 +4083,7 @@ mod tests {
         );
         assert!(case_dir.join("framebuffer.png").is_file());
         assert!(case_dir.join("framebuffer.pgm").is_file());
+        assert!(case_dir.join("framebuffer_rgb555.png").is_file());
 
         fs::remove_dir_all(artifact_root).expect("artifact root should be removable");
     }

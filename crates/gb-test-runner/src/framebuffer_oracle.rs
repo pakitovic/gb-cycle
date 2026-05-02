@@ -111,6 +111,43 @@ pub(crate) fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
     encoded
 }
 
+pub(crate) fn decode_local_rgb555_framebuffer(
+    case_id: &str,
+    pixels: &[u16],
+) -> Result<NormalizedFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local CGB RGB555 framebuffer for {case_id}>"));
+    let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+    if pixels.len() != expected_len {
+        return Err(FramebufferOracleError {
+            path,
+            message: format!(
+                "CGB RGB555 framebuffer length {} does not match expected {expected_len}",
+                pixels.len()
+            ),
+        });
+    }
+
+    let colors = pixels
+        .iter()
+        .copied()
+        .map(rgb555_to_rgb888)
+        .collect::<Vec<_>>();
+    Ok(normalize_rgb_pixels(
+        FRAMEBUFFER_WIDTH,
+        FRAMEBUFFER_HEIGHT,
+        &colors,
+    ))
+}
+
+pub(crate) fn encode_rgb555_framebuffer_png(pixels: &[u16]) -> io::Result<Vec<u8>> {
+    let colors = pixels
+        .iter()
+        .copied()
+        .map(rgb555_to_rgb888)
+        .collect::<Vec<_>>();
+    encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &colors)
+}
+
 #[cfg(test)]
 pub(crate) fn encode_framebuffer_png(framebuffer: &[u8]) -> Result<Vec<u8>, io::Error> {
     let pixels = framebuffer
@@ -421,6 +458,21 @@ fn grayscale_luma(color: [u8; 3]) -> u8 {
         / 1_000) as u8
 }
 
+fn rgb555_to_rgb888(color: u16) -> [u8; 3] {
+    let red = (color & 0x001F) as u8;
+    let green = ((color >> 5) & 0x001F) as u8;
+    let blue = ((color >> 10) & 0x001F) as u8;
+    [
+        scale_5_bit_to_8_bit(red),
+        scale_5_bit_to_8_bit(green),
+        scale_5_bit_to_8_bit(blue),
+    ]
+}
+
+fn scale_5_bit_to_8_bit(component: u8) -> u8 {
+    (component << 3) | (component >> 2)
+}
+
 fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> Result<Vec<u8>, io::Error> {
     let mut encoded = Vec::new();
     {
@@ -430,6 +482,24 @@ fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> Result<Ve
         let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
         writer
             .write_image_data(pixels)
+            .map_err(png_encoding_io_error)?;
+    }
+    Ok(encoded)
+}
+
+fn encode_rgb_png(width: usize, height: usize, pixels: &[[u8; 3]]) -> Result<Vec<u8>, io::Error> {
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
+        let mut bytes = Vec::with_capacity(pixels.len() * 3);
+        for pixel in pixels {
+            bytes.extend_from_slice(pixel);
+        }
+        writer
+            .write_image_data(&bytes)
             .map_err(png_encoding_io_error)?;
     }
     Ok(encoded)

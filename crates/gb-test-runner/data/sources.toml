@@ -196,6 +196,10 @@ path = "testroms/daid/ppu_scanline_bgp_2.dmg.png"
 sha256 = "2400f19f5a82d1c28726cdbb9793f86f01cadb1bbc5ef624e37e69de272241cc"
 
 [[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp.gbc.png"
+sha256 = "49e0438aca7c762b8392db65ee77a59e55155925624461a161e9530a982fb25b"
+
+[[source.required_file]]
 path = "testroms/daid/stop_instr.gb"
 sha256 = "7807e380ce4531f4f9425427b47d7216a92ef2283ab706ea4a33eb84f589ac42"
 

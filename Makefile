@@ -216,7 +216,7 @@ run-cgb-speed:
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-speed --failure-artifact-root .artifacts/cgb-speed
 
 run-cgb-ppu-basic:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
+	$(MAKE) fetch-test-roms FAMILIES="samesuite daid"
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
 
 phase9-determinism-smoke:

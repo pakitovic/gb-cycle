@@ -257,6 +257,12 @@ fn parse_pass_condition(
                 fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
             ),
         )),
+        "framebuffer-rgb555-fixture" => Ok(PassCondition::FramebufferRgb555Fixture(
+            resolve_fixture_path(
+                manifest_dir,
+                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            ),
+        )),
         "framebuffer-fixture-set" => {
             if fixtures.is_empty() {
                 return Err(format!("case {case_id} is missing fixtures for {oracle}"));
@@ -378,6 +384,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
             .with_capture(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
             .with_capture(CaptureKind::Snapshot),
@@ -403,6 +410,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
             .with_artifact(CaptureKind::Snapshot),

@@ -533,6 +533,7 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
         crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
+        crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
         crate::PassCondition::FramebufferFixtureSet(_) => "framebuffer-fixture-set",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }
@@ -877,6 +878,7 @@ mod tests {
                     }),
                     blargg_console_text: Some("console-text".to_string()),
                     framebuffer_pgm: Some(vec![0; 8]),
+                    framebuffer_rgb555: None,
                     trace: Some("trace-text".to_string()),
                     snapshot_text: Some("snapshot-text".to_string()),
                 },
