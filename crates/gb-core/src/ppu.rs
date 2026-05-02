@@ -684,6 +684,7 @@ pub struct PpuSaveState {
     obp1: Option<u8>,
     wy: u8,
     wx: u8,
+    #[serde(default)]
     cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,

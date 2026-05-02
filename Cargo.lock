@@ -298,6 +298,7 @@ dependencies = [
  "criterion",
  "serde",
  "serde-big-array",
+ "serde_json",
 ]
 
 [[package]]

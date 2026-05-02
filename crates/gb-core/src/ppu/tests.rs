@@ -10,6 +10,7 @@ mod mode3;
 mod obj;
 mod oracle;
 mod palette;
+mod save_state;
 mod stat;
 mod window;
 
