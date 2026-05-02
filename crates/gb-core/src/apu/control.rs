@@ -1,6 +1,6 @@
 use super::common::{NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT};
 use super::output::OutputPathState;
-use super::{Apu, ApuOutputSnapshot, WaveRamStartupPolicy};
+use super::{Apu, ApuOutputSnapshot, WaveRamStartupPolicy, div_apu_phase_from_system_counter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ApuStartupState {
@@ -69,6 +69,12 @@ impl Apu {
 
         self.frame_sequencer
             .apply_startup_phase(startup_state.div_apu);
+        self.preview_output_path();
+    }
+
+    pub(crate) fn apply_div_apu_startup_phase_from_system_counter(&mut self, system_counter: u16) {
+        self.frame_sequencer
+            .apply_startup_phase(div_apu_phase_from_system_counter(system_counter));
         self.preview_output_path();
     }
 

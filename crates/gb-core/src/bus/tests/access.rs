@@ -184,6 +184,108 @@ fn external_bus_dma_resolution_exposes_nominal_blocking_and_effective_redirectio
 }
 
 #[test]
+fn external_bus_only_dma_blocks_and_redirects_only_cartridge_bus_accesses() {
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
+    let state = BusArbitrationState::default().with_dma(
+        DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x1234)),
+    );
+
+    let rom_resolution = bus.resolve_access(BusAccessKind::Read, 0x0150, &state, None);
+    assert_eq!(
+        rom_resolution.nominal_target().region(),
+        BusRegion::CartridgeRomBank0
+    );
+    assert_eq!(
+        rom_resolution.nominal_disposition(),
+        BusAccessDisposition::BlockedRead {
+            value: BLOCKED_READ_VALUE,
+            reason: BusBlockReason::DmaExternalBusConflict,
+        }
+    );
+    assert_eq!(rom_resolution.target().address(), 0x1234);
+    assert_eq!(
+        rom_resolution.target().region(),
+        BusRegion::CartridgeRomBank0
+    );
+    assert_eq!(rom_resolution.disposition(), BusAccessDisposition::Allowed);
+    assert!(rom_resolution.is_redirected());
+
+    let external_resolution = bus.resolve_access(BusAccessKind::Read, 0xA000, &state, None);
+    assert_eq!(
+        external_resolution.nominal_target().region(),
+        BusRegion::CartridgeExternal
+    );
+    assert_eq!(external_resolution.target().address(), 0x1234);
+    assert!(external_resolution.is_redirected());
+
+    let wram_resolution = bus.resolve_access(BusAccessKind::Read, 0xC200, &state, None);
+    assert_eq!(wram_resolution.target().region(), BusRegion::WramBank0);
+    assert!(wram_resolution.disposition().is_allowed());
+    assert!(!wram_resolution.is_redirected());
+}
+
+#[test]
+fn external_bus_only_dma_keeps_internal_wram_writes_and_hram_access_available() {
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
+    let state = BusArbitrationState::default().with_dma(
+        DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x1234)),
+    );
+
+    let wram_write = bus.resolve_access(BusAccessKind::Write, 0xC200, &state, None);
+    assert_eq!(wram_write.target().region(), BusRegion::WramBank0);
+    assert!(wram_write.disposition().is_allowed());
+    assert!(!wram_write.is_redirected());
+
+    let hram_read = bus.resolve_access(BusAccessKind::Read, 0xFF80, &state, None);
+    assert_eq!(hram_read.target().region(), BusRegion::Hram);
+    assert!(hram_read.disposition().is_allowed());
+
+    let dma_register_write = bus.resolve_access(BusAccessKind::Write, 0xFF46, &state, None);
+    assert_eq!(dma_register_write.target().region(), BusRegion::Mmio);
+    assert!(dma_register_write.disposition().is_allowed());
+}
+
+#[test]
+fn external_bus_only_dma_still_blocks_oam_destination_access() {
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
+    let state = BusArbitrationState::default().with_dma(
+        DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x1234)),
+    );
+
+    let resolution = bus.resolve_access(BusAccessKind::Read, 0xFE00, &state, None);
+
+    assert_eq!(resolution.target().region(), BusRegion::Oam);
+    assert_eq!(
+        resolution.disposition(),
+        BusAccessDisposition::BlockedRead {
+            value: BLOCKED_READ_VALUE,
+            reason: BusBlockReason::DmaExternalBusConflict,
+        }
+    );
+    assert!(!resolution.is_redirected());
+}
+
+#[test]
+fn external_bus_only_dma_does_not_redirect_internal_boot_rom_reads() {
+    let bus = Bus::new(ConsoleModel::GameBoyColor);
+    let state = BusArbitrationState::default()
+        .with_boot_rom(BootRomBusState::map_cgb_windows())
+        .with_dma(
+            DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+                .with_cpu_conflict_source_address(Some(0x1234)),
+        );
+
+    let resolution = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
+
+    assert_eq!(resolution.target().region(), BusRegion::BootRom);
+    assert!(resolution.disposition().is_allowed());
+    assert!(!resolution.is_redirected());
+}
+
+#[test]
 fn requester_aware_resolution_keeps_non_cpu_dma_accesses_unblocked() {
     let bus = Bus::new(ConsoleModel::GameBoy);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(

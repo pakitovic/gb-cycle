@@ -153,6 +153,8 @@ pub(super) enum CgbPaletteRegister {
     ObjData,
 }
 
+const CGB_NATIVE_BOOT_BG_PALETTE0_BYTES: [u8; 8] = [0xFF, 0xFF, 0xFF, 0x7F, 0x00, 0x00, 0x00, 0x00];
+
 impl CgbPaletteRegister {
     pub(super) const fn kind(self) -> CgbPaletteKind {
         match self {
@@ -263,6 +265,11 @@ impl CgbPaletteState {
         self.background.write_palette_bytes(0, seed.bg_palette0);
         self.object.write_palette_bytes(0, seed.obj_palette0);
         self.object.write_palette_bytes(1, seed.obj_palette1);
+    }
+
+    pub(super) fn apply_cgb_native_boot_palette_seed(&mut self) {
+        self.background
+            .write_palette_bytes(0, CGB_NATIVE_BOOT_BG_PALETTE0_BYTES);
     }
 }
 

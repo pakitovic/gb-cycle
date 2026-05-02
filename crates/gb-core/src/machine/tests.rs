@@ -98,6 +98,28 @@ fn build_pocket_camera_rom() -> Vec<u8> {
     rom
 }
 
+#[test]
+fn timer_startup_state_override_keeps_apu_div_phase_coherent() {
+    let mut machine = Machine::new(crate::model::MachineConfig::new(ConsoleModel::GameBoy));
+    machine
+        .load_cartridge(build_test_rom(&[0x00]))
+        .expect("test ROM should load");
+
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x2000,
+        tima: 0x12,
+        tma: 0x34,
+        tac: 0xF8,
+    });
+
+    let timer = machine.timer().snapshot();
+    assert_eq!(timer.system_counter, 0x2000);
+    assert_eq!(timer.tima, 0x12);
+    assert_eq!(timer.tma, 0x34);
+    assert_eq!(timer.tac, 0x00);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+}
+
 fn step_t_cycles(machine: &mut Machine, t_cycles: u64) {
     for _ in 0..t_cycles {
         machine.step_t_cycle();

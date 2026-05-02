@@ -630,6 +630,23 @@ impl Ppu {
         Some(seed)
     }
 
+    pub(crate) fn apply_cgb_native_palette_startup_state(
+        &mut self,
+        startup_mode: StartupMode,
+        operating_mode: OperatingMode,
+    ) -> bool {
+        let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
+        if startup_mode != StartupMode::SkipBoot
+            || !self.console_model.is_cgb_family()
+            || operating_mode != OperatingMode::Cgb
+        {
+            return false;
+        }
+
+        self.cgb_palettes.apply_cgb_native_boot_palette_seed();
+        true
+    }
+
     pub(super) fn is_cgb_native_mode(&self) -> bool {
         self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::Cgb
     }

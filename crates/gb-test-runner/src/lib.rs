@@ -37,7 +37,7 @@ use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
     ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton,
     Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
-    TraceBuffer, TraceSummaryBuffer,
+    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 
 pub use boot_rom_verification::{
@@ -446,6 +446,7 @@ pub struct RomTestCase {
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub startup_cartridge_rtc_seconds: Option<u64>,
+    pub startup_timer_state: Option<TimerStartupState>,
     pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
@@ -473,6 +474,7 @@ impl RomTestCase {
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
+            startup_timer_state: None,
             startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
@@ -500,6 +502,11 @@ impl RomTestCase {
 
     pub fn with_startup_cartridge_rtc_seconds(mut self, seconds: u64) -> Self {
         self.startup_cartridge_rtc_seconds = Some(seconds);
+        self
+    }
+
+    pub fn with_startup_timer_state(mut self, startup_timer_state: TimerStartupState) -> Self {
+        self.startup_timer_state = Some(startup_timer_state);
         self
     }
 
@@ -1536,6 +1543,13 @@ impl RunnerMachine {
             Self::Summary(machine) => machine.advance_cartridge_rtc_seconds(seconds),
         }
     }
+
+    fn apply_timer_startup_state(&mut self, startup_timer_state: TimerStartupState) {
+        match self {
+            Self::Buffered(machine) => machine.apply_timer_startup_state(startup_timer_state),
+            Self::Summary(machine) => machine.apply_timer_startup_state(startup_timer_state),
+        }
+    }
 }
 
 impl Default for RomRunner {
@@ -1624,6 +1638,7 @@ impl RomRunner {
         let startup_failure = self.advance_real_boot_to_handoff_if_needed(case, &mut machine);
         if startup_failure.is_none() {
             self.apply_startup_cartridge_state(case, &mut machine);
+            self.apply_startup_timer_state(case, &mut machine);
             self.apply_startup_memory_writes(case, &mut machine);
         }
 
@@ -1886,6 +1901,12 @@ impl RomRunner {
     fn apply_startup_cartridge_state(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
         if let Some(seconds) = case.startup_cartridge_rtc_seconds {
             machine.advance_cartridge_rtc_seconds(seconds);
+        }
+    }
+
+    fn apply_startup_timer_state(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        if let Some(startup_timer_state) = case.startup_timer_state {
+            machine.apply_timer_startup_state(startup_timer_state);
         }
     }
 
@@ -2697,7 +2718,7 @@ mod tests {
     use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
-        ExecutionMode, StartupMode,
+        ExecutionMode, StartupMode, TimerStartupState,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -2906,7 +2927,7 @@ mod tests {
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.cases.len(), 3);
+        assert_eq!(suite.cases.len(), 4);
 
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
@@ -2954,6 +2975,32 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
             ))
         );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[3];
+        assert_eq!(case.id, "cgb-ppu-basic-hacktix-bully-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("hacktix/bully.gb"));
+        assert_eq!(case.timeout, Timeout::Frames(30));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+            ))
+        );
+        assert_eq!(
+            case.startup_timer_state,
+            Some(TimerStartupState {
+                system_counter: 0x1E74,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0xF8,
+            })
+        );
+        assert_eq!(case.startup_memory_writes.len(), 244);
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));

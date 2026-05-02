@@ -49,6 +49,19 @@ impl Bus {
 
                 Some(self.block_access(kind, BusBlockReason::DmaExternalBusConflict))
             }
+            DmaCpuAccessPolicy::ExternalBusOnlyBlocked => {
+                if matches!(
+                    target.region(),
+                    BusRegion::CartridgeRomBank0
+                        | BusRegion::CartridgeRomBankN
+                        | BusRegion::CartridgeExternal
+                        | BusRegion::Oam
+                ) {
+                    Some(self.block_access(kind, BusBlockReason::DmaExternalBusConflict))
+                } else {
+                    None
+                }
+            }
             DmaCpuAccessPolicy::VideoBusBlocked => {
                 if matches!(target.region(), BusRegion::Vram | BusRegion::Oam) {
                     Some(self.block_access(kind, BusBlockReason::DmaVideoBusConflict))

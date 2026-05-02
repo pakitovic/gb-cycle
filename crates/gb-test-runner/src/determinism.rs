@@ -276,6 +276,8 @@ impl DeterminismRunner {
         self.rom_runner
             .apply_startup_cartridge_state(case, &mut machine);
         self.rom_runner
+            .apply_startup_timer_state(case, &mut machine);
+        self.rom_runner
             .apply_startup_memory_writes(case, &mut machine);
         Ok(machine)
     }

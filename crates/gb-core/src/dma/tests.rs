@@ -140,6 +140,49 @@ fn dma_tick_advances_starting_active_and_completed_lifecycle_over_t_cycles() {
 }
 
 #[test]
+fn cgb_external_source_oam_dma_publishes_external_bus_only_cpu_policy() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_ff46(0x12);
+    for _ in 0..5 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+    );
+
+    for _ in 0..3 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::external_bus_only_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x1200))
+    );
+}
+
+#[test]
+fn dmg_external_source_oam_dma_keeps_the_legacy_external_bus_policy() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoy);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_ff46(0x12);
+    for _ in 0..8 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x1200))
+    );
+}
+
+#[test]
 fn restarting_active_oam_dma_keeps_the_current_transfer_alive_until_the_new_startup_seam_finishes()
 {
     let mut dma = DmaController::new(ConsoleModel::GameBoy);

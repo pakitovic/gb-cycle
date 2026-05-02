@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gb_core::ConsoleModel;
+use gb_core::{ConsoleModel, TimerStartupState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -98,6 +98,7 @@ struct CuratedTestRomCaseFile {
     fixtures: Option<Vec<PathBuf>>,
     console: Option<String>,
     execution_mode: Option<String>,
+    startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
 }
 
@@ -122,6 +123,7 @@ struct CuratedTestRomCase {
     fixtures: Option<Vec<PathBuf>>,
     console_model: ConsoleModel,
     execution_mode: Option<String>,
+    startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
 }
 
@@ -822,6 +824,7 @@ fn parse_manifest_case(
         fixtures: case.fixtures,
         console_model,
         execution_mode: case.execution_mode,
+        startup_timer_profile: case.startup_timer_profile,
         startup_memory_profile: case.startup_memory_profile,
     }
 }
@@ -859,6 +862,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         fixtures,
         console_model,
         execution_mode,
+        startup_timer_profile,
         startup_memory_profile,
     } = case;
 
@@ -923,6 +927,21 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
             &case_id,
             execution_mode,
         ));
+    }
+
+    if let Some(profile) = startup_timer_profile.as_deref() {
+        rom_case = match profile {
+            "hacktix-cgb-bully-div" => rom_case.with_startup_timer_state(TimerStartupState {
+                system_counter: 0x1E74,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0xF8,
+            }),
+            other => panic!(
+                "unsupported startup timer profile {other:?} for curated case {}",
+                rom_case.id
+            ),
+        };
     }
 
     if let Some(profile) = startup_memory_profile.as_deref() {
@@ -1626,7 +1645,7 @@ mod tests {
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.cases.len(), 3);
+        assert_eq!(suite.cases.len(), 4);
 
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
@@ -1675,6 +1694,31 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
             ))
         );
+
+        let case = &suite.cases[3];
+        assert_eq!(case.id, "cgb-ppu-basic-hacktix-bully-gbc");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("hacktix/bully.gb"));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+            ))
+        );
+        assert_eq!(
+            case.startup_timer_state,
+            Some(gb_core::TimerStartupState {
+                system_counter: 0x1E74,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0xF8,
+            })
+        );
+        assert_eq!(case.startup_memory_writes.len(), 244);
     }
 
     #[test]
@@ -1773,6 +1817,21 @@ mod tests {
         assert_eq!(
             manifest_case_report_rom_display(cgb_scanline_bgp),
             "ppu_scanline_bgp.gb (GBC)"
+        );
+
+        let cgb_bully = manifests
+            .iter()
+            .flat_map(|manifest| &manifest.cases)
+            .find(|case| {
+                case.family == "hacktix"
+                    && case.rom == Path::new("bully.gb")
+                    && case.console_model == ConsoleModel::GameBoyColor
+            })
+            .expect("CGB Hacktix bully row should exist");
+        assert!(cgb_bully.report_model_suffix);
+        assert_eq!(
+            manifest_case_report_rom_display(cgb_bully),
+            "bully.gb (GBC)"
         );
 
         let cgb_boot_regs = manifests
@@ -2695,6 +2754,7 @@ mod tests {
                 fixtures: None,
                 console: None,
                 execution_mode: None,
+                startup_timer_profile: None,
                 startup_memory_profile: None,
             },
         );
@@ -2715,6 +2775,27 @@ mod tests {
             fixtures: None,
             console_model: ConsoleModel::GameBoy,
             execution_mode: None,
+            startup_timer_profile: None,
+            startup_memory_profile: None,
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported startup timer profile")]
+    fn manifest_case_to_rom_test_case_rejects_unknown_startup_timer_profiles() {
+        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
+            family: "hacktix".to_string(),
+            id: "bad-timer-profile".to_string(),
+            rom: PathBuf::from("bad.gb"),
+            report_model_suffix: false,
+            timeout_frames: 1,
+            oracle: "framebuffer-rgb555-fixture".to_string(),
+            expected: None,
+            fixture: Some(PathBuf::from("fixture.png")),
+            fixtures: None,
+            console_model: ConsoleModel::GameBoyColor,
+            execution_mode: None,
+            startup_timer_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
         });
     }
@@ -2734,6 +2815,7 @@ mod tests {
             fixtures: None,
             console_model: ConsoleModel::GameBoy,
             execution_mode: None,
+            startup_timer_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
         });
     }

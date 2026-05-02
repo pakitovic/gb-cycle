@@ -259,6 +259,26 @@ fn cgb_compatibility_startup_seed_writes_bg0_and_obj0_obj1_palette_ram() {
 }
 
 #[test]
+fn cgb_native_startup_seed_writes_boot_logo_bg_palette0() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+
+    assert!(ppu.apply_cgb_native_palette_startup_state(
+        crate::model::StartupMode::SkipBoot,
+        crate::model::OperatingMode::Cgb,
+    ));
+
+    let bg = ppu.cgb_palettes.port(CgbPaletteKind::Background);
+    assert_eq!(bg.rgb555(0, 0), RGB555_WHITE);
+    assert_eq!(bg.rgb555(0, 1), RGB555_WHITE);
+    assert_eq!(bg.rgb555(0, 2), 0x0000);
+    assert_eq!(bg.rgb555(0, 3), 0x0000);
+    assert_eq!(
+        ppu.cgb_palettes.port(CgbPaletteKind::Object).rgb555(0, 0),
+        0x0000
+    );
+}
+
+#[test]
 fn cgb_compatibility_palette_seed_has_runner_controlled_boot_input_override_seam() {
     let mut title = [0; 16];
     title[0] = 0x88;
