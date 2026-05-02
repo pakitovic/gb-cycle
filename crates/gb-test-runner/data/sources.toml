@@ -244,6 +244,14 @@ path = "testroms/daid/rom_and_ram.gb"
 sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
 
 [[source.required_file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
+sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
+
+[[source.required_file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
+sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
+
+[[source.required_file]]
 path = "testroms/hacktix/bully.gb"
 sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
 
