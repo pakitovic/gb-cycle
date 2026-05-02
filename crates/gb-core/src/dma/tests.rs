@@ -87,16 +87,26 @@ fn ff46_latches_cgb_oam_dma_speed_profile_only_on_cgb_family_hardware() {
 }
 
 #[test]
-fn dmg_oam_dma_source_addresses_above_dfff_follow_the_echo_alias_path() {
-    let transfer = DmaTransfer::oam(0xFE);
+fn oam_dma_source_addresses_above_dfff_follow_the_common_echo_alias_path() {
+    for (source_page, first_source, last_source) in [
+        (0xE0, 0xC000, 0xC09F),
+        (0xFD, 0xDD00, 0xDD9F),
+        (0xFE, 0xDE00, 0xDE9F),
+        (0xFF, 0xDF00, 0xDF9F),
+    ] {
+        let transfer = DmaTransfer::oam(source_page);
 
-    assert_eq!(transfer.source_address_for_byte(0), 0xDE00);
-    assert_eq!(transfer.source_address_for_byte(0x9F), 0xDE9F);
-
-    let transfer = DmaTransfer::oam(0xFF);
-
-    assert_eq!(transfer.source_address_for_byte(0), 0xDF00);
-    assert_eq!(transfer.source_address_for_byte(0x9F), 0xDF9F);
+        assert_eq!(
+            transfer.source_address_for_byte(0),
+            first_source,
+            "source page {source_page:02X} should use the WRAM echo alias for the first OAM DMA byte"
+        );
+        assert_eq!(
+            transfer.source_address_for_byte(0x9F),
+            last_source,
+            "source page {source_page:02X} should use the WRAM echo alias for the last OAM DMA byte"
+        );
+    }
 }
 
 #[test]
@@ -254,20 +264,54 @@ fn cgb_wram_source_oam_dma_publishes_wram_bus_only_cpu_policy() {
 }
 
 #[test]
-fn cgb_echo_source_oam_dma_uses_the_wram_bus_policy_after_source_normalization() {
+fn cgb_video_source_oam_dma_publishes_video_bus_cpu_policy() {
     let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
-    dma.write_ff46(0xFE);
-    for _ in 0..8 {
+    dma.write_ff46(0x80);
+    for _ in 0..5 {
         dma.tick_t_cycle(&mut context);
     }
 
     assert_eq!(
         dma.bus_state(),
-        DmaBusState::wram_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
-            .with_cpu_conflict_source_address(Some(0xDE00))
+        DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
     );
+
+    for _ in 0..3 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0x8000))
+    );
+}
+
+#[test]
+fn cgb_edge_source_oam_dma_uses_the_wram_bus_policy_after_source_normalization() {
+    for (source_page, first_conflict_source) in [
+        (0xE0, 0xC000),
+        (0xFD, 0xDD00),
+        (0xFE, 0xDE00),
+        (0xFF, 0xDF00),
+    ] {
+        let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+        let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+        dma.write_ff46(source_page);
+        for _ in 0..8 {
+            dma.tick_t_cycle(&mut context);
+        }
+
+        assert_eq!(
+            dma.bus_state(),
+            DmaBusState::wram_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+                .with_cpu_conflict_source_address(Some(first_conflict_source)),
+            "CGB OAM DMA page {source_page:02X} should publish the WRAM-bus policy after the common source alias is applied"
+        );
+    }
 }
 
 #[test]
