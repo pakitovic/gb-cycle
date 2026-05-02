@@ -579,11 +579,32 @@ fn hdma5_cancel_stops_active_hblank_dma_and_preserves_hdma1_4_latches() {
     assert_eq!(
         dma.vram_dma_state(),
         VramDmaState::Inactive {
-            hdma5_read_low: 0x04
+            hdma5_read_low: 0x00
         }
     );
-    assert_eq!(dma.read_hdma5(), 0x84);
+    assert_eq!(dma.read_hdma5(), 0x80);
     assert_eq!(dma.vram_dma_registers(), registers_before_cancel);
+}
+
+#[test]
+fn hdma5_cancel_readback_uses_the_cancel_write_low_bits_not_the_remaining_count() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0x12);
+    dma.write_hdma2(0x30);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5(0x86);
+
+    dma.write_hdma5(0x15);
+
+    assert_eq!(
+        dma.vram_dma_state(),
+        VramDmaState::Inactive {
+            hdma5_read_low: 0x15
+        }
+    );
+    assert_eq!(dma.read_hdma5(), 0x95);
 }
 
 #[test]
@@ -717,6 +738,71 @@ fn hdma_lcd_off_window_transfers_only_one_block_until_a_new_window_appears() {
         );
     }
     assert_eq!(dma.read_hdma5(), 0x02);
+}
+
+#[test]
+fn hdma_block_started_in_hblank_completes_across_the_exit_seam_without_rearming_the_same_line() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_hdma1(0xC1);
+    dma.write_hdma2(0x20);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5(0x81);
+
+    let hblank0 =
+        VramDmaRuntimeContext::new(PpuBusState::lcd_enabled(PpuAccessMode::HBlank), 0, false);
+    let drawing0 =
+        VramDmaRuntimeContext::new(PpuBusState::lcd_enabled(PpuAccessMode::Drawing), 0, false);
+
+    let mut copied = 0;
+    copied += dma
+        .tick_t_cycle_with_vram_dma_context(&mut context, hblank0)
+        .is_some() as u16;
+    for _ in 1..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+        copied += dma
+            .tick_t_cycle_with_vram_dma_context(&mut context, drawing0)
+            .is_some() as u16;
+    }
+
+    assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x00);
+    assert_eq!(dma.vram_dma_registers().source_start(), 0xC130);
+    assert_eq!(dma.vram_dma_registers().destination_start(), 0x8810);
+
+    for _ in 0..64 {
+        assert_eq!(
+            dma.tick_t_cycle_with_vram_dma_context(&mut context, hblank0),
+            None,
+            "returning to the same visible HBlank line must not rearm a second seam block"
+        );
+    }
+    assert_eq!(dma.read_hdma5(), 0x00);
+}
+
+#[test]
+fn hdma_ignores_mode0_like_windows_outside_visible_lines() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_hdma1(0xC1);
+    dma.write_hdma2(0x20);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5(0x80);
+
+    let vblank_line_hblank =
+        VramDmaRuntimeContext::new(PpuBusState::lcd_enabled(PpuAccessMode::HBlank), 144, false);
+    for _ in 0..64 {
+        assert_eq!(
+            dma.tick_t_cycle_with_vram_dma_context(&mut context, vblank_line_hblank),
+            None
+        );
+    }
+
+    assert_eq!(dma.read_hdma5(), 0x00);
+    assert_eq!(dma.vram_dma_registers().destination_start(), 0x8800);
 }
 
 #[test]

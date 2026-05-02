@@ -1731,7 +1731,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_dma_suite_starts_slice5_rows_in_order() {
+    fn cgb_dma_suite_promotes_slice5_rows_to_blocking_oracles() {
         let suite = cgb_dma_suite();
 
         assert_eq!(suite.name, "cgb-dma");
@@ -1740,13 +1740,29 @@ mod tests {
         assert_eq!(suite.cases.len(), 4);
 
         let expected = [
-            ("cgb-dma-gdma-addr-mask", "samesuite/dma/gdma_addr_mask.gb"),
-            ("cgb-dma-hdma-lcd-off", "samesuite/dma/hdma_lcd_off.gb"),
-            ("cgb-dma-hdma-mode0", "samesuite/dma/hdma_mode0.gb"),
-            ("cgb-dma-gbc-dma-cont", "samesuite/dma/gbc_dma_cont.gb"),
+            (
+                "cgb-dma-gdma-addr-mask",
+                "samesuite/dma/gdma_addr_mask.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
+            ),
+            (
+                "cgb-dma-hdma-lcd-off",
+                "samesuite/dma/hdma_lcd_off.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_lcd_off.png",
+            ),
+            (
+                "cgb-dma-hdma-mode0",
+                "samesuite/dma/hdma_mode0.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
+            ),
+            (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
         ];
 
-        for (case, (id, rom_path)) in suite.cases.iter().zip(expected) {
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
             assert_eq!(case.id, id);
             assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
             assert_eq!(case.rom_path, PathBuf::from(rom_path));
@@ -1756,7 +1772,7 @@ mod tests {
             );
             assert_eq!(
                 case.pass_condition,
-                PassCondition::Informational(CaptureKind::Framebuffer)
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
             );
         }
     }

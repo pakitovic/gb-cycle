@@ -81,6 +81,17 @@ fn build_banked_test_rom(
     rom
 }
 
+fn build_cgb_banked_test_rom(
+    program: &[u8],
+    cartridge_type: u8,
+    rom_size: u8,
+    ram_size: u8,
+) -> Vec<u8> {
+    let mut rom = build_banked_test_rom(program, cartridge_type, rom_size, ram_size);
+    rom[0x0143] = 0x80;
+    rom
+}
+
 fn build_pocket_camera_rom() -> Vec<u8> {
     let mut rom = vec![0xFF; 1024 * 1024];
     rom[0x0000] = 0x12;
@@ -967,6 +978,148 @@ fn cgb_hdma_lcd_off_copies_one_block_and_waits_for_another_window() {
     assert_eq!(&vram[0x0800..0x0810], expected.as_slice());
     assert_eq!(&vram[0x0810..0x0840], &[0; 0x30]);
     assert_eq!(machine.dma().read_hdma5(), 0x02);
+}
+
+#[test]
+fn cgb_hdma_uses_live_mbc5_rom_bank_mapping_between_blocks() {
+    let mut rom = build_cgb_banked_test_rom(&[0x00; 16], 0x19, 0x01, 0x00);
+    for offset in 0..0x10usize {
+        rom[0x4000 + offset] = 0x10 | offset as u8;
+        rom[0x8000 + 0x10 + offset] = 0x80 | offset as u8;
+    }
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("CGB MBC5 ROM-bank HDMA test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+    for offset in 0..0x20u16 {
+        machine.write_bus(0x8800 + offset, 0x00);
+    }
+    machine.write_bus(0x2000, 0x01);
+    machine.write_bus(0xFF51, 0x40);
+    machine.write_bus(0xFF52, 0x00);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    machine.write_bus(0xFF40, 0x91);
+    machine.write_bus(0xFF55, 0x81);
+
+    step_until(
+        &mut machine,
+        20_000,
+        "first ROM-bank HDMA block",
+        |machine| machine.dma().read_hdma5() == 0x00 && !machine.dma().cpu_stall_active(),
+    );
+    machine.write_bus(0x2000, 0x02);
+    step_until(
+        &mut machine,
+        20_000,
+        "second ROM-bank HDMA block",
+        |machine| machine.dma().read_hdma5() == 0xFF,
+    );
+
+    let vram = machine.debug_vram_bytes();
+    let expected_bank1: Vec<_> = (0x10u8..0x20).collect();
+    let expected_bank2: Vec<_> = (0x80u8..0x90).collect();
+    assert_eq!(&vram[0x0800..0x0810], expected_bank1.as_slice());
+    assert_eq!(&vram[0x0810..0x0820], expected_bank2.as_slice());
+}
+
+#[test]
+fn cgb_hdma_uses_live_mbc5_sram_bank_mapping_between_blocks() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_banked_test_rom(&[0x00; 16], 0x1B, 0x01, 0x03))
+        .expect("CGB MBC5 SRAM-bank HDMA test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+    machine.write_bus(0x0000, 0x0A);
+    machine.write_bus(0x4000, 0x00);
+    for offset in 0..0x10u16 {
+        machine.write_bus(0xA000 + offset, 0x30 | offset as u8);
+        machine.write_bus(0x8800 + offset, 0x00);
+    }
+    machine.write_bus(0x4000, 0x01);
+    for offset in 0..0x10u16 {
+        machine.write_bus(0xA010 + offset, 0xB0 | offset as u8);
+        machine.write_bus(0x8810 + offset, 0x00);
+    }
+    machine.write_bus(0x4000, 0x00);
+    machine.write_bus(0xFF51, 0xA0);
+    machine.write_bus(0xFF52, 0x00);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    machine.write_bus(0xFF40, 0x91);
+    machine.write_bus(0xFF55, 0x81);
+
+    step_until(
+        &mut machine,
+        20_000,
+        "first SRAM-bank HDMA block",
+        |machine| machine.dma().read_hdma5() == 0x00 && !machine.dma().cpu_stall_active(),
+    );
+    machine.write_bus(0x4000, 0x01);
+    step_until(
+        &mut machine,
+        20_000,
+        "second SRAM-bank HDMA block",
+        |machine| machine.dma().read_hdma5() == 0xFF,
+    );
+
+    let vram = machine.debug_vram_bytes();
+    let expected_bank0: Vec<_> = (0x30u8..0x40).collect();
+    let expected_bank1: Vec<_> = (0xB0u8..0xC0).collect();
+    assert_eq!(&vram[0x0800..0x0810], expected_bank0.as_slice());
+    assert_eq!(&vram[0x0810..0x0820], expected_bank1.as_slice());
+}
+
+#[test]
+fn cgb_hdma_uses_live_destination_vbk_between_blocks() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00; 16]))
+        .expect("CGB native HDMA VBK test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+    for offset in 0..0x20u16 {
+        machine.write_bus(0xC120 + offset, 0x60 | offset as u8);
+    }
+    for bank in 0..=1 {
+        machine.write_bus(0xFF4F, bank);
+        for offset in 0..0x20u16 {
+            machine.write_bus(0x8800 + offset, 0x00);
+        }
+    }
+    machine.write_bus(0xFF4F, 0x00);
+    machine.write_bus(0xFF51, 0xC1);
+    machine.write_bus(0xFF52, 0x20);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    machine.write_bus(0xFF40, 0x91);
+    machine.write_bus(0xFF55, 0x81);
+
+    step_until(&mut machine, 20_000, "first VBK HDMA block", |machine| {
+        machine.dma().read_hdma5() == 0x00 && !machine.dma().cpu_stall_active()
+    });
+    machine.write_bus(0xFF4F, 0x01);
+    step_until(&mut machine, 20_000, "second VBK HDMA block", |machine| {
+        machine.dma().read_hdma5() == 0xFF
+    });
+
+    let vram = machine.debug_vram_bytes();
+    let expected_first: Vec<_> = (0x60u8..0x70).collect();
+    let expected_second: Vec<_> = (0x70u8..0x80).collect();
+    assert_eq!(&vram[0x0800..0x0810], expected_first.as_slice());
+    assert_eq!(&vram[0x0810..0x0820], &[0; 0x10]);
+    assert_eq!(&vram[0x2000 + 0x0800..0x2000 + 0x0810], &[0; 0x10]);
+    assert_eq!(
+        &vram[0x2000 + 0x0810..0x2000 + 0x0820],
+        expected_second.as_slice()
+    );
 }
 
 #[test]

@@ -3011,7 +3011,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_dma_suite_starts_slice5_as_manifest_backed_exploratory_rows() {
+    fn cgb_dma_suite_promotes_slice5_rows_to_blocking_framebuffer_oracles() {
         let suite = cgb_dma_suite();
 
         assert_eq!(suite.name, "cgb-dma");
@@ -3019,7 +3019,31 @@ mod tests {
         assert_eq!(suite.subsystem, TestSubsystem::Dma);
         assert_eq!(suite.cases.len(), 4);
 
-        for case in &suite.cases {
+        let expected = [
+            (
+                "cgb-dma-gdma-addr-mask",
+                "samesuite/dma/gdma_addr_mask.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
+            ),
+            (
+                "cgb-dma-hdma-lcd-off",
+                "samesuite/dma/hdma_lcd_off.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_lcd_off.png",
+            ),
+            (
+                "cgb-dma-hdma-mode0",
+                "samesuite/dma/hdma_mode0.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
+            ),
+            (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
             assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
             assert_eq!(
                 case.external_rom_root_key.as_deref(),
@@ -3028,34 +3052,14 @@ mod tests {
             assert_eq!(case.timeout, Timeout::Frames(180));
             assert_eq!(
                 case.pass_condition,
-                PassCondition::Informational(CaptureKind::Framebuffer)
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
             );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
             assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
             assert!(case.capture_plan.contains(CaptureKind::Snapshot));
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
-
-        assert_eq!(suite.cases[0].id, "cgb-dma-gdma-addr-mask");
-        assert_eq!(
-            suite.cases[0].rom_path,
-            PathBuf::from("samesuite/dma/gdma_addr_mask.gb")
-        );
-        assert_eq!(suite.cases[1].id, "cgb-dma-hdma-lcd-off");
-        assert_eq!(
-            suite.cases[1].rom_path,
-            PathBuf::from("samesuite/dma/hdma_lcd_off.gb")
-        );
-        assert_eq!(suite.cases[2].id, "cgb-dma-hdma-mode0");
-        assert_eq!(
-            suite.cases[2].rom_path,
-            PathBuf::from("samesuite/dma/hdma_mode0.gb")
-        );
-        assert_eq!(suite.cases[3].id, "cgb-dma-gbc-dma-cont");
-        assert_eq!(
-            suite.cases[3].rom_path,
-            PathBuf::from("samesuite/dma/gbc_dma_cont.gb")
-        );
     }
 
     #[test]

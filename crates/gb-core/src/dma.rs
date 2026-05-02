@@ -1081,10 +1081,10 @@ impl DmaController {
     }
 
     pub fn write_hdma5(&mut self, value: u8) {
-        if let VramDmaState::HBlankActive(active_transfer) = self.vram_dma_state {
+        if matches!(self.vram_dma_state, VramDmaState::HBlankActive(_)) {
             if value & HDMA5_MODE_BIT == 0 {
                 self.vram_dma_state = VramDmaState::Inactive {
-                    hdma5_read_low: active_transfer.remaining_blocks_minus_one(),
+                    hdma5_read_low: value & HDMA5_TRANSFER_LENGTH_MASK,
                 };
                 if matches!(
                     self.transfer_state
