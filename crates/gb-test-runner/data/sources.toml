@@ -180,6 +180,14 @@ path = "testroms/acid/dmg-acid2.png"
 sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"
 
 [[source.required_file]]
+path = "testroms/acid/cgb-acid2.gbc"
+sha256 = "197fb0bcec544f0400527fc707e0a94f55435974986e6986b424ace5de81720e"
+
+[[source.required_file]]
+path = "testroms/acid/cgb-acid2.png"
+sha256 = "38cd6e43c30c0e6d0bd078ffaa57015e03bee185c0ee588f042745ab0fcdcca8"
+
+[[source.required_file]]
 path = "testroms/daid/ppu_scanline_bgp.gb"
 sha256 = "3a32e875d4cdc1defd28a601a64a9a3f1f7965a6679a8f16af45781520b57379"
 

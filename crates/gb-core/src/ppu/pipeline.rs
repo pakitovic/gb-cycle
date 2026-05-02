@@ -14,18 +14,6 @@ impl Ppu {
         }
     }
 
-    pub(super) fn compute_fetch_tile_data_address(
-        &self,
-        source: PpuBgFetcherSource,
-        fetch_x: u16,
-        tile_index: u8,
-        plane: u16,
-    ) -> u16 {
-        self.compute_fetch_tile_data_address_with_attributes(
-            source, fetch_x, tile_index, plane, None,
-        )
-    }
-
     pub(super) fn compute_fetch_tile_data_address_with_attributes(
         &self,
         source: PpuBgFetcherSource,

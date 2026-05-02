@@ -251,6 +251,45 @@ fn cgb_window_restart_latches_window_attrs_instead_of_stale_bg_attrs() {
 }
 
 #[test]
+fn cgb_window_fetch_uses_y_flip_attrs_for_both_tile_data_planes() {
+    let mut ppu = cgb_bg_fetch_ppu();
+    let registers = PpuVisibleRegisters {
+        lcdc: LCDC_BG_ENABLE_BIT
+            | LCDC_WINDOW_ENABLE_BIT
+            | LCDC_WINDOW_TILE_MAP_BIT
+            | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    };
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(registers));
+    ppu.window_state.window_line_counter = 8;
+    ppu.runtime.bg_pipeline_state.window_active_line_counter = 8;
+    ppu.start_window_fetcher_restart();
+
+    let attrs = CgbBgTileAttributes::new(CGB_BG_ATTR_VRAM_BANK_BIT | CGB_BG_ATTR_Y_FLIP_BIT);
+    let mut bytes = [0; CGB_TEST_VRAM_BYTES];
+    bytes[0x1C20] = 0x04;
+    bytes[VRAM_BANK_SIZE + 0x1C20] = attrs.raw();
+    bytes[VRAM_BANK_SIZE + 0x40] = 0x11;
+    bytes[VRAM_BANK_SIZE + 0x41] = 0x22;
+    bytes[VRAM_BANK_SIZE + 0x40 + 7 * 2] = 0xA5;
+    bytes[VRAM_BANK_SIZE + 0x40 + 7 * 2 + 1] = 0x5A;
+
+    let mut vram = cgb_vram_domain(bytes);
+    for _ in 0..7 {
+        assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+    }
+
+    let cached = ppu.bg_pipeline_state.push.cached;
+    assert_eq!(cached.tile_index, 0x04);
+    assert_eq!(cached.cgb_bg_attrs, Some(attrs));
+    assert_eq!(cached.tile_low_address, 0x40 + 7 * 2);
+    assert_eq!(cached.tile_high_address, 0x40 + 7 * 2 + 1);
+    assert_eq!(cached.tile_low, 0xA5);
+    assert_eq!(cached.tile_high, 0x5A);
+}
+
+#[test]
 fn cgb_bg_fetcher_uses_attribute_tile_bank_and_flips_before_rgb555_rendering() {
     let mut ppu = cgb_bg_fetch_ppu();
     let mut vram = [0; CGB_TEST_VRAM_BYTES];

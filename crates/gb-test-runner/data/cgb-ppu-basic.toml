@@ -20,3 +20,12 @@ report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
+
+[[case]]
+family = "acid"
+id = "cgb-ppu-basic-cgb-acid2"
+rom = "cgb-acid2.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"

@@ -2906,7 +2906,7 @@ mod tests {
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.cases.len(), 2);
+        assert_eq!(suite.cases.len(), 3);
 
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-ppu-basic-blocking-bgpi-increase");
@@ -2936,6 +2936,22 @@ mod tests {
             case.pass_condition,
             PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let case = &suite.cases[2];
+        assert_eq!(case.id, "cgb-ppu-basic-cgb-acid2");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("acid/cgb-acid2.gbc"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
             ))
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));

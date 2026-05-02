@@ -217,11 +217,12 @@ impl Ppu {
                 .take()
                 .map_or_else(
                     || {
-                        self.compute_fetch_tile_data_address(
+                        self.compute_fetch_tile_data_address_with_attributes(
                             fetcher.source,
                             fetcher.fetch_x,
                             fetcher.tile_index,
                             0,
+                            fetcher.cgb_bg_attrs,
                         )
                     },
                     |selector| {
