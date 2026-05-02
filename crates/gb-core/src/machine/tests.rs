@@ -1,5 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
+use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
 };
@@ -12,8 +13,11 @@ use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion, PpuVisibleOutputStat
 use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
+use crate::speed::CgbSpeedMode;
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+const PPU_DOTS_PER_LINE: u32 = 456;
+const PPU_LINES_PER_FRAME: u32 = 154;
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
@@ -228,15 +232,56 @@ fn assert_rewind_restores_continuation(
     );
 }
 
+fn dma_seed_value(seed: u8, byte_index: u16) -> u8 {
+    seed.wrapping_mul(17)
+        .wrapping_add(byte_index as u8)
+        .rotate_left(1)
+}
+
 fn seed_dma_source_page(machine: &mut Machine, source_page: u8, seed: u8) {
     let source_start = (source_page as u16) << 8;
 
     for byte_index in 0..160u16 {
-        let value = seed
-            .wrapping_mul(17)
-            .wrapping_add(byte_index as u8)
-            .rotate_left(1);
-        machine.write_bus(source_start + byte_index, value);
+        machine.write_bus(source_start + byte_index, dma_seed_value(seed, byte_index));
+    }
+}
+
+fn force_cgb_speed_mode(machine: &mut Machine, speed_mode: CgbSpeedMode) {
+    match speed_mode {
+        CgbSpeedMode::Normal => {
+            assert_eq!(machine.speed().current_speed(), CgbSpeedMode::Normal);
+        }
+        CgbSpeedMode::Double => {
+            machine.write_bus(0xFF4D, 0x01);
+            assert!(machine.speed.begin_prepared_speed_switch());
+            assert_eq!(machine.speed().current_speed(), CgbSpeedMode::Double);
+            assert_eq!(machine.read_bus(0xFF4D), 0xFE);
+        }
+    }
+}
+
+fn cgb_dma_speed_test_machine(speed_mode: CgbSpeedMode) -> Machine {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00; 16]))
+        .expect("CGB native test ROM should load");
+    force_cgb_speed_mode(&mut machine, speed_mode);
+    assert_eq!(machine.ppu().snapshot().lcd_state, PpuLcdState::Enabled);
+    machine
+}
+
+fn ppu_dot_position(machine: &Machine) -> u32 {
+    let snapshot = machine.ppu().snapshot();
+    u32::from(snapshot.ly) * PPU_DOTS_PER_LINE + u32::from(snapshot.line_dot)
+}
+
+fn ppu_dot_delta(before: u32, after: u32) -> u32 {
+    if after >= before {
+        after - before
+    } else {
+        after + PPU_DOTS_PER_LINE * PPU_LINES_PER_FRAME - before
     }
 }
 
@@ -848,6 +893,254 @@ fn save_state_hardening_preserves_active_dma_and_pending_restart() {
     );
 
     assert_save_state_restores_continuation(machine, "active DMA with pending restart", 41, 777);
+}
+
+#[test]
+fn cgb_gdma_copies_wram_to_vram_and_stalls_cpu_until_complete() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[
+            0x00, // NOP
+            0x00, // NOP
+            0x00, // NOP
+        ]))
+        .expect("CGB native test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+
+    for offset in 0..0x20u16 {
+        machine.write_bus(0xC120 + offset, 0x80 | offset as u8);
+        machine.write_bus(0x8800 + offset, 0x00);
+    }
+
+    machine.write_bus(0xFF51, 0xC1);
+    machine.write_bus(0xFF52, 0x20);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    let pc_before_gdma = machine.cpu().registers().pc;
+    machine.write_bus(0xFF55, 0x01);
+
+    step_t_cycles(&mut machine, 16);
+    assert_eq!(
+        machine.cpu().registers().pc,
+        pc_before_gdma,
+        "GDMA must stall CPU execution while the burst is active"
+    );
+
+    step_until(&mut machine, 128, "GDMA completion", |machine| {
+        machine.dma().read_hdma5() == 0xFF
+    });
+    step_t_cycles(&mut machine, 8);
+
+    let vram = machine.debug_vram_bytes();
+    let expected: Vec<_> = (0x80u8..0xA0).collect();
+    assert_eq!(&vram[0x0800..0x0820], expected.as_slice());
+    assert_ne!(machine.cpu().registers().pc, pc_before_gdma);
+}
+
+#[test]
+fn cgb_hdma_lcd_off_copies_one_block_and_waits_for_another_window() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00, 0x00, 0x00]))
+        .expect("CGB native test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+
+    for offset in 0..0x40u16 {
+        machine.write_bus(0xC120 + offset, 0x40 | offset as u8);
+        machine.write_bus(0x8800 + offset, 0x00);
+    }
+
+    machine.write_bus(0xFF51, 0xC1);
+    machine.write_bus(0xFF52, 0x20);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    machine.write_bus(0xFF55, 0x83);
+
+    step_t_cycles(&mut machine, 96);
+
+    let vram = machine.debug_vram_bytes();
+    let expected: Vec<_> = (0x40u8..0x50).collect();
+    assert_eq!(&vram[0x0800..0x0810], expected.as_slice());
+    assert_eq!(&vram[0x0810..0x0840], &[0; 0x30]);
+    assert_eq!(machine.dma().read_hdma5(), 0x02);
+}
+
+#[test]
+fn cgb_vram_dma_from_vram_source_copies_the_explicit_garbage_value() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00]))
+        .expect("CGB native test ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+
+    for offset in 0..0x20u16 {
+        machine.write_bus(0x8000 + offset, offset as u8);
+        machine.write_bus(0x8820 + offset, 0x00);
+    }
+
+    machine.write_bus(0xFF51, 0x80);
+    machine.write_bus(0xFF52, 0x00);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x20);
+    machine.write_bus(0xFF55, 0x00);
+    step_until(&mut machine, 96, "VRAM-source GDMA completion", |machine| {
+        machine.dma().read_hdma5() == 0xFF
+    });
+
+    assert_eq!(&machine.debug_vram_bytes()[0x0820..0x0830], &[0xFF; 0x10]);
+}
+
+#[test]
+fn cgb_oam_dma_copy_blocking_and_lcd_duration_are_speed_domain_explicit() {
+    for speed_mode in [CgbSpeedMode::Normal, CgbSpeedMode::Double] {
+        let mut machine = cgb_dma_speed_test_machine(speed_mode);
+        let seed = match speed_mode {
+            CgbSpeedMode::Normal => 0x13,
+            CgbSpeedMode::Double => 0x27,
+        };
+        seed_dma_source_page(&mut machine, 0xC0, seed);
+        let expected_oam: Vec<_> = (0..160u16)
+            .map(|byte_index| dma_seed_value(seed, byte_index))
+            .collect();
+
+        let ppu_dot_before = ppu_dot_position(&machine);
+        machine.write_bus(0xFF46, 0xC0);
+        let transfer = machine
+            .dma()
+            .current_transfer()
+            .expect("FF46 should start CGB OAM DMA");
+        let total_t_cycles = u64::from(transfer.timing().total_t_cycles());
+        assert_eq!(transfer.oam_speed_mode(), speed_mode);
+
+        step_t_cycles(&mut machine, 4);
+        assert_eq!(
+            machine.dma().bus_state().active_region(),
+            None,
+            "the post-write startup seam must remain CPU-visible before OAM DMA blocks the bus"
+        );
+
+        step_t_cycles(&mut machine, 1);
+        assert_eq!(
+            machine.dma().bus_state().active_region(),
+            Some(DmaMemoryRegionImpact::Oam)
+        );
+        machine.write_bus(0xFF80, 0xA0 | u8::from(speed_mode == CgbSpeedMode::Double));
+        assert_eq!(
+            machine.read_bus(0xFF80),
+            0xA0 | u8::from(speed_mode == CgbSpeedMode::Double),
+            "HRAM must remain CPU-accessible while CGB OAM DMA owns the source bus and OAM"
+        );
+
+        step_t_cycles(&mut machine, 3);
+        assert_eq!(machine.debug_oam_bytes()[0], expected_oam[0]);
+        let pc_during_dma = machine.cpu().registers().pc;
+        step_t_cycles(&mut machine, 8);
+        assert_ne!(
+            machine.cpu().registers().pc,
+            pc_during_dma,
+            "CGB OAM DMA should restrict the conflicted bus instead of fully stalling CPU execution"
+        );
+
+        step_t_cycles(&mut machine, total_t_cycles - 16);
+        assert_eq!(
+            machine.dma().transfer_lifecycle(),
+            DmaTransferLifecycle::Completed
+        );
+        assert_eq!(&machine.debug_oam_bytes()[..160], expected_oam.as_slice());
+        assert_eq!(
+            ppu_dot_delta(ppu_dot_before, ppu_dot_position(&machine)),
+            u32::from(transfer.lcd_domain_duration_dots()),
+            "normal and double speed must differ in LCD-domain dots while preserving the 160 CPU-M-cycle DMA body"
+        );
+    }
+}
+
+#[test]
+fn cgb_double_speed_does_not_shorten_hdma_block_timing() {
+    let mut machine = cgb_dma_speed_test_machine(CgbSpeedMode::Double);
+    machine.write_bus(0xFF40, 0x00);
+
+    for offset in 0..0x10u16 {
+        machine.write_bus(0xC120 + offset, 0xE0 | offset as u8);
+        machine.write_bus(0x8840 + offset, 0x00);
+    }
+
+    machine.write_bus(0xFF51, 0xC1);
+    machine.write_bus(0xFF52, 0x20);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x40);
+    machine.write_bus(0xFF55, 0x80);
+
+    step_t_cycles(&mut machine, 31);
+    assert_eq!(machine.dma().read_hdma5(), 0x00);
+    assert!(machine.dma().cpu_stall_active());
+
+    step_t_cycles(&mut machine, 1);
+    assert_eq!(machine.dma().read_hdma5(), 0xFF);
+    let expected: Vec<_> = (0xE0u8..0xF0).collect();
+    assert_eq!(
+        &machine.debug_vram_bytes()[0x0840..0x0850],
+        expected.as_slice()
+    );
+    assert!(
+        !machine.dma().cpu_stall_active(),
+        "HDMA block timing must stay in the VRAM-DMA domain instead of inheriting OAM-DMA speed handling"
+    );
+}
+
+#[test]
+fn cgb_double_speed_oam_dma_does_not_gate_lcd_or_apu_domains() {
+    let mut with_dma = cgb_dma_speed_test_machine(CgbSpeedMode::Double);
+    let mut without_dma = cgb_dma_speed_test_machine(CgbSpeedMode::Double);
+    seed_dma_source_page(&mut with_dma, 0xC0, 0x31);
+
+    with_dma.write_bus(0xFF46, 0xC0);
+    step_t_cycles(&mut with_dma, 5);
+    step_t_cycles(&mut without_dma, 5);
+    assert_eq!(
+        with_dma.dma().bus_state().active_region(),
+        Some(DmaMemoryRegionImpact::Oam)
+    );
+
+    for machine in [&mut with_dma, &mut without_dma] {
+        machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+            system_counter: 0x3FFE,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0xF8,
+        });
+    }
+
+    let ppu_with_before = ppu_dot_position(&with_dma);
+    let ppu_without_before = ppu_dot_position(&without_dma);
+    step_t_cycles(&mut with_dma, 16);
+    step_t_cycles(&mut without_dma, 16);
+
+    assert_eq!(
+        ppu_dot_delta(ppu_with_before, ppu_dot_position(&with_dma)),
+        ppu_dot_delta(ppu_without_before, ppu_dot_position(&without_dma)),
+        "active OAM DMA must not gate or multiply the LCD domain"
+    );
+    assert_eq!(
+        with_dma.apu().snapshot().div_apu,
+        without_dma.apu().snapshot().div_apu,
+        "active OAM DMA must not alter the double-speed APU frame-sequencer domain"
+    );
+    assert_eq!(with_dma.apu().snapshot().div_apu, 0x02);
+    assert_eq!(
+        with_dma.timer().snapshot().system_counter,
+        without_dma.timer().snapshot().system_counter
+    );
+    assert_eq!(
+        with_dma.dma().bus_state().active_region(),
+        Some(DmaMemoryRegionImpact::Oam)
+    );
 }
 
 #[test]

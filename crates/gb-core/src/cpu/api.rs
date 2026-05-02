@@ -42,6 +42,11 @@ impl CpuCore {
         self.execution_state
     }
 
+    pub(crate) fn tick_dma_stall_t_cycle(&mut self) {
+        self.last_bus_activity = None;
+        self.last_address_event = None;
+    }
+
     pub fn current_opcode(&self) -> Option<u8> {
         self.in_flight.opcode
     }

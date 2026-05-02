@@ -7,7 +7,7 @@ use crate::joypad::Joypad;
 use crate::model::{ConsoleModel, OperatingMode};
 use crate::ppu::Ppu;
 use crate::serial::Serial;
-use crate::speed::SpeedController;
+use crate::speed::{CgbSpeedMode, SpeedController};
 use crate::timer::Timer;
 
 use super::{
@@ -300,8 +300,12 @@ impl IoHramDomain {
                 }
             }
             IoRegisterKind::OamDma => {
-                if let Some(dma) = io.dma {
-                    dma.write_ff46(value);
+                let BusIoWriteView { dma, speed, .. } = io;
+                let speed_mode = speed
+                    .as_deref()
+                    .map_or(CgbSpeedMode::Normal, SpeedController::current_speed);
+                if let Some(dma) = dma {
+                    dma.write_ff46_for_speed(value, speed_mode);
                 }
             }
             IoRegisterKind::Hdma1 => {

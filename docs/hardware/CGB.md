@@ -156,8 +156,8 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - post-boot `OPRI` visual priority mutation beyond the implemented latch/readback baseline, unless backed by dedicated hardware evidence
 - CGB RealBoot `KEY0` writes, `FF50` handoff locking, and RealBoot versus SkipBoot equivalence
 - full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
-- CGB OAM DMA duration differences in double speed
-- HDMA and GDMA
+- CGB OAM DMA duration differences in double speed are now owned by `hardware/DMA.md`: `FF46` latches the current CGB speed profile, keeps the `160` CPU M-cycle DMA body, and exposes the double-speed LCD-domain dot difference through the shared scheduler speed contract.
+- HDMA and GDMA core execution are now owned by `hardware/DMA.md`; active bank-change traces, stricter HBlank seam policy, and promotion of blocking `cgb-dma` oracles remain deferred there.
 - CGB boot ROM behavior
 - DMG-on-CGB compatibility details
 - functional support for CGB-only special cartridges such as `MBC30`, `MBC7`, and `MBC6`

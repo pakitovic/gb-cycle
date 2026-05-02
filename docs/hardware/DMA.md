@@ -95,9 +95,13 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - `HDMA3` and `HDMA4` latch the VRAM-DMA destination address, with `HDMA3` bits `5-7` ignored, `HDMA4` bits `0-3` ignored, and the effective destination forced into `$8000-9FF0`.
 - `HDMA1-4` are CPU write-only; CPU reads return the unavailable/open value through the shared MMIO contract, but the DMA controller retains the latched normalized endpoints internally.
 - `HDMA5` bit `7` selects General-Purpose DMA when clear and HBlank DMA when set; bits `0-6` encode block count minus one, so writes request `$10-$800` bytes.
-- Slice 5 initially records General-Purpose DMA starts as completed requests with `HDMA5` reading `$FF` until the real blocking/copy transfer is wired, and records HBlank DMA starts as active state with bit `7` reading clear and lower bits reporting remaining blocks minus one.
+- General-Purpose DMA starts a full-burst VRAM DMA transfer immediately; the CPU is stalled while the burst copies bytes through the shared DMA work path, the destination VRAM bus is published as occupied, and `HDMA5` reads active until completion returns `$FF`.
+- HBlank DMA starts a latched block transfer; the controller copies one `$10`-byte block per eligible visible HBlank window on lines `0-143`, and the LCD-disabled state is treated as a single eligible window that copies one block until a later distinct window appears.
+- HBlank DMA is paused while the CPU is in `HALT`; the active `HDMA5` readback remains stable while halted and the next eligible block starts only after CPU execution resumes.
 - Writing `HDMA5` with bit `7` clear while HBlank DMA is active cancels the active transfer, preserves `HDMA1-4`, and leaves `HDMA5` reading bit `7` set plus the remaining block count minus one.
-- Writing `HDMA5` with bit `7` set while HBlank DMA is active is currently an explicit no-restart policy until hardware-backed mid-transfer restart behavior is modeled; this prevents accidental relatching before real block progress exists.
+- Writing `HDMA5` with bit `7` set while HBlank DMA is active is currently an explicit no-restart policy until hardware-backed mid-transfer restart behavior is modeled; this prevents accidental relatching while block progress is active.
+- VRAM DMA source ranges are explicitly limited to ROM, SRAM, and WRAM (`$0000-7FFF` and `$A000-DFFF`) for this slice; unsupported ranges such as VRAM/OAM/MMIO/HRAM copy the explicit garbage value `$FF` until hardware-backed edge behavior is refined.
+- VRAM DMA destination overflow is clipped at `$9FFF` so requests starting near `$9FF0` stop at the end of VRAM instead of wrapping into a second address domain.
 
 ## DMG OAM DMA baseline
 
@@ -124,7 +128,8 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - DMA progress and blocking should be expressible on the same T-cycle timeline as CPU and PPU activity.
 - OAM DMA should be modeled as a `160`-byte transfer whose observable effects unfold over time rather than as a single commit.
 - For the current DMG-family target, OAM DMA lasts `160` M-cycles = `640` dots at normal speed.
-- Treat those `640` dots as the current hard requirement for DMG-family work; future CGB speed differences should extend the model later rather than weaken the DMG baseline.
+- On CGB-family hardware, `FF46` OAM DMA latches the current CGB speed profile when the transfer starts; the CPU-visible scheduler still models the same `160` CPU M-cycle OAM DMA body and current `648` T-cycle post-write seam/transfer lifecycle, while the LCD domain observes the normal-speed `640`-dot body as `320` LCD dots in double speed because the LCD domain ticks every other CPU-visible scheduler T-cycle.
+- Treat those `160` CPU M-cycles as the hard OAM-DMA requirement across DMG and CGB; CGB double speed changes the LCD-domain dot duration and trace profile, not the DMA byte count, source/destination stepping, or HRAM-accessible CPU bus-arbitration contract.
 - On the shared T-cycle timeline, DMG OAM DMA should expose the CPU-visible post-`FF46` start seam from Mooneye's `oam_dma_start` and `oam_dma_timing` ROMs rather than pretending the transfer begins directly on the write T-cycle.
 - Hardware fact: Pan Docs still documents the burst body itself as `160` M-cycles = `640` dots.
 - Current model decision: keep CPU OAM accesses unrestricted for the full next M-cycle after the `FF46` write completes, then publish the DMA-owned OAM block on elapsed T-cycle `5`.
@@ -134,6 +139,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - Current model decision and inference: once the start seam ends, DMG OAM DMA publishes the source-bus conflict instead of a blanket "HRAM-only" block. For source pages `80-9F`, the DMA occupies the video RAM bus and OAM, so CPU accesses to VRAM and OAM are blocked while echo/WRAM, cartridge, MMIO, and HRAM stay available. For all other source pages, the DMA occupies the external bus and OAM, so CPU accesses outside HRAM and the explicit `FF46` exception observe DMA-blocked semantics. This keeps the current `FF46` visibility rule, which is backed by Pan Docs' `FF46` R/W register contract and the `mooneye/acceptance/oam_dma/reg_read.gb` oracle, while still treating the general OAM-DMA page's "HRAM only" wording as a coarse summary for ordinary CPU traffic.
 - Current model decision and inference: on CGB-family silicon, an external-source OAM DMA burst publishes an external-bus-only CPU restriction instead of the DMG-family broad external-source block; cartridge ROM/RAM accesses still observe the current DMA conflict source, OAM remains blocked by the destination transfer, and internal WRAM, HRAM, and MMIO remain accessible. This keeps the silicon-family DMA policy explicit for CGB-native and CGB-compatible software and is locked by `hacktix/bully.gb (GBC)`.
 - Current model decision and inference: on CGB-family silicon, a WRAM-source OAM DMA burst publishes a WRAM-bus-only CPU restriction; WRAM and Echo CPU accesses observe the current DMA conflict source, OAM remains blocked by the destination transfer, and cartridge ROM/RAM plus HRAM/MMIO stay available. This is the Slice 5 internal bus-arbitration contract that prevents WRAM-source CGB OAM DMA from falling back to either the DMG-family broad block or the external-source CGB policy.
+- Current model decision and inference: CGB OAM DMA in double speed must not become a generic peripheral multiplier. Internal tests lock that active OAM DMA leaves LCD timing on the CGB LCD-domain gate, leaves HDMA blocks at `32` CPU-visible scheduler T-cycles per `$10`-byte block, and leaves the APU frame sequencer on the speed-domain `DIV-APU` edge instead of gating or accelerating those domains.
 - Current model decision: during external-bus DMG OAM DMA, CPU reads and writes that lose arbitration on the occupied bus should resolve against the most recently transferred source byte address (`dma_current_src - 1` style after the first copied byte), not against a generic open-bus placeholder. This is required by curated cases such as `hacktix/bully`.
 - The public bus-resolution contract should therefore expose both the CPU's nominal requested target and the effective redirected source-byte target for those accesses; the executed bus path must consume that same resolution instead of re-implementing the redirect as a hidden fast path.
 - Current model decision: the DMA view published to the rest of the machine should include the current OAM destination address together with the byte being transferred on that same T-cycle, because the PPU's late Mode `3` metadata reads can observe that destination word during the DMA write window. The PPU may then reconstruct the aligned destination word by combining the live OAM sibling byte with that current DMA byte. This is required by curated cases such as `hacktix/strikethrough`.
@@ -170,14 +176,8 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 
 ## Deferred but required extension seams
 
-- This document still keeps the current functional scope to DMG OAM DMA.
-- Do not implement `FF51-FF55`, real GDMA, real HDMA, CGB VRAM or WRAM banking semantics, or double-speed-specific DMA timing as part of the DMG milestone.
-- Even so, the common DMA contract should already permit:
-  - future block-based transfers
-  - future `0x10`-byte HDMA-style blocks
-  - future HBlank-gated advance conditions
-  - future cancellation and status visibility
-  - future transfer kinds whose advance depends on global state such as CPU `HALT` or `STOP`
+- Active-HDMA source-bank and destination-`VBK` changes, stricter forbidden-HBlank-seam policy, CGB OAM-DMA edge source ranges beyond the current source-bus matrix, and promotion of blocking `cgb-dma` ROM oracles remain deferred until stronger hardware-backed evidence is wired into tests.
+- The common DMA contract should continue to permit future transfer kinds whose advance depends on global state such as CPU `HALT` or `STOP`, but current GDMA, HDMA, and OAM DMA behavior must stay represented as explicit DMA-controller state rather than one-off bus shortcuts.
 
 ## Dependencies
 
@@ -209,6 +209,7 @@ Priority order:
 - `FF46` trigger and source-page selection tests
 - focused OAM-blocking tests
 - DMG timing-window tests that keep the documented `160`-M-cycle burst body visible while also locking the current post-`FF46` CPU-visible start/end seam
+- CGB OAM DMA normal-speed versus double-speed tests that keep the `160` CPU M-cycle body stable, show the LCD-domain dot duration difference, keep HRAM accessible during the CGB source-bus restriction, preserve restart speed-profile latching, and prove LCD/HDMA/APU domains do not inherit OAM-DMA speed handling
 - source-bus-aware CPU-access tests during active DMG OAM DMA
 - transfer-progress and completion-order tests
 - tests that DMA-visible blocking for a T-cycle matches the DMA state produced by that same cycle's scheduler step
