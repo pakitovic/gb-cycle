@@ -2715,7 +2715,9 @@ mod tests {
         mooneye_result_completion_candidate, mooneye_result_for_signature,
         render_memory_text_output,
     };
-    use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
+    use crate::framebuffer_oracle::{
+        decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
+    };
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
         ExecutionMode, StartupMode, TimerStartupState,
@@ -4069,6 +4071,88 @@ mod tests {
             })
         );
 
+        let mut rgb555_pixels = vec![0x0000_u16; 160 * 144];
+        rgb555_pixels[0] = 0x7FFF;
+        let rgb555_fixture_path = temp_dir.join("rgb555.png");
+        fs::write(
+            &rgb555_fixture_path,
+            encode_rgb555_framebuffer_png(&rgb555_pixels)
+                .expect("RGB555 fixture should encode to PNG"),
+        )
+        .expect("RGB555 fixture should be writable");
+        let rgb555_case = RomTestCase::new(
+            "rgb555-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferRgb555Fixture(rgb555_fixture_path.clone()),
+        );
+        let rgb555_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(rgb555_pixels.clone()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&rgb555_case, &evaluation_inputs(&rgb555_artifacts, 1, 0))
+                .expect("RGB555 fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        let rgb555_mismatch_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x0000; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_case,
+                    &evaluation_inputs(&rgb555_mismatch_artifacts, 1, 0)
+                )
+                .expect("RGB555 fixture mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: rgb555_fixture_path.clone(),
+            })
+        );
+
+        let rgb555_grayscale_fixture_path = temp_dir.join("rgb555-white.pgm");
+        fs::write(
+            &rgb555_grayscale_fixture_path,
+            encode_framebuffer_pgm(&vec![0; 160 * 144]),
+        )
+        .expect("RGB555 grayscale fixture should be writable");
+        let rgb555_grayscale_case = RomTestCase::new(
+            "rgb555-grayscale-framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferRgb555GrayscaleFixture(rgb555_grayscale_fixture_path.clone()),
+        );
+        let rgb555_white_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x7FFF; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        let rgb555_black_artifacts = CapturedArtifacts {
+            framebuffer_rgb555: Some(vec![0x0000; 160 * 144]),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_grayscale_case,
+                    &evaluation_inputs(&rgb555_white_artifacts, 1, 0)
+                )
+                .expect("RGB555 grayscale fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &rgb555_grayscale_case,
+                    &evaluation_inputs(&rgb555_black_artifacts, 1, 0)
+                )
+                .expect("RGB555 grayscale mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: rgb555_grayscale_fixture_path.clone(),
+            })
+        );
+
         let missing_local_artifacts = CapturedArtifacts::default();
         let missing_local = runner
             .evaluate_case(
@@ -4080,6 +4164,19 @@ mod tests {
             missing_local,
             RomExecutionError::ReadFile {
                 operation: "decode local framebuffer artifact",
+                ..
+            }
+        ));
+        let missing_rgb555_local = runner
+            .evaluate_case(
+                &rgb555_case,
+                &evaluation_inputs(&missing_local_artifacts, 1, 0),
+            )
+            .expect_err("missing local RGB555 framebuffer should fail");
+        assert!(matches!(
+            missing_rgb555_local,
+            RomExecutionError::ReadFile {
+                operation: "decode local CGB RGB555 framebuffer artifact",
                 ..
             }
         ));
