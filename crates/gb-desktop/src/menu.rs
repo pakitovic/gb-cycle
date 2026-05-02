@@ -622,6 +622,7 @@ impl MenuPresentation {
             }
             MenuItem::StateSlot => self.rom_loaded,
             MenuItem::StateAutoloadSlot => self.rom_loaded && !self.any_dialog_pending,
+            MenuItem::DisplayPalette => self.console_model != DesktopConsoleModel::GameBoyColor,
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -742,7 +743,6 @@ impl MenuPresentation {
             | MenuItem::WindowScale
             | MenuItem::IntegerScale
             | MenuItem::PresentationFilter
-            | MenuItem::DisplayPalette
             | MenuItem::ShowBackground
             | MenuItem::ShowWindow
             | MenuItem::ShowObjects
@@ -941,12 +941,18 @@ impl MenuPresentation {
                     "FILTER OFF".to_string()
                 }
             }
-            MenuItem::DisplayPalette => match self.display_palette {
-                DesktopDisplayPalette::Grey => "PALETTE GREY".to_string(),
-                DesktopDisplayPalette::GameBoy => "PALETTE GB".to_string(),
-                DesktopDisplayPalette::Pocket => "PALETTE POCKET".to_string(),
-                DesktopDisplayPalette::Light => "PALETTE LIGHT".to_string(),
-            },
+            MenuItem::DisplayPalette => {
+                if self.console_model == DesktopConsoleModel::GameBoyColor {
+                    "PALETTE RGB555".to_string()
+                } else {
+                    match self.display_palette {
+                        DesktopDisplayPalette::Grey => "PALETTE GREY".to_string(),
+                        DesktopDisplayPalette::GameBoy => "PALETTE GB".to_string(),
+                        DesktopDisplayPalette::Pocket => "PALETTE POCKET".to_string(),
+                        DesktopDisplayPalette::Light => "PALETTE LIGHT".to_string(),
+                    }
+                }
+            }
             MenuItem::ShowBackground => {
                 if self.show_background {
                     "BACKGROUND ON".to_string()
@@ -3409,6 +3415,23 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleDisplayPalette)
+        );
+    }
+
+    #[test]
+    fn video_submenu_disables_display_palette_for_game_boy_color() {
+        let mut presentation = test_presentation();
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        presentation.display_palette = DesktopDisplayPalette::Grey;
+
+        assert!(!presentation.item_enabled(MenuItem::DisplayPalette));
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE RGB555"
+        );
+        assert_eq!(
+            super::next_enabled_index(MenuScreen::Video, 1, presentation),
+            3
         );
     }
 

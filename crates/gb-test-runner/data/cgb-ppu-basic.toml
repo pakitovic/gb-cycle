@@ -8,7 +8,7 @@ id = "cgb-ppu-basic-blocking-bgpi-increase"
 rom = "ppu/blocking_bgpi_increase.gb"
 console = "cgb"
 timeout_frames = 180
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
 
 [[case]]

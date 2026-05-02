@@ -46,7 +46,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "                                         with a 480-frame safety cap if handoff never arrives\n",
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
-    "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
+    "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png (CGB PNG uses RGB555)\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
     "  --state-out <path>                     Save a full-machine .gbstate at the end of the run\n",
@@ -314,6 +314,13 @@ impl CliMachine {
         match self {
             Self::Buffered(machine) => machine.ppu().framebuffer(),
             Self::Summary(machine) => machine.ppu().framebuffer(),
+        }
+    }
+
+    fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+        match self {
+            Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
         }
     }
 
@@ -850,8 +857,12 @@ fn run_command(
         write_bytes_with_parent(serial_out, serial_bytes)?;
     }
     if let Some(framebuffer_out) = &options.framebuffer_out {
-        let framebuffer_image = encode_framebuffer_artifact(framebuffer_out, machine.framebuffer())
-            .map_err(|error| format_framebuffer_artifact_error(framebuffer_out, error))?;
+        let framebuffer_image = encode_framebuffer_artifact(
+            framebuffer_out,
+            machine.framebuffer(),
+            machine.cgb_framebuffer_rgb555(),
+        )
+        .map_err(|error| format_framebuffer_artifact_error(framebuffer_out, error))?;
         write_bytes_with_parent(framebuffer_out, &framebuffer_image)?;
     }
     if let Some(trace_out) = &options.trace_out {
@@ -1665,10 +1676,20 @@ fn framebuffer_output_format(path: &Path) -> FramebufferOutputFormat {
     }
 }
 
-fn encode_framebuffer_artifact(path: &Path, framebuffer: &[u8]) -> io::Result<Vec<u8>> {
+fn encode_framebuffer_artifact(
+    path: &Path,
+    framebuffer: &[u8],
+    cgb_framebuffer_rgb555: Option<&[u16]>,
+) -> io::Result<Vec<u8>> {
     match framebuffer_output_format(path) {
         FramebufferOutputFormat::Pgm => Ok(encode_framebuffer_pgm(framebuffer)),
-        FramebufferOutputFormat::Png => encode_framebuffer_png(framebuffer),
+        FramebufferOutputFormat::Png => {
+            if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
+                encode_rgb555_framebuffer_png(cgb_framebuffer_rgb555)
+            } else {
+                encode_framebuffer_png(framebuffer)
+            }
+        }
     }
 }
 
@@ -1686,6 +1707,30 @@ fn encode_framebuffer_png(framebuffer: &[u8]) -> io::Result<Vec<u8>> {
     encode_grayscale_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
 }
 
+fn encode_rgb555_framebuffer_png(framebuffer: &[u16]) -> io::Result<Vec<u8>> {
+    let pixels = framebuffer
+        .iter()
+        .copied()
+        .map(rgb555_to_rgb888)
+        .collect::<Vec<_>>();
+    encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
+}
+
+fn rgb555_to_rgb888(color: u16) -> [u8; 3] {
+    let red = (color & 0x001F) as u8;
+    let green = ((color >> 5) & 0x001F) as u8;
+    let blue = ((color >> 10) & 0x001F) as u8;
+    [
+        scale_5_bit_to_8_bit(red),
+        scale_5_bit_to_8_bit(green),
+        scale_5_bit_to_8_bit(blue),
+    ]
+}
+
+fn scale_5_bit_to_8_bit(component: u8) -> u8 {
+    (component << 3) | (component >> 2)
+}
+
 fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> io::Result<Vec<u8>> {
     let mut encoded = Vec::new();
     {
@@ -1695,6 +1740,24 @@ fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> io::Resul
         let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
         writer
             .write_image_data(pixels)
+            .map_err(png_encoding_io_error)?;
+    }
+    Ok(encoded)
+}
+
+fn encode_rgb_png(width: usize, height: usize, pixels: &[[u8; 3]]) -> io::Result<Vec<u8>> {
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
+        let mut bytes = Vec::with_capacity(pixels.len() * 3);
+        for pixel in pixels {
+            bytes.extend_from_slice(pixel);
+        }
+        writer
+            .write_image_data(&bytes)
             .map_err(png_encoding_io_error)?;
     }
     Ok(encoded)

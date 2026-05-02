@@ -894,6 +894,9 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         "framebuffer-rgb555-fixture" => PassCondition::FramebufferRgb555Fixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-rgb555-grayscale-fixture" => PassCondition::FramebufferRgb555GrayscaleFixture(
+            fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
+        ),
         "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
             fixtures.unwrap_or_else(|| panic!("missing fixture paths for case {id}")),
         ),
@@ -978,6 +981,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
             .with_capture(CaptureKind::Snapshot),
@@ -1010,6 +1014,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
             .with_artifact(CaptureKind::Snapshot),
@@ -1636,7 +1641,7 @@ mod tests {
         );
         assert_eq!(
             case.pass_condition,
-            PassCondition::FramebufferFixture(PathBuf::from(
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                 "crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png"
             ))
         );

@@ -30,7 +30,7 @@ pub(crate) fn render_screenshot(
         };
         let column = panel_index % columns;
         let row = panel_index / columns;
-        crate::write_monochrome_framebuffer_region(
+        crate::write_framebuffer_region(
             &mut rgb_pixels,
             dimensions,
             column * crate::FRAMEBUFFER_WIDTH as usize,
@@ -191,6 +191,7 @@ mod tests {
                 backdrop_framebuffer: &primary,
                 bgwin_framebuffer_layer_sources: &primary_sources,
                 display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                cgb_framebuffer_rgb555: None,
             }),
             &crate::VideoOptions::default(),
         );
@@ -201,6 +202,39 @@ mod tests {
             &rendered.rgb_pixels[..12],
             &[
                 0xC6, 0xDE, 0x8C, 0x84, 0xA5, 0x63, 0x39, 0x61, 0x39, 0x08, 0x18, 0x10,
+            ]
+        );
+    }
+
+    #[test]
+    fn render_screenshot_uses_cgb_rgb555_framebuffer_for_color_models() {
+        let primary = vec![0_u8; (crate::FRAMEBUFFER_WIDTH * crate::FRAMEBUFFER_HEIGHT) as usize];
+        let primary_sources = vec![PpuFramebufferLayerSource::Background; primary.len()];
+        let mut cgb_framebuffer_rgb555 = vec![0x7FFF_u16; primary.len()];
+        cgb_framebuffer_rgb555[..4].copy_from_slice(&[0x001F, 0x03E0, 0x7C00, 0x0000]);
+
+        let rendered = render_screenshot(
+            single_panel_input(crate::FramebufferPanelInput {
+                framebuffer: &primary,
+                framebuffer_layer_sources: &primary_sources,
+                bgwin_framebuffer: &primary,
+                backdrop_framebuffer: &primary,
+                bgwin_framebuffer_layer_sources: &primary_sources,
+                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
+            }),
+            &crate::VideoOptions {
+                display_palette: crate::DesktopDisplayPalette::Light,
+                ..crate::VideoOptions::default()
+            },
+        );
+
+        assert_eq!(rendered.width, crate::FRAMEBUFFER_WIDTH);
+        assert_eq!(rendered.height, crate::FRAMEBUFFER_HEIGHT);
+        assert_eq!(
+            &rendered.rgb_pixels[..12],
+            &[
+                0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00,
             ]
         );
     }
@@ -226,6 +260,7 @@ mod tests {
                         backdrop_framebuffer: &primary,
                         bgwin_framebuffer_layer_sources: &primary_sources,
                         display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     Some(crate::FramebufferPanelInput {
                         framebuffer: &secondary,
@@ -234,6 +269,7 @@ mod tests {
                         backdrop_framebuffer: &secondary,
                         bgwin_framebuffer_layer_sources: &secondary_sources,
                         display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        cgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -409,6 +445,7 @@ mod tests {
                 backdrop_framebuffer: &primary_bgwin,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
                 display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                cgb_framebuffer_rgb555: None,
             }),
             &video_options,
         );
@@ -444,6 +481,7 @@ mod tests {
                 backdrop_framebuffer: &primary_backdrop,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
                 display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                cgb_framebuffer_rgb555: None,
             }),
             &video_options,
         );

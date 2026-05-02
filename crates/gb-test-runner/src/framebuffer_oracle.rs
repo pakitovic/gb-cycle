@@ -139,6 +139,34 @@ pub(crate) fn decode_local_rgb555_framebuffer(
     ))
 }
 
+pub(crate) fn decode_local_rgb555_grayscale_framebuffer(
+    case_id: &str,
+    pixels: &[u16],
+) -> Result<GrayscaleFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local CGB RGB555 framebuffer for {case_id}>"));
+    let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+    if pixels.len() != expected_len {
+        return Err(FramebufferOracleError {
+            path,
+            message: format!(
+                "CGB RGB555 framebuffer length {} does not match expected {expected_len}",
+                pixels.len()
+            ),
+        });
+    }
+
+    Ok(GrayscaleFramebuffer {
+        width: FRAMEBUFFER_WIDTH,
+        height: FRAMEBUFFER_HEIGHT,
+        pixels: pixels
+            .iter()
+            .copied()
+            .map(rgb555_to_rgb888)
+            .map(grayscale_luma)
+            .collect(),
+    })
+}
+
 pub(crate) fn encode_rgb555_framebuffer_png(pixels: &[u16]) -> io::Result<Vec<u8>> {
     let colors = pixels
         .iter()
@@ -514,7 +542,8 @@ mod tests {
     use super::{
         DMG_GRAYSCALE_SHADES, decode_fixture_framebuffer_bytes, decode_fixture_framebuffer_path,
         decode_fixture_grayscale_framebuffer_bytes, decode_local_pgm_framebuffer,
-        decode_local_pgm_grayscale_framebuffer, encode_framebuffer_pgm, encode_framebuffer_png,
+        decode_local_pgm_grayscale_framebuffer, decode_local_rgb555_grayscale_framebuffer,
+        encode_framebuffer_pgm, encode_framebuffer_png,
     };
     use std::fs;
     use std::path::Path;
@@ -587,6 +616,21 @@ mod tests {
         assert!(local_black.pixels.iter().all(|pixel| *pixel == 0x00));
         assert_eq!(local_white, fixture_white);
         assert_eq!(local_black, fixture_black);
+        assert_ne!(local_white, local_black);
+    }
+
+    #[test]
+    fn rgb555_grayscale_decoding_preserves_absolute_black_and_white() {
+        let white = vec![0x7FFF_u16; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        let black = vec![0x0000_u16; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+
+        let local_white = decode_local_rgb555_grayscale_framebuffer("white", &white)
+            .expect("white RGB555 framebuffer should decode");
+        let local_black = decode_local_rgb555_grayscale_framebuffer("black", &black)
+            .expect("black RGB555 framebuffer should decode");
+
+        assert!(local_white.pixels.iter().all(|pixel| *pixel == 0xFF));
+        assert!(local_black.pixels.iter().all(|pixel| *pixel == 0x00));
         assert_ne!(local_white, local_black);
     }
 

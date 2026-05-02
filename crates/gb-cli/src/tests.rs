@@ -860,7 +860,7 @@ fn saves_commands_surface_output_writer_failures() {
 
 #[test]
 fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
-    let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3])
+    let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3], None)
         .expect("PGM encoding should succeed");
 
     assert!(encoded.starts_with(b"P5\n160 144\n3\n"));
@@ -2098,14 +2098,28 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let png_artifact = encode_framebuffer_artifact(
         Path::new("framebuffer.png"),
         &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
     )
     .expect("PNG encoding should succeed");
     assert!(png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let rgb555_png_artifact = encode_framebuffer_artifact(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        Some(&vec![0x7FFF; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
+    )
+    .expect("CGB RGB555 PNG encoding should succeed");
+    assert!(rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let direct_rgb_png =
+        encode_rgb555_framebuffer_png(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
+            .expect("direct CGB RGB555 PNG encoding should succeed");
+    assert!(direct_rgb_png.starts_with(b"\x89PNG\r\n\x1A\n"));
     let grayscale_png =
         encode_grayscale_png(2, 2, &[0, 170, 85, 255]).expect("small grayscale PNG should encode");
+    let rgb_png = encode_rgb_png(1, 1, &[[255, 0, 0]]).expect("small RGB PNG should encode");
+    assert!(rgb_png.starts_with(b"\x89PNG\r\n\x1A\n"));
     assert!(grayscale_png.starts_with(b"\x89PNG\r\n\x1A\n"));
     let png_error = png_encoding_io_error(png::EncodingError::IoError(io::Error::other("bad png")));
     assert_eq!(png_error.kind(), io::ErrorKind::Other);
