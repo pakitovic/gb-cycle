@@ -4606,6 +4606,12 @@ mod tests {
             presentation.item_label(MenuItem::PresentationFilter),
             "FILTER ON"
         );
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE RGB555"
+        );
+        presentation.console_model = DesktopConsoleModel::GameBoy;
         for (display_palette, expected_label) in [
             (DesktopDisplayPalette::Grey, "PALETTE GREY"),
             (DesktopDisplayPalette::GameBoy, "PALETTE GB"),
