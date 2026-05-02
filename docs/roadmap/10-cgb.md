@@ -282,6 +282,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Publish bus impact and CPU blocking through the shared scheduler/bus contract.
 - CGB gate: `cgb-dma` through `make run-cgb-dma`.
 - Regression gate: DMG `167/167` plus current DMG OAM DMA tests.
+- Status note: Slice `5A` is started with a repo-owned exploratory `cgb-dma` manifest and `make run-cgb-dma` target covering the four initial SameSuite DMA rows as framebuffer informational captures, plus the first internal CGB OAM-DMA arbitration split where WRAM-source bursts publish a WRAM-bus-only CPU conflict instead of reusing the CGB external-source or DMG-family broad-block policy. Slice `5B` implements the `HDMA1-5` register surface: source/destination masking, CGB-only MMIO routing, `HDMA5` inactive/active readback, HBlank start latching, cancellation, and additive save-state defaults. Real GDMA/HDMA data copy, CPU blocking, HBlank/LCD-off window timing, destination overflow, HALT pause/resume, and promotion of blocking oracles remain open.
 
 ## Slice 6 — CGB-family boot ROMs
 

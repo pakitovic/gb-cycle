@@ -166,6 +166,49 @@ fn cgb_external_source_oam_dma_publishes_external_bus_only_cpu_policy() {
 }
 
 #[test]
+fn cgb_wram_source_oam_dma_publishes_wram_bus_only_cpu_policy() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_ff46(0xC1);
+    for _ in 0..5 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::wram_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+    );
+
+    for _ in 0..3 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::wram_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0xC100))
+    );
+}
+
+#[test]
+fn cgb_echo_source_oam_dma_uses_the_wram_bus_policy_after_source_normalization() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_ff46(0xFE);
+    for _ in 0..8 {
+        dma.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::wram_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0xDE00))
+    );
+}
+
+#[test]
 fn dmg_external_source_oam_dma_keeps_the_legacy_external_bus_policy() {
     let mut dma = DmaController::new(ConsoleModel::GameBoy);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
@@ -333,6 +376,140 @@ fn startup_state_preserves_idle_dma_while_setting_visible_ff46() {
     assert_eq!(dma.read_ff46(), 0xFF);
     assert_eq!(dma.transfer_state(), DmaTransferState::Idle);
     assert_eq!(dma.current_transfer(), None);
+}
+
+#[test]
+fn hdma1_4_mask_source_destination_registers_into_vram_dma_endpoints() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0x12);
+    dma.write_hdma2(0x3F);
+    dma.write_hdma3(0xE1);
+    dma.write_hdma4(0x4F);
+
+    let registers = dma.vram_dma_registers();
+    assert_eq!(registers.source_high(), 0x12);
+    assert_eq!(registers.source_low(), 0x30);
+    assert_eq!(registers.source_start(), 0x1230);
+    assert_eq!(registers.destination_high(), 0x01);
+    assert_eq!(registers.destination_low(), 0x40);
+    assert_eq!(registers.destination_start(), 0x8140);
+}
+
+#[test]
+fn hdma5_hblank_start_latches_mode_length_and_addresses_without_copying_yet() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0x12);
+    dma.write_hdma2(0x3F);
+    dma.write_hdma3(0x9A);
+    dma.write_hdma4(0xBC);
+    dma.write_hdma5(0x82);
+
+    let transfer = match dma.vram_dma_state() {
+        VramDmaState::HBlankActive(transfer) => transfer,
+        state => panic!("expected active HBlank VRAM DMA, got {state:?}"),
+    };
+    assert_eq!(transfer.mode(), VramDmaMode::HBlank);
+    assert_eq!(transfer.source_start(), 0x1230);
+    assert_eq!(transfer.destination_start(), 0x9AB0);
+    assert_eq!(transfer.total_blocks(), 3);
+    assert_eq!(transfer.total_bytes(), 0x30);
+    assert_eq!(transfer.remaining_blocks(), 3);
+    assert_eq!(dma.read_hdma5(), 0x02);
+
+    dma.write_hdma1(0x44);
+    dma.write_hdma2(0x55);
+    dma.write_hdma3(0x66);
+    dma.write_hdma4(0x77);
+
+    assert_eq!(dma.vram_dma_registers().source_start(), 0x4450);
+    assert_eq!(dma.vram_dma_registers().destination_start(), 0x8670);
+    assert_eq!(
+        dma.vram_dma_state(),
+        VramDmaState::HBlankActive(transfer),
+        "active HDMA must keep the latched endpoints even if HDMA1-4 are rewritten"
+    );
+}
+
+#[test]
+fn hdma5_general_dma_start_records_the_request_as_completed_until_transfer_timing_is_wired() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0xA1);
+    dma.write_hdma2(0x2B);
+    dma.write_hdma3(0x0E);
+    dma.write_hdma4(0xF9);
+    dma.write_hdma5(0x03);
+
+    let transfer = match dma.vram_dma_state() {
+        VramDmaState::GeneralPurposeComplete(transfer) => transfer,
+        state => panic!("expected completed GDMA request, got {state:?}"),
+    };
+    assert_eq!(transfer.mode(), VramDmaMode::GeneralPurpose);
+    assert_eq!(transfer.source_start(), 0xA120);
+    assert_eq!(transfer.destination_start(), 0x8EF0);
+    assert_eq!(transfer.total_blocks(), 4);
+    assert_eq!(transfer.total_bytes(), 0x40);
+    assert_eq!(dma.read_hdma5(), 0xFF);
+}
+
+#[test]
+fn hdma5_cancel_stops_active_hblank_dma_and_preserves_hdma1_4_latches() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0x12);
+    dma.write_hdma2(0x34);
+    dma.write_hdma3(0x1F);
+    dma.write_hdma4(0xF0);
+    dma.write_hdma5(0x84);
+    let registers_before_cancel = dma.vram_dma_registers();
+
+    dma.write_hdma5(0x00);
+
+    assert_eq!(
+        dma.vram_dma_state(),
+        VramDmaState::Inactive {
+            hdma5_read_low: 0x04
+        }
+    );
+    assert_eq!(dma.read_hdma5(), 0x84);
+    assert_eq!(dma.vram_dma_registers(), registers_before_cancel);
+}
+
+#[test]
+fn hdma5_bit7_set_while_hblank_dma_is_active_does_not_restart_the_latched_transfer_yet() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+
+    dma.write_hdma1(0x12);
+    dma.write_hdma2(0x30);
+    dma.write_hdma5(0x81);
+    let active_state = dma.vram_dma_state();
+
+    dma.write_hdma1(0x44);
+    dma.write_hdma2(0x50);
+    dma.write_hdma5(0x87);
+
+    assert_eq!(dma.vram_dma_state(), active_state);
+    assert_eq!(dma.read_hdma5(), 0x01);
+}
+
+#[test]
+fn dma_save_state_defaults_missing_vram_dma_fields_for_same_version_compatibility() {
+    let dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut serialized = serde_json::to_value(dma.capture_save_state())
+        .expect("DMA save state should serialize to JSON for compatibility checks");
+    let fields = serialized
+        .as_object_mut()
+        .expect("DMA save state should serialize as a JSON object");
+    fields.remove("vram_dma_registers");
+    fields.remove("vram_dma_state");
+
+    let restored: DmaSaveState = serde_json::from_value(serialized)
+        .expect("missing additive VRAM-DMA fields should use defaults");
+
+    assert_eq!(restored.vram_dma_registers, VramDmaRegisters::default());
+    assert_eq!(restored.vram_dma_state, VramDmaState::default());
 }
 
 #[test]

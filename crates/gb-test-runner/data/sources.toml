@@ -264,6 +264,22 @@ path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
 sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
 
 [[source.required_file]]
+path = "testroms/samesuite/dma/gdma_addr_mask.gb"
+sha256 = "44919ce25c2d049d1abbbcec84c89c3acecb82d7c68b4d5551ef4868a4d9655a"
+
+[[source.required_file]]
+path = "testroms/samesuite/dma/hdma_lcd_off.gb"
+sha256 = "d49e67a7e176832909790e9bd6356490d2937dd1d907ac319b66cacb420605a2"
+
+[[source.required_file]]
+path = "testroms/samesuite/dma/hdma_mode0.gb"
+sha256 = "2c5e448d091b2c774ebbb1dac74936abf16f6b4e39a011aff087d9cbc4b28d58"
+
+[[source.required_file]]
+path = "testroms/samesuite/dma/gbc_dma_cont.gb"
+sha256 = "c6c2188d84044fb35e811953a247024e8dd61045e3789a8991b334547a2480ac"
+
+[[source.required_file]]
 path = "testroms/hacktix/bully.gb"
 sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
 

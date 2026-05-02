@@ -87,7 +87,17 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 ## Registers / MMIO
 
 - `FF46` / `DMA`
-- future CGB HDMA registers
+- `FF51-FF55` / `HDMA1-5` CGB VRAM DMA register surface
+
+## CGB VRAM DMA register baseline
+
+- `HDMA1` and `HDMA2` latch the VRAM-DMA source address, with `HDMA2` bits `0-3` ignored so the effective source is aligned to `$10`.
+- `HDMA3` and `HDMA4` latch the VRAM-DMA destination address, with `HDMA3` bits `5-7` ignored, `HDMA4` bits `0-3` ignored, and the effective destination forced into `$8000-9FF0`.
+- `HDMA1-4` are CPU write-only; CPU reads return the unavailable/open value through the shared MMIO contract, but the DMA controller retains the latched normalized endpoints internally.
+- `HDMA5` bit `7` selects General-Purpose DMA when clear and HBlank DMA when set; bits `0-6` encode block count minus one, so writes request `$10-$800` bytes.
+- Slice 5 initially records General-Purpose DMA starts as completed requests with `HDMA5` reading `$FF` until the real blocking/copy transfer is wired, and records HBlank DMA starts as active state with bit `7` reading clear and lower bits reporting remaining blocks minus one.
+- Writing `HDMA5` with bit `7` clear while HBlank DMA is active cancels the active transfer, preserves `HDMA1-4`, and leaves `HDMA5` reading bit `7` set plus the remaining block count minus one.
+- Writing `HDMA5` with bit `7` set while HBlank DMA is active is currently an explicit no-restart policy until hardware-backed mid-transfer restart behavior is modeled; this prevents accidental relatching before real block progress exists.
 
 ## DMG OAM DMA baseline
 
@@ -123,6 +133,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - Interactions between DMA source access, CPU-visible blocking, and OAM visibility should remain explicit and testable.
 - Current model decision and inference: once the start seam ends, DMG OAM DMA publishes the source-bus conflict instead of a blanket "HRAM-only" block. For source pages `80-9F`, the DMA occupies the video RAM bus and OAM, so CPU accesses to VRAM and OAM are blocked while echo/WRAM, cartridge, MMIO, and HRAM stay available. For all other source pages, the DMA occupies the external bus and OAM, so CPU accesses outside HRAM and the explicit `FF46` exception observe DMA-blocked semantics. This keeps the current `FF46` visibility rule, which is backed by Pan Docs' `FF46` R/W register contract and the `mooneye/acceptance/oam_dma/reg_read.gb` oracle, while still treating the general OAM-DMA page's "HRAM only" wording as a coarse summary for ordinary CPU traffic.
 - Current model decision and inference: on CGB-family silicon, an external-source OAM DMA burst publishes an external-bus-only CPU restriction instead of the DMG-family broad external-source block; cartridge ROM/RAM accesses still observe the current DMA conflict source, OAM remains blocked by the destination transfer, and internal WRAM, HRAM, and MMIO remain accessible. This keeps the silicon-family DMA policy explicit for CGB-native and CGB-compatible software and is locked by `hacktix/bully.gb (GBC)`.
+- Current model decision and inference: on CGB-family silicon, a WRAM-source OAM DMA burst publishes a WRAM-bus-only CPU restriction; WRAM and Echo CPU accesses observe the current DMA conflict source, OAM remains blocked by the destination transfer, and cartridge ROM/RAM plus HRAM/MMIO stay available. This is the Slice 5 internal bus-arbitration contract that prevents WRAM-source CGB OAM DMA from falling back to either the DMG-family broad block or the external-source CGB policy.
 - Current model decision: during external-bus DMG OAM DMA, CPU reads and writes that lose arbitration on the occupied bus should resolve against the most recently transferred source byte address (`dma_current_src - 1` style after the first copied byte), not against a generic open-bus placeholder. This is required by curated cases such as `hacktix/bully`.
 - The public bus-resolution contract should therefore expose both the CPU's nominal requested target and the effective redirected source-byte target for those accesses; the executed bus path must consume that same resolution instead of re-implementing the redirect as a hidden fast path.
 - Current model decision: the DMA view published to the rest of the machine should include the current OAM destination address together with the byte being transferred on that same T-cycle, because the PPU's late Mode `3` metadata reads can observe that destination word during the DMA write window. The PPU may then reconstruct the aligned destination word by combining the live OAM sibling byte with that current DMA byte. This is required by curated cases such as `hacktix/strikethrough`.

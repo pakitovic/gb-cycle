@@ -195,6 +195,11 @@ impl IoHramDomain {
                 ppu.read_register_with_source(address, source)
             }),
             IoRegisterKind::OamDma => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_ff46),
+            IoRegisterKind::Hdma1
+            | IoRegisterKind::Hdma2
+            | IoRegisterKind::Hdma3
+            | IoRegisterKind::Hdma4 => BLOCKED_READ_VALUE,
+            IoRegisterKind::Hdma5 => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_hdma5),
             IoRegisterKind::BootRomDisable => io
                 .boot
                 .map_or(BLOCKED_READ_VALUE, BootController::read_ff50),
@@ -297,6 +302,31 @@ impl IoHramDomain {
             IoRegisterKind::OamDma => {
                 if let Some(dma) = io.dma {
                     dma.write_ff46(value);
+                }
+            }
+            IoRegisterKind::Hdma1 => {
+                if let Some(dma) = io.dma {
+                    dma.write_hdma1(value);
+                }
+            }
+            IoRegisterKind::Hdma2 => {
+                if let Some(dma) = io.dma {
+                    dma.write_hdma2(value);
+                }
+            }
+            IoRegisterKind::Hdma3 => {
+                if let Some(dma) = io.dma {
+                    dma.write_hdma3(value);
+                }
+            }
+            IoRegisterKind::Hdma4 => {
+                if let Some(dma) = io.dma {
+                    dma.write_hdma4(value);
+                }
+            }
+            IoRegisterKind::Hdma5 => {
+                if let Some(dma) = io.dma {
+                    dma.write_hdma5(value);
                 }
             }
             IoRegisterKind::BootRomDisable => {

@@ -11,6 +11,11 @@ const OAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES: u8 = 5;
 const OAM_DMA_T_CYCLES_PER_BYTE: u8 = 4;
 const OAM_DMA_TOTAL_T_CYCLES: u16 = 648;
 const DMG_OAM_DMA_ECHO_ALIAS_OFFSET: u16 = 0x2000;
+const VRAM_DMA_BLOCK_BYTES: u16 = 0x10;
+const HDMA5_TRANSFER_LENGTH_MASK: u8 = 0x7F;
+const HDMA5_MODE_BIT: u8 = 0x80;
+const HDMA5_INACTIVE_READ_BIT: u8 = 0x80;
+const HDMA5_COMPLETED_READ: u8 = 0xFF;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DmaStatus {
@@ -188,8 +193,9 @@ impl DmaTransfer {
     }
 
     const fn source_bus(self) -> DmaSourceBus {
-        match self.source_start >> 8 {
-            0x80..=0x9F => DmaSourceBus::VideoRam,
+        match self.source_address_for_byte(0) {
+            0x8000..=0x9FFF => DmaSourceBus::VideoRam,
+            0xC000..=0xFDFF => DmaSourceBus::WorkRam,
             _ => DmaSourceBus::External,
         }
     }
@@ -310,6 +316,161 @@ impl DmaTransferProgress {
 enum DmaSourceBus {
     External,
     VideoRam,
+    WorkRam,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum VramDmaMode {
+    GeneralPurpose,
+    HBlank,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct VramDmaRegisters {
+    source_high: u8,
+    source_low: u8,
+    destination_high: u8,
+    destination_low: u8,
+}
+
+impl Default for VramDmaRegisters {
+    fn default() -> Self {
+        Self {
+            source_high: 0xFF,
+            source_low: 0xF0,
+            destination_high: 0x1F,
+            destination_low: 0xF0,
+        }
+    }
+}
+
+impl VramDmaRegisters {
+    pub const fn source_high(self) -> u8 {
+        self.source_high
+    }
+
+    pub const fn source_low(self) -> u8 {
+        self.source_low
+    }
+
+    pub const fn destination_high(self) -> u8 {
+        self.destination_high
+    }
+
+    pub const fn destination_low(self) -> u8 {
+        self.destination_low
+    }
+
+    pub const fn source_start(self) -> u16 {
+        ((self.source_high as u16) << 8) | self.source_low as u16
+    }
+
+    pub const fn destination_start(self) -> u16 {
+        0x8000 | ((self.destination_high as u16) << 8) | self.destination_low as u16
+    }
+
+    fn write_hdma1(&mut self, value: u8) {
+        self.source_high = value;
+    }
+
+    fn write_hdma2(&mut self, value: u8) {
+        self.source_low = value & 0xF0;
+    }
+
+    fn write_hdma3(&mut self, value: u8) {
+        self.destination_high = value & 0x1F;
+    }
+
+    fn write_hdma4(&mut self, value: u8) {
+        self.destination_low = value & 0xF0;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct VramDmaTransfer {
+    mode: VramDmaMode,
+    source_start: u16,
+    destination_start: u16,
+    total_blocks: u16,
+    remaining_blocks: u16,
+}
+
+impl VramDmaTransfer {
+    const fn new(mode: VramDmaMode, registers: VramDmaRegisters, blocks: u16) -> Self {
+        Self {
+            mode,
+            source_start: registers.source_start(),
+            destination_start: registers.destination_start(),
+            total_blocks: blocks,
+            remaining_blocks: blocks,
+        }
+    }
+
+    pub const fn mode(self) -> VramDmaMode {
+        self.mode
+    }
+
+    pub const fn source_start(self) -> u16 {
+        self.source_start
+    }
+
+    pub const fn destination_start(self) -> u16 {
+        self.destination_start
+    }
+
+    pub const fn total_blocks(self) -> u16 {
+        self.total_blocks
+    }
+
+    pub const fn remaining_blocks(self) -> u16 {
+        self.remaining_blocks
+    }
+
+    pub const fn total_bytes(self) -> u16 {
+        self.total_blocks * VRAM_DMA_BLOCK_BYTES
+    }
+
+    pub const fn remaining_blocks_minus_one(self) -> u8 {
+        self.remaining_blocks.saturating_sub(1) as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum VramDmaState {
+    Inactive { hdma5_read_low: u8 },
+    GeneralPurposeComplete(VramDmaTransfer),
+    HBlankActive(VramDmaTransfer),
+}
+
+impl Default for VramDmaState {
+    fn default() -> Self {
+        Self::Inactive {
+            hdma5_read_low: HDMA5_TRANSFER_LENGTH_MASK,
+        }
+    }
+}
+
+impl VramDmaState {
+    pub const fn is_active(self) -> bool {
+        matches!(self, Self::HBlankActive(_))
+    }
+
+    pub const fn active_transfer(self) -> Option<VramDmaTransfer> {
+        match self {
+            Self::HBlankActive(transfer) => Some(transfer),
+            Self::Inactive { .. } | Self::GeneralPurposeComplete(_) => None,
+        }
+    }
+
+    const fn read_hdma5(self) -> u8 {
+        match self {
+            Self::Inactive { hdma5_read_low } => {
+                HDMA5_INACTIVE_READ_BIT | (hdma5_read_low & HDMA5_TRANSFER_LENGTH_MASK)
+            }
+            Self::GeneralPurposeComplete(_) => HDMA5_COMPLETED_READ,
+            Self::HBlankActive(transfer) => transfer.remaining_blocks_minus_one(),
+        }
+    }
 }
 
 #[derive(
@@ -467,6 +628,10 @@ pub struct DmaController {
     source_page_latch: u8,
     transfer_state: DmaTransferState,
     pending_restart: Option<DmaTransferProgress>,
+    #[serde(default)]
+    vram_dma_registers: VramDmaRegisters,
+    #[serde(default)]
+    vram_dma_state: VramDmaState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -476,6 +641,10 @@ pub struct DmaSaveState {
     source_page_latch: u8,
     transfer_state: DmaTransferState,
     pending_restart: Option<DmaTransferProgress>,
+    #[serde(default)]
+    vram_dma_registers: VramDmaRegisters,
+    #[serde(default)]
+    vram_dma_state: VramDmaState,
 }
 
 impl DmaSaveState {
@@ -491,6 +660,10 @@ pub struct DmaSnapshot {
     pub source_page_latch: u8,
     pub transfer_state: DmaTransferState,
     pub pending_restart: Option<DmaTransferProgress>,
+    #[serde(default)]
+    pub vram_dma_registers: VramDmaRegisters,
+    #[serde(default)]
+    pub vram_dma_state: VramDmaState,
 }
 
 impl DmaController {
@@ -501,6 +674,8 @@ impl DmaController {
             source_page_latch: 0,
             transfer_state: DmaTransferState::Idle,
             pending_restart: None,
+            vram_dma_registers: VramDmaRegisters::default(),
+            vram_dma_state: VramDmaState::default(),
         }
     }
 
@@ -519,6 +694,8 @@ impl DmaController {
             source_page_latch: self.source_page_latch,
             transfer_state: self.transfer_state,
             pending_restart: self.pending_restart,
+            vram_dma_registers: self.vram_dma_registers,
+            vram_dma_state: self.vram_dma_state,
         }
     }
 
@@ -528,6 +705,8 @@ impl DmaController {
         self.source_page_latch = state.source_page_latch;
         self.transfer_state = state.transfer_state;
         self.pending_restart = state.pending_restart;
+        self.vram_dma_registers = state.vram_dma_registers;
+        self.vram_dma_state = state.vram_dma_state;
     }
 
     pub fn source_page_latch(&self) -> u8 {
@@ -563,6 +742,14 @@ impl DmaController {
         )
     }
 
+    pub fn vram_dma_registers(&self) -> VramDmaRegisters {
+        self.vram_dma_registers
+    }
+
+    pub fn vram_dma_state(&self) -> VramDmaState {
+        self.vram_dma_state
+    }
+
     pub fn bus_state(&self) -> DmaBusState {
         match self.transfer_state {
             DmaTransferState::Idle | DmaTransferState::Completed(_) => DmaBusState::unrestricted(),
@@ -593,6 +780,16 @@ impl DmaController {
                         progress.transfer().memory_region_impact(),
                     ))
                     .with_cpu_conflict_source_address(cpu_conflict_source_address),
+                    DmaSourceBus::WorkRam if self.console_model.is_cgb_family() => {
+                        DmaBusState::wram_bus_blocked(Some(
+                            progress.transfer().memory_region_impact(),
+                        ))
+                        .with_cpu_conflict_source_address(cpu_conflict_source_address)
+                    }
+                    DmaSourceBus::WorkRam => DmaBusState::external_bus_blocked(Some(
+                        progress.transfer().memory_region_impact(),
+                    ))
+                    .with_cpu_conflict_source_address(cpu_conflict_source_address),
                 }
             }
         }
@@ -614,10 +811,58 @@ impl DmaController {
         }
     }
 
+    pub fn read_hdma5(&self) -> u8 {
+        self.vram_dma_state.read_hdma5()
+    }
+
+    pub fn write_hdma1(&mut self, value: u8) {
+        self.vram_dma_registers.write_hdma1(value);
+    }
+
+    pub fn write_hdma2(&mut self, value: u8) {
+        self.vram_dma_registers.write_hdma2(value);
+    }
+
+    pub fn write_hdma3(&mut self, value: u8) {
+        self.vram_dma_registers.write_hdma3(value);
+    }
+
+    pub fn write_hdma4(&mut self, value: u8) {
+        self.vram_dma_registers.write_hdma4(value);
+    }
+
+    pub fn write_hdma5(&mut self, value: u8) {
+        if let VramDmaState::HBlankActive(active_transfer) = self.vram_dma_state {
+            if value & HDMA5_MODE_BIT == 0 {
+                self.vram_dma_state = VramDmaState::Inactive {
+                    hdma5_read_low: active_transfer.remaining_blocks_minus_one(),
+                };
+            }
+            return;
+        }
+
+        let blocks = u16::from(value & HDMA5_TRANSFER_LENGTH_MASK) + 1;
+        if value & HDMA5_MODE_BIT == 0 {
+            self.vram_dma_state = VramDmaState::GeneralPurposeComplete(VramDmaTransfer::new(
+                VramDmaMode::GeneralPurpose,
+                self.vram_dma_registers,
+                blocks,
+            ));
+        } else {
+            self.vram_dma_state = VramDmaState::HBlankActive(VramDmaTransfer::new(
+                VramDmaMode::HBlank,
+                self.vram_dma_registers,
+                blocks,
+            ));
+        }
+    }
+
     pub fn apply_startup_state(&mut self, startup_state: DmaStartupState) {
         self.source_page_latch = startup_state.source_page_latch;
         self.transfer_state = DmaTransferState::Idle;
         self.pending_restart = None;
+        self.vram_dma_registers = VramDmaRegisters::default();
+        self.vram_dma_state = VramDmaState::default();
     }
 
     pub fn snapshot(&self) -> DmaSnapshot {
@@ -627,6 +872,8 @@ impl DmaController {
             source_page_latch: self.source_page_latch,
             transfer_state: self.transfer_state,
             pending_restart: self.pending_restart,
+            vram_dma_registers: self.vram_dma_registers,
+            vram_dma_state: self.vram_dma_state,
         }
     }
 

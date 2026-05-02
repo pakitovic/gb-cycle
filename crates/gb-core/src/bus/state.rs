@@ -31,6 +31,7 @@ pub enum BusAccessKind {
 pub enum BusBlockReason {
     DmaExternalBusConflict,
     DmaVideoBusConflict,
+    DmaWramBusConflict,
     PpuVramBlockedDuringMode3,
     PpuOamBlockedDuringMode2,
     PpuOamBlockedDuringMode3,
@@ -75,6 +76,7 @@ pub enum DmaCpuAccessPolicy {
     ExternalBusBlocked,
     ExternalBusOnlyBlocked,
     VideoBusBlocked,
+    WramBusBlocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -120,6 +122,14 @@ impl DmaBusState {
     pub const fn video_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
         Self {
             cpu_access_policy: DmaCpuAccessPolicy::VideoBusBlocked,
+            active_region,
+            cpu_conflict_source_address: None,
+        }
+    }
+
+    pub const fn wram_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
+        Self {
+            cpu_access_policy: DmaCpuAccessPolicy::WramBusBlocked,
             active_region,
             cpu_conflict_source_address: None,
         }

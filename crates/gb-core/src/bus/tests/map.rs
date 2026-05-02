@@ -227,7 +227,10 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff4d.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(ff4d.kind(), IoRegisterKind::Key1);
     assert_eq!(ff51.owner(), IoRegisterOwner::Dma);
-    assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);
+    assert_eq!(ff51.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff51.implementation(), IoRegisterImplementation::Implemented);
+    assert_eq!(ff51.access(), IoRegisterAccess::WriteOnly);
+    assert_eq!(ff51.kind(), IoRegisterKind::Hdma1);
     assert_eq!(ff68.owner(), IoRegisterOwner::Ppu);
     assert_eq!(ff68.availability(), IoRegisterAvailability::CgbOnly);
     assert_eq!(ff68.implementation(), IoRegisterImplementation::Implemented);
@@ -275,7 +278,58 @@ fn native_cgb_bus_owned_io_registers_publish_slice3_readback() {
     assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0x8F);
 
     assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF55, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF68, BusIoReadView::default()), 0xFF);
+}
+
+#[test]
+fn native_cgb_hdma_registers_route_to_dma_owner() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    let mut dma = crate::dma::DmaController::new(ConsoleModel::GameBoyColor);
+
+    for (address, value) in [
+        (0xFF51, 0x12),
+        (0xFF52, 0x3F),
+        (0xFF53, 0x9A),
+        (0xFF54, 0xBC),
+        (0xFF55, 0x82),
+    ] {
+        bus.write_with_context(
+            address,
+            value,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoWriteView {
+                dma: Some(&mut dma),
+                ..BusIoWriteView::default()
+            },
+        );
+    }
+
+    assert_eq!(dma.vram_dma_registers().source_start(), 0x1230);
+    assert_eq!(dma.vram_dma_registers().destination_start(), 0x9AB0);
+    assert_eq!(
+        bus.read_io_target(
+            0xFF55,
+            BusIoReadView {
+                dma: Some(&dma),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x02
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF51,
+            BusIoReadView {
+                dma: Some(&dma),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
 }
 
 #[test]
@@ -287,7 +341,7 @@ fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
     let ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
     for address in [
-        0xFF4C, 0xFF4F, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
+        0xFF4C, 0xFF4F, 0xFF51, 0xFF55, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
     ] {
         assert_eq!(
             bus.read_io_target(
