@@ -33,6 +33,14 @@ fn address_uses_hot_cpu_external_bus(address: u16) -> bool {
     )
 }
 
+#[inline(always)]
+fn address_uses_hot_cpu_wram_bus(address: u16) -> bool {
+    matches!(
+        address,
+        HOT_CPU_TIMED_WRAM_START..=HOT_CPU_TIMED_WRAM_ECHO_END
+    )
+}
+
 impl Bus {
     // Public observability is CPU-visible. This surface is mapping-aware and
     // layers live boot, DMA, PPU, MMIO-owner, and cartridge state on top of
@@ -309,6 +317,16 @@ impl Bus {
                         BusRegion::CartridgeRomBank0
                             | BusRegion::CartridgeRomBankN
                             | BusRegion::CartridgeExternal
+                    )
+                {
+                    return None;
+                }
+            }
+            DmaCpuAccessPolicy::WramBusBlocked => {
+                if !address_uses_hot_cpu_wram_bus(address)
+                    || !matches!(
+                        nominal_target.region(),
+                        BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam
                     )
                 {
                     return None;

@@ -1,0 +1,39 @@
+version = 1
+suite_name = "cgb-dma"
+subsystem = "Dma"
+
+[[case]]
+family = "samesuite"
+id = "cgb-dma-gdma-addr-mask"
+rom = "dma/gdma_addr_mask.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png"
+
+[[case]]
+family = "samesuite"
+id = "cgb-dma-hdma-lcd-off"
+rom = "dma/hdma_lcd_off.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_lcd_off.png"
+
+[[case]]
+family = "samesuite"
+id = "cgb-dma-hdma-mode0"
+rom = "dma/hdma_mode0.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png"
+
+[[case]]
+family = "samesuite"
+id = "cgb-dma-gbc-dma-cont"
+rom = "dma/gbc_dma_cont.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png"

@@ -64,7 +64,8 @@ pub use debugger::{
 pub use dma::{
     DmaAdvanceCondition, DmaController, DmaCpuImpactPolicy, DmaSnapshot, DmaStartupState,
     DmaStatus, DmaTransfer, DmaTransferFamily, DmaTransferKind, DmaTransferLifecycle,
-    DmaTransferProgress, DmaTransferState, DmaTransferStatusView, DmaTransferTiming,
+    DmaTransferProgress, DmaTransferState, DmaTransferStatusView, DmaTransferTiming, VramDmaMode,
+    VramDmaRegisters, VramDmaState, VramDmaTransfer,
 };
 pub use external_port::{
     ExternalPort, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,

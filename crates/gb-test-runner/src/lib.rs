@@ -46,8 +46,8 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_ppu_basic_suite,
-    cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_dma_suite,
+    cgb_ppu_basic_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
     curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
     hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
@@ -969,6 +969,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_boot_div_suite(),
         cgb_speed_suite(),
         cgb_ppu_basic_suite(),
+        cgb_dma_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
@@ -2708,8 +2709,8 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_boot_div_suite, cgb_ppu_basic_suite, cgb_smoke_suite,
-        cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        capture_memory_text_output, cgb_boot_div_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
         external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
         memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
         mooneye_result_completion_candidate, mooneye_result_for_signature,
@@ -3007,6 +3008,58 @@ mod tests {
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+    }
+
+    #[test]
+    fn cgb_dma_suite_promotes_slice5_rows_to_blocking_framebuffer_oracles() {
+        let suite = cgb_dma_suite();
+
+        assert_eq!(suite.name, "cgb-dma");
+        assert_eq!(suite.family.as_deref(), Some("cgb-dma"));
+        assert_eq!(suite.subsystem, TestSubsystem::Dma);
+        assert_eq!(suite.cases.len(), 4);
+
+        let expected = [
+            (
+                "cgb-dma-gdma-addr-mask",
+                "samesuite/dma/gdma_addr_mask.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
+            ),
+            (
+                "cgb-dma-hdma-lcd-off",
+                "samesuite/dma/hdma_lcd_off.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_lcd_off.png",
+            ),
+            (
+                "cgb-dma-hdma-mode0",
+                "samesuite/dma/hdma_mode0.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
+            ),
+            (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
+            );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
     }
 
     #[test]

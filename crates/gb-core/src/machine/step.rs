@@ -5,11 +5,12 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
     Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester, DmaBusState,
+    DmaMemoryRegionImpact,
 };
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
-use crate::dma::DmaController;
+use crate::dma::{DmaController, VramDmaRuntimeContext};
 use crate::external_port::ExternalPort;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
@@ -321,13 +322,20 @@ impl MachinePhaseRunner<'_> {
             observe_machine_step_region(observer, MachineStepRegion::Apu, || {
                 self.apu.tick_t_cycle(context);
             });
+            let boot_bus_state = self.boot.bus_state();
+            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
             let dma_transfer_work =
                 observe_machine_step_region(observer, MachineStepRegion::Dma, || {
-                    self.dma.tick_t_cycle(context)
+                    self.dma.tick_t_cycle_with_vram_dma_context(
+                        context,
+                        VramDmaRuntimeContext::new(
+                            ppu_owner_bus_state_before,
+                            self.ppu.ly(),
+                            self.cpu.execution_state() == CpuExecutionState::Halted,
+                        ),
+                    )
                 });
-            let boot_bus_state = self.boot.bus_state();
             let dma_bus_state = self.dma.bus_state();
-            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
             let dma_arbitration_state = BusArbitrationState::default()
                 .with_boot_rom(boot_bus_state)
                 .with_ppu(ppu_owner_bus_state_before)
@@ -335,26 +343,30 @@ impl MachinePhaseRunner<'_> {
             let dma_transfer_byte =
                 observe_machine_step_region(observer, MachineStepRegion::Dma, || {
                     dma_transfer_work.map(|transfer_work| {
-                        self.bus.read_with_t_cycle_context(
-                            transfer_work.source_address(),
-                            BusRequester::Dma,
-                            &dma_arbitration_state,
-                            context.t_cycle(),
-                            Some(&mut self.cartridge),
-                            BusIoReadView {
-                                apu: Some(self.apu),
-                                timer: Some(self.timer),
-                                serial: Some(self.serial),
-                                dma: Some(self.dma),
-                                boot: Some(self.boot),
-                                interrupts: Some(self.interrupts),
-                                interrupt_flag_pending_mask: 0,
-                                joypad: Some(self.joypad),
-                                ppu: Some(self.ppu),
-                                speed: Some(self.speed),
-                                ppu_cpu_visible_read: false,
-                            },
-                        )
+                        transfer_work
+                            .source_read_value_override()
+                            .unwrap_or_else(|| {
+                                self.bus.read_with_t_cycle_context(
+                                    transfer_work.source_address(),
+                                    BusRequester::Dma,
+                                    &dma_arbitration_state,
+                                    context.t_cycle(),
+                                    Some(&mut self.cartridge),
+                                    BusIoReadView {
+                                        apu: Some(self.apu),
+                                        timer: Some(self.timer),
+                                        serial: Some(self.serial),
+                                        dma: Some(self.dma),
+                                        boot: Some(self.boot),
+                                        interrupts: Some(self.interrupts),
+                                        interrupt_flag_pending_mask: 0,
+                                        joypad: Some(self.joypad),
+                                        ppu: Some(self.ppu),
+                                        speed: Some(self.speed),
+                                        ppu_cpu_visible_read: false,
+                                    },
+                                )
+                            })
                     })
                 });
             let dma_oam_conflict =
@@ -365,7 +377,7 @@ impl MachinePhaseRunner<'_> {
                         address_hits_cpu_oam_window(destination_address)
                             .then_some(PpuDmaOamConflict::new(destination_address, value))
                     });
-            let dma_oam_active = dma_bus_state.active_region().is_some();
+            let dma_oam_active = dma_bus_state.active_region() == Some(DmaMemoryRegionImpact::Oam);
 
             if self
                 .speed
@@ -407,7 +419,7 @@ impl MachinePhaseRunner<'_> {
             self.tick_ppu_video_domain(
                 context,
                 dma_bus_state,
-                dma_bus_state.active_region().is_some(),
+                dma_bus_state.active_region() == Some(DmaMemoryRegionImpact::Oam),
                 None,
                 observer,
             );
@@ -484,6 +496,11 @@ impl MachinePhaseRunner<'_> {
         let arbitration_states = self.cpu_bus_arbitration_states();
         let stop_active_before = self.cpu_stop_active();
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
+            if self.dma.cpu_stall_active() {
+                self.cpu.tick_dma_stall_t_cycle();
+                return;
+            }
+
             let cpu = &mut self.cpu;
             let bus = &mut self.bus;
             let apu = &mut self.apu;
@@ -667,6 +684,11 @@ impl MachinePhaseRunner<'_> {
     {
         let stop_active_before = self.cpu_stop_active();
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
+            if self.dma.cpu_stall_active() {
+                self.cpu.tick_dma_stall_t_cycle();
+                return;
+            }
+
             let cpu = &mut self.cpu;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;

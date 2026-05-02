@@ -693,6 +693,10 @@ pub fn cgb_ppu_basic_suite() -> RomSuite {
     manifest_suite_by_name("cgb-ppu-basic")
 }
 
+pub fn cgb_dma_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-dma")
+}
+
 pub fn cgb_speed_suite() -> RomSuite {
     manifest_suite_by_name("cgb-speed")
 }
@@ -723,7 +727,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 11] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 12] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -740,6 +744,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 11] {
         (
             "crates/gb-test-runner/data/cgb-ppu-basic.toml",
             include_str!("../data/cgb-ppu-basic.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-dma.toml",
+            include_str!("../data/cgb-dma.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-speed.toml",
@@ -832,6 +840,7 @@ fn parse_manifest_case(
 fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem {
     match subsystem {
         "Ppu" => TestSubsystem::Ppu,
+        "Dma" => TestSubsystem::Dma,
         "CrossSubsystem" => TestSubsystem::CrossSubsystem,
         other => panic!("unsupported subsystem {other:?} in {source_path}"),
     }
@@ -1361,8 +1370,8 @@ mod tests {
         REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_REPORT_FILE_NAME,
         TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
         blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition, cgb_boot_div_suite,
-        cgb_ppu_basic_suite, cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
-        curated_test_rom_family_suites, curated_test_rom_manifest_texts,
+        cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, copy_curated_rom,
+        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
@@ -1719,6 +1728,53 @@ mod tests {
             })
         );
         assert_eq!(case.startup_memory_writes.len(), 244);
+    }
+
+    #[test]
+    fn cgb_dma_suite_promotes_slice5_rows_to_blocking_oracles() {
+        let suite = cgb_dma_suite();
+
+        assert_eq!(suite.name, "cgb-dma");
+        assert_eq!(suite.family.as_deref(), Some("cgb-dma"));
+        assert_eq!(suite.subsystem, TestSubsystem::Dma);
+        assert_eq!(suite.cases.len(), 4);
+
+        let expected = [
+            (
+                "cgb-dma-gdma-addr-mask",
+                "samesuite/dma/gdma_addr_mask.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
+            ),
+            (
+                "cgb-dma-hdma-lcd-off",
+                "samesuite/dma/hdma_lcd_off.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_lcd_off.png",
+            ),
+            (
+                "cgb-dma-hdma-mode0",
+                "samesuite/dma/hdma_mode0.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
+            ),
+            (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
+            );
+        }
     }
 
     #[test]

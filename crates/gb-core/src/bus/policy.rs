@@ -69,6 +69,19 @@ impl Bus {
                     None
                 }
             }
+            DmaCpuAccessPolicy::WramBusBlocked => {
+                if matches!(
+                    target.region(),
+                    BusRegion::WramBank0
+                        | BusRegion::WramBankN
+                        | BusRegion::EchoRam
+                        | BusRegion::Oam
+                ) {
+                    Some(self.block_access(kind, BusBlockReason::DmaWramBusConflict))
+                } else {
+                    None
+                }
+            }
         }
     }
 
