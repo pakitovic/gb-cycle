@@ -546,7 +546,7 @@ impl Channel4State {
             return 0;
         }
 
-        if self.noise.lfsr_state & (1 << NOISE_LFSR_OUTPUT_BIT) == 0 {
+        if self.noise.lfsr_state & (1 << NOISE_LFSR_OUTPUT_BIT) != 0 {
             self.envelope.current_volume
         } else {
             0
@@ -842,6 +842,6 @@ mod tests {
         assert!(!snapshot.started_with_dac_disabled);
         assert_eq!(snapshot.period_timer, 32);
         assert_eq!(snapshot.lfsr_state, 0x4566);
-        assert_eq!(snapshot.current_digital_output, 7);
+        assert_eq!(snapshot.current_digital_output, 0);
     }
 }

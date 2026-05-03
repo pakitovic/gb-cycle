@@ -58,6 +58,8 @@ fn cgb_pcm_registers_expose_current_channel_digital_outputs() {
     apu.write_register(0xFF22, 0x15);
     apu.write_register(0xFF23, 0x80);
 
+    assert_eq!(apu.read_pcm34(), 0x0C);
+    apu.channels.channel_4.noise.lfsr_state |= 1 << NOISE_LFSR_OUTPUT_BIT;
     assert_eq!(apu.read_pcm34(), 0xFC);
 }
 
