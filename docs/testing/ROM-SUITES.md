@@ -357,4 +357,4 @@ Repo-managed local-only support assets live under gitignored roots:
 
 - `GB_CYCLE_BOOT_ROM_ROOT` — boot ROM search path for private firmware assets; there is no repo-local default boot ROM directory.
 - `GB_CYCLE_TEST_ROM_ROOT` — override test ROM root; if unset, `gb-test-runner` falls back to the default curated store automatically.
-- `GB_CYCLE_TEST_ROM_STARTUP` — ROM-suite startup override for local ignored external harness runs and the `run_rom_suite` CLI; omit it or use `skip-boot` for the default synthetic startup path, and use `real-boot` only with `GB_CYCLE_BOOT_ROM_ROOT` for clean boot-ROM execution that clears synthetic startup-memory and startup-timer profiles.
+- `GB_CYCLE_TEST_ROM_STARTUP` — ROM-suite startup override for local ignored external harness runs and the `run_rom_suite` CLI; omit it to preserve each suite manifest's declared startup mode, use `skip-boot` to force synthetic direct boot even for manifests that default to `RealBoot`, and use `real-boot` only with `GB_CYCLE_BOOT_ROM_ROOT` for clean boot-ROM execution that clears synthetic startup-memory and startup-timer profiles.

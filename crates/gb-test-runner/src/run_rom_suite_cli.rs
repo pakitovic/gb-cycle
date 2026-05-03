@@ -36,6 +36,7 @@ struct RomSuiteCliOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConfiguredRomSuiteStartup {
+    Manifest,
     SkipBoot,
     RealBoot,
 }
@@ -269,7 +270,7 @@ fn configured_rom_suite_startup_from_env_value(
                 "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
             )),
         },
-        Err(env::VarError::NotPresent) => Ok(ConfiguredRomSuiteStartup::SkipBoot),
+        Err(env::VarError::NotPresent) => Ok(ConfiguredRomSuiteStartup::Manifest),
         Err(env::VarError::NotUnicode(_)) => Err(format!(
             "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
         )),
@@ -285,7 +286,12 @@ fn apply_configured_startup_override_for(
     startup: ConfiguredRomSuiteStartup,
 ) -> Result<(), String> {
     match startup {
-        ConfiguredRomSuiteStartup::SkipBoot => {}
+        ConfiguredRomSuiteStartup::Manifest => {}
+        ConfiguredRomSuiteStartup::SkipBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = gb_core::StartupMode::SkipBoot;
+            }
+        }
         ConfiguredRomSuiteStartup::RealBoot => {
             for case in &mut suite.cases {
                 case.startup_mode = gb_core::StartupMode::RealBoot;
@@ -873,17 +879,39 @@ mod tests {
     }
 
     #[test]
-    fn startup_env_defaults_to_skip_boot_and_preserves_synthetic_profiles() {
+    fn startup_env_default_preserves_manifest_startup_modes_and_synthetic_profiles() {
         let original_suite = crate::cgb_ppu_basic_suite();
         let mut configured_suite = original_suite.clone();
 
         apply_configured_startup_override_for(
             &mut configured_suite,
-            ConfiguredRomSuiteStartup::SkipBoot,
+            ConfiguredRomSuiteStartup::Manifest,
         )
         .expect("default startup override should parse");
 
         assert_eq!(configured_suite, original_suite);
+    }
+
+    #[test]
+    fn startup_env_skip_boot_overrides_real_boot_manifests_without_requiring_assets() {
+        let mut suite = crate::cgb_smoke_suite();
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_mode == gb_core::StartupMode::RealBoot),
+            "fixture should cover a manifest-declared RealBoot suite"
+        );
+
+        apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::SkipBoot)
+            .expect("skip-boot startup override should parse");
+
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_mode == gb_core::StartupMode::SkipBoot)
+        );
     }
 
     #[test]
