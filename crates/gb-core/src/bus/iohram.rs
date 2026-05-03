@@ -41,6 +41,7 @@ pub(crate) struct BusIoWriteView<'a> {
     pub joypad: Option<&'a mut Joypad>,
     pub ppu: Option<&'a mut Ppu>,
     pub speed: Option<&'a mut SpeedController>,
+    pub boot_ff50_newly_unmapped: Option<&'a mut bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -100,6 +101,13 @@ impl IoHramDomain {
 
     pub(crate) fn write_key0(&mut self, value: u8) {
         self.key0.write_runtime(value);
+    }
+
+    pub(crate) fn lock_cgb_real_boot_key0_at_handoff(
+        &mut self,
+        console_model: ConsoleModel,
+    ) -> OperatingMode {
+        self.key0.lock_real_boot_handoff(console_model)
     }
 
     pub(crate) fn read_cgb_misc_io(&self, address: u16) -> u8 {
@@ -229,7 +237,7 @@ impl IoHramDomain {
         operating_mode: OperatingMode,
         address: u16,
         value: u8,
-        io: BusIoWriteView<'_>,
+        mut io: BusIoWriteView<'_>,
     ) {
         let Some(info) = router.describe_io_register(address) else {
             return;
@@ -335,7 +343,10 @@ impl IoHramDomain {
             }
             IoRegisterKind::BootRomDisable => {
                 if let Some(boot) = io.boot {
-                    boot.write_ff50(value);
+                    let newly_unmapped = boot.write_ff50(value);
+                    if let Some(signal) = io.boot_ff50_newly_unmapped.as_deref_mut() {
+                        *signal = newly_unmapped;
+                    }
                 }
             }
             IoRegisterKind::InterruptEnable => {
@@ -443,6 +454,32 @@ impl CgbKey0State {
     pub(crate) fn write_runtime(&mut self, value: u8) {
         if !self.locked {
             self.value = value;
+        }
+    }
+
+    pub(crate) fn lock_real_boot_handoff(&mut self, console_model: ConsoleModel) -> OperatingMode {
+        if !console_model.is_cgb_family() {
+            self.value = 0;
+            self.locked = true;
+            return OperatingMode::Dmg;
+        }
+
+        self.locked = true;
+        self.boot_selected_operating_mode(console_model)
+    }
+
+    pub(crate) const fn boot_selected_operating_mode(
+        self,
+        console_model: ConsoleModel,
+    ) -> OperatingMode {
+        if !console_model.is_cgb_family() {
+            return OperatingMode::Dmg;
+        }
+
+        if self.value & Self::DMG_COMPATIBILITY_MODE_BIT != 0 {
+            OperatingMode::GbCompatible
+        } else {
+            OperatingMode::Cgb
         }
     }
 }

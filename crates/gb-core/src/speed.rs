@@ -147,6 +147,14 @@ impl SpeedController {
         *self = Self::new(console_model, operating_mode);
     }
 
+    pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        self.operating_mode = operating_mode;
+        if !self.cgb_speed_switch_enabled() {
+            self.current_speed = CgbSpeedMode::Normal;
+            self.switch_armed = false;
+        }
+    }
+
     pub(crate) fn capture_save_state(&self) -> SpeedSaveState {
         SpeedSaveState {
             console_model: self.console_model,

@@ -912,5 +912,9 @@ path = "testroms/mooneye/misc/boot_div-cgbABCDE.gb"
 sha256 = "bc7bf65fdf9a09899e1f6d63f463ebb585777069903c48408e0ce8ed9d73bb6c"
 
 [[source.required_file]]
+path = "testroms/mooneye/misc/boot_hwio-C.gb"
+sha256 = "62840a75f224d4470442e1875c899a133b2f4d8ebd294339fc0f2df3fc8b28d4"
+
+[[source.required_file]]
 path = "testroms/mooneye/misc/boot_regs-cgb.gb"
 sha256 = "82938fa70b85a3197c4aea906000347770f0ee3773c84072b49d962e6d479062"

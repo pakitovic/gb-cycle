@@ -170,6 +170,16 @@ fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {
             error
         )
     })?;
+    let expected_size = expected_boot_rom_size(kind);
+    if bytes.len() != expected_size {
+        return Err(format!(
+            "boot ROM asset {:?} at {} has unexpected size: expected {} bytes, got {}",
+            kind,
+            path.display(),
+            expected_size,
+            bytes.len()
+        ));
+    }
     let actual_sha256 = sha256_hex(&bytes);
     let expected_sha256 = expected_boot_rom_sha256(kind);
     if actual_sha256 != expected_sha256 {
@@ -182,6 +192,13 @@ fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn expected_boot_rom_size(kind: BootRomKind) -> usize {
+    match kind {
+        BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => 0x0100,
+        BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE => 0x0900,
+    }
 }
 
 fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
@@ -205,8 +222,9 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         BOOT_ROM_ROOT_ENV_VAR, MissingBootRomAsset, boot_rom_image_path, expected_boot_rom_sha256,
-        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset, path_exists,
-        resolve_boot_rom_source, resolve_path, sha256_hex, verify_boot_rom_file,
+        expected_boot_rom_size, load_boot_rom_assets, load_exact_boot_rom_file,
+        missing_boot_rom_asset, path_exists, resolve_boot_rom_source, resolve_path, sha256_hex,
+        verify_boot_rom_file,
     };
     use gb_core::{BootRomAssets, BootRomKind, StartupMode};
     use gb_desktop::BootRomVerificationMode;
@@ -297,6 +315,9 @@ mod tests {
         assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb0).len(), 64);
         assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb).len(), 64);
         assert_eq!(expected_boot_rom_sha256(BootRomKind::CgbE).len(), 64);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Dmg), 256);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Mgb), 256);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Cgb), 2304);
     }
 
     #[test]
@@ -313,6 +334,21 @@ mod tests {
         let missing = verify_boot_rom_file(&root.join("missing.bin"), BootRomKind::Dmg)
             .expect_err("missing file should surface a read error");
         assert!(missing.contains("failed to read boot ROM asset"));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn verify_boot_rom_file_reports_canonical_size_mismatches_before_hashing() {
+        let root = temp_root("verify-size");
+        let image_path = root.join("cgb_boot.bin");
+        fs::write(&image_path, vec![0xAA; 0x0800])
+            .expect("compact CGB boot ROM image should be writable");
+
+        let mismatch = verify_boot_rom_file(&image_path, BootRomKind::Cgb)
+            .expect_err("strict desktop verification should reject compact CGB images");
+        assert!(mismatch.contains("unexpected size"));
+        assert!(mismatch.contains("expected 2304 bytes"));
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }

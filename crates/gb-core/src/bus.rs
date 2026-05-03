@@ -103,6 +103,10 @@ impl Bus {
         self.operating_mode
     }
 
+    pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        self.operating_mode = operating_mode;
+    }
+
     pub fn cgb_extensions_enabled(&self) -> bool {
         self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
     }
@@ -190,6 +194,18 @@ impl Bus {
             self.iohram
                 .reset_real_boot_key0(self.console_model, self.operating_mode);
         }
+    }
+
+    pub(crate) fn lock_cgb_real_boot_key0_at_handoff(&mut self) -> Option<OperatingMode> {
+        if !self.console_model.is_cgb_family() {
+            return None;
+        }
+
+        let operating_mode = self
+            .iohram
+            .lock_cgb_real_boot_key0_at_handoff(self.console_model);
+        self.operating_mode = operating_mode;
+        Some(operating_mode)
     }
 
     /// Returns the raw HRAM backing bytes for deterministic debug probes.

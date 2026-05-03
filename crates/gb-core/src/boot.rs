@@ -1,6 +1,6 @@
 use crate::apu::{ApuStartupState, WaveRamStartupPolicy, div_apu_phase_from_system_counter};
 use crate::bus::BootRomBusState;
-use crate::cartridge::CartridgeSlot;
+use crate::cartridge::{CartridgeHeader, CartridgeSlot};
 use crate::cpu::CpuStartupState;
 use crate::dma::DmaStartupState;
 use crate::interrupts::InterruptStartupState;
@@ -240,15 +240,16 @@ impl BootRomAssets {
 fn read_cgb_boot_rom_byte(bytes: &[u8], address: u16) -> Option<u8> {
     let address = address as usize;
 
-    if bytes.len() >= CGB_BOOT_ROM_MAPPED_LEN {
-        return bytes.get(address).copied();
-    }
-
     match address {
         0x0000..=0x00FF => bytes.get(address).copied(),
-        0x0200..=0x08FF => bytes
-            .get(address - (CGB_BOOT_ROM_UPPER_WINDOW_START - DMG_FAMILY_BOOT_ROM_LEN))
-            .copied(),
+        0x0200..=0x08FF => {
+            let source_address = if bytes.len() >= CGB_BOOT_ROM_MAPPED_LEN {
+                address
+            } else {
+                address - (CGB_BOOT_ROM_UPPER_WINDOW_START - DMG_FAMILY_BOOT_ROM_LEN)
+            };
+            bytes.get(source_address).copied()
+        }
         _ => None,
     }
 }
@@ -256,23 +257,57 @@ fn read_cgb_boot_rom_byte(bytes: &[u8], address: u16) -> Option<u8> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum StartupMemoryPolicy {
     DeterministicPatterned,
+    CgbRealBootEntry,
 }
 
 impl StartupMemoryPolicy {
+    pub(crate) fn initialize_vram(self, bytes: &mut [u8]) {
+        match self {
+            Self::DeterministicPatterned => {}
+            Self::CgbRealBootEntry => {
+                bytes.fill(0);
+                let copy_len = CGB_REAL_BOOT_VRAM_PREFIX.len().min(bytes.len());
+                bytes[..copy_len].copy_from_slice(&CGB_REAL_BOOT_VRAM_PREFIX[..copy_len]);
+            }
+        }
+    }
+
     pub(crate) fn initialize_wram(self, bytes: &mut [u8]) {
-        self.fill_bytes(bytes, 0xC000);
+        match self {
+            Self::DeterministicPatterned => self.fill_bytes(bytes, 0xC000),
+            Self::CgbRealBootEntry => bytes.fill(0),
+        }
     }
 
     pub(crate) fn initialize_hram(self, bytes: &mut [u8]) {
-        self.fill_bytes(bytes, 0xFF80);
+        match self {
+            Self::DeterministicPatterned => self.fill_bytes(bytes, 0xFF80),
+            Self::CgbRealBootEntry => {
+                bytes.fill(0);
+                let copy_len = CGB_BOOT_LOGO_HRAM_PREFIX.len().min(bytes.len());
+                bytes[..copy_len].copy_from_slice(&CGB_BOOT_LOGO_HRAM_PREFIX[..copy_len]);
+            }
+        }
     }
 
     fn fill_bytes(self, bytes: &mut [u8], base_address: u16) {
         match self {
             Self::DeterministicPatterned => fill_deterministic_startup_pattern(bytes, base_address),
+            Self::CgbRealBootEntry => {}
         }
     }
 }
+
+const CGB_BOOT_LOGO_HRAM_PREFIX: [u8; 48] = [
+    0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
+    0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
+    0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+];
+
+const CGB_REAL_BOOT_VRAM_PREFIX: [u8; 32] = [
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xF0, 0x00, 0xF0, 0x00, 0xFC, 0x00, 0xFC, 0x00, 0xFC, 0x00, 0xFC, 0x00, 0xF3, 0x00, 0xF3, 0x00,
+];
 
 fn fill_deterministic_startup_pattern(bytes: &mut [u8], base_address: u16) {
     for (offset, byte) in bytes.iter_mut().enumerate() {
@@ -483,7 +518,11 @@ impl BootController {
     }
 
     pub fn startup_memory_policy(&self) -> StartupMemoryPolicy {
-        StartupMemoryPolicy::DeterministicPatterned
+        if self.startup_mode == StartupMode::SkipBoot && self.console_model.is_cgb_family() {
+            StartupMemoryPolicy::CgbRealBootEntry
+        } else {
+            StartupMemoryPolicy::DeterministicPatterned
+        }
     }
 
     pub fn read_boot_rom(&self, address: u16) -> u8 {
@@ -492,10 +531,13 @@ impl BootController {
             .unwrap_or(0xFF)
     }
 
-    pub fn write_ff50(&mut self, value: u8) {
-        if value != 0 {
+    pub fn write_ff50(&mut self, value: u8) -> bool {
+        if value != 0 && self.boot_rom_mapped {
             self.boot_rom_mapped = false;
+            return true;
         }
+
+        false
     }
 
     pub fn direct_boot_state(
@@ -541,7 +583,7 @@ impl BootController {
 
         let io = synthetic_skip_boot_io_snapshot(self.console_model);
         let system_counter = synthetic_skip_boot_system_counter(self.console_model);
-        let apu = build_skip_boot_apu_state(system_counter, io);
+        let apu = build_skip_boot_apu_state(self.console_model, system_counter, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
@@ -581,7 +623,7 @@ impl BootController {
         BootDirectBootState {
             cpu: build_skip_boot_cpu_state(
                 self.console_model,
-                skip_boot_header_checksum(cartridge),
+                cartridge.and_then(CartridgeSlot::header),
             ),
             io,
             apu,
@@ -610,12 +652,6 @@ impl BootController {
     }
 }
 
-fn skip_boot_header_checksum(cartridge: Option<&CartridgeSlot>) -> Option<u8> {
-    cartridge
-        .and_then(CartridgeSlot::header)
-        .map(|header| header.header_checksum)
-}
-
 const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
     PpuStartupState {
         lcdc: io.lcdc,
@@ -631,14 +667,14 @@ const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
     }
 }
 
-const fn build_skip_boot_cpu_state(
+fn build_skip_boot_cpu_state(
     console_model: ConsoleModel,
-    header_checksum: Option<u8>,
+    header: Option<&CartridgeHeader>,
 ) -> CpuStartupState {
     match console_model {
         ConsoleModel::GameBoy => CpuStartupState {
             a: 0x01,
-            f: dmg_family_skip_boot_flags(header_checksum),
+            f: dmg_family_skip_boot_flags(header.map(|header| header.header_checksum)),
             b: 0x00,
             c: 0x13,
             d: 0x00,
@@ -650,7 +686,7 @@ const fn build_skip_boot_cpu_state(
         },
         ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => CpuStartupState {
             a: 0xFF,
-            f: dmg_family_skip_boot_flags(header_checksum),
+            f: dmg_family_skip_boot_flags(header.map(|header| header.header_checksum)),
             b: 0x00,
             c: 0x13,
             d: 0x00,
@@ -660,18 +696,23 @@ const fn build_skip_boot_cpu_state(
             sp: 0xFFFE,
             pc: 0x0100,
         },
-        ConsoleModel::GameBoyColor => CpuStartupState {
-            a: 0x11,
-            f: 0x80,
-            b: 0x00,
-            c: 0x00,
-            d: 0x00,
-            e: 0x08,
-            h: 0x00,
-            l: 0x7C,
-            sp: 0xFFFE,
-            pc: 0x0100,
-        },
+        ConsoleModel::GameBoyColor => {
+            let cgb_native = header
+                .map(|header| header.cgb_flag.enables_cgb_native_mode())
+                .unwrap_or(false);
+            CpuStartupState {
+                a: 0x11,
+                f: 0x80,
+                b: 0x00,
+                c: 0x00,
+                d: if cgb_native { 0xFF } else { 0x00 },
+                e: if cgb_native { 0x56 } else { 0x08 },
+                h: 0x00,
+                l: if cgb_native { 0x0D } else { 0x7C },
+                sp: 0xFFFE,
+                pc: 0x0100,
+            }
+        }
     }
 }
 
@@ -777,7 +818,11 @@ const fn dmg_family_skip_boot_audio_snapshot() -> BootAudioSnapshot {
     }
 }
 
-fn build_skip_boot_apu_state(system_counter: u16, io: BootIoSnapshot) -> ApuStartupState {
+fn build_skip_boot_apu_state(
+    console_model: ConsoleModel,
+    system_counter: u16,
+    io: BootIoSnapshot,
+) -> ApuStartupState {
     let audio = io.audio;
 
     ApuStartupState {
@@ -804,7 +849,11 @@ fn build_skip_boot_apu_state(system_counter: u16, io: BootIoSnapshot) -> ApuStar
         nr51: audio.nr51,
         channel_active_mask: audio.nr52 & 0x0F,
         div_apu: div_apu_phase_from_system_counter(system_counter),
-        wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+        wave_ram_startup_policy: if matches!(console_model, ConsoleModel::GameBoyColor) {
+            WaveRamStartupPolicy::CgbRealBootAlternating
+        } else {
+            WaveRamStartupPolicy::DeterministicZeroed
+        },
     }
 }
 
@@ -812,8 +861,11 @@ fn build_verified_boot_entry_apu_state(
     console_model: ConsoleModel,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
-    let mut startup_state =
-        build_skip_boot_apu_state(verified_boot_entry_system_counter(console_model), io);
+    let mut startup_state = build_skip_boot_apu_state(
+        console_model,
+        verified_boot_entry_system_counter(console_model),
+        io,
+    );
     startup_state.div_apu = verified_boot_entry_div_apu(console_model);
     startup_state
 }
@@ -863,6 +915,7 @@ const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 const CGB_SKIP_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0024;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER: u16 = 0x0028;
+const CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0xFFFB;
 const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xABC8;
 const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
     ((dmg_family_synthetic_skip_boot_io_snapshot().div as u16) << 8)
@@ -882,7 +935,7 @@ const fn real_boot_power_on_system_counter(console_model: ConsoleModel) -> u16 {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor => 0,
+        ConsoleModel::GameBoyColor => CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER,
     }
 }
 

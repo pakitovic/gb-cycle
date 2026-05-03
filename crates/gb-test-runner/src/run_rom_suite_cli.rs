@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -7,6 +8,8 @@ use crate::{
     TEST_ROM_ROOT_ENV_VAR, Timeout, built_in_rom_suite_by_name, built_in_rom_suites,
     early_phase_9_partial_checklist, load_local_rom_suite_manifest, update_curated_test_report,
 };
+
+const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RomSuiteCliAction {
@@ -29,6 +32,12 @@ struct RomSuiteCliOptions {
     case_id: Option<String>,
     failure_artifact_root: Option<PathBuf>,
     timeout_override: Option<Timeout>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfiguredRomSuiteStartup {
+    SkipBoot,
+    RealBoot,
 }
 
 pub fn rom_suite_cli_help_text() -> &'static str {
@@ -170,6 +179,7 @@ fn run_selected_suite<W: Write>(
     output: &mut W,
 ) -> Result<(), String> {
     let mut suite = select_suite_for_options(&options)?;
+    apply_configured_startup_override(&mut suite)?;
 
     if let Some(timeout_override) = options.timeout_override {
         for case in &mut suite.cases {
@@ -242,6 +252,50 @@ fn select_case_for_options(mut suite: RomSuite, case_id: Option<&str>) -> Result
     }
 
     Ok(suite)
+}
+
+fn configured_rom_suite_startup() -> Result<ConfiguredRomSuiteStartup, String> {
+    configured_rom_suite_startup_from_env_value(env::var(TEST_ROM_STARTUP_ENV_VAR))
+}
+
+fn configured_rom_suite_startup_from_env_value(
+    value: Result<String, env::VarError>,
+) -> Result<ConfiguredRomSuiteStartup, String> {
+    match value {
+        Ok(value) => match value.as_str() {
+            "skip-boot" => Ok(ConfiguredRomSuiteStartup::SkipBoot),
+            "real-boot" => Ok(ConfiguredRomSuiteStartup::RealBoot),
+            other => Err(format!(
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+            )),
+        },
+        Err(env::VarError::NotPresent) => Ok(ConfiguredRomSuiteStartup::SkipBoot),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+        )),
+    }
+}
+
+fn apply_configured_startup_override(suite: &mut RomSuite) -> Result<(), String> {
+    apply_configured_startup_override_for(suite, configured_rom_suite_startup()?)
+}
+
+fn apply_configured_startup_override_for(
+    suite: &mut RomSuite,
+    startup: ConfiguredRomSuiteStartup,
+) -> Result<(), String> {
+    match startup {
+        ConfiguredRomSuiteStartup::SkipBoot => {}
+        ConfiguredRomSuiteStartup::RealBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = gb_core::StartupMode::RealBoot;
+                case.startup_timer_state = None;
+                case.startup_memory_writes.clear();
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn write_manifest_framebuffer_exports<W: Write>(
@@ -661,7 +715,9 @@ mod tests {
     use crate::{CapturedMemoryTextOutput, TestSubsystem};
 
     use super::{
-        RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget, parse_rom_suite_arguments,
+        ConfiguredRomSuiteStartup, RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget,
+        TEST_ROM_STARTUP_ENV_VAR, apply_configured_startup_override_for,
+        configured_rom_suite_startup_from_env_value, parse_rom_suite_arguments,
         rom_suite_cli_help_text, run_rom_suite_command_with_runner, select_case_for_options,
         select_suite_for_options, write_suite_report,
     };
@@ -814,6 +870,71 @@ mod tests {
         assert_eq!(suite.name, "phase-6-cartridge-oracle");
         assert!(suite.family.is_none());
         assert_eq!(suite.cases.len(), 5);
+    }
+
+    #[test]
+    fn startup_env_defaults_to_skip_boot_and_preserves_synthetic_profiles() {
+        let original_suite = crate::cgb_ppu_basic_suite();
+        let mut configured_suite = original_suite.clone();
+
+        apply_configured_startup_override_for(
+            &mut configured_suite,
+            ConfiguredRomSuiteStartup::SkipBoot,
+        )
+        .expect("default startup override should parse");
+
+        assert_eq!(configured_suite, original_suite);
+    }
+
+    #[test]
+    fn startup_env_real_boot_overrides_suite_and_clears_synthetic_profiles() {
+        let mut suite = crate::cgb_ppu_basic_suite();
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.startup_timer_state.is_some()),
+            "fixture should cover a synthetic startup timer profile"
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| !case.startup_memory_writes.is_empty()),
+            "fixture should cover a synthetic startup memory profile"
+        );
+
+        apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::RealBoot)
+            .expect("real-boot startup override should parse");
+
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_mode == gb_core::StartupMode::RealBoot)
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_timer_state.is_none())
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_memory_writes.is_empty())
+        );
+    }
+
+    #[test]
+    fn startup_env_rejects_unknown_values() {
+        let error = configured_rom_suite_startup_from_env_value(Ok("warm-boot".to_string()))
+            .expect_err("unknown startup mode should fail");
+
+        assert!(error.contains(TEST_ROM_STARTUP_ENV_VAR));
+        assert!(error.contains("skip-boot"));
+        assert!(error.contains("real-boot"));
     }
 
     #[test]

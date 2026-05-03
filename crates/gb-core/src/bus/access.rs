@@ -194,6 +194,7 @@ impl Bus {
     }
 
     pub fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {
+        self.vram.apply_startup_memory_policy(policy);
         self.wram.apply_startup_memory_policy(policy);
         self.iohram.apply_startup_memory_policy(policy);
     }

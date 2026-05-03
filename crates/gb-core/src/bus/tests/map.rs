@@ -430,6 +430,65 @@ fn cgb_key0_direct_boot_state_tracks_header_policy_without_runtime_mutability() 
 }
 
 #[test]
+fn cgb_key0_real_boot_handoff_locks_boot_written_compatibility_mode() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+
+    bus.apply_cgb_startup_state(crate::model::StartupMode::RealBoot, None);
+    assert_eq!(bus.iohram.key0_state().value(), 0x00);
+    assert!(!bus.iohram.key0_state().is_locked());
+
+    bus.write_with_context(
+        0xFF4C,
+        0x04,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.iohram.key0_state().value(), 0x04);
+    assert!(!bus.iohram.key0_state().is_locked());
+
+    assert_eq!(
+        bus.lock_cgb_real_boot_key0_at_handoff(),
+        Some(crate::model::OperatingMode::GbCompatible)
+    );
+    assert_eq!(
+        bus.operating_mode(),
+        crate::model::OperatingMode::GbCompatible
+    );
+    assert_eq!(bus.iohram.key0_state().value(), 0x04);
+    assert!(bus.iohram.key0_state().is_locked());
+
+    bus.iohram.write_key0(0x80);
+    assert_eq!(bus.iohram.key0_state().value(), 0x04);
+}
+
+#[test]
+fn cgb_key0_real_boot_handoff_locks_boot_written_native_mode() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+
+    bus.apply_cgb_startup_state(crate::model::StartupMode::RealBoot, None);
+    bus.write_with_context(
+        0xFF4C,
+        0x80,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+
+    assert_eq!(
+        bus.lock_cgb_real_boot_key0_at_handoff(),
+        Some(crate::model::OperatingMode::Cgb)
+    );
+    assert_eq!(bus.operating_mode(), crate::model::OperatingMode::Cgb);
+    assert_eq!(bus.iohram.key0_state().value(), 0x80);
+    assert!(bus.iohram.key0_state().is_locked());
+}
+
+#[test]
 fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
     let address = BusAddressInfo::new(0x8000, BusRegion::Vram, 0x0012);
     let io = IoRegisterInfo::new(

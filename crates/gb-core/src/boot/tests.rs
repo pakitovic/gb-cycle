@@ -49,13 +49,13 @@ fn startup_mode_controls_initial_boot_mapping_state() {
 fn ff50_only_unmaps_on_non_zero_writes() {
     let mut boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
 
-    boot.write_ff50(0x00);
+    assert!(!boot.write_ff50(0x00));
     assert!(boot.is_boot_rom_mapped());
 
-    boot.write_ff50(0x01);
+    assert!(boot.write_ff50(0x01));
     assert!(!boot.is_boot_rom_mapped());
 
-    boot.write_ff50(0x00);
+    assert!(!boot.write_ff50(0x00));
     assert!(!boot.is_boot_rom_mapped());
 }
 
@@ -176,6 +176,8 @@ fn cgb_boot_rom_reads_cover_both_overlay_windows_without_aliasing_to_dmg_assets(
     );
 
     assert_eq!(cgb.read_boot_rom(0x0000), 0xC0);
+    assert_eq!(cgb.read_boot_rom(0x0100), 0xFF);
+    assert_eq!(cgb.read_boot_rom(0x01FF), 0xFF);
     assert_eq!(cgb.read_boot_rom(0x0200), 0xD2);
     assert_eq!(cgb.read_boot_rom(0x08FF), 0xE4);
 }
@@ -192,6 +194,8 @@ fn cgb_boot_rom_assets_also_accept_sparse_address_space_images() {
         .expect("sparse cgb image should validate");
 
     assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0000), Some(0x44));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0100), None);
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x01FF), None);
     assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0200), Some(0x55));
     assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x08FF), Some(0x66));
 }
@@ -226,7 +230,7 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
 }
 
 #[test]
-fn real_boot_power_on_state_seeds_dmg_hidden_clock_phases() {
+fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
     let real_boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
     let startup_state = real_boot
         .real_boot_power_on_state()
@@ -244,6 +248,19 @@ fn real_boot_power_on_state_seeds_dmg_hidden_clock_phases() {
     assert_eq!(startup_state.serial.clock_counter, 0x0028);
     assert_eq!(startup_state.joypad.selection_bits, 0x00);
     assert_eq!(startup_state.joypad.pressed_mask, 0x00);
+
+    let cgb_real_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::RealBoot,
+        empty_assets(),
+    );
+    let cgb_startup_state = cgb_real_boot
+        .real_boot_power_on_state()
+        .expect("CGB RealBoot should expose power-on hidden clock state");
+    assert_eq!(cgb_startup_state.timer.system_counter, 0xFFFB);
+    assert_eq!(cgb_startup_state.timer.tima, 0x00);
+    assert_eq!(cgb_startup_state.timer.tma, 0x00);
+    assert_eq!(cgb_startup_state.timer.tac, 0x00);
 
     let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     assert!(skip_boot.real_boot_power_on_state().is_none());
@@ -342,11 +359,13 @@ fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
         "empty-slot fallback keeps the common DMG preset"
     );
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(header.header_checksum)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(&header)).f,
         0x80
     );
+    rom[0x014D] = 0x7F;
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(0x7F)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(&header)).f,
         0xB0
     );
 }

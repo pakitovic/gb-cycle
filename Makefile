@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb fetch-test-roms require-boot-rom-root run-acid run-acid-real-boot run-blargg run-blargg-real-boot run-blargg-cpu-instrs run-blargg-cpu-instrs-real-boot run-blargg-dmg-sound run-blargg-dmg-sound-real-boot run-blargg-timing-memory-oam run-blargg-timing-memory-oam-real-boot run-daid run-daid-real-boot run-mooneye run-mooneye-real-boot run-mooneye-acceptance run-mooneye-acceptance-real-boot run-mooneye-mbc1-mbc5 run-mooneye-mbc1-mbc5-real-boot run-mooneye-mbc2 run-mooneye-mbc2-real-boot run-hacktix run-hacktix-real-boot run-cpp run-cpp-real-boot run-mealybug run-mealybug-real-boot run-cgb-smoke run-cgb-boot-div run-cgb-speed run-cgb-ppu-basic run-cgb-dma phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-acid-real-boot run-blargg run-blargg-real-boot run-blargg-cpu-instrs run-blargg-cpu-instrs-real-boot run-blargg-dmg-sound run-blargg-dmg-sound-real-boot run-blargg-timing-memory-oam run-blargg-timing-memory-oam-real-boot run-daid run-daid-real-boot run-mooneye run-mooneye-real-boot run-mooneye-acceptance run-mooneye-acceptance-real-boot run-mooneye-mbc1-mbc5 run-mooneye-mbc1-mbc5-real-boot run-mooneye-mbc2 run-mooneye-mbc2-real-boot run-hacktix run-hacktix-real-boot run-cpp run-cpp-real-boot run-mealybug run-mealybug-real-boot run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-dma phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  make test-roms            Fetch and run all local curated DMG ROM suites"
 	@echo "  make test-roms-real-boot  Fetch and run all local curated DMG ROM suites through verified RealBoot"
 	@echo "  make test-roms-cgb        Fetch and run all currently defined local curated CGB ROM suites"
+	@echo "  make test-roms-cgb-real-boot Fetch and run all currently defined local curated CGB ROM suites through verified RealBoot"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated Acid DMG suite"
@@ -33,6 +34,7 @@ help:
 	@echo "  make run-daid-real-boot   Fetch and run the local Daid DMG suite through verified RealBoot"
 	@echo "  make run-cgb-smoke        Fetch and run the curated CGB smoke suite"
 	@echo "  make run-cgb-boot-div     Fetch and run the curated CGB boot DIV suite"
+	@echo "  make run-cgb-boot-hwio    Fetch and run the exploratory CGB boot HWIO suite"
 	@echo "  make run-cgb-speed        Fetch and run the curated CGB KEY1/speed suite"
 	@echo "  make run-cgb-ppu-basic    Fetch and run the curated CGB PPU baseline suite"
 	@echo "  make run-cgb-dma          Fetch and run the curated CGB DMA/GDMA/HDMA suite"
@@ -100,9 +102,18 @@ test-roms-real-boot: require-boot-rom-root
 test-roms-cgb:
 	$(MAKE) run-cgb-smoke
 	$(MAKE) run-cgb-boot-div
+	$(MAKE) run-cgb-boot-hwio
 	$(MAKE) run-cgb-speed
 	$(MAKE) run-cgb-ppu-basic
 	$(MAKE) run-cgb-dma
+
+test-roms-cgb-real-boot: require-boot-rom-root
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-smoke
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-div
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-speed
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-basic
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-dma
 
 fetch-test-roms:
 	cargo run -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
@@ -205,13 +216,17 @@ run-mealybug:
 run-mealybug-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mealybug
 
-run-cgb-smoke:
+run-cgb-smoke: require-boot-rom-root
 	$(MAKE) fetch-test-roms FAMILIES="mooneye acid"
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
 
-run-cgb-boot-div:
+run-cgb-boot-div: require-boot-rom-root
 	$(MAKE) fetch-test-roms FAMILIES="mooneye"
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-div --failure-artifact-root .artifacts/cgb-boot-div
+
+run-cgb-boot-hwio: require-boot-rom-root
+	$(MAKE) fetch-test-roms FAMILIES="mooneye"
+	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-hwio --failure-artifact-root .artifacts/cgb-boot-hwio
 
 run-cgb-speed:
 	$(MAKE) fetch-test-roms FAMILIES="daid blargg"

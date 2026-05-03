@@ -49,8 +49,10 @@ make run-mooneye-acceptance # Mooneye acceptance/manual chunk used by CI
 make run-mooneye-mbc1-mbc5 # Mooneye emulator-only MBC1/MBC5 chunk used by CI
 make run-mooneye-mbc2  # Mooneye emulator-only MBC2 chunk used by CI
 make test-roms-cgb     # fetch if needed + run all currently defined local curated CGB suites
+make test-roms-cgb-real-boot # fetch if needed + run all currently defined local curated CGB suites through verified RealBoot
 make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
 make run-cgb-boot-div  # manifest-backed Phase 10 CGB boot DIV suite
+make run-cgb-boot-hwio # exploratory/internal Phase 10 CGB boot HWIO suite
 make run-cgb-speed     # manifest-backed Phase 10 CGB KEY1/speed suite
 make run-cgb-ppu-basic # manifest-backed Phase 10 CGB PPU baseline suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
@@ -62,7 +64,7 @@ make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against Li
 make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
 ```
 
-The `*-real-boot` ROM-suite targets are local-only DMG validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` for the ignored external harness, run clean `RealBoot` without the synthetic `SkipBoot` startup-memory profiles used by some Mealybug/Hacktix cases, start each case timeout after the `FF50` handoff, and update the same `/.roms/test/test-report.md` rows as the default targets. Re-run `make test-roms` after a RealBoot pass if you want the report to reflect the default SkipBoot baseline again.
+The `*-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin` or `cgb_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot`, run clean `RealBoot` without synthetic `SkipBoot` startup profiles, start each case timeout after the `FF50` handoff, and update the same `/.roms/test/test-report.md` rows as the default targets. Re-run `make test-roms` after a DMG RealBoot pass or `make test-roms-cgb` after a CGB RealBoot pass if you want the report to reflect the default SkipBoot baseline again. The CGB aggregate target `make test-roms-cgb-real-boot` drives the same CGB suite list as `make test-roms-cgb`, uses strict canonical `cgb_boot.bin` size/hash verification, and clears both startup-memory and startup-timer profiles through the `run_rom_suite` CLI so the executed boot firmware owns the handoff state.
 
 Each `make run-*` target is autosufficient and materializes its own curated family before execution.
 
@@ -151,18 +153,22 @@ Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout`
 ```sh
 make run-cgb-smoke
 make run-cgb-boot-div
+make run-cgb-boot-hwio
 make run-cgb-speed
 make run-cgb-ppu-basic
+make run-cgb-dma
+make test-roms-cgb-real-boot
 ```
 
-- `cgb-smoke` is the Phase `10` Slice `0`/Slice `1` exploratory CGB catalog suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite`.
-- `cgb-boot-div` is the Phase `10` Slice `2` CGB boot/DIV timing gate, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-boot-div.toml`, and `make run-cgb-boot-div` fetches `mooneye` before invoking `run_rom_suite`.
-- `cgb-boot-div` currently runs Mooneye `misc/boot_div-cgbABCDE.gb` on `ConsoleModel::GameBoyColor` with a blocking `mooneye-result` oracle. It validates the CGB direct-boot DIV/timer contract for Slice `2`; full CGB `RealBoot` equivalence remains a Slice `6` responsibility.
+- `cgb-smoke` is the Phase `10` CGB catalog suite promoted to canonical CGB RealBoot in Slice `6`, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, each case requests `startup = "real-boot"`, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite`.
+- `cgb-boot-div` is the Phase `10` CGB boot/DIV timing gate promoted to canonical CGB RealBoot in Slice `6`, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-boot-div.toml`, and `make run-cgb-boot-div` fetches `mooneye` before invoking `run_rom_suite`.
+- `cgb-boot-div` currently runs Mooneye `misc/boot_div-cgbABCDE.gb` on `ConsoleModel::GameBoyColor` with a blocking `mooneye-result` oracle and strict canonical `cgb_boot.bin` RealBoot. It validates the CGB RealBoot handoff/DIV timer contract while the centralized CGB `SkipBoot` state keeps the same Slice `2` hidden timer baseline.
+- `cgb-boot-hwio` is the Slice `6` exploratory/internal CGB RealBoot HWIO suite, not a blocking DMG or CGB aggregate signal yet; its suite definition is `crates/gb-test-runner/data/cgb-boot-hwio.toml`, its source row is `testroms/mooneye/misc/boot_hwio-C.gb` with pinned SHA-256 in `sources.toml`, `make run-cgb-boot-hwio` fetches `mooneye`, and the current oracle is `info-snapshot` until expected HWIO values and promotion rules are documented.
 - `cgb-speed` is the Phase `10` Slice `2` exploratory CGB speed-domain suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-speed.toml`, and `make run-cgb-speed` fetches `daid blargg` before invoking `run_rom_suite`.
 - `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` to a blocking final `framebuffer-rgb555-grayscale-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png`, preserving the absolute solid-black STOP result through a grayscale decode of the CGB RGB555 framebuffer; `stop_instr_gbc_mode3.gb` is a blocking rank-normalized `framebuffer-rgb555-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png`, matching the SameBoy/GBEmulatorShootout PASS screen where CGB STOP entered during Mode `3` leaves the LCD displaying the PASS text; `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized `framebuffer-rgb555-fixture` oracles using their matching `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_*.png` artifacts. These Daid cases use a `180`-frame budget so the terminal STOP or timing output has been presented to the framebuffer before comparison. Blargg `interrupt_time.gb` is promoted to a blocking `blargg-console-contains` oracle with expected text `Passed` and a `1800`-frame budget, because the CGB run emits its result through the upstream BG-map console rather than serial. Every current `cgb-speed` row now has a blocking oracle.
 - `cgb-ppu-basic` is the Phase `10` Slice `4` CGB PPU baseline promotion suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-ppu-basic.toml`, and `make run-cgb-ppu-basic` fetches `samesuite daid acid hacktix` before invoking `run_rom_suite`.
 - `cgb-ppu-basic` currently contains four blocking rows in roadmap order: SameSuite `ppu/blocking_bgpi_increase.gb`, using the `framebuffer-rgb555-fixture` oracle at `crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png`; Daid `ppu_scanline_bgp.gb (GBC)`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png`; Acid `cgb-acid2.gbc`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png`; and Hacktix `bully.gb (GBC)`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png`, the boot-logo VRAM startup-memory profile already used by the DMG Hacktix row, and the explicit `hacktix-cgb-bully-div` startup-timer profile so BullyGB's unconfirmed initial-`DIV` check does not replace the Mooneye-owned CGB direct-boot timer baseline.
-- Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices.
+- Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the CGB suite targets introduced by Phase `10` slices and `make test-roms-cgb-real-boot` reruns that same aggregate through verified CGB RealBoot for local closure evidence.
 
 ## CI integration
 
@@ -351,4 +357,4 @@ Repo-managed local-only support assets live under gitignored roots:
 
 - `GB_CYCLE_BOOT_ROM_ROOT` — boot ROM search path for private firmware assets; there is no repo-local default boot ROM directory.
 - `GB_CYCLE_TEST_ROM_ROOT` — override test ROM root; if unset, `gb-test-runner` falls back to the default curated store automatically.
-- `GB_CYCLE_TEST_ROM_STARTUP` — ignored external ROM-suite harness override for local runs; omit it or use `skip-boot` for the default synthetic startup path, and use `real-boot` only with `GB_CYCLE_BOOT_ROM_ROOT` for clean boot-ROM execution.
+- `GB_CYCLE_TEST_ROM_STARTUP` — ROM-suite startup override for local ignored external harness runs and the `run_rom_suite` CLI; omit it or use `skip-boot` for the default synthetic startup path, and use `real-boot` only with `GB_CYCLE_BOOT_ROM_ROOT` for clean boot-ROM execution that clears synthetic startup-memory and startup-timer profiles.

@@ -43,6 +43,12 @@ pub enum BootRomVerificationIssue {
         expected_sha256: &'static str,
         actual_sha256: String,
     },
+    SizeMismatch {
+        kind: BootRomKind,
+        path: PathBuf,
+        expected_size: usize,
+        actual_size: usize,
+    },
 }
 
 impl fmt::Display for BootRomVerificationIssue {
@@ -83,6 +89,19 @@ impl fmt::Display for BootRomVerificationIssue {
                 expected_sha256,
                 actual_sha256
             ),
+            Self::SizeMismatch {
+                kind,
+                path,
+                expected_size,
+                actual_size,
+            } => write!(
+                f,
+                "boot ROM asset {:?} at {} has unexpected size: expected {} bytes, got {}",
+                kind,
+                path.display(),
+                expected_size,
+                actual_size
+            ),
         }
     }
 }
@@ -107,6 +126,16 @@ pub fn verify_boot_rom_file(
             }
         }
     })?;
+
+    let expected_size = expected_boot_rom_size(kind);
+    if bytes.len() != expected_size {
+        return Err(BootRomVerificationIssue::SizeMismatch {
+            kind,
+            path: path.to_path_buf(),
+            expected_size,
+            actual_size: bytes.len(),
+        });
+    }
 
     let actual_sha256 = sha256_hex(&bytes);
     let expected_sha256 = expected_boot_rom_sha256(kind);
@@ -150,6 +179,13 @@ pub fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
     }
 }
 
+pub const fn expected_boot_rom_size(kind: BootRomKind) -> usize {
+    match kind {
+        BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => 0x0100,
+        BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE => 0x0900,
+    }
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -167,7 +203,7 @@ mod tests {
 
     use super::{
         BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
-        expected_boot_rom_sha256, verify_boot_rom_file,
+        expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -211,17 +247,49 @@ mod tests {
     }
 
     #[test]
+    fn expected_sizes_match_canonical_boot_rom_assets() {
+        assert_eq!(expected_boot_rom_size(BootRomKind::Dmg0), 256);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Dmg), 256);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Mgb), 256);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Cgb0), 2304);
+        assert_eq!(expected_boot_rom_size(BootRomKind::Cgb), 2304);
+        assert_eq!(expected_boot_rom_size(BootRomKind::CgbE), 2304);
+    }
+
+    #[test]
     fn verification_reports_hash_mismatch_for_unexpected_bytes() {
         let temp_dir = unique_temp_dir("hash-mismatch");
         fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
         let path = temp_dir.join("dmg_boot.bin");
-        fs::write(&path, b"not-a-real-dmg-boot-rom").expect("boot rom should be writable");
+        fs::write(&path, vec![0xA5; expected_boot_rom_size(BootRomKind::Dmg)])
+            .expect("boot rom should be writable");
 
         let error = verify_boot_rom_file(&path, BootRomKind::Dmg)
             .expect_err("unexpected bytes should fail strict verification");
         assert!(matches!(
             error,
             BootRomVerificationIssue::HashMismatch { .. }
+        ));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn strict_verification_rejects_noncanonical_cgb_image_sizes_before_hashing() {
+        let temp_dir = unique_temp_dir("size-mismatch");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let path = temp_dir.join("cgb_boot.bin");
+        fs::write(&path, vec![0x00; 0x0800]).expect("compact boot rom should be writable");
+
+        let error = verify_boot_rom_file(&path, BootRomKind::Cgb)
+            .expect_err("strict verification should reject compact CGB images");
+        assert!(matches!(
+            error,
+            BootRomVerificationIssue::SizeMismatch {
+                expected_size: 2304,
+                actual_size: 2048,
+                ..
+            }
         ));
 
         fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
