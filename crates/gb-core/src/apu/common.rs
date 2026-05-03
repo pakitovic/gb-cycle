@@ -1,4 +1,5 @@
 use crate::model::ConsoleModel;
+use crate::speed::CgbSpeedMode;
 
 use super::frame_sequencer::{
     frame_sequencer_step_clocks_envelope, frame_sequencer_step_clocks_length,
@@ -66,7 +67,7 @@ pub(super) const PULSE_DUTY_MASK: u8 = 0xC0;
 pub(super) const PULSE_DUTY_SHIFT: u8 = 6;
 pub(super) const PULSE_DUTY_STEP_MASK: u8 = 0x07;
 pub(super) const CGB_PULSE_POWER_ON_PHASE_MASK: u8 = 0x07;
-pub(super) const CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES: u16 = 16;
+pub(super) const CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES: u16 = 8;
 pub(super) const PULSE_LENGTH_LOAD_MASK: u8 = 0x3F;
 pub(super) const PULSE_PERIOD_TIMER_LOW_BITS_MASK: u16 = 0x03;
 pub(super) const SWEEP_PACE_MASK: u8 = 0x70;
@@ -200,8 +201,28 @@ impl EnvelopeState {
         );
     }
 
-    pub(in crate::apu) fn apply_live_write_effect(&mut self, active: bool, value: u8) {
-        apply_consistent_zombie_mode_increment(active, &mut self.current_volume, value);
+    pub(in crate::apu) fn apply_live_write_effect(
+        &mut self,
+        console_model: ConsoleModel,
+        active: bool,
+        value: u8,
+    ) {
+        if !active {
+            return;
+        }
+
+        if console_model.is_cgb_family() {
+            let old_value = encode_envelope_register(self.initial_volume, self.increase, self.pace);
+            let volume_updates_locked = self.pace != 0 && !self.automatic_updates_enabled;
+            apply_cgb_zombie_mode_write(
+                &mut self.current_volume,
+                value,
+                old_value,
+                volume_updates_locked,
+            );
+        } else {
+            apply_consistent_zombie_mode_increment(&mut self.current_volume, value);
+        }
     }
 
     pub(in crate::apu) fn reload(&mut self, next_step_clocks_envelope: bool) {
@@ -263,12 +284,16 @@ pub(super) const fn pulse_timer_reload_preserving_trigger_phase(
 
 pub(super) const fn cgb_pulse_inactive_trigger_delay_t_cycles(
     console_model: ConsoleModel,
+    speed_mode: CgbSpeedMode,
     was_active: bool,
     power_on_phase: u8,
 ) -> u16 {
     if console_model.is_cgb_family() && !was_active {
-        CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES
-            + (power_on_phase & CGB_PULSE_POWER_ON_PHASE_MASK) as u16
+        let speed_scaled_base = match speed_mode {
+            CgbSpeedMode::Normal => CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES,
+            CgbSpeedMode::Double => CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES * 2,
+        };
+        speed_scaled_base + (power_on_phase & CGB_PULSE_POWER_ON_PHASE_MASK) as u16
     } else {
         0
     }
@@ -372,22 +397,72 @@ pub(super) fn decode_envelope_register(
     *envelope_pace = value & ENVELOPE_PACE_MASK;
 }
 
+pub(super) const fn encode_envelope_register(
+    initial_volume: u8,
+    envelope_increase: bool,
+    envelope_pace: u8,
+) -> u8 {
+    ((initial_volume & MAX_ENVELOPE_VOLUME) << ENVELOPE_INITIAL_VOLUME_SHIFT)
+        | if envelope_increase {
+            ENVELOPE_DIRECTION_BIT
+        } else {
+            0
+        }
+        | (envelope_pace & ENVELOPE_PACE_MASK)
+}
+
 pub(super) const fn envelope_write_uses_consistent_zombie_increment(value: u8) -> bool {
     value & (ENVELOPE_DIRECTION_BIT | ENVELOPE_PACE_MASK) == ENVELOPE_DIRECTION_BIT
 }
 
-pub(super) fn apply_consistent_zombie_mode_increment(
-    active: bool,
-    current_volume: &mut u8,
-    value: u8,
-) {
+pub(super) fn apply_consistent_zombie_mode_increment(current_volume: &mut u8, value: u8) {
     // Pan Docs only documents increase+pace=0 as consistent across tested units; the broader
     // zombie-mode matrix remains revision-specific and is tracked separately.
-    if !active || !envelope_write_uses_consistent_zombie_increment(value) {
+    if !envelope_write_uses_consistent_zombie_increment(value) {
         return;
     }
 
     *current_volume = (*current_volume + 1) & MAX_ENVELOPE_VOLUME;
+}
+
+pub(super) fn apply_cgb_zombie_mode_write(
+    current_volume: &mut u8,
+    new_value: u8,
+    old_value: u8,
+    volume_updates_locked: bool,
+) {
+    let mut should_tick = new_value & ENVELOPE_PACE_MASK != 0
+        && old_value & ENVELOPE_PACE_MASK == 0
+        && !volume_updates_locked;
+    let should_invert = (new_value ^ old_value) & ENVELOPE_DIRECTION_BIT != 0;
+
+    if new_value & (ENVELOPE_DIRECTION_BIT | ENVELOPE_PACE_MASK) == ENVELOPE_DIRECTION_BIT
+        && old_value & (ENVELOPE_DIRECTION_BIT | ENVELOPE_PACE_MASK) == ENVELOPE_DIRECTION_BIT
+        && !volume_updates_locked
+    {
+        should_tick = true;
+    }
+
+    if should_invert {
+        if new_value & ENVELOPE_DIRECTION_BIT != 0 {
+            if old_value & ENVELOPE_PACE_MASK == 0 && !volume_updates_locked {
+                *current_volume ^= MAX_ENVELOPE_VOLUME;
+            } else {
+                *current_volume = 0x0E_u8.wrapping_sub(*current_volume) & MAX_ENVELOPE_VOLUME;
+            }
+            should_tick = false;
+        } else {
+            *current_volume = 0x10_u8.wrapping_sub(*current_volume) & MAX_ENVELOPE_VOLUME;
+        }
+    }
+
+    if should_tick {
+        if new_value & ENVELOPE_DIRECTION_BIT != 0 {
+            *current_volume = (*current_volume + 1) & MAX_ENVELOPE_VOLUME;
+        } else {
+            *current_volume = (*current_volume).wrapping_sub(1) & MAX_ENVELOPE_VOLUME;
+        }
+    }
 }
 
 pub(super) fn clock_envelope_unit(

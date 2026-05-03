@@ -1,4 +1,5 @@
 use crate::model::ConsoleModel;
+use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
     ChannelRuntimeState, DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
@@ -213,15 +214,16 @@ impl Channel1State {
         register: Channel1Register,
         value: u8,
         console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
         match register {
             Channel1Register::Nr10 => self.write_nr10(value),
             Channel1Register::Nr11 => self.write_nr11(value),
-            Channel1Register::Nr12 => self.write_nr12(value),
+            Channel1Register::Nr12 => self.write_nr12(value, console_model),
             Channel1Register::Nr13 => self.write_nr13(value),
             Channel1Register::Nr14 => {
-                self.write_nr14(value, console_model, next_frame_sequencer_step)
+                self.write_nr14(value, console_model, speed_mode, next_frame_sequencer_step)
             }
         }
     }
@@ -270,8 +272,9 @@ impl Channel1State {
         self.pulse.apply_length_duty_write(value);
     }
 
-    fn write_nr12(&mut self, value: u8) {
-        self.pulse.apply_live_envelope_write_effect(value);
+    fn write_nr12(&mut self, value: u8, console_model: ConsoleModel) {
+        self.pulse
+            .apply_live_envelope_write_effect(console_model, value);
         self.nr12 = value;
         self.pulse
             .runtime
@@ -286,6 +289,7 @@ impl Channel1State {
         &mut self,
         value: u8,
         console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
         let mut write_plan = begin_nrx4_write(
@@ -297,9 +301,11 @@ impl Channel1State {
         );
 
         if write_plan.context.trigger {
-            write_plan.observe_trigger_reloaded_zero_length(
-                self.trigger(console_model, write_plan.context.next_step_clocks_envelope),
-            );
+            write_plan.observe_trigger_reloaded_zero_length(self.trigger(
+                console_model,
+                speed_mode,
+                write_plan.context.next_step_clocks_envelope,
+            ));
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
         }
 
@@ -373,10 +379,16 @@ impl Channel1State {
         self.pulse.mark_powered_on();
     }
 
-    fn trigger(&mut self, console_model: ConsoleModel, next_step_clocks_envelope: bool) -> bool {
+    fn trigger(
+        &mut self,
+        console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
+        next_step_clocks_envelope: bool,
+    ) -> bool {
         let period_value = self.period_value();
         let trigger_reloaded_zero_length = self.pulse.trigger(
             console_model,
+            speed_mode,
             period_value,
             self.nr12,
             next_step_clocks_envelope,

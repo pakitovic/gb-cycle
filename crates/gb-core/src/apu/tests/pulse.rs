@@ -123,10 +123,10 @@ fn cgb_inactive_pulse_trigger_applies_power_on_phase_delay_before_the_first_duty
     apu.write_register(0xFF19, 0x87);
 
     assert!(apu.channels.channel_2.pulse.runtime.active);
-    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 20);
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 12);
     assert!(apu.channels.channel_2.pulse.suppress_initial_trigger_output);
 
-    for _ in 0..20 {
+    for _ in 0..12 {
         apu.channels.channel_2.tick_fast_timer();
     }
     assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 0);
@@ -154,6 +154,24 @@ fn cgb_pulse_power_on_phase_wraps_into_the_inactive_trigger_delay() {
     assert_eq!(apu.channels.channel_2.pulse.power_on_phase, 4);
 
     apu.write_register(0xFF19, 0x87);
+
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 12);
+}
+
+#[test]
+fn cgb_double_speed_inactive_pulse_trigger_uses_cpu_visible_startup_delay() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFF);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    assert_eq!(apu.channels.channel_2.pulse.power_on_phase, 4);
+
+    apu.write_register_for_speed(0xFF19, 0x87, CgbSpeedMode::Double);
 
     assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 20);
 }
@@ -1104,6 +1122,51 @@ fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels(
     apu.channels.channel_2.pulse.envelope.current_volume = 7;
     apu.write_register(0xFF17, 0x09);
     assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 7);
+}
+
+fn cgb_channel_1_volume_after_live_nrx2_write(old_value: u8, new_value: u8) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, old_value);
+    apu.write_register(0xFF14, 0x80);
+    apu.write_register(0xFF12, new_value);
+    apu.channels.channel_1.pulse.envelope.current_volume
+}
+
+fn cgb_channel_2_volume_after_live_nrx2_write(old_value: u8, new_value: u8) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, old_value);
+    apu.write_register(0xFF19, 0x80);
+    apu.write_register(0xFF17, new_value);
+    apu.channels.channel_2.pulse.envelope.current_volume
+}
+
+#[test]
+fn cgb_live_nrx2_writes_use_the_shared_zombie_volume_matrix_for_pulse_channels() {
+    let cases = [
+        (0x50, 0xF1, 0x04),
+        (0x51, 0xF8, 0x09),
+        (0x58, 0xF0, 0x0B),
+        (0x58, 0xF1, 0x0A),
+        (0x58, 0xF8, 0x06),
+        (0x59, 0xF8, 0x05),
+    ];
+
+    for (old_value, new_value, expected_volume) in cases {
+        assert_eq!(
+            cgb_channel_1_volume_after_live_nrx2_write(old_value, new_value),
+            expected_volume,
+            "CH1 old={old_value:#04X} new={new_value:#04X}",
+        );
+        assert_eq!(
+            cgb_channel_2_volume_after_live_nrx2_write(old_value, new_value),
+            expected_volume,
+            "CH2 old={old_value:#04X} new={new_value:#04X}",
+        );
+    }
 }
 
 #[test]

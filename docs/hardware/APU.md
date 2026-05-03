@@ -264,14 +264,14 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Retriggering CH1 should reset the pulse period/frequency timer instead.
 - Triggering CH1 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH1 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
-- Repo-local CGB baseline: while the native-CGB APU is powered on but a pulse channel is waiting for its first post-power-on trigger, the hidden power-on phase still advances in the CPU-visible scheduler path; an inactive CH1/CH2 trigger then applies the phase-dependent startup delay before the first duty-step advance, matching SameSuite `channel_1_align` / `channel_2_align` without adding a separate APU clock model.
+- Repo-local CGB baseline: while the native-CGB APU is powered on but a pulse channel is waiting for its first post-power-on trigger, the hidden power-on phase still advances in the CPU-visible scheduler path; an inactive CH1/CH2 trigger then applies the phase-dependent startup delay before the first duty-step advance, with the base delay expressed in the current CPU-visible speed domain (`8` scheduler T-cycles at normal speed and `16` at double speed) so SameSuite `channel_1_align`, `channel_2_align`, and normal-speed volume timing consume the existing Slice 2 speed contract instead of adding a separate APU clock model.
 
 ## CH1 period value and timer baseline
 
 - `NR13` plus the low three bits of `NR14` should form CH1's `11`-bit period value.
 - CH1 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the sample.
 - For the current DMG target, the pulse period timer should be clocked at `1048576` Hz, i.e. once every `4` dots.
-- In native-CGB double speed, pulse generation timers consume the existing Slice `2` normal-speed domain gate so duty steps stay on the wall-clock APU domain while CPU-visible trigger phase/delay remains observable at scheduler T-cycle granularity; this matches SameSuite `channel_1_duty` / `channel_2_duty` without forking the `DIV`/APU frame-sequencer path.
+- In native-CGB double speed, pulse generation timers consume the existing Slice `2` normal-speed domain gate so duty steps stay on the wall-clock APU domain while CPU-visible trigger phase/delay is scaled from the same current speed state used by the bus write path; this matches SameSuite `channel_1_duty` / `channel_2_duty` without forking the `DIV`/APU frame-sequencer path.
 - A duty-step advance should occur when the channel's current sample completes, not on every frame-sequencer tick.
 - Writes to `NR13` or `NR14` should not change the currently playing sample instantly; the new period should only take effect after the current sample ends.
 - Keep a dedicated validation case for CH1 period-write delay rather than burying it inside generic "period changes work" coverage.
@@ -304,7 +304,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
 - While CH1 is active, ordinary `NR12` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH1 trigger.
-- While CH1 is active, `NR12` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH1 is active, `NR12` writes should keep the conservative DMG-family zombie-mode subset but native CGB should use the shared CGB NRx2 live-write matrix: pace `0 -> non-zero` ticks once when unlocked, `increase+pace0 -> increase+pace0` ticks once when unlocked, direction changes invert the current volume through the documented CGB paths, and the live current volume is masked to `0..=15` without reloading the latched envelope configuration until retrigger.
 - Envelope progression must update CH1's internal current volume, not the readable initial-volume bits in `NR12`.
 - Once an automatic envelope step would push CH1 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH1 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH1 by itself.
@@ -416,7 +416,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
 - While CH2 is active, ordinary `NR22` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH2 trigger.
-- While CH2 is active, `NR22` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH2 is active, `NR22` writes should reuse the same shared DMG-family subset and native-CGB NRx2 live-write matrix as CH1; this is pulse-core behavior, not a channel-local PCM or per-ROM patch.
 - Envelope progression must update CH2's internal current volume, not the readable initial-volume bits in `NR22`.
 - Once an automatic envelope step would push CH2 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH2 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH2 by itself.
@@ -664,7 +664,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
 - While CH4 is active, ordinary `NR42` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH4 trigger.
-- While CH4 is active, `NR42` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH4 is active, `NR42` writes should reuse the same shared envelope live-write machinery as `NR12` / `NR22`, with DMG-family writes staying on the conservative subset and native-CGB writes using the CGB NRx2 matrix before CH4-specific LFSR output selection is applied.
 - Envelope progression must update CH4's internal current volume, not the readable initial-volume bits in `NR42`.
 - Once an automatic envelope step would push CH4 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH4 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH4 by itself.

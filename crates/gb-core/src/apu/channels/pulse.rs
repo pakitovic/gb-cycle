@@ -1,4 +1,5 @@
 use crate::model::ConsoleModel;
+use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
     ChannelRuntimeState, EnvelopeState, ExtraLengthClockingContext, LENGTH_ENABLE_BIT,
@@ -68,9 +69,13 @@ impl PulseChannelState {
         self.envelope.apply_write(value);
     }
 
-    pub(in crate::apu) fn apply_live_envelope_write_effect(&mut self, value: u8) {
+    pub(in crate::apu) fn apply_live_envelope_write_effect(
+        &mut self,
+        console_model: ConsoleModel,
+        value: u8,
+    ) {
         self.envelope
-            .apply_live_write_effect(self.runtime.active, value);
+            .apply_live_write_effect(console_model, self.runtime.active, value);
     }
 
     pub(in crate::apu) fn apply_length_enable(&mut self, value: u8) {
@@ -147,6 +152,7 @@ impl PulseChannelState {
     pub(in crate::apu) fn trigger(
         &mut self,
         console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
         period_value: u16,
         envelope_value: u8,
         next_step_clocks_envelope: bool,
@@ -163,6 +169,7 @@ impl PulseChannelState {
             pulse_timer_reload_preserving_trigger_phase(period_value, self.period_timer);
         self.trigger_delay_t_cycles = cgb_pulse_inactive_trigger_delay_t_cycles(
             console_model,
+            speed_mode,
             was_active,
             self.power_on_phase,
         );

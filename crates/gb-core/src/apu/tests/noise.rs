@@ -787,6 +787,34 @@ fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel()
     assert_eq!(apu.channels.channel_4.envelope.current_volume, 0);
 }
 
+fn cgb_channel_4_volume_after_live_nr42_write(old_value: u8, new_value: u8) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, old_value);
+    apu.write_register(0xFF23, 0x80);
+    apu.write_register(0xFF21, new_value);
+    apu.channels.channel_4.envelope.current_volume
+}
+
+#[test]
+fn cgb_live_nr42_writes_use_the_shared_zombie_volume_matrix_for_noise() {
+    let cases = [
+        (0x50, 0xF1, 0x04),
+        (0x51, 0xF8, 0x09),
+        (0x58, 0xF0, 0x0B),
+        (0x58, 0xF8, 0x06),
+        (0x59, 0xF8, 0x05),
+    ];
+
+    for (old_value, new_value, expected_volume) in cases {
+        assert_eq!(
+            cgb_channel_4_volume_after_live_nr42_write(old_value, new_value),
+            expected_volume,
+            "CH4 old={old_value:#04X} new={new_value:#04X}",
+        );
+    }
+}
+
 #[test]
 fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
