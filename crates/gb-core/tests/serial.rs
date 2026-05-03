@@ -3,8 +3,8 @@ mod common;
 use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{
-    ConsoleModel, ExternalPortAttachmentKind, Machine, MachineConfig, SerialTransferState,
-    StartupMode,
+    ConsoleModel, ExternalPortAttachmentKind, Machine, MachineConfig, OperatingMode,
+    SerialTransferState, StartupMode,
 };
 
 fn build_test_rom(program: &[u8], patches: &[(usize, u8)]) -> Vec<u8> {
@@ -78,6 +78,68 @@ fn serial_slave_mode_does_not_advance_without_external_clock_pulses() {
         SerialTransferState::TransferRequested { bits_shifted: 0 }
     );
     assert_eq!(machine.read_bus(0xFF0F) & 0x08, 0x00);
+}
+
+#[test]
+fn native_cgb_sc1_high_speed_master_shifts_on_the_fast_internal_clock() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF0F, 0x00);
+    machine.write_bus(0xFF01, 0x80);
+    machine.write_bus(0xFF02, 0x83);
+
+    let first_shift_cycle = (1..=16)
+        .find(|_| {
+            step_machine_t_cycles(&mut machine, 1);
+            matches!(
+                machine.serial().transfer_state(),
+                SerialTransferState::TransferRequested { bits_shifted: 1 }
+            )
+        })
+        .expect("high-speed CGB serial should shift within one 16-T-cycle period");
+    assert!(first_shift_cycle <= 16);
+    assert_eq!(machine.read_bus(0xFF01), 0x01);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+    assert_eq!(machine.read_bus(0xFF0F) & 0x08, 0x00);
+
+    step_machine_t_cycles(&mut machine, 15);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+
+    step_machine_t_cycles(&mut machine, 1);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 2 }
+    );
+}
+
+#[test]
+fn cgb_compatibility_mode_keeps_sc1_non_functional_like_dmg_serial() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_operating_mode(OperatingMode::GbCompatible)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF01, 0x80);
+    machine.write_bus(0xFF02, 0x83);
+
+    step_machine_t_cycles(&mut machine, 16);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x80);
+    assert_eq!(machine.read_bus(0xFF02), 0xFF);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+    assert!(!machine.serial().snapshot().cgb_high_speed_clock);
 }
 
 #[test]

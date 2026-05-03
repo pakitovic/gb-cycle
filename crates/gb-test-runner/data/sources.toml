@@ -168,6 +168,54 @@ path = "testroms/blargg/dmg_sound/12-wave_write_while_on.gb"
 sha256 = "2efbecd2c6d40928d44f45da4f634626bcd2790165b3949aedfe377c73913774"
 
 [[source.required_file]]
+path = "testroms/blargg/cgb_sound/01-registers.gb"
+sha256 = "8415d6c69f7954e9365a586bac235f5ce39270ece32c09cb8ebbbff043b9852c"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/02-len_ctr.gb"
+sha256 = "a1ccf47375a2bede3077ac85a4903cb037dd8a4c7c85fc5d0c176af52915271f"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/03-trigger.gb"
+sha256 = "70173be396d14ac955c47aededcee90ba994206cc403273d0bb49ba163ae23ef"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/04-sweep.gb"
+sha256 = "abfd1f6fa9e6701e46135ac9f5bb5b10a46cde22d0fc34922636aa09a5647483"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/05-sweep_details.gb"
+sha256 = "f51a80c5538fe4b3afbc5c9af0e689a67869b1e2bbb73d4c60a8874826d056cb"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.gb"
+sha256 = "5701414d13ba55d25b59d13076e2e9cb59a9da6890595b41464f957605e317c0"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.gb"
+sha256 = "47d57ba87c3a93050ee340cf49b9d276e62e9573542b92b1de5fa2f17e3716c1"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.gb"
+sha256 = "be7948c70946e0b81c178b8778ef1907231e734650062f8fa8cdb1ceb5ac8c65"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/09-wave_read_while_on.gb"
+sha256 = "9b101c68b2de1930df74c19aaf22cce74d37dd5aade93855c805ecb2e1e83fd3"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.gb"
+sha256 = "cbea1771a5384f4d8f8a249056224a750ad5ee4671297836e4ba87e689af2a23"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/11-regs_after_power.gb"
+sha256 = "d347dd195a78c2d0f665b94da493a857218f032b014654b84ddb01f7b8e9befc"
+
+[[source.required_file]]
+path = "testroms/blargg/cgb_sound/12-wave.gb"
+sha256 = "7bbd2e78e159de4297f567fec7851f9b90c3076d18d1043af5f30e14bd66cd0a"
+
+[[source.required_file]]
 path = "testroms/acid/which.gb"
 sha256 = "28db9aa9a4afe6d119cca38f9d5d4d9621451412a5ba514119b4a50b859e1061"
 

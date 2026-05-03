@@ -47,6 +47,7 @@ Keep hardware serial state explicit even if link support is stubbed initially. M
 - `SB` should hold the next outgoing byte before transfer start, and during an active transfer it should reflect the live shifted state rather than staying frozen until completion.
 - `SC` should remain a mixed register in the architectural sense: writable control bits plus model-dependent readback policy for non-functional fields.
 - For the current DMG-family baseline, `SC` bits `6..=1` should read back as `1`, while bit `7` reflects transfer requested/in-progress state and bit `0` reflects the selected clock mode.
+- For native CGB mode, `SC.1` is a functional high-speed internal-clock latch; it reads/writes as the latch only when `ConsoleModel::GameBoyColor` is running `OperatingMode::Cgb`, while DMG-family models and CGB-family `GbCompatible` mode keep `SC.1` non-functional and reading high.
 - `SC.7` should express transfer requested / transfer in progress semantics, not a decorative latched bit or a "transfer finished" flag.
 - `SC.0` should select internal versus external clock semantics.
 - In DMG mode, `SC.1` should not expose functional high-speed behavior; keep that bit reserved for future CGB extension rather than activating undocumented DMG behavior.
@@ -67,11 +68,13 @@ Keep hardware serial state explicit even if link support is stubbed initially. M
 
 - In DMG master mode, starting a transfer with `SC.7 = 1` and `SC.0 = 1` should cause the serial subsystem to generate `8` internal serial clock pulses.
 - For the current DMG target, the internal serial clock rate should be `8192` Hz.
+- In native CGB master mode, the internal serial clock consumes the shared speed-domain state rather than a serial-local timer: normal speed with `SC.1 = 0` uses `8192` Hz, double speed with `SC.1 = 0` uses `16384` Hz, normal speed with `SC.1 = 1` uses `262144` Hz, and double speed with `SC.1 = 1` uses `524288` Hz.
 - DMG-family master-mode clocking should follow one serial-owned free-running divider phase that is aligned to reset time rather than restarted from zero whenever software writes `SC`.
 - That DMG-family serial divider phase should stay independent from timer-owned `DIV` reset behavior; writing `DIV` must not implicitly rephase the serial master clock.
 - In slave mode with `SC.0 = 0`, arming the port with `SC.7 = 1` should not advance transfer progress on its own.
 - In slave mode, transfer progress should occur only when external clock pulses are delivered through the peer or link-endpoint boundary.
 - External serial clocks should remain allowed to arrive at non-uniform intervals; do not hard-code a fixed cadence for slave-mode progress.
+- External serial clocks do not consume `SC.1`; CGB high-speed mode affects only internally clocked master transfers.
 - If no external clock pulses arrive in slave mode, the transfer should remain pending indefinitely rather than timing out inside the emulation core.
 - External clock pulses that arrive while slave mode is not armed with `SC.7 = 1` should be discarded rather than buffered and replayed into a later transfer.
 

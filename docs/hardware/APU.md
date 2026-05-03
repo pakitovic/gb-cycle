@@ -27,6 +27,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 - `NR10`-`NR52`
 - wave RAM ownership and access rules
+- native-CGB `PCM12` / `FF76` and `PCM34` / `FF77` read-only digital-output taps
 
 ## APU MMIO contract baseline
 
@@ -37,6 +38,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Powering the APU off through `NR52` should clear APU register state and make the other APU registers read-only until power is restored, except for the documented DMG-family `NRx1` length-write path; wave RAM accessibility should remain under the documented hardware policy.
 - Trigger bits in the `NRx4` family should perform their channel-start side effects on the write itself.
 - Write-only fields such as initial length-timer setup should remain write-only semantically, even if internal channel state later depends on them.
+- Native CGB exposes `PCM12` and `PCM34` as read-only digital-output taps after channel generation and before DAC conversion: `PCM12` low/high nibbles are CH1/CH2 and `PCM34` low/high nibbles are CH3/CH4. These registers must not become writable storage, must not change channel state on reads or writes, and must stay unavailable on DMG-family models and CGB-family compatibility mode.
 
 ## General APU architecture baseline
 
@@ -149,6 +151,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 ## DAC conversion baseline
 
 - Each channel should expose a resolved digital output in the hardware `0..15` domain before DAC conversion rather than a pre-mixed host-ready sample.
+- That resolved digital output is also the source of the native-CGB `PCM12`/`PCM34` MMIO taps, so channel-output state must remain observable without bypassing or reinterpreting channel internals at the bus layer.
 - The APU should keep an explicit DAC stage per channel.
 - When a channel DAC is enabled, digital values `0..15` should map linearly into the analog `-1..1` range with the documented negative slope:
   - digital `0 -> analog +1`
@@ -530,7 +533,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 - CH3 wave-RAM access while the channel is active should remain under an explicit hardware policy rather than being treated as always-free RAM with no side effects.
 - For the current DMG-family target, CH3 active wave-RAM reads and writes should only succeed on the exact T-cycle where CH3 performs its internal wave-RAM fetch; outside that fetch window, reads should return `0xFF` and writes should be ignored.
-- Because the project scope is still DMG-only, do not treat any current CGB-family CH3 active-wave-RAM MMIO behavior in the codebase as supported behavior; keep that contract explicitly deferred until the CGB APU lane exists.
+- For CGB-family hardware, including CGB compatibility mode, CH3 active wave-RAM reads and writes should redirect to the byte CH3 is currently reading, regardless of which `FF30-FF3F` address the CPU accessed; inactive CH3 still exposes ordinary indexed wave RAM.
 - CH3 DMG-family retrigger corruption should remain an explicit model-gated path rather than a side effect hidden inside generic trigger or RAM helpers.
 - That corruption path should stay model-gated to DMG-family behavior rather than leaking automatically into future unaffected models.
 - The corruption decision should depend on the exact internal byte-read position when the retrigger occurs, not on a vague "channel was active" condition.

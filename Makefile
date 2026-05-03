@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-acid-real-boot run-blargg run-blargg-real-boot run-blargg-cpu-instrs run-blargg-cpu-instrs-real-boot run-blargg-dmg-sound run-blargg-dmg-sound-real-boot run-blargg-timing-memory-oam run-blargg-timing-memory-oam-real-boot run-daid run-daid-real-boot run-mooneye run-mooneye-real-boot run-mooneye-acceptance run-mooneye-acceptance-real-boot run-mooneye-mbc1-mbc5 run-mooneye-mbc1-mbc5-real-boot run-mooneye-mbc2 run-mooneye-mbc2-real-boot run-hacktix run-hacktix-real-boot run-cpp run-cpp-real-boot run-mealybug run-mealybug-real-boot run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-dma phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-acid-real-boot run-blargg run-blargg-real-boot run-blargg-cpu-instrs run-blargg-cpu-instrs-real-boot run-blargg-dmg-sound run-blargg-dmg-sound-real-boot run-blargg-timing-memory-oam run-blargg-timing-memory-oam-real-boot run-daid run-daid-real-boot run-mooneye run-mooneye-real-boot run-mooneye-acceptance run-mooneye-acceptance-real-boot run-mooneye-mbc1-mbc5 run-mooneye-mbc1-mbc5-real-boot run-mooneye-mbc2 run-mooneye-mbc2-real-boot run-hacktix run-hacktix-real-boot run-cpp run-cpp-real-boot run-mealybug run-mealybug-real-boot run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-dma run-cgb-audio-blargg phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -38,6 +38,7 @@ help:
 	@echo "  make run-cgb-speed        Fetch and run the curated CGB KEY1/speed suite"
 	@echo "  make run-cgb-ppu-basic    Fetch and run the curated CGB PPU baseline suite"
 	@echo "  make run-cgb-dma          Fetch and run the curated CGB DMA/GDMA/HDMA suite"
+	@echo "  make run-cgb-audio-blargg Fetch and run the curated CGB Blargg sound suite"
 	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
 	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
 	@echo "  make phase9-diff-cartridge    Compare Phase 6 cartridge oracle against SameBoy case-bundle artifacts"
@@ -106,6 +107,7 @@ test-roms-cgb:
 	$(MAKE) run-cgb-speed
 	$(MAKE) run-cgb-ppu-basic
 	$(MAKE) run-cgb-dma
+	$(MAKE) run-cgb-audio-blargg
 
 test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-smoke
@@ -114,6 +116,7 @@ test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-speed
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-basic
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-dma
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-blargg
 
 fetch-test-roms:
 	cargo run -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
@@ -239,6 +242,10 @@ run-cgb-ppu-basic:
 run-cgb-dma:
 	$(MAKE) fetch-test-roms FAMILIES="samesuite"
 	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-dma --failure-artifact-root .artifacts/cgb-dma
+
+run-cgb-audio-blargg:
+	$(MAKE) fetch-test-roms FAMILIES="blargg"
+	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-blargg --failure-artifact-root .artifacts/cgb-audio-blargg
 
 phase9-determinism-smoke:
 	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing

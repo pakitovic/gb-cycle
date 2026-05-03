@@ -31,6 +31,7 @@ fn startup_state_and_sc_writes_cover_internal_and_external_transfer_modes() {
     let startup_state = SerialStartupState::from_registers(0xA5, 0x81);
     assert_eq!(startup_state.sb, 0xA5);
     assert_eq!(startup_state.clock_mode, SerialClockMode::Internal);
+    assert!(!startup_state.cgb_high_speed_clock);
     assert_eq!(
         startup_state.transfer_state,
         SerialTransferState::TransferRequested { bits_shifted: 0 }
@@ -57,6 +58,32 @@ fn scheduler_trace_message_reports_cycle_phase_and_console_model() {
         trace,
         "t_cycle=0 phase=external_event_ingress console_model=GameBoy status=Ready sb=0x00 clock_mode=External transfer_state=Idle peer=Disconnected"
     );
+}
+
+#[test]
+fn cgb_native_mode_latches_sc1_while_dmg_compatible_modes_keep_it_forced_high() {
+    let mut cgb = Serial::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+
+    cgb.write_sc(0x81);
+    assert_eq!(cgb.read_sc(), 0xFD);
+    assert!(!cgb.cgb_high_speed_clock());
+
+    cgb.write_sc(0x83);
+    assert_eq!(cgb.read_sc(), 0xFF);
+    assert!(cgb.cgb_high_speed_clock());
+
+    cgb.apply_operating_mode_state(OperatingMode::GbCompatible);
+    assert_eq!(cgb.read_sc(), 0xFF);
+    assert!(!cgb.cgb_high_speed_clock());
+
+    cgb.write_sc(0x83);
+    assert_eq!(cgb.read_sc(), 0xFF);
+    assert!(!cgb.cgb_high_speed_clock());
+
+    let mut dmg = Serial::new(ConsoleModel::GameBoy);
+    dmg.write_sc(0x83);
+    assert_eq!(dmg.read_sc(), 0xFF);
+    assert!(!dmg.cgb_high_speed_clock());
 }
 
 #[test]
@@ -233,6 +260,51 @@ fn cgb_double_speed_internal_clock_uses_the_faster_edge_bit() {
     assert_eq!(serial.read_sb(), 0x01);
     assert_eq!(
         serial.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+}
+
+#[test]
+fn cgb_sc1_high_speed_internal_clock_uses_fast_edge_bits() {
+    let mut normal =
+        Serial::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    normal.write_sb(0x80);
+    normal.write_sc(0x83);
+
+    for _ in 0..15 {
+        normal.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Normal);
+        assert_eq!(
+            normal.transfer_state(),
+            SerialTransferState::TransferRequested { bits_shifted: 0 }
+        );
+    }
+
+    normal.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Normal);
+    assert_eq!(normal.read_sb(), 0x01);
+    assert_eq!(
+        normal.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+
+    let mut double =
+        Serial::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+    double.write_sb(0x80);
+    double.write_sc(0x83);
+
+    for _ in 0..7 {
+        double.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Double);
+        assert_eq!(
+            double.transfer_state(),
+            SerialTransferState::TransferRequested { bits_shifted: 0 }
+        );
+    }
+
+    double.tick_t_cycle_for_speed(&mut context, crate::speed::CgbSpeedMode::Double);
+    assert_eq!(double.read_sb(), 0x01);
+    assert_eq!(
+        double.transfer_state(),
         SerialTransferState::TransferRequested { bits_shifted: 1 }
     );
 }

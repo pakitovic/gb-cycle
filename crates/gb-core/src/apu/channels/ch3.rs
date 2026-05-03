@@ -278,10 +278,9 @@ impl Channel3State {
                 super::super::common::WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => {
                     return WAVE_RAM_INACCESSIBLE_READ_VALUE;
                 }
-                // The DMG-family fetch-window rule is the only active-wave-RAM
-                // MMIO contract modeled today. CGB-family redirection semantics
-                // are intentionally deferred until the CGB APU lane exists.
-                super::super::common::WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+                super::super::common::WaveRamMmioPolicy::CgbCurrentByteWhileActive => {
+                    return self.wave_ram[self.current_wave_ram_byte_index()];
+                }
             }
         }
 
@@ -304,9 +303,10 @@ impl Channel3State {
         if self.runtime.active {
             match wave_ram_mmio_policy(console_model) {
                 super::super::common::WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => return,
-                // See the read path above: this is a deliberately provisional
-                // fallback, not a claimed CGB-accurate active-access contract.
-                super::super::common::WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+                super::super::common::WaveRamMmioPolicy::CgbCurrentByteWhileActive => {
+                    self.wave_ram[self.current_wave_ram_byte_index()] = value;
+                    return;
+                }
             }
         }
 

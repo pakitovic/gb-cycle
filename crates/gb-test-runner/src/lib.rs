@@ -46,11 +46,12 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
-    cgb_dma_suite, cgb_ppu_basic_suite, cgb_speed_suite, cpp_dmg_curated_suite,
-    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
-    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite,
+    cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_speed_suite,
+    cpp_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
+    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
+    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
+    update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -968,6 +969,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
+        cgb_audio_blargg_suite(),
         cgb_speed_suite(),
         cgb_ppu_basic_suite(),
         cgb_dma_suite(),
@@ -2710,9 +2712,9 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-        cgb_ppu_basic_suite, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        capture_memory_text_output, cgb_audio_blargg_suite, cgb_boot_div_suite,
+        cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, cgb_speed_suite,
+        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output,
@@ -3090,6 +3092,57 @@ mod tests {
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
+    }
+
+    #[test]
+    fn cgb_audio_blargg_suite_promotes_the_cgb_sound_roms() {
+        let suite = cgb_audio_blargg_suite();
+
+        assert_eq!(suite.name, "cgb-audio-blargg");
+        assert_eq!(suite.family.as_deref(), Some("cgb-audio-blargg"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 12);
+
+        for case in &suite.cases {
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert!(
+                case.rom_path.starts_with("blargg/cgb_sound"),
+                "{} should point at blargg/cgb_sound",
+                case.rom_path.display()
+            );
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, Timeout::Frames(3600));
+            assert!(matches!(
+                case.pass_condition,
+                PassCondition::MemoryTextOutputContains { .. }
+            ));
+            assert!(case.capture_plan.contains(CaptureKind::MemoryTextOutput));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(
+                case.failure_artifacts
+                    .contains(CaptureKind::MemoryTextOutput)
+            );
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("blargg/cgb_sound/01-registers.gb")
+        );
+        assert_eq!(
+            suite.cases[11].rom_path,
+            PathBuf::from("blargg/cgb_sound/12-wave.gb")
+        );
+        assert!(
+            built_in_rom_suite_by_name("cgb-audio-blargg")
+                .expect("CGB audio Blargg suite should be built in")
+                .cases
+                .iter()
+                .any(|case| case.id == "cgb-audio-blargg-12-wave")
+        );
     }
 
     #[test]

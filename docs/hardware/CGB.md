@@ -48,6 +48,9 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 - `BCPS`, `BCPD`
 - `OCPS`, `OCPD`
 - `KEY1`
+- `RP`
+- `PCM12`
+- `PCM34`
 - undocumented `FF72`, `FF73`, `FF74`, `FF75`
 
 ## DMG fallback policy for CGB-only MMIO
@@ -118,7 +121,7 @@ Priority order:
 - The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
-- Slice 3 routes `KEY0` / `FF4C`, `VBK` / `FF4F`, `SVBK` / `FF70`, and `FF72-FF75` as implemented CGB-only MMIO through the shared bus contract rather than as generic `FFxx` storage; PPU palettes, `HDMA*`, `OPRI`, `RP`, and `PCM12`/`PCM34` remain explicitly owned by later slices.
+- Slice 3 routes `KEY0` / `FF4C`, `VBK` / `FF4F`, `SVBK` / `FF70`, and `FF72-FF75` as implemented CGB-only MMIO through the shared bus contract rather than as generic `FFxx` storage; PPU palettes, `HDMA*`, `OPRI`, `RP`, and `PCM12`/`PCM34` are owned by their later slices rather than by generic CGB storage.
 - Slice 3 keeps `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. `FF72-FF74` are native-CGB read/write bytes initialized to `$00`, while `FF75` exposes only bits `4-6` as writable and reads back those bits over forced `$8F`.
 - The public model surface may already expose an explicit `OperatingMode`, but routed MMIO and subsystem behavior may still stage runtime consultation incrementally; until a specific register path consumes that mode directly, descriptors such as `BGP` / `OBP*` may continue to publish nominal `DMG-compatible` availability without claiming full runtime mode routing.
 - CGB boot flow branches into full CGB mode or DMG-compatibility mode based on cartridge header information without requiring a separate emulator core.
@@ -131,6 +134,7 @@ Priority order:
 - A `STOP` executed while `KEY1` is armed follows the CGB speed-switch path: fetch the padding byte, reset the shared divider through the speed-aware `DIV` write-effect path, clear the prepare bit, toggle normal/double speed, and enter the explicit `65_540` scheduler T-cycle speed-switch pause before resuming from the post-padding `PC`; this local timing constant is anchored by Daid `speed_switch_timing_ly.gbc` and `speed_switch_timing_stat.gbc` and may be revisited only with stronger hardware evidence.
 - During the speed-switch pause, the scheduler treats CPU-visible domains as stop-active: CPU bus traffic is absent and timer/serial/APU advancement is gated, while the LCD/PPU scan domain continues at normal dot cadence with the CGB STOP visible-output contract active for the pause.
 - The shared speed-domain contract is centralized in `CgbSpeedMode`: normal speed and double speed both advance the timer counter by `1` per CPU-visible scheduler T-cycle so CPU-visible `DIV` reads match Daid `speed_switch_timing_div.gbc`, the APU frame sequencer derives its undoubled domain from counter bit `12` in normal speed and bit `13` in double speed, and the baseline internal serial edge consumes bit `8` in normal speed and bit `7` in double speed.
+- Phase 10 Slice 7 extends serial's native-CGB `SC.1` latch on top of that same speed-domain contract: low-speed internal serial uses bit `8` in normal speed and bit `7` in double speed, while high-speed internal serial uses bit `3` in normal speed and bit `2` in double speed; DMG-family models and CGB-family `GbCompatible` mode keep `SC.1` non-functional and reading high.
 - LCD/PPU timing must continue to use its own scheduler-domain contract; after a completed switch into double speed, the LCD domain ticks every other CPU-visible scheduler T-cycle, and double speed must not be modeled as a generic frame, LY, STAT, or LCD-dot multiplier.
 - CGB-family `STOP` entered outside PPU Mode `3` forced blank fills the visible output with CGB RGB555 black through panel shade `3`, while DMG-family `STOP` keeps shade `0` (white); CGB-family `STOP` entered during Mode `3` preserves the currently displayed RGB555 framebuffer because the CGB PPU keeps displaying the same data and can still access VRAM in that phase.
 - The Phase 10 `cgb-speed` ROM suite is manifest-backed; Daid `stop_instr.gb (GBC)` is a blocking absolute grayscale comparison decoded from the CGB RGB555 framebuffer, `stop_instr_gbc_mode3.gb` is a blocking rank-normalized RGB555 framebuffer fixture against the SameBoy/GBEmulatorShootout PASS screen, and `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized RGB555 framebuffer fixtures.
@@ -145,6 +149,8 @@ Priority order:
 - Phase 10 Slice 4E implements the native CGB BG/OBJ priority composer: OBJ/OBJ drawing priority is selected by a boot-latched mode (`CGB` native uses OAM order, CGB compatibility uses DMG-style X coordinate without enabling DMG silicon quirks), `OPRI` / `FF6C` is an implemented native-CGB MMIO latch with `$FE | bit0` readback but ordinary post-boot writes do not mutate visual priority, and final BG-over-OBJ composition follows CGB `LCDC.0`, BG attribute bit `7`, OAM attribute bit `7`, and BG color-index `0` rules.
 - Phase 10 Slice 4F implements the direct-boot CGB compatibility palette adapter: `SkipBoot` resolves the standard CGB boot lookup from Nintendo licensee detection, the 16-byte title checksum, ambiguous fourth-title-byte correction, lookup-index `0` fallback, and the held-joypad boot-input override table, then seeds BG palette `0` and OBJ palettes `0`/`1` while runtime compatibility RGB555 maps `BGP`, `OBP0`, and `OBP1` through those fixed CGB palette slots.
 - Phase 10 Slice 4G locks the current CGB BG/window fetcher latch contract with focused probes: tile number and VRAM-bank-1 attributes are sampled on the tile-index read dot, the latched palette/flip/priority/tile-bank sideband stays stable for already-fetched pixels, later attribute writes are observed only by later fetches, CPU `VBK` selection does not retarget PPU banked fetches, window restarts latch the window attribute-map entry instead of reusing stale BG attributes, and both window tile-data planes apply the same latched CGB attributes for VRAM-bank and vertical-flip selection.
+- Phase 10 Slice 7 routes `RP` / `FF56` as a native-CGB infrared register baseline with bit `0` as the emitter latch, bits `6-7` as read-enable latches, bits `2-5` reading high, bit `1` reading no-signal high without host light injection, and DMG-family plus CGB compatibility mode fallback to `$FF`.
+- Phase 10 Slice 7 routes `PCM12` / `FF76` and `PCM34` / `FF77` as native-CGB read-only APU digital-output taps, with low/high nibbles mapped to CH1/CH2 and CH3/CH4 respectively; DMG-family models and CGB-family `GbCompatible` mode keep those CGB-only registers unavailable.
 - CGB-family `LY` / `LYC` timing includes the late line-`153` `LY=0` window used by compatibility-mode raster effects: from dot `8` of line `153`, `FF44` readback and `LYC` comparison expose `0` even though the internal raster snapshot still reports line `153`, allowing `LYC=0` STAT handlers to begin before visible line `0`.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
@@ -155,7 +161,8 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 
 - post-boot `OPRI` visual priority mutation beyond the implemented latch/readback baseline, unless backed by dedicated hardware evidence
 - CGB0/CGB-E revision-specific boot-ROM behavior beyond strict asset recognition for future validation
-- full CGB serial `SC.1` high-speed transfer behavior beyond the Slice 2 shared speed-domain edge contract
+- linked CGB serial transport beyond single-console `SC.1` high-speed transfer timing
+- host-side infrared light injection, analog IR sensor adaptation, peer IR transport, and title-specific IR protocols beyond the Slice 7 `RP` register baseline
 - CGB OAM DMA duration differences in double speed are now owned by `hardware/DMA.md`: `FF46` latches the current CGB speed profile, keeps the `160` CPU M-cycle DMA body, and exposes the double-speed LCD-domain dot difference through the shared scheduler speed contract.
 - HDMA and GDMA core execution are now owned by `hardware/DMA.md`; Slice 5 promotes the initial SameSuite `cgb-dma` rows to blocking framebuffer fixtures and locks the active-HDMA live-bus bank/`VBK` plus HBlank seam policies there.
 - AGB/AGS/GBP and other post-CGB boot-ROM variants

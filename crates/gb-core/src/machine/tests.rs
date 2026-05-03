@@ -1491,6 +1491,58 @@ fn save_state_hardening_preserves_serial_transfers_in_flight() {
 }
 
 #[test]
+fn save_state_hardening_preserves_cgb_fast_serial_and_rp_latches() {
+    let mut serial = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    serial
+        .load_cartridge(build_cgb_native_test_rom(&[0x00]))
+        .expect("CGB NoMBC test ROM should load");
+    serial.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
+    serial.write_bus(0xFF01, 0x96);
+    serial.write_bus(0xFF02, 0x83);
+    step_until(
+        &mut serial,
+        64,
+        "CGB high-speed internal serial transfer in flight",
+        |machine| {
+            machine.serial().snapshot().cgb_high_speed_clock
+                && matches!(
+                    machine.serial().snapshot().transfer_state,
+                    SerialTransferState::TransferRequested { bits_shifted } if (1..8).contains(&bits_shifted)
+                )
+        },
+    );
+    assert_save_state_restores_continuation(
+        serial,
+        "CGB high-speed internal serial transfer",
+        19,
+        257,
+    );
+
+    let mut rp = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    rp.load_cartridge(build_cgb_native_test_rom(&[0x00]))
+        .expect("CGB NoMBC test ROM should load");
+    rp.write_bus(0xFF56, 0xC1);
+    assert_eq!(rp.read_bus(0xFF56), 0xFF);
+
+    let saved = rp.capture_save_state();
+    let mut uninterrupted = rp.clone();
+    step_t_cycles(&mut uninterrupted, 32);
+
+    rp.write_bus(0xFF56, 0x00);
+    assert_eq!(rp.read_bus(0xFF56), 0x3E);
+    step_t_cycles(&mut rp, 7);
+    rp.restore_save_state(&saved)
+        .expect("matching CGB RP save-state should restore");
+    assert_eq!(rp.read_bus(0xFF56), 0xFF);
+    step_t_cycles(&mut rp, 32);
+    assert_eq!(rp.capture_save_state(), uninterrupted.capture_save_state());
+}
+
+#[test]
 fn save_state_hardening_preserves_active_apu_channels_and_output_path() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),

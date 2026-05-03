@@ -264,7 +264,10 @@ fn dmg_cgb_only_io_fallback_reads_as_ff() {
 
     assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF4D, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF76, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF77, BusIoReadView::default()), 0xFF);
 }
 
 #[test]
@@ -276,6 +279,7 @@ fn native_cgb_bus_owned_io_registers_publish_slice3_readback() {
     assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xF8);
     assert_eq!(bus.read_io_target(0xFF72, BusIoReadView::default()), 0x00);
     assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0x8F);
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0x3E);
 
     assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF55, BusIoReadView::default()), 0xFF);
@@ -333,6 +337,85 @@ fn native_cgb_hdma_registers_route_to_dma_owner() {
 }
 
 #[test]
+fn native_cgb_rp_register_exposes_only_the_phase10_infrared_latches() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0x3E);
+
+    bus.write_with_context(
+        0xFF56,
+        0xC1,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+
+    bus.write_with_context(
+        0xFF56,
+        0x40,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0x7E);
+}
+
+#[test]
+fn native_cgb_pcm_registers_route_to_apu_owner_as_read_only_taps() {
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    let apu = crate::apu::Apu::new(ConsoleModel::GameBoyColor);
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF76,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF77,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+
+    let mut apu = apu;
+    bus.write_with_context(
+        0xFF76,
+        0xFF,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            apu: Some(&mut apu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF76,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+}
+
+#[test]
 fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
     let bus = Bus::new_with_operating_mode(
         ConsoleModel::GameBoyColor,
@@ -341,7 +424,8 @@ fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
     let ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
     for address in [
-        0xFF4C, 0xFF4F, 0xFF51, 0xFF55, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
+        0xFF4C, 0xFF4F, 0xFF51, 0xFF55, 0xFF56, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
+        0xFF76, 0xFF77,
     ] {
         assert_eq!(
             bus.read_io_target(

@@ -144,7 +144,7 @@ pub(super) const PULSE_DUTY_PATTERNS: [[bool; 8]; 4] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum WaveRamMmioPolicy {
     DmgCurrentByteDuringFetchOnly,
-    DeferredCgbActiveAccess,
+    CgbCurrentByteWhileActive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -223,7 +223,7 @@ pub(super) fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPo
     if console_model.is_dmg_family() {
         WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
     } else {
-        WaveRamMmioPolicy::DeferredCgbActiveAccess
+        WaveRamMmioPolicy::CgbCurrentByteWhileActive
     }
 }
 

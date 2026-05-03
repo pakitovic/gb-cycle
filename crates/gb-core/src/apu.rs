@@ -346,6 +346,16 @@ impl Apu {
         self.status
     }
 
+    pub fn read_pcm12(&self) -> u8 {
+        let outputs = self.channel_output_state().digital_outputs;
+        (outputs[1] << 4) | outputs[0]
+    }
+
+    pub fn read_pcm34(&self) -> u8 {
+        let outputs = self.channel_output_state().digital_outputs;
+        (outputs[3] << 4) | outputs[2]
+    }
+
     pub(crate) fn tick_t_cycle(&mut self, context: &CycleContext) {
         self.last_register_write = None;
         self.channels.begin_t_cycle();

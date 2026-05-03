@@ -336,6 +336,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - CGB audio gate first: `cgb-audio-blargg` through `make run-cgb-audio-blargg`.
 - CGB advanced audio gate: `cgb-audio-samesuite` through `make run-cgb-audio-samesuite`, promoted in coarse-to-fine implementation order: shared CH1/CH2 pulse-channel primitives plus coarse CH3/CH4 output, basic timing/frequency/restart behavior across channels, CH1 sweep, DIV/APU shared timing, fine channel-specific glitches, then speed-change-sensitive NRx2 cases.
 - Regression gate: DMG `167/167` plus full Blargg `dmg_sound`.
+- Status note: Slice `7A` starts with the infrastructure and shallow CGB register contracts before deep APU work: `cgb-audio-blargg` is manifest-backed with the twelve Blargg `cgb_sound` ROMs and a `make run-cgb-audio-blargg` target, native CGB serial owns the `SC.1` high-speed latch and the four Slice-2-derived internal rates, `RP` / `FF56` exposes only the documented latch/no-signal baseline with save-state coverage, and `PCM12` / `PCM34` expose read-only native-CGB digital-output nibbles without replacing the existing APU channel or frame-sequencer model.
 
 ## Slice 8 — CGB cartridge, RTC, and practical compatibility
 

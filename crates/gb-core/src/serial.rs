@@ -1,9 +1,10 @@
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, OperatingMode};
 use crate::scheduler::{CycleContext, InterruptSource};
 use crate::speed::CgbSpeedMode;
 
 const SC_TRANSFER_REQUEST_BIT: u8 = 0x80;
-const SC_FORCED_HIGH_BITS: u8 = 0x7E;
+const SC_UNUSED_READ_MASK: u8 = 0x7C;
+const SC_CGB_HIGH_SPEED_BIT: u8 = 0x02;
 const SC_CLOCK_MODE_BIT: u8 = 0x01;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -47,6 +48,7 @@ pub enum SerialTransferState {
 pub struct SerialStartupState {
     pub sb: u8,
     pub clock_mode: SerialClockMode,
+    pub cgb_high_speed_clock: bool,
     pub transfer_state: SerialTransferState,
     pub clock_counter: u16,
 }
@@ -60,6 +62,7 @@ impl SerialStartupState {
             } else {
                 SerialClockMode::External
             },
+            cgb_high_speed_clock: sc & SC_CGB_HIGH_SPEED_BIT != 0,
             transfer_state: if sc & SC_TRANSFER_REQUEST_BIT != 0 {
                 SerialTransferState::TransferRequested { bits_shifted: 0 }
             } else {
@@ -78,9 +81,11 @@ impl SerialStartupState {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Serial {
     console_model: ConsoleModel,
+    operating_mode: OperatingMode,
     status: SerialStatus,
     sb: u8,
     clock_mode: SerialClockMode,
+    cgb_high_speed_clock: bool,
     transfer_state: SerialTransferState,
     peer: SerialPeer,
     clock_counter: u16,
@@ -96,9 +101,11 @@ pub struct Serial {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerialSaveState {
     console_model: ConsoleModel,
+    operating_mode: OperatingMode,
     status: SerialStatus,
     sb: u8,
     clock_mode: SerialClockMode,
+    cgb_high_speed_clock: bool,
     transfer_state: SerialTransferState,
     peer: SerialPeer,
     clock_counter: u16,
@@ -120,20 +127,31 @@ impl SerialSaveState {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerialSnapshot {
     pub console_model: ConsoleModel,
+    pub operating_mode: OperatingMode,
     pub status: SerialStatus,
     pub sb: u8,
     pub clock_mode: SerialClockMode,
+    pub cgb_high_speed_clock: bool,
     pub transfer_state: SerialTransferState,
     pub peer: SerialPeer,
 }
 
 impl Serial {
     pub fn new(console_model: ConsoleModel) -> Self {
+        Self::new_with_operating_mode(console_model, console_model.default_operating_mode())
+    }
+
+    pub fn new_with_operating_mode(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+    ) -> Self {
         Self {
             console_model,
+            operating_mode,
             status: SerialStatus::Ready,
             sb: 0,
             clock_mode: SerialClockMode::External,
+            cgb_high_speed_clock: false,
             transfer_state: SerialTransferState::Idle,
             peer: SerialPeer::Disconnected,
             clock_counter: 0,
@@ -151,16 +169,29 @@ impl Serial {
         self.console_model
     }
 
+    pub fn operating_mode(&self) -> OperatingMode {
+        self.operating_mode
+    }
+
     pub fn status(&self) -> SerialStatus {
         self.status
+    }
+
+    pub(crate) fn apply_operating_mode_state(&mut self, operating_mode: OperatingMode) {
+        self.operating_mode = operating_mode;
+        if !self.cgb_high_speed_serial_enabled() {
+            self.cgb_high_speed_clock = false;
+        }
     }
 
     pub(crate) fn capture_save_state(&self) -> SerialSaveState {
         SerialSaveState {
             console_model: self.console_model,
+            operating_mode: self.operating_mode,
             status: self.status,
             sb: self.sb,
             clock_mode: self.clock_mode,
+            cgb_high_speed_clock: self.cgb_high_speed_clock,
             transfer_state: self.transfer_state,
             peer: self.peer,
             clock_counter: self.clock_counter,
@@ -176,9 +207,11 @@ impl Serial {
 
     pub(crate) fn restore_save_state(&mut self, state: &SerialSaveState) {
         self.console_model = state.console_model;
+        self.operating_mode = state.operating_mode;
         self.status = state.status;
         self.sb = state.sb;
         self.clock_mode = state.clock_mode;
+        self.cgb_high_speed_clock = state.cgb_high_speed_clock;
         self.transfer_state = state.transfer_state;
         self.peer = state.peer;
         self.clock_counter = state.clock_counter;
@@ -193,6 +226,10 @@ impl Serial {
 
     pub fn clock_mode(&self) -> SerialClockMode {
         self.clock_mode
+    }
+
+    pub fn cgb_high_speed_clock(&self) -> bool {
+        self.cgb_high_speed_serial_enabled() && self.cgb_high_speed_clock
     }
 
     pub fn transfer_state(&self) -> SerialTransferState {
@@ -213,7 +250,8 @@ impl Serial {
     }
 
     pub fn read_sc(&self) -> u8 {
-        SC_FORCED_HIGH_BITS
+        SC_UNUSED_READ_MASK
+            | self.read_sc_high_speed_bit()
             | match self.transfer_state {
                 SerialTransferState::Idle => 0,
                 SerialTransferState::TransferRequested { .. } => SC_TRANSFER_REQUEST_BIT,
@@ -230,6 +268,8 @@ impl Serial {
         } else {
             SerialClockMode::External
         };
+        self.cgb_high_speed_clock =
+            self.cgb_high_speed_serial_enabled() && value & SC_CGB_HIGH_SPEED_BIT != 0;
         self.transfer_state = if value & SC_TRANSFER_REQUEST_BIT != 0 {
             SerialTransferState::TransferRequested { bits_shifted: 0 }
         } else {
@@ -245,6 +285,8 @@ impl Serial {
     pub fn apply_startup_state(&mut self, startup_state: SerialStartupState) {
         self.sb = startup_state.sb;
         self.clock_mode = startup_state.clock_mode;
+        self.cgb_high_speed_clock =
+            self.cgb_high_speed_serial_enabled() && startup_state.cgb_high_speed_clock;
         self.transfer_state = startup_state.transfer_state;
         self.peer = SerialPeer::Disconnected;
         self.clock_counter = startup_state.clock_counter;
@@ -292,6 +334,7 @@ impl Serial {
                 self.clock_counter,
                 self.clock_counter.wrapping_add(1),
                 speed_mode,
+                self.cgb_high_speed_clock(),
             )
     }
 
@@ -307,9 +350,11 @@ impl Serial {
     pub fn snapshot(&self) -> SerialSnapshot {
         SerialSnapshot {
             console_model: self.console_model,
+            operating_mode: self.operating_mode,
             status: self.status,
             sb: self.sb,
             clock_mode: self.clock_mode,
+            cgb_high_speed_clock: self.cgb_high_speed_clock(),
             transfer_state: self.transfer_state,
             peer: self.peer,
         }
@@ -329,8 +374,12 @@ impl Serial {
 
         let previous_clock_counter = self.clock_counter;
         self.clock_counter = self.clock_counter.wrapping_add(1);
-        let internal_clock_edge =
-            serial_internal_clock_edge(previous_clock_counter, self.clock_counter, speed_mode);
+        let internal_clock_edge = serial_internal_clock_edge(
+            previous_clock_counter,
+            self.clock_counter,
+            speed_mode,
+            self.cgb_high_speed_clock(),
+        );
 
         let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
             return;
@@ -387,6 +436,18 @@ impl Serial {
                 self.transfer_state,
                 SerialTransferState::TransferRequested { .. }
             )
+    }
+
+    fn cgb_high_speed_serial_enabled(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
+    }
+
+    fn read_sc_high_speed_bit(&self) -> u8 {
+        if self.cgb_high_speed_serial_enabled() {
+            u8::from(self.cgb_high_speed_clock) * SC_CGB_HIGH_SPEED_BIT
+        } else {
+            SC_CGB_HIGH_SPEED_BIT
+        }
     }
 
     fn shift_one_bit(&mut self, context: &mut CycleContext) {
@@ -449,9 +510,22 @@ const fn serial_internal_clock_edge(
     previous_clock_counter: u16,
     current_clock_counter: u16,
     speed_mode: CgbSpeedMode,
+    cgb_high_speed_clock: bool,
 ) -> bool {
-    previous_clock_counter & (1 << speed_mode.serial_internal_clock_edge_bit()) != 0
-        && current_clock_counter & (1 << speed_mode.serial_internal_clock_edge_bit()) == 0
+    let edge_mask = 1 << serial_internal_clock_edge_bit(speed_mode, cgb_high_speed_clock);
+    previous_clock_counter & edge_mask != 0 && current_clock_counter & edge_mask == 0
+}
+
+const fn serial_internal_clock_edge_bit(
+    speed_mode: CgbSpeedMode,
+    cgb_high_speed_clock: bool,
+) -> u8 {
+    match (speed_mode, cgb_high_speed_clock) {
+        (CgbSpeedMode::Normal, false) => 8,
+        (CgbSpeedMode::Double, false) => 7,
+        (CgbSpeedMode::Normal, true) => 3,
+        (CgbSpeedMode::Double, true) => 2,
+    }
 }
 
 #[cfg(test)]
