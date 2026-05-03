@@ -264,12 +264,14 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Retriggering CH1 should reset the pulse period/frequency timer instead.
 - Triggering CH1 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH1 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
+- Repo-local CGB baseline: while the native-CGB APU is powered on but a pulse channel is waiting for its first post-power-on trigger, the hidden power-on phase still advances in the CPU-visible scheduler path; an inactive CH1/CH2 trigger then applies the phase-dependent startup delay before the first duty-step advance, matching SameSuite `channel_1_align` / `channel_2_align` without adding a separate APU clock model.
 
 ## CH1 period value and timer baseline
 
 - `NR13` plus the low three bits of `NR14` should form CH1's `11`-bit period value.
 - CH1 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the sample.
 - For the current DMG target, the pulse period timer should be clocked at `1048576` Hz, i.e. once every `4` dots.
+- In native-CGB double speed, pulse generation timers consume the existing Slice `2` normal-speed domain gate so duty steps stay on the wall-clock APU domain while CPU-visible trigger phase/delay remains observable at scheduler T-cycle granularity; this matches SameSuite `channel_1_duty` / `channel_2_duty` without forking the `DIV`/APU frame-sequencer path.
 - A duty-step advance should occur when the channel's current sample completes, not on every frame-sequencer tick.
 - Writes to `NR13` or `NR14` should not change the currently playing sample instantly; the new period should only take effect after the current sample ends.
 - Keep a dedicated validation case for CH1 period-write delay rather than burying it inside generic "period changes work" coverage.
@@ -377,6 +379,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Retriggering CH2 should reset the pulse period/frequency timer instead.
 - Triggering CH2 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH2 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
+- Repo-local CGB baseline: CH2 shares the same native-CGB inactive-trigger startup delay and power-on phase tracking as CH1; this belongs to the shared pulse-channel primitive rather than to per-ROM or per-channel PCM patches.
 
 ## CH2 period value and timer baseline
 

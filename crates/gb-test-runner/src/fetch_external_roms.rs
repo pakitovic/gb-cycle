@@ -473,10 +473,10 @@ mod tests {
     use std::process::Command;
 
     use crate::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_audio_blargg_suite, cgb_boot_div_suite,
-        cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, cgb_speed_suite,
-        curated_test_rom_families, curated_test_rom_family_suites, external_rom_store_root,
-        test_rom_store_root,
+        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_smoke_suite, cgb_speed_suite, curated_test_rom_families,
+        curated_test_rom_family_suites, external_rom_store_root, test_rom_store_root,
     };
 
     use super::{
@@ -606,6 +606,7 @@ mod tests {
                 cgb_ppu_basic_suite(),
                 cgb_dma_suite(),
                 cgb_audio_blargg_suite(),
+                cgb_audio_samesuite_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| ExternalRomRequiredFile {
@@ -636,6 +637,7 @@ mod tests {
             cgb_ppu_basic_suite(),
             cgb_dma_suite(),
             cgb_audio_blargg_suite(),
+            cgb_audio_samesuite_suite(),
         ]) {
             for case in suite.cases {
                 let source_path = root.join("testroms").join(&case.rom_path);

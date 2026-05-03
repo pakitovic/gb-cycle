@@ -298,7 +298,7 @@ impl Channel1State {
 
         if write_plan.context.trigger {
             write_plan.observe_trigger_reloaded_zero_length(
-                self.trigger(write_plan.context.next_step_clocks_envelope),
+                self.trigger(console_model, write_plan.context.next_step_clocks_envelope),
             );
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
         }
@@ -373,18 +373,27 @@ impl Channel1State {
         self.pulse.mark_powered_on();
     }
 
-    fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
+    fn trigger(&mut self, console_model: ConsoleModel, next_step_clocks_envelope: bool) -> bool {
         let period_value = self.period_value();
-        let trigger_reloaded_zero_length =
-            self.pulse
-                .trigger(period_value, self.nr12, next_step_clocks_envelope);
+        let trigger_reloaded_zero_length = self.pulse.trigger(
+            console_model,
+            period_value,
+            self.nr12,
+            next_step_clocks_envelope,
+        );
         self.sweep
             .trigger(self.nr10, period_value, &mut self.pulse.runtime);
         trigger_reloaded_zero_length
     }
 
+    #[cfg(test)]
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
-        self.pulse.tick_fast_timer(self.period_value());
+        self.tick_fast_timer_with_clock_gate(true);
+    }
+
+    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(&mut self, clock_period_timer: bool) {
+        self.pulse
+            .tick_fast_timer_with_clock_gate(self.period_value(), clock_period_timer);
     }
 
     pub(in crate::apu) fn clock_length(&mut self) {

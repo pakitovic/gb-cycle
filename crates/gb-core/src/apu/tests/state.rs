@@ -38,6 +38,9 @@ fn cgb_pcm_registers_expose_current_channel_digital_outputs() {
     apu.write_register(0xFF17, 0xF0);
     apu.write_register(0xFF18, 0xFF);
     apu.write_register(0xFF19, 0x87);
+    while apu.channels.channel_2.pulse.trigger_delay_t_cycles > 0 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
     for _ in 0..4 {
         apu.channels.channel_2.tick_fast_timer();
     }

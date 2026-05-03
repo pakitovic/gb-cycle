@@ -348,7 +348,8 @@ impl MachinePhaseRunner<'_> {
     {
         if !self.cpu_stop_active() {
             observe_machine_step_region(observer, MachineStepRegion::Apu, || {
-                self.apu.tick_t_cycle(context);
+                self.apu
+                    .tick_t_cycle_for_speed(context, self.speed.current_speed());
             });
             let boot_bus_state = self.boot.bus_state();
             let ppu_owner_bus_state_before = self.ppu.owner_bus_state();

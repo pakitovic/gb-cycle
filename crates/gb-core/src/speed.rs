@@ -53,6 +53,10 @@ impl CgbSpeedMode {
         }
     }
 
+    pub const fn apu_tick_due_at_scheduler_t_cycle(self, scheduler_t_cycle: u64) -> bool {
+        self.lcd_tick_due_at_scheduler_t_cycle(scheduler_t_cycle)
+    }
+
     const fn toggled(self) -> Self {
         match self {
             Self::Normal => Self::Double,
@@ -313,5 +317,9 @@ mod tests {
         assert!(CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(0));
         assert!(!CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(1));
         assert!(CgbSpeedMode::Double.lcd_tick_due_at_scheduler_t_cycle(2));
+        assert!(CgbSpeedMode::Normal.apu_tick_due_at_scheduler_t_cycle(1));
+        assert!(CgbSpeedMode::Double.apu_tick_due_at_scheduler_t_cycle(0));
+        assert!(!CgbSpeedMode::Double.apu_tick_due_at_scheduler_t_cycle(1));
+        assert!(CgbSpeedMode::Double.apu_tick_due_at_scheduler_t_cycle(2));
     }
 }

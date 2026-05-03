@@ -47,11 +47,11 @@ pub use boot_rom_verification::{
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
     blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite,
-    cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_speed_suite,
-    cpp_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
-    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
-    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
-    update_curated_test_report,
+    cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
+    cgb_ppu_basic_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
+    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -970,6 +970,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
         cgb_audio_blargg_suite(),
+        cgb_audio_samesuite_suite(),
         cgb_speed_suite(),
         cgb_ppu_basic_suite(),
         cgb_dma_suite(),
@@ -2712,12 +2713,13 @@ mod tests {
         RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_audio_blargg_suite, cgb_boot_div_suite,
-        cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, cgb_speed_suite,
-        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output,
+        capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
+        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3142,6 +3144,47 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "cgb-audio-blargg-12-wave")
+        );
+    }
+
+    #[test]
+    fn cgb_audio_samesuite_suite_promotes_the_same_suite_apu_roms() {
+        let suite = cgb_audio_samesuite_suite();
+
+        assert_eq!(suite.name, "cgb-audio-samesuite");
+        assert_eq!(suite.family.as_deref(), Some("cgb-audio-samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 61);
+
+        for case in &suite.cases {
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert!(
+                case.rom_path.starts_with("samesuite/apu"),
+                "{} should point at samesuite/apu",
+                case.rom_path.display()
+            );
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert!(matches!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(_)
+            ));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        }
+
+        assert_eq!(
+            suite.cases[40].rom_path,
+            PathBuf::from("samesuite/apu/div_write_trigger.gb")
+        );
+        assert!(
+            built_in_rom_suite_by_name("cgb-audio-samesuite")
+                .expect("CGB audio SameSuite suite should be built in")
+                .cases
+                .iter()
+                .any(|case| case.id == "cgb-audio-samesuite-channel-2-nrx2-speed-change")
         );
     }
 

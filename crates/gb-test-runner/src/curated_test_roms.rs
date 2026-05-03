@@ -699,6 +699,10 @@ pub fn cgb_audio_blargg_suite() -> RomSuite {
     manifest_suite_by_name("cgb-audio-blargg")
 }
 
+pub fn cgb_audio_samesuite_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-audio-samesuite")
+}
+
 pub fn cgb_ppu_basic_suite() -> RomSuite {
     manifest_suite_by_name("cgb-ppu-basic")
 }
@@ -737,7 +741,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 14] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 15] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -746,6 +750,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 14] {
         (
             "crates/gb-test-runner/data/cgb-audio-blargg.toml",
             include_str!("../data/cgb-audio-blargg.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-audio-samesuite.toml",
+            include_str!("../data/cgb-audio-samesuite.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-boot-div.toml",
@@ -1407,9 +1415,10 @@ mod tests {
         REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_REPORT_FILE_NAME,
         TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
         blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
-        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_boot_div_suite,
-        cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, copy_curated_rom,
-        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
+        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
+        curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
@@ -1917,6 +1926,52 @@ mod tests {
                 case.failure_artifacts
                     .contains(CaptureKind::MemoryTextOutput)
             );
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+    }
+
+    #[test]
+    fn cgb_audio_samesuite_suite_tracks_the_promoted_apu_lane() {
+        let suite = cgb_audio_samesuite_suite();
+
+        assert_eq!(suite.name, "cgb-audio-samesuite");
+        assert_eq!(suite.family.as_deref(), Some("cgb-audio-samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 61);
+
+        let first = suite.cases.first().expect("suite should have cases");
+        assert_eq!(first.id, "cgb-audio-samesuite-channel-1-align");
+        assert_eq!(
+            first.rom_path,
+            PathBuf::from("samesuite/apu/channel_1/channel_1_align.gb")
+        );
+
+        let last = suite.cases.last().expect("suite should have cases");
+        assert_eq!(last.id, "cgb-audio-samesuite-channel-2-nrx2-speed-change");
+        assert_eq!(
+            last.rom_path,
+            PathBuf::from("samesuite/apu/channel_2/channel_2_nrx2_speed_change.gb")
+        );
+        assert_eq!(last.timeout, Timeout::Frames(420));
+
+        for case in &suite.cases {
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert!(
+                case.rom_path.starts_with("samesuite/apu"),
+                "{} should point at SameSuite APU",
+                case.rom_path.display()
+            );
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert!(matches!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(_)
+            ));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
     }

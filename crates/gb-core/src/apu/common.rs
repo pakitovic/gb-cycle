@@ -65,6 +65,8 @@ pub(super) const PERIOD_HIGH_MASK: u8 = 0x07;
 pub(super) const PULSE_DUTY_MASK: u8 = 0xC0;
 pub(super) const PULSE_DUTY_SHIFT: u8 = 6;
 pub(super) const PULSE_DUTY_STEP_MASK: u8 = 0x07;
+pub(super) const CGB_PULSE_POWER_ON_PHASE_MASK: u8 = 0x07;
+pub(super) const CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES: u16 = 16;
 pub(super) const PULSE_LENGTH_LOAD_MASK: u8 = 0x3F;
 pub(super) const PULSE_PERIOD_TIMER_LOW_BITS_MASK: u16 = 0x03;
 pub(super) const SWEEP_PACE_MASK: u8 = 0x70;
@@ -257,6 +259,19 @@ pub(super) const fn pulse_timer_reload_preserving_trigger_phase(
     let preserved_phase = (4 - (current_period_timer & PULSE_PERIOD_TIMER_LOW_BITS_MASK))
         & PULSE_PERIOD_TIMER_LOW_BITS_MASK;
     reload - preserved_phase
+}
+
+pub(super) const fn cgb_pulse_inactive_trigger_delay_t_cycles(
+    console_model: ConsoleModel,
+    was_active: bool,
+    power_on_phase: u8,
+) -> u16 {
+    if console_model.is_cgb_family() && !was_active {
+        CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES
+            + (power_on_phase & CGB_PULSE_POWER_ON_PHASE_MASK) as u16
+    } else {
+        0
+    }
 }
 
 pub(super) const fn wave_length_counter_from_load(value: u8) -> u16 {

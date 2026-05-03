@@ -9,6 +9,7 @@ mod sample_capture;
 
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, DerivedEdge};
+use crate::speed::CgbSpeedMode;
 
 use self::channels::{ApuChannels, ChannelOutputState};
 #[cfg(test)]
@@ -356,12 +357,23 @@ impl Apu {
         (outputs[3] << 4) | outputs[2]
     }
 
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(&mut self, context: &CycleContext) {
+        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal);
+    }
+
+    pub(crate) fn tick_t_cycle_for_speed(
+        &mut self,
+        context: &CycleContext,
+        speed_mode: CgbSpeedMode,
+    ) {
         self.last_register_write = None;
         self.channels.begin_t_cycle();
 
         if self.master.powered {
-            self.channels.tick_fast_timers();
+            self.channels.tick_fast_timers(
+                speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get()),
+            );
         } else {
             self.channels.tick_powered_off_timebase();
         }

@@ -3,8 +3,9 @@ use crate::model::ConsoleModel;
 use super::super::common::{
     ChannelRuntimeState, EnvelopeState, ExtraLengthClockingContext, LENGTH_ENABLE_BIT,
     PULSE_DUTY_MASK, PULSE_DUTY_SHIFT, PULSE_DUTY_STEP_MASK, PULSE_LENGTH_COUNTER_RELOAD,
-    apply_extra_length_clocking_u8, clock_length_counter_u8, pulse_length_counter_from_load,
-    pulse_timer_reload, pulse_timer_reload_preserving_trigger_phase, pulse_waveform_high,
+    apply_extra_length_clocking_u8, cgb_pulse_inactive_trigger_delay_t_cycles,
+    clock_length_counter_u8, pulse_length_counter_from_load, pulse_timer_reload,
+    pulse_timer_reload_preserving_trigger_phase, pulse_waveform_high,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -13,7 +14,9 @@ pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) duty: u8,
     pub(in crate::apu) duty_step: u8,
     pub(in crate::apu) first_trigger_after_power_on_pending: bool,
+    pub(in crate::apu) power_on_phase: u8,
     pub(in crate::apu) suppress_initial_trigger_output: bool,
+    pub(in crate::apu) trigger_delay_t_cycles: u16,
     pub(in crate::apu) period_timer: u16,
     pub(in crate::apu) length_counter: u8,
     pub(in crate::apu) length_enabled: bool,
@@ -43,7 +46,9 @@ impl PulseChannelState {
 
     pub(in crate::apu) fn mark_powered_on(&mut self) {
         self.first_trigger_after_power_on_pending = true;
+        self.power_on_phase = 0;
         self.suppress_initial_trigger_output = false;
+        self.trigger_delay_t_cycles = 0;
     }
 
     pub(in crate::apu) fn runtime_state(&self) -> ChannelRuntimeState {
@@ -104,6 +109,9 @@ impl PulseChannelState {
         self.period_timer = pulse_timer_reload(startup.period_value);
         self.envelope.reload(false);
         self.runtime = startup.runtime;
+        if !self.first_trigger_after_power_on_pending {
+            self.power_on_phase = 0;
+        }
     }
 
     pub(in crate::apu) fn apply_channel_startup(
@@ -138,6 +146,7 @@ impl PulseChannelState {
 
     pub(in crate::apu) fn trigger(
         &mut self,
+        console_model: ConsoleModel,
         period_value: u16,
         envelope_value: u8,
         next_step_clocks_envelope: bool,
@@ -152,6 +161,11 @@ impl PulseChannelState {
         self.apply_envelope_write(envelope_value);
         self.period_timer =
             pulse_timer_reload_preserving_trigger_phase(period_value, self.period_timer);
+        self.trigger_delay_t_cycles = cgb_pulse_inactive_trigger_delay_t_cycles(
+            console_model,
+            was_active,
+            self.power_on_phase,
+        );
         self.envelope.reload(next_step_clocks_envelope);
         self.runtime.trigger();
         if self.runtime.active && !was_active {
@@ -163,8 +177,23 @@ impl PulseChannelState {
         reloaded_zero_length
     }
 
-    pub(in crate::apu) fn tick_fast_timer(&mut self, period_value: u16) {
+    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
+        &mut self,
+        period_value: u16,
+        clock_period_timer: bool,
+    ) {
         if self.first_trigger_after_power_on_pending {
+            self.power_on_phase =
+                (self.power_on_phase + 1) & super::super::common::CGB_PULSE_POWER_ON_PHASE_MASK;
+            return;
+        }
+
+        if self.trigger_delay_t_cycles > 0 {
+            self.trigger_delay_t_cycles -= 1;
+            return;
+        }
+
+        if !clock_period_timer {
             return;
         }
 

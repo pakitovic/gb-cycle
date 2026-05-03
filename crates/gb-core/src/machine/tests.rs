@@ -284,6 +284,18 @@ fn cgb_dma_speed_test_machine(speed_mode: CgbSpeedMode) -> Machine {
     machine
 }
 
+fn cgb_apu_div_event_test_machine(speed_mode: CgbSpeedMode) -> Machine {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00; 16]))
+        .expect("CGB native test ROM should load");
+    force_cgb_speed_mode(&mut machine, speed_mode);
+    machine.write_bus(0xFF26, 0x80);
+    machine
+}
+
 fn ppu_dot_position(machine: &Machine) -> u32 {
     let snapshot = machine.ppu().snapshot();
     u32::from(snapshot.ly) * PPU_DOTS_PER_LINE + u32::from(snapshot.line_dot)
@@ -1408,6 +1420,78 @@ fn cgb_double_speed_oam_dma_does_not_gate_lcd_or_apu_domains() {
     assert_eq!(
         with_dma.dma().bus_state().active_region(),
         Some(DmaMemoryRegionImpact::Oam)
+    );
+}
+
+#[test]
+fn natural_div_apu_edges_advance_the_shared_apu_frame_sequencer() {
+    let mut machine = cgb_apu_div_event_test_machine(CgbSpeedMode::Normal);
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x1FFF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+    });
+
+    step_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.apu().snapshot().div_apu,
+        0x01,
+        "natural timer edges must advance the APU only through the central DIV->APU frame-sequencer path"
+    );
+}
+
+#[test]
+fn div_mmio_writes_drive_the_same_shared_apu_event_as_natural_edges() {
+    let mut machine = cgb_apu_div_event_test_machine(CgbSpeedMode::Normal);
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x1000,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+    });
+
+    machine.write_bus(0xFF04, 0x00);
+
+    assert_eq!(
+        machine.apu().snapshot().div_apu,
+        0x01,
+        "DIV writes must feed the same central DIV->APU event instead of a separate channel-specific route"
+    );
+}
+
+#[test]
+fn cgb_double_speed_apu_edges_consume_the_slice2_speed_domain_contract() {
+    let mut machine = cgb_apu_div_event_test_machine(CgbSpeedMode::Double);
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x1FFF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+    });
+
+    step_t_cycles(&mut machine, 1);
+    assert_eq!(
+        machine.apu().snapshot().div_apu,
+        0x00,
+        "double speed must not clock the APU from the normal-speed DIV bit"
+    );
+
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x3FFF,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+    });
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+
+    step_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.apu().snapshot().div_apu,
+        0x02,
+        "double speed must consume the Slice 2 DIV/APU bit instead of creating a second frame-sequencer route"
     );
 }
 

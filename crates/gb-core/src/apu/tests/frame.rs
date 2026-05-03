@@ -18,6 +18,52 @@ fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
 }
 
 #[test]
+fn div_apu_event_fans_out_to_all_channel_length_units() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.apply_startup_state(ApuStartupState {
+        powered: true,
+        nr10: 0x00,
+        nr11: 0x3F,
+        nr12: 0xF0,
+        nr13: 0x00,
+        nr14: LENGTH_ENABLE_BIT,
+        nr21: 0x3F,
+        nr22: 0xF0,
+        nr23: 0x00,
+        nr24: LENGTH_ENABLE_BIT,
+        nr30: NR30_DAC_POWER_BIT,
+        nr31: 0xFF,
+        nr32: 0x20,
+        nr33: 0x00,
+        nr34: LENGTH_ENABLE_BIT,
+        nr41: 0x3F,
+        nr42: 0xF0,
+        nr43: 0x00,
+        nr44: LENGTH_ENABLE_BIT,
+        nr50: 0x00,
+        nr51: 0x00,
+        channel_active_mask: CHANNEL_ACTIVE_MASK,
+        div_apu: 0,
+        wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+    });
+
+    assert_eq!(apu.snapshot().channel_active_mask, CHANNEL_ACTIVE_MASK);
+
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+
+    assert_eq!(apu.frame_sequencer.length_clock_count, 1);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_3.length_counter, 0);
+    assert_eq!(apu.channels.channel_4.length_counter, 0);
+    assert_eq!(
+        apu.snapshot().channel_active_mask,
+        0x00,
+        "one shared DIV->APU frame-sequencer edge must clock CH1/CH2/CH3/CH4 length units without per-channel DIV hooks"
+    );
+}
+
+#[test]
 fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.apply_startup_state(ApuStartupState {
