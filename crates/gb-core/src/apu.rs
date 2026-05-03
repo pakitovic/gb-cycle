@@ -124,12 +124,17 @@ const fn channel_mask_bit(channel: ApuRecordedChannel) -> u8 {
 pub enum WaveRamStartupPolicy {
     #[default]
     DeterministicZeroed,
+    CgbRealBootAlternating,
 }
 
 impl WaveRamStartupPolicy {
     pub const fn initial_bytes(self) -> [u8; WAVE_RAM_LEN] {
         match self {
             Self::DeterministicZeroed => [0; WAVE_RAM_LEN],
+            Self::CgbRealBootAlternating => [
+                0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+                0x00, 0xFF,
+            ],
         }
     }
 }

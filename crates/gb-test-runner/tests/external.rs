@@ -5,7 +5,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use gb_core::{
     BootDirectBootState, BootRomAssets, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState,
-    Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
+    CpuRegisters, Machine, MachineConfig, OperatingMode, StartupMode, TraceSummaryBuffer,
 };
 use gb_test_runner::{
     RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
@@ -64,7 +64,11 @@ const VALIDATION_PROGRAM: [u8; 28] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ValidationRomProfile {
     Valid,
+    ValidCgbNative,
+    ValidCgbCompatible,
     InvalidLogo,
+    InvalidCgbCheckedLogoPrefix,
+    InvalidCgbUncheckedLogoSuffix,
     InvalidChecksum,
     FfFilledHeader,
 }
@@ -307,7 +311,11 @@ fn build_real_boot_validation_rom(profile: ValidationRomProfile) -> Vec<u8> {
     let fill_byte = match profile {
         ValidationRomProfile::FfFilledHeader => 0xFF,
         ValidationRomProfile::Valid
+        | ValidationRomProfile::ValidCgbNative
+        | ValidationRomProfile::ValidCgbCompatible
         | ValidationRomProfile::InvalidLogo
+        | ValidationRomProfile::InvalidCgbCheckedLogoPrefix
+        | ValidationRomProfile::InvalidCgbUncheckedLogoSuffix
         | ValidationRomProfile::InvalidChecksum => 0x00,
     };
     let mut rom = vec![fill_byte; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
@@ -327,23 +335,37 @@ fn build_real_boot_validation_rom(profile: ValidationRomProfile) -> Vec<u8> {
 
     match profile {
         ValidationRomProfile::Valid
+        | ValidationRomProfile::ValidCgbNative
+        | ValidationRomProfile::ValidCgbCompatible
         | ValidationRomProfile::InvalidLogo
+        | ValidationRomProfile::InvalidCgbCheckedLogoPrefix
+        | ValidationRomProfile::InvalidCgbUncheckedLogoSuffix
         | ValidationRomProfile::InvalidChecksum => {
             rom[0x0104..0x0134].copy_from_slice(&NINTENDO_LOGO);
             rom[0x0134..0x013C].copy_from_slice(b"BOOTREAL");
-            rom[0x0143] = 0x00;
+            rom[0x0143] = match profile {
+                ValidationRomProfile::ValidCgbNative => 0x80,
+                ValidationRomProfile::ValidCgbCompatible => 0x00,
+                _ => 0x00,
+            };
             rom[0x0146] = 0x00;
             rom[0x014D] = compute_header_checksum(&rom);
 
-            if profile == ValidationRomProfile::InvalidLogo {
+            if matches!(
+                profile,
+                ValidationRomProfile::InvalidLogo
+                    | ValidationRomProfile::InvalidCgbCheckedLogoPrefix
+            ) {
                 rom[0x0104] ^= 0xFF;
+            }
+            if profile == ValidationRomProfile::InvalidCgbUncheckedLogoSuffix {
+                rom[0x0120] ^= 0xFF;
             }
             if profile == ValidationRomProfile::InvalidChecksum {
                 rom[0x014D] = rom[0x014D].wrapping_add(1);
             }
         }
         ValidationRomProfile::FfFilledHeader => {
-            rom[0x0143] = 0x00;
             rom[0x0146] = 0x00;
         }
     }
@@ -484,6 +506,85 @@ fn assert_real_boot_entry_matches_direct_boot_snapshot(
         machine.ppu().snapshot(),
         machine.apu().snapshot(),
         machine.serial().snapshot(),
+        machine.snapshot().render_text()
+    );
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CgbBootEntrySnapshot {
+    cpu: CpuRegisters,
+    operating_mode: OperatingMode,
+    key0: u8,
+    key1: u8,
+    vbk: u8,
+    svbk: u8,
+    hdma: [u8; 5],
+    ff72_ff75: [u8; 4],
+    cgb_palette_ports: [u8; 4],
+    opri: u8,
+    wave_ram: [u8; 16],
+    vram_prefix: [u8; 32],
+    wram_prefix: [u8; 32],
+    hram_prefix: [u8; 16],
+}
+
+fn cgb_boot_entry_snapshot(machine: &mut Machine<TraceSummaryBuffer>) -> CgbBootEntrySnapshot {
+    let mut hdma = [0; 5];
+    for (index, address) in (0xFF51..=0xFF55).enumerate() {
+        hdma[index] = machine.read_bus(address);
+    }
+
+    let mut ff72_ff75 = [0; 4];
+    for (index, address) in (0xFF72..=0xFF75).enumerate() {
+        ff72_ff75[index] = machine.read_bus(address);
+    }
+
+    let mut cgb_palette_ports = [0; 4];
+    for (index, address) in (0xFF68..=0xFF6B).enumerate() {
+        cgb_palette_ports[index] = machine.read_bus(address);
+    }
+
+    CgbBootEntrySnapshot {
+        cpu: machine.cpu().registers(),
+        operating_mode: machine.config().operating_mode,
+        key0: machine.read_bus(0xFF4C),
+        key1: machine.read_bus(0xFF4D),
+        vbk: machine.read_bus(0xFF4F),
+        svbk: machine.read_bus(0xFF70),
+        hdma,
+        ff72_ff75,
+        cgb_palette_ports,
+        opri: machine.read_bus(0xFF6C),
+        wave_ram: machine.apu().snapshot().wave_ram,
+        vram_prefix: machine.debug_vram_bytes()[0..32]
+            .try_into()
+            .expect("VRAM prefix length should be fixed"),
+        wram_prefix: machine.debug_wram_bytes()[0..32]
+            .try_into()
+            .expect("WRAM prefix length should be fixed"),
+        hram_prefix: machine.debug_hram_bytes()[0..16]
+            .try_into()
+            .expect("HRAM prefix length should be fixed"),
+    }
+}
+
+fn assert_cgb_real_boot_entry_matches_skip_boot_snapshot(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    rom_bytes: &[u8],
+) {
+    let actual = cgb_boot_entry_snapshot(machine);
+    let mut skip_boot = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    skip_boot
+        .load_cartridge(rom_bytes.to_vec())
+        .expect("validation CGB cartridge should load under the synthetic SkipBoot path");
+    let expected = cgb_boot_entry_snapshot(&mut skip_boot);
+
+    assert_eq!(
+        actual,
+        expected,
+        "CGB RealBoot handoff state diverged from the centralized SkipBoot startup snapshot\nactual={actual:#?}\nexpected={expected:#?}\nreal_boot={}",
         machine.snapshot().render_text()
     );
 }
@@ -640,19 +741,23 @@ fn run_real_boot_validation(console_model: ConsoleModel) {
     );
 }
 
-fn run_cgb_real_boot_handoff_smoke() {
+fn run_cgb_real_boot_handoff_validation(
+    profile: ValidationRomProfile,
+    expected_mode: OperatingMode,
+    compare_skip_boot_snapshot: bool,
+) {
     let Some(boot_rom_assets) = load_verified_boot_rom_assets(ConsoleModel::GameBoyColor) else {
         return;
     };
 
-    let rom_bytes = build_real_boot_validation_rom(ValidationRomProfile::Valid);
+    let rom_bytes = build_real_boot_validation_rom(profile);
     let mut machine = Machine::new_summary(
         MachineConfig::new(ConsoleModel::GameBoyColor)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(boot_rom_assets),
     );
     machine
-        .load_cartridge(rom_bytes)
+        .load_cartridge(rom_bytes.clone())
         .expect("validation cartridge should load as NoMBC");
     machine.write_bus(ENTRY_SENTINEL_ADDRESS, 0x00);
 
@@ -673,10 +778,24 @@ fn run_cgb_real_boot_handoff_smoke() {
     assert_eq!(machine.cpu().current_opcode(), None);
     assert_eq!(machine.read_bus(0x0000), 0x12);
     assert_eq!(machine.read_bus(0x0100), VALIDATION_ENTRY_OPCODE);
+    assert_eq!(machine.config().operating_mode, expected_mode);
+    assert_eq!(machine.bus().operating_mode(), expected_mode);
+    assert_eq!(machine.speed().operating_mode(), expected_mode);
+    if compare_skip_boot_snapshot {
+        assert_cgb_real_boot_entry_matches_skip_boot_snapshot(&mut machine, &rom_bytes);
+    }
     assert_eq!(
         machine.read_bus(ENTRY_SENTINEL_ADDRESS),
         0x00,
         "the CGB real-boot smoke should stop at the firmware handoff and not execute cartridge code before the test owns the post-boot policy"
+    );
+}
+
+fn run_cgb_real_boot_handoff_smoke() {
+    run_cgb_real_boot_handoff_validation(
+        ValidationRomProfile::ValidCgbCompatible,
+        OperatingMode::GbCompatible,
+        false,
     );
 }
 
@@ -687,6 +806,30 @@ fn run_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_labe
 
     let mut machine = Machine::new_summary(
         MachineConfig::new(ConsoleModel::GameBoy)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(boot_rom_assets),
+    );
+    machine
+        .load_cartridge(build_real_boot_validation_rom(profile))
+        .expect("validation cartridge should load as NoMBC");
+    machine.write_bus(ENTRY_SENTINEL_ADDRESS, 0x00);
+
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert_eq!(
+        machine.read_bus(0x0000),
+        machine.boot().read_boot_rom(0x0000)
+    );
+
+    assert_real_boot_stays_mapped_without_false_handoff(&mut machine, case_label);
+}
+
+fn run_cgb_real_boot_non_handoff_validation(profile: ValidationRomProfile, case_label: &str) {
+    let Some(boot_rom_assets) = load_verified_boot_rom_assets(ConsoleModel::GameBoyColor) else {
+        return;
+    };
+
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(boot_rom_assets),
     );
@@ -726,6 +869,64 @@ fn real_boot_with_verified_mgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff
 #[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
 fn real_boot_with_verified_cgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff() {
     run_cgb_real_boot_handoff_smoke();
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_native_header_reaches_cartridge_entry_via_ff50_handoff() {
+    run_cgb_real_boot_handoff_validation(
+        ValidationRomProfile::ValidCgbNative,
+        OperatingMode::Cgb,
+        true,
+    );
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_compatible_header_reaches_cartridge_entry_via_ff50_handoff()
+{
+    run_cgb_real_boot_handoff_validation(
+        ValidationRomProfile::ValidCgbCompatible,
+        OperatingMode::GbCompatible,
+        true,
+    );
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_rejects_invalid_checked_logo_prefix_without_ff50_handoff() {
+    run_cgb_real_boot_non_handoff_validation(
+        ValidationRomProfile::InvalidCgbCheckedLogoPrefix,
+        "CGB invalid checked logo prefix",
+    );
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_accepts_invalid_unchecked_logo_suffix_via_ff50_handoff() {
+    run_cgb_real_boot_handoff_validation(
+        ValidationRomProfile::InvalidCgbUncheckedLogoSuffix,
+        OperatingMode::GbCompatible,
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_rejects_invalid_checksum_without_ff50_handoff() {
+    run_cgb_real_boot_non_handoff_validation(
+        ValidationRomProfile::InvalidChecksum,
+        "CGB invalid checksum",
+    );
+}
+
+#[test]
+#[ignore = "requires verified local cgb boot ROM asset via GB_CYCLE_BOOT_ROM_ROOT"]
+fn real_boot_with_verified_cgb_boot_rom_rejects_ff_filled_header_without_ff50_handoff() {
+    run_cgb_real_boot_non_handoff_validation(
+        ValidationRomProfile::FfFilledHeader,
+        "CGB ff-filled header",
+    );
 }
 
 #[test]

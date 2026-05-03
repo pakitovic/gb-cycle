@@ -1,5 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
+use crate::boot::{BootRomAssets, BootRomKind};
 use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -749,6 +750,120 @@ fn save_state_restore_can_replace_runtime_boot_mapping_state() {
         .expect("matching boot ROM identity should restore even when mapping state differs");
 
     assert_eq!(target.capture_save_state(), saved);
+}
+
+#[test]
+fn cgb_real_boot_ff50_handoff_applies_boot_selected_compatible_mode() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
+    );
+
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.config().operating_mode, OperatingMode::Cgb);
+    assert_eq!(machine.bus().operating_mode(), OperatingMode::Cgb);
+    assert_eq!(machine.speed().operating_mode(), OperatingMode::Cgb);
+
+    machine.write_bus(0xFF4D, 0x01);
+    assert!(machine.speed().switch_armed());
+
+    machine.write_bus(0xFF4C, 0x04);
+    machine.write_bus(0xFF50, 0x01);
+
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.config().operating_mode, OperatingMode::GbCompatible);
+    assert_eq!(machine.bus().operating_mode(), OperatingMode::GbCompatible);
+    assert_eq!(
+        machine.speed().operating_mode(),
+        OperatingMode::GbCompatible
+    );
+    assert!(!machine.speed().switch_armed());
+    assert_eq!(machine.read_bus(0xFF4C), 0xFF);
+    assert_eq!(machine.read_bus(0xFF4D), 0xFF);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+
+    machine.write_bus(0xFF4C, 0x80);
+    assert_eq!(machine.config().operating_mode, OperatingMode::GbCompatible);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+}
+
+#[test]
+fn cgb_real_boot_ff50_handoff_keeps_native_mode_when_boot_selects_cgb() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
+    );
+
+    machine.write_bus(0xFF4C, 0x80);
+    machine.write_bus(0xFF50, 0x01);
+
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.config().operating_mode, OperatingMode::Cgb);
+    assert_eq!(machine.bus().operating_mode(), OperatingMode::Cgb);
+    assert_eq!(machine.speed().operating_mode(), OperatingMode::Cgb);
+    assert_ne!(machine.read_bus(0xFF4D), 0xFF);
+    assert_ne!(machine.read_bus(0xFF4F), 0xFF);
+}
+
+#[test]
+fn cgb_real_boot_overlay_gap_routes_cartridge_header_for_compact_and_sparse_images() {
+    for len in [0x0800, 0x0900] {
+        let mut boot_image = vec![0xE7; len];
+        boot_image[0x0000] = 0x31;
+        boot_image[0x00FF] = 0x32;
+        boot_image[0x0100] = 0xE1;
+        boot_image[0x01FF] = 0xE2;
+        if len == 0x0900 {
+            boot_image[0x0200] = 0x33;
+        }
+        let assets = BootRomAssets::none()
+            .with_bytes(BootRomKind::Cgb, boot_image)
+            .expect("synthetic CGB boot image should be accepted");
+
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoyColor)
+                .with_startup_mode(StartupMode::RealBoot)
+                .with_boot_rom_assets(assets),
+        );
+        machine
+            .load_cartridge(build_cgb_native_test_rom(&[0xC3, 0x50, 0x01]))
+            .expect("NoMBC CGB test ROM should load");
+
+        assert!(machine.boot().is_boot_rom_mapped());
+        assert_eq!(machine.read_bus(0x0000), 0x31);
+        assert_eq!(machine.read_bus(0x00FF), 0x32);
+        assert_eq!(machine.read_bus(0x0100), 0xC3);
+        assert_eq!(machine.read_bus(0x0143), 0x80);
+        assert_ne!(machine.read_bus(0x0100), 0xE1);
+        assert_ne!(machine.read_bus(0x01FF), 0xE2);
+    }
+}
+
+#[test]
+fn save_state_restore_preserves_locked_cgb_real_boot_handoff_state() {
+    let mut source = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
+    );
+    source.write_bus(0xFF4C, 0x04);
+    source.write_bus(0xFF50, 0x01);
+    assert_eq!(source.config().operating_mode, OperatingMode::GbCompatible);
+    assert!(!source.boot().is_boot_rom_mapped());
+    let saved = source.capture_save_state();
+
+    let mut target = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_operating_mode(OperatingMode::GbCompatible),
+    );
+    assert!(target.boot().is_boot_rom_mapped());
+
+    target
+        .restore_save_state(&saved)
+        .expect("matching CGB boot handoff metadata should restore");
+
+    assert_eq!(target.capture_save_state(), saved);
+    assert_eq!(target.config().operating_mode, OperatingMode::GbCompatible);
+    assert!(!target.boot().is_boot_rom_mapped());
+    assert_eq!(target.read_bus(0xFF4D), 0xFF);
+    assert_eq!(target.read_bus(0xFF4F), 0xFF);
 }
 
 #[test]

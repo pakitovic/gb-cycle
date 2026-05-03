@@ -14,6 +14,7 @@ use crate::dma::{DmaController, VramDmaRuntimeContext};
 use crate::external_port::ExternalPort;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
+use crate::model::{MachineConfig, StartupMode};
 use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
@@ -34,6 +35,30 @@ const INTERRUPT_FLAG_ADDRESS: u16 = 0xFF0F;
 pub(super) struct PendingPpuMmioWrite {
     pub(super) address: u16,
     pub(super) value: u8,
+}
+
+pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
+    config: &mut MachineConfig,
+    bus: &mut Bus,
+    ppu: &mut Ppu,
+    speed: &mut SpeedController,
+    boot: &BootController,
+    boot_rom_newly_unmapped: bool,
+) {
+    if !boot_rom_newly_unmapped
+        || boot.is_boot_rom_mapped()
+        || config.startup_mode != StartupMode::RealBoot
+        || !config.console_model.is_cgb_family()
+    {
+        return;
+    }
+
+    if let Some(operating_mode) = bus.lock_cgb_real_boot_key0_at_handoff() {
+        config.operating_mode = operating_mode;
+        bus.apply_operating_mode_state(operating_mode);
+        speed.apply_operating_mode_state(operating_mode);
+        ppu.apply_operating_mode_state(operating_mode);
+    }
 }
 
 #[inline(always)]
@@ -189,6 +214,7 @@ where
 }
 
 struct MachinePhaseRunner<'a> {
+    config: &'a mut MachineConfig,
     cpu: &'a mut CpuCore,
     bus: &'a mut Bus,
     apu: &'a mut Apu,
@@ -510,6 +536,7 @@ impl MachinePhaseRunner<'_> {
             let serial = &mut self.serial;
             let speed = &mut self.speed;
             let boot = &mut self.boot;
+            let config = &mut self.config;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
             let cartridge = &mut self.cartridge;
@@ -550,6 +577,7 @@ impl MachinePhaseRunner<'_> {
                     } else {
                         let write_arbitration_state =
                             cpu_write_arbitration_state(address, arbitration_states, ppu);
+                        let mut boot_rom_newly_unmapped = false;
                         bus.write_with_t_cycle_context(
                             address,
                             value,
@@ -558,16 +586,25 @@ impl MachinePhaseRunner<'_> {
                             context.t_cycle(),
                             Some(cartridge),
                             BusIoWriteView {
-                                apu: Some(apu),
-                                timer: Some(timer),
-                                serial: Some(serial),
-                                dma: Some(dma),
-                                boot: Some(boot),
-                                interrupts: Some(interrupts),
-                                joypad: Some(joypad),
-                                ppu: Some(ppu),
-                                speed: Some(speed),
+                                apu: Some(&mut *apu),
+                                timer: Some(&mut *timer),
+                                serial: Some(&mut *serial),
+                                dma: Some(&mut *dma),
+                                boot: Some(&mut *boot),
+                                interrupts: Some(&mut *interrupts),
+                                joypad: Some(&mut *joypad),
+                                ppu: Some(&mut *ppu),
+                                speed: Some(&mut *speed),
+                                boot_ff50_newly_unmapped: Some(&mut boot_rom_newly_unmapped),
                             },
+                        );
+                        finalize_cgb_real_boot_handoff_if_needed(
+                            config,
+                            bus,
+                            ppu,
+                            speed,
+                            boot,
+                            boot_rom_newly_unmapped,
                         );
                     }
                     None
@@ -773,6 +810,7 @@ impl<S: TraceSink> Machine<S> {
         });
 
         let mut runner = MachinePhaseRunner {
+            config: &mut self.config,
             cpu: &mut self.cpu,
             bus: &mut self.bus,
             apu: &mut self.apu,
@@ -810,6 +848,7 @@ impl<S: TraceSink> Machine<S> {
         let scheduler = &mut self.scheduler;
         let tracer = &mut self.tracer;
         let mut runner = MachinePhaseRunner {
+            config: &mut self.config,
             cpu: &mut self.cpu,
             bus: &mut self.bus,
             apu: &mut self.apu,

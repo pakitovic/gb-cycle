@@ -1,12 +1,12 @@
 version = 1
-suite_name = "cgb-boot-div"
+suite_name = "cgb-boot-hwio"
 subsystem = "CrossSubsystem"
 
 [[case]]
 family = "mooneye"
-id = "cgb-boot-div-boot-div-cgbabcde"
-rom = "misc/boot_div-cgbABCDE.gb"
+id = "cgb-boot-hwio-boot-hwio-c"
+rom = "misc/boot_hwio-C.gb"
 console = "cgb"
 startup = "real-boot"
 timeout_frames = 180
-oracle = "mooneye-result"
+oracle = "info-snapshot"

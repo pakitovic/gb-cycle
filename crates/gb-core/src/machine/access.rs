@@ -1,5 +1,8 @@
 use super::Machine;
-use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
+use super::step::{
+    PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio,
+    finalize_cgb_real_boot_handoff_if_needed,
+};
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
@@ -71,6 +74,7 @@ impl<S: TraceSink> Machine<S> {
             return;
         }
 
+        let mut boot_rom_newly_unmapped = false;
         self.bus.write_with_t_cycle_context(
             address,
             value,
@@ -88,7 +92,16 @@ impl<S: TraceSink> Machine<S> {
                 joypad: Some(&mut self.joypad),
                 ppu: Some(&mut self.ppu),
                 speed: Some(&mut self.speed),
+                boot_ff50_newly_unmapped: Some(&mut boot_rom_newly_unmapped),
             },
+        );
+        finalize_cgb_real_boot_handoff_if_needed(
+            &mut self.config,
+            &mut self.bus,
+            &mut self.ppu,
+            &mut self.speed,
+            &self.boot,
+            boot_rom_newly_unmapped,
         );
         self.bus.route_cpu_address_event(
             CpuAddressEvent {

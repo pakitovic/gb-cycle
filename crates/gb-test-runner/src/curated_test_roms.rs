@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gb_core::{ConsoleModel, TimerStartupState};
+use gb_core::{ConsoleModel, StartupMode, TimerStartupState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -97,6 +97,7 @@ struct CuratedTestRomCaseFile {
     fixture: Option<PathBuf>,
     fixtures: Option<Vec<PathBuf>>,
     console: Option<String>,
+    startup: Option<String>,
     execution_mode: Option<String>,
     startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
@@ -122,6 +123,7 @@ struct CuratedTestRomCase {
     fixture: Option<PathBuf>,
     fixtures: Option<Vec<PathBuf>>,
     console_model: ConsoleModel,
+    startup_mode: StartupMode,
     execution_mode: Option<String>,
     startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
@@ -689,6 +691,10 @@ pub fn cgb_boot_div_suite() -> RomSuite {
     manifest_suite_by_name("cgb-boot-div")
 }
 
+pub fn cgb_boot_hwio_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-boot-hwio")
+}
+
 pub fn cgb_ppu_basic_suite() -> RomSuite {
     manifest_suite_by_name("cgb-ppu-basic")
 }
@@ -727,7 +733,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 12] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 13] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -736,6 +742,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 12] {
         (
             "crates/gb-test-runner/data/cgb-boot-div.toml",
             include_str!("../data/cgb-boot-div.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-boot-hwio.toml",
+            include_str!("../data/cgb-boot-hwio.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-smoke.toml",
@@ -819,6 +829,11 @@ fn parse_manifest_case(
         &case.id,
         case.console.as_deref().unwrap_or("dmg"),
     );
+    let startup_mode = parse_manifest_startup_mode(
+        source_path,
+        &case.id,
+        case.startup.as_deref().unwrap_or("skip-boot"),
+    );
 
     CuratedTestRomCase {
         family,
@@ -831,6 +846,7 @@ fn parse_manifest_case(
         fixture: case.fixture,
         fixtures: case.fixtures,
         console_model,
+        startup_mode,
         execution_mode: case.execution_mode,
         startup_timer_profile: case.startup_timer_profile,
         startup_memory_profile: case.startup_memory_profile,
@@ -858,6 +874,16 @@ fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str)
     }
 }
 
+fn parse_manifest_startup_mode(source_path: &str, case_id: &str, startup: &str) -> StartupMode {
+    match startup {
+        "skip-boot" => StartupMode::SkipBoot,
+        "real-boot" => StartupMode::RealBoot,
+        other => {
+            panic!("unsupported startup mode {other:?} for curated case {case_id} in {source_path}")
+        }
+    }
+}
+
 fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     let CuratedTestRomCase {
         family,
@@ -870,6 +896,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         fixture,
         fixtures,
         console_model,
+        startup_mode,
         execution_mode,
         startup_timer_profile,
         startup_memory_profile,
@@ -926,6 +953,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     )
     .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR)
     .with_console_model(console_model)
+    .with_startup_mode(startup_mode)
     .with_capture_plan(capture_plan)
     .with_failure_artifacts(failure_artifacts);
 
@@ -1370,7 +1398,7 @@ mod tests {
         REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_REPORT_FILE_NAME,
         TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
         blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition, cgb_boot_div_suite,
-        cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, copy_curated_rom,
+        cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_smoke_suite, copy_curated_rom,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
@@ -1386,7 +1414,7 @@ mod tests {
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
         RomCaseReport, RomSuiteReport, TestSubsystem,
     };
-    use gb_core::ConsoleModel;
+    use gb_core::{ConsoleModel, StartupMode};
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1608,6 +1636,7 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.startup_mode == StartupMode::RealBoot
         }));
         assert_eq!(
             suite.cases[0].rom_path,
@@ -1637,6 +1666,7 @@ mod tests {
             PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
         );
         assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(suite.cases[0].startup_mode, StartupMode::RealBoot);
         assert_eq!(
             suite.cases[0].external_rom_root_key.as_deref(),
             Some(TEST_ROM_ROOT_ENV_VAR)
@@ -1644,6 +1674,30 @@ mod tests {
         assert!(matches!(
             suite.cases[0].pass_condition,
             PassCondition::MooneyeResult
+        ));
+    }
+
+    #[test]
+    fn cgb_boot_hwio_suite_is_manifest_backed_and_internal_informational() {
+        let suite = cgb_boot_hwio_suite();
+
+        assert_eq!(suite.name, "cgb-boot-hwio");
+        assert_eq!(suite.family.as_deref(), Some("cgb-boot-hwio"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/misc/boot_hwio-C.gb")
+        );
+        assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(suite.cases[0].startup_mode, StartupMode::RealBoot);
+        assert_eq!(
+            suite.cases[0].external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::Informational(CaptureKind::Snapshot)
         ));
     }
 
@@ -2809,6 +2863,7 @@ mod tests {
                 fixture: None,
                 fixtures: None,
                 console: None,
+                startup: None,
                 execution_mode: None,
                 startup_timer_profile: None,
                 startup_memory_profile: None,
@@ -2830,6 +2885,7 @@ mod tests {
             fixture: None,
             fixtures: None,
             console_model: ConsoleModel::GameBoy,
+            startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             startup_timer_profile: None,
             startup_memory_profile: None,
@@ -2850,6 +2906,7 @@ mod tests {
             fixture: Some(PathBuf::from("fixture.png")),
             fixtures: None,
             console_model: ConsoleModel::GameBoyColor,
+            startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             startup_timer_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
@@ -2870,6 +2927,7 @@ mod tests {
             fixture: Some(PathBuf::from("fixture.png")),
             fixtures: None,
             console_model: ConsoleModel::GameBoy,
+            startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             startup_timer_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),

@@ -1,3 +1,4 @@
+use crate::boot::StartupMemoryPolicy;
 use crate::model::ConsoleModel;
 use crate::ppu::{PpuAccessMode, PpuBusState};
 
@@ -147,6 +148,10 @@ impl VramDomain {
         }
     }
 
+    pub(crate) fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {
+        policy.initialize_vram(self.debug_bytes_mut());
+    }
+
     #[cfg(test)]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
         Self::from_bytes_for_model(ConsoleModel::GameBoy, bytes)
@@ -184,6 +189,15 @@ impl VramDomain {
             DMG_VRAM_LEN
         };
         &self.bytes[..len]
+    }
+
+    fn debug_bytes_mut(&mut self) -> &mut [u8] {
+        let len = if self.console_model.is_cgb_family() {
+            CGB_VRAM_LEN
+        } else {
+            DMG_VRAM_LEN
+        };
+        &mut self.bytes[..len]
     }
 
     pub(crate) fn capture_save_state(&self) -> VramSaveState {

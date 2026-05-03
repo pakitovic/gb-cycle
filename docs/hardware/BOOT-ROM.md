@@ -21,8 +21,8 @@ Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` firmware-v
 - DMG-family differentiation where boot ROM or startup-visible behavior differs
 - configurable boot ROM source selection
 - direct-boot configuration for tests and tooling
-- future CGB boot ROM mapping and compatibility-mode entry rules
-- boot-time selection of the future `OperatingMode` for CGB-family hardware based on cartridge compatibility information
+- CGB split boot ROM mapping and compatibility-mode entry rules
+- boot-time selection of the CGB-family `OperatingMode` from the firmware-written `KEY0` state at `FF50` handoff
 
 ## Product and firmware profiles
 
@@ -33,7 +33,7 @@ Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` firmware-v
 | `GameBoy` | `Dmg` | `Dmg0`, `Dmg` | standard DMG post-boot profile |
 | `GameBoyPocket` | `Mgb` | `Mgb` | MGB post-boot profile |
 | `GameBoyLight` | `Mgb` | `Mgb` | MGB post-boot profile with a distinct desktop display palette |
-| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` | CGB synthetic post-boot profile |
+| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` | CGB post-boot profile aligned to standard `cgb_boot.bin` handoff |
 
 Informative hardware-profile defaults for the current product rows are `DMG-CPU B` with `dmg_boot.bin` for `GameBoy`, `CPU MGB` with `mgb_boot.bin` for `GameBoyPocket` and `GameBoyLight`, and `CPU CGB C` with `cgb_boot.bin` for `GameBoyColor`. These revision names are not represented as functional enums yet.
 
@@ -42,17 +42,18 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - boot ROM mapping control
 - startup-visible register state
 - `FF50` boot ROM disable behavior
-- future CGB boot ROM overlays across `0000-00FF` and `0200-08FF`
+- CGB boot ROM overlays across `0000-00FF` and `0200-08FF`
 
 ## Bus-facing mapping baseline
 
 - The boot subsystem should publish boot-ROM visibility to the bus as active overlay windows, not as one DMG-only "`0000-00FF` mapped" boolean.
 - In the current DMG-family baseline, that published state enables only the low window at `0000-00FF`.
-- Future CGB work should be able to publish both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without forcing a new bus-state shape.
+- CGB real boot publishes both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without changing bus-state shape.
 - The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
 - Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
 - The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first.
-- In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`. The boot subsystem should interpret either form through the same split-window routing contract.
+- In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`; in both forms only `0000-00FF` and `0200-08FF` are boot-overlay windows, and `0100-01FF` routes to cartridge/header bytes while boot ROM remains mapped.
+- Strict RealBoot validation for the standard CGB path requires canonical `cgb_boot.bin` as a `2304`-byte sparse asset with SHA-256 `b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7`; `cgb0_boot.bin` and `cgbE_boot.bin` are recognized and hash-checked as future revision assets but do not change the Phase 10 default behavior.
 
 ## Boot mode baseline
 
@@ -60,7 +61,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - `RealBoot` must execute the selected boot ROM on the real CPU core, through the real bus, and on the shared T-cycle scheduler.
 - `SkipBoot` must initialize a model-specific post-boot state directly, start execution at `0x0100`, and leave boot ROM mapping disabled from the beginning.
 - The rest of the system should not care whether execution reached cartridge code through real boot or skip boot; only the configured startup path should differ.
-- In the current repo baseline, keep two centralized direct-start contracts explicit instead of conflating them: `Machine::SkipBoot` applies the deterministic synthetic startup state used by core/fixture continuity tests, while `BootController::direct_boot_state()` owns the verified DMG-family cartridge-entry snapshot used to validate real `FF50` handoff behavior.
+- In the current repo baseline, keep centralized direct-start contracts explicit instead of conflating them: DMG-family `Machine::SkipBoot` keeps the deterministic continuity profile used by core/fixture tests, CGB `Machine::SkipBoot` is aligned to standard `cgb_boot.bin` handoff state for native and compatibility headers, and `BootController::direct_boot_state()` owns the verified DMG-family cartridge-entry snapshot used to validate real `FF50` handoff behavior.
 - Replacing the loaded cartridge on an existing `Machine` must restart hardware state from that same configured startup path instead of splicing the new ROM into an already-advanced runtime. Reset the scheduler and trace timeline back to `t_cycle = 0`, rebuild CPU / bus / DMA / timer / serial / PPU / APU / interrupt / boot state from power-on or skip-boot rules, and only preserve explicitly host-owned controls such as debugger configuration, serial-peer selection, and the current effective host joypad state.
 - Treat the post-boot snapshot as a mix of fixed-per-model values, cartridge-header-derived values, explicitly unreliable or uninitialized values, and hidden temporal state that must be synthesized coherently.
 
@@ -85,6 +86,9 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - Register state visible at cartridge entry must come from the executed boot ROM of the selected model; do not hard-code DMG and MGB as sharing one identical final `A` value.
 - `FF50` should stay a write-only MMIO control path from the hardware-contract perspective, even if the implementation keeps internal mapping state for debugging or introspection.
 - The write to `FF50` should perform the mapping side effect at the access itself; do not treat it as a passive stored byte that another subsystem polls later.
+- On CGB-family real boot, the `FF50` write must report an explicit newly-unmapped edge so the machine can lock the current boot-written `KEY0` state exactly at the handoff boundary.
+- CGB `RealBoot` must not preselect native CGB versus DMG-compatibility mode from cartridge metadata before executed firmware reaches `FF50`; the boot ROM writes `KEY0`, then the `FF50` handoff locks that state and updates `MachineConfig`, bus, speed, and PPU operating mode together.
+- After the CGB handoff lock, `KEY0` remains boot-owned: ordinary software reads get the unavailable `$FF` readback and post-lock writes are ignored, while the internal locked value remains available only to boot/mode state.
 
 ## DMG-family skip-boot CPU snapshot baseline
 
@@ -100,7 +104,8 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 
 - Keep DMG-family direct-start I/O snapshots centralized and model-aware rather than scattering startup literals across subsystems.
 - The deterministic DMG-family `Machine::SkipBoot` continuity snapshot currently uses `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
-- The deterministic CGB `Machine::SkipBoot` continuity snapshot currently reuses the same conservative direct-start MMIO baseline except for `DIV`, which is seeded to `0x26` with hidden timer counter `0x2674` so Mooneye `misc/boot_div-cgbABCDE.gb` observes the CGB ABCDE boot-DIV phase. This is a direct-boot timing contract, not a complete claim that every CGB boot-ROM-visible register has reached final Slice 6 fidelity.
+- The deterministic CGB `Machine::SkipBoot` continuity snapshot is aligned to standard `cgb_boot.bin` handoff for the fields owned by Slice 6: CGB native headers enter with `AF=$1180`, `BC=$0000`, `DE=$FF56`, `HL=$000D`, `SP=$FFFE`, and `PC=$0100`, while DMG-only compatibility headers enter with `AF=$1180`, `BC=$0000`, `DE=$0008`, `HL=$007C`, `SP=$FFFE`, and `PC=$0100`.
+- The same CGB `Machine::SkipBoot` path keeps the Slice 2 CGB DIV/timer baseline (`DIV=$26` with hidden timer counter `$2674`) and now also mirrors the boot-owned RealBoot handoff state that is deterministic in this repo: locked `KEY0`-derived `OperatingMode`, `KEY1`/bank/MMIO readbacks for the selected mode, CGB palette/index and `OPRI` state where exposed by the PPU model, alternating CGB wave RAM bytes, and boot-owned visible memory prefixes in VRAM/WRAM/HRAM.
 - The verified DMG-family cartridge-entry snapshot owned by `BootController::direct_boot_state()` now tracks the real-handoff-visible fields used by the repo-local regression matrix: `P1=0xCF`, `DIV=0xAB`, `STAT=0x81`, and `LY=153` for `DMG` / `MGB`; and the `DMG0` direct-entry snapshot remains separate from the later-DMG RealBoot lane until that firmware path is revalidated.
 - The direct post-boot snapshot should also include the published DMG-family audio-register values rather than leaving the APU block in a made-up default state.
 - If direct boot does not have verified firmware-derived wave RAM contents, it should keep wave RAM under an explicit startup policy rather than presenting a fake published constant.
@@ -116,6 +121,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - The timer's internal counter and overflow-related state should be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot at `PC = 0x0100`.
 - For the current deterministic `Machine::SkipBoot` continuity baseline, that coherence includes one explicit hidden divider phase instead of only the visible `DIV` byte. The current model seeds the shared timer system counter to `0xABC8` for DMG-family direct boot so Mooneye's DMG-family `boot_div` cadence lines up with the expected first post-boot `DIV` edges, and to `0x2674` for CGB direct boot so Mooneye `misc/boot_div-cgbABCDE.gb` lines up with the CGB ABCDE post-boot `DIV` phase.
 - The verified later-DMG / MGB cartridge-entry snapshot used by the real-boot regression keeps its own visible PPU/APU continuation coherent with observed handoff values, while the joypad `P1` row-select lines start asserted (`selection_bits=0x00`) so the visible handoff value is `0xCF` with no host buttons pressed, and the timer phase now intentionally shares the `0xABC8` post-handoff counter required by Mooneye's DMG-family `boot_div` RealBoot check.
+- The standard CGB `RealBoot` power-on path seeds the hidden timer counter to `0xFFFB` so executing canonical `cgb_boot.bin` reaches the same `0x2674` post-handoff phase used by the centralized CGB `SkipBoot` contract and the Slice 6 `cgb-boot-div` RealBoot gate.
 - Serial state should be initialized coherently with visible `SB` and `SC`, including idle transfer state, clock mode, no in-flight shift progress, and its own hidden free-running master-clock phase rather than by treating serial as two disconnected plain bytes.
 - For the current deterministic `Machine::SkipBoot` continuity baseline in this repo, that serial hidden phase is seeded independently to `0xABCC` at `PC = 0x0100`; the later-DMG / MGB `RealBoot` power-on path seeds the serial free-running counter with its own `0x0028` reset offset so the same `0xABCC` phase is reached at the verified `FF50` handoff. It must not be synthesized by reusing the timer's `0xABC8` divider phase because Mooneye's `boot_sclk_align` timing depends on that separation.
 - The PPU's internal mode, dot position, and related pipeline state should be initialized coherently with the visible `LCDC`, `STAT`, `LY`, `LYC`, and other LCD-facing registers at `PC = 0x0100`.
@@ -130,7 +136,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - Pan Docs and hardware research do not support treating WRAM and HRAM as fixed zero-filled memory in the direct post-boot snapshot; they remain unreliable or effectively random across power-up.
 - Cartridge RAM, whether external or mapper-local to the cartridge controller, should not be assumed clean on first power-up when a direct post-boot path is used.
 - A direct-boot path should use an explicit policy for uninitialized memory and unreliable registers, such as seeded pseudo-random data, a documented pattern, or a debug-oriented deterministic startup policy.
-- In the current repo baseline, `SkipBoot` uses an explicit deterministic patterned policy for WRAM and HRAM so continuity tests stay reproducible without claiming those bytes are hardware constants.
+- In the current repo baseline, DMG-family `SkipBoot` uses an explicit deterministic patterned policy for WRAM and HRAM so continuity tests stay reproducible without claiming those bytes are hardware constants, while CGB `SkipBoot` uses the explicit `cgb_boot.bin` handoff policy for deterministic comparison against RealBoot: zeroed WRAM, zeroed HRAM with the boot logo prefix, and zeroed VRAM with the boot logo tile prefix.
 - That uninitialized-state policy must not overwrite values that are deterministic in the documented post-boot snapshot.
 
 ## Post-boot visible map baseline
@@ -147,7 +153,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - Direct-boot helpers must document what state they assume and why.
 - The boot ROM should execute as real CPU code from `0000-00FF` while mapped.
 - Unmapping of the boot ROM and handoff to cartridge ROM must happen through the documented hardware-visible mechanism, not through an implicit emulator shortcut.
-- Future CGB support must account for the fact that the boot ROM mapping is not the same shape as DMG-family boot ROM mapping.
+- CGB support must account for the fact that the boot ROM mapping is not the same shape as DMG-family boot ROM mapping: only `0000-00FF` and `0200-08FF` are boot overlays, and the `0100-01FF` gap remains cartridge-visible while boot remains mapped.
 - Real boot must use the same CPU core, bus, and shared T-cycle scheduler as the rest of emulation rather than a special startup interpreter or frontend animation path.
 - Boot ROM reads from the cartridge header and boot-ROM writes to VRAM/LCD/MMIO should use the same bus and arbitration rules as ordinary execution.
 - The duration of the boot process should emerge from executed instructions and subsystem timing, not from an external startup timer.
@@ -193,6 +199,10 @@ Priority order:
 - tests that the next fetch after `FF50` already comes from the cartridge and that DMG-family real boot enters cartridge code at `0x0100`
 - tests for valid header/logo/checksum handoff versus invalid-logo or invalid-checksum no-handoff behavior
 - tests for missing-cartridge or `0xFF`-filled header behavior
+- tests for strict boot ROM size plus SHA verification before RealBoot execution
+- tests for CGB boot-overlay windows at `0000-00FF` and `0200-08FF`, including compact `0x800` and sparse `0x900` images, and tests that `0100-01FF` routes to cartridge/header bytes while boot ROM is still mapped
+- tests for CGB `KEY0` writes before handoff, lock-on-`FF50`, post-lock read/write behavior, native versus compatibility operating-mode propagation, and save/restore of the locked handoff state
+- ignored local tests that compare CGB RealBoot handoff snapshots against centralized CGB `SkipBoot` for valid native and compatibility headers and keep invalid checked-logo, checksum, and all-`FF` header cases on the no-handoff path
 - tests for model-specific visible `A` at cartridge entry, especially DMG versus MGB
 - direct-boot preset tests that document assumed register state
 - direct-boot CPU-register tests for `DMG0`, DMG with checksum `0x00`, DMG with checksum not `0x00`, and MGB
@@ -224,8 +234,8 @@ Priority order:
 - Uninitialized-state policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
 - Keep the bus-facing boot mapping state aligned with that split-layout requirement: the contract should stay able to express multiple active windows even while the current functional target is still DMG-only.
-- When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
-- In the current Phase `2.8` baseline for this repo, the boot trace should make the `FF50` mapping state visible at phase `6` on the same timeline as the preceding CPU write and the following cartridge fetch, so handoff ordering can be debugged without a separate boot-only trace path.
+- For CGB `RealBoot`, boot should let executed firmware inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode through `KEY0`; for CGB `SkipBoot`, the centralized direct-start state may derive the equivalent locked mode from the canonical cartridge header parser so tests can start at the same post-handoff contract without running firmware.
+- In the current repo baseline, the boot trace should make the `FF50` mapping state visible on the same timeline as the preceding CPU write and the following cartridge fetch, so handoff ordering can be debugged without a separate boot-only trace path.
 
 ## Known pitfalls
 
