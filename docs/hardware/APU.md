@@ -482,11 +482,13 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Each sample-index advance should read the corresponding nibble from wave RAM and load that nibble into the sample buffer.
 - CH3 digital output should come from the buffered sample value, not from a fresh live wave-RAM read at mix time.
 - Retriggering CH3 should not automatically clear or refill the sample buffer; the channel should continue outputting the last buffered sample until the next wave-RAM fetch occurs.
+- CH3 internal wave-RAM fetches are active-channel events; while CH3 is inactive, its fast timer must not read wave RAM or refresh the sample buffer, so a buffer cleared by APU power-on remains digital `0` until a trigger starts the channel and the first post-trigger fetch occurs.
 
 ## CH3 startup and first-sample baseline
 
 - After APU power-on, CH3 should begin with its sample buffer at digital `0`.
 - CH3 startup should explicitly model the documented first-sample quirk where sample `0` is skipped when first starting the channel and the first post-trigger output is not a naive immediate replay of wave-table sample `0`.
+- The APU power-on-cleared CH3 sample buffer must not be preloaded by inactive timing between `NR52` power-on, wave-RAM initialization, `NR30` DAC enable, and `NR34` trigger; SameSuite `channel_3_first_sample` relies on `PCM34` reading `0` through the startup delay and only observing the wave-table low nibble after the first real post-trigger fetch.
 - A CH3 retrigger should therefore preserve the previously buffered sample until the next internal wave-RAM read occurs rather than forcing an immediate load of wave-table sample `0` or clearing the buffer automatically.
 
 ## CH3 period value and timer baseline

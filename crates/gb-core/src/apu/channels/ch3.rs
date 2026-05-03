@@ -248,6 +248,13 @@ impl Channel3State {
     }
 
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
+        // The wave RAM fetch/sample-buffer path belongs to the enabled channel. If CH3 is
+        // inactive between APU power-on and the next trigger, the power-on-cleared sample buffer
+        // must remain at digital 0 instead of being preloaded by background timing.
+        if !self.runtime.active {
+            return;
+        }
+
         if self.period_timer > 0 {
             self.period_timer -= 1;
         }
