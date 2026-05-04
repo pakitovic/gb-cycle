@@ -2,8 +2,9 @@ use crate::model::ConsoleModel;
 use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
-    CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES,
-    CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP, ChannelRuntimeState,
+    CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES, CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES,
+    CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
+    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES, ChannelRuntimeState,
     DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK, NR11_WRITE_ONLY_MASK,
     NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK, NRX4_WRITABLE_MASK,
     PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD,
@@ -36,6 +37,8 @@ pub(in crate::apu) struct Channel1SweepState {
     delayed_calculation_addend: u16,
     #[serde(default)]
     delayed_calculation_decreases: bool,
+    #[serde(default)]
+    decreasing_writeback_since_trigger: bool,
 }
 
 impl Channel1SweepState {
@@ -78,18 +81,32 @@ impl Channel1SweepState {
         self.maybe_fire_sweep_boundary(console_model, new_nr10, nr13, nr14, runtime);
     }
 
-    fn trigger(&mut self, nr10: u8, period_value: u16, runtime: &mut ChannelRuntimeState) {
+    fn trigger(
+        &mut self,
+        console_model: ConsoleModel,
+        nr10: u8,
+        period_value: u16,
+        runtime: &mut ChannelRuntimeState,
+    ) {
         self.shadow_period = period_value;
         self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
         self.timer = Self::timer_from_phase(self.phase);
         self.enabled = sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0;
         self.completed_addend = 0;
         self.negate_calculated_since_trigger = false;
+        self.decreasing_writeback_since_trigger = false;
         self.clear_delayed_calculation();
 
         if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
             self.observe_calculation(calculation);
-            if calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
+            if console_model.is_cgb_family() {
+                self.schedule_delayed_calculation(
+                    nr10,
+                    self.shadow_period,
+                    calculation,
+                    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
+                );
+            } else if calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
                 && !calculation.decreases
             {
                 runtime.active = false;
@@ -168,7 +185,7 @@ impl Channel1SweepState {
             && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
         {
             if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation);
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
             } else {
                 runtime.active = false;
             }
@@ -177,7 +194,7 @@ impl Channel1SweepState {
 
         if shift == 0 {
             if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation);
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
             }
             return;
         }
@@ -186,12 +203,13 @@ impl Channel1SweepState {
         self.shadow_period = candidate;
         *nr13 = candidate as u8;
         *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
+        self.decreasing_writeback_since_trigger |= calculation.decreases;
 
         if let Some(next_calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true)
         {
             self.observe_calculation(next_calculation);
             if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation);
+                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
             } else if next_calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
                 && !next_calculation.decreases
             {
@@ -205,11 +223,12 @@ impl Channel1SweepState {
         nr10: u8,
         shadow_period: u16,
         calculation: SweepCalculation,
+        extra_t_cycles: u16,
     ) {
         let shift_delay = u16::from(sweep_shift_from_nr10(nr10) + 1)
             * CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP;
         self.delayed_calculation_t_cycles =
-            shift_delay.max(CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES);
+            shift_delay.max(CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES) + extra_t_cycles;
         self.delayed_calculation_shadow_period = shadow_period;
         self.delayed_calculation_addend = calculation.addend;
         self.delayed_calculation_decreases = calculation.decreases;
@@ -263,6 +282,18 @@ impl Channel1SweepState {
     fn observe_calculation(&mut self, calculation: SweepCalculation) {
         self.completed_addend = calculation.addend;
         self.negate_calculated_since_trigger |= calculation.decreases;
+    }
+
+    fn cgb_decrease_restart_hold_t_cycles(
+        &self,
+        console_model: ConsoleModel,
+        was_active: bool,
+    ) -> u16 {
+        if console_model.is_cgb_family() && was_active && self.decreasing_writeback_since_trigger {
+            CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES
+        } else {
+            0
+        }
     }
 }
 
@@ -464,6 +495,10 @@ impl Channel1State {
         next_step_clocks_envelope: bool,
     ) -> bool {
         let period_value = self.period_value();
+        let was_active = self.pulse.runtime.active;
+        let sweep_restart_hold_t_cycles = self
+            .sweep
+            .cgb_decrease_restart_hold_t_cycles(console_model, was_active);
         let trigger_reloaded_zero_length = self.pulse.trigger(
             console_model,
             speed_mode,
@@ -471,8 +506,13 @@ impl Channel1State {
             self.nr12,
             next_step_clocks_envelope,
         );
-        self.sweep
-            .trigger(self.nr10, period_value, &mut self.pulse.runtime);
+        self.pulse.extend_trigger_delay(sweep_restart_hold_t_cycles);
+        self.sweep.trigger(
+            console_model,
+            self.nr10,
+            period_value,
+            &mut self.pulse.runtime,
+        );
         trigger_reloaded_zero_length
     }
 

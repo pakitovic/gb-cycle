@@ -1143,6 +1143,105 @@ fn cgb_channel_1_sweep_delayed_overflow_check_survives_save_state() {
 }
 
 #[test]
+fn cgb_channel_1_trigger_sweep_overflow_check_is_delayed() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x17);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xFF);
+    apu.write_register(0xFF14, 0x87);
+
+    apu.write_register(0xFF14, 0x87);
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    for _ in 0..35 {
+        apu.channels.channel_1.tick_fast_timer();
+        assert!(apu.channels.channel_1.pulse.runtime.active);
+    }
+
+    apu.channels.channel_1.tick_fast_timer();
+
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_decreasing_sweep_writeback_extends_active_retrigger_hold() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x1F);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xFF);
+    apu.write_register(0xFF14, 0x87);
+    apu.channels.channel_1.pulse.trigger_delay_t_cycles = 0;
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07F0);
+
+    apu.write_register(0xFF14, 0x87);
+
+    assert_eq!(apu.channels.channel_1.pulse.trigger_delay_t_cycles, 8);
+}
+
+#[test]
+fn cgb_channel_1_increasing_sweep_writeback_keeps_base_active_retrigger_hold() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x17);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xF0);
+    apu.write_register(0xFF14, 0x87);
+    apu.channels.channel_1.pulse.trigger_delay_t_cycles = 0;
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07FF);
+
+    apu.write_register(0xFF14, 0x87);
+
+    assert_eq!(apu.channels.channel_1.pulse.trigger_delay_t_cycles, 4);
+}
+
+#[test]
+fn cgb_channel_1_decreasing_sweep_restart_hold_survives_save_state() {
+    let mut uninterrupted = Apu::new(ConsoleModel::GameBoyColor);
+    uninterrupted.write_register(0xFF26, 0x80);
+    uninterrupted.write_register(0xFF10, 0x1F);
+    uninterrupted.write_register(0xFF11, 0x80);
+    uninterrupted.write_register(0xFF12, 0xF0);
+    uninterrupted.write_register(0xFF13, 0xFF);
+    uninterrupted.write_register(0xFF14, 0x87);
+    uninterrupted
+        .channels
+        .channel_1
+        .pulse
+        .trigger_delay_t_cycles = 0;
+    uninterrupted
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    let saved = uninterrupted.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    restored.restore_save_state(&saved);
+
+    uninterrupted.write_register(0xFF14, 0x87);
+    restored.write_register(0xFF14, 0x87);
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert_eq!(restored.channels.channel_1.pulse.trigger_delay_t_cycles, 8);
+}
+
+#[test]
 fn cgb_channel_1_nr10_zero_write_cancels_pending_sweep_overflow_check() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);

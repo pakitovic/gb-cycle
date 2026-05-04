@@ -208,6 +208,10 @@ impl PulseChannelState {
         reloaded_zero_length
     }
 
+    pub(in crate::apu) fn extend_trigger_delay(&mut self, t_cycles: u16) {
+        self.trigger_delay_t_cycles = self.trigger_delay_t_cycles.saturating_add(t_cycles);
+    }
+
     pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
         &mut self,
         period_value: u16,
