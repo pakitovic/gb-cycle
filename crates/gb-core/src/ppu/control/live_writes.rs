@@ -126,6 +126,52 @@ impl Ppu {
             );
     }
 
+    /// Models the coarse CGB-C-era `LCDC.4` same-T-cycle tile-data glitch.
+    ///
+    /// When the tile-data selector changes on the same T-cycle as a BG/window
+    /// bitplane read, hardware research reports revision-specific CGB behavior
+    /// that can substitute stale or non-VRAM data for the bitplane byte. The
+    /// current product-level `GameBoyColor` model keeps the `cgb-acid-hell`
+    /// closure seam explicit and model-gated by substituting the current tile
+    /// index until revision-specific CGB models split the set/reset cases.
+    pub(in crate::ppu) fn apply_cgb_lcdc4_same_cycle_tiledata_glitch(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_cgb_family()
+            || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
+        {
+            return;
+        }
+
+        match (
+            self.bg_pipeline_state.fetcher.stage,
+            self.bg_pipeline_state.fetcher.stage_dot,
+        ) {
+            (PpuBgFetcherStage::TileDataLow, 1) => {
+                let tile_index = self.bg_pipeline_state.fetcher.tile_index;
+                self.bg_pipeline_state.fetcher.tile_low = tile_index;
+            }
+            (PpuBgFetcherStage::TileDataHigh, 1) | (PpuBgFetcherStage::Push, 0) => {
+                let tile_index = self.bg_pipeline_state.fetcher.tile_index;
+                self.bg_pipeline_state.fetcher.tile_high = tile_index;
+
+                if self.bg_pipeline_state.push.pending
+                    && self.bg_pipeline_state.push.cached.source
+                        == self.bg_pipeline_state.fetcher.source
+                    && self.bg_pipeline_state.push.cached.fetch_x
+                        == self.bg_pipeline_state.fetcher.fetch_x
+                    && self.bg_pipeline_state.push.cached.tile_index == tile_index
+                {
+                    let cached = &mut self.bg_pipeline_state.push.cached;
+                    cached.tile_high = tile_index;
+                    cached.cgb_lcdc4_same_cycle_tile_high_override = Some(tile_index);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub(in crate::ppu) fn apply_dmg_lcdc0_live_bg_enable_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,

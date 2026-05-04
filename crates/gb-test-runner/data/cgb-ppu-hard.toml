@@ -1,0 +1,13 @@
+version = 1
+family = "acid"
+suite_name = "cgb-ppu-hard"
+subsystem = "Ppu"
+
+[[case]]
+id = "cgb-ppu-hard-cgb-acid-hell"
+rom = "cgb-acid-hell.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
+stop_condition = "ld-b-b"

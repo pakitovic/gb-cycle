@@ -1108,6 +1108,56 @@ fn cgb_hdma_lcd_off_copies_one_block_and_waits_for_another_window() {
 }
 
 #[test]
+fn cgb_hdma_active_block_publishes_video_bus_conflict_to_cpu_vram_access() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00, 0x00, 0x00]))
+        .expect("CGB native HDMA bus-conflict test ROM should load");
+
+    for offset in 0..0x10u16 {
+        machine.write_bus(0xC120 + offset, 0xA0 | offset as u8);
+        machine.write_bus(0x8800 + offset, 0x00);
+    }
+
+    machine.write_bus(0xFF51, 0xC1);
+    machine.write_bus(0xFF52, 0x20);
+    machine.write_bus(0xFF53, 0x08);
+    machine.write_bus(0xFF54, 0x00);
+    machine.write_bus(0xFF55, 0x80);
+    assert!(
+        !machine.dma().cpu_stall_active(),
+        "HDMA must wait for a visible HBlank window before starting its block"
+    );
+
+    step_until(
+        &mut machine,
+        20_000,
+        "first visible-HBlank HDMA block",
+        |machine| machine.dma().cpu_stall_active(),
+    );
+    assert_eq!(machine.ppu().snapshot().mode, PpuAccessMode::HBlank);
+    assert_eq!(
+        machine.read_bus(0x8800),
+        0xFF,
+        "active HDMA must publish a video-bus conflict to CPU VRAM reads"
+    );
+    machine.write_bus(0x8800, 0x55);
+
+    step_until(&mut machine, 128, "HDMA block completion", |machine| {
+        machine.dma().read_hdma5() == 0xFF
+    });
+
+    let expected: Vec<_> = (0xA0u8..0xB0).collect();
+    assert_eq!(
+        &machine.debug_vram_bytes()[0x0800..0x0810],
+        expected.as_slice(),
+        "CPU VRAM writes attempted during active HDMA must be ignored in favor of DMA data"
+    );
+}
+
+#[test]
 fn cgb_hdma_uses_live_mbc5_rom_bank_mapping_between_blocks() {
     let mut rom = build_cgb_banked_test_rom(&[0x00; 16], 0x19, 0x01, 0x00);
     for offset in 0..0x10usize {

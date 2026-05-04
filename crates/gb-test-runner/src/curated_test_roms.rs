@@ -8,9 +8,9 @@ use gb_core::{ConsoleModel, StartupMode, TimerStartupState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CaptureKind, CapturePlan, ExecutionMode, FailureArtifactPolicy, MemoryTextOutputSpec,
-    PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupMemoryWrite, TestSubsystem,
-    Timeout,
+    CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, FailureArtifactPolicy,
+    MemoryTextOutputSpec, PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupMemoryWrite,
+    TestSubsystem, Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
@@ -99,6 +99,7 @@ struct CuratedTestRomCaseFile {
     console: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
+    stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
 }
@@ -125,6 +126,7 @@ struct CuratedTestRomCase {
     console_model: ConsoleModel,
     startup_mode: StartupMode,
     execution_mode: Option<String>,
+    stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
     startup_memory_profile: Option<String>,
 }
@@ -707,6 +709,10 @@ pub fn cgb_ppu_basic_suite() -> RomSuite {
     manifest_suite_by_name("cgb-ppu-basic")
 }
 
+pub fn cgb_ppu_hard_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-ppu-hard")
+}
+
 pub fn cgb_dma_suite() -> RomSuite {
     manifest_suite_by_name("cgb-dma")
 }
@@ -745,7 +751,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 16] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 17] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -774,6 +780,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 16] {
         (
             "crates/gb-test-runner/data/cgb-ppu-basic.toml",
             include_str!("../data/cgb-ppu-basic.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-ppu-hard.toml",
+            include_str!("../data/cgb-ppu-hard.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-rtc.toml",
@@ -872,6 +882,7 @@ fn parse_manifest_case(
         console_model,
         startup_mode,
         execution_mode: case.execution_mode,
+        stop_condition: case.stop_condition,
         startup_timer_profile: case.startup_timer_profile,
         startup_memory_profile: case.startup_memory_profile,
     }
@@ -924,6 +935,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         console_model,
         startup_mode,
         execution_mode,
+        stop_condition,
         startup_timer_profile,
         startup_memory_profile,
     } = case;
@@ -992,6 +1004,15 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         ));
     }
 
+    if let Some(stop_condition) = stop_condition.as_deref() {
+        let case_id = rom_case.id.clone();
+        rom_case = rom_case.with_stop_condition(parse_manifest_stop_condition(
+            &family,
+            &case_id,
+            stop_condition,
+        ));
+    }
+
     if let Some(profile) = startup_timer_profile.as_deref() {
         rom_case = match profile {
             "hacktix-cgb-bully-div" => rom_case.with_startup_timer_state(TimerStartupState {
@@ -1036,6 +1057,19 @@ fn parse_manifest_execution_mode(
         "experimental" => ExecutionMode::Experimental,
         other => panic!(
             "unsupported execution mode {other:?} for curated case {case_id} in family {family}"
+        ),
+    }
+}
+
+fn parse_manifest_stop_condition(
+    family: &str,
+    case_id: &str,
+    stop_condition: &str,
+) -> ExecutionStopCondition {
+    match stop_condition {
+        "ld-b-b" => ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 },
+        other => panic!(
+            "unsupported stop condition {other:?} for curated case {case_id} in family {family}"
         ),
     }
 }
@@ -1419,15 +1453,15 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 mod tests {
     use super::{
         CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
-        GBEMU_SHOOTOUT_TESTROMS_DIR, MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS,
-        PersistedCaseStatus, PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI,
-        REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_REPORT_FILE_NAME,
-        TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
-        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
+        ExecutionStopCondition, GBEMU_SHOOTOUT_TESTROMS_DIR,
+        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
+        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
+        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
+        blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
         capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite,
-        cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
-        curated_test_rom_family_suites, curated_test_rom_manifest_texts,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
+        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
         load_persisted_suite_status, manifest_case_report_rom_display,
@@ -1810,6 +1844,36 @@ mod tests {
             })
         );
         assert_eq!(case.startup_memory_writes.len(), 244);
+    }
+
+    #[test]
+    fn cgb_ppu_hard_suite_promotes_cgb_acid_hell_closure_row() {
+        let suite = cgb_ppu_hard_suite();
+
+        assert_eq!(suite.name, "cgb-ppu-hard");
+        assert_eq!(suite.family.as_deref(), Some("acid"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cgb-ppu-hard-cgb-acid-hell");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("acid/cgb-acid-hell.gbc"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
+            ))
+        );
+        assert_eq!(
+            case.stop_condition,
+            Some(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 })
+        );
     }
 
     #[test]
@@ -3066,6 +3130,7 @@ mod tests {
                 console: None,
                 startup: None,
                 execution_mode: None,
+                stop_condition: None,
                 startup_timer_profile: None,
                 startup_memory_profile: None,
             },
@@ -3088,6 +3153,7 @@ mod tests {
             console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
+            stop_condition: None,
             startup_timer_profile: None,
             startup_memory_profile: None,
         });
@@ -3109,6 +3175,7 @@ mod tests {
             console_model: ConsoleModel::GameBoyColor,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
+            stop_condition: None,
             startup_timer_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
         });
@@ -3130,6 +3197,7 @@ mod tests {
             console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
+            stop_condition: None,
             startup_timer_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
         });
