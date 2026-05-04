@@ -262,6 +262,10 @@ impl PulseChannelState {
         self.envelope.clock();
     }
 
+    pub(in crate::apu) fn clock_cgb_live_write_pending_even_envelope_tick(&mut self) {
+        self.envelope.clock_cgb_live_write_pending_even_tick();
+    }
+
     pub(in crate::apu) fn current_digital_output(&self) -> u8 {
         if !self.runtime.active {
             return 0;

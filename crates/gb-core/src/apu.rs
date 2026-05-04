@@ -558,6 +558,10 @@ impl Apu {
         if clocks.sweep {
             self.channels.clock_sweep_ch1(self.console_model);
         }
+        if !clocks.length && self.console_model.is_cgb_family() {
+            self.channels
+                .clock_cgb_live_write_pending_even_envelope_all();
+        }
         if clocks.envelope {
             self.channels.clock_envelope_all();
         }

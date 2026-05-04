@@ -205,4 +205,8 @@ impl Channel2State {
     pub(in crate::apu) fn clock_envelope(&mut self) {
         self.pulse.clock_envelope();
     }
+
+    pub(in crate::apu) fn clock_cgb_live_write_pending_even_envelope_tick(&mut self) {
+        self.pulse.clock_cgb_live_write_pending_even_envelope_tick();
+    }
 }

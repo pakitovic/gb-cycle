@@ -77,6 +77,15 @@ impl ApuChannels {
         self.channel_4.clock_envelope();
     }
 
+    pub(super) fn clock_cgb_live_write_pending_even_envelope_all(&mut self) {
+        self.channel_1
+            .clock_cgb_live_write_pending_even_envelope_tick();
+        self.channel_2
+            .clock_cgb_live_write_pending_even_envelope_tick();
+        self.channel_4
+            .clock_cgb_live_write_pending_even_envelope_tick();
+    }
+
     pub(super) fn clock_sweep_ch1(&mut self, console_model: ConsoleModel) {
         self.channel_1.clock_sweep(console_model);
     }

@@ -199,6 +199,8 @@ pub(in crate::apu) struct EnvelopeState {
     pub(in crate::apu) current_volume: u8,
     #[serde(default)]
     cgb_live_write_short_reload: bool,
+    #[serde(default)]
+    cgb_live_write_pending_even_tick: bool,
 }
 
 impl EnvelopeState {
@@ -224,6 +226,7 @@ impl EnvelopeState {
         if console_model.is_cgb_family() {
             let old_value = encode_envelope_register(self.initial_volume, self.increase, self.pace);
             let old_pace = self.pace;
+            let old_increase = self.increase;
             let volume_updates_locked = self.pace != 0 && !self.automatic_updates_enabled;
             apply_cgb_zombie_mode_write(
                 &mut self.current_volume,
@@ -233,10 +236,20 @@ impl EnvelopeState {
             );
             self.apply_write(value);
             self.cgb_live_write_short_reload = false;
+            self.cgb_live_write_pending_even_tick = false;
             self.automatic_updates_enabled = self.pace != 0 && !volume_updates_locked;
             if old_pace == 0 && self.pace != 0 && !volume_updates_locked {
-                self.timer = 1;
+                // Native CGB treats the enable-side live write as a normal envelope timer reload
+                // unless the zombie-mode write also flips direction. Direction flips keep the
+                // short first reload observed by the CGB NRx2 glitch tests, while same-direction
+                // enables let the pending even DIV-APU tick consume the newly selected pace.
+                self.timer = if old_increase == self.increase {
+                    self.pace
+                } else {
+                    1
+                };
                 self.cgb_live_write_short_reload = true;
+                self.cgb_live_write_pending_even_tick = true;
             }
         } else {
             apply_consistent_zombie_mode_increment(&mut self.current_volume, value);
@@ -248,6 +261,7 @@ impl EnvelopeState {
         self.timer = envelope_timer_reload(self.pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
         self.cgb_live_write_short_reload = false;
+        self.cgb_live_write_pending_even_tick = false;
     }
 
     pub(in crate::apu) fn clock(&mut self) {
@@ -259,6 +273,15 @@ impl EnvelopeState {
             &mut self.automatic_updates_enabled,
             &mut self.cgb_live_write_short_reload,
         );
+    }
+
+    pub(in crate::apu) fn clock_cgb_live_write_pending_even_tick(&mut self) {
+        if !self.cgb_live_write_pending_even_tick {
+            return;
+        }
+
+        self.cgb_live_write_pending_even_tick = false;
+        self.clock();
     }
 }
 

@@ -1714,7 +1714,7 @@ fn cgb_live_nrx2_writes_use_the_shared_zombie_volume_matrix_for_pulse_channels()
     }
 }
 
-fn cgb_channel_1_volume_after_live_nrx2_write_and_envelope_clocks(
+fn cgb_channel_1_volume_after_live_nrx2_write_pending_even_tick_and_envelope_clocks(
     old_value: u8,
     new_value: u8,
     envelope_clocks: usize,
@@ -1725,13 +1725,15 @@ fn cgb_channel_1_volume_after_live_nrx2_write_and_envelope_clocks(
     apu.write_register(0xFF12, old_value);
     apu.write_register(0xFF14, 0x80);
     apu.write_register(0xFF12, new_value);
+    apu.frame_sequencer.apply_startup_phase(1);
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     for _ in 0..envelope_clocks {
         apu.channels.channel_1.clock_envelope();
     }
     apu.channels.channel_1.pulse.envelope.current_volume
 }
 
-fn cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(
+fn cgb_channel_2_volume_after_live_nrx2_write_pending_even_tick_and_envelope_clocks(
     old_value: u8,
     new_value: u8,
     envelope_clocks: usize,
@@ -1742,6 +1744,8 @@ fn cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(
     apu.write_register(0xFF17, old_value);
     apu.write_register(0xFF19, 0x80);
     apu.write_register(0xFF17, new_value);
+    apu.frame_sequencer.apply_startup_phase(1);
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     for _ in 0..envelope_clocks {
         apu.channels.channel_2.clock_envelope();
     }
@@ -1751,24 +1755,32 @@ fn cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(
 #[test]
 fn cgb_live_nrx2_writes_update_the_shared_envelope_clock_state_for_pulse_channels() {
     let cases = [
-        (0x20, 0x20, 0x02),
-        (0x08, 0x08, 0x01),
-        (0x22, 0x22, 0x01),
-        (0x32, 0x32, 0x02),
-        (0x20, 0x08, 0x0D),
-        (0x08, 0x47, 0x0E),
-        (0x22, 0x08, 0x0C),
-        (0x08, 0x32, 0x0D),
+        (0x08, 0x09, 0, 0x02),
+        (0x08, 0x09, 1, 0x03),
+        (0x08, 0x0A, 0, 0x01),
+        (0x08, 0x0A, 1, 0x02),
+        (0x08, 0x0A, 2, 0x03),
+        (0x09, 0x08, 2, 0x00),
+        (0x08, 0x47, 2, 0x0E),
+        (0x08, 0x32, 2, 0x0D),
     ];
 
-    for (old_value, new_value, expected_volume) in cases {
+    for (old_value, new_value, envelope_clocks, expected_volume) in cases {
         assert_eq!(
-            cgb_channel_1_volume_after_live_nrx2_write_and_envelope_clocks(old_value, new_value, 2),
+            cgb_channel_1_volume_after_live_nrx2_write_pending_even_tick_and_envelope_clocks(
+                old_value,
+                new_value,
+                envelope_clocks
+            ),
             expected_volume,
             "CH1 old={old_value:#04X} new={new_value:#04X}",
         );
         assert_eq!(
-            cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(old_value, new_value, 2),
+            cgb_channel_2_volume_after_live_nrx2_write_pending_even_tick_and_envelope_clocks(
+                old_value,
+                new_value,
+                envelope_clocks
+            ),
             expected_volume,
             "CH2 old={old_value:#04X} new={new_value:#04X}",
         );
@@ -1782,11 +1794,16 @@ fn save_state_preserves_cgb_live_nrx2_pending_short_envelope_reload() {
     uninterrupted.write_register(0xFF11, 0x80);
     uninterrupted.write_register(0xFF12, 0x08);
     uninterrupted.write_register(0xFF14, 0x80);
-    uninterrupted.write_register(0xFF12, 0x32);
+    uninterrupted.write_register(0xFF12, 0x0A);
 
     let saved = uninterrupted.capture_save_state();
     let mut restored = Apu::new(ConsoleModel::GameBoyColor);
     restored.restore_save_state(&saved);
+
+    uninterrupted.frame_sequencer.apply_startup_phase(1);
+    restored.frame_sequencer.apply_startup_phase(1);
+    tick_apu_with_edges(&mut uninterrupted, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+    tick_apu_with_edges(&mut restored, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
 
     for _ in 0..2 {
         uninterrupted.channels.channel_1.clock_envelope();
@@ -1799,7 +1816,7 @@ fn save_state_preserves_cgb_live_nrx2_pending_short_envelope_reload() {
     );
     assert_eq!(
         restored.channels.channel_1.pulse.envelope.current_volume,
-        0x0D
+        0x03
     );
 }
 
