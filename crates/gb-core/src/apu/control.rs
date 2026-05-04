@@ -104,8 +104,9 @@ impl Apu {
             (true, false) => self.power_off(),
             (false, true) => {
                 self.master.powered = true;
+                let starts_on_high_half = div_apu_signal_high && self.console_model.is_cgb_family();
                 self.frame_sequencer
-                    .apply_startup_phase(if div_apu_signal_high {
+                    .apply_startup_phase(if starts_on_high_half {
                         POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE
                     } else {
                         0
