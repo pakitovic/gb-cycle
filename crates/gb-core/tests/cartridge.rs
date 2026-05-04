@@ -329,6 +329,7 @@ fn build_banked_mbc3_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u
         0x04 => 512 * 1024,
         0x05 => 1024 * 1024,
         0x06 => 2 * 1024 * 1024,
+        0x07 => 4 * 1024 * 1024,
         _ => panic!("unsupported MBC3 ROM size code for test"),
     };
     let bank_count = rom_size / 0x4000;

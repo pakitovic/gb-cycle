@@ -343,7 +343,7 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
 - explicit supported-family taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, `MMM01`, `M161`, `HuC1`, `HuC-3`, and `Pocket Camera`, plus structured unsupported categories rather than one opaque `Unsupported`
-- explicit supported signature/variant path for `MBC1M`, plus reserved typed variant space for close derivatives such as `MBC30`
+- explicit supported signature/variant paths for close derivatives such as `MBC1M` and `MBC30`
 - separate classification path for special multicarts, documented-but-unsupported mappers, accessory cartridges, experimental heuristics, and unknown codes
 - explicit separation between raw mapper register state, header-derived wiring / variant metadata, mapper-local RAM organization, and helper logic that resolves effective ROM and RAM banks
 - cartridge-visible RAM, whether external or mapper-local to the mapper

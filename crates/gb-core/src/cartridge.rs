@@ -84,6 +84,7 @@ const HUC3_MCU_RAM_NIBBLE_COUNT: usize = 256;
 const HUC3_DAY_COUNTER_MODULUS: u16 = 0x1000;
 const HUC3_MINUTES_PER_DAY: u16 = 1440;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
+const MBC30_SUPPORTED_ROM_BYTES_MAX: usize = 4 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC3_RTC_CLOCK_TICKS_PER_SECOND: u64 = 32_768;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
@@ -318,6 +319,7 @@ const KNOWN_CLASSIFICATION_STRINGS: &[&str] = &[
     "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
     "MMM01 classification came from the explicit later Mani trailing-menu signature path",
     "MBC1 multicart classification came from the explicit subheader signature path",
+    "MBC30 classification came from the MBC3 64 KiB SRAM header shape",
     "MBC30 is a known MBC3-family variant reserved for later support",
     "Bung multicart classification came from an explicit experimental heuristic path",
     "EMS multicart classification came from an explicit experimental heuristic path",
@@ -537,7 +539,7 @@ struct Mbc2Cartridge {
 #[allow(dead_code)]
 enum Mbc3Variant {
     Standard,
-    Mbc30Reserved,
+    Mbc30,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

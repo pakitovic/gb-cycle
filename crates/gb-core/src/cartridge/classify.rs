@@ -101,10 +101,6 @@ pub(in crate::cartridge) fn classify_loaded_cartridge(
         return classification;
     }
 
-    if let Some(classification) = classify_planned_variant(header) {
-        return classification;
-    }
-
     if compatibility.heuristic_policy == crate::model::HeuristicPolicy::AllowExperimental
         && let Some(classification) = classify_experimental_heuristic(header, rom_bytes)
     {
@@ -145,19 +141,20 @@ fn classify_supported_signature_variant(
         ));
     }
 
+    if is_mbc30_header_variant(header) {
+        return Some(supported_with_reason(
+            header.cartridge_type,
+            "MBC30",
+            SupportedCartridgeFamily::Mbc3,
+            "MBC30 classification came from the MBC3 64 KiB SRAM header shape",
+        ));
+    }
+
     None
 }
 
-fn classify_planned_variant(header: &CartridgeHeader) -> Option<CartridgeClassification> {
-    match header.cartridge_type {
-        0x10 | 0x12 | 0x13 if header.ram_size.raw_code == 0x05 => Some(unsupported(
-            header.cartridge_type,
-            "MBC30",
-            UnsupportedCartridgeCategory::PlannedVariant,
-            "MBC30 is a known MBC3-family variant reserved for later support",
-        )),
-        _ => None,
-    }
+fn is_mbc30_header_variant(header: &CartridgeHeader) -> bool {
+    matches!(header.cartridge_type, 0x10 | 0x12 | 0x13) && header.ram_size.raw_code == 0x05
 }
 fn classify_experimental_heuristic(
     header: &CartridgeHeader,

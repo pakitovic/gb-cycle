@@ -84,7 +84,7 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
     assert_eq!(mbc30_classification.detected_name(), "MBC30");
     assert_eq!(
         mbc30_classification.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
     );
 
     let no_ram_mbc3_rom = build_test_rom(256 * 1024, 0x11, 0x03, 0x05);

@@ -150,22 +150,17 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
     }));
 
     diagnostics.clear();
-    let mbc3_reserved_header =
-        CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x13, 0x03, 0x05))
-            .expect("header should parse");
-    let mbc3_reserved_error = validate_mbc3(
-        &mbc3_reserved_header,
+    let mbc30_header = CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x13, 0x03, 0x05))
+        .expect("header should parse");
+    let mbc30_variant = validate_mbc3(
+        &mbc30_header,
         256 * 1024,
         &strict,
-        &CartridgeClassification::classify(0x13),
+        &supported(0x13, "MBC30", SupportedCartridgeFamily::Mbc3),
         &mut diagnostics,
     )
-    .expect_err("standard MBC3 should reject the reserved 64 KiB SRAM shape");
-    assert!(matches!(
-        mbc3_reserved_error,
-        CartridgeLoadError::Rejected { reason, .. }
-            if reason.contains("reserved for the future MBC30 variant")
-    ));
+    .expect("MBC30 should validate as an explicit MBC3-family variant");
+    assert_eq!(mbc30_variant, Mbc3Variant::Mbc30);
 
     diagnostics.clear();
     let no_ram_mbc3_with_mbc30_code_header =

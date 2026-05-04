@@ -172,20 +172,21 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### MBC30
 
 - Treat `MBC30` as a real `MBC3`-family variant, not as an informal alias for ordinary `MBC3`.
-- `MBC30` should classify as `PlannedVariant`.
-- Pan Docs identifies "MBC3 with `64 KiB` of SRAM" as `MBC30`; for this repo that should map to an explicit typed entry such as `Mbc30Cartridge` or `Mbc3Variant::Mbc30`.
+- `MBC30` now classifies as a supported `MBC3`-family variant through an explicit typed entry such as `Mbc3Variant::Mbc30`.
+- Pan Docs identifies "MBC3 with `64 KiB` of SRAM" as `MBC30`; gbdoc documents the practical extension as MBC3 behavior with up to `4 MiB` ROM and `64 KiB` SRAM.
 - Detection should trigger only when the validated cartridge is in one of the RAM-bearing `MBC3` header shapes (`0x10`, `0x12`, or `0x13`) and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
 - The factory must not silently construct ordinary standard `MBC3` with oversized SRAM when this case is detected.
-- `Strict` and `Permissive` should reject `MBC30` clearly as a known reserved variant rather than as an invalid or unknown header.
-- `Experimental` may admit `MBC30` only when an explicit partial or complete implementation path exists behind a visible policy gate.
-- `MBC30` banking, RAM persistence, and validation should remain a priority post-CGB future block because it is a concrete shipping variant, not a speculative edge case.
-- In the current DMG-only but CGB-ready roadmap, keep `MBC30` explicit in classification, diagnostics, and typed variant space, but defer functional runtime support until the base CGB implementation is complete enough to boot and validate CGB-only software.
+- `Strict`, `Permissive`, and `Experimental` should all admit supported `MBC30` with identical runtime semantics; mode differences still belong only in validation severity, diagnostics, and explicit experimental paths for other hardware.
+- `MBC30` reuses the MBC3 RTC and latch model, including the current relatch compatibility rule, advisory `rtc_access_ready_at`, and live-versus-latched persistence split.
+- `MBC30` ROM banking extends the MBC3 ROM-bank register to `8` bits, keeps the `0 -> 1` switchable-window translation, and masks the final bank by the validated ROM size up to `4 MiB`.
+- `MBC30` RAM banking maps selector values `0x00..=0x07` to the `64 KiB` SRAM backing, maps `0x08..=0x0C` to RTC registers when the header type provides RTC, and keeps `0x0D..=0x0F` as reserved selector states.
+- `MBC30` persistence uses the same MBC3 RAM / RTC persistence payload family, but with a validated `64 KiB` RAM length when SRAM exists.
 
 ### Special-variant status and ordering
 
 - Keep a design distinction between close derivatives of supported mapper families and cartridges that require new cartridge-local hardware.
 - The DMG-family special-cartridge runtime path is closed for the currently targeted set: `MMM01`, the supported `MBC1M` signature path, `HuC1`, `HuC-3`, `M161`, and `Pocket Camera` all enter through dedicated supported cartridge paths rather than fallback mappers.
-- `MBC30`, `MBC6`, and `MBC7` remain explicitly classified and reserved, but functional runtime support is CGB-gated. Do not treat their absence from `TODO.md` as permission to fold them into ordinary `MBC3` / `MBC5` logic; see `docs/hardware/CGB.md` for the base CGB gate.
+- `MBC30` is now the supported close `MBC3`-family variant, while `MBC6` and `MBC7` remain explicitly classified and reserved for later CGB-gated runtime work. Do not treat their absence from `TODO.md` as permission to fold them into ordinary `MBC5` logic; see `docs/hardware/CGB.md` for the base CGB gate.
 - `Bandai TAMA5` remains an accessory-special unsupported path until a dedicated cartridge-local device model exists.
 - Lower-confidence `EMS`, `Bung`, and `Wisdom Tree` paths remain experimental heuristics and must not participate in strict default loading.
 
@@ -442,10 +443,10 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Header codes `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13` should be recognized explicitly as the MBC3 family.
 - `0x0F` means MBC3 + timer + battery, `0x10` means MBC3 + timer + RAM + battery, `0x11` means plain MBC3, `0x12` means MBC3 + RAM, and `0x13` means MBC3 + RAM + battery.
 - Header-derived capability state must distinguish plain MBC3 from RTC-backed MBC3 cartridges; not every MBC3 cartridge has timer hardware.
-- Reserve an explicit future variant such as `Mbc3Variant::Mbc30` or equivalent instead of letting standard MBC3 quietly absorb the later MBC30 differences.
+- Keep `Mbc3Variant::Mbc30` or equivalent as an explicit supported near-family variant instead of letting standard MBC3 quietly absorb the later MBC30 differences.
 - Standard MBC3 must support up to `2 MiB` ROM, meaning up to `128` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x01..=0x7F` visible in `0x4000-0x7FFF`.
-- Standard MBC3 external RAM support should stop at `32 KiB`; if header metadata implies the later `64 KiB` SRAM configuration associated with MBC30, keep that as explicit future validation / variant work rather than silently treating it as ordinary MBC3.
-- For ordinary MBC3 RAM validation, accept the standard external-RAM size codes that appear in the generic table for small SRAM-backed cartridges, including `0x01` (`2 KiB`), `0x02` (`8 KiB`), and `0x03` (`32 KiB`); only `0x05` should trigger the explicit MBC30 reservation path.
+- Standard MBC3 external RAM support should stop at `32 KiB`; if header metadata implies the later `64 KiB` SRAM configuration associated with MBC30, route that cartridge into the explicit MBC30 variant rather than silently treating it as ordinary MBC3.
+- For ordinary MBC3 RAM validation, accept the standard external-RAM size codes that appear in the generic table for small SRAM-backed cartridges, including `0x01` (`2 KiB`), `0x02` (`8 KiB`), and `0x03` (`32 KiB`); only `0x05` should trigger the explicit MBC30 variant path.
 - Unlike standard MBC1, MBC3 high-region ROM banking must allow banks `0x20`, `0x40`, and `0x60` to be selected normally when present.
 - The visible MBC3 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
@@ -456,11 +457,11 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `0x0000-0x1FFF` is a write-only RAM / RTC-enable register. Any write whose low nibble is `0xA` enables both external RAM and RTC-register access; other values disable both.
 - With RAM / RTC disabled, `0xA000-0xBFFF` reads and writes should follow one explicit project policy rather than accidental backing-store behavior. A default of `0xFF` is acceptable, but the policy should remain explicit and testable.
 - `0x2000-0x3FFF` is a write-only raw `7`-bit ROM-bank register. Store `value & 0x7F`, ignore upper data bits, apply the documented `0 -> 1` translation for the switchable ROM window, and then mask the effective bank by the real number of loaded ROM banks.
-- `0x4000-0x5FFF` is a write-only selector for the `0xA000-0xBFFF` window. Standard MBC3 values `0x00..=0x03` select RAM banks, values `0x08..=0x0C` select RTC registers, and values `0x04..=0x07` should remain explicit reserved or invalid selector states unless a later typed variant such as `MBC30` gives them meaning.
+- `0x4000-0x5FFF` is a write-only selector for the `0xA000-0xBFFF` window. Standard MBC3 values `0x00..=0x03` select RAM banks, values `0x08..=0x0C` select RTC registers, and values `0x04..=0x07` remain explicit reserved or invalid selector states; MBC30 gives `0x04..=0x07` the distinct meaning of extended SRAM banks.
 - Current source divergence note: the latest public `Pan Docs` wording says `$00-$07` select RAM banks, but the retained curated oracle `cpp/rtc-invalid-banks-test.gb` actively writes to selectors `0x04..=0x07`, re-reads through the same selectors, and only stays green when those states remain invalid or reserved rather than exposing banked SRAM semantics. Until stronger hardware evidence settles the conflict, keep the project model explicit about that compatibility choice instead of silently widening standard MBC3 RAM banking.
 - The MBC3 RAM / RTC selector should decode from the low nibble of the written value. Upper data bits must not create a different selector namespace.
 - Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)`, `ReservedSelector(u8)`, or `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
-- External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 should not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support.
+- External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 must not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support, while MBC30 uses the validated `8` SRAM banks explicitly.
 - When the validated MBC3 SRAM backing is smaller than the visible `8 KiB` aperture, such as the accepted `2 KiB` case, reads and writes through `0xA000-0xBFFF` should wrap within the real SRAM payload instead of exposing out-of-range holes.
 - `0x6000-0x7FFF` is a write-only RTC latch command register. The project keeps the first accepted latch on the logical edge formed by writing `0x00` and then `0x01`, so a first post-reset `0x01` does not latch until software has armed the edge with `0x00`.
 - Keep RTC live state and RTC latched state as separate concepts. RTC register writes should update only the live RTC state; reads must continue to observe the currently latched snapshot until software issues the next latch command accepted by the controller.
@@ -493,7 +494,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - A concrete `Mbc3Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
 - It should contain at least `rom`, optional `ram`, `has_battery`, `has_rtc`, `ram_rtc_enabled`, `rom_bank`, `ram_or_rtc_select`, `rtc_live`, `rtc_latched`, latch-sequence state, subsecond RTC phase state, and `header`.
 - Prefer explicit helpers such as `effective_rom_bank()`, `effective_ram_bank()`, `current_a000_mapping()`, and `latch_rtc_if_needed()` so raw register state, target-selection state, live RTC state, latched RTC state, and final effective mapping remain inspectable.
-- The first MBC3 implementation should close standard MBC3 before attempting MBC30. Leave the extension point in the cartridge factory and bank-resolution code, but do not bury MBC30 behind loose conditionals inside normal MBC3 behavior.
+- MBC30 support must stay variant-owned inside the MBC3-family cartridge path: code sharing with standard MBC3 is allowed, but ROM-bank width, RAM selector range, validation, diagnostics, and persistence sizing must remain explicitly tied to the typed variant rather than loose conditionals.
 
 ## MBC5 baseline
 
@@ -582,7 +583,7 @@ Priority order:
 Cartridge verification should continue to cover these boundaries:
 
 - header parsing, size decoding, central classification, execution-mode admission, diagnostics, and explicit no-fallback handling for unsupported or CGB-gated cartridges
-- mapper-visible behavior for each supported device family: `NoMbc`, `MBC1`, `MBC2`, `MBC3`, `MBC5`, `MMM01`, the supported `MBC1M` signature path, `M161`, `HuC1`, `HuC-3`, and `Pocket Camera`
+- mapper-visible behavior for each supported device family and variant: `NoMbc`, `MBC1`, `MBC2`, standard `MBC3`, `MBC30`, `MBC5`, `MMM01`, the supported `MBC1M` signature path, `M161`, `HuC1`, `HuC-3`, and `Pocket Camera`
 - T-cycle ordering for ROM-space mapper commands, RAM / RTC aperture reads and writes, and boot/post-boot visibility of `0x0100-0x014F` through the cartridge device rather than through a shadow header copy
 - cartridge-owned persistence for full backing stores, battery-gated save eligibility, `MBC2` nibble RAM, `MBC3` live RTC state plus powered-off elapsed time, and external `.sav` import/export boundaries
 - retained oracle coverage for intentionally narrow compatibility choices, especially the current MBC3 relatch rule, reserved selector values `0x04..=0x07`, and advisory-only RTC access spacing
@@ -613,12 +614,12 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - `NoMbc` is a concrete device, not a blob-reader fallback. It has no mapper bank state, ignores ROM-space writes through the normal command path, and exposes only absent RAM or one validated linear RAM store.
 - `MBC1` keeps raw register fields, standard versus large-ROM wiring metadata, the explicit `MBC1M` variant path, and helpers that apply the primary-register `0 -> 1` rule before final ROM-size masking.
 - `MBC2` is its own mapper with address-bit-`8` control decode, a raw `4`-bit ROM-bank register, one `512 x 4-bit` internal RAM array, low-`9`-bit echo aliasing, and the repo's explicit `0xF0 | nibble` readback policy. `0x0149` is validation metadata only for this family.
-- `MBC3` keeps RAM/RTC enable state, a raw `7`-bit ROM-bank register, typed RAM / reserved / RTC selector state, separate live and latched RTC state, and explicit latch-edge tracking. Standard `MBC3` stops at `32 KiB` SRAM; `64 KiB` SRAM stays reserved for `MBC30`.
+- `MBC3` keeps RAM/RTC enable state, typed RAM / reserved / RTC selector state, separate live and latched RTC state, and explicit latch-edge tracking. Standard `MBC3` uses a raw `7`-bit ROM-bank register and stops at `32 KiB` SRAM, while `MBC30` uses the explicit variant path for an `8`-bit ROM-bank register and `64 KiB` SRAM.
 - `MBC5` keeps raw low `8` and high `1` ROM-bank fields, valid switchable-window bank `0`, linear RAM banks, explicit rumble-capable variant metadata, and observable `rumble_on` state separate from effective RAM-bank selection.
 - `MMM01`, the supported `MBC1M` signature path, and `M161` are first-class multicart paths. Do not redistribute their boot-header, menu, mask-locking, or latch-until-power-off behavior into ordinary `MBC1` or `NoMbc` code.
 - `HuC1` and `HuC-3` are dedicated supported mapper families. `HuC1` owns its RAM/IR mode split; `HuC-3` owns its mailbox, semaphore, MCU-window RTC model, IR mode, and dedicated persistence shape. Neither should fall back to `MBC1` or `MBC3`.
 - `Pocket Camera` is a dedicated cartridge-local hardware family with camera registers, capture timing, SRAM, and host-frame state inside the cartridge subsystem. See `GAME-BOY-CAMERA.md` for the detailed camera contract.
-- `MBC30`, `MBC6`, and `MBC7` are CGB-gated future runtime work. Keep only explicit classification, diagnostics, typed variant space, and no-fallback policy until the base CGB implementation can validate CGB-only software.
+- `MBC30` is implemented as a supported `MBC3`-family variant. `MBC6` and `MBC7` remain CGB-gated future runtime work with only explicit classification, diagnostics, typed variant space, and no-fallback policy until dedicated implementations exist.
 
 ### Persistence and external save boundaries
 
@@ -672,7 +673,7 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - deriving MBC3 RTC progression directly from executed CPU cycles instead of from an explicit time / persistence source
 - persisting the latched MBC3 RTC snapshot as if it were the live battery-backed clock
 - assuming MBC3 cannot select ROM banks `0x20`, `0x40`, or `0x60` because MBC1 cannot
-- silently treating `64 KiB` SRAM declarations as ordinary standard MBC3 instead of reserving MBC30 explicitly
+- silently treating `64 KiB` SRAM declarations as ordinary standard MBC3 instead of routing them through the explicit MBC30 variant
 - deferring MBC3 bank, selector, enable, or latch effects until instruction end instead of applying them on the access T-cycle
 - treating `MMM01` as ordinary `MBC1` and assuming the only relevant boot header always sits at physical ROM offset `0x0100`
 - treating `HuC1` as "good enough" `MBC1`, `HuC-3` as "good enough" `MBC3`, or `MBC7` as "good enough" `MBC5`
@@ -691,4 +692,4 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - whether stronger hardware or oracle evidence should change the current MBC3 reserved-selector policy for `0x04..=0x07`
 - whether MBC3 RTC access spacing should remain advisory-only or later become an enforced `16`-T-cycle timing rule
 - whether a clearly scoped metadata rule can ever distinguish CGB-era `11`-character titles plus manufacturer code from valid `15`-character titles without truncating real software
-- the exact post-CGB runtime contracts for `MBC30`, `MBC6`, and `MBC7` once the base CGB implementation can validate CGB-only software
+- the exact future runtime contracts for `MBC6` and `MBC7` once dedicated CGB special-cartridge work starts
