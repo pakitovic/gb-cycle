@@ -336,60 +336,12 @@ path = "testroms/ax6/rtc3test-3.png"
 sha256 = "726c312b9134255ed04fecedd86828637221ae32452f0fa3088a159fb5a283be"
 
 [[source.required_file]]
-path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
-sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
-
-[[source.required_file]]
-path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
-sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/gdma_addr_mask.gb"
-sha256 = "44919ce25c2d049d1abbbcec84c89c3acecb82d7c68b4d5551ef4868a4d9655a"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/gdma_addr_mask.png"
-sha256 = "a6df85e956d2194c7cc729fa07f73b343eba5c82d8980977064476b77309f8b2"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/hdma_lcd_off.gb"
-sha256 = "d49e67a7e176832909790e9bd6356490d2937dd1d907ac319b66cacb420605a2"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/hdma_lcd_off.png"
-sha256 = "1305a0a7fb752e550e89bdfa332b2cda8805dbe83d748aea1a4fb99b8f02678c"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/hdma_mode0.gb"
-sha256 = "2c5e448d091b2c774ebbb1dac74936abf16f6b4e39a011aff087d9cbc4b28d58"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/hdma_mode0.png"
-sha256 = "7a4739b29b958552bd6e90876bdf6e61c458700884f6a1363f153b21bc3fe406"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/gbc_dma_cont.gb"
-sha256 = "c6c2188d84044fb35e811953a247024e8dd61045e3789a8991b334547a2480ac"
-
-[[source.required_file]]
-path = "testroms/samesuite/dma/gbc_dma_cont.png"
-sha256 = "28d57a3e16a904dbd5c4772ec1b9749ba06516a9d6ee3a8f1d621e3e114dc7e1"
-
-[[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_align.gb"
 sha256 = "a896d01bb7eeb1fa810ad581a6600f3b4364cdf4cfae444c07372b6e7cbcbf86"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_align.png"
 sha256 = "8f0172869d518c6e7f0486e1350846dd6dd16345b1c5175f4f32717cbb98898b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_align.gb"
-sha256 = "32f63b60bb6423e67a252a2e9a89b06efd8b1396a42c1c5a942724f10d02f635"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_align.png"
-sha256 = "f5f13a3eb57a480fb607428f51dd772ce6efa177ab3f78567913021ca86a27b6"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_align_cpu.gb"
@@ -400,12 +352,12 @@ path = "testroms/samesuite/apu/channel_1/channel_1_align_cpu.png"
 sha256 = "25b37e2c8dcd64f78c41614a706e7fa193c2b7e5a7f298fcc6e3b296b6c3a652"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.gb"
-sha256 = "4df5b4482da833374110e216eaceafe7df363d1ffab50c2f2f2798dea9a4959c"
+path = "testroms/samesuite/apu/channel_1/channel_1_delay.gb"
+sha256 = "a21ce64c3b62fffadf4610b4d08d3ec59a5a95f087c86472940743e022b6a01a"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.png"
-sha256 = "3a16c7f1bcf534cad594abc4c663b154874e8e6f15b3957ff2cd9b794e412494"
+path = "testroms/samesuite/apu/channel_1/channel_1_delay.png"
+sha256 = "ddcd461db6992622270e57a0e7953f78eca17ab5221c450b0b3df399501989d7"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_duty.gb"
@@ -416,116 +368,12 @@ path = "testroms/samesuite/apu/channel_1/channel_1_duty.png"
 sha256 = "70694a19081ec3578a6f86d01f1bd36ced4b92098b36c1bb277a563b420bc35f"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_duty.gb"
-sha256 = "7a6da0d8fb7c2beb667994f66d83e7063e4f239606738f5007b5e87c1da84b08"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_duty.png"
-sha256 = "56c8f765d59e63cbcb5ebba203168819f5dae9b7c73a27cbd11a69c0ab58c695"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_volume.gb"
-sha256 = "7df75d5b56d318077f3b3c3d7663297a067b1e4c5aaae0049645278417b93570"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_volume.png"
-sha256 = "03be2fcb6595ed9a6bd055625ef6f08c77cf99738a9ecfd7555e8d1adf49003d"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_volume.gb"
-sha256 = "bb8d724f2609176d9418c5863f738570468148be7eafe3f01ba0c39206f3badc"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_volume.png"
-sha256 = "30f793f6e7598713d948695e5c639c7402768d93aaaa9820414000af4dc5047d"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.gb"
-sha256 = "023ebfe482b40b881736ed34717940d0bca56916687aacba44556de90dced3a8"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.png"
-sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_align.gb"
-sha256 = "62295e50ec87bf0a3a98063c0cf8069977b8941bee16bacaddfc76db610bcc51"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_align.png"
-sha256 = "31ada8443cd342d708b7ae1f540ed0af5409800a56d5f07149204aa63905c78b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.gb"
-sha256 = "7666efd14372b640b8d7865cba181a48c709b8b3b390f70afb9521e9fdb8aad1"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.png"
-sha256 = "05917365de5f0e38e7e6c8aec188804691e23eca679bfccaea0eb306fc868035"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.gb"
-sha256 = "56b6dd72a20a79e2bd83ca2c0383eb979b94b27ec803a175924ff44ec5e45dd4"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.png"
-sha256 = "c59231190b367a93039acda8414148c19fee360c0904caceb299455e9a6144b6"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.gb"
-sha256 = "078921fa4c32cbc94638c17550d06a34f91eedd32dd6357bddea8b95d968fe7d"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.png"
-sha256 = "ac123f761fdbeb93603d1289b7296005ec372847997e2e84ae162cce8de69e03"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_delay.gb"
-sha256 = "a21ce64c3b62fffadf4610b4d08d3ec59a5a95f087c86472940743e022b6a01a"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_delay.png"
-sha256 = "ddcd461db6992622270e57a0e7953f78eca17ab5221c450b0b3df399501989d7"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_delay.gb"
-sha256 = "8ef36a5d047e45075bfb6e52b2b3fc0bb2e29c9891aeb9f6692a72f1444134e7"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_delay.png"
-sha256 = "8a9559a968a138b02370c34ab8a7a20a967b3fe70eb7642132d9aab12d33127d"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_delay.gb"
-sha256 = "3d603935f92e16565239e062a19baeae9de71357f585c7292bc7e2137cbeb1ad"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_delay.png"
-sha256 = "c1cd212f358dec411f3aca5351e39c39f0871b890bb41e11fd60d3e3f11f8fbc"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_delay.gb"
-sha256 = "9749afa9743b544509754f147791ca626da2472dc3e05404f43be1b52f1fad00"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_delay.png"
-sha256 = "5213a9d1fcb6432d0bbb5b08d99ba67f7ac5ba4efed06bec449e98693fe94f18"
-
-[[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_duty_delay.gb"
 sha256 = "bcec7e29fb3f2293867724bdd55a8d5a1486c53738719e1f6b6f95423495e6ca"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_duty_delay.png"
 sha256 = "d57480153d90180a67f6a9282bf8134184d78fb1c2664e8f51c7bada8092fabd"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.gb"
-sha256 = "358ae3dbd59211b01be37d1ad5de2c3db655251a593a78fecbe882a54a37c80f"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.png"
-sha256 = "513678baedfc3c662b764fb0993dc00fd43858c433a0b88b384d610b32cdb4b0"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_freq_change.gb"
@@ -536,36 +384,20 @@ path = "testroms/samesuite/apu/channel_1/channel_1_freq_change.png"
 sha256 = "cdb133979aa3380cc2e676f3593ab1303b7c3104f5a4632234e6b62e12aa3a62"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.gb"
-sha256 = "9166471a0006e94d3e7b929994eb1c961f4339369de35c1ead72096c5ad1e12f"
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.gb"
+sha256 = "4f8b79de61fc054d7d830f60f3ac04e3c30399943aa973bced1c3fab3e79df96"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.png"
-sha256 = "3b35f74b9c03a50a9f7f6dde41a9235f7206e23ac9b9d438f3c0bec15ab3759f"
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.png"
+sha256 = "d47cb86c24c0a3ed9a0d3e3bd246f54aabad3ad05444139086eccce311476d36"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.gb"
-sha256 = "3828402ccb37428ca71fa68a3be6cb6c27f1b09cf7b0191010cef0966416b704"
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.gb"
+sha256 = "c137cf527632f6494ae2663f987e74b8d719819f2e264e0896bf1ae54f3dcf64"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.png"
-sha256 = "114ef6c02bd51d6e6a3c22684e6aec477327618b20e3f5ba72876b9cb92093ee"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.gb"
-sha256 = "1aa98a943443872019f7fb24b32d365c792f4a5c9d8dd6f020a316399d3b4669"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.png"
-sha256 = "93bb7ac91d22a444581b71694220034ab0dae054059dc12c2386aa7aba6d3cec"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.gb"
-sha256 = "783c48510680e6439608501794a3a2ffd0aae6623db30cce7300c279ff4dd1bd"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.png"
-sha256 = "b35c1023baae633e751fc56f1d4ac11f86229564b174be5b73ff902f7cb8eb07"
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.png"
+sha256 = "84558e038f801cd756ce9852ad463c9a2561a3c0411ce8ecc684b683fe934d4f"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_restart.gb"
@@ -576,28 +408,20 @@ path = "testroms/samesuite/apu/channel_1/channel_1_restart.png"
 sha256 = "e191d89a94bbf8fa3e23fd25c8aaf3fdd71d91d7ac63527b886b835f082fb1b7"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_restart.gb"
-sha256 = "7678fd78454f0a54015c5575b9e09c964df844fa799d6ece9167cedb913e7865"
+path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+sha256 = "548360b850f2cc9b11358325868a646218a719c81a6b5b392a0d2f1675d3b617"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_restart.png"
-sha256 = "471a0ad00de0dfea9829f8f9f287e3f81eb54f3681aca39030e137ea76e15c85"
+path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.png"
+sha256 = "59598b8dc4c4d1ce0873330e5d3470697b1174c4b47f9a07c821d5040919713e"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.gb"
-sha256 = "fdd96f787768705e72906bdeb2f145e69c064423e19854ce1855f9d64391fcc2"
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.gb"
+sha256 = "3309d7a3bba3558b3d5c161cc08de2dea30444f236ea105fff1d3d35225d2de5"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.png"
-sha256 = "9e9563deb487b50198294bdc64b385e2b474df4923f070853832dd5d8a0b4ab2"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.gb"
-sha256 = "7bd077b10cf40548572c5effc67f0d3d805ff7583f5010d0e271f976c382c410"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.png"
-sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.png"
+sha256 = "6532710bd92bcb81b269d870d0419f67b262aebe0164f433ad9300170bf9ce0b"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_stop_restart.gb"
@@ -606,22 +430,6 @@ sha256 = "3cfd452b32e85430162e923f946ceab4a7cb0b3b36dab951b45c2072df60b8d0"
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_stop_restart.png"
 sha256 = "86ce0a714f4059ad6cc01b5677c0b940058997d1e22bad16b2912d52b10ff37e"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.gb"
-sha256 = "0819ffff78b368970e9d6bb74fae086c7350c3e6d20c4bbda49e15fce4e85788"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.png"
-sha256 = "17c91b585723a10c82b6de2b33b49d27f61d796d3a3558deaa9228918fc1fbde"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.gb"
-sha256 = "60cd8a1f581446754ce294edda22f3b3b7eafce22b3957775d28e980d5ebac5f"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.png"
-sha256 = "12c4cc2815ada81dad4fbb17730418026b4c9c56121d2b62670ba57c143f8da4"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_sweep.gb"
@@ -648,28 +456,12 @@ path = "testroms/samesuite/apu/channel_1/channel_1_sweep_restart_2.png"
 sha256 = "3e17a09df22e06769f64e37ca24016c10e9292e2cb35013a704141635a941155"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.gb"
-sha256 = "3309d7a3bba3558b3d5c161cc08de2dea30444f236ea105fff1d3d35225d2de5"
+path = "testroms/samesuite/apu/channel_1/channel_1_volume.gb"
+sha256 = "7df75d5b56d318077f3b3c3d7663297a067b1e4c5aaae0049645278417b93570"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.png"
-sha256 = "6532710bd92bcb81b269d870d0419f67b262aebe0164f433ad9300170bf9ce0b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.gb"
-sha256 = "1e9fc4fb8a114b89119c7893ece0192df6871255e39e971b350dd7dc009ad4eb"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.png"
-sha256 = "f0fbd7a3a754a49b1359fe338e5ead578747ad282dae2fe8e64ff7db16c506c2"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.gb"
-sha256 = "14a70b8c9b1efa0e795dc9b2f3a6946fc3beb9dcc90db3fbb6fa6d0b78c3b36a"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.png"
-sha256 = "78ab941e66153fb610d3a99fea766834056b065e15f97edb0996254e03589f26"
+path = "testroms/samesuite/apu/channel_1/channel_1_volume.png"
+sha256 = "03be2fcb6595ed9a6bd055625ef6f08c77cf99738a9ecfd7555e8d1adf49003d"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_1/channel_1_volume_div.gb"
@@ -680,6 +472,110 @@ path = "testroms/samesuite/apu/channel_1/channel_1_volume_div.png"
 sha256 = "f111b621d39952baa1571439f6fa075e6f786ffd8ff8c1c22ada484ce724fe65"
 
 [[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align.gb"
+sha256 = "32f63b60bb6423e67a252a2e9a89b06efd8b1396a42c1c5a942724f10d02f635"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align.png"
+sha256 = "f5f13a3eb57a480fb607428f51dd772ce6efa177ab3f78567913021ca86a27b6"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.gb"
+sha256 = "4df5b4482da833374110e216eaceafe7df363d1ffab50c2f2f2798dea9a4959c"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.png"
+sha256 = "3a16c7f1bcf534cad594abc4c663b154874e8e6f15b3957ff2cd9b794e412494"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_delay.gb"
+sha256 = "8ef36a5d047e45075bfb6e52b2b3fc0bb2e29c9891aeb9f6692a72f1444134e7"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_delay.png"
+sha256 = "8a9559a968a138b02370c34ab8a7a20a967b3fe70eb7642132d9aab12d33127d"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty.gb"
+sha256 = "7a6da0d8fb7c2beb667994f66d83e7063e4f239606738f5007b5e87c1da84b08"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty.png"
+sha256 = "56c8f765d59e63cbcb5ebba203168819f5dae9b7c73a27cbd11a69c0ab58c695"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.gb"
+sha256 = "358ae3dbd59211b01be37d1ad5de2c3db655251a593a78fecbe882a54a37c80f"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.png"
+sha256 = "513678baedfc3c662b764fb0993dc00fd43858c433a0b88b384d610b32cdb4b0"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.gb"
+sha256 = "9166471a0006e94d3e7b929994eb1c961f4339369de35c1ead72096c5ad1e12f"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.png"
+sha256 = "3b35f74b9c03a50a9f7f6dde41a9235f7206e23ac9b9d438f3c0bec15ab3759f"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.gb"
+sha256 = "1a743ea48df7630b47597db0d21f395724d840a94a3ff399eec4f88ef1baa6ae"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.png"
+sha256 = "260d0f62ea89765317ece89d14b4264babcd1d744a55cc5a3dbfb169bc72c748"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.gb"
+sha256 = "eed549e9d61d55f8f26066c7938270ed7e067d1a0abc69789d30197dc6222d02"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.png"
+sha256 = "a1a1994106740b78d632fa41c9fb115b9e29a8e09141169a6274ef4f69bff9d1"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart.gb"
+sha256 = "7678fd78454f0a54015c5575b9e09c964df844fa799d6ece9167cedb913e7865"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart.png"
+sha256 = "471a0ad00de0dfea9829f8f9f287e3f81eb54f3681aca39030e137ea76e15c85"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+sha256 = "3911bc68c827ede086d667ca35d22e121e25d9d9b1e0ac9239d506aa82ac2ef6"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.png"
+sha256 = "4fc27e1caa5529bca8921b7e79d2b15487695b859b2d4a3a14304a3995f0ed19"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.gb"
+sha256 = "1e9fc4fb8a114b89119c7893ece0192df6871255e39e971b350dd7dc009ad4eb"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.png"
+sha256 = "f0fbd7a3a754a49b1359fe338e5ead578747ad282dae2fe8e64ff7db16c506c2"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.gb"
+sha256 = "0819ffff78b368970e9d6bb74fae086c7350c3e6d20c4bbda49e15fce4e85788"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.png"
+sha256 = "17c91b585723a10c82b6de2b33b49d27f61d796d3a3558deaa9228918fc1fbde"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume.gb"
+sha256 = "bb8d724f2609176d9418c5863f738570468148be7eafe3f01ba0c39206f3badc"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume.png"
+sha256 = "30f793f6e7598713d948695e5c639c7402768d93aaaa9820414000af4dc5047d"
+
+[[source.required_file]]
 path = "testroms/samesuite/apu/channel_2/channel_2_volume_div.gb"
 sha256 = "73c058d2022db9a5fabb8dcc669ed9b16c1685b29adfc31eb7cd72c4e34b2811"
 
@@ -688,12 +584,212 @@ path = "testroms/samesuite/apu/channel_2/channel_2_volume_div.png"
 sha256 = "d3f9fa184587d78036a6aa117be15c9a58af692cbba85295ac45f1e3f9cd2c66"
 
 [[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.gb"
+sha256 = "2635687bff2bfbdf78580fea72da89433575f086303c828624d8ec46e90e76b7"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.png"
+sha256 = "c6d8b5517b4d9b8a33d35a0ef32bdc5255046fe041a1f665564ec4d696e5e274"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_delay.gb"
+sha256 = "3d603935f92e16565239e062a19baeae9de71357f585c7292bc7e2137cbeb1ad"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_delay.png"
+sha256 = "c1cd212f358dec411f3aca5351e39c39f0871b890bb41e11fd60d3e3f11f8fbc"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.gb"
+sha256 = "023ebfe482b40b881736ed34717940d0bca56916687aacba44556de90dced3a8"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.png"
+sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.gb"
+sha256 = "3828402ccb37428ca71fa68a3be6cb6c27f1b09cf7b0191010cef0966416b704"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.png"
+sha256 = "114ef6c02bd51d6e6a3c22684e6aec477327618b20e3f5ba72876b9cb92093ee"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.gb"
+sha256 = "fdd96f787768705e72906bdeb2f145e69c064423e19854ce1855f9d64391fcc2"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.png"
+sha256 = "9e9563deb487b50198294bdc64b385e2b474df4923f070853832dd5d8a0b4ab2"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.gb"
+sha256 = "ef1434b416fdf58f2c353f02f4b26d770e17f71164085ed954df143a326bb328"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.png"
+sha256 = "4634d3a14fbae2070f6e6a8c41203f1e52e23f09693c3807ff7cb4308fa13e0e"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.gb"
+sha256 = "c12a51c693f8428049df0ec57d7a13f05af382c228de0fb4c31657ab4d6dea25"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.png"
+sha256 = "cb1e62995d1795839ebedf251e8716bd801fd3bb94eb0a97bd3a616d9b029fd0"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.gb"
+sha256 = "811ee98b7241b721b0de9cacfa4de986aa7db51c9294f5f7bf7a07f489bedbb1"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.png"
+sha256 = "8a4b668a6d960d705be65ea3e528bf290a44e621d0357edd50e3681ed07c8176"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.gb"
+sha256 = "ac9d8abff89134d510060538cf15897dd577e71a36ced6eb4420cb4325e07037"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.png"
+sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.gb"
+sha256 = "60cd8a1f581446754ce294edda22f3b3b7eafce22b3957775d28e980d5ebac5f"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.png"
+sha256 = "12c4cc2815ada81dad4fbb17730418026b4c9c56121d2b62670ba57c143f8da4"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.gb"
+sha256 = "14a70b8c9b1efa0e795dc9b2f3a6946fc3beb9dcc90db3fbb6fa6d0b78c3b36a"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.png"
+sha256 = "78ab941e66153fb610d3a99fea766834056b065e15f97edb0996254e03589f26"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.gb"
+sha256 = "814c3e28d7a4269c3b89544c476ffd783d879ceb255a7d85b71ba0de15cde11d"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.png"
+sha256 = "d81f5f8daf30d0c6656fd5a340ae1e4298639739ce77161f362d2919a937f7f9"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.gb"
+sha256 = "e15b9443be93f0404c80c2c0047d6fdb1c71e67d0ef92ae8a8caf876bae7ba2b"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.png"
+sha256 = "ef993d93cb51de5b02cccd9dc388213b6d8f6072b09ce02378e197ee3719ad79"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_align.gb"
+sha256 = "62295e50ec87bf0a3a98063c0cf8069977b8941bee16bacaddfc76db610bcc51"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_align.png"
+sha256 = "31ada8443cd342d708b7ae1f540ed0af5409800a56d5f07149204aa63905c78b"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_delay.gb"
+sha256 = "9749afa9743b544509754f147791ca626da2472dc3e05404f43be1b52f1fad00"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_delay.png"
+sha256 = "5213a9d1fcb6432d0bbb5b08d99ba67f7ac5ba4efed06bec449e98693fe94f18"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.gb"
+sha256 = "078921fa4c32cbc94638c17550d06a34f91eedd32dd6357bddea8b95d968fe7d"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.png"
+sha256 = "ac123f761fdbeb93603d1289b7296005ec372847997e2e84ae162cce8de69e03"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.gb"
+sha256 = "783c48510680e6439608501794a3a2ffd0aae6623db30cce7300c279ff4dd1bd"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.png"
+sha256 = "b35c1023baae633e751fc56f1d4ac11f86229564b174be5b73ff902f7cb8eb07"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.gb"
+sha256 = "1aa98a943443872019f7fb24b32d365c792f4a5c9d8dd6f020a316399d3b4669"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.png"
+sha256 = "93bb7ac91d22a444581b71694220034ab0dae054059dc12c2386aa7aba6d3cec"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.gb"
+sha256 = "7666efd14372b640b8d7865cba181a48c709b8b3b390f70afb9521e9fdb8aad1"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.png"
+sha256 = "05917365de5f0e38e7e6c8aec188804691e23eca679bfccaea0eb306fc868035"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.gb"
+sha256 = "56b6dd72a20a79e2bd83ca2c0383eb979b94b27ec803a175924ff44ec5e45dd4"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.png"
+sha256 = "c59231190b367a93039acda8414148c19fee360c0904caceb299455e9a6144b6"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.gb"
+sha256 = "90c725f6a801df11cb91d086b53152464f6c1b83c95ec96ab1ebcdde9202fdaf"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.png"
+sha256 = "f93570afd7613c407fe49f36d271cf1623fb5183e386eb65cb4d1c3e4cb67548"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.gb"
+sha256 = "9349717633056520f8a27f57c0205b811c41091a6297a8757946ae8e5e87986a"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.png"
+sha256 = "049d708ce1cdf157a578cc5c5ee23668dd386f14f5fdf4ea05b3f7234e16c5b3"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.gb"
+sha256 = "7bd077b10cf40548572c5effc67f0d3d805ff7583f5010d0e271f976c382c410"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.png"
+sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.gb"
+sha256 = "77d1bfe86820f0ca212bfc686a9459126d0eff002391f7f20c211a383ce31c27"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.png"
+sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
+
+[[source.required_file]]
 path = "testroms/samesuite/apu/channel_4/channel_4_volume_div.gb"
 sha256 = "9c3109352be8a9d2dd1febfb0741c97305a4a317abdf84487c26976dce0eab8a"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/channel_4/channel_4_volume_div.png"
 sha256 = "a510732688068f1d08d00ca4f2b40b0b1d6a84b57e49959b467484f73b366b82"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/div_trigger_volume_10.gb"
+sha256 = "2a53608ac6eb76e41173628aca4a6ba1f473b5ff49ea8d4a2052ba8bde013d6d"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/div_trigger_volume_10.png"
+sha256 = "348dd95e0d28c9c264ccca83eceb3857d5d24f070d2b4c95f9ffca32b6c3c1ce"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/div_write_trigger.gb"
@@ -728,140 +824,44 @@ path = "testroms/samesuite/apu/div_write_trigger_volume_10.png"
 sha256 = "348dd95e0d28c9c264ccca83eceb3857d5d24f070d2b4c95f9ffca32b6c3c1ce"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/div_trigger_volume_10.gb"
-sha256 = "2a53608ac6eb76e41173628aca4a6ba1f473b5ff49ea8d4a2052ba8bde013d6d"
+path = "testroms/samesuite/dma/gbc_dma_cont.gb"
+sha256 = "c6c2188d84044fb35e811953a247024e8dd61045e3789a8991b334547a2480ac"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/div_trigger_volume_10.png"
-sha256 = "348dd95e0d28c9c264ccca83eceb3857d5d24f070d2b4c95f9ffca32b6c3c1ce"
+path = "testroms/samesuite/dma/gbc_dma_cont.png"
+sha256 = "28d57a3e16a904dbd5c4772ec1b9749ba06516a9d6ee3a8f1d621e3e114dc7e1"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.gb"
-sha256 = "4f8b79de61fc054d7d830f60f3ac04e3c30399943aa973bced1c3fab3e79df96"
+path = "testroms/samesuite/dma/gdma_addr_mask.gb"
+sha256 = "44919ce25c2d049d1abbbcec84c89c3acecb82d7c68b4d5551ef4868a4d9655a"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.png"
-sha256 = "d47cb86c24c0a3ed9a0d3e3bd246f54aabad3ad05444139086eccce311476d36"
+path = "testroms/samesuite/dma/gdma_addr_mask.png"
+sha256 = "a6df85e956d2194c7cc729fa07f73b343eba5c82d8980977064476b77309f8b2"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.gb"
-sha256 = "1a743ea48df7630b47597db0d21f395724d840a94a3ff399eec4f88ef1baa6ae"
+path = "testroms/samesuite/dma/hdma_lcd_off.gb"
+sha256 = "d49e67a7e176832909790e9bd6356490d2937dd1d907ac319b66cacb420605a2"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.png"
-sha256 = "260d0f62ea89765317ece89d14b4264babcd1d744a55cc5a3dbfb169bc72c748"
+path = "testroms/samesuite/dma/hdma_lcd_off.png"
+sha256 = "1305a0a7fb752e550e89bdfa332b2cda8805dbe83d748aea1a4fb99b8f02678c"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.gb"
-sha256 = "548360b850f2cc9b11358325868a646218a719c81a6b5b392a0d2f1675d3b617"
+path = "testroms/samesuite/dma/hdma_mode0.gb"
+sha256 = "2c5e448d091b2c774ebbb1dac74936abf16f6b4e39a011aff087d9cbc4b28d58"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.png"
-sha256 = "59598b8dc4c4d1ce0873330e5d3470697b1174c4b47f9a07c821d5040919713e"
+path = "testroms/samesuite/dma/hdma_mode0.png"
+sha256 = "7a4739b29b958552bd6e90876bdf6e61c458700884f6a1363f153b21bc3fe406"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.gb"
-sha256 = "3911bc68c827ede086d667ca35d22e121e25d9d9b1e0ac9239d506aa82ac2ef6"
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
+sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
 
 [[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.png"
-sha256 = "4fc27e1caa5529bca8921b7e79d2b15487695b859b2d4a3a14304a3995f0ed19"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.gb"
-sha256 = "811ee98b7241b721b0de9cacfa4de986aa7db51c9294f5f7bf7a07f489bedbb1"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.png"
-sha256 = "8a4b668a6d960d705be65ea3e528bf290a44e621d0357edd50e3681ed07c8176"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.gb"
-sha256 = "90c725f6a801df11cb91d086b53152464f6c1b83c95ec96ab1ebcdde9202fdaf"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.png"
-sha256 = "f93570afd7613c407fe49f36d271cf1623fb5183e386eb65cb4d1c3e4cb67548"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.gb"
-sha256 = "ac9d8abff89134d510060538cf15897dd577e71a36ced6eb4420cb4325e07037"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.png"
-sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.gb"
-sha256 = "9349717633056520f8a27f57c0205b811c41091a6297a8757946ae8e5e87986a"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.png"
-sha256 = "049d708ce1cdf157a578cc5c5ee23668dd386f14f5fdf4ea05b3f7234e16c5b3"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.gb"
-sha256 = "ef1434b416fdf58f2c353f02f4b26d770e17f71164085ed954df143a326bb328"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.png"
-sha256 = "4634d3a14fbae2070f6e6a8c41203f1e52e23f09693c3807ff7cb4308fa13e0e"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.gb"
-sha256 = "77d1bfe86820f0ca212bfc686a9459126d0eff002391f7f20c211a383ce31c27"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.png"
-sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.gb"
-sha256 = "c12a51c693f8428049df0ec57d7a13f05af382c228de0fb4c31657ab4d6dea25"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.png"
-sha256 = "cb1e62995d1795839ebedf251e8716bd801fd3bb94eb0a97bd3a616d9b029fd0"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.gb"
-sha256 = "e15b9443be93f0404c80c2c0047d6fdb1c71e67d0ef92ae8a8caf876bae7ba2b"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.png"
-sha256 = "ef993d93cb51de5b02cccd9dc388213b6d8f6072b09ce02378e197ee3719ad79"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.gb"
-sha256 = "814c3e28d7a4269c3b89544c476ffd783d879ceb255a7d85b71ba0de15cde11d"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.png"
-sha256 = "d81f5f8daf30d0c6656fd5a340ae1e4298639739ce77161f362d2919a937f7f9"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.gb"
-sha256 = "2635687bff2bfbdf78580fea72da89433575f086303c828624d8ec46e90e76b7"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.png"
-sha256 = "c6d8b5517b4d9b8a33d35a0ef32bdc5255046fe041a1f665564ec4d696e5e274"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.gb"
-sha256 = "c137cf527632f6494ae2663f987e74b8d719819f2e264e0896bf1ae54f3dcf64"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.png"
-sha256 = "84558e038f801cd756ce9852ad463c9a2561a3c0411ce8ecc684b683fe934d4f"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.gb"
-sha256 = "eed549e9d61d55f8f26066c7938270ed7e067d1a0abc69789d30197dc6222d02"
-
-[[source.required_file]]
-path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.png"
-sha256 = "a1a1994106740b78d632fa41c9fb115b9e29a8e09141169a6274ef4f69bff9d1"
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
+sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
 
 [[source.required_file]]
 path = "testroms/hacktix/bully.gb"
