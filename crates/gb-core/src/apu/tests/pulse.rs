@@ -1068,6 +1068,18 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
+fn prime_cgb_shift_zero_sweep_restart_overflow() -> Apu {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x10);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xFF);
+    apu.write_register(0xFF14, 0x83);
+    apu.write_register(0xFF14, 0x87);
+    apu
+}
+
 #[test]
 fn cgb_channel_1_sweep_second_overflow_check_is_delayed_after_period_writeback() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
@@ -1131,6 +1143,113 @@ fn cgb_channel_1_sweep_delayed_overflow_check_survives_save_state() {
     restored.restore_save_state(&saved);
 
     for _ in 0..20 {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+        restored.channels.channel_1.tick_fast_timer();
+    }
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert!(!restored.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_shift_zero_sweep_restart_hold_defers_boundary_overflow() {
+    let mut apu = prime_cgb_shift_zero_sweep_restart_overflow();
+
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07FF);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(
+        apu.channels.channel_1.sweep.restart_hold_t_cycles,
+        CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+    );
+
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.sweep.delayed_calculation_t_cycles, 0);
+
+    for _ in 0..(CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES - 1) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.sweep.delayed_calculation_t_cycles, 0);
+
+    apu.channels.channel_1.tick_fast_timer();
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(
+        apu.channels.channel_1.sweep.delayed_calculation_t_cycles,
+        CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES
+    );
+
+    for _ in 0..(CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES - 1) {
+        apu.channels.channel_1.tick_fast_timer();
+        assert!(apu.channels.channel_1.pulse.runtime.active);
+    }
+
+    apu.channels.channel_1.tick_fast_timer();
+
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_shift_zero_sweep_restart_hold_survives_save_state() {
+    let mut uninterrupted = prime_cgb_shift_zero_sweep_restart_overflow();
+    for _ in 0..4 {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+    }
+
+    let saved = uninterrupted.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    restored.restore_save_state(&saved);
+
+    uninterrupted
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    restored
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    for _ in 0..CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+        restored.channels.channel_1.tick_fast_timer();
+    }
+
+    assert!(uninterrupted.channels.channel_1.pulse.runtime.active);
+    assert!(restored.channels.channel_1.pulse.runtime.active);
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+
+    for _ in 0..(CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+        - 4
+        - CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES)
+    {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+        restored.channels.channel_1.tick_fast_timer();
+    }
+    uninterrupted
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    restored
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    for _ in 0..CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES {
         uninterrupted.channels.channel_1.tick_fast_timer();
         restored.channels.channel_1.tick_fast_timer();
     }

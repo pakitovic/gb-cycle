@@ -2,9 +2,11 @@ use crate::model::ConsoleModel;
 use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
-    CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES, CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES,
+    CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES, CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES,
+    CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES,
     CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
-    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES, ChannelRuntimeState,
+    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
+    CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES, ChannelRuntimeState,
     DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK, NR11_WRITE_ONLY_MASK,
     NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK, NRX4_WRITABLE_MASK,
     PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD,
@@ -30,7 +32,7 @@ pub(in crate::apu) struct Channel1SweepState {
     completed_addend: u16,
     pub(in crate::apu) negate_calculated_since_trigger: bool,
     #[serde(default)]
-    delayed_calculation_t_cycles: u16,
+    pub(in crate::apu) delayed_calculation_t_cycles: u16,
     #[serde(default)]
     delayed_calculation_shadow_period: u16,
     #[serde(default)]
@@ -39,6 +41,8 @@ pub(in crate::apu) struct Channel1SweepState {
     delayed_calculation_decreases: bool,
     #[serde(default)]
     decreasing_writeback_since_trigger: bool,
+    #[serde(default)]
+    pub(in crate::apu) restart_hold_t_cycles: u16,
 }
 
 impl Channel1SweepState {
@@ -95,6 +99,11 @@ impl Channel1SweepState {
         self.completed_addend = 0;
         self.negate_calculated_since_trigger = false;
         self.decreasing_writeback_since_trigger = false;
+        self.restart_hold_t_cycles = if console_model.is_cgb_family() {
+            CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+        } else {
+            0
+        };
         self.clear_delayed_calculation();
 
         if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
@@ -119,7 +128,13 @@ impl Channel1SweepState {
         clock_generation_timer: bool,
         runtime: &mut ChannelRuntimeState,
     ) {
-        if !clock_generation_timer || self.delayed_calculation_t_cycles == 0 {
+        if !clock_generation_timer {
+            return;
+        }
+
+        self.restart_hold_t_cycles = self.restart_hold_t_cycles.saturating_sub(1);
+
+        if self.delayed_calculation_t_cycles == 0 {
             return;
         }
 
@@ -176,6 +191,10 @@ impl Channel1SweepState {
         self.timer = Self::timer_from_phase(self.phase);
 
         let shift = sweep_shift_from_nr10(nr10);
+        if shift == 0 && console_model.is_cgb_family() && self.restart_hold_t_cycles > 0 {
+            return;
+        }
+
         let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true) else {
             return;
         };
@@ -225,10 +244,14 @@ impl Channel1SweepState {
         calculation: SweepCalculation,
         extra_t_cycles: u16,
     ) {
-        let shift_delay = u16::from(sweep_shift_from_nr10(nr10) + 1)
-            * CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP;
-        self.delayed_calculation_t_cycles =
-            shift_delay.max(CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES) + extra_t_cycles;
+        let shift = sweep_shift_from_nr10(nr10);
+        let shift_delay = if shift == 0 {
+            CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES
+        } else {
+            (u16::from(shift + 1) * CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP)
+                .max(CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES)
+        };
+        self.delayed_calculation_t_cycles = shift_delay + extra_t_cycles;
         self.delayed_calculation_shadow_period = shadow_period;
         self.delayed_calculation_addend = calculation.addend;
         self.delayed_calculation_decreases = calculation.decreases;
