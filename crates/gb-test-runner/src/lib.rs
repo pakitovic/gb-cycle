@@ -34,10 +34,10 @@ use framebuffer_oracle::{
     encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
 };
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
-    ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton,
-    Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
-    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
+    CompatibilityPolicy, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot,
+    ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
+    MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 
 pub use boot_rom_verification::{
@@ -1351,19 +1351,32 @@ const MOONEYE_PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const MOONEYE_FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
 const MOONEYE_HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
 const REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: u64 = 25_000_000;
-const MBC3_RTC_CLOCK_T_CYCLES: u16 = 128;
+const MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES: u16 = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct DeterministicMbc3RtcClock {
-    t_cycle_remainder: u16,
+    half_normal_t_cycle_remainder: u16,
 }
 
 impl DeterministicMbc3RtcClock {
     fn tick_t_cycle(&mut self, machine: &mut RunnerMachine) {
-        self.t_cycle_remainder += 1;
-        if self.t_cycle_remainder == MBC3_RTC_CLOCK_T_CYCLES {
-            self.t_cycle_remainder = 0;
-            machine.advance_mbc3_cartridge_rtc_clock_ticks(1);
+        let rtc_ticks = self.tick_t_cycle_for_speed(machine.current_speed());
+        if rtc_ticks != 0 {
+            machine.advance_mbc3_cartridge_rtc_clock_ticks(rtc_ticks);
+        }
+    }
+
+    fn tick_t_cycle_for_speed(&mut self, speed_mode: CgbSpeedMode) -> u64 {
+        self.half_normal_t_cycle_remainder += match speed_mode {
+            CgbSpeedMode::Normal => 2,
+            CgbSpeedMode::Double => 1,
+        };
+
+        if self.half_normal_t_cycle_remainder >= MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES {
+            self.half_normal_t_cycle_remainder -= MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES;
+            1
+        } else {
+            0
         }
     }
 }
@@ -1478,6 +1491,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.take_serial_output_bytes(),
             Self::Summary(machine) => machine.take_serial_output_bytes(),
+        }
+    }
+
+    fn current_speed(&self) -> CgbSpeedMode {
+        match self {
+            Self::Buffered(machine) => machine.speed().current_speed(),
+            Self::Summary(machine) => machine.speed().current_speed(),
         }
     }
 
@@ -2740,26 +2760,26 @@ mod tests {
     use super::{
         BOOT_ROM_ROOT_ENV_VAR, BootRomAssets, BootRomVerificationIssue, BootRomVerificationMode,
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, CaseEvaluationInputs,
-        DMG_FAMILY_FRAME_T_CYCLES, FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES,
-        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
-        PassCondition, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase,
-        RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
-        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
-        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite,
-        cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
-        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output,
+        DMG_FAMILY_FRAME_T_CYCLES, DeterministicMbc3RtcClock, FailureArtifactPolicy,
+        INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
+        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
+        RomExecutionError, RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR,
+        TestSubsystem, Timeout, artifact_file_name, blargg_console_text_complete,
+        blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite, budget_exhausted,
+        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
+        cgb_audio_blargg_suite, cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
+        cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
+        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
+        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
     };
     use gb_core::{
-        ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
-        ExecutionMode, StartupMode, TimerStartupState,
+        CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState,
+        CpuStatus, ExecutionMode, StartupMode, TimerStartupState,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -3179,6 +3199,29 @@ mod tests {
         }
 
         assert!(built_in_rom_suite_by_name("cgb-rtc").is_some());
+    }
+
+    #[test]
+    fn deterministic_mbc3_rtc_clock_scales_with_cgb_speed_mode() {
+        let mut clock = DeterministicMbc3RtcClock::default();
+
+        for _ in 0..127 {
+            assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Normal), 0);
+        }
+        assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Normal), 1);
+
+        for _ in 0..255 {
+            assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Double), 0);
+        }
+        assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Double), 1);
+
+        for _ in 0..64 {
+            assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Normal), 0);
+        }
+        for _ in 0..127 {
+            assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Double), 0);
+        }
+        assert_eq!(clock.tick_t_cycle_for_speed(CgbSpeedMode::Double), 1);
     }
 
     #[test]
