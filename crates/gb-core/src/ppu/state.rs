@@ -2804,6 +2804,8 @@ pub(super) struct BgCachedSlice {
     pub(super) needs_live_tile_low_current_row_refetch: bool,
     pub(super) needs_live_tile_high_current_row_refetch: bool,
     pub(super) needs_live_tile_data_unsigned_reuse: bool,
+    #[serde(default)]
+    pub(super) cgb_lcdc4_same_cycle_tile_high_override: Option<u8>,
     pub(super) tile_map_address: u16,
     pub(super) tile_data_address: u16,
     pub(super) tile_low_address: u16,
@@ -2846,6 +2848,7 @@ impl BgCachedSlice {
             needs_live_tile_high_current_row_refetch: fetcher
                 .needs_live_tile_high_current_row_refetch_on_push,
             needs_live_tile_data_unsigned_reuse: false,
+            cgb_lcdc4_same_cycle_tile_high_override: None,
             tile_map_address: fetcher.tile_map_address,
             tile_data_address: fetcher.tile_data_address,
             tile_low_address: fetcher.tile_low_address,
@@ -3259,7 +3262,7 @@ pub(super) fn recompute_live_background_cached_slice(
         bg_tile_data_base(tile_low_lcdc, tile_index) + tile_low_row * TILE_ROW_BYTES;
     let tile_high_address =
         bg_tile_data_base(tile_high_lcdc, tile_index) + tile_high_row * TILE_ROW_BYTES + 1;
-    let (tile_low, tile_high) =
+    let (tile_low, mut tile_high) =
         if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
             (
                 context.last_unsigned_tile_data_low_fetch(),
@@ -3273,6 +3276,9 @@ pub(super) fn recompute_live_background_cached_slice(
                     .unwrap_or(0),
             )
         };
+    if let Some(tile_high_override) = cached.cgb_lcdc4_same_cycle_tile_high_override {
+        tile_high = tile_high_override;
+    }
 
     cached.tile_map_address = tile_map_address;
     cached.tile_data_address = tile_high_address;
@@ -3290,6 +3296,7 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.needs_live_tile_low_current_row_refetch = false;
     cached.needs_live_tile_high_current_row_refetch = false;
     cached.needs_live_tile_data_unsigned_reuse = false;
+    cached.cgb_lcdc4_same_cycle_tile_high_override = None;
     cached.dmg_lcdc3_tilemap_select_override = None;
     cached.dmg_lcdc4_tiledata_select_override = PerPlane::new(None, None);
     Some(cached)

@@ -96,6 +96,7 @@ fn cgb_lcdc4_same_cycle_set_glitch_substitutes_tile_index_for_high_plane_push() 
         tile_low: 0x7F,
         tile_high: 0x5D,
         needs_live_tile_data_refetch: true,
+        needs_live_tile_data_current_row_refetch: true,
         ..BgCachedSlice::default()
     };
 
@@ -107,11 +108,62 @@ fn cgb_lcdc4_same_cycle_set_glitch_substitutes_tile_index_for_high_plane_push() 
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x55);
     assert_eq!(ppu.bg_pipeline_state.push.cached.tile_high, 0x55);
     assert!(
-        !ppu.bg_pipeline_state
+        ppu.bg_pipeline_state
             .push
             .cached
             .needs_live_tile_data_refetch
     );
+    assert!(
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tile_data_current_row_refetch
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .cgb_lcdc4_same_cycle_tile_high_override,
+        Some(0x55)
+    );
+}
+
+#[test]
+fn cgb_lcdc4_same_cycle_push_glitch_preserves_independent_refetch() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.lcdc = LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.push.cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        fetch_x: 80,
+        tile_index: 0x55,
+        tile_low: 0x7F,
+        tile_high: 0x55,
+        tile_low_address: 0x0550,
+        tile_high_address: 0x0551,
+        needs_live_tile_data_refetch: true,
+        needs_live_tile_data_current_row_refetch: true,
+        cgb_lcdc4_same_cycle_tile_high_override: Some(0x55),
+        ..BgCachedSlice::default()
+    };
+    let mut bytes = [0; CGB_TEST_VRAM_BYTES];
+    bytes[0x0550] = 0xA6;
+    bytes[0x0551] = 0x3C;
+
+    let recomputed = with_cgb_vram_view(bytes, |vram| {
+        recompute_live_background_cached_slice(
+            ppu.bg_pipeline_state.push.cached,
+            vram,
+            ppu.current_mode3_live_background_refetch_context(),
+        )
+    })
+    .expect("pending independent refetch should recompute");
+
+    assert_eq!(recomputed.tile_low, 0xA6);
+    assert_eq!(recomputed.tile_high, 0x55);
+    assert!(!recomputed.needs_live_tile_data_refetch);
+    assert!(!recomputed.needs_live_tile_data_current_row_refetch);
+    assert_eq!(recomputed.cgb_lcdc4_same_cycle_tile_high_override, None);
 }
 
 #[test]

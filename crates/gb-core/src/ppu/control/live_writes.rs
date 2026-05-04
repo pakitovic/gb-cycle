@@ -165,11 +165,7 @@ impl Ppu {
                 {
                     let cached = &mut self.bg_pipeline_state.push.cached;
                     cached.tile_high = tile_index;
-                    cached.needs_live_tile_data_refetch = false;
-                    cached.needs_live_tile_data_current_row_refetch = false;
-                    cached.needs_live_tile_low_current_row_refetch = false;
-                    cached.needs_live_tile_high_current_row_refetch = false;
-                    cached.needs_live_tile_data_unsigned_reuse = false;
+                    cached.cgb_lcdc4_same_cycle_tile_high_override = Some(tile_index);
                 }
             }
             _ => {}
