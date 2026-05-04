@@ -78,6 +78,7 @@ pub(super) const SWEEP_SHIFT_MASK: u8 = 0x07;
 pub(super) const SWEEP_PHASE_MASK: u8 = 0x07;
 pub(super) const SWEEP_PHASE_BOUNDARY: u8 = 7;
 pub(super) const SWEEP_TIMER_RELOAD: u8 = 8;
+pub(super) const POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE: u8 = 1;
 pub(super) const CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES: u16 = 8;
 pub(super) const CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES: u16 = 4;
 pub(super) const CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP: u16 = 4;

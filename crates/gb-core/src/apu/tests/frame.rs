@@ -1,4 +1,5 @@
 use super::*;
+use crate::speed::CgbSpeedMode;
 
 #[test]
 fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
@@ -99,6 +100,21 @@ fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x01);
+}
+
+#[test]
+fn powering_on_while_div_apu_signal_is_high_starts_after_the_skipped_event() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+
+    apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
+
+    assert!(apu.snapshot().powered);
+    assert_eq!(apu.snapshot().div_apu, POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE);
+
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+
+    assert_eq!(apu.snapshot().div_apu, 0x02);
+    assert_eq!(apu.frame_sequencer.length_clock_count, 0);
 }
 
 #[test]

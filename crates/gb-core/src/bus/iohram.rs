@@ -376,12 +376,22 @@ impl IoHramDomain {
                     }
                 }
                 IoRegisterOwner::Apu => {
-                    let BusIoWriteView { apu, speed, .. } = io;
+                    let BusIoWriteView {
+                        apu, timer, speed, ..
+                    } = io;
                     let speed_mode = speed
                         .as_deref()
                         .map_or(CgbSpeedMode::Normal, SpeedController::current_speed);
+                    let div_apu_signal_high = timer
+                        .as_deref()
+                        .is_some_and(|timer| timer.current_div_apu_signal_for_speed(speed_mode));
                     if let Some(apu) = apu {
-                        apu.write_register_for_speed(address, value, speed_mode);
+                        apu.write_register_for_speed_with_div_apu_signal(
+                            address,
+                            value,
+                            speed_mode,
+                            div_apu_signal_high,
+                        );
                     }
                 }
                 IoRegisterOwner::MemoryController

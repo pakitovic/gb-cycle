@@ -1,4 +1,6 @@
-use super::common::{NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT};
+use super::common::{
+    NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT, POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE,
+};
 use super::output::OutputPathState;
 use super::{Apu, ApuOutputSnapshot, WaveRamStartupPolicy, div_apu_phase_from_system_counter};
 
@@ -95,14 +97,19 @@ impl Apu {
             | channel_output.active_mask
     }
 
-    pub(in crate::apu) fn write_nr52(&mut self, value: u8) {
+    pub(in crate::apu) fn write_nr52(&mut self, value: u8, div_apu_signal_high: bool) {
         let next_powered = value & NR52_MASTER_POWER_BIT != 0;
 
         match (self.master.powered, next_powered) {
             (true, false) => self.power_off(),
             (false, true) => {
                 self.master.powered = true;
-                self.frame_sequencer.apply_startup_phase(0);
+                self.frame_sequencer
+                    .apply_startup_phase(if div_apu_signal_high {
+                        POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE
+                    } else {
+                        0
+                    });
                 self.channels.mark_powered_on();
             }
             _ => {}

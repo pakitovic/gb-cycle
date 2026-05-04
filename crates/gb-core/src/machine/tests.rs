@@ -1461,6 +1461,48 @@ fn div_mmio_writes_drive_the_same_shared_apu_event_as_natural_edges() {
     );
 }
 
+fn write_div_when_visible_div_is_0x10(machine: &mut Machine) {
+    while machine.read_bus(0xFF04) != 0x10 {
+        machine.step_t_cycle();
+    }
+    machine.write_bus(0xFF04, 0x00);
+}
+
+#[test]
+fn nr52_power_on_while_div_apu_signal_is_high_skips_the_first_div_write_length_clock() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0x00; 16]))
+        .expect("CGB native test ROM should load");
+    machine.apply_timer_startup_state(crate::timer::TimerStartupState {
+        system_counter: 0x1000,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+    });
+
+    machine.write_bus(0xFF26, 0x00);
+    machine.write_bus(0xFF26, 0x80);
+
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+
+    machine.write_bus(0xFF13, 0xFF);
+    machine.write_bus(0xFF11, 0xBF);
+    machine.write_bus(0xFF12, 0xBF);
+    machine.write_bus(0xFF14, 0xC1);
+    assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x01);
+
+    write_div_when_visible_div_is_0x10(&mut machine);
+
+    assert_eq!(
+        machine.read_bus(0xFF26) & 0x01,
+        0x01,
+        "NR52 power-on during the high DIV-APU half must consume the timer-owned signal and skip the first write-induced length clock"
+    );
+}
+
 #[test]
 fn cgb_double_speed_apu_edges_consume_the_slice2_speed_domain_contract() {
     let mut machine = cgb_apu_div_event_test_machine(CgbSpeedMode::Double);

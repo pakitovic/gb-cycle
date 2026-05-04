@@ -28,6 +28,16 @@ impl Apu {
         value: u8,
         speed_mode: CgbSpeedMode,
     ) {
+        self.write_register_for_speed_with_div_apu_signal(address, value, speed_mode, false);
+    }
+
+    pub(crate) fn write_register_for_speed_with_div_apu_signal(
+        &mut self,
+        address: u16,
+        value: u8,
+        speed_mode: CgbSpeedMode,
+        div_apu_signal_high: bool,
+    ) {
         self.last_register_write = None;
         let decoded_register = ApuMmioRegister::decode(address);
 
@@ -43,7 +53,7 @@ impl Apu {
                     .should_observe_register_write()
                     .then(|| self.register_write_state());
 
-                self.write_apu_register(register, value, speed_mode);
+                self.write_apu_register(register, value, speed_mode, div_apu_signal_high);
 
                 self.preview_output_path();
                 self.record_register_write_observation(address, value, before_register_write);
@@ -73,7 +83,13 @@ impl Apu {
         }
     }
 
-    fn write_apu_register(&mut self, register: ApuRegister, value: u8, speed_mode: CgbSpeedMode) {
+    fn write_apu_register(
+        &mut self,
+        register: ApuRegister,
+        value: u8,
+        speed_mode: CgbSpeedMode,
+        div_apu_signal_high: bool,
+    ) {
         match register.owner() {
             ApuRegisterOwner::Channel1(register) => {
                 self.write_channel_1_register(register, value, speed_mode)
@@ -83,7 +99,9 @@ impl Apu {
             }
             ApuRegisterOwner::Channel3(register) => self.write_channel_3_register(register, value),
             ApuRegisterOwner::Channel4(register) => self.write_channel_4_register(register, value),
-            ApuRegisterOwner::Master(register) => self.write_master_register(register, value),
+            ApuRegisterOwner::Master(register) => {
+                self.write_master_register(register, value, div_apu_signal_high)
+            }
             ApuRegisterOwner::Unused => {}
         }
     }
@@ -160,7 +178,12 @@ impl Apu {
         }
     }
 
-    fn write_master_register(&mut self, register: MasterRegister, value: u8) {
+    fn write_master_register(
+        &mut self,
+        register: MasterRegister,
+        value: u8,
+        div_apu_signal_high: bool,
+    ) {
         match register {
             MasterRegister::Nr50 => {
                 if self.master.powered {
@@ -172,7 +195,7 @@ impl Apu {
                     self.master.nr51 = value;
                 }
             }
-            MasterRegister::Nr52 => self.write_nr52(value),
+            MasterRegister::Nr52 => self.write_nr52(value, div_apu_signal_high),
         }
     }
 }
