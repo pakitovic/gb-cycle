@@ -556,7 +556,7 @@ impl Apu {
             self.channels.clock_length_all();
         }
         if clocks.sweep {
-            self.channels.clock_sweep_ch1();
+            self.channels.clock_sweep_ch1(self.console_model);
         }
         if clocks.envelope {
             self.channels.clock_envelope_all();

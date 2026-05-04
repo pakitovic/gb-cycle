@@ -2,11 +2,13 @@ use crate::model::ConsoleModel;
 use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
-    ChannelRuntimeState, DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
-    NR11_WRITE_ONLY_MASK, NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK,
-    NRX4_WRITABLE_MASK, PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK,
-    SWEEP_TIMER_RELOAD, begin_nrx4_write, pulse_period_from_registers, sweep_decreases_from_nr10,
-    sweep_pace_from_nr10, sweep_shift_from_nr10,
+    CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES,
+    CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP, ChannelRuntimeState,
+    DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK, NR11_WRITE_ONLY_MASK,
+    NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK, NRX4_WRITABLE_MASK,
+    PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD,
+    begin_nrx4_write, pulse_period_from_registers, sweep_decreases_from_nr10, sweep_pace_from_nr10,
+    sweep_shift_from_nr10,
 };
 use super::super::registers::Channel1Register;
 use super::pulse::PulseChannelState;
@@ -26,6 +28,14 @@ pub(in crate::apu) struct Channel1SweepState {
     pub(in crate::apu) shadow_period: u16,
     completed_addend: u16,
     pub(in crate::apu) negate_calculated_since_trigger: bool,
+    #[serde(default)]
+    delayed_calculation_t_cycles: u16,
+    #[serde(default)]
+    delayed_calculation_shadow_period: u16,
+    #[serde(default)]
+    delayed_calculation_addend: u16,
+    #[serde(default)]
+    delayed_calculation_decreases: bool,
 }
 
 impl Channel1SweepState {
@@ -44,12 +54,20 @@ impl Channel1SweepState {
 
     fn write_nr10(
         &mut self,
+        console_model: ConsoleModel,
         old_nr10: u8,
         new_nr10: u8,
         nr13: &mut u8,
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
+        if console_model.is_cgb_family()
+            && sweep_pace_from_nr10(new_nr10) == 0
+            && sweep_shift_from_nr10(new_nr10) == 0
+        {
+            self.clear_delayed_calculation();
+        }
+
         if sweep_decreases_from_nr10(old_nr10)
             && !sweep_decreases_from_nr10(new_nr10)
             && self.negate_calculated_since_trigger
@@ -57,7 +75,7 @@ impl Channel1SweepState {
             runtime.active = false;
         }
 
-        self.maybe_fire_sweep_boundary(new_nr10, nr13, nr14, runtime);
+        self.maybe_fire_sweep_boundary(console_model, new_nr10, nr13, nr14, runtime);
     }
 
     fn trigger(&mut self, nr10: u8, period_value: u16, runtime: &mut ChannelRuntimeState) {
@@ -67,20 +85,50 @@ impl Channel1SweepState {
         self.enabled = sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0;
         self.completed_addend = 0;
         self.negate_calculated_since_trigger = false;
+        self.clear_delayed_calculation();
 
-        if self
-            .calculate_candidate_sum(nr10, self.shadow_period, false)
-            .is_some_and(|calculation| {
-                self.observe_calculation(calculation);
-                calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                    && !calculation.decreases
-            })
-        {
-            runtime.active = false;
+        if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
+            self.observe_calculation(calculation);
+            if calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
+                && !calculation.decreases
+            {
+                runtime.active = false;
+            }
         }
     }
 
-    fn clock(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8, runtime: &mut ChannelRuntimeState) {
+    fn tick_delayed_calculation(
+        &mut self,
+        clock_generation_timer: bool,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        if !clock_generation_timer || self.delayed_calculation_t_cycles == 0 {
+            return;
+        }
+
+        self.delayed_calculation_t_cycles -= 1;
+        if self.delayed_calculation_t_cycles != 0 {
+            return;
+        }
+
+        if !self.delayed_calculation_decreases
+            && self.delayed_calculation_shadow_period + self.delayed_calculation_addend
+                > super::super::common::PULSE_PERIOD_MAX
+        {
+            runtime.active = false;
+        }
+        self.completed_addend = self.delayed_calculation_addend;
+        self.clear_delayed_calculation();
+    }
+
+    fn clock(
+        &mut self,
+        console_model: ConsoleModel,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
         if !self.enabled {
             return;
         }
@@ -91,11 +139,12 @@ impl Channel1SweepState {
             return;
         }
 
-        self.maybe_fire_sweep_boundary(nr10, nr13, nr14, runtime);
+        self.maybe_fire_sweep_boundary(console_model, nr10, nr13, nr14, runtime);
     }
 
     fn maybe_fire_sweep_boundary(
         &mut self,
+        console_model: ConsoleModel,
         nr10: u8,
         nr13: &mut u8,
         nr14: &mut u8,
@@ -118,11 +167,18 @@ impl Channel1SweepState {
         if !calculation.decreases
             && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
         {
-            runtime.active = false;
+            if console_model.is_cgb_family() {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation);
+            } else {
+                runtime.active = false;
+            }
             return;
         }
 
         if shift == 0 {
+            if console_model.is_cgb_family() {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation);
+            }
             return;
         }
 
@@ -131,16 +187,39 @@ impl Channel1SweepState {
         *nr13 = candidate as u8;
         *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
 
-        if self
-            .calculate_candidate_sum(nr10, self.shadow_period, true)
-            .is_some_and(|next_calculation| {
-                self.observe_calculation(next_calculation);
-                next_calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                    && !next_calculation.decreases
-            })
+        if let Some(next_calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true)
         {
-            runtime.active = false;
+            self.observe_calculation(next_calculation);
+            if console_model.is_cgb_family() {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation);
+            } else if next_calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
+                && !next_calculation.decreases
+            {
+                runtime.active = false;
+            }
         }
+    }
+
+    fn schedule_delayed_calculation(
+        &mut self,
+        nr10: u8,
+        shadow_period: u16,
+        calculation: SweepCalculation,
+    ) {
+        let shift_delay = u16::from(sweep_shift_from_nr10(nr10) + 1)
+            * CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP;
+        self.delayed_calculation_t_cycles =
+            shift_delay.max(CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES);
+        self.delayed_calculation_shadow_period = shadow_period;
+        self.delayed_calculation_addend = calculation.addend;
+        self.delayed_calculation_decreases = calculation.decreases;
+    }
+
+    fn clear_delayed_calculation(&mut self) {
+        self.delayed_calculation_t_cycles = 0;
+        self.delayed_calculation_shadow_period = 0;
+        self.delayed_calculation_addend = 0;
+        self.delayed_calculation_decreases = false;
     }
 
     const fn phase_from_pace(pace: u8) -> u8 {
@@ -218,7 +297,7 @@ impl Channel1State {
         next_frame_sequencer_step: u8,
     ) {
         match register {
-            Channel1Register::Nr10 => self.write_nr10(value),
+            Channel1Register::Nr10 => self.write_nr10(value, console_model),
             Channel1Register::Nr11 => self.write_nr11(value),
             Channel1Register::Nr12 => self.write_nr12(value, console_model),
             Channel1Register::Nr13 => self.write_nr13(value),
@@ -255,10 +334,11 @@ impl Channel1State {
         (self.nr14 & NR14_READ_MASK) | NR14_FORCED_HIGH_MASK
     }
 
-    fn write_nr10(&mut self, value: u8) {
+    fn write_nr10(&mut self, value: u8, console_model: ConsoleModel) {
         let old_nr10 = self.nr10;
         self.nr10 = value & NR10_WRITABLE_MASK;
         self.sweep.write_nr10(
+            console_model,
             old_nr10,
             self.nr10,
             &mut self.nr13,
@@ -402,6 +482,8 @@ impl Channel1State {
     }
 
     pub(in crate::apu) fn tick_fast_timer_with_clock_gate(&mut self, clock_period_timer: bool) {
+        self.sweep
+            .tick_delayed_calculation(clock_period_timer, &mut self.pulse.runtime);
         self.pulse
             .tick_fast_timer_with_clock_gate(self.period_value(), clock_period_timer);
     }
@@ -414,8 +496,9 @@ impl Channel1State {
         self.pulse.clock_envelope();
     }
 
-    pub(in crate::apu) fn clock_sweep(&mut self) {
+    pub(in crate::apu) fn clock_sweep(&mut self, console_model: ConsoleModel) {
         self.sweep.clock(
+            console_model,
             self.nr10,
             &mut self.nr13,
             &mut self.nr14,

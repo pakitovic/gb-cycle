@@ -334,6 +334,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - if the result is in range and shift is non-zero, write it back to `sweep_shadow_period`, `NR13`, and `NR14`
   - then run a second immediate calculation plus overflow check using the new shadow period, without writing that second result back
 - Keep this second overflow check explicit; do not fold it into a generic "next tick will catch it" simplification.
+- Native-CGB keeps that post-writeback overflow check as an explicit delayed sweep-pipeline calculation rather than disabling CH1 in the same frame-sequencer instant; SameSuite `channel_1_sweep` requires the channel to remain active for the short low-shift-derived delay after the first calculation writes `NR13`/`NR14`, while the DMG-family baseline keeps the immediate second-check behavior covered by unit tests.
+- Native-CGB writes that clear both sweep pace and shift cancel a pending delayed sweep overflow check, matching the CGB sweep-pipeline latch used by SameSuite restart cases without moving the logic into PCM readback.
 - Writes to `NR13` / `NR14` while sweep is active must not refresh `sweep_shadow_period`; a later sweep tick may therefore overwrite the just-written register value unless CH1 is retriggered.
 - Sweep pace `0` should still preserve the documented trigger/overflow semantics and the documented timer-reload rule that a programmed pace or period of `0` behaves as `8`, rather than being simplified to "sweep logic fully off".
 

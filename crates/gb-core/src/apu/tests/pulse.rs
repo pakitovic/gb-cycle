@@ -1061,11 +1061,111 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
     assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_sweep_second_overflow_check_is_delayed_after_period_writeback() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x27);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xF0);
+    apu.write_register(0xFF14, 0x87);
+
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07F0);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07F0);
+
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07FF);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x07FF);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    for _ in 0..31 {
+        apu.channels.channel_1.tick_fast_timer();
+        assert!(apu.channels.channel_1.pulse.runtime.active);
+    }
+
+    apu.channels.channel_1.tick_fast_timer();
+
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_sweep_delayed_overflow_check_survives_save_state() {
+    let mut uninterrupted = Apu::new(ConsoleModel::GameBoyColor);
+    uninterrupted.write_register(0xFF26, 0x80);
+    uninterrupted.write_register(0xFF10, 0x27);
+    uninterrupted.write_register(0xFF11, 0x80);
+    uninterrupted.write_register(0xFF12, 0xF0);
+    uninterrupted.write_register(0xFF13, 0xF0);
+    uninterrupted.write_register(0xFF14, 0x87);
+    uninterrupted
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    uninterrupted
+        .channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    for _ in 0..12 {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+    }
+
+    let saved = uninterrupted.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    restored.restore_save_state(&saved);
+
+    for _ in 0..20 {
+        uninterrupted.channels.channel_1.tick_fast_timer();
+        restored.channels.channel_1.tick_fast_timer();
+    }
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert!(!restored.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn cgb_channel_1_nr10_zero_write_cancels_pending_sweep_overflow_check() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x27);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xF0);
+    apu.write_register(0xFF14, 0x87);
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    apu.write_register(0xFF10, 0x00);
+
+    for _ in 0..40 {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x07FF);
 }
 
 #[test]
@@ -1082,7 +1182,7 @@ fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
     assert!(apu.channels.channel_1.sweep.enabled);
 
     apu.channels.channel_1.pulse.runtime.active = false;
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
@@ -1102,7 +1202,7 @@ fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
     assert!(!apu.channels.channel_1.pulse.runtime.active);
@@ -1119,12 +1219,12 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     apu.write_register(0xFF14, 0x82);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0200);
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
 
     apu.write_register(0xFF10, 0x01);
     for _ in 0..8 {
-        apu.channels.channel_1.clock_sweep();
+        apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
         assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
         assert!(apu.channels.channel_1.pulse.runtime.active);
     }
@@ -1133,7 +1233,7 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     assert_eq!(apu.channels.channel_1.sweep.timer, 1);
 
     apu.write_register(0xFF10, 0x11);
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0480);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0480);
@@ -1206,7 +1306,7 @@ fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
     apu.write_register(0xFF13, 0xB0);
     apu.write_register(0xFF14, 0x85);
 
-    apu.channels.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0555);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0555);

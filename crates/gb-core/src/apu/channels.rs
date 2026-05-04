@@ -77,8 +77,8 @@ impl ApuChannels {
         self.channel_4.clock_envelope();
     }
 
-    pub(super) fn clock_sweep_ch1(&mut self) {
-        self.channel_1.clock_sweep();
+    pub(super) fn clock_sweep_ch1(&mut self, console_model: ConsoleModel) {
+        self.channel_1.clock_sweep(console_model);
     }
 
     pub(super) fn apply_startup(
