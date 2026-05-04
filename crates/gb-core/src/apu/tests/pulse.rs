@@ -108,6 +108,89 @@ fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_outpu
 }
 
 #[test]
+fn live_pulse_duty_write_waits_for_the_next_duty_step_boundary() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0xC0);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 1);
+    assert_eq!(apu.channels.channel_2.pulse.duty, 3);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0x08);
+
+    apu.write_register(0xFF16, 0x01);
+
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert_eq!(apu.channels.channel_2.pulse.duty, 3);
+    assert_eq!(apu.channels.channel_2.pulse.pending_duty, Some(0));
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0x08);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 2);
+    assert_eq!(apu.channels.channel_2.pulse.duty, 0);
+    assert_eq!(apu.channels.channel_2.pulse.pending_duty, None);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
+}
+
+#[test]
+fn inactive_pulse_duty_write_updates_the_waveform_immediately() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+    apu.write_register(0xFF26, 0x80);
+
+    apu.write_register(0xFF16, 0x01);
+    assert_eq!(apu.channels.channel_2.pulse.duty, 0);
+    assert_eq!(apu.channels.channel_2.pulse.pending_duty, None);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+
+    apu.write_register(0xFF16, 0xC0);
+
+    assert_eq!(apu.channels.channel_2.pulse.duty, 3);
+    assert_eq!(apu.channels.channel_2.pulse.pending_duty, None);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 64);
+}
+
+#[test]
+fn save_state_preserves_live_pulse_pending_duty_write() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0xC0);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    apu.write_register(0xFF16, 0x01);
+    assert_eq!(apu.channels.channel_2.pulse.pending_duty, Some(0));
+
+    let mut uninterrupted = apu.clone();
+    let saved = apu.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoy);
+    restored.restore_save_state(&saved);
+
+    for _ in 0..4 {
+        uninterrupted.channels.channel_2.tick_fast_timer();
+        restored.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert_eq!(restored.channels.channel_2.pulse.duty, 0);
+    assert_eq!(restored.channels.channel_2.pulse.pending_duty, None);
+}
+
+#[test]
 fn cgb_normal_speed_inactive_pulse_trigger_uses_fixed_startup_delay_before_first_duty_step() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);

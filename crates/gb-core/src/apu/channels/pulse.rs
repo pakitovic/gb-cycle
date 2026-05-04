@@ -13,6 +13,8 @@ use super::super::common::{
 pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) runtime: ChannelRuntimeState,
     pub(in crate::apu) duty: u8,
+    #[serde(default)]
+    pub(in crate::apu) pending_duty: Option<u8>,
     pub(in crate::apu) duty_step: u8,
     pub(in crate::apu) first_trigger_after_power_on_pending: bool,
     pub(in crate::apu) power_on_phase: u8,
@@ -57,7 +59,13 @@ impl PulseChannelState {
     }
 
     pub(in crate::apu) fn apply_length_duty_write(&mut self, value: u8) {
-        self.duty = (value & PULSE_DUTY_MASK) >> PULSE_DUTY_SHIFT;
+        let duty = (value & PULSE_DUTY_MASK) >> PULSE_DUTY_SHIFT;
+        if self.runtime.active {
+            self.pending_duty = Some(duty);
+        } else {
+            self.duty = duty;
+            self.pending_duty = None;
+        }
         self.length_counter = pulse_length_counter_from_load(value);
     }
 
@@ -211,6 +219,9 @@ impl PulseChannelState {
         if self.period_timer == 0 {
             self.period_timer = pulse_timer_reload(period_value);
             self.duty_step = (self.duty_step + 1) & PULSE_DUTY_STEP_MASK;
+            if let Some(pending_duty) = self.pending_duty.take() {
+                self.duty = pending_duty;
+            }
             self.suppress_initial_trigger_output = false;
         }
     }
