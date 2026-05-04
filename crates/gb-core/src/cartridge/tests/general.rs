@@ -35,6 +35,7 @@ fn classification_keeps_supported_families_and_structured_unsupported_categories
     let no_mbc = CartridgeClassification::classify(0x09);
     let mmm01 = CartridgeClassification::classify(0x0B);
     let mbc1 = CartridgeClassification::classify(0x03);
+    let mbc6 = CartridgeClassification::classify(0x20);
     let camera = CartridgeClassification::classify(0xFC);
     let unknown = CartridgeClassification::classify(0xAA);
 
@@ -49,6 +50,10 @@ fn classification_keeps_supported_families_and_structured_unsupported_categories
     assert_eq!(
         mbc1.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
+    );
+    assert_eq!(
+        mbc6.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc6)
     );
     assert_eq!(
         camera.selection(),
@@ -191,20 +196,12 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
 #[test]
 fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_instead_of_fallback()
 {
-    let cases = [
-        (
-            build_test_rom(256 * 1024, 0x20, 0x03, 0x00),
-            "MBC6",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-            "dedicated cartridge-local implementation",
-        ),
-        (
-            build_test_rom(256 * 1024, 0x22, 0x03, 0x00),
-            "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-            "EEPROM and accelerometer",
-        ),
-    ];
+    let cases = [(
+        build_test_rom(256 * 1024, 0x22, 0x03, 0x00),
+        "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
+        UnsupportedCartridgeCategory::DocumentedButUnsupported,
+        "EEPROM and accelerometer",
+    )];
 
     for (rom, expected_name, expected_category, expected_reason_snippet) in cases {
         let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
