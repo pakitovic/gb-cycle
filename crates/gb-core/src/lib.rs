@@ -47,6 +47,7 @@ pub use cartridge::{
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
     CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CartridgeSnapshot, CgbFlag, Huc3RtcPersistentState, Mbc3RtcPersistentState,
+    Mbc7AccelerometerAxis, Mbc7AccelerometerByte, Mbc7AccelerometerError, Mbc7AccelerometerInput,
     PersistentCartState, PocketCameraFrame, PocketCameraFrameError, RamSizeInfo, RomSizeInfo,
     SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };

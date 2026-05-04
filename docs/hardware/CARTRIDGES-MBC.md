@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own cartridge ROM/RAM mapping, cartridge-header parsing, mapper state, battery-backed persistence interfaces, and mapper-specific features such as RTC or rumble.
+Own cartridge ROM/RAM mapping, cartridge-header parsing, mapper state, cartridge-local persistence interfaces, and mapper-specific features such as RTC, rumble, sensors, or serial EEPROM.
 
 ## Hardware model
 
@@ -64,7 +64,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `NoMbc` should be the non-banked family covering header codes `0x00`, `0x08`, and `0x09`, while preserving the raw header type for RAM/battery distinctions and diagnostics.
 - The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, mapper-local RAM such as MBC2 internal RAM, battery-backed persistence, RTC, rumble, or other mapper-local hardware.
 - The classification result must preserve at least the raw `0x0147` type byte, the detected name, the category, and a concise reason suitable for diagnostics or frontend display.
-- Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC-3`, or sensor cartridges must remain explicitly identified rather than silently coerced into a nearby supported mapper. Several of those families now have dedicated supported paths; the rest should keep precise structured diagnostics until implemented.
+- Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC-3`, or sensor cartridges must remain explicitly identified rather than silently coerced into a nearby supported mapper. Several of those families now have dedicated supported paths, including `MBC7`; the rest should keep precise structured diagnostics until implemented.
 
 ## ROM-size and RAM-size baseline
 
@@ -119,7 +119,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ### Supported-hardware invariant
 
-- For already supported runtime families such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`, switching between `Strict`, `Permissive`, and `Experimental` must not change T-cycle-visible cartridge semantics.
+- For already supported runtime families such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Mbc7`, switching between `Strict`, `Permissive`, and `Experimental` must not change T-cycle-visible cartridge semantics.
 - That invariant covers at least ROM and RAM banking behavior, RTC register mapping, mapper-local enable state, persistence capability interpretation, and any later cartridge-local accessory or IRQ behavior once implemented.
 - Mode differences belong in admission, validation severity, heuristic enablement, explicit overrides, diagnostics, and access to experimental or partial implementations.
 - Any temporary case where a mode changes runtime behavior for already supported hardware should be documented as technical debt, not normalized as expected behavior.
@@ -186,7 +186,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 - Keep a design distinction between close derivatives of supported mapper families and cartridges that require new cartridge-local hardware.
 - The DMG-family special-cartridge runtime path is closed for the currently targeted set: `MMM01`, the supported `MBC1M` signature path, `HuC1`, `HuC-3`, `M161`, and `Pocket Camera` all enter through dedicated supported cartridge paths rather than fallback mappers.
-- `MBC30` is now the supported close `MBC3`-family variant, while `MBC6` and `MBC7` remain explicitly classified and reserved for later CGB-gated runtime work. Do not treat their absence from `TODO.md` as permission to fold them into ordinary `MBC5` logic; see `docs/hardware/CGB.md` for the base CGB gate.
+- `MBC30` is now the supported close `MBC3`-family variant and `MBC7` is now a supported dedicated sensor / EEPROM cartridge path. `MBC6` remains explicitly classified and reserved for later cartridge-local runtime work; do not treat its absence from `TODO.md` as permission to fold it into ordinary `MBC5` logic.
 - `Bandai TAMA5` remains an accessory-special unsupported path until a dedicated cartridge-local device model exists.
 - Lower-confidence `EMS`, `Bung`, and `Wisdom Tree` paths remain experimental heuristics and must not participate in strict default loading.
 
@@ -251,12 +251,16 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ### MBC6 and MBC7
 
-- Treat `MBC6` and `MBC7` as documented but unsupported hardware, not as unknown codes.
-- `MBC6` and `MBC7` should classify as `DocumentedButUnsupported`.
-- Header code `0x20` should classify as `MBC6`, and header code `0x22` should classify as `MBC7`.
+- Treat `MBC6` and `MBC7` as documented special hardware, not as unknown codes and never as fallback aliases for nearby MBC families.
+- Header code `0x20` still classifies as `MBC6` with `DocumentedButUnsupported` diagnostics until a dedicated split-window SRAM / flash implementation exists.
+- Header code `0x22` now classifies as supported `MBC7+SENSOR+RUMBLE+RAM+BATTERY`, but the runtime implementation is a dedicated `Mbc7` device rather than `MBC5 + rumble + RAM`.
 - `MBC6` must not fall back to `MBC3` or `MBC5`; Pan Docs documents split `8 KiB` ROM windows, split `4 KiB` RAM windows, and on-cartridge flash behavior.
-- `MBC7` must not fall back to `MBC5 + rumble + RAM`; Pan Docs documents EEPROM-register access plus accelerometer-backed behavior that is not standard SRAM mapping.
-- In the current DMG-only but CGB-ready roadmap, keep `MBC6` and `MBC7` limited to explicit classification, diagnostics, and future-device planning; defer functional runtime support until the base CGB implementation is complete enough to boot and validate CGB-only software.
+- `MBC7` must not fall back to `MBC5`; Pan Docs documents a `7`-bit ROM-bank register, two independent enable gates, an `A000-AFFF` sensor / EEPROM register aperture, and `B000-BFFF` reads as `$FF`.
+- MBC7 register access requires both enables: writes of `$0A` to `0000-1FFF` and `$40` to `4000-5FFF`; the switchable ROM window at `4000-7FFF` uses the low `7` bits written to `2000-3FFF`, while `0000-3FFF` remains ROM bank `0`.
+- MBC7 accelerometer support models the documented latch protocol: writing `$55` to `Ax0x` clears the latched X/Y values to `$8000`, writing `$AA` to `Ax1x` captures deterministic host-provided X/Y raw values only after that clear, `Ax2x/Ax3x` expose X low/high, `Ax4x/Ax5x` expose Y low/high, `Ax6x` reads `$00`, and other undocumented selectors read `$FF`.
+- MBC7 EEPROM support models the documented serial `93LC56`-style command path through `Ax8x`: `CS`, `CLK`, and `DI` are driven by writes, `DO` is visible on reads, commands are decoded as start bit plus `10` command bits, and the persistent backing store is exactly `256` raw bytes.
+- The official header name for `$22` contains `RUMBLE`, but the current runtime intentionally exposes `has_rumble() == false` and `rumble_on() == false` for MBC7 because neither Pan Docs MBC7 nor the currently referenced hardware-board evidence documents a concrete MBC7 rumble motor or control bit. Do not invent a rumble register for MBC7 until hardware evidence identifies the route.
+- The `RAM` and `BATTERY` words in the `$22` header name are treated as historical persistence labels for the `256`-byte EEPROM, not as generic SRAM mapping and not as proof of a physical battery-backed SRAM device.
 
 ### Accessory cartridges
 
@@ -295,7 +299,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Battery-backed persistence must be modeled as cartridge-owned state, not as "dump the currently visible `0xA000-0xBFFF` window."
 - `0xA000-0xBFFF` is only a mapper-controlled access window on the shared T-cycle runtime. The persistible payload is the cartridge's full backing store, not whichever bank or register file happens to be visible on one access.
 - The decision that a cartridge should produce hardware-style persistent state must come from header byte `0x0147`, not from filename heuristics, game title, or RAM-size guesses.
-- Loaded cartridge metadata should expose explicit capability data such as `has_battery`, `has_rtc`, and a typed distinction between persistent RAM, persistent RTC, non-persistent RAM, and no persistible storage.
+- Loaded cartridge metadata should expose explicit capability data such as `has_battery`, `has_rtc`, and a typed distinction between persistent RAM, persistent RTC, persistent EEPROM, non-persistent RAM, and no persistible storage.
 - Persistible RAM sizing must come from validated `0x0147 + 0x0149` capability data rather than from `0x0149` alone.
 - `MBC2` is a required exception: its persistible store is the internal `512 x 4-bit` nibble array, and `0x0149` must not size it.
 - Validation must reject or warn on header combinations where cartridge type, battery capability, RTC capability, and declared RAM size are incoherent before the save layer creates any hardware-style payload.
@@ -305,11 +309,12 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MBC2` persistence must cover all `512` logical nibbles, not an invented `8 KiB` byte array and not only the currently addressed echo window.
 - `MBC3` persistence must cover the full validated SRAM backing plus live RTC state when the header type includes timer and battery support.
 - `MBC5` persistence must cover the full validated SRAM backing up to `128 KiB`; rumble state is not part of the ordinary battery-backed save payload.
+- `MBC7` persistence must cover the full `256`-byte serial EEPROM backing and export/import external `.sav` data as those raw `256` bytes rather than as banked SRAM.
 - For `MBC3`, the persistible RTC payload must preserve at least seconds, minutes, hours, visible `9`-bit day counter, halt, carry, and enough elapsed-time bookkeeping to reconstruct powered-off advancement on reload.
 - The persistible RTC payload must reflect live RTC state, not the latched snapshot exposed for reads through the `0x00 -> 0x01` latch sequence.
 - Restoring hardware-style `MBC3` persistence into a live cartridge should refresh `rtc_live` while clearing runtime-local latch state (`rtc_latched`, latch-valid flag, edge-arming state, and advisory ready-at timing) so a stale read snapshot does not survive a persistence restore.
 - Hardware-style cartridge saves and full emulator save states are different systems. Cartridge persistence must not serialize CPU, PPU, APU, WRAM, HRAM, or other console-owned state.
-- Cartridges without battery support should not produce automatic hardware-style save files unless the emulator explicitly exposes a non-hardware-faithful opt-in policy.
+- Cartridges without battery support should not produce automatic hardware-style save files unless the emulator explicitly exposes a non-hardware-faithful opt-in policy or the validated cartridge family has a documented persistent non-SRAM medium such as MBC7 EEPROM.
 - The cartridge side should expose an explicit typed persistence contract such as `PersistentCartState` or `CartridgePersistentPayload` that the storage backend consumes.
 - The save backend should own physical serialization, format versioning, path policy, flush policy, and atomic write strategy, but it must not infer the mapper's persistible layout on its own.
 - Supported save triggers should include save-on-close, manual or forced save, and optional auto-flush after writes to persistible cartridge state.
@@ -619,7 +624,7 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - `MMM01`, the supported `MBC1M` signature path, and `M161` are first-class multicart paths. Do not redistribute their boot-header, menu, mask-locking, or latch-until-power-off behavior into ordinary `MBC1` or `NoMbc` code.
 - `HuC1` and `HuC-3` are dedicated supported mapper families. `HuC1` owns its RAM/IR mode split; `HuC-3` owns its mailbox, semaphore, MCU-window RTC model, IR mode, and dedicated persistence shape. Neither should fall back to `MBC1` or `MBC3`.
 - `Pocket Camera` is a dedicated cartridge-local hardware family with camera registers, capture timing, SRAM, and host-frame state inside the cartridge subsystem. See `GAME-BOY-CAMERA.md` for the detailed camera contract.
-- `MBC30` is implemented as a supported `MBC3`-family variant. `MBC6` and `MBC7` remain CGB-gated future runtime work with only explicit classification, diagnostics, typed variant space, and no-fallback policy until dedicated implementations exist.
+- `MBC30` is implemented as a supported `MBC3`-family variant. `MBC7` is a dedicated supported sensor / EEPROM cartridge family with explicit no-rumble runtime policy. `MBC6` remains CGB-gated future runtime work with explicit classification, diagnostics, typed variant space, and no-fallback policy until a dedicated implementation exists.
 
 ### Persistence and external save boundaries
 
@@ -628,7 +633,7 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - Save eligibility comes from validated cartridge capability metadata such as battery, RTC, and persistence profile. `ram_enabled` never decides whether a backing store exists or should be saved.
 - The host-side persistence backend owns serialization, format versioning, path policy, flush policy, time-source integration, and safe file replacement. None of that belongs in the bus or mapper runtime.
 - Default host-side save keys preserve the active ROM's exact filename stem. Path separators, control characters, and portable-filesystem reserved characters require explicit frontend/tool overrides; frontends and tools keep a read/export fallback for the older underscore-sanitized key so existing saves are not orphaned.
-- External `.sav` interchange is an explicit host-side conversion boundary. Linear RAM-backed cartridges import/export raw bytes; `MBC3` RAM/RTC uses the common `48`-byte little-endian RTC suffix with elapsed RTC time applied through the persistence time source; `MBC2` import accepts both SameBoy's `512`-byte one-byte-per-nibble layout and mGBA's `256`-byte packed layout, while export defaults to the mGBA packed form. Mapper/profile combinations without a safe shared external mapping, including HuC-3-specific RTC/MCU state or Bandai TAMA5-style accessory data unless a compatibility contract is documented, must fail explicitly instead of silently dropping state.
+- External `.sav` interchange is an explicit host-side conversion boundary. Linear RAM-backed cartridges import/export raw bytes; `MBC3` RAM/RTC uses the common `48`-byte little-endian RTC suffix with elapsed RTC time applied through the persistence time source; `MBC2` import accepts both SameBoy's `512`-byte one-byte-per-nibble layout and mGBA's `256`-byte packed layout, while export defaults to the mGBA packed form; `MBC7` EEPROM import/export is exactly the raw `256`-byte EEPROM payload. Mapper/profile combinations without a safe shared external mapping, including HuC-3-specific RTC/MCU state or Bandai TAMA5-style accessory data unless a compatibility contract is documented, must fail explicitly instead of silently dropping state.
 
 ### Compatibility and research seams
 
@@ -691,5 +696,6 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - whether stronger hardware or oracle evidence should replace the current MBC3 curated-compatibility relatch rule
 - whether stronger hardware or oracle evidence should change the current MBC3 reserved-selector policy for `0x04..=0x07`
 - whether MBC3 RTC access spacing should remain advisory-only or later become an enforced `16`-T-cycle timing rule
+- whether future MBC7 hardware evidence should add a documented rumble control route or EEPROM program busy timing; until then MBC7 exposes no runtime rumble
 - whether a clearly scoped metadata rule can ever distinguish CGB-era `11`-character titles plus manufacturer code from valid `15`-character titles without truncating real software
-- the exact future runtime contracts for `MBC6` and `MBC7` once dedicated CGB special-cartridge work starts
+- the exact future runtime contract for `MBC6` once dedicated CGB special-cartridge work starts

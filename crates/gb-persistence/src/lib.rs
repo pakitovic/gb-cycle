@@ -34,6 +34,7 @@ const PROFILE_NON_PERSISTENT_RAM_TAG: u8 = 1;
 const PROFILE_PERSISTENT_RAM_TAG: u8 = 2;
 const PROFILE_PERSISTENT_RTC_TAG: u8 = 3;
 const PROFILE_PERSISTENT_RAM_AND_RTC_TAG: u8 = 4;
+const PROFILE_PERSISTENT_EEPROM_TAG: u8 = 5;
 const STATE_NONE_TAG: u8 = 0;
 const STATE_NO_MBC_RAM_TAG: u8 = 1;
 const STATE_MBC1_RAM_TAG: u8 = 2;
@@ -46,6 +47,7 @@ const STATE_MMM01_RAM_TAG: u8 = 8;
 const STATE_HUC1_RAM_TAG: u8 = 9;
 const STATE_HUC3_TAG: u8 = 10;
 const STATE_POCKET_CAMERA_RAM_TAG: u8 = 11;
+const STATE_MBC7_EEPROM_TAG: u8 = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -360,7 +362,10 @@ impl std::error::Error for HardwarePersistenceError {
 }
 
 pub fn uses_battery_backed_hardware_persistence(metadata: CartridgePersistenceMetadata) -> bool {
-    metadata.has_battery
+    matches!(
+        metadata.profile,
+        CartridgePersistenceProfile::PersistentEeprom { .. }
+    ) || metadata.has_battery
         && matches!(
             metadata.profile,
             CartridgePersistenceProfile::PersistentRam { .. }
@@ -479,6 +484,10 @@ pub fn encode_external_cartridge_save(
             encode_external_mbc3_rtc_suffix(&mut bytes, *rtc, current_unix_seconds);
             Ok(bytes)
         }
+        (
+            CartridgePersistenceProfile::PersistentEeprom { byte_len },
+            PersistentCartState::Mbc7Eeprom { eeprom },
+        ) => encode_external_linear_ram(eeprom, byte_len),
         (
             CartridgePersistenceProfile::PersistentRamAndRtc {
                 ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
@@ -604,6 +613,11 @@ pub fn import_external_cartridge_save(
             let rtc = decode_external_mbc3_rtc_suffix(&bytes[byte_len..], current_unix_seconds)?;
             Ok(PersistentCartState::Mbc3RamRtc { ram, rtc })
         }
+        (
+            CartridgePersistenceProfile::PersistentEeprom { byte_len },
+            PersistentCartState::Mbc7Eeprom { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "MBC7 EEPROM")
+            .map(|eeprom| PersistentCartState::Mbc7Eeprom { eeprom }),
         (
             CartridgePersistenceProfile::PersistentRamAndRtc {
                 ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
@@ -1441,6 +1455,7 @@ fn persistent_state_kind_name(state: &PersistentCartState) -> &'static str {
         PersistentCartState::Mbc3Ram { .. } => "Mbc3Ram",
         PersistentCartState::Mbc3RamRtc { .. } => "Mbc3RamRtc",
         PersistentCartState::Mbc5Ram { .. } => "Mbc5Ram",
+        PersistentCartState::Mbc7Eeprom { .. } => "Mbc7Eeprom",
         PersistentCartState::PocketCameraRam { .. } => "PocketCameraRam",
     }
 }
@@ -1772,6 +1787,7 @@ fn encode_cartridge_slot_state(value: CartridgeSlotState) -> u8 {
         CartridgeSlotState::Mbc3 => 8,
         CartridgeSlotState::Mbc5 => 9,
         CartridgeSlotState::PocketCamera => 10,
+        CartridgeSlotState::Mbc7 => 11,
     }
 }
 
@@ -1791,6 +1807,7 @@ fn decode_cartridge_slot_state(
         8 => Ok(CartridgeSlotState::Mbc3),
         9 => Ok(CartridgeSlotState::Mbc5),
         10 => Ok(CartridgeSlotState::PocketCamera),
+        11 => Ok(CartridgeSlotState::Mbc7),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -1847,6 +1864,10 @@ fn encode_persistence_profile(
             bytes.push(PROFILE_PERSISTENT_RAM_AND_RTC_TAG);
             encode_ram_payload_kind(bytes, ram)?;
         }
+        CartridgePersistenceProfile::PersistentEeprom { byte_len } => {
+            bytes.push(PROFILE_PERSISTENT_EEPROM_TAG);
+            write_u32_checked(bytes, byte_len, "persistent EEPROM byte_len")?;
+        }
     }
     Ok(())
 }
@@ -1869,6 +1890,9 @@ fn decode_persistence_profile(
                 ram: decode_ram_payload_kind(cursor)?,
             })
         }
+        PROFILE_PERSISTENT_EEPROM_TAG => Ok(CartridgePersistenceProfile::PersistentEeprom {
+            byte_len: cursor.read_u32()? as usize,
+        }),
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistenceProfileTag { tag }),
     }
 }
@@ -1997,6 +2021,10 @@ fn encode_persistent_state(
             bytes.push(STATE_POCKET_CAMERA_RAM_TAG);
             encode_linear_ram(bytes, ram, "Pocket Camera RAM")?;
         }
+        PersistentCartState::Mbc7Eeprom { eeprom } => {
+            bytes.push(STATE_MBC7_EEPROM_TAG);
+            encode_linear_ram(bytes, eeprom, "MBC7 EEPROM")?;
+        }
     }
     Ok(())
 }
@@ -2094,6 +2122,9 @@ fn decode_persistent_state(
         }
         STATE_POCKET_CAMERA_RAM_TAG => Ok(PersistentCartState::PocketCameraRam {
             ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_MBC7_EEPROM_TAG => Ok(PersistentCartState::Mbc7Eeprom {
+            eeprom: decode_linear_ram(cursor)?,
         }),
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistentStateTag { tag }),
     }
@@ -2842,6 +2873,20 @@ mod tests {
                     ram: vec![0x88, 0x99, 0xAA, 0xBB],
                 },
             },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 20,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: false,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentEeprom { byte_len: 4 },
+                },
+                persistent_state: PersistentCartState::Mbc7Eeprom {
+                    eeprom: vec![0x12, 0x34, 0xAB, 0xCD],
+                },
+            },
         ];
 
         for envelope in profiles_and_states {
@@ -3121,6 +3166,13 @@ mod tests {
                 has_battery: true,
                 has_rtc: false,
                 profile: CartridgePersistenceProfile::None,
+            }
+        ));
+        assert!(uses_battery_backed_hardware_persistence(
+            CartridgePersistenceMetadata {
+                has_battery: false,
+                has_rtc: false,
+                profile: CartridgePersistenceProfile::PersistentEeprom { byte_len: 256 },
             }
         ));
     }
@@ -3777,6 +3829,36 @@ mod tests {
     }
 
     #[test]
+    fn external_save_round_trips_mbc7_raw_eeprom_without_battery_flag() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentEeprom { byte_len: 256 },
+        };
+        let mut eeprom = vec![0xFF; 256];
+        eeprom[0] = 0x12;
+        eeprom[1] = 0x34;
+        eeprom[254] = 0xAB;
+        eeprom[255] = 0xCD;
+        let state = PersistentCartState::Mbc7Eeprom {
+            eeprom: eeprom.clone(),
+        };
+
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_000,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC7 EEPROM should export as a raw .sav payload");
+        assert_eq!(external, eeprom);
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 1_700_000_000)
+            .expect("MBC7 EEPROM should import from raw .sav bytes");
+        assert_eq!(imported, state);
+    }
+
+    #[test]
     fn external_save_rejects_ambiguous_or_invalid_payloads() {
         let linear_metadata = CartridgePersistenceMetadata {
             has_battery: true,
@@ -4119,6 +4201,10 @@ mod tests {
                 "Mbc3RamRtc",
             ),
             (PersistentCartState::Mbc5Ram { ram: vec![] }, "Mbc5Ram"),
+            (
+                PersistentCartState::Mbc7Eeprom { eeprom: vec![] },
+                "Mbc7Eeprom",
+            ),
             (
                 PersistentCartState::PocketCameraRam { ram: vec![] },
                 "PocketCameraRam",

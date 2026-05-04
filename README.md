@@ -15,7 +15,7 @@ A hardware-accuracy-focused Game Boy emulator written in Rust.
 | APU | Shared-timeline four-channel DMG audio core with `DIV-APU` / frame-sequencer timing, channel quirks, HPF, and host-facing sample export. |
 | Joypad / serial | Hardware-owned `JOYP`, `SB`, and `SC` semantics with visible-edge interrupts, bit-shift transfers, and explicit link-endpoint boundaries. |
 | External port | Explicit external-port attachment model with Game Boy Printer protocol, `DMG-04` cable sessions, and `DMG-07` 2/3/4-player adapter topology on the shared T-cycle timeline. |
-| Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3`, `MBC5`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, rumble, and separate host persistence. |
+| Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3`, `MBC5`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, MBC5 rumble, MBC7 accelerometer / EEPROM, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis that keeps first post-boot timer, PPU, and APU behavior coherent. |
 | Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, differential artifact comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |

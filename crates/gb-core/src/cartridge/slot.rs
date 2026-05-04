@@ -1,7 +1,7 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
     validate_huc1, validate_huc3, validate_m161, validate_mbc1, validate_mbc2, validate_mbc3,
-    validate_mbc5, validate_mmm01, validate_no_mbc, validate_pocket_camera,
+    validate_mbc5, validate_mbc7, validate_mmm01, validate_no_mbc, validate_pocket_camera,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -81,6 +81,9 @@ impl CartridgeSlot {
             }
             (Some(CartridgeDevice::Mbc5(current)), Some(CartridgeDeviceSaveState::Mbc5(saved))) => {
                 validate_optional_ram_shape("MBC5 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Mbc7(current)), Some(CartridgeDeviceSaveState::Mbc7(saved))) => {
+                validate_ram_shape("MBC7 EEPROM", &current.eeprom, &saved.eeprom)
             }
             (
                 Some(CartridgeDevice::PocketCamera(current)),
@@ -206,6 +209,22 @@ impl CartridgeSlot {
                 cartridge.rom_bank_high1 = state.rom_bank_high1;
                 cartridge.ram_bank_raw = state.ram_bank_raw;
                 cartridge.rumble_on = state.rumble_on;
+            }
+            (
+                Some(CartridgeDevice::Mbc7(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc7(state)),
+            ) => {
+                cartridge.eeprom.clone_from(&state.eeprom);
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.sensor_eeprom_enabled = state.sensor_eeprom_enabled;
+                cartridge.rom_bank = state.rom_bank;
+                cartridge.accelerometer_input = state.accelerometer_input;
+                cartridge.accelerometer_latch_armed = state.accelerometer_latch_armed;
+                cartridge.latched_x = state.latched_x;
+                cartridge.latched_y = state.latched_y;
+                cartridge.eeprom_pins = state.eeprom_pins;
+                cartridge.eeprom_command = state.eeprom_command;
+                cartridge.eeprom_write_enabled = state.eeprom_write_enabled;
             }
             (
                 Some(CartridgeDevice::PocketCamera(cartridge)),
@@ -535,6 +554,40 @@ impl CartridgeSlot {
                     diagnostics,
                 })
             }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc7) => {
+                validate_mbc7(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc7(Mbc7Cartridge {
+                        rom: rom_bytes,
+                        eeprom: vec![0xFF; MBC7_EEPROM_BYTES],
+                        header,
+                        classification,
+                        ram_enabled: false,
+                        sensor_eeprom_enabled: false,
+                        rom_bank: 1,
+                        accelerometer_input: Mbc7AccelerometerInput::neutral(),
+                        accelerometer_latch_armed: false,
+                        latched_x: MBC7_ACCELEROMETER_UNLATCHED_VALUE,
+                        latched_y: MBC7_ACCELEROMETER_UNLATCHED_VALUE,
+                        eeprom_pins: Mbc7EepromPins::default(),
+                        eeprom_command: Mbc7EepromCommand::Idle,
+                        eeprom_write_enabled: false,
+                    }),
+                    rom_fingerprint,
+                );
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
             CartridgeSelection::Supported(SupportedCartridgeFamily::PocketCamera) => {
                 validate_pocket_camera(
                     &header,
@@ -586,6 +639,7 @@ impl CartridgeSlot {
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,
             Some(CartridgeDevice::Mbc5(_)) => CartridgeSlotState::Mbc5,
+            Some(CartridgeDevice::Mbc7(_)) => CartridgeSlotState::Mbc7,
             Some(CartridgeDevice::PocketCamera(_)) => CartridgeSlotState::PocketCamera,
         }
     }
@@ -726,6 +780,22 @@ impl CartridgeSlot {
             .is_some_and(CartridgeDevice::has_pocket_camera)
     }
 
+    pub fn has_mbc7_accelerometer(&self) -> bool {
+        self.device
+            .as_ref()
+            .is_some_and(CartridgeDevice::has_mbc7_accelerometer)
+    }
+
+    pub fn set_mbc7_accelerometer_input(
+        &mut self,
+        input: Mbc7AccelerometerInput,
+    ) -> Result<(), Mbc7AccelerometerError> {
+        match &mut self.device {
+            Some(device) => device.set_mbc7_accelerometer_input(input),
+            None => Err(Mbc7AccelerometerError::UnsupportedCartridge),
+        }
+    }
+
     pub fn set_pocket_camera_frame(
         &mut self,
         frame: PocketCameraFrame,
@@ -854,6 +924,19 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 rom_bank_high1: cartridge.rom_bank_high1,
                 ram_bank_raw: cartridge.ram_bank_raw,
                 rumble_on: cartridge.rumble_on,
+            }),
+            CartridgeDevice::Mbc7(cartridge) => Self::Mbc7(Mbc7CartridgeSaveState {
+                eeprom: cartridge.eeprom.clone(),
+                ram_enabled: cartridge.ram_enabled,
+                sensor_eeprom_enabled: cartridge.sensor_eeprom_enabled,
+                rom_bank: cartridge.rom_bank,
+                accelerometer_input: cartridge.accelerometer_input,
+                accelerometer_latch_armed: cartridge.accelerometer_latch_armed,
+                latched_x: cartridge.latched_x,
+                latched_y: cartridge.latched_y,
+                eeprom_pins: cartridge.eeprom_pins,
+                eeprom_command: cartridge.eeprom_command,
+                eeprom_write_enabled: cartridge.eeprom_write_enabled,
             }),
             CartridgeDevice::PocketCamera(cartridge) => {
                 Self::PocketCamera(PocketCameraCartridgeSaveState {
