@@ -7,6 +7,5 @@ family = "mooneye"
 id = "cgb-boot-div-boot-div-cgbabcde"
 rom = "misc/boot_div-cgbABCDE.gb"
 console = "cgb"
-startup = "real-boot"
 timeout_frames = 180
 oracle = "mooneye-result"

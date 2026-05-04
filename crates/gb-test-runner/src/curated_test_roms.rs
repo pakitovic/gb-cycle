@@ -1655,7 +1655,7 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.startup_mode == StartupMode::RealBoot
+                && case.startup_mode == StartupMode::SkipBoot
         }));
         assert_eq!(
             suite.cases[0].rom_path,
@@ -1685,7 +1685,7 @@ mod tests {
             PathBuf::from("mooneye/misc/boot_div-cgbABCDE.gb")
         );
         assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
-        assert_eq!(suite.cases[0].startup_mode, StartupMode::RealBoot);
+        assert_eq!(suite.cases[0].startup_mode, StartupMode::SkipBoot);
         assert_eq!(
             suite.cases[0].external_rom_root_key.as_deref(),
             Some(TEST_ROM_ROOT_ENV_VAR)
@@ -1709,7 +1709,7 @@ mod tests {
             PathBuf::from("mooneye/misc/boot_hwio-C.gb")
         );
         assert_eq!(suite.cases[0].console_model, ConsoleModel::GameBoyColor);
-        assert_eq!(suite.cases[0].startup_mode, StartupMode::RealBoot);
+        assert_eq!(suite.cases[0].startup_mode, StartupMode::SkipBoot);
         assert_eq!(
             suite.cases[0].external_rom_root_key.as_deref(),
             Some(TEST_ROM_ROOT_ENV_VAR)

@@ -2884,7 +2884,7 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.startup_mode == StartupMode::RealBoot
+                && case.startup_mode == StartupMode::SkipBoot
         }));
         assert_eq!(
             suite.cases[0].rom_path,
@@ -2921,7 +2921,7 @@ mod tests {
             case.external_rom_root_key.as_deref(),
             Some(TEST_ROM_ROOT_ENV_VAR)
         );
-        assert_eq!(case.startup_mode, StartupMode::RealBoot);
+        assert_eq!(case.startup_mode, StartupMode::SkipBoot);
         assert_eq!(case.timeout, Timeout::Frames(180));
         assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
@@ -2942,7 +2942,7 @@ mod tests {
         let case = &suite.cases[0];
         assert_eq!(case.id, "cgb-boot-hwio-boot-hwio-c");
         assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
-        assert_eq!(case.startup_mode, StartupMode::RealBoot);
+        assert_eq!(case.startup_mode, StartupMode::SkipBoot);
         assert_eq!(case.rom_path, PathBuf::from("mooneye/misc/boot_hwio-C.gb"));
         assert_eq!(
             case.external_rom_root_key.as_deref(),

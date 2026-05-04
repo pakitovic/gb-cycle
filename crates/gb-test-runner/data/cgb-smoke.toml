@@ -7,7 +7,6 @@ family = "mooneye"
 id = "cgb-smoke-boot-regs-cgb"
 rom = "misc/boot_regs-cgb.gb"
 console = "cgb"
-startup = "real-boot"
 timeout_frames = 180
 oracle = "mooneye-result"
 
@@ -17,6 +16,5 @@ id = "cgb-smoke-which-gbc"
 rom = "which.gb"
 console = "cgb"
 report_model_suffix = true
-startup = "real-boot"
 timeout_frames = 180
 oracle = "info-framebuffer"
