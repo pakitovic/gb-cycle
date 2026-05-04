@@ -1887,6 +1887,11 @@ mod tests {
 
         let expected = [
             (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
+            (
                 "cgb-dma-gdma-addr-mask",
                 "samesuite/dma/gdma_addr_mask.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
@@ -1900,11 +1905,6 @@ mod tests {
                 "cgb-dma-hdma-mode0",
                 "samesuite/dma/hdma_mode0.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
-            ),
-            (
-                "cgb-dma-gbc-dma-cont",
-                "samesuite/dma/gbc_dma_cont.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
             ),
         ];
 
@@ -2066,12 +2066,12 @@ mod tests {
         );
 
         let last = suite.cases.last().expect("suite should have cases");
-        assert_eq!(last.id, "cgb-audio-samesuite-channel-2-nrx2-speed-change");
+        assert_eq!(last.id, "cgb-audio-samesuite-div-write-trigger-volume-10");
         assert_eq!(
             last.rom_path,
-            PathBuf::from("samesuite/apu/channel_2/channel_2_nrx2_speed_change.gb")
+            PathBuf::from("samesuite/apu/div_write_trigger_volume_10.gb")
         );
-        assert_eq!(last.timeout, Timeout::Frames(420));
+        assert_eq!(last.timeout, Timeout::Frames(180));
 
         for case in &suite.cases {
             assert_eq!(case.console_model, ConsoleModel::GameBoyColor);

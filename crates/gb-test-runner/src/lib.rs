@@ -3158,6 +3158,11 @@ mod tests {
 
         let expected = [
             (
+                "cgb-dma-gbc-dma-cont",
+                "samesuite/dma/gbc_dma_cont.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
+            ),
+            (
                 "cgb-dma-gdma-addr-mask",
                 "samesuite/dma/gdma_addr_mask.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/dma/gdma_addr_mask.png",
@@ -3171,11 +3176,6 @@ mod tests {
                 "cgb-dma-hdma-mode0",
                 "samesuite/dma/hdma_mode0.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/dma/hdma_mode0.png",
-            ),
-            (
-                "cgb-dma-gbc-dma-cont",
-                "samesuite/dma/gbc_dma_cont.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/dma/gbc_dma_cont.png",
             ),
         ];
 
@@ -3354,7 +3354,7 @@ mod tests {
         }
 
         assert_eq!(
-            suite.cases[40].rom_path,
+            suite.cases[57].rom_path,
             PathBuf::from("samesuite/apu/div_write_trigger.gb")
         );
         assert!(
