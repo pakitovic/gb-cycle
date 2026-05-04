@@ -48,6 +48,61 @@ fn step_until_visible_pixels_output_on_line(
     }
 }
 
+fn cgb_native_machine() -> Machine {
+    let mut rom = build_test_rom(&[0x18, 0xFE], 0x00);
+    rom[0x0143] = 0x80;
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_operating_mode(OperatingMode::Cgb)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("CGB native test ROM should load");
+    machine
+}
+
+fn step_until_drawing_cpu_visible(machine: &mut Machine) {
+    let mut stepped_t_cycles = 0u32;
+    loop {
+        let snapshot = machine.ppu().snapshot();
+        if snapshot.mode == PpuAccessMode::Drawing && snapshot.line_dot >= 82 {
+            return;
+        }
+
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        assert!(
+            stepped_t_cycles < 2_000,
+            "did not reach CPU-visible Mode 3 in time; last snapshot={:?}",
+            machine.ppu().snapshot()
+        );
+    }
+}
+
+fn step_until_hblank_cpu_visible(machine: &mut Machine) {
+    let mut stepped_t_cycles = 0u32;
+    loop {
+        let snapshot = machine.ppu().snapshot();
+        if snapshot.mode == PpuAccessMode::HBlank && snapshot.line_dot > snapshot.mode0_start_dot {
+            return;
+        }
+
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        assert!(
+            stepped_t_cycles < 2_000,
+            "did not reach CPU-visible HBlank in time; last snapshot={:?}",
+            machine.ppu().snapshot()
+        );
+    }
+}
+
+fn write_cgb_vram_bank(machine: &mut Machine, bank: u8, address: u16, value: u8) {
+    machine.write_bus(0xFF4F, bank);
+    machine.write_bus(address, value);
+}
+
 fn run_live_bgp_write_prefix(config: MachineConfig) -> (Vec<u8>, Vec<u8>) {
     let mut machine = Machine::new(config);
     machine.write_bus(0xFF40, 0x91);
@@ -66,6 +121,164 @@ fn run_live_bgp_write_prefix(config: MachineConfig) -> (Vec<u8>, Vec<u8>) {
     machine.write_bus(0xFF47, 0x12);
     let after = machine.ppu().framebuffer()[..8].to_vec();
     (before, after)
+}
+
+#[test]
+fn cgb_palette_data_ports_block_only_data_during_cpu_visible_mode3() {
+    let mut machine = cgb_native_machine();
+
+    machine.write_bus(0xFF68, 0x82);
+    machine.write_bus(0xFF69, 0x56);
+    machine.write_bus(0xFF68, 0x82);
+    assert_eq!(machine.read_bus(0xFF69), 0x56);
+
+    machine.write_bus(0xFF6A, 0x80);
+    machine.write_bus(0xFF6B, 0x34);
+    machine.write_bus(0xFF6A, 0x80);
+    assert_eq!(machine.read_bus(0xFF6B), 0x34);
+
+    step_until_drawing_cpu_visible(&mut machine);
+    let drawing = machine.ppu().snapshot();
+    assert_eq!(drawing.mode, PpuAccessMode::Drawing);
+
+    assert_eq!(machine.read_bus(0xFF69), 0xFF);
+    assert_eq!(machine.read_bus(0xFF6B), 0xFF);
+
+    machine.write_bus(0xFF69, 0xA5);
+    assert_eq!(
+        machine.read_bus(0xFF68),
+        0xC3,
+        "blocked BCPD writes must still honor BCPS auto-increment"
+    );
+    machine.write_bus(0xFF6B, 0xB6);
+    assert_eq!(
+        machine.read_bus(0xFF6A),
+        0xC1,
+        "blocked OCPD writes must still honor OCPS auto-increment"
+    );
+
+    machine.write_bus(0xFF68, 0x04);
+    assert_eq!(
+        machine.read_bus(0xFF68),
+        0x44,
+        "BCPS index writes must not be blocked by Mode 3 palette-data rules"
+    );
+    machine.write_bus(0xFF69, 0xC7);
+    assert_eq!(
+        machine.read_bus(0xFF68),
+        0x44,
+        "blocked data writes without auto-increment must not move the index"
+    );
+
+    step_until_hblank_cpu_visible(&mut machine);
+    machine.write_bus(0xFF68, 0x82);
+    assert_eq!(
+        machine.read_bus(0xFF69),
+        0x56,
+        "Mode 3 BCPD write must not change palette RAM"
+    );
+    machine.write_bus(0xFF6A, 0x80);
+    assert_eq!(
+        machine.read_bus(0xFF6B),
+        0x34,
+        "Mode 3 OCPD write must not change palette RAM"
+    );
+
+    machine.write_bus(0xFF68, 0x04);
+    machine.write_bus(0xFF69, 0x9A);
+    machine.write_bus(0xFF68, 0x04);
+    assert_eq!(
+        machine.read_bus(0xFF69),
+        0x9A,
+        "palette data writes outside Mode 3 remain visible"
+    );
+}
+
+#[test]
+fn cgb_cpu_vram_access_tracks_the_mode3_seam_and_retains_failed_writes() {
+    let mut machine = cgb_native_machine();
+    machine.write_bus(0x8000, 0x12);
+
+    machine.step_t_cycle();
+    assert_eq!(machine.ppu().snapshot().mode, PpuAccessMode::OamScan);
+    assert_eq!(machine.read_bus(0x8000), 0x12);
+    machine.write_bus(0x8000, 0x34);
+    assert_eq!(machine.read_bus(0x8000), 0x34);
+
+    step_until_drawing_cpu_visible(&mut machine);
+    assert_eq!(
+        machine.read_bus(0x8000),
+        0xFF,
+        "CPU VRAM reads must be blocked while Mode 3 is CPU-visible"
+    );
+    machine.write_bus(0x8000, 0x56);
+
+    step_until_hblank(&mut machine);
+    assert_eq!(
+        machine.read_bus(0x8000),
+        0x34,
+        "CPU VRAM writes attempted during Mode 3 must be ignored"
+    );
+    machine.write_bus(0x8000, 0x78);
+    assert_eq!(machine.read_bus(0x8000), 0x78);
+}
+
+#[test]
+fn cgb_bg_fetch_latches_bank1_attributes_and_ignores_cpu_vbk_for_ppu_reads() {
+    let mut machine = cgb_native_machine();
+    machine.write_bus(0xFF40, 0x00);
+
+    write_cgb_vram_bank(&mut machine, 0, 0x9800, 0x02);
+    write_cgb_vram_bank(&mut machine, 0, 0x8020, 0x00);
+    write_cgb_vram_bank(&mut machine, 0, 0x8021, 0x00);
+    write_cgb_vram_bank(&mut machine, 1, 0x9800, 0x09);
+    write_cgb_vram_bank(&mut machine, 1, 0x8020, 0xF0);
+    write_cgb_vram_bank(&mut machine, 1, 0x8021, 0x00);
+    assert_eq!(machine.debug_vram_bytes()[0x1800], 0x02);
+    assert_eq!(machine.debug_vram_bytes()[0x2000 + 0x1800], 0x09);
+    assert_eq!(machine.debug_vram_bytes()[0x2000 + 0x0020], 0xF0);
+
+    machine.write_bus(0xFF4F, 0x01);
+    machine.write_bus(0xFF42, 0x00);
+    machine.write_bus(0xFF43, 0x00);
+    machine.write_bus(0xFF40, 0x91);
+
+    let mut stepped_t_cycles = 0u32;
+    let latched = loop {
+        let snapshot = machine.ppu().snapshot();
+        if let Some(pixel) = snapshot
+            .bg_fifo_cached_pixels
+            .iter()
+            .flatten()
+            .copied()
+            .find(|pixel| pixel.cgb_bg_attrs == Some(0x09))
+        {
+            break pixel;
+        }
+
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        assert!(
+            stepped_t_cycles < 2_000,
+            "did not observe first CGB BG cached slice; last snapshot={:?}",
+            machine.ppu().snapshot()
+        );
+    };
+
+    assert_eq!(
+        latched.tile_map_address, 0x1800,
+        "the first CGB BG tile-map fetch should use the 9800h map offset"
+    );
+    assert_eq!(
+        latched.tile_index, 0x02,
+        "PPU BG tile-number fetch must use VRAM bank 0 even while CPU VBK selects bank 1"
+    );
+    assert_eq!(
+        latched.cgb_bg_attrs,
+        Some(0x09),
+        "PPU BG fetch must latch the raw attributes from VRAM bank 1"
+    );
+    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
 }
 
 #[test]

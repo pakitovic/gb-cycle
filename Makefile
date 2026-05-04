@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -36,6 +36,7 @@ help:
 	@echo "  make run-cgb-boot-hwio    Fetch and run the exploratory CGB boot HWIO suite"
 	@echo "  make run-cgb-speed        Fetch and run the curated CGB KEY1/speed suite"
 	@echo "  make run-cgb-ppu-basic    Fetch and run the curated CGB PPU baseline suite"
+	@echo "  make run-cgb-ppu-hard     Fetch and run the curated hard CGB PPU suite"
 	@echo "  make run-cgb-dma          Fetch and run the curated CGB DMA/GDMA/HDMA suite"
 	@echo "  make run-cgb-audio-blargg Fetch and run the curated CGB Blargg sound suite"
 	@echo "  make run-cgb-audio-samesuite Fetch and run the exploratory CGB SameSuite APU suite"
@@ -107,6 +108,7 @@ test-roms-cgb:
 	$(MAKE) run-cgb-boot-hwio
 	$(MAKE) run-cgb-speed
 	$(MAKE) run-cgb-ppu-basic
+	$(MAKE) run-cgb-ppu-hard
 	$(MAKE) run-cgb-dma
 	$(MAKE) run-cgb-audio-blargg
 	$(MAKE) run-cgb-audio-samesuite
@@ -118,6 +120,7 @@ test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-speed
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-basic
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-hard
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-dma
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-blargg
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-samesuite
@@ -204,6 +207,10 @@ run-cgb-speed:
 run-cgb-ppu-basic:
 	$(MAKE) fetch-test-roms FAMILIES="samesuite daid acid hacktix"
 	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
+
+run-cgb-ppu-hard:
+	$(MAKE) fetch-test-roms FAMILIES=acid
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-hard --failure-artifact-root .artifacts/cgb-ppu-hard
 
 run-cgb-dma:
 	$(MAKE) fetch-test-roms FAMILIES=samesuite

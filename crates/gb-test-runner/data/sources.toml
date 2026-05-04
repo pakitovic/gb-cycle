@@ -236,6 +236,14 @@ path = "testroms/acid/cgb-acid2.png"
 sha256 = "38cd6e43c30c0e6d0bd078ffaa57015e03bee185c0ee588f042745ab0fcdcca8"
 
 [[source.required_file]]
+path = "testroms/acid/cgb-acid-hell.gbc"
+sha256 = "3dc6d301ec74ccafa972e4e111d78f7b1004791a5bfbede0ee763f364fded21e"
+
+[[source.required_file]]
+path = "testroms/acid/cgb-acid-hell.png"
+sha256 = "fb8bba0a68f6242ef553f975681ad6482badab01cabe0719115d0ff6fd861a3e"
+
+[[source.required_file]]
 path = "testroms/daid/ppu_scanline_bgp.gb"
 sha256 = "3a32e875d4cdc1defd28a601a64a9a3f1f7965a6679a8f16af45781520b57379"
 

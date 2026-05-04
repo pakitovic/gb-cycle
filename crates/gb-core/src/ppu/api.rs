@@ -276,6 +276,7 @@ impl Ppu {
             .apply_window_activation_tilemap_select_latch_to_seam_slices();
         self.apply_dmg_lcdc3_live_bg_tilemap_write(route.write_context);
         self.apply_dmg_lcdc4_live_bg_tiledata_write(route.write_context);
+        self.apply_cgb_lcdc4_same_cycle_tiledata_glitch(route.write_context);
         self.apply_dmg_lcdc0_live_bg_enable_write(route.write_context);
         self.apply_dmg_lcdc1_live_obj_enable_write(route.write_context);
         self.apply_dmg_lcdc2_live_obj_size_write(route.write_context);

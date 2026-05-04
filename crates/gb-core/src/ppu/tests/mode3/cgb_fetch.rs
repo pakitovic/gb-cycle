@@ -40,6 +40,19 @@ fn cgb_bg_fetch_ppu() -> Ppu {
     ppu
 }
 
+fn lcdc4_write_context(previous_lcdc: u8, current_lcdc: u8) -> PpuMode3LiveRegisterWriteContext {
+    PpuMode3LiveRegisterWriteContext::new(
+        PpuVisibleRegisters {
+            lcdc: previous_lcdc,
+            ..PpuVisibleRegisters::default()
+        },
+        PpuVisibleRegisters {
+            lcdc: current_lcdc,
+            ..PpuVisibleRegisters::default()
+        },
+    )
+}
+
 #[test]
 fn cgb_bg_tile_attribute_byte_decodes_all_hardware_fields() {
     let attrs = CgbBgTileAttributes::new(0xFF);
@@ -60,6 +73,65 @@ fn cgb_bg_tile_attribute_byte_decodes_all_hardware_fields() {
         cached.cgb_bg_attrs.map(CgbBgTileAttributes::tile_vram_bank),
         Some(1)
     );
+}
+
+#[test]
+fn cgb_lcdc4_same_cycle_set_glitch_substitutes_tile_index_for_high_plane_push() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.bg_pipeline_state.fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Background,
+        stage: PpuBgFetcherStage::Push,
+        stage_dot: 0,
+        fetch_x: 80,
+        tile_index: 0x55,
+        tile_low: 0x7F,
+        tile_high: 0x5D,
+        ..BgFetcherState::default()
+    };
+    ppu.bg_pipeline_state.push.pending = true;
+    ppu.bg_pipeline_state.push.cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        fetch_x: 80,
+        tile_index: 0x55,
+        tile_low: 0x7F,
+        tile_high: 0x5D,
+        needs_live_tile_data_refetch: true,
+        ..BgCachedSlice::default()
+    };
+
+    ppu.apply_cgb_lcdc4_same_cycle_tiledata_glitch(lcdc4_write_context(
+        LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT,
+        LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+    ));
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x55);
+    assert_eq!(ppu.bg_pipeline_state.push.cached.tile_high, 0x55);
+    assert!(
+        !ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tile_data_refetch
+    );
+}
+
+#[test]
+fn cgb_lcdc4_same_cycle_reset_glitch_substitutes_tile_index_for_low_plane_fetch() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.bg_pipeline_state.fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Background,
+        stage: PpuBgFetcherStage::TileDataLow,
+        stage_dot: 1,
+        tile_index: 0xA6,
+        tile_low: 0x12,
+        ..BgFetcherState::default()
+    };
+
+    ppu.apply_cgb_lcdc4_same_cycle_tiledata_glitch(lcdc4_write_context(
+        LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT,
+    ));
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xA6);
 }
 
 #[test]

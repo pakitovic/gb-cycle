@@ -35,8 +35,8 @@ use framebuffer_oracle::{
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
-    CompatibilityPolicy, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot,
-    ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
+    CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap, CpuExecutionState,
+    CpuSnapshot, ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
     MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 
@@ -48,9 +48,9 @@ pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
     blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite,
     cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-    cgb_ppu_basic_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
-    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
-    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite,
+    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
+    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use determinism::{
@@ -289,6 +289,7 @@ impl ExternalStimulusPlan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExecutionStopCondition {
     MemoryEquals { address: u16, value: u8 },
+    CurrentOpcodeEquals { opcode: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -977,6 +978,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_audio_samesuite_suite(),
         cgb_speed_suite(),
         cgb_ppu_basic_suite(),
+        cgb_ppu_hard_suite(),
         cgb_dma_suite(),
         cgb_rtc_suite(),
     ];
@@ -1724,6 +1726,10 @@ impl RomRunner {
             machine.step_t_cycle();
             rtc_clock.tick_t_cycle(&mut machine);
             executed_t_cycles += 1;
+
+            if stop_condition_satisfied(case.stop_condition, &mut machine) {
+                break;
+            }
 
             serial_bytes.extend(machine.take_serial_output_bytes());
 
@@ -2743,6 +2749,13 @@ fn stop_condition_satisfied(
         Some(ExecutionStopCondition::MemoryEquals { address, value }) => {
             machine.read_bus(address) == value
         }
+        Some(ExecutionStopCondition::CurrentOpcodeEquals { opcode }) => {
+            let snapshot = machine.cpu_snapshot();
+            snapshot.current_opcode == Some(opcode)
+                || snapshot.last_bus_activity.is_some_and(|activity| {
+                    activity.kind == CpuBusAccessKind::OpcodeFetch && activity.value == opcode
+                })
+        }
         None => false,
     }
 }
@@ -2760,16 +2773,17 @@ mod tests {
     use super::{
         BOOT_ROM_ROOT_ENV_VAR, BootRomAssets, BootRomVerificationIssue, BootRomVerificationMode,
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, CaseEvaluationInputs,
-        DMG_FAMILY_FRAME_T_CYCLES, DeterministicMbc3RtcClock, FailureArtifactPolicy,
-        INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
-        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
-        RomExecutionError, RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR,
-        TestSubsystem, Timeout, artifact_file_name, blargg_console_text_complete,
-        blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite, budget_exhausted,
-        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
-        cgb_audio_blargg_suite, cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
-        cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
-        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        DMG_FAMILY_FRAME_T_CYCLES, DeterministicMbc3RtcClock, ExecutionStopCondition,
+        FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
+        MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
+        RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
+        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
+        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
+        capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
+        early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output,
@@ -3095,6 +3109,42 @@ mod tests {
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+    }
+
+    #[test]
+    fn cgb_ppu_hard_suite_promotes_cgb_acid_hell_as_blocking_framebuffer_oracle() {
+        let suite = cgb_ppu_hard_suite();
+
+        assert_eq!(suite.name, "cgb-ppu-hard");
+        assert_eq!(suite.family.as_deref(), Some("acid"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cgb-ppu-hard-cgb-acid-hell");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(case.rom_path, PathBuf::from("acid/cgb-acid-hell.gbc"));
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferRgb555Fixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
+            ))
+        );
+        assert_eq!(
+            case.stop_condition,
+            Some(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 })
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        assert!(built_in_rom_suite_by_name("cgb-ppu-hard").is_some());
     }
 
     #[test]
@@ -4606,6 +4656,35 @@ mod tests {
         assert!(!case_dir.join("framebuffer_rgb555.png").exists());
 
         fs::remove_dir_all(artifact_root).expect("artifact root should be removable");
+    }
+
+    #[test]
+    fn current_opcode_stop_condition_breaks_on_single_cycle_sentinels() {
+        let workspace = unique_temp_dir("opcode-stop");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        let rom_path = workspace.join("opcode-stop.gb");
+        fs::write(&rom_path, build_test_rom(&[0x40, 0x18, 0xFE]))
+            .expect("test ROM should be writable");
+
+        let case = RomTestCase::new(
+            "opcode-stop",
+            &rom_path,
+            Timeout::TCycles(64),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        )
+        .with_stop_condition(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 });
+
+        let report = RomRunner::new()
+            .run_case(&case)
+            .expect("opcode-stop ROM should run");
+        assert_eq!(report.outcome, RomCaseOutcome::Informational);
+        assert!(
+            report.executed_t_cycles < 64,
+            "the opcode sentinel should stop before timeout, got {} T-cycles",
+            report.executed_t_cycles
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
     }
 
     #[test]

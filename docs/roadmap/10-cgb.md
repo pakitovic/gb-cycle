@@ -150,7 +150,7 @@ This table defines the default acceptance channel and retained artifacts expecte
 | `cgb-audio-blargg` | ROM text/serial/screen status as declared in the manifest | Serial/text capture or framebuffer capture, APU register snapshot, and channel/mixer trace on failure |
 | `cgb-audio-samesuite` | PCM register stream or runner-defined SameSuite status | `PCM12`/`PCM34` stream, APU event trace, channel state snapshots, speed-domain snapshot, and final runner status |
 | `cgb-rtc` | Blocking RGB555 framebuffer fixture plus RTC state snapshot | RGB555 framebuffer PNG, MBC3 RTC register snapshot, latched/unlatched state, deterministic injected time source, and persistence artifact when relevant |
-| `cgb-ppu-hard` | Framebuffer/screenshot differential oracle | PNG or framebuffer hash, SameBoy/differential artifact when available, PPU mode/fetcher trace, and mid-scanline MMIO trace on failure |
+| `cgb-ppu-hard` | Blocking RGB555 framebuffer fixture; SameBoy differential only when a stable comparable oracle exists | PNG or framebuffer hash, PPU mode/fetcher trace, mid-scanline MMIO trace, and optional SameBoy/differential artifact when available |
 
 ### CGB framebuffer oracle color policy
 
@@ -356,6 +356,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - CGB final gate: `cgb-ppu-hard` through `make run-cgb-ppu-hard`.
 - Promote this gate only after `cgb-ppu-basic`, `cgb-dma`, CGB boot, and CGB timer/serial/audio baseline gates are already green.
 - Regression gate: DMG `167/167` plus SameBoy framebuffer differential when a stable comparable oracle exists.
+- Status note: Slice `9` adds focused internal native-CGB probes for palette data-port Mode `3` blocking, blocked-write auto-increment, CPU VRAM Mode `2`/`3`/`0` seam visibility, BG/window bank-`1` attribute and tile-data-bank latching, CPU-visible `VBK` independence from already-latched PPU fetches, HDMA active-block video-bus conflict ordering, and the narrow CGB-family `LCDC.4` same-T-cycle tile-data seam where the tile-number byte substitutes for the affected bitplane byte. It also promotes the manifest-backed `cgb-ppu-hard` suite with Acid `cgb-acid-hell.gbc`, a pinned RGB555 PNG fixture, `LD B,B` terminal-opcode stop metadata, `make run-cgb-ppu-hard`, and aggregate integration into `make test-roms-cgb` plus the asset-gated `make test-roms-cgb-real-boot` lane; closure remains a microtiming fix, not a framebuffer-only visual patch.
 
 ## Post-Slice 10 — Out-of-scope CGB infrared expansion
 
