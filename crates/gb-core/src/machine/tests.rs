@@ -1486,7 +1486,7 @@ fn nr52_power_on_while_div_apu_signal_is_high_skips_the_first_div_write_length_c
     machine.write_bus(0xFF26, 0x00);
     machine.write_bus(0xFF26, 0x80);
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x07);
 
     machine.write_bus(0xFF13, 0xFF);
     machine.write_bus(0xFF11, 0xBF);

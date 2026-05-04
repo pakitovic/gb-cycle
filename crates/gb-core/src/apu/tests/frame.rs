@@ -103,7 +103,7 @@ fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
 }
 
 #[test]
-fn powering_on_while_div_apu_signal_is_high_starts_after_the_skipped_event() {
+fn powering_on_while_div_apu_signal_is_high_starts_on_the_high_half_phase() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
 
     apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
@@ -113,8 +113,9 @@ fn powering_on_while_div_apu_signal_is_high_starts_after_the_skipped_event() {
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
 
-    assert_eq!(apu.snapshot().div_apu, 0x02);
+    assert_eq!(apu.snapshot().div_apu, 0x00);
     assert_eq!(apu.frame_sequencer.length_clock_count, 0);
+    assert_eq!(apu.frame_sequencer.envelope_clock_count, 1);
 }
 
 #[test]
