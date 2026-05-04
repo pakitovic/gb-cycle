@@ -281,6 +281,102 @@ fn mbc3_halt_and_carry_behavior_follow_the_live_rtc_rules() {
 }
 
 #[test]
+fn mbc3_rtc_subsecond_phase_resets_only_on_seconds_writes() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.advance_rtc_clock_ticks(MBC3_RTC_CLOCK_TICKS_PER_SECOND - 100);
+
+    cartridge.write_rom(0x4000, 0x09);
+    cartridge.write_ram(0xA000, 0x22);
+    cartridge.advance_rtc_clock_ticks(99);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+    cartridge.advance_rtc_clock_ticks(1);
+    assert_eq!(cartridge.rtc_live.seconds, 1);
+
+    cartridge.advance_rtc_clock_ticks(MBC3_RTC_CLOCK_TICKS_PER_SECOND - 100);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram(0xA000, 0x20);
+    cartridge.advance_rtc_clock_ticks(MBC3_RTC_CLOCK_TICKS_PER_SECOND - 1);
+    assert_eq!(cartridge.rtc_live.seconds, 0x20);
+    cartridge.advance_rtc_clock_ticks(1);
+    assert_eq!(cartridge.rtc_live.seconds, 0x21);
+}
+
+#[test]
+fn mbc3_rtc_halt_preserves_subsecond_phase_until_resume() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.advance_rtc_clock_ticks(MBC3_RTC_CLOCK_TICKS_PER_SECOND - 100);
+
+    cartridge.write_rom(0x4000, 0x0C);
+    cartridge.write_ram(0xA000, 0x40);
+    cartridge.advance_rtc_clock_ticks(1_000);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+
+    cartridge.write_ram(0xA000, 0x00);
+    cartridge.advance_rtc_clock_ticks(99);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+    cartridge.advance_rtc_clock_ticks(1);
+    assert_eq!(cartridge.rtc_live.seconds, 1);
+}
+
+#[test]
+fn mbc3_rtc_invalid_visible_ranges_tick_without_decimal_normalization() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.rtc_live.seconds = 60;
+    cartridge.rtc_live.minutes = 63;
+    cartridge.rtc_live.hours = 28;
+    cartridge.rtc_live.day_counter = 5;
+    cartridge.advance_rtc_seconds(1);
+    assert_eq!(cartridge.rtc_live.seconds, 61);
+    assert_eq!(cartridge.rtc_live.minutes, 63);
+    assert_eq!(cartridge.rtc_live.hours, 28);
+    assert_eq!(cartridge.rtc_live.day_counter, 5);
+
+    cartridge.rtc_live.seconds = 63;
+    cartridge.rtc_live.minutes = 10;
+    cartridge.advance_rtc_seconds(1);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+    assert_eq!(cartridge.rtc_live.minutes, 10);
+
+    cartridge.rtc_live.seconds = 59;
+    cartridge.rtc_live.minutes = 63;
+    cartridge.rtc_live.hours = 10;
+    cartridge.advance_rtc_seconds(1);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+    assert_eq!(cartridge.rtc_live.minutes, 0);
+    assert_eq!(cartridge.rtc_live.hours, 10);
+
+    cartridge.rtc_live.seconds = 59;
+    cartridge.rtc_live.minutes = 59;
+    cartridge.rtc_live.hours = 31;
+    cartridge.rtc_live.day_counter = 7;
+    cartridge.advance_rtc_seconds(1);
+    assert_eq!(cartridge.rtc_live.seconds, 0);
+    assert_eq!(cartridge.rtc_live.minutes, 0);
+    assert_eq!(cartridge.rtc_live.hours, 0);
+    assert_eq!(cartridge.rtc_live.day_counter, 7);
+}
+
+#[test]
 fn mbc3_persistent_rtc_elapsed_seconds_follow_the_live_rules() {
     let mut rtc = Mbc3RtcPersistentState {
         seconds: 59,

@@ -711,6 +711,10 @@ pub fn cgb_dma_suite() -> RomSuite {
     manifest_suite_by_name("cgb-dma")
 }
 
+pub fn cgb_rtc_suite() -> RomSuite {
+    manifest_suite_by_name("cgb-rtc")
+}
+
 pub fn cgb_speed_suite() -> RomSuite {
     manifest_suite_by_name("cgb-speed")
 }
@@ -741,7 +745,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 15] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 16] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -770,6 +774,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 15] {
         (
             "crates/gb-test-runner/data/cgb-ppu-basic.toml",
             include_str!("../data/cgb-ppu-basic.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cgb-rtc.toml",
+            include_str!("../data/cgb-rtc.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-dma.toml",
@@ -874,6 +882,7 @@ fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem
         "Ppu" => TestSubsystem::Ppu,
         "Dma" => TestSubsystem::Dma,
         "Apu" => TestSubsystem::Apu,
+        "Cartridge" => TestSubsystem::Cartridge,
         "CrossSubsystem" => TestSubsystem::CrossSubsystem,
         other => panic!("unsupported subsystem {other:?} in {source_path}"),
     }
@@ -1416,7 +1425,7 @@ mod tests {
         TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME, blargg_dmg_curated_suite,
         blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
         capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite,
         cgb_smoke_suite, copy_curated_rom, curated_test_rom_families,
         curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
@@ -1851,6 +1860,52 @@ mod tests {
     }
 
     #[test]
+    fn cgb_rtc_suite_promotes_slice8_ax6_rows_to_blocking_oracles() {
+        let suite = cgb_rtc_suite();
+
+        assert_eq!(suite.name, "cgb-rtc");
+        assert_eq!(suite.family.as_deref(), Some("cgb-rtc"));
+        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+        assert_eq!(suite.cases.len(), 3);
+
+        let expected = [
+            (
+                "cgb-rtc-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                Timeout::Frames(1140),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.png",
+            ),
+            (
+                "cgb-rtc-rtc3test-2",
+                "ax6/rtc3test-2.gb",
+                Timeout::Frames(900),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.png",
+            ),
+            (
+                "cgb-rtc-rtc3test-3",
+                "ax6/rtc3test-3.gb",
+                Timeout::Frames(2400),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, timeout, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(case.timeout, timeout);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
+            );
+        }
+    }
+
+    #[test]
     fn cgb_audio_blargg_suite_tracks_the_full_cgb_sound_lane() {
         let suite = cgb_audio_blargg_suite();
 
@@ -2254,6 +2309,7 @@ mod tests {
             curated_test_rom_families(),
             vec![
                 "acid".to_string(),
+                "ax6".to_string(),
                 "blargg".to_string(),
                 "cpp".to_string(),
                 "daid".to_string(),

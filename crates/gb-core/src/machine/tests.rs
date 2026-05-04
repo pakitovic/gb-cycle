@@ -1204,6 +1204,74 @@ fn cgb_hdma_uses_live_mbc5_sram_bank_mapping_between_blocks() {
 }
 
 #[test]
+fn cgb_model_keeps_existing_mappers_owned_by_cartridge() {
+    let mut mbc1 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    mbc1.load_cartridge(build_cgb_banked_test_rom(&[0x00; 16], 0x03, 0x01, 0x02))
+        .expect("CGB MBC1 cartridge should load");
+    assert_eq!(mbc1.cartridge().snapshot().state, CartridgeSlotState::Mbc1);
+    assert_eq!(mbc1.read_bus(0x4000), 0x01);
+    mbc1.write_bus(0x2000, 0x02);
+    assert_eq!(mbc1.read_bus(0x4000), 0x02);
+    mbc1.write_bus(0x0000, 0x0A);
+    mbc1.write_bus(0xA000, 0x5A);
+    assert_eq!(mbc1.read_bus(0xA000), 0x5A);
+
+    let mut mbc2 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    mbc2.load_cartridge(build_cgb_banked_test_rom(&[0x00; 16], 0x06, 0x01, 0x00))
+        .expect("CGB MBC2 cartridge should load");
+    assert_eq!(mbc2.cartridge().snapshot().state, CartridgeSlotState::Mbc2);
+    mbc2.write_bus(0x2100, 0x03);
+    assert_eq!(mbc2.read_bus(0x4000), 0x03);
+    mbc2.write_bus(0x0000, 0x0A);
+    mbc2.write_bus(0xA123, 0xAB);
+    assert_eq!(mbc2.read_bus(0xA123) & 0x0F, 0x0B);
+
+    let mut mbc3 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    mbc3.load_cartridge(build_cgb_banked_test_rom(&[0x00; 16], 0x10, 0x01, 0x03))
+        .expect("CGB MBC3 cartridge should load");
+    assert_eq!(mbc3.cartridge().snapshot().state, CartridgeSlotState::Mbc3);
+    mbc3.write_bus(0x2000, 0x02);
+    assert_eq!(mbc3.read_bus(0x4000), 0x02);
+    mbc3.write_bus(0x0000, 0x0A);
+    mbc3.write_bus(0x4000, 0x00);
+    mbc3.write_bus(0xA000, 0x6C);
+    assert_eq!(mbc3.read_bus(0xA000), 0x6C);
+    mbc3.write_bus(0x4000, 0x08);
+    mbc3.write_bus(0xA000, 0x10);
+    mbc3.write_bus(0x6000, 0x00);
+    mbc3.write_bus(0x6000, 0x01);
+    assert_eq!(mbc3.read_bus(0xA000), 0x10);
+    mbc3.advance_mbc3_cartridge_rtc_clock_ticks(32_768);
+    mbc3.write_bus(0x6000, 0x00);
+    mbc3.write_bus(0x6000, 0x01);
+    assert_eq!(mbc3.read_bus(0xA000), 0x11);
+
+    let mut mbc5 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    mbc5.load_cartridge(build_cgb_banked_test_rom(&[0x00; 16], 0x1B, 0x01, 0x03))
+        .expect("CGB MBC5 cartridge should load");
+    assert_eq!(mbc5.cartridge().snapshot().state, CartridgeSlotState::Mbc5);
+    mbc5.write_bus(0x2000, 0x03);
+    mbc5.write_bus(0x3000, 0x00);
+    assert_eq!(mbc5.read_bus(0x4000), 0x03);
+    mbc5.write_bus(0x0000, 0x0A);
+    mbc5.write_bus(0x4000, 0x00);
+    mbc5.write_bus(0xA000, 0x21);
+    mbc5.write_bus(0x4000, 0x01);
+    mbc5.write_bus(0xA000, 0x43);
+    assert_eq!(mbc5.read_bus(0xA000), 0x43);
+    mbc5.write_bus(0x4000, 0x00);
+    assert_eq!(mbc5.read_bus(0xA000), 0x21);
+}
+
+#[test]
 fn cgb_hdma_uses_live_destination_vbk_between_blocks() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),

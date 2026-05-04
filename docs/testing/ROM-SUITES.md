@@ -20,6 +20,7 @@ make fetch-test-roms FAMILIES="blargg acid"
 
 ```text
 /.roms/test/acid/
+/.roms/test/ax6/
 /.roms/test/blargg/
 /.roms/test/daid/
 /.roms/test/hacktix/
@@ -54,6 +55,10 @@ make run-cgb-boot-div  # manifest-backed Phase 10 CGB boot DIV suite
 make run-cgb-boot-hwio # exploratory/internal Phase 10 CGB boot HWIO suite
 make run-cgb-speed     # manifest-backed Phase 10 CGB KEY1/speed suite
 make run-cgb-ppu-basic # manifest-backed Phase 10 CGB PPU baseline suite
+make run-cgb-dma       # manifest-backed Phase 10 CGB DMA suite
+make run-cgb-audio-blargg # manifest-backed Phase 10 CGB Blargg audio suite
+make run-cgb-audio-samesuite # manifest-backed Phase 10 CGB SameSuite audio suite
+make run-cgb-rtc       # manifest-backed Phase 10 CGB MBC3 RTC suite
 make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
 make phase9-determinism-local # replay/save-load sample across CPU/interrupts, Mooneye Timer/DMA, Acid/Mealybug PPU, cartridge, and one APU Blargg case
 make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
@@ -158,6 +163,7 @@ make run-cgb-ppu-basic
 make run-cgb-dma
 make run-cgb-audio-blargg
 make run-cgb-audio-samesuite
+make run-cgb-rtc
 make test-roms-cgb-real-boot
 ```
 
@@ -172,6 +178,7 @@ make test-roms-cgb-real-boot
 - `cgb-audio-blargg` is the Phase `10` Slice `7` CGB audio baseline suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-audio-blargg.toml`, and `make run-cgb-audio-blargg` fetches `blargg` before invoking `run_rom_suite`.
 - `cgb-audio-blargg` contains the twelve upstream Blargg `cgb_sound` individual ROMs `01-registers.gb` through `12-wave.gb`, runs each on `ConsoleModel::GameBoyColor`, uses `blargg-memory-text-contains` with expected text `Passed`, retains memory-text plus snapshot failure artifacts, and is the first CGB audio ROM gate before promoting deeper SameSuite APU rows.
 - `cgb-audio-samesuite` is the Phase `10` Slice `7` advanced CGB APU suite; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-audio-samesuite.toml`, and `make run-cgb-audio-samesuite` fetches `samesuite` before invoking `run_rom_suite` with retained RGB555 framebuffer and snapshot artifacts. The manifest tracks all `61` SameSuite APU rows in roadmap coarse-to-fine order, and the now-green target is part of both `make test-roms-cgb` and the local boot-ROM-backed `make test-roms-cgb-real-boot` aggregate.
+- `cgb-rtc` is the Phase `10` Slice `8` CGB MBC3 RTC suite; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-rtc.toml`, and `make run-cgb-rtc` fetches `ax6` before invoking `run_rom_suite` with retained RGB555 framebuffer and snapshot artifacts. The manifest tracks AX6 `rtc3test-1.gb`, `rtc3test-2.gb`, and `rtc3test-3.gb` on `ConsoleModel::GameBoyColor` with blocking `framebuffer-rgb555-fixture` oracles and frame budgets of `1140`, `900`, and `2400`; the target is part of both `make test-roms-cgb` and the local boot-ROM-backed `make test-roms-cgb-real-boot` aggregate.
 - Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the green CGB suite targets promoted by Phase `10` slices and `make test-roms-cgb-real-boot` reruns that same aggregate through verified CGB RealBoot for local closure evidence.
 
 ## CI integration

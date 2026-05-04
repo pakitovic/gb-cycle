@@ -149,7 +149,7 @@ This table defines the default acceptance channel and retained artifacts expecte
 | `cgb-dma` | DMA trace/snapshot plus ROM-declared visible output when present | DMA register snapshots, transfer trace, bus/CPU blocking trace, VRAM/OAM before-after snapshot, and framebuffer or serial output if emitted |
 | `cgb-audio-blargg` | ROM text/serial/screen status as declared in the manifest | Serial/text capture or framebuffer capture, APU register snapshot, and channel/mixer trace on failure |
 | `cgb-audio-samesuite` | PCM register stream or runner-defined SameSuite status | `PCM12`/`PCM34` stream, APU event trace, channel state snapshots, speed-domain snapshot, and final runner status |
-| `cgb-rtc` | ROM text/serial status plus RTC state snapshot | Text/serial capture, MBC3 RTC register snapshot, latched/unlatched state, injected time source, and persistence artifact when relevant |
+| `cgb-rtc` | Blocking RGB555 framebuffer fixture plus RTC state snapshot | RGB555 framebuffer PNG, MBC3 RTC register snapshot, latched/unlatched state, deterministic injected time source, and persistence artifact when relevant |
 | `cgb-ppu-hard` | Framebuffer/screenshot differential oracle | PNG or framebuffer hash, SameBoy/differential artifact when available, PPU mode/fetcher trace, and mid-scanline MMIO trace on failure |
 
 ### CGB framebuffer oracle color policy
@@ -345,6 +345,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Keep `MBC30`, `MBC6`, and `MBC7` out of functional closure until the base CGB implementation is stable.
 - CGB gate: `cgb-rtc` through `make run-cgb-rtc`.
 - Regression gate: DMG `167/167` plus the current Phase 6 cartridge oracle suite.
+- Status note: Slice `8` adds the manifest-backed `cgb-rtc` suite with AX6 `rtc3test-1.gb`, `rtc3test-2.gb`, and `rtc3test-3.gb`, pinned source/fixture hashes in `sources.toml`, committed RGB555 fixtures, and a standalone `make run-cgb-rtc` target that fetches `ax6`. The core keeps MBC3 RTC subsecond phase explicit, advances it through a deterministic runner-injected `32.768 kHz` clock, preserves Pan Docs `DH.bit6 = 1` halt polarity, keeps reserved selectors `0x04..=0x07`, advisory `rtc_access_ready_at`, the compatibility relatch rule, and MBC30 reservation intact, and adds CGB-mode mapper regressions for MBC1/MBC2/MBC3/MBC5 without adding runtime support for `MBC30`, `MBC6`, or `MBC7`.
 
 ## Slice 9 — CGB PPU hardening closure
 

@@ -85,6 +85,7 @@ const HUC3_DAY_COUNTER_MODULUS: u16 = 0x1000;
 const HUC3_MINUTES_PER_DAY: u16 = 1440;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
+const MBC3_RTC_CLOCK_TICKS_PER_SECOND: u64 = 32_768;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const POCKET_CAMERA_SUPPORTED_ROM_BYTES: usize = 1024 * 1024;
 const POCKET_CAMERA_SUPPORTED_RAM_BYTES: usize = 128 * 1024;
@@ -581,6 +582,8 @@ struct Mbc3Cartridge {
     rtc_latched: Mbc3RtcState,
     rtc_latched_valid: bool,
     rtc_latch_armed: bool,
+    #[serde(default)]
+    rtc_subsecond_ticks: u16,
     rtc_access_ready_at: Option<TCycle>,
 }
 
@@ -910,6 +913,8 @@ struct Mbc3CartridgeSaveState {
     rtc_latched: Mbc3RtcState,
     rtc_latched_valid: bool,
     rtc_latch_armed: bool,
+    #[serde(default)]
+    rtc_subsecond_ticks: u16,
     rtc_access_ready_at: Option<TCycle>,
 }
 

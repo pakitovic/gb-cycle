@@ -960,6 +960,10 @@ pub fn cgb_smoke_suite() -> RomSuite {
     curated_test_roms::cgb_smoke_suite()
 }
 
+pub fn cgb_rtc_suite() -> RomSuite {
+    curated_test_roms::cgb_rtc_suite()
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     let mut suites = vec![
         phase_2_cpu_timing_suite(),
@@ -974,6 +978,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_speed_suite(),
         cgb_ppu_basic_suite(),
         cgb_dma_suite(),
+        cgb_rtc_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
@@ -1346,6 +1351,22 @@ const MOONEYE_PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const MOONEYE_FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
 const MOONEYE_HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
 const REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: u64 = 25_000_000;
+const MBC3_RTC_CLOCK_T_CYCLES: u16 = 128;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct DeterministicMbc3RtcClock {
+    t_cycle_remainder: u16,
+}
+
+impl DeterministicMbc3RtcClock {
+    fn tick_t_cycle(&mut self, machine: &mut RunnerMachine) {
+        self.t_cycle_remainder += 1;
+        if self.t_cycle_remainder == MBC3_RTC_CLOCK_T_CYCLES {
+            self.t_cycle_remainder = 0;
+            machine.advance_mbc3_cartridge_rtc_clock_ticks(1);
+        }
+    }
+}
 
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
@@ -1549,6 +1570,13 @@ impl RunnerMachine {
         }
     }
 
+    fn advance_mbc3_cartridge_rtc_clock_ticks(&mut self, ticks: u64) {
+        match self {
+            Self::Buffered(machine) => machine.advance_mbc3_cartridge_rtc_clock_ticks(ticks),
+            Self::Summary(machine) => machine.advance_mbc3_cartridge_rtc_clock_ticks(ticks),
+        }
+    }
+
     fn apply_timer_startup_state(&mut self, startup_timer_state: TimerStartupState) {
         match self {
             Self::Buffered(machine) => machine.apply_timer_startup_state(startup_timer_state),
@@ -1640,7 +1668,9 @@ impl RomRunner {
                 source,
             }
         })?;
-        let startup_failure = self.advance_real_boot_to_handoff_if_needed(case, &mut machine);
+        let mut rtc_clock = DeterministicMbc3RtcClock::default();
+        let startup_failure =
+            self.advance_real_boot_to_handoff_if_needed(case, &mut machine, &mut rtc_clock);
         if startup_failure.is_none() {
             self.apply_startup_cartridge_state(case, &mut machine);
             self.apply_startup_timer_state(case, &mut machine);
@@ -1672,6 +1702,7 @@ impl RomRunner {
             );
 
             machine.step_t_cycle();
+            rtc_clock.tick_t_cycle(&mut machine);
             executed_t_cycles += 1;
 
             serial_bytes.extend(machine.take_serial_output_bytes());
@@ -1766,6 +1797,7 @@ impl RomRunner {
         &self,
         case: &RomTestCase,
         machine: &mut RunnerMachine,
+        rtc_clock: &mut DeterministicMbc3RtcClock,
     ) -> Option<RomCaseFailure> {
         if case.startup_mode != StartupMode::RealBoot || !machine.boot_rom_mapped() {
             return None;
@@ -1773,6 +1805,7 @@ impl RomRunner {
 
         for _ in 0..REAL_BOOT_HANDOFF_T_CYCLE_LIMIT {
             machine.step_t_cycle();
+            rtc_clock.tick_t_cycle(machine);
 
             if let CpuExecutionState::DiagnosticTrap { trap } = machine.cpu_execution_state() {
                 return Some(RomCaseFailure::CpuDiagnosticTrap { trap });
@@ -2714,7 +2747,7 @@ mod tests {
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
         capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite,
         cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
         external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
         memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
@@ -3094,6 +3127,58 @@ mod tests {
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
+    }
+
+    #[test]
+    fn cgb_rtc_suite_promotes_slice8_ax6_rows_to_blocking_framebuffer_oracles() {
+        let suite = cgb_rtc_suite();
+
+        assert_eq!(suite.name, "cgb-rtc");
+        assert_eq!(suite.family.as_deref(), Some("cgb-rtc"));
+        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+        assert_eq!(suite.cases.len(), 3);
+
+        let expected = [
+            (
+                "cgb-rtc-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                Timeout::Frames(1140),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.png",
+            ),
+            (
+                "cgb-rtc-rtc3test-2",
+                "ax6/rtc3test-2.gb",
+                Timeout::Frames(900),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.png",
+            ),
+            (
+                "cgb-rtc-rtc3test-3",
+                "ax6/rtc3test-3.gb",
+                Timeout::Frames(2400),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, timeout, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, timeout);
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
+            );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+
+        assert!(built_in_rom_suite_by_name("cgb-rtc").is_some());
     }
 
     #[test]

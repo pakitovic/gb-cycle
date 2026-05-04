@@ -440,6 +440,10 @@ impl<S: TraceSink> Machine<S> {
         self.cartridge.advance_rtc_seconds(seconds);
     }
 
+    pub fn advance_mbc3_cartridge_rtc_clock_ticks(&mut self, ticks: u64) {
+        self.cartridge.advance_mbc3_rtc_clock_ticks(ticks);
+    }
+
     pub fn capture_save_state(&self) -> MachineSaveState {
         MachineSaveState::new(
             self.save_state_metadata(),

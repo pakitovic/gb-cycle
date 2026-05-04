@@ -193,6 +193,7 @@ impl CartridgeSlot {
                 cartridge.rtc_latched = state.rtc_latched;
                 cartridge.rtc_latched_valid = state.rtc_latched_valid;
                 cartridge.rtc_latch_armed = state.rtc_latch_armed;
+                cartridge.rtc_subsecond_ticks = state.rtc_subsecond_ticks;
                 cartridge.rtc_access_ready_at = state.rtc_access_ready_at;
             }
             (
@@ -484,6 +485,7 @@ impl CartridgeSlot {
                         rtc_latched: Mbc3RtcState::default(),
                         rtc_latched_valid: false,
                         rtc_latch_armed: false,
+                        rtc_subsecond_ticks: 0,
                         rtc_access_ready_at: None,
                     }),
                     rom_fingerprint,
@@ -747,6 +749,12 @@ impl CartridgeSlot {
         }
     }
 
+    pub(crate) fn advance_mbc3_rtc_clock_ticks(&mut self, ticks: u64) {
+        if let Some(device) = &mut self.device {
+            device.advance_mbc3_rtc_clock_ticks(ticks);
+        }
+    }
+
     pub fn trace_summary(&self) -> String {
         let detail = self
             .device
@@ -836,6 +844,7 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 rtc_latched: cartridge.rtc_latched,
                 rtc_latched_valid: cartridge.rtc_latched_valid,
                 rtc_latch_armed: cartridge.rtc_latch_armed,
+                rtc_subsecond_ticks: cartridge.rtc_subsecond_ticks,
                 rtc_access_ready_at: cartridge.rtc_access_ready_at,
             }),
             CartridgeDevice::Mbc5(cartridge) => Self::Mbc5(Mbc5CartridgeSaveState {
