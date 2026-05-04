@@ -108,6 +108,7 @@ test-roms-cgb:
 	$(MAKE) run-cgb-ppu-basic
 	$(MAKE) run-cgb-dma
 	$(MAKE) run-cgb-audio-blargg
+	$(MAKE) run-cgb-audio-samesuite
 
 test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-smoke
@@ -117,6 +118,7 @@ test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-basic
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-dma
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-blargg
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-samesuite
 
 fetch-test-roms:
 	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
