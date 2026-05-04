@@ -314,6 +314,94 @@ fn cgb_double_speed_active_pulse_retrigger_scales_the_restart_delay_in_cpu_visib
 }
 
 #[test]
+fn cgb_pulse_dac_disable_freezes_the_generation_timer_until_the_next_real_trigger() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFC);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.duty_step = 4;
+    apu.channels.channel_2.pulse.period_timer = 1;
+
+    apu.write_register(0xFF17, 0x00);
+
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
+    assert!(!apu.channels.channel_2.pulse.runtime.dac_enabled);
+    assert!(apu.channels.channel_2.pulse.timer_stopped_by_dac_disable);
+
+    for _ in 0..8 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 1);
+
+    apu.write_register(0xFF17, 0x80);
+
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
+    assert!(apu.channels.channel_2.pulse.runtime.dac_enabled);
+    assert!(apu.channels.channel_2.pulse.timer_stopped_by_dac_disable);
+
+    for _ in 0..8 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 1);
+
+    apu.write_register(0xFF19, 0x87);
+
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert!(!apu.channels.channel_2.pulse.timer_stopped_by_dac_disable);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload_preserving_trigger_phase(0x07FC, 1)
+    );
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 8);
+}
+
+#[test]
+fn save_state_preserves_the_pulse_timer_stopped_by_dac_disable_latch() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFC);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.duty_step = 4;
+    apu.channels.channel_2.pulse.period_timer = 1;
+    apu.write_register(0xFF17, 0x00);
+
+    let mut uninterrupted = apu.clone();
+    let saved = apu.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    restored.restore_save_state(&saved);
+
+    for _ in 0..8 {
+        uninterrupted.channels.channel_2.tick_fast_timer();
+        restored.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert!(
+        restored
+            .channels
+            .channel_2
+            .pulse
+            .timer_stopped_by_dac_disable
+    );
+    assert_eq!(restored.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(restored.channels.channel_2.pulse.period_timer, 1);
+}
+
+#[test]
 fn cgb_double_speed_pulse_generation_timers_tick_on_the_normal_speed_domain() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
@@ -321,6 +409,7 @@ fn cgb_double_speed_pulse_generation_timers_tick_on_the_normal_speed_domain() {
         .channel_2
         .pulse
         .first_trigger_after_power_on_pending = false;
+    apu.channels.channel_2.pulse.timer_stopped_by_dac_disable = false;
     apu.channels.channel_2.pulse.period_timer = 1;
 
     let odd_context = CycleContext::for_cycle(TCycle::new(1));
@@ -1191,7 +1280,7 @@ fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
 }
 
 #[test]
-fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive() {
+fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive_with_dac_enabled() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);

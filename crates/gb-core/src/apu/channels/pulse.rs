@@ -20,6 +20,8 @@ pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) power_on_phase: u8,
     pub(in crate::apu) suppress_initial_trigger_output: bool,
     pub(in crate::apu) trigger_delay_t_cycles: u16,
+    #[serde(default)]
+    pub(in crate::apu) timer_stopped_by_dac_disable: bool,
     pub(in crate::apu) period_timer: u16,
     pub(in crate::apu) length_counter: u8,
     pub(in crate::apu) length_enabled: bool,
@@ -52,6 +54,7 @@ impl PulseChannelState {
         self.power_on_phase = 0;
         self.suppress_initial_trigger_output = false;
         self.trigger_delay_t_cycles = 0;
+        self.timer_stopped_by_dac_disable = !self.runtime.dac_enabled;
     }
 
     pub(in crate::apu) fn runtime_state(&self) -> ChannelRuntimeState {
@@ -84,6 +87,15 @@ impl PulseChannelState {
     ) {
         self.envelope
             .apply_live_write_effect(console_model, self.runtime.active, value);
+    }
+
+    pub(in crate::apu) fn apply_dac_enabled(&mut self, dac_enabled: bool) {
+        if !dac_enabled {
+            self.timer_stopped_by_dac_disable = true;
+            self.trigger_delay_t_cycles = 0;
+        }
+
+        self.runtime.set_dac_enabled(dac_enabled);
     }
 
     pub(in crate::apu) fn apply_length_enable(&mut self, value: u8) {
@@ -122,6 +134,7 @@ impl PulseChannelState {
         self.period_timer = pulse_timer_reload(startup.period_value);
         self.envelope.reload(false);
         self.runtime = startup.runtime;
+        self.timer_stopped_by_dac_disable = !self.runtime.dac_enabled;
         if !self.first_trigger_after_power_on_pending {
             self.power_on_phase = 0;
         }
@@ -186,6 +199,9 @@ impl PulseChannelState {
         if self.runtime.active && !was_active {
             self.suppress_initial_trigger_output = true;
         }
+        if self.runtime.active {
+            self.timer_stopped_by_dac_disable = false;
+        }
         if self.first_trigger_after_power_on_pending {
             self.first_trigger_after_power_on_pending = false;
         }
@@ -209,6 +225,10 @@ impl PulseChannelState {
         }
 
         if !clock_period_timer {
+            return;
+        }
+
+        if self.timer_stopped_by_dac_disable {
             return;
         }
 

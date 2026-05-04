@@ -276,9 +276,7 @@ impl Channel1State {
         self.pulse
             .apply_live_envelope_write_effect(console_model, value);
         self.nr12 = value;
-        self.pulse
-            .runtime
-            .set_dac_enabled(self.derived_dac_enabled());
+        self.pulse.apply_dac_enabled(self.derived_dac_enabled());
     }
 
     fn write_nr13(&mut self, value: u8) {
