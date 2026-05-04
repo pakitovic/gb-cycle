@@ -289,11 +289,13 @@ pub(super) const fn cgb_pulse_inactive_trigger_delay_t_cycles(
     power_on_phase: u8,
 ) -> u16 {
     if console_model.is_cgb_family() && !was_active {
-        let speed_scaled_base = match speed_mode {
+        match speed_mode {
             CgbSpeedMode::Normal => CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES,
-            CgbSpeedMode::Double => CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES * 2,
-        };
-        speed_scaled_base + (power_on_phase & CGB_PULSE_POWER_ON_PHASE_MASK) as u16
+            CgbSpeedMode::Double => {
+                CGB_PULSE_INACTIVE_TRIGGER_DELAY_BASE_T_CYCLES * 2
+                    + (power_on_phase & CGB_PULSE_POWER_ON_PHASE_MASK) as u16
+            }
+        }
     } else {
         0
     }

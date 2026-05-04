@@ -108,7 +108,7 @@ fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_outpu
 }
 
 #[test]
-fn cgb_inactive_pulse_trigger_applies_power_on_phase_delay_before_the_first_duty_step() {
+fn cgb_normal_speed_inactive_pulse_trigger_uses_fixed_startup_delay_before_first_duty_step() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
@@ -123,10 +123,10 @@ fn cgb_inactive_pulse_trigger_applies_power_on_phase_delay_before_the_first_duty
     apu.write_register(0xFF19, 0x87);
 
     assert!(apu.channels.channel_2.pulse.runtime.active);
-    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 12);
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 8);
     assert!(apu.channels.channel_2.pulse.suppress_initial_trigger_output);
 
-    for _ in 0..12 {
+    for _ in 0..8 {
         apu.channels.channel_2.tick_fast_timer();
     }
     assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 0);
@@ -141,7 +141,7 @@ fn cgb_inactive_pulse_trigger_applies_power_on_phase_delay_before_the_first_duty
 }
 
 #[test]
-fn cgb_pulse_power_on_phase_wraps_into_the_inactive_trigger_delay() {
+fn cgb_normal_speed_pulse_power_on_phase_does_not_change_the_fixed_startup_delay() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
@@ -155,7 +155,7 @@ fn cgb_pulse_power_on_phase_wraps_into_the_inactive_trigger_delay() {
 
     apu.write_register(0xFF19, 0x87);
 
-    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 12);
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 8);
 }
 
 #[test]
