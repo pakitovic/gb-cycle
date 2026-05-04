@@ -1,4 +1,5 @@
 use super::*;
+use crate::speed::CgbSpeedMode;
 
 #[test]
 fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
@@ -15,6 +16,52 @@ fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
     assert_eq!(apu.frame_sequencer.length_clock_count, 1);
     assert_eq!(apu.frame_sequencer.sweep_clock_count, 0);
     assert_eq!(apu.frame_sequencer.envelope_clock_count, 0);
+}
+
+#[test]
+fn div_apu_event_fans_out_to_all_channel_length_units() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.apply_startup_state(ApuStartupState {
+        powered: true,
+        nr10: 0x00,
+        nr11: 0x3F,
+        nr12: 0xF0,
+        nr13: 0x00,
+        nr14: LENGTH_ENABLE_BIT,
+        nr21: 0x3F,
+        nr22: 0xF0,
+        nr23: 0x00,
+        nr24: LENGTH_ENABLE_BIT,
+        nr30: NR30_DAC_POWER_BIT,
+        nr31: 0xFF,
+        nr32: 0x20,
+        nr33: 0x00,
+        nr34: LENGTH_ENABLE_BIT,
+        nr41: 0x3F,
+        nr42: 0xF0,
+        nr43: 0x00,
+        nr44: LENGTH_ENABLE_BIT,
+        nr50: 0x00,
+        nr51: 0x00,
+        channel_active_mask: CHANNEL_ACTIVE_MASK,
+        div_apu: 0,
+        wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+    });
+
+    assert_eq!(apu.snapshot().channel_active_mask, CHANNEL_ACTIVE_MASK);
+
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+
+    assert_eq!(apu.frame_sequencer.length_clock_count, 1);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_3.length_counter, 0);
+    assert_eq!(apu.channels.channel_4.length_counter, 0);
+    assert_eq!(
+        apu.snapshot().channel_active_mask,
+        0x00,
+        "one shared DIV->APU frame-sequencer edge must clock CH1/CH2/CH3/CH4 length units without per-channel DIV hooks"
+    );
 }
 
 #[test]
@@ -53,6 +100,67 @@ fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x01);
+}
+
+#[test]
+fn powering_on_while_div_apu_signal_is_high_starts_on_the_high_half_phase() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+
+    apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
+
+    assert!(apu.snapshot().powered);
+    assert_eq!(apu.snapshot().div_apu, POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE);
+
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+
+    assert_eq!(apu.snapshot().div_apu, 0x00);
+    assert_eq!(apu.frame_sequencer.length_clock_count, 0);
+    assert_eq!(apu.frame_sequencer.envelope_clock_count, 1);
+}
+
+#[test]
+fn dmg_power_on_while_div_apu_signal_is_high_still_resets_to_step_zero() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+
+    apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
+
+    assert!(apu.snapshot().powered);
+    assert_eq!(apu.snapshot().div_apu, 0x00);
+
+    tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+
+    assert_eq!(apu.snapshot().div_apu, 0x01);
+    assert_eq!(apu.frame_sequencer.length_clock_count, 1);
+    assert_eq!(apu.frame_sequencer.envelope_clock_count, 0);
+}
+
+#[test]
+fn powered_off_ch4_alignment_uses_the_same_cgb_speed_gate_as_live_fast_timers() {
+    let mut normal = Apu::new(ConsoleModel::GameBoyColor);
+    let mut double = Apu::new(ConsoleModel::GameBoyColor);
+
+    assert!(!normal.snapshot().powered);
+    assert!(!double.snapshot().powered);
+
+    for t_cycle in 0..2 {
+        tick_apu_for_speed(&mut normal, t_cycle, CgbSpeedMode::Normal);
+    }
+    for t_cycle in 0..4 {
+        tick_apu_for_speed(&mut double, t_cycle, CgbSpeedMode::Double);
+    }
+
+    let normal_alignment = normal.channels.channel_4.nr43_live_write.alignment;
+    let normal_subphase = normal.channels.channel_4.nr43_live_write.alignment_subphase;
+
+    assert_eq!(normal_alignment, 1);
+    assert_eq!(
+        double.channels.channel_4.nr43_live_write.alignment,
+        normal_alignment
+    );
+    assert_eq!(
+        double.channels.channel_4.nr43_live_write.alignment_subphase, normal_subphase,
+        "powered-off CH4 alignment must stay in the same undoubled APU wall-clock domain as powered-on fast timers"
+    );
 }
 
 #[test]

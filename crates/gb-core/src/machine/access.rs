@@ -99,6 +99,7 @@ impl<S: TraceSink> Machine<S> {
             &mut self.config,
             &mut self.bus,
             &mut self.ppu,
+            &mut self.serial,
             &mut self.speed,
             &self.boot,
             boot_rom_newly_unmapped,
@@ -186,7 +187,7 @@ impl<S: TraceSink> Machine<S> {
         self.ppu = Ppu::new(console_model);
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
-        self.serial = Serial::new(console_model);
+        self.serial = Serial::new_with_operating_mode(console_model, operating_mode);
         self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
         self.boot =
@@ -218,6 +219,8 @@ impl<S: TraceSink> Machine<S> {
             self.joypad.apply_startup_state(startup_state.joypad);
         }
         self.ppu
+            .apply_operating_mode_state(self.config.operating_mode);
+        self.serial
             .apply_operating_mode_state(self.config.operating_mode);
         self.ppu.apply_cgb_compatibility_palette_startup_state(
             self.config.startup_mode,

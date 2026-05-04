@@ -97,7 +97,7 @@ fn channel_3_output_level_applies_immediate_digital_attenuation_without_disablin
 }
 
 #[test]
-fn channel_3_fast_timer_advances_sample_state_while_the_channel_is_inactive() {
+fn channel_3_fast_timer_does_not_fetch_samples_while_the_channel_is_inactive() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
     apu.channels.channel_3.wave_ram[0] = 0x12;
@@ -113,11 +113,44 @@ fn channel_3_fast_timer_advances_sample_state_while_the_channel_is_inactive() {
 
     apu.channels.channel_3.tick_fast_timer();
 
-    assert_eq!(apu.channels.channel_3.sample_index, 1);
-    assert_eq!(apu.channels.channel_3.sample_buffer, 0x02);
-    assert_eq!(apu.channels.channel_3.period_timer, 2);
+    assert_eq!(apu.channels.channel_3.sample_index, 0);
+    assert_eq!(apu.channels.channel_3.sample_buffer, 0x0E);
+    assert_eq!(apu.channels.channel_3.period_timer, 1);
     assert!(!apu.channels.channel_3.runtime.active);
     assert_eq!(apu.channels.channel_3.current_digital_output(), 0);
+}
+
+#[test]
+fn cgb_channel_3_power_on_buffer_stays_clear_until_the_first_post_trigger_fetch() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.channels.channel_3.wave_ram[0] = 0xDE;
+    apu.write_register(0xFF1A, 0x80);
+    apu.write_register(0xFF1C, 0x20);
+    apu.write_register(0xFF1E, 0x07);
+
+    for _ in 0..32 {
+        apu.channels.channel_3.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_3.sample_index, 0);
+    assert_eq!(apu.channels.channel_3.sample_buffer, 0);
+    assert_eq!(apu.channels.channel_3.current_digital_output(), 0);
+
+    apu.write_register(0xFF1E, 0x87);
+
+    assert!(apu.channels.channel_3.runtime.active);
+    assert_eq!(apu.channels.channel_3.sample_index, 0);
+    assert_eq!(apu.channels.channel_3.sample_buffer, 0);
+    assert_eq!(apu.channels.channel_3.current_digital_output(), 0);
+
+    for _ in 0..wave_timer_reload(0x0700) + WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES {
+        apu.channels.channel_3.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_3.sample_index, 1);
+    assert_eq!(apu.channels.channel_3.sample_buffer, 0x0E);
+    assert_eq!(apu.channels.channel_3.current_digital_output(), 0x0E);
 }
 
 #[test]
@@ -216,6 +249,27 @@ fn cgb_channel_3_wave_ram_remains_addressable_while_inactive() {
 
     assert_eq!(apu.channels.channel_3.wave_ram[0], 0xAB);
     assert_eq!(apu.channels.channel_3.wave_ram[1], 0x34);
+}
+
+#[test]
+fn cgb_channel_3_active_wave_ram_access_redirects_to_the_current_byte() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF1A, 0x80);
+    apu.channels.channel_3.runtime.active = true;
+    apu.channels.channel_3.sample_index = 3;
+    apu.channels.channel_3.wave_ram[0] = 0x12;
+    apu.channels.channel_3.wave_ram[1] = 0x34;
+    apu.channels.channel_3.wave_ram[15] = 0xEF;
+
+    assert_eq!(apu.read_register(0xFF30), 0x34);
+    assert_eq!(apu.read_register(0xFF3F), 0x34);
+
+    apu.write_register(0xFF30, 0xAB);
+
+    assert_eq!(apu.channels.channel_3.wave_ram[0], 0x12);
+    assert_eq!(apu.channels.channel_3.wave_ram[1], 0xAB);
+    assert_eq!(apu.channels.channel_3.wave_ram[15], 0xEF);
 }
 
 #[test]

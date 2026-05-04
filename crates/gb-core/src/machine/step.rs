@@ -41,6 +41,7 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
     config: &mut MachineConfig,
     bus: &mut Bus,
     ppu: &mut Ppu,
+    serial: &mut Serial,
     speed: &mut SpeedController,
     boot: &BootController,
     boot_rom_newly_unmapped: bool,
@@ -56,6 +57,7 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
     if let Some(operating_mode) = bus.lock_cgb_real_boot_key0_at_handoff() {
         config.operating_mode = operating_mode;
         bus.apply_operating_mode_state(operating_mode);
+        serial.apply_operating_mode_state(operating_mode);
         speed.apply_operating_mode_state(operating_mode);
         ppu.apply_operating_mode_state(operating_mode);
     }
@@ -346,7 +348,8 @@ impl MachinePhaseRunner<'_> {
     {
         if !self.cpu_stop_active() {
             observe_machine_step_region(observer, MachineStepRegion::Apu, || {
-                self.apu.tick_t_cycle(context);
+                self.apu
+                    .tick_t_cycle_for_speed(context, self.speed.current_speed());
             });
             let boot_bus_state = self.boot.bus_state();
             let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
@@ -602,6 +605,7 @@ impl MachinePhaseRunner<'_> {
                             config,
                             bus,
                             ppu,
+                            serial,
                             speed,
                             boot,
                             boot_rom_newly_unmapped,

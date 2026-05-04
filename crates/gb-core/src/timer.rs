@@ -313,7 +313,7 @@ impl Timer {
         self.system_counter & (1 << bit) != 0
     }
 
-    fn current_div_apu_signal_for_speed(&self, speed_mode: CgbSpeedMode) -> bool {
+    pub(crate) fn current_div_apu_signal_for_speed(&self, speed_mode: CgbSpeedMode) -> bool {
         self.system_counter & (1 << speed_mode.div_apu_counter_bit()) != 0
     }
 }

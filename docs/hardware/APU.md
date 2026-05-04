@@ -27,6 +27,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 - `NR10`-`NR52`
 - wave RAM ownership and access rules
+- native-CGB `PCM12` / `FF76` and `PCM34` / `FF77` read-only digital-output taps
 
 ## APU MMIO contract baseline
 
@@ -37,6 +38,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Powering the APU off through `NR52` should clear APU register state and make the other APU registers read-only until power is restored, except for the documented DMG-family `NRx1` length-write path; wave RAM accessibility should remain under the documented hardware policy.
 - Trigger bits in the `NRx4` family should perform their channel-start side effects on the write itself.
 - Write-only fields such as initial length-timer setup should remain write-only semantically, even if internal channel state later depends on them.
+- Native CGB exposes `PCM12` and `PCM34` as read-only digital-output taps after channel generation and before DAC conversion: `PCM12` low/high nibbles are CH1/CH2 and `PCM34` low/high nibbles are CH3/CH4. These registers must not become writable storage, must not change channel state on reads or writes, and must stay unavailable on DMG-family models and CGB-family compatibility mode.
 
 ## General APU architecture baseline
 
@@ -65,8 +67,9 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - make those other registers read-only until power is restored, except that on DMG-family hardware `NR11`, `NR21`, `NR31`, and `NR41` should still update the internal length counters
   - leave wave RAM accessible
   - leave the `DIV-APU` counter intact rather than resetting it
-- Powering the APU on through `NR52` should reset the frame sequencer so the next step is `0`, while still deriving the timing of that next step from the live shared divider source rather than from a synthetic fresh timer.
+- Powering the APU on through `NR52` should reset the frame sequencer so the next step is `0` when the live `DIV-APU` source is low, while still deriving the timing of that next step from the live shared divider source rather than from a synthetic fresh timer.
 - Because the shared `DIV-APU` source is not reset by `NR52`, the first post-power-on frame-sequencer event should remain a function of the preserved live divider phase rather than of a fixed fresh-delay assumption.
+- Runtime `NR52` power-on must consume the timer-owned current `DIV-APU` signal without cloning divider logic inside the APU: DMG-family hardware resets the frame sequencer to step `0` and waits for the next live edge, while CGB-family hardware enters the high-half phase (`7`) if power-on occurs while the selected `DIV-APU` bit is high, so the next high-to-low transition clocks the envelope phase instead of delivering the step-0 length/sweep clocks. SameSuite `div_write_trigger_10`, `div_write_trigger_volume_10`, and `div_trigger_volume_10` cover the CGB path through repeated `DIV` writes and natural `DIV-APU` events after enabling APU at visible `DIV=$10`.
 - Applying direct-boot or startup audio state with `powered = false` should converge to that same observable powered-off contract, except for the configured wave-RAM startup contents and the preserved `DIV-APU` phase.
 - `NR52` bits `0..=3` should remain read-only live status bits that report whether each channel's generation circuit is active.
 - The low `NR52` bits must not be treated as DAC-enabled indicators; they report active channels, not DAC state.
@@ -149,6 +152,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 ## DAC conversion baseline
 
 - Each channel should expose a resolved digital output in the hardware `0..15` domain before DAC conversion rather than a pre-mixed host-ready sample.
+- That resolved digital output is also the source of the native-CGB `PCM12`/`PCM34` MMIO taps, so channel-output state must remain observable without bypassing or reinterpreting channel internals at the bus layer.
 - The APU should keep an explicit DAC stage per channel.
 - When a channel DAC is enabled, digital values `0..15` should map linearly into the analog `-1..1` range with the documented negative slope:
   - digital `0 -> analog +1`
@@ -259,14 +263,18 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The waveform should remain an `8`-step pulse waveform selected by `NR11` duty.
 - The duty-step counter should not reset when CH1 is retriggered; only powering the APU off should reset the pulse duty-step state.
 - Retriggering CH1 should reset the pulse period/frequency timer instead.
+- Live `NR11`/`NR21` duty writes should update the length load immediately but defer the effective waveform duty until the current pulse sample finishes and the next duty-step boundary is reached; SameSuite `channel_1_duty_delay` / `channel_2_duty_delay` rely on the old duty remaining visible through `PCM12` until that sample boundary.
 - Triggering CH1 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH1 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
+- Repo-local CGB baseline: while the native-CGB APU is powered on but a pulse channel is waiting for its first post-power-on trigger, the hidden power-on phase still advances in the CPU-visible scheduler path; an inactive CH1/CH2 trigger then applies the CGB startup delay before the first duty-step advance. At normal speed SameSuite `channel_1_delay` / `channel_2_delay` require a fixed `8` scheduler T-cycle startup delay after trigger regardless of the hidden power-on phase; in double speed the same Slice 2 speed-domain path uses a `16` scheduler T-cycle base plus the preserved hidden phase so SameSuite `channel_1_align`, `channel_2_align`, and normal-speed volume timing consume the existing timer/speed contract instead of adding a separate APU clock model. Native-CGB active retriggers keep the current duty-step phase, reset the period timer, do not reapply inactive-start output suppression, and apply only a short restart delay before the next duty-step advance: `4` scheduler T-cycles at normal speed and `8` scheduler T-cycles at double speed. CH1 may add a sweep-owned restart hold on top of that shared pulse-core delay when a prior native-CGB decreasing sweep writeback has not yet been cleared by retrigger.
+- Turning the CH1 DAC off through `NR12` should stop the channel but preserve the current pulse sample phase; re-enabling the DAC without a trigger should not let the pulse generation timer run again, and the next real trigger should restart from the preserved phase. SameSuite `channel_1_stop_restart` relies on this being a pulse-core latch, not a PCM readback patch.
 
 ## CH1 period value and timer baseline
 
 - `NR13` plus the low three bits of `NR14` should form CH1's `11`-bit period value.
 - CH1 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the sample.
 - For the current DMG target, the pulse period timer should be clocked at `1048576` Hz, i.e. once every `4` dots.
+- In native-CGB double speed, pulse generation timers consume the existing Slice `2` normal-speed domain gate so duty steps stay on the wall-clock APU domain while CPU-visible trigger phase/delay is scaled from the same current speed state used by the bus write path; this matches SameSuite `channel_1_duty` / `channel_2_duty` without forking the `DIV`/APU frame-sequencer path.
 - A duty-step advance should occur when the channel's current sample completes, not on every frame-sequencer tick.
 - Writes to `NR13` or `NR14` should not change the currently playing sample instantly; the new period should only take effect after the current sample ends.
 - Keep a dedicated validation case for CH1 period-write delay rather than burying it inside generic "period changes work" coverage.
@@ -298,8 +306,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - CH1 should keep envelope timer state and current volume separate from the readable contents of `NR12`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
-- While CH1 is active, ordinary `NR12` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH1 trigger.
-- While CH1 is active, `NR12` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH1 is active, DMG-family ordinary `NR12` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH1 trigger.
+- While CH1 is active, `NR12` writes should keep the conservative DMG-family zombie-mode subset but native CGB should use the shared CGB NRx2 live-write matrix: pace `0 -> non-zero` ticks once when unlocked, `increase+pace0 -> increase+pace0` ticks once when unlocked, direction changes invert the current volume through the documented CGB paths, the live current volume is masked to `0..=15`, and the live envelope clock state follows the newly written pace/direction for subsequent frame-sequencer envelope clocks. A CGB live write that moves from pace `0` to a non-zero pace re-arms automatic envelope updates, schedules one pending envelope-unit clock on the next post-increment even `DIV-APU` frame-sequencer tick, reloads the live timer from the new pace for same-direction enables, and keeps the short first reload when the zombie-mode write also flips direction; a live write to pace `0` stops further automatic updates without waiting for a retrigger. SameSuite `channel_1_nrx2_glitch` and `channel_1_nrx2_speed_change` cover this through `PCM12`.
 - Envelope progression must update CH1's internal current volume, not the readable initial-volume bits in `NR12`.
 - Once an automatic envelope step would push CH1 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH1 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH1 by itself.
@@ -315,7 +323,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - the current period should be copied into `sweep_shadow_period`
   - the sweep timer should reset
   - `sweep_enabled` should become true if sweep pace or sweep shift are non-zero, false otherwise
-  - if sweep shift is non-zero, sweep calculation and overflow check should run immediately
+  - if sweep shift is non-zero, sweep calculation should run at trigger time; DMG-family addition overflow disables CH1 immediately, while native CGB routes the trigger-time overflow check through the delayed sweep-pipeline latch
 - Sweep calculation should be represented as an explicit pure calculation over the current shadow period:
   - compute `shadow >> shift`
   - add or subtract depending on sweep direction
@@ -327,6 +335,10 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - if the result is in range and shift is non-zero, write it back to `sweep_shadow_period`, `NR13`, and `NR14`
   - then run a second immediate calculation plus overflow check using the new shadow period, without writing that second result back
 - Keep this second overflow check explicit; do not fold it into a generic "next tick will catch it" simplification.
+- Native-CGB keeps trigger-time and post-writeback addition-overflow checks as explicit delayed sweep-pipeline calculations rather than disabling CH1 in the same frame-sequencer instant; SameSuite `channel_1_sweep` and `channel_1_sweep_restart` require the channel to remain active for the short low-shift-derived delay after the first calculation writes `NR13`/`NR14` or after a CGB trigger initializes sweep, while the DMG-family baseline keeps the immediate overflow behavior covered by unit tests.
+- Native-CGB writes that clear both sweep pace and shift cancel a pending delayed sweep overflow check, matching the CGB sweep-pipeline latch used by SameSuite restart cases without moving the logic into PCM readback.
+- Native-CGB decreasing sweep writebacks leave a CH1-local restart-hold latch until the next CH1 trigger; an active retrigger consumes that latch by extending the shared pulse restart delay by `4` scheduler T-cycles, while increasing writebacks keep the base active-retrigger delay. This is a SameSuite-driven CGB restart-phase rule and belongs at the CH1 sweep/pulse boundary, not in PCM readback.
+- Native-CGB shift-zero CH1 sweep clocks immediately after a trigger honor a short sweep-restart hold before refreshing the unshifted addend or scheduling overflow; once the hold expires, the unshifted delayed overflow check resolves after `4` scheduler T-cycles. SameSuite `channel_1_sweep_restart_2` covers the `0x7FF` retrigger seam, and the latch is serialized with CH1 sweep state.
 - Writes to `NR13` / `NR14` while sweep is active must not refresh `sweep_shadow_period`; a later sweep tick may therefore overwrite the just-written register value unless CH1 is retriggered.
 - Sweep pace `0` should still preserve the documented trigger/overflow semantics and the documented timer-reload rule that a programmed pace or period of `0` behaves as `8`, rather than being simplified to "sweep logic fully off".
 
@@ -374,6 +386,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Retriggering CH2 should reset the pulse period/frequency timer instead.
 - Triggering CH2 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH2 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
+- Repo-local CGB baseline: CH2 shares the same native-CGB inactive-trigger startup delay, active-retrigger restart delay, and power-on phase tracking as CH1; this belongs to the shared pulse-channel primitive rather than to per-ROM or per-channel PCM patches.
+- Turning the CH2 DAC off through `NR22` should share CH1's pulse-core stopped-generator latch: the channel becomes inactive, the current pulse sample phase is preserved, re-enabling the DAC alone does not resume the generator, and the next real trigger clears the latch.
 
 ## CH2 period value and timer baseline
 
@@ -409,8 +423,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - CH2 should keep envelope timer state and current volume separate from the readable contents of `NR22`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
-- While CH2 is active, ordinary `NR22` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH2 trigger.
-- While CH2 is active, `NR22` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH2 is active, DMG-family ordinary `NR22` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH2 trigger.
+- While CH2 is active, `NR22` writes should reuse the same shared DMG-family subset and native-CGB NRx2 live-write matrix as CH1, including the pending even `DIV-APU` envelope-unit clock and the CGB post-write envelope clock-state update; this is pulse-core behavior, not a channel-local PCM or per-ROM patch. SameSuite `channel_2_nrx2_glitch` and `channel_2_nrx2_speed_change` cover the CH2 half of the shared behavior through `PCM12`.
 - Envelope progression must update CH2's internal current volume, not the readable initial-volume bits in `NR22`.
 - Once an automatic envelope step would push CH2 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH2 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH2 by itself.
@@ -476,11 +490,13 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Each sample-index advance should read the corresponding nibble from wave RAM and load that nibble into the sample buffer.
 - CH3 digital output should come from the buffered sample value, not from a fresh live wave-RAM read at mix time.
 - Retriggering CH3 should not automatically clear or refill the sample buffer; the channel should continue outputting the last buffered sample until the next wave-RAM fetch occurs.
+- CH3 internal wave-RAM fetches are active-channel events; while CH3 is inactive, its fast timer must not read wave RAM or refresh the sample buffer, so a buffer cleared by APU power-on remains digital `0` until a trigger starts the channel and the first post-trigger fetch occurs.
 
 ## CH3 startup and first-sample baseline
 
 - After APU power-on, CH3 should begin with its sample buffer at digital `0`.
 - CH3 startup should explicitly model the documented first-sample quirk where sample `0` is skipped when first starting the channel and the first post-trigger output is not a naive immediate replay of wave-table sample `0`.
+- The APU power-on-cleared CH3 sample buffer must not be preloaded by inactive timing between `NR52` power-on, wave-RAM initialization, `NR30` DAC enable, and `NR34` trigger; SameSuite `channel_3_first_sample` relies on `PCM34` reading `0` through the startup delay and only observing the wave-table low nibble after the first real post-trigger fetch.
 - A CH3 retrigger should therefore preserve the previously buffered sample until the next internal wave-RAM read occurs rather than forcing an immediate load of wave-table sample `0` or clearing the buffer automatically.
 
 ## CH3 period value and timer baseline
@@ -530,7 +546,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 - CH3 wave-RAM access while the channel is active should remain under an explicit hardware policy rather than being treated as always-free RAM with no side effects.
 - For the current DMG-family target, CH3 active wave-RAM reads and writes should only succeed on the exact T-cycle where CH3 performs its internal wave-RAM fetch; outside that fetch window, reads should return `0xFF` and writes should be ignored.
-- Because the project scope is still DMG-only, do not treat any current CGB-family CH3 active-wave-RAM MMIO behavior in the codebase as supported behavior; keep that contract explicitly deferred until the CGB APU lane exists.
+- For CGB-family hardware, including CGB compatibility mode, CH3 active wave-RAM reads and writes should redirect to the byte CH3 is currently reading, regardless of which `FF30-FF3F` address the CPU accessed; inactive CH3 still exposes ordinary indexed wave RAM.
 - CH3 DMG-family retrigger corruption should remain an explicit model-gated path rather than a side effect hidden inside generic trigger or RAM helpers.
 - That corruption path should stay model-gated to DMG-family behavior rather than leaking automatically into future unaffected models.
 - The corruption decision should depend on the exact internal byte-read position when the retrigger occurs, not on a vague "channel was active" condition.
@@ -585,7 +601,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - shift the register right
   - derive the resolved digital output decision from the documented output bit after that step
 - CH4 digital output should not be the raw numeric LFSR value; it should resolve to either digital `0` or the current envelope-derived volume according to the LFSR output bit.
-- In the documented polarity, LFSR bit `0 = 0` selects the current envelope-derived volume and bit `0 = 1` selects digital `0`, which is why the all-ones short-width lock-up effectively silences CH4 without clearing its active state.
+- With the repo's Pan Docs-style zeroed/XNOR LFSR representation, LFSR bit `0 = 1` selects the current envelope-derived volume and bit `0 = 0` selects digital `0`; this is equivalent to older all-ones/XOR descriptions that invert the stored LFSR output bit before applying the envelope, and SameSuite `channel_4_align` verifies the PCM34-visible polarity.
 - The `15`-bit and `7`-bit modes should share the same underlying LFSR machinery, with the short-width mode emerging from the additional bit-`7` feedback path rather than from a second independent pseudo-random generator.
 - `NR43` bits `7..=4` should decode as clock shift, bit `3` as width mode, and bits `2..=0` as clock divider.
 - Clock divider `0` should be treated as divider `0.5` on the documented CH4 timer formula rather than as literal `0` or silently coerced to `1`.
@@ -594,9 +610,11 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The repo now treats the SameBoy-guided hidden `14`-bit counter as the authoritative CH4 phase source for DMG/pre-`CGB-D`: it owns the running divider countdown, `countdown_reloaded` seam, and the bit transitions that actually step the CH4 LFSR when the channel is active.
 - The visible `period_timer` field remains as a compatibility/debug mirror of the decoded `NR43` cadence, but the audible CH4 stepping now comes from the hidden counter path rather than from an independent second hardware clock.
 - Live writes to `NR43` should therefore be modeled against that preserved hidden counter state, and the write-site glue should remain isolated behind a dedicated CH4 `NR43` resolver block rather than being smeared across unrelated fast-timer logic.
-- Current inferred live-glitch policy is a conservative DMG / pre-`CGB-D` subset cross-checked against SameBoy rather than a claim that the full hardware-specific matrix is solved:
-  - if the write lands on the hidden-counter reload seam, the current and previous counter values may jointly contribute one extra seam step before the ordinary staged live-write transition logic runs
-  - after that seam, the current repo subset now follows the SameBoy-guided pre-`CGB-D` structure more literally: one actual `old -> FF` write followed by one actual `FF -> new` write, with the hidden-counter-driven `old_bit / glitch_bit / new_bit` classification evaluated separately for each write
+- Current inferred live-glitch policy is split by hardware family: DMG keeps a conservative pre-`CGB-D` staged subset cross-checked against SameBoy, while the coarse `ConsoleModel::GameBoyColor` baseline uses the direct CGB-family path that SameSuite exercises rather than inheriting DMG FF-write staging:
+  - on the DMG/pre-`CGB-D` path, if the write lands on the hidden-counter reload seam, the current and previous counter values may jointly contribute one extra seam step before the ordinary staged live-write transition logic runs
+  - after that seam, the DMG-family subset follows the SameBoy-guided pre-`CGB-D` structure more literally: one actual `old -> FF` write followed by one actual `FF -> new` write, with the hidden-counter-driven `old_bit / glitch_bit / new_bit` classification evaluated separately for each write
+  - on CGB-family hardware, the repo's current coarse CGB profile uses the direct `old -> new` live-write path: it does not synthesize an intervening `FF` write, does not apply the pre-`CGB-D` reload-seam extra pass, and uses the current hidden counter as the effective counter even when `countdown_reloaded` is set
+  - when a live write lands on the reload seam, the hidden countdown reload keeps the family-specific SameBoy alignment offsets explicit: DMG/pre-`CGB-D` uses `[2, 1, 4, 3]`, while the CGB-family direct profile uses `[2, 1, 0, 3]`; SameSuite `channel_4_freq_change` and `channel_4_frequency_alignment` cover this distinction through `PCM34`
   - the explicit pass trace still records the synthetic staged view `old_to_ff`, `ff_to_glitch_1`, optional `glitch_1_to_glitch_2`, `glitch_to_new`, and optional `low_shift_followup`, but only `old_to_ff`, `ff_to_glitch_1`, and `low_shift_followup` may mutate the LFSR in the current pre-`CGB-D` path
   - in that staged trace, `FF` remains the synthetic bus-high stage and the second-write intermediates are now derived from the `FF -> new` write itself: `glitch_1 = (0xFF & 0x7F) | (new & 0x80)` and `glitch_2 = (0xFF & 0xCF) | (new & 0x30)` only when bit 7 stays stable across `FF -> new`
   - every recorded pass exports the source/destination value, shift, selected counter bit, category, action, and LFSR state before/after the pass so desktop traces can correlate audible deltas with one explicit stage instead of a fused repo-local summary
@@ -617,12 +635,12 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Triggering CH4 should preserve that hidden alignment/counter history and only recompute the hidden countdown through the SameBoy-guided start helper; do not reset the hidden counter to a synthetic phase seed on every trigger.
 - On the DMG family, a trigger that lands with `alignment & 3 != 0` should take the SameBoy-guided delayed-start path instead of immediately starting the channel on that same T-cycle; the hidden counter and visible LFSR start state must therefore be prepared when the delayed trigger actually fires, not when the original MMIO write lands.
 - Internally, CH4 now keeps the hidden `counter_timer` and DMG `dmg_delayed_start` seam in the same `2 MHz` domain that SameBoy uses, while the rest of the project continues to tick in T-cycles. The bridge is explicit: `alignment_subphase` gates one hidden-counter / delayed-start step every two T-cycles instead of approximating that bookkeeping by doubling the countdown values.
-- SameBoy also keeps CH4's hidden `alignment` timebase moving while the APU is powered off. The repo now mirrors that for DMG/pre-`CGB-D` by advancing the CH4 `alignment`/`alignment_subphase` bridge even with `NR52.7 = 0`, while still leaving the hidden counter itself idle until background counting or an active trigger starts it. When `NR52` powers back on, both `alignment` and `alignment_subphase` reset so the first powered-on CH4 start always begins from the same hidden startup phase regardless of how long the APU stayed off.
+- SameBoy also keeps CH4's hidden `alignment` timebase moving while the APU is powered off. The repo now mirrors that for DMG/pre-`CGB-D` by advancing the CH4 `alignment`/`alignment_subphase` bridge even with `NR52.7 = 0`, while still leaving the hidden counter itself idle until background counting or an active trigger starts it. That powered-off bridge consumes the same speed-domain gate as the powered-on fast APU timers, so native-CGB double speed keeps the hidden alignment in the undoubled wall-clock APU domain instead of advancing it once per CPU-visible scheduler T-cycle. When `NR52` powers back on, both `alignment` and `alignment_subphase` reset so the first powered-on CH4 start always begins from the same hidden startup phase regardless of how long the APU stayed off.
 - Outside that seam, a live `NR43` write should preserve the in-flight hidden countdown rather than pretending the base-divider phase restarted immediately.
 - A DMG delayed trigger is still a real trigger even if the currently programmed `NR43` shift suppresses ordinary noise timer stepping; once the delayed-start countdown reaches zero, the trigger must materialize before any early return that would otherwise skip the suppressed timer path.
 - Writes to `NR43` should alter CH4's effective timer configuration, not swap in a different abstract "noise texture".
 - Updating `NR43` should not retroactively inject an extra LFSR tick into an in-flight timer interval; the new effective timing should apply through the explicit timer/reload path rather than by mutating past channel time.
-- The current repo policy therefore keeps the preserved hidden countdown across ordinary live writes, only reloads that countdown on the explicit seam path, and uses the SameBoy-guided pre-`CGB-D` write-site structure (`old -> FF`, then `FF -> new`, plus an optional low-shift follow-up) against the currently observed hidden counter. DMG triggers also inherit SameBoy's delayed-start seam and the divisor-`0`, `alignment == 3` visible-LFSR `0x0055` quirk, so the visible CH4 start state is prepared together with the hidden counter rather than being reset in an earlier repo-local trigger stub. The remaining richer SameBoy-style revision-specific matrices are still deferred until stronger hardware-backed evidence exists, but the pass/action seam is now explicit enough to deepen that matrix without reintroducing Zelda-tail guards or blurring the CH4 signal path.
+- The current repo policy therefore keeps the preserved hidden countdown across ordinary live writes, only reloads that countdown on the explicit seam path, and selects an explicit write-site profile: DMG uses the SameBoy-guided pre-`CGB-D` structure (`old -> FF`, then `FF -> new`, plus an optional low-shift follow-up), while CGB-family hardware uses a direct `old -> new` profile with the CGB alignment reload offsets. DMG triggers also inherit SameBoy's delayed-start seam and the divisor-`0`, `alignment == 3` visible-LFSR `0x0055` quirk, so the visible CH4 start state is prepared together with the hidden counter rather than being reset in an earlier repo-local trigger stub. The remaining richer SameBoy-style revision-specific matrices are still deferred until stronger hardware-backed evidence exists, but the pass/action seam is now explicit enough to deepen that matrix without reintroducing Zelda-tail guards or blurring the CH4 signal path.
 
 ## CH4 width-mode and lock-up baseline
 
@@ -658,7 +676,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
 - While CH4 is active, ordinary `NR42` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH4 trigger.
-- While CH4 is active, `NR42` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
+- While CH4 is active, `NR42` writes should reuse the same shared envelope live-write machinery as `NR12` / `NR22`, with DMG-family writes staying on the conservative subset and native-CGB writes using the CGB NRx2 matrix, pending even `DIV-APU` envelope-unit clock, and post-write clock-state update before CH4-specific LFSR output selection is applied.
 - Envelope progression must update CH4's internal current volume, not the readable initial-volume bits in `NR42`.
 - Once an automatic envelope step would push CH4 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH4 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH4 by itself.
@@ -668,7 +686,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - CH4 should be disabled by exactly these ordinary causes:
   - DAC disable
   - length expiry
-- CH4 LFSR lock-up should not be modeled as `channel_active = false`; the channel may remain logically active while the resolved output is effectively silent until retrigger.
+- CH4 LFSR lock-up should not be modeled as `channel_active = false`; the channel may remain logically active while the resolved digital output becomes a fixed LFSR-selected level until retrigger, leaving analog quieting to the downstream DAC/mixer/HPF path rather than to a channel-local mute flag.
 - `NR52` bit `3` should track CH4 activity according to those rules rather than merely reflecting whether CH4 is currently audible.
 - The master APU output path should consume CH4's resolved current digital output together with its DAC/active state through the channel-export boundary, while the stereo mixer itself should operate on the resulting DAC output rather than re-reading `NR41` through `NR44`.
 - CH4 should expose distinct temporal inputs for:

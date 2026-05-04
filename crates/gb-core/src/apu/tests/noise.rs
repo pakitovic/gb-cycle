@@ -121,7 +121,7 @@ fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
         apu.channels.channel_4.noise.lfsr_state,
         NOISE_LFSR_INITIAL_STATE
     );
-    assert_eq!(apu.channels.channel_4.current_digital_output(), 0x0F);
+    assert_eq!(apu.channels.channel_4.current_digital_output(), 0);
     assert_eq!(apu.channels.channel_4.noise.period_timer, 160);
 }
 
@@ -212,7 +212,7 @@ fn channel_4_hidden_counter_tick_steps_the_lfsr_and_short_width_mode_copies_feed
 
     assert_eq!(channel.noise.period_timer, 8);
     assert_eq!(channel.noise.lfsr_state, 0x4040);
-    assert_eq!(channel.current_digital_output(), 0x0F);
+    assert_eq!(channel.current_digital_output(), 0);
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn channel_4_live_nr43_write_into_shift_14_reloads_the_suppressed_noise_timer() 
 
     assert_eq!(channel.noise.period_timer, noise_timer_reload(14, 0));
     assert_eq!(channel.noise.lfsr_state, lfsr_before);
-    assert_eq!(channel.current_digital_output(), 0x0F);
+    assert_eq!(channel.current_digital_output(), 0);
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn channel_4_live_nr43_write_between_clocked_rates_can_use_the_explicit_old_to_f
     );
     assert!(trace.low_shift_followup.is_none());
     let stepped_lfsr = channel.noise.lfsr_state;
-    assert_eq!(channel.current_digital_output(), 0x0F);
+    assert_eq!(channel.current_digital_output(), 0);
 
     for expected_timer in (1..noise_timer_reload(0, 0)).rev() {
         channel.tick_fast_timer();
@@ -530,6 +530,34 @@ fn channel_4_live_nr43_write_reloads_the_hidden_counter_timer_with_alignment_aft
 
     assert_eq!(channel.nr43_live_write.counter_timer, 7);
     assert!(!channel.nr43_live_write.countdown_reloaded);
+}
+
+#[test]
+fn cgb_channel_4_live_nr43_write_uses_direct_profile_after_a_reload_seam() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.envelope.current_volume = 0x0F;
+    channel.noise.lfsr_state = 0x43C3;
+    channel.write_register(Channel4Register::Nr43, 0x09, ConsoleModel::GameBoyColor, 0);
+    channel.nr43_live_write.alignment = 2;
+    channel.nr43_live_write.noise_counter = 0x0039;
+    channel.nr43_live_write.countdown_reloaded = true;
+
+    channel.write_register(Channel4Register::Nr43, 0x1A, ConsoleModel::GameBoyColor, 0);
+
+    assert_eq!(channel.nr43_live_write.counter_timer, 8);
+    assert!(!channel.nr43_live_write.countdown_reloaded);
+    assert_eq!(channel.noise.lfsr_state, 0x43C3);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(trace.effective_counter, 0x0039);
+    assert!(trace.reload_seam.is_none());
+    assert!(trace.old_to_ff.is_none());
+    assert!(trace.ff_to_glitch_1.is_none());
+    assert_eq!(
+        require_nr43_pass(trace.glitch_to_new, "direct").action,
+        ApuCh4Nr43LfsrAction::None
+    );
 }
 
 #[test]
@@ -787,6 +815,34 @@ fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel()
     assert_eq!(apu.channels.channel_4.envelope.current_volume, 0);
 }
 
+fn cgb_channel_4_volume_after_live_nr42_write(old_value: u8, new_value: u8) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, old_value);
+    apu.write_register(0xFF23, 0x80);
+    apu.write_register(0xFF21, new_value);
+    apu.channels.channel_4.envelope.current_volume
+}
+
+#[test]
+fn cgb_live_nr42_writes_use_the_shared_zombie_volume_matrix_for_noise() {
+    let cases = [
+        (0x50, 0xF1, 0x04),
+        (0x51, 0xF8, 0x09),
+        (0x58, 0xF0, 0x0B),
+        (0x58, 0xF8, 0x06),
+        (0x59, 0xF8, 0x05),
+    ];
+
+    for (old_value, new_value, expected_volume) in cases {
+        assert_eq!(
+            cgb_channel_4_volume_after_live_nr42_write(old_value, new_value),
+            expected_volume,
+            "CH4 old={old_value:#04X} new={new_value:#04X}",
+        );
+    }
+}
+
 #[test]
 fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
@@ -813,7 +869,7 @@ fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() 
 }
 
 #[test]
-fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silently() {
+fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_at_constant_volume() {
     let mut wide = Channel4State::default();
     wide.runtime.dac_enabled = true;
     wide.runtime.active = true;
@@ -834,7 +890,7 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silentl
 
     assert_eq!(wide.noise.lfsr_state & 0x7F, 0x3F);
     assert_eq!(narrow.noise.lfsr_state & 0x7F, 0x7F);
-    assert_eq!(narrow.current_digital_output(), 0);
+    assert_eq!(narrow.current_digital_output(), 0x0F);
     assert!(narrow.runtime.active);
 
     narrow.nr43_live_write.counter_timer = 1;
@@ -842,7 +898,7 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silentl
     narrow.tick_fast_timer();
 
     assert_eq!(narrow.noise.lfsr_state & 0x7F, 0x7F);
-    assert_eq!(narrow.current_digital_output(), 0);
+    assert_eq!(narrow.current_digital_output(), 0x0F);
     assert!(narrow.runtime.active);
 }
 
@@ -858,7 +914,7 @@ fn channel_4_retrigger_recovers_from_short_width_lockup_without_clearing_activit
     apu.channels.channel_4.envelope.current_volume = 0x0F;
 
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
-    assert_eq!(apu.channels.channel_4.current_digital_output(), 0);
+    assert_eq!(apu.channels.channel_4.current_digital_output(), 0x0F);
 
     apu.write_register(0xFF23, 0x80);
 
@@ -868,7 +924,7 @@ fn channel_4_retrigger_recovers_from_short_width_lockup_without_clearing_activit
     );
     assert!(apu.channels.channel_4.runtime.active);
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
-    assert_eq!(apu.channels.channel_4.current_digital_output(), 0x0F);
+    assert_eq!(apu.channels.channel_4.current_digital_output(), 0);
 
     apu.channels.channel_4.noise.period_timer = 1;
     apu.channels.channel_4.tick_fast_timer();

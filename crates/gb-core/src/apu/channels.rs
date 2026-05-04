@@ -44,18 +44,24 @@ impl ApuChannels {
         self.channel_3.begin_t_cycle();
     }
 
-    pub(super) fn tick_fast_timers(&mut self) {
-        self.channel_1.tick_fast_timer();
-        self.channel_2.tick_fast_timer();
-        self.channel_3.tick_fast_timer();
-        self.channel_4.tick_fast_timer();
+    pub(super) fn tick_fast_timers(&mut self, clock_generation_timers: bool) {
+        self.channel_1
+            .tick_fast_timer_with_clock_gate(clock_generation_timers);
+        self.channel_2
+            .tick_fast_timer_with_clock_gate(clock_generation_timers);
+        if clock_generation_timers {
+            self.channel_3.tick_fast_timer();
+            self.channel_4.tick_fast_timer();
+        }
     }
 
     pub(super) fn tick_powered_off_timebase(&mut self) {
         /*
          SameBoy keeps CH4's alignment phase advancing even while NR52 is powered off. The noise
          hidden counter itself still stays idle because the start path and active/background flags
-         remain off; only the timebase that future DMG delayed starts observe keeps moving.
+         remain off; only the timebase that future DMG delayed starts observe keeps moving. The
+         caller owns the CGB speed-domain gate so powered-off and powered-on fast APU timebases
+         stay in the same wall-clock domain.
         */
         self.channel_4.tick_alignment_phase_only();
     }
@@ -73,8 +79,17 @@ impl ApuChannels {
         self.channel_4.clock_envelope();
     }
 
-    pub(super) fn clock_sweep_ch1(&mut self) {
-        self.channel_1.clock_sweep();
+    pub(super) fn clock_cgb_live_write_pending_even_envelope_all(&mut self) {
+        self.channel_1
+            .clock_cgb_live_write_pending_even_envelope_tick();
+        self.channel_2
+            .clock_cgb_live_write_pending_even_envelope_tick();
+        self.channel_4
+            .clock_cgb_live_write_pending_even_envelope_tick();
+    }
+
+    pub(super) fn clock_sweep_ch1(&mut self, console_model: ConsoleModel) {
+        self.channel_1.clock_sweep(console_model);
     }
 
     pub(super) fn apply_startup(

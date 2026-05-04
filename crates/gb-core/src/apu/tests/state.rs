@@ -27,6 +27,43 @@ fn nr52_tracks_channel_active_state_separately_from_dac_state() {
 }
 
 #[test]
+fn cgb_pcm_registers_expose_current_channel_digital_outputs() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+
+    assert_eq!(apu.read_pcm12(), 0x00);
+    assert_eq!(apu.read_pcm34(), 0x00);
+
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x40);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+    while apu.channels.channel_2.pulse.trigger_delay_t_cycles > 0 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    apu.channels.channel_2.pulse.duty_step = 0;
+    apu.write_register(0xFF19, 0x87);
+
+    assert_eq!(apu.read_pcm12(), 0xF0);
+
+    apu.write_register(0xFF1A, 0x80);
+    apu.channels.channel_3.runtime.active = true;
+    apu.channels.channel_3.sample_buffer = 0x0C;
+    apu.write_register(0xFF1C, 0x20);
+
+    apu.write_register(0xFF21, 0xF2);
+    apu.write_register(0xFF22, 0x15);
+    apu.write_register(0xFF23, 0x80);
+
+    assert_eq!(apu.read_pcm34(), 0x0C);
+    apu.channels.channel_4.noise.lfsr_state |= 1 << NOISE_LFSR_OUTPUT_BIT;
+    assert_eq!(apu.read_pcm34(), 0xFC);
+}
+
+#[test]
 fn audio_register_readback_keeps_write_only_and_mixed_fields_explicit() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);

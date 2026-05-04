@@ -50,6 +50,7 @@ pub(crate) struct IoHramDomain {
     hram: [u8; HRAM_LEN],
     key0: CgbKey0State,
     cgb_misc: CgbMiscIoState,
+    infrared: CgbInfraredState,
 }
 
 impl IoHramDomain {
@@ -58,6 +59,7 @@ impl IoHramDomain {
             hram: [0; HRAM_LEN],
             key0: CgbKey0State::new(),
             cgb_misc: CgbMiscIoState::new(),
+            infrared: CgbInfraredState::new(),
         }
     }
 
@@ -116,6 +118,14 @@ impl IoHramDomain {
 
     pub(crate) fn write_cgb_misc_io(&mut self, address: u16, value: u8) {
         self.cgb_misc.write(address, value);
+    }
+
+    pub(crate) fn read_rp(&self) -> u8 {
+        self.infrared.read_rp()
+    }
+
+    pub(crate) fn write_rp(&mut self, value: u8) {
+        self.infrared.write_rp(value);
     }
 
     pub(crate) fn read(
@@ -208,9 +218,12 @@ impl IoHramDomain {
             | IoRegisterKind::Hdma3
             | IoRegisterKind::Hdma4 => BLOCKED_READ_VALUE,
             IoRegisterKind::Hdma5 => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_hdma5),
+            IoRegisterKind::Rp => self.read_rp(),
             IoRegisterKind::BootRomDisable => io
                 .boot
                 .map_or(BLOCKED_READ_VALUE, BootController::read_ff50),
+            IoRegisterKind::Pcm12 => io.apu.map_or(BLOCKED_READ_VALUE, Apu::read_pcm12),
+            IoRegisterKind::Pcm34 => io.apu.map_or(BLOCKED_READ_VALUE, Apu::read_pcm34),
             IoRegisterKind::InterruptEnable => io
                 .interrupts
                 .map_or(BLOCKED_READ_VALUE, InterruptController::read_ie),
@@ -341,6 +354,7 @@ impl IoHramDomain {
                     dma.write_hdma5(value);
                 }
             }
+            IoRegisterKind::Rp => self.write_rp(value),
             IoRegisterKind::BootRomDisable => {
                 if let Some(boot) = io.boot {
                     let newly_unmapped = boot.write_ff50(value);
@@ -354,6 +368,7 @@ impl IoHramDomain {
                     interrupts.write_ie(value);
                 }
             }
+            IoRegisterKind::Pcm12 | IoRegisterKind::Pcm34 => {}
             _ => match info.owner() {
                 IoRegisterOwner::Ppu => {
                     if let Some(ppu) = io.ppu {
@@ -361,9 +376,22 @@ impl IoHramDomain {
                     }
                 }
                 IoRegisterOwner::Apu => {
-                    let BusIoWriteView { apu, .. } = io;
+                    let BusIoWriteView {
+                        apu, timer, speed, ..
+                    } = io;
+                    let speed_mode = speed
+                        .as_deref()
+                        .map_or(CgbSpeedMode::Normal, SpeedController::current_speed);
+                    let div_apu_signal_high = timer
+                        .as_deref()
+                        .is_some_and(|timer| timer.current_div_apu_signal_for_speed(speed_mode));
                     if let Some(apu) = apu {
-                        apu.write_register(address, value);
+                        apu.write_register_for_speed_with_div_apu_signal(
+                            address,
+                            value,
+                            speed_mode,
+                            div_apu_signal_high,
+                        );
                     }
                 }
                 IoRegisterOwner::MemoryController
@@ -481,6 +509,29 @@ impl CgbKey0State {
         } else {
             OperatingMode::Cgb
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct CgbInfraredState {
+    rp_latch: u8,
+}
+
+impl CgbInfraredState {
+    const RP_WRITABLE_MASK: u8 = 0xC1;
+    const RP_UNUSED_READ_MASK: u8 = 0x3C;
+    const RP_NO_SIGNAL_BIT: u8 = 0x02;
+
+    const fn new() -> Self {
+        Self { rp_latch: 0 }
+    }
+
+    const fn read_rp(self) -> u8 {
+        Self::RP_UNUSED_READ_MASK | Self::RP_NO_SIGNAL_BIT | self.rp_latch
+    }
+
+    fn write_rp(&mut self, value: u8) {
+        self.rp_latch = value & Self::RP_WRITABLE_MASK;
     }
 }
 

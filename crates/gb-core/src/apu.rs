@@ -9,6 +9,7 @@ mod sample_capture;
 
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, DerivedEdge};
+use crate::speed::CgbSpeedMode;
 
 use self::channels::{ApuChannels, ChannelOutputState};
 #[cfg(test)]
@@ -346,13 +347,35 @@ impl Apu {
         self.status
     }
 
+    pub fn read_pcm12(&self) -> u8 {
+        let outputs = self.channel_output_state().digital_outputs;
+        (outputs[1] << 4) | outputs[0]
+    }
+
+    pub fn read_pcm34(&self) -> u8 {
+        let outputs = self.channel_output_state().digital_outputs;
+        (outputs[3] << 4) | outputs[2]
+    }
+
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(&mut self, context: &CycleContext) {
+        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal);
+    }
+
+    pub(crate) fn tick_t_cycle_for_speed(
+        &mut self,
+        context: &CycleContext,
+        speed_mode: CgbSpeedMode,
+    ) {
         self.last_register_write = None;
         self.channels.begin_t_cycle();
 
+        let clock_generation_timers =
+            speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get());
+
         if self.master.powered {
-            self.channels.tick_fast_timers();
-        } else {
+            self.channels.tick_fast_timers(clock_generation_timers);
+        } else if clock_generation_timers {
             self.channels.tick_powered_off_timebase();
         }
 
@@ -534,7 +557,11 @@ impl Apu {
             self.channels.clock_length_all();
         }
         if clocks.sweep {
-            self.channels.clock_sweep_ch1();
+            self.channels.clock_sweep_ch1(self.console_model);
+        }
+        if !clocks.length && self.console_model.is_cgb_family() {
+            self.channels
+                .clock_cgb_live_write_pending_even_envelope_all();
         }
         if clocks.envelope {
             self.channels.clock_envelope_all();

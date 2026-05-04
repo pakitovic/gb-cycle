@@ -728,8 +728,8 @@ mod tests {
         select_suite_for_options, write_suite_report,
     };
     use crate::{
-        CapturedArtifacts, RomCaseOutcome, RomCaseReport, RomRunner, RomSuiteReport,
-        default_workspace_root,
+        CapturedArtifacts, PassCondition, RomCaseOutcome, RomCaseReport, RomRunner, RomSuite,
+        RomSuiteReport, RomTestCase, Timeout, default_workspace_root,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -893,8 +893,17 @@ mod tests {
     }
 
     #[test]
-    fn startup_env_skip_boot_overrides_real_boot_manifests_without_requiring_assets() {
-        let mut suite = crate::cgb_smoke_suite();
+    fn startup_env_skip_boot_overrides_real_boot_cases_without_requiring_assets() {
+        let mut suite = RomSuite::new("real-boot-fixture", TestSubsystem::CrossSubsystem)
+            .with_case(
+                RomTestCase::new(
+                    "real-boot-case",
+                    "fixture.gb",
+                    Timeout::Frames(1),
+                    PassCondition::MooneyeResult,
+                )
+                .with_startup_mode(gb_core::StartupMode::RealBoot),
+            );
         assert!(
             suite
                 .cases

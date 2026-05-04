@@ -460,11 +460,10 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Hdma5,
             ),
-            0xFF56 => non_functional_io(
+            0xFF56 => implemented_io(
                 address,
                 IoRegisterOwner::Infrared,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Rp,
             ),
@@ -538,19 +537,17 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::CgbUndocumented75,
             ),
-            0xFF76 => non_functional_io(
+            0xFF76 => implemented_io(
                 address,
                 IoRegisterOwner::Apu,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::ReadOnly,
                 IoRegisterKind::Pcm12,
             ),
-            0xFF77 => non_functional_io(
+            0xFF77 => implemented_io(
                 address,
                 IoRegisterOwner::Apu,
                 IoRegisterAvailability::CgbOnly,
-                IoRegisterImplementation::Stubbed,
                 IoRegisterAccess::ReadOnly,
                 IoRegisterKind::Pcm34,
             ),

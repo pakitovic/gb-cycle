@@ -1,4 +1,5 @@
 use crate::model::ConsoleModel;
+use crate::speed::CgbSpeedMode;
 
 use super::super::common::{
     ChannelRuntimeState, DAC_ENABLE_REGISTER_MASK, NR11_WRITE_ONLY_MASK, NR14_FORCED_HIGH_MASK,
@@ -32,14 +33,15 @@ impl Channel2State {
         register: Channel2Register,
         value: u8,
         console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
         match register {
             Channel2Register::Nr21 => self.write_nr21(value),
-            Channel2Register::Nr22 => self.write_nr22(value),
+            Channel2Register::Nr22 => self.write_nr22(value, console_model),
             Channel2Register::Nr23 => self.write_nr23(value),
             Channel2Register::Nr24 => {
-                self.write_nr24(value, console_model, next_frame_sequencer_step)
+                self.write_nr24(value, console_model, speed_mode, next_frame_sequencer_step)
             }
         }
     }
@@ -72,12 +74,11 @@ impl Channel2State {
         self.pulse.apply_length_duty_write(value);
     }
 
-    fn write_nr22(&mut self, value: u8) {
-        self.pulse.apply_live_envelope_write_effect(value);
-        self.nr22 = value;
+    fn write_nr22(&mut self, value: u8, console_model: ConsoleModel) {
         self.pulse
-            .runtime
-            .set_dac_enabled(self.derived_dac_enabled());
+            .apply_live_envelope_write_effect(console_model, value);
+        self.nr22 = value;
+        self.pulse.apply_dac_enabled(self.derived_dac_enabled());
     }
 
     fn write_nr23(&mut self, value: u8) {
@@ -88,6 +89,7 @@ impl Channel2State {
         &mut self,
         value: u8,
         console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
         let mut write_plan = begin_nrx4_write(
@@ -99,9 +101,11 @@ impl Channel2State {
         );
 
         if write_plan.context.trigger {
-            write_plan.observe_trigger_reloaded_zero_length(
-                self.trigger(write_plan.context.next_step_clocks_envelope),
-            );
+            write_plan.observe_trigger_reloaded_zero_length(self.trigger(
+                console_model,
+                speed_mode,
+                write_plan.context.next_step_clocks_envelope,
+            ));
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
         }
 
@@ -169,13 +173,29 @@ impl Channel2State {
         self.pulse.mark_powered_on();
     }
 
-    fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
-        self.pulse
-            .trigger(self.period_value(), self.nr22, next_step_clocks_envelope)
+    fn trigger(
+        &mut self,
+        console_model: ConsoleModel,
+        speed_mode: CgbSpeedMode,
+        next_step_clocks_envelope: bool,
+    ) -> bool {
+        self.pulse.trigger(
+            console_model,
+            speed_mode,
+            self.period_value(),
+            self.nr22,
+            next_step_clocks_envelope,
+        )
     }
 
+    #[cfg(test)]
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
-        self.pulse.tick_fast_timer(self.period_value());
+        self.tick_fast_timer_with_clock_gate(true);
+    }
+
+    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(&mut self, clock_period_timer: bool) {
+        self.pulse
+            .tick_fast_timer_with_clock_gate(self.period_value(), clock_period_timer);
     }
 
     pub(in crate::apu) fn clock_length(&mut self) {
@@ -184,5 +204,9 @@ impl Channel2State {
 
     pub(in crate::apu) fn clock_envelope(&mut self) {
         self.pulse.clock_envelope();
+    }
+
+    pub(in crate::apu) fn clock_cgb_live_write_pending_even_envelope_tick(&mut self) {
+        self.pulse.clock_cgb_live_write_pending_even_envelope_tick();
     }
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::scheduler::TCycle;
+use crate::speed::CgbSpeedMode;
 
 mod frame;
 mod noise;
@@ -14,6 +15,11 @@ fn tick_apu_with_edges(apu: &mut Apu, t_cycle: u64, edges: &[DerivedEdge]) {
         context.push_derived_edge(edge);
     }
     apu.tick_t_cycle(&context);
+}
+
+fn tick_apu_for_speed(apu: &mut Apu, t_cycle: u64, speed_mode: CgbSpeedMode) {
+    let context = CycleContext::for_cycle(TCycle::new(t_cycle));
+    apu.tick_t_cycle_for_speed(&context, speed_mode);
 }
 
 const fn pulse_length_load(counter: u8) -> u8 {

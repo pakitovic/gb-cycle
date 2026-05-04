@@ -9,7 +9,14 @@ use super::super::{
 };
 use super::ch4::{Channel4NoiseSignalState, Channel4Nr43LiveWriteState};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Channel4Nr43LiveWriteProfile {
+    DmgPreCgbD,
+    CgbDirect,
+}
+
 pub(super) fn trace_channel4_live_nr43_write(
+    profile: Channel4Nr43LiveWriteProfile,
     runtime_active: bool,
     old_nr43: u8,
     new_nr43: u8,
@@ -17,11 +24,19 @@ pub(super) fn trace_channel4_live_nr43_write(
     nr43_live_write: &mut Channel4Nr43LiveWriteState,
 ) -> ApuCh4Nr43LiveWriteTrace {
     seed_channel4_noise_counter_phase_if_uninitialized(old_nr43, noise, nr43_live_write);
-    Channel4Nr43LiveWriteResolver::new(runtime_active, old_nr43, new_nr43, noise, nr43_live_write)
-        .resolve()
+    Channel4Nr43LiveWriteResolver::new(
+        profile,
+        runtime_active,
+        old_nr43,
+        new_nr43,
+        noise,
+        nr43_live_write,
+    )
+    .resolve()
 }
 
 pub(super) fn resolve_channel4_noise_counter_timer_after_live_write(
+    profile: Channel4Nr43LiveWriteProfile,
     new_nr43: u8,
     nr43_live_write: &Channel4Nr43LiveWriteState,
 ) -> u32 {
@@ -33,7 +48,11 @@ pub(super) fn resolve_channel4_noise_counter_timer_after_live_write(
     if divisor == 2 {
         return divisor;
     }
-    divisor + [2, 1, 4, 3][usize::from(nr43_live_write.alignment & 0x03)]
+    let alignment_offsets = match profile {
+        Channel4Nr43LiveWriteProfile::DmgPreCgbD => [2, 1, 4, 3],
+        Channel4Nr43LiveWriteProfile::CgbDirect => [2, 1, 0, 3],
+    };
+    divisor + alignment_offsets[usize::from(nr43_live_write.alignment & 0x03)]
 }
 
 pub(super) fn step_channel4_lfsr(noise: &mut Channel4NoiseSignalState) {
@@ -87,6 +106,7 @@ impl Channel4Stage {
 }
 
 struct Channel4Nr43LiveWriteResolver<'a> {
+    profile: Channel4Nr43LiveWriteProfile,
     runtime_active: bool,
     old_nr43: u8,
     new_nr43: u8,
@@ -96,6 +116,7 @@ struct Channel4Nr43LiveWriteResolver<'a> {
 
 impl<'a> Channel4Nr43LiveWriteResolver<'a> {
     fn new(
+        profile: Channel4Nr43LiveWriteProfile,
         runtime_active: bool,
         old_nr43: u8,
         new_nr43: u8,
@@ -103,6 +124,7 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         nr43_live_write: &'a mut Channel4Nr43LiveWriteState,
     ) -> Self {
         Self {
+            profile,
             runtime_active,
             old_nr43,
             new_nr43,
@@ -112,6 +134,13 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
     }
 
     fn resolve(&mut self) -> ApuCh4Nr43LiveWriteTrace {
+        match self.profile {
+            Channel4Nr43LiveWriteProfile::DmgPreCgbD => self.resolve_dmg_pre_cgb_d(),
+            Channel4Nr43LiveWriteProfile::CgbDirect => self.resolve_cgb_direct(),
+        }
+    }
+
+    fn resolve_dmg_pre_cgb_d(&mut self) -> ApuCh4Nr43LiveWriteTrace {
         let same_shift_group = self.old_nr43 & 0xF0 == self.new_nr43 & 0xF0;
         let effective_counter = self.effective_noise_counter();
         let old_stage = Channel4Stage::from_nr43(self.old_nr43, effective_counter);
@@ -166,9 +195,9 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         }
 
         let old_to_ff_action =
-            self.resolve_sameboy_pre_cgb_d_write(old_stage, ff_stage, effective_counter);
+            self.resolve_basic_live_write_transition(old_stage, ff_stage, effective_counter);
         let ff_to_new_action =
-            self.resolve_sameboy_pre_cgb_d_write(ff_stage, new_stage, effective_counter);
+            self.resolve_basic_live_write_transition(ff_stage, new_stage, effective_counter);
 
         trace.old_to_ff = Some(self.materialize_actionable_pass_trace(
             ApuCh4Nr43PassKind::OldToFf,
@@ -201,6 +230,73 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         if ff_to_new_action.low_shift_followup {
             trace.low_shift_followup = Some(self.execute_low_shift_followup_pass(new_stage));
         }
+
+        self.noise.short_width_mode = new_stage.short_width_mode;
+        trace.lfsr_after = self.noise.lfsr_state;
+        let (decision_category, lfsr_action) = derive_compatibility_aliases(&trace);
+        trace.decision_category = decision_category;
+        trace.lfsr_action = lfsr_action;
+        trace
+    }
+
+    fn resolve_cgb_direct(&mut self) -> ApuCh4Nr43LiveWriteTrace {
+        let same_shift_group = self.old_nr43 & 0xF0 == self.new_nr43 & 0xF0;
+        let effective_counter = self.nr43_live_write.noise_counter;
+        let old_stage = Channel4Stage::from_nr43(self.old_nr43, effective_counter);
+        let ff_stage = Channel4Stage::synthetic_ff(effective_counter);
+        let glitch_stage = Channel4Stage::from_nr43(
+            first_glitch_value(self.old_nr43, self.new_nr43),
+            effective_counter,
+        );
+        let new_stage = Channel4Stage::from_nr43(self.new_nr43, effective_counter);
+        let lfsr_before = self.noise.lfsr_state;
+
+        let mut trace = ApuCh4Nr43LiveWriteTrace {
+            runtime_active: self.runtime_active,
+            same_shift_group,
+            old_nr43: self.old_nr43,
+            ff_value: ff_stage.value,
+            glitch_1_value: glitch_stage.value,
+            glitch_2_value: None,
+            old_shift: old_stage.shift,
+            ff_shift: ff_stage.shift,
+            glitch_1_shift: glitch_stage.shift,
+            glitch_2_shift: None,
+            new_shift: new_stage.shift,
+            new_nr43: self.new_nr43,
+            effective_counter,
+            countdown_reloaded: self.nr43_live_write.countdown_reloaded,
+            old_bit: old_stage.bit,
+            ff_bit: ff_stage.bit,
+            glitch_1_bit: glitch_stage.bit,
+            glitch_2_bit: None,
+            new_bit: new_stage.bit,
+            decision_category: ApuCh4Nr43LiveWriteCategory::None,
+            lfsr_action: ApuCh4Nr43LfsrAction::None,
+            reload_seam: None,
+            old_to_ff: None,
+            ff_to_glitch_1: None,
+            glitch_1_to_glitch_2: None,
+            glitch_to_new: None,
+            low_shift_followup: None,
+            lfsr_before,
+            lfsr_after: lfsr_before,
+        };
+
+        if !self.runtime_active || same_shift_group {
+            self.noise.short_width_mode = new_stage.short_width_mode;
+            return trace;
+        }
+
+        let direct_action =
+            self.resolve_basic_live_write_transition(old_stage, new_stage, effective_counter);
+        trace.glitch_to_new = Some(self.materialize_actionable_pass_trace(
+            ApuCh4Nr43PassKind::GlitchToNew,
+            old_stage,
+            new_stage,
+            direct_action,
+            new_stage.short_width_mode,
+        ));
 
         self.noise.short_width_mode = new_stage.short_width_mode;
         trace.lfsr_after = self.noise.lfsr_state;
@@ -253,7 +349,7 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         }
     }
 
-    fn resolve_sameboy_pre_cgb_d_write(
+    fn resolve_basic_live_write_transition(
         &self,
         old_stage: Channel4Stage,
         new_stage: Channel4Stage,
@@ -504,7 +600,14 @@ mod tests {
             lfsr_state,
         }));
         let live = Box::leak(Box::new(Channel4Nr43LiveWriteState::default()));
-        Channel4Nr43LiveWriteResolver::new(false, 0, 0, noise, live)
+        Channel4Nr43LiveWriteResolver::new(
+            Channel4Nr43LiveWriteProfile::DmgPreCgbD,
+            false,
+            0,
+            0,
+            noise,
+            live,
+        )
     }
 
     #[test]
@@ -736,8 +839,14 @@ mod tests {
                 ..Channel4Nr43LiveWriteState::default()
             };
 
-            let trace =
-                trace_channel4_live_nr43_write(true, case.old, case.new, &mut noise, &mut live);
+            let trace = trace_channel4_live_nr43_write(
+                Channel4Nr43LiveWriteProfile::DmgPreCgbD,
+                true,
+                case.old,
+                case.new,
+                &mut noise,
+                &mut live,
+            );
 
             assert_eq!(
                 trace.effective_counter, case.expected_effective_counter,
