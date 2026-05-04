@@ -11,7 +11,9 @@ use super::super::common::{
 };
 use super::super::registers::Channel4Register;
 use super::super::{ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace};
-use super::ch4_live_write::{step_channel4_lfsr, trace_channel4_live_nr43_write};
+use super::ch4_live_write::{
+    Channel4Nr43LiveWriteProfile, step_channel4_lfsr, trace_channel4_live_nr43_write,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel4NoiseSignalState {
@@ -72,7 +74,7 @@ impl Channel4State {
         match register {
             Channel4Register::Nr41 => self.write_nr41(value),
             Channel4Register::Nr42 => self.write_nr42(value, console_model),
-            Channel4Register::Nr43 => self.write_nr43(value),
+            Channel4Register::Nr43 => self.write_nr43_for_model(value, console_model),
             Channel4Register::Nr44 => {
                 self.write_nr44(value, console_model, next_frame_sequencer_step)
             }
@@ -113,9 +115,16 @@ impl Channel4State {
         self.runtime.set_dac_enabled(self.derived_dac_enabled());
     }
 
+    #[cfg(test)]
     pub(in crate::apu) fn write_nr43(&mut self, value: u8) {
+        self.write_nr43_for_model(value, ConsoleModel::GameBoy);
+    }
+
+    pub(in crate::apu) fn write_nr43_for_model(&mut self, value: u8, console_model: ConsoleModel) {
         let old_nr43 = self.nr43;
+        let profile = channel4_nr43_live_write_profile(console_model);
         let trace = trace_channel4_live_nr43_write(
+            profile,
             self.runtime.active,
             old_nr43,
             value,
@@ -127,6 +136,7 @@ impl Channel4State {
         self.decode_nr43(value);
         self.nr43_live_write.counter_timer =
             super::ch4_live_write::resolve_channel4_noise_counter_timer_after_live_write(
+                profile,
                 value,
                 &self.nr43_live_write,
             );
@@ -579,6 +589,14 @@ impl Channel4State {
             current_digital_output: self.current_digital_output(),
             last_nr43_live_write: self.nr43_live_write.last_trace,
         }
+    }
+}
+
+fn channel4_nr43_live_write_profile(console_model: ConsoleModel) -> Channel4Nr43LiveWriteProfile {
+    if console_model.is_cgb_family() {
+        Channel4Nr43LiveWriteProfile::CgbDirect
+    } else {
+        Channel4Nr43LiveWriteProfile::DmgPreCgbD
     }
 }
 

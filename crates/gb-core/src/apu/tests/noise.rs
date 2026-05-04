@@ -533,6 +533,34 @@ fn channel_4_live_nr43_write_reloads_the_hidden_counter_timer_with_alignment_aft
 }
 
 #[test]
+fn cgb_channel_4_live_nr43_write_uses_direct_profile_after_a_reload_seam() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.envelope.current_volume = 0x0F;
+    channel.noise.lfsr_state = 0x43C3;
+    channel.write_register(Channel4Register::Nr43, 0x09, ConsoleModel::GameBoyColor, 0);
+    channel.nr43_live_write.alignment = 2;
+    channel.nr43_live_write.noise_counter = 0x0039;
+    channel.nr43_live_write.countdown_reloaded = true;
+
+    channel.write_register(Channel4Register::Nr43, 0x1A, ConsoleModel::GameBoyColor, 0);
+
+    assert_eq!(channel.nr43_live_write.counter_timer, 8);
+    assert!(!channel.nr43_live_write.countdown_reloaded);
+    assert_eq!(channel.noise.lfsr_state, 0x43C3);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(trace.effective_counter, 0x0039);
+    assert!(trace.reload_seam.is_none());
+    assert!(trace.old_to_ff.is_none());
+    assert!(trace.ff_to_glitch_1.is_none());
+    assert_eq!(
+        require_nr43_pass(trace.glitch_to_new, "direct").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+}
+
+#[test]
 fn channel_4_live_nr43_write_preserves_the_hidden_counter_timer_outside_the_reload_seam() {
     let mut channel = Channel4State::default();
     channel.write_nr43(0x4C);
