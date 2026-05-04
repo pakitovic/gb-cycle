@@ -135,6 +135,35 @@ fn dmg_power_on_while_div_apu_signal_is_high_still_resets_to_step_zero() {
 }
 
 #[test]
+fn powered_off_ch4_alignment_uses_the_same_cgb_speed_gate_as_live_fast_timers() {
+    let mut normal = Apu::new(ConsoleModel::GameBoyColor);
+    let mut double = Apu::new(ConsoleModel::GameBoyColor);
+
+    assert!(!normal.snapshot().powered);
+    assert!(!double.snapshot().powered);
+
+    for t_cycle in 0..2 {
+        tick_apu_for_speed(&mut normal, t_cycle, CgbSpeedMode::Normal);
+    }
+    for t_cycle in 0..4 {
+        tick_apu_for_speed(&mut double, t_cycle, CgbSpeedMode::Double);
+    }
+
+    let normal_alignment = normal.channels.channel_4.nr43_live_write.alignment;
+    let normal_subphase = normal.channels.channel_4.nr43_live_write.alignment_subphase;
+
+    assert_eq!(normal_alignment, 1);
+    assert_eq!(
+        double.channels.channel_4.nr43_live_write.alignment,
+        normal_alignment
+    );
+    assert_eq!(
+        double.channels.channel_4.nr43_live_write.alignment_subphase, normal_subphase,
+        "powered-off CH4 alignment must stay in the same undoubled APU wall-clock domain as powered-on fast timers"
+    );
+}
+
+#[test]
 fn frame_sequencer_emits_length_sweep_and_envelope_clocks_on_the_documented_steps() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
 

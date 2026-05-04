@@ -370,11 +370,12 @@ impl Apu {
         self.last_register_write = None;
         self.channels.begin_t_cycle();
 
+        let clock_generation_timers =
+            speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get());
+
         if self.master.powered {
-            self.channels.tick_fast_timers(
-                speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get()),
-            );
-        } else {
+            self.channels.tick_fast_timers(clock_generation_timers);
+        } else if clock_generation_timers {
             self.channels.tick_powered_off_timebase();
         }
 
