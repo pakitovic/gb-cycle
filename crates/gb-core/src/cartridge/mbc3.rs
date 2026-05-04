@@ -78,6 +78,7 @@ impl Mbc3Cartridge {
         self.rtc_latched = Mbc3RtcState::default();
         self.rtc_latched_valid = false;
         self.rtc_latch_armed = false;
+        self.rtc_subsecond_ticks = 0;
         self.rtc_access_ready_at = None;
     }
 
@@ -198,6 +199,7 @@ impl Mbc3Cartridge {
             Mbc3RamRtcSelect::RtcRegister(register) => {
                 if self.has_rtc {
                     self.rtc_live.write(register, value);
+                    self.note_rtc_register_write(register);
                 }
             }
         }
@@ -227,6 +229,7 @@ impl Mbc3Cartridge {
                 if self.has_rtc {
                     self.note_rtc_access_timing(t_cycle);
                     self.rtc_live.write(register, value);
+                    self.note_rtc_register_write(register);
                 }
             }
         }
@@ -283,10 +286,27 @@ impl Mbc3Cartridge {
         self.rtc_latch_armed = false;
     }
 
+    fn note_rtc_register_write(&mut self, register: Mbc3RtcRegister) {
+        if register == Mbc3RtcRegister::Seconds {
+            self.rtc_subsecond_ticks = 0;
+        }
+    }
+
     pub(in crate::cartridge) fn advance_rtc_seconds(&mut self, seconds: u64) {
         if self.has_rtc {
             self.rtc_live.advance_seconds(seconds);
         }
+    }
+
+    pub(in crate::cartridge) fn advance_rtc_clock_ticks(&mut self, ticks: u64) {
+        if !self.has_rtc || self.rtc_live.halt || ticks == 0 {
+            return;
+        }
+
+        let total_ticks = u64::from(self.rtc_subsecond_ticks) + ticks;
+        let elapsed_seconds = total_ticks / MBC3_RTC_CLOCK_TICKS_PER_SECOND;
+        self.rtc_subsecond_ticks = (total_ticks % MBC3_RTC_CLOCK_TICKS_PER_SECOND) as u16;
+        self.rtc_live.advance_seconds(elapsed_seconds);
     }
 
     #[allow(dead_code)]

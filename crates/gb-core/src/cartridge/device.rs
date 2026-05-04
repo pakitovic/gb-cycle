@@ -194,6 +194,12 @@ impl CartridgeDevice {
         }
     }
 
+    pub(in crate::cartridge) fn advance_mbc3_rtc_clock_ticks(&mut self, ticks: u64) {
+        if let Self::Mbc3(cartridge) = self {
+            cartridge.advance_rtc_clock_ticks(ticks);
+        }
+    }
+
     pub(in crate::cartridge) fn rumble_on(&self) -> bool {
         match self {
             Self::Mbc5(cartridge) => cartridge.rumble_on(),

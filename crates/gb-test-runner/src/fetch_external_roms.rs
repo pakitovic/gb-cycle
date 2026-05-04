@@ -474,7 +474,7 @@ mod tests {
 
     use crate::{
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite, cgb_rtc_suite,
         cgb_smoke_suite, cgb_speed_suite, curated_test_rom_families,
         curated_test_rom_family_suites, external_rom_store_root, test_rom_store_root,
     };
@@ -605,6 +605,7 @@ mod tests {
                 cgb_speed_suite(),
                 cgb_ppu_basic_suite(),
                 cgb_dma_suite(),
+                cgb_rtc_suite(),
                 cgb_audio_blargg_suite(),
                 cgb_audio_samesuite_suite(),
             ])
@@ -636,6 +637,7 @@ mod tests {
             cgb_speed_suite(),
             cgb_ppu_basic_suite(),
             cgb_dma_suite(),
+            cgb_rtc_suite(),
             cgb_audio_blargg_suite(),
             cgb_audio_samesuite_suite(),
         ]) {

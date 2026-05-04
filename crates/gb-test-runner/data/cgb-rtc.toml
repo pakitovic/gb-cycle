@@ -1,0 +1,30 @@
+version = 1
+suite_name = "cgb-rtc"
+subsystem = "Cartridge"
+
+[[case]]
+family = "ax6"
+id = "cgb-rtc-rtc3test-1"
+rom = "rtc3test-1.gb"
+console = "cgb"
+timeout_frames = 1140
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.png"
+
+[[case]]
+family = "ax6"
+id = "cgb-rtc-rtc3test-2"
+rom = "rtc3test-2.gb"
+console = "cgb"
+timeout_frames = 900
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.png"
+
+[[case]]
+family = "ax6"
+id = "cgb-rtc-rtc3test-3"
+rom = "rtc3test-3.gb"
+console = "cgb"
+timeout_frames = 2400
+oracle = "framebuffer-rgb555-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.png"

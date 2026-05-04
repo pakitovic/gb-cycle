@@ -304,6 +304,30 @@ path = "testroms/daid/rom_and_ram.gb"
 sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
 
 [[source.required_file]]
+path = "testroms/ax6/rtc3test-1.gb"
+sha256 = "5862a567c4799ce87e64d699420daa59d216744781a517965e074ed399dd56d0"
+
+[[source.required_file]]
+path = "testroms/ax6/rtc3test-1.png"
+sha256 = "f5e52ef8311d7ac9bcd9504298b1da543d9ecfca25baad705b1e3f9903db8fd8"
+
+[[source.required_file]]
+path = "testroms/ax6/rtc3test-2.gb"
+sha256 = "a50f2da808feff4de8f05067af34e4e444e35a4303e7fc636656e58a4ccea90c"
+
+[[source.required_file]]
+path = "testroms/ax6/rtc3test-2.png"
+sha256 = "00ec298838ba2daabe41c75fd717bd650d64c264ccc48e465894ca827c59f7b9"
+
+[[source.required_file]]
+path = "testroms/ax6/rtc3test-3.gb"
+sha256 = "38a004276ad0d90670dc7cd00ebbd85b7eac04f54a8f244360ae5092e5aefa76"
+
+[[source.required_file]]
+path = "testroms/ax6/rtc3test-3.png"
+sha256 = "726c312b9134255ed04fecedd86828637221ae32452f0fa3088a159fb5a283be"
+
+[[source.required_file]]
 path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
 sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
 

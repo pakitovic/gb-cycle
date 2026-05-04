@@ -132,16 +132,26 @@ pub(in crate::cartridge) fn advance_mbc3_rtc_fields(
         return;
     }
 
-    *seconds %= 60;
-    *minutes %= 60;
-    *hours %= 24;
+    *seconds &= 0x3F;
+    *minutes &= 0x3F;
+    *hours &= 0x1F;
     *day_counter &= 0x01FF;
+
+    let mut remaining_seconds = elapsed_seconds;
+    while remaining_seconds > 0 && !mbc3_rtc_fields_are_canonical(*seconds, *minutes, *hours) {
+        mbc3_rtc_tick_one_second(seconds, minutes, hours, day_counter, carry);
+        remaining_seconds -= 1;
+    }
+
+    if remaining_seconds == 0 {
+        return;
+    }
 
     let current_total_seconds = *day_counter as u64 * 86_400
         + *hours as u64 * 3_600
         + *minutes as u64 * 60
         + *seconds as u64;
-    let advanced_total_seconds = current_total_seconds + elapsed_seconds;
+    let advanced_total_seconds = current_total_seconds + remaining_seconds;
     let total_days = advanced_total_seconds / 86_400;
     if total_days > 511 {
         *carry = true;
@@ -153,6 +163,76 @@ pub(in crate::cartridge) fn advance_mbc3_rtc_fields(
     *hours = (day_seconds / 3_600) as u8;
     *minutes = ((day_seconds % 3_600) / 60) as u8;
     *seconds = (day_seconds % 60) as u8;
+}
+
+fn mbc3_rtc_fields_are_canonical(seconds: u8, minutes: u8, hours: u8) -> bool {
+    seconds < 60 && minutes < 60 && hours < 24
+}
+
+fn mbc3_rtc_tick_one_second(
+    seconds: &mut u8,
+    minutes: &mut u8,
+    hours: &mut u8,
+    day_counter: &mut u16,
+    carry: &mut bool,
+) {
+    match *seconds {
+        59 => {
+            *seconds = 0;
+            mbc3_rtc_tick_one_minute(minutes, hours, day_counter, carry);
+        }
+        63 => {
+            *seconds = 0;
+        }
+        _ => {
+            *seconds = (*seconds + 1) & 0x3F;
+        }
+    }
+}
+
+fn mbc3_rtc_tick_one_minute(
+    minutes: &mut u8,
+    hours: &mut u8,
+    day_counter: &mut u16,
+    carry: &mut bool,
+) {
+    match *minutes {
+        59 => {
+            *minutes = 0;
+            mbc3_rtc_tick_one_hour(hours, day_counter, carry);
+        }
+        63 => {
+            *minutes = 0;
+        }
+        _ => {
+            *minutes = (*minutes + 1) & 0x3F;
+        }
+    }
+}
+
+fn mbc3_rtc_tick_one_hour(hours: &mut u8, day_counter: &mut u16, carry: &mut bool) {
+    match *hours {
+        23 => {
+            *hours = 0;
+            mbc3_rtc_tick_one_day(day_counter, carry);
+        }
+        31 => {
+            *hours = 0;
+        }
+        _ => {
+            *hours = (*hours + 1) & 0x1F;
+        }
+    }
+}
+
+fn mbc3_rtc_tick_one_day(day_counter: &mut u16, carry: &mut bool) {
+    let next_day = (*day_counter & 0x01FF) + 1;
+    if next_day > 0x01FF {
+        *day_counter = 0;
+        *carry = true;
+    } else {
+        *day_counter = next_day;
+    }
 }
 
 pub(in crate::cartridge) fn advance_huc3_rtc_fields(
