@@ -120,7 +120,7 @@ test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-blargg
 
 fetch-test-roms:
-	cargo run -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
+	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
 
 require-boot-rom-root:
 	@if [ -z "$$GB_CYCLE_BOOT_ROM_ROOT" ]; then echo "GB_CYCLE_BOOT_ROM_ROOT must point at the directory containing verified boot ROM assets for RealBoot ROM test targets"; exit 2; fi
@@ -222,82 +222,82 @@ run-mealybug-real-boot: require-boot-rom-root
 
 run-cgb-smoke: require-boot-rom-root
 	$(MAKE) fetch-test-roms FAMILIES="mooneye acid"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
 
 run-cgb-boot-div: require-boot-rom-root
 	$(MAKE) fetch-test-roms FAMILIES="mooneye"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-div --failure-artifact-root .artifacts/cgb-boot-div
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-div --failure-artifact-root .artifacts/cgb-boot-div
 
 run-cgb-boot-hwio: require-boot-rom-root
 	$(MAKE) fetch-test-roms FAMILIES="mooneye"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-hwio --failure-artifact-root .artifacts/cgb-boot-hwio
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-hwio --failure-artifact-root .artifacts/cgb-boot-hwio
 
 run-cgb-speed:
 	$(MAKE) fetch-test-roms FAMILIES="daid blargg"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-speed --failure-artifact-root .artifacts/cgb-speed
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-speed --failure-artifact-root .artifacts/cgb-speed
 
 run-cgb-ppu-basic:
 	$(MAKE) fetch-test-roms FAMILIES="samesuite daid acid hacktix"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
 
 run-cgb-dma:
 	$(MAKE) fetch-test-roms FAMILIES="samesuite"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-dma --failure-artifact-root .artifacts/cgb-dma
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-dma --failure-artifact-root .artifacts/cgb-dma
 
 run-cgb-audio-blargg:
 	$(MAKE) fetch-test-roms FAMILIES="blargg"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-blargg --failure-artifact-root .artifacts/cgb-audio-blargg
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-blargg --failure-artifact-root .artifacts/cgb-audio-blargg
 
 run-cgb-audio-samesuite:
 	$(MAKE) fetch-test-roms FAMILIES="samesuite"
-	cargo run -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-samesuite --failure-artifact-root .artifacts/cgb-audio-samesuite
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-samesuite --failure-artifact-root .artifacts/cgb-audio-samesuite
 
 phase9-determinism-smoke:
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-2-interrupt-timing
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-2-interrupt-timing
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
 
 phase9-determinism-local: phase9-determinism-smoke
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
 	$(MAKE) fetch-test-roms FAMILIES=acid
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
 	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-timer-div-write --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-oam-dma-basic --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite acid-dmg-curated --case dmg-acid2 --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite mealybug-tearoom-dmg-curated --case mealybug-m3-window-timing --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run -q -p gb-test-runner --bin run_determinism -- --suite blargg-dmg-curated --case blargg-dmg-sound-01-registers --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-timer-div-write --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-oam-dma-basic --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite acid-dmg-curated --case dmg-acid2 --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mealybug-tearoom-dmg-curated --case mealybug-m3-window-timing --save-at-tcycles 1024 --continuation-tcycles 1024
+	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite blargg-dmg-curated --case blargg-dmg-sound-01-registers --save-at-tcycles 1024 --continuation-tcycles 1024
 
 phase9-sameboy-cartridge-oracles:
-	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite phase-6-cartridge-oracle --build-if-missing
+	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite phase-6-cartridge-oracle --build-if-missing
 
 phase9-diff-cartridge:
-	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite phase-6-cartridge-oracle
+	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite phase-6-cartridge-oracle
 
 phase9-sameboy-acid-oracles:
 	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite acid-dmg-curated --build-if-missing
+	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite acid-dmg-curated --build-if-missing
 
 phase9-diff-acid:
 	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite acid-dmg-curated
+	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite acid-dmg-curated
 
 phase9-sameboy-mealybug-oracles:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite mealybug-tearoom-dmg-sameboy-differential --build-if-missing
+	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite mealybug-tearoom-dmg-sameboy-differential --build-if-missing
 
 phase9-diff-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite mealybug-tearoom-dmg-sameboy-differential
+	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite mealybug-tearoom-dmg-sameboy-differential
 
 phase9-sameboy-hacktix-oracles:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite hacktix-dmg-curated --build-if-missing
+	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite hacktix-dmg-curated --build-if-missing
 
 phase9-diff-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite hacktix-dmg-curated
+	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite hacktix-dmg-curated
 
 phase9-first-divergence-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite hacktix-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence
+	cargo run --release -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite hacktix-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence
