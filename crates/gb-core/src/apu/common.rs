@@ -197,6 +197,8 @@ pub(in crate::apu) struct EnvelopeState {
     pub(in crate::apu) automatic_updates_enabled: bool,
     pub(in crate::apu) timer: u8,
     pub(in crate::apu) current_volume: u8,
+    #[serde(default)]
+    cgb_live_write_short_reload: bool,
 }
 
 impl EnvelopeState {
@@ -221,6 +223,7 @@ impl EnvelopeState {
 
         if console_model.is_cgb_family() {
             let old_value = encode_envelope_register(self.initial_volume, self.increase, self.pace);
+            let old_pace = self.pace;
             let volume_updates_locked = self.pace != 0 && !self.automatic_updates_enabled;
             apply_cgb_zombie_mode_write(
                 &mut self.current_volume,
@@ -228,6 +231,13 @@ impl EnvelopeState {
                 old_value,
                 volume_updates_locked,
             );
+            self.apply_write(value);
+            self.cgb_live_write_short_reload = false;
+            self.automatic_updates_enabled = self.pace != 0 && !volume_updates_locked;
+            if old_pace == 0 && self.pace != 0 && !volume_updates_locked {
+                self.timer = 1;
+                self.cgb_live_write_short_reload = true;
+            }
         } else {
             apply_consistent_zombie_mode_increment(&mut self.current_volume, value);
         }
@@ -237,6 +247,7 @@ impl EnvelopeState {
         self.automatic_updates_enabled = self.pace != 0;
         self.timer = envelope_timer_reload(self.pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
+        self.cgb_live_write_short_reload = false;
     }
 
     pub(in crate::apu) fn clock(&mut self) {
@@ -246,6 +257,7 @@ impl EnvelopeState {
             &mut self.timer,
             &mut self.current_volume,
             &mut self.automatic_updates_enabled,
+            &mut self.cgb_live_write_short_reload,
         );
     }
 }
@@ -483,6 +495,7 @@ pub(super) fn clock_envelope_unit(
     envelope_timer: &mut u8,
     current_volume: &mut u8,
     envelope_automatic_updates_enabled: &mut bool,
+    cgb_live_write_short_reload: &mut bool,
 ) {
     if envelope_pace == 0 || !*envelope_automatic_updates_enabled {
         return;
@@ -496,7 +509,12 @@ pub(super) fn clock_envelope_unit(
         return;
     }
 
-    *envelope_timer = envelope_timer_reload(envelope_pace);
+    *envelope_timer = if *cgb_live_write_short_reload {
+        *cgb_live_write_short_reload = false;
+        envelope_timer_reload(envelope_pace).saturating_sub(1)
+    } else {
+        envelope_timer_reload(envelope_pace)
+    };
     if envelope_increase {
         if *current_volume < MAX_ENVELOPE_VOLUME {
             *current_volume += 1;

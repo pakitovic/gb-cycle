@@ -1714,6 +1714,95 @@ fn cgb_live_nrx2_writes_use_the_shared_zombie_volume_matrix_for_pulse_channels()
     }
 }
 
+fn cgb_channel_1_volume_after_live_nrx2_write_and_envelope_clocks(
+    old_value: u8,
+    new_value: u8,
+    envelope_clocks: usize,
+) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, old_value);
+    apu.write_register(0xFF14, 0x80);
+    apu.write_register(0xFF12, new_value);
+    for _ in 0..envelope_clocks {
+        apu.channels.channel_1.clock_envelope();
+    }
+    apu.channels.channel_1.pulse.envelope.current_volume
+}
+
+fn cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(
+    old_value: u8,
+    new_value: u8,
+    envelope_clocks: usize,
+) -> u8 {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, old_value);
+    apu.write_register(0xFF19, 0x80);
+    apu.write_register(0xFF17, new_value);
+    for _ in 0..envelope_clocks {
+        apu.channels.channel_2.clock_envelope();
+    }
+    apu.channels.channel_2.pulse.envelope.current_volume
+}
+
+#[test]
+fn cgb_live_nrx2_writes_update_the_shared_envelope_clock_state_for_pulse_channels() {
+    let cases = [
+        (0x20, 0x20, 0x02),
+        (0x08, 0x08, 0x01),
+        (0x22, 0x22, 0x01),
+        (0x32, 0x32, 0x02),
+        (0x20, 0x08, 0x0D),
+        (0x08, 0x47, 0x0E),
+        (0x22, 0x08, 0x0C),
+        (0x08, 0x32, 0x0D),
+    ];
+
+    for (old_value, new_value, expected_volume) in cases {
+        assert_eq!(
+            cgb_channel_1_volume_after_live_nrx2_write_and_envelope_clocks(old_value, new_value, 2),
+            expected_volume,
+            "CH1 old={old_value:#04X} new={new_value:#04X}",
+        );
+        assert_eq!(
+            cgb_channel_2_volume_after_live_nrx2_write_and_envelope_clocks(old_value, new_value, 2),
+            expected_volume,
+            "CH2 old={old_value:#04X} new={new_value:#04X}",
+        );
+    }
+}
+
+#[test]
+fn save_state_preserves_cgb_live_nrx2_pending_short_envelope_reload() {
+    let mut uninterrupted = Apu::new(ConsoleModel::GameBoyColor);
+    uninterrupted.write_register(0xFF26, 0x80);
+    uninterrupted.write_register(0xFF11, 0x80);
+    uninterrupted.write_register(0xFF12, 0x08);
+    uninterrupted.write_register(0xFF14, 0x80);
+    uninterrupted.write_register(0xFF12, 0x32);
+
+    let saved = uninterrupted.capture_save_state();
+    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    restored.restore_save_state(&saved);
+
+    for _ in 0..2 {
+        uninterrupted.channels.channel_1.clock_envelope();
+        restored.channels.channel_1.clock_envelope();
+    }
+
+    assert_eq!(
+        restored.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+    assert_eq!(
+        restored.channels.channel_1.pulse.envelope.current_volume,
+        0x0D
+    );
+}
+
 #[test]
 fn live_nrx2_write_requires_retrigger_before_reprogramming_pulse_envelopes() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
