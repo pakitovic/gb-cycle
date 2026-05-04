@@ -122,10 +122,13 @@ impl Mbc3Cartridge {
                 self.ram_rtc_enabled = value & 0x0F == 0x0A;
             }
             0x2000..=0x3FFF => {
-                self.rom_bank = value & 0x7F;
+                self.rom_bank = match self.variant {
+                    Mbc3Variant::Standard => value & 0x7F,
+                    Mbc3Variant::Mbc30 => value,
+                };
             }
             0x4000..=0x5FFF => {
-                self.ram_or_rtc_select = Mbc3RamRtcSelect::from_value(value);
+                self.ram_or_rtc_select = Mbc3RamRtcSelect::from_value(value, self.variant);
             }
             0x6000..=0x7FFF => {
                 self.latch_rtc_if_needed(value);
@@ -236,7 +239,10 @@ impl Mbc3Cartridge {
     }
 
     pub(in crate::cartridge) fn effective_rom_bank(&self, bank_count: usize) -> usize {
-        let raw_bank = self.rom_bank & 0x7F;
+        let raw_bank = match self.variant {
+            Mbc3Variant::Standard => self.rom_bank & 0x7F,
+            Mbc3Variant::Mbc30 => self.rom_bank,
+        };
         let translated_bank = if raw_bank == 0 { 1 } else { raw_bank } as usize;
 
         if bank_count == 0 {
@@ -433,10 +439,11 @@ impl Mbc3RtcRegister {
 }
 
 impl Mbc3RamRtcSelect {
-    pub(in crate::cartridge) fn from_value(value: u8) -> Self {
+    pub(in crate::cartridge) fn from_value(value: u8, variant: Mbc3Variant) -> Self {
         let low_nibble = value & 0x0F;
         match low_nibble {
             0x00..=0x03 => Self::RamBank(low_nibble),
+            0x04..=0x07 if variant == Mbc3Variant::Mbc30 => Self::RamBank(low_nibble),
             0x08 => Self::RtcRegister(Mbc3RtcRegister::Seconds),
             0x09 => Self::RtcRegister(Mbc3RtcRegister::Minutes),
             0x0A => Self::RtcRegister(Mbc3RtcRegister::Hours),

@@ -3735,6 +3735,48 @@ mod tests {
     }
 
     #[test]
+    fn external_save_round_trips_mbc30_sized_ram_plus_mbc3_rtc_suffix() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: 64 * 1024,
+                },
+            },
+        };
+        let mut ram = vec![0; 64 * 1024];
+        ram[0] = 0x30;
+        ram[0x3FFF] = 0x3F;
+        ram[0x8000] = 0x80;
+        ram[0xFFFF] = 0xFF;
+        let state = PersistentCartState::Mbc3RamRtc {
+            ram: ram.clone(),
+            rtc: Mbc3RtcPersistentState {
+                seconds: 7,
+                minutes: 8,
+                hours: 9,
+                day_counter: 10,
+                halt: false,
+                carry: false,
+            },
+        };
+
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_000,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC30-sized MBC3 RAM+RTC should export");
+        assert_eq!(external.len(), 64 * 1024 + MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 1_700_000_000)
+            .expect("MBC30-sized MBC3 RAM+RTC should import");
+        assert_eq!(imported, state);
+    }
+
+    #[test]
     fn external_save_rejects_ambiguous_or_invalid_payloads() {
         let linear_metadata = CartridgePersistenceMetadata {
             has_battery: true,

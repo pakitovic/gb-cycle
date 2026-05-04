@@ -511,40 +511,63 @@ pub(in crate::cartridge) fn validate_mbc3(
         )));
     }
 
-    if declared_rom_bytes > MBC3_SUPPORTED_ROM_BYTES_MAX {
+    let has_ram = matches!(classification.raw_type(), 0x10 | 0x12 | 0x13);
+    let variant = if has_ram && header.ram_size.raw_code == 0x05 {
+        Mbc3Variant::Mbc30
+    } else {
+        Mbc3Variant::Standard
+    };
+    let rom_limit = match variant {
+        Mbc3Variant::Standard => MBC3_SUPPORTED_ROM_BYTES_MAX,
+        Mbc3Variant::Mbc30 => MBC30_SUPPORTED_ROM_BYTES_MAX,
+    };
+    let variant_name = match variant {
+        Mbc3Variant::Standard => "MBC3",
+        Mbc3Variant::Mbc30 => "MBC30",
+    };
+
+    if declared_rom_bytes > rom_limit {
         return Err(ctx.reject(format!(
-            "{} exceeds the current MBC3 ROM limit of {} bytes with {} bytes",
+            "{} exceeds the current {} ROM limit of {} bytes with {} bytes",
             ctx.name(),
-            MBC3_SUPPORTED_ROM_BYTES_MAX,
+            variant_name,
+            rom_limit,
             declared_rom_bytes
         )));
     }
 
-    let has_ram = matches!(classification.raw_type(), 0x10 | 0x12 | 0x13);
-    if has_ram && header.ram_size.raw_code == 0x05 {
-        return Err(ctx.reject(format!(
-            "{} with 64 KiB SRAM is reserved for the future MBC30 variant, not standard MBC3",
-            ctx.name()
-        )));
-    }
-
-    if has_ram {
-        if !matches!(header.ram_size.raw_code, 0x01..=0x03) {
-            return Err(ctx.reject(format!(
-                "{} declared RAM size code {:#04X}, which is not valid for the current standard MBC3 baseline",
+    match (has_ram, variant) {
+        (true, Mbc3Variant::Standard) => {
+            if !matches!(header.ram_size.raw_code, 0x01..=0x03) {
+                return Err(ctx.reject(format!(
+                    "{} declared RAM size code {:#04X}, which is not valid for the current standard MBC3 baseline",
+                    ctx.name(),
+                    header.ram_size.raw_code
+                )));
+            }
+        }
+        (true, Mbc3Variant::Mbc30) => {
+            if header.ram_size.decoded_bytes != Some(64 * 1024)
+                || header.ram_size.bank_count != Some(8)
+            {
+                return Err(ctx.reject(format!(
+                    "{} declared RAM size code {:#04X}, which did not resolve to the required MBC30 64 KiB / 8-bank SRAM shape",
+                    ctx.name(),
+                    header.ram_size.raw_code
+                )));
+            }
+        }
+        (false, _) if header.ram_size.raw_code != 0x00 => {
+            ctx.check_degradable(format!(
+                "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
                 ctx.name(),
                 header.ram_size.raw_code
-            )));
+            ))?;
         }
-    } else if header.ram_size.raw_code != 0x00 {
-        ctx.check_degradable(format!(
-            "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
-            ctx.name(),
-            header.ram_size.raw_code
-        ))?;
+        (false, _) => {}
     }
 
-    Ok(Mbc3Variant::Standard)
+    Ok(variant)
 }
 
 pub(in crate::cartridge) fn validate_mbc5(

@@ -168,25 +168,59 @@ fn mbc3_ram_banking_and_rtc_latch_are_visible_through_machine_access() {
 }
 
 #[test]
-fn strict_validation_rejects_mbc30_like_64kib_sram_on_mbc3() {
+fn strict_validation_admits_mbc30_like_64kib_sram_as_supported_mbc3_family_variant() {
     let rom = build_banked_mbc3_rom(0x13, 0x06, 0x05);
-    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
-        .expect_err("MBC30-like SRAM should stay reserved");
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("MBC30-like SRAM should load through the explicit variant path");
 
-    let (classification, reason) = match error {
-        gb_core::CartridgeLoadError::Rejected {
-            classification,
-            reason,
-            ..
-        } => (classification, reason),
-        other => panic!("unexpected error: {other:?}"),
-    };
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc3);
+    let classification = report
+        .cartridge()
+        .classification()
+        .expect("loaded cartridge classification");
     assert_eq!(classification.detected_name(), "MBC30");
     assert_eq!(
         classification.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
     );
-    assert!(reason.contains("known reserved variant"));
+}
+
+#[test]
+fn mbc30_exposes_extended_rom_and_ram_banks_through_the_machine_bus() {
+    let rom = build_banked_mbc3_rom(0x13, 0x07, 0x05);
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_startup_mode(gb_core::StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("MBC30 test image should load");
+    assert_eq!(
+        machine.cartridge().persistence_metadata().profile,
+        CartridgePersistenceProfile::PersistentRam {
+            ram: CartridgeRamPayloadKind::Linear {
+                byte_len: 64 * 1024,
+            },
+        }
+    );
+
+    machine.write_bus(0x2000, 0x00);
+    assert_eq!(machine.read_bus(0x4000), 0x01);
+    machine.write_bus(0x2000, 0x80);
+    assert_eq!(machine.read_bus(0x4000), 0x80);
+    machine.write_bus(0x2000, 0xFF);
+    assert_eq!(machine.read_bus(0x4000), 0xFF);
+
+    machine.write_bus(0x0000, 0x0A);
+    for bank in 0x00..=0x07 {
+        machine.write_bus(0x4000, bank);
+        machine.write_bus(0xA000, 0xC0 | bank);
+    }
+
+    for bank in 0x00..=0x07 {
+        machine.write_bus(0x4000, bank);
+        assert_eq!(machine.read_bus(0xA000), 0xC0 | bank);
+    }
 }
 
 #[test]

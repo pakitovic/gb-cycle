@@ -177,26 +177,96 @@ fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
 }
 
 #[test]
-fn strict_validation_rejects_mbc30_like_64kib_sram_configurations() {
+fn strict_validation_admits_mbc30_64kib_sram_configurations_as_explicit_variant() {
     let rom = build_banked_mbc3_rom(0x13, 0x06, 0x05);
-    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
-        .expect_err("MBC30-like SRAM should fail the standard MBC3 baseline");
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC30 should load");
 
-    match error {
-        CartridgeLoadError::Rejected {
-            classification,
-            reason,
-            ..
-        } => {
-            assert_eq!(classification.detected_name(), "MBC30");
-            assert_eq!(
-                classification.selection(),
-                CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant)
-            );
-            assert!(reason.contains("known reserved variant"));
-        }
-        other => panic!("unexpected error: {other:?}"),
+    let Some(CartridgeDevice::Mbc3(cartridge)) = report.cartridge().device.as_ref() else {
+        panic!("expected MBC3-family cartridge");
+    };
+
+    assert_eq!(cartridge.classification.detected_name(), "MBC30");
+    assert_eq!(cartridge.variant, Mbc3Variant::Mbc30);
+    assert_eq!(cartridge.ram.as_ref().map(Vec::len), Some(64 * 1024));
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc3);
+}
+
+#[test]
+fn mbc30_reaches_extended_rom_banks_and_preserves_zero_to_one_translation() {
+    let rom = build_banked_mbc3_rom(0x13, 0x07, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC30 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3-family cartridge");
+    };
+
+    cartridge.write_rom(0x2000, 0x00);
+    assert_eq!(cartridge.rom_bank, 0x00);
+    assert_eq!(cartridge.read_rom(0x4000), 0x01);
+
+    for bank in [0x7F, 0x80, 0xFF] {
+        cartridge.write_rom(0x2000, bank);
+        assert_eq!(cartridge.rom_bank, bank);
+        assert_eq!(cartridge.read_rom(0x4000), bank);
     }
+}
+
+#[test]
+fn mbc30_maps_selectors_0x04_through_0x07_to_extended_ram_banks() {
+    let rom = build_banked_mbc3_rom(0x13, 0x03, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC30 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3-family cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    for bank in 0x00..=0x07 {
+        cartridge.write_rom(0x4000, bank);
+        assert_eq!(cartridge.ram_or_rtc_select, Mbc3RamRtcSelect::RamBank(bank));
+        cartridge.write_ram(0xA000, 0xB0 | bank);
+    }
+
+    for bank in 0x00..=0x07 {
+        cartridge.write_rom(0x4000, bank);
+        assert_eq!(cartridge.read_ram(0xA000), 0xB0 | bank);
+    }
+
+    cartridge.write_rom(0x4000, 0x0D);
+    assert_eq!(
+        cartridge.ram_or_rtc_select,
+        Mbc3RamRtcSelect::ReservedSelector(0x0D)
+    );
+    assert_eq!(cartridge.read_ram(0xA000), RAM_ABSENT_READ_VALUE);
+}
+
+#[test]
+fn mbc30_timer_ram_battery_variant_keeps_mbc3_rtc_register_mapping() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC30 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3-family cartridge");
+    };
+
+    assert_eq!(cartridge.variant, Mbc3Variant::Mbc30);
+    assert!(cartridge.has_rtc);
+
+    cartridge.advance_rtc_seconds(65);
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 5);
+
+    cartridge.write_rom(0x4000, 0x09);
+    assert_eq!(
+        cartridge.ram_or_rtc_select,
+        Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Minutes)
+    );
+    assert_eq!(cartridge.read_ram(0xA000), 1);
 }
 
 #[test]
