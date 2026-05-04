@@ -260,6 +260,60 @@ fn cgb_double_speed_inactive_pulse_trigger_uses_cpu_visible_startup_delay() {
 }
 
 #[test]
+fn cgb_normal_speed_active_pulse_retrigger_uses_short_restart_delay_before_next_duty_step() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.duty_step = 4;
+    apu.channels.channel_2.pulse.period_timer = pulse_timer_reload(0x07FF);
+
+    apu.write_register(0xFF19, 0x87);
+
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 4);
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 0);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 4);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 4);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 5);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0x08);
+}
+
+#[test]
+fn cgb_double_speed_active_pulse_retrigger_scales_the_restart_delay_in_cpu_visible_cycles() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x80);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+
+    apu.write_register_for_speed(0xFF19, 0x87, CgbSpeedMode::Double);
+
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 8);
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+}
+
+#[test]
 fn cgb_double_speed_pulse_generation_timers_tick_on_the_normal_speed_domain() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
@@ -305,6 +359,7 @@ fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress
     apu.channels.channel_2.pulse.duty_step = 0;
     apu.write_register(0xFF19, 0x87);
 
+    assert_eq!(apu.channels.channel_2.pulse.trigger_delay_t_cycles, 0);
     assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
     assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0x0F);
 }

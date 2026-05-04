@@ -4,8 +4,8 @@ use crate::speed::CgbSpeedMode;
 use super::super::common::{
     ChannelRuntimeState, EnvelopeState, ExtraLengthClockingContext, LENGTH_ENABLE_BIT,
     PULSE_DUTY_MASK, PULSE_DUTY_SHIFT, PULSE_DUTY_STEP_MASK, PULSE_LENGTH_COUNTER_RELOAD,
-    apply_extra_length_clocking_u8, cgb_pulse_inactive_trigger_delay_t_cycles,
-    clock_length_counter_u8, pulse_length_counter_from_load, pulse_timer_reload,
+    apply_extra_length_clocking_u8, cgb_pulse_trigger_delay_t_cycles, clock_length_counter_u8,
+    pulse_length_counter_from_load, pulse_timer_reload,
     pulse_timer_reload_preserving_trigger_phase, pulse_waveform_high,
 };
 
@@ -175,7 +175,7 @@ impl PulseChannelState {
         self.apply_envelope_write(envelope_value);
         self.period_timer =
             pulse_timer_reload_preserving_trigger_phase(period_value, self.period_timer);
-        self.trigger_delay_t_cycles = cgb_pulse_inactive_trigger_delay_t_cycles(
+        self.trigger_delay_t_cycles = cgb_pulse_trigger_delay_t_cycles(
             console_model,
             speed_mode,
             was_active,
