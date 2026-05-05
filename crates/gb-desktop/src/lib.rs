@@ -8,11 +8,11 @@ pub use config::{
     DEFAULT_REWIND_SUBFRAMES_PER_FRAME, DEFAULT_SAVE_FLUSH_DEBOUNCE, DEFAULT_WINDOW_SCALE,
     DesktopConfig, DesktopConfigError, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
     DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBinding,
-    GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout, GamepadMenuBindings,
-    GamepadOptions, GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
-    KeyboardBindings, LaunchOptions, MachineStateOptions, MenuKeyboardBindings,
-    PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, SaveOptions,
-    VideoOptions,
+    GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout, GamepadGyroMode,
+    GamepadMenuBindings, GamepadOptions, GamepadRumbleMode, HotkeyBindings, InputOptions,
+    JoypadKeyboardBindings, KeyboardBindings, LaunchOptions, MachineStateOptions,
+    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
+    SaveKeyPolicy, SaveOptions, VideoOptions,
 };
 
 pub use external_port::DesktopExternalPortSelection;

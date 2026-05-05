@@ -1,12 +1,14 @@
-use gb_core::{JoypadButton, Machine, TraceSummaryBuffer};
+use gb_core::{JoypadButton, Machine, Mbc7AccelerometerInput, TraceSummaryBuffer};
 use gb_desktop::{
     GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadOptions, GamepadRumbleMode, PreferredGamepadIdentity,
+    GamepadGyroMode, GamepadMenuBindings, GamepadOptions, GamepadRumbleMode,
+    PreferredGamepadIdentity,
 };
 use sdl3::GamepadSubsystem;
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Button, Gamepad};
 use sdl3::joystick::JoystickId;
+use sdl3::sensor::SensorType;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -16,6 +18,13 @@ const GAMEPAD_RUMBLE_DURATION: Duration = Duration::from_millis(250);
 const GAMEPAD_RUMBLE_REFRESH_INTERVAL: Duration = Duration::from_millis(125);
 const STRONG_GAMEPAD_RUMBLE_INTENSITY: u16 = u16::MAX;
 const WEAK_GAMEPAD_RUMBLE_INTENSITY: u16 = 0x6000;
+const RIGHT_STICK_MBC7_MILLI_G_RANGE: i16 = 1_000;
+const SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED: f32 = 9.80665;
+const GAMEPAD_ACCELEROMETER_SENSORS: [SensorType; 3] = [
+    SensorType::Accelerometer,
+    SensorType::AccelerometerLeft,
+    SensorType::AccelerometerRight,
+];
 const JOYPAD_BUTTONS: [JoypadButton; 8] = [
     JoypadButton::Up,
     JoypadButton::Down,
@@ -82,6 +91,17 @@ struct AppliedGamepadRumble {
 struct GamepadRumbleState {
     applied: Option<AppliedGamepadRumble>,
     next_refresh_at: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GamepadAccelerometerSample {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Clone, Default)]
+struct GamepadGyroState {
+    baseline: Option<GamepadAccelerometerSample>,
 }
 
 pub struct FrontendInputState {
@@ -210,6 +230,7 @@ pub struct GamepadManager {
     active: Option<JoystickId>,
     left_stick_state: LeftStickDigitalState,
     rumble: GamepadRumbleState,
+    gyro: GamepadGyroState,
 }
 
 struct OpenGamepad {
@@ -217,6 +238,7 @@ struct OpenGamepad {
     name: String,
     path: Option<String>,
     supports_rumble: bool,
+    accelerometer_sensor: Option<SensorType>,
 }
 
 impl OpenGamepad {
@@ -242,6 +264,7 @@ impl GamepadManager {
             active: None,
             left_stick_state: LeftStickDigitalState::default(),
             rumble: GamepadRumbleState::default(),
+            gyro: GamepadGyroState::default(),
         };
 
         let mut gamepads = manager
@@ -271,11 +294,13 @@ impl GamepadManager {
                 }
             }
             Event::ControllerDeviceRemoved { which, .. } => {
-                self.remove_gamepad(joystick_id_from_event(which), input_state, machine);
+                self.remove_gamepad(joystick_id_from_event(which), input_state, machine)?;
             }
             Event::ControllerDeviceRemapped { which, .. } => {
                 if self.active == Some(joystick_id_from_event(which)) {
                     eprintln!("info: active SDL gamepad remapped");
+                    self.gyro.baseline = None;
+                    self.sync_accelerometer_sensor_enabled()?;
                     self.sync_active_gamepad_state(input_state, machine);
                 }
             }
@@ -301,12 +326,17 @@ impl GamepadManager {
                 None => default_gamepad_name(joystick_id),
             },
             supports_rumble: unsafe { gamepad.has_rumble() },
+            accelerometer_sensor: detect_gamepad_accelerometer_sensor(&gamepad),
             gamepad,
         };
 
         let previous_active = self.active;
         self.opened.insert(joystick_id, opened_gamepad);
         self.active = self.select_active_gamepad();
+        if previous_active != self.active {
+            self.gyro.baseline = None;
+            self.sync_accelerometer_sensor_enabled()?;
+        }
 
         let Some(gamepad) = self.opened.get(&joystick_id) else {
             return Ok(false);
@@ -355,7 +385,7 @@ impl GamepadManager {
         joystick_id: JoystickId,
         input_state: &mut FrontendInputState,
         machine: &mut Machine<TraceSummaryBuffer>,
-    ) {
+    ) -> Result<(), String> {
         let removed_name = self.opened.remove(&joystick_id).map(|gamepad| gamepad.name);
         let removed_name = match removed_name {
             Some(name) => name,
@@ -366,8 +396,10 @@ impl GamepadManager {
         let previous_active = self.active;
         self.active = self.select_active_gamepad();
         if previous_active == self.active {
-            return;
+            return Ok(());
         }
+        self.gyro.baseline = None;
+        self.sync_accelerometer_sensor_enabled()?;
 
         if let Some(next_active) = self.active {
             let next_name = self
@@ -379,6 +411,7 @@ impl GamepadManager {
         }
 
         self.sync_active_gamepad_state(input_state, machine);
+        Ok(())
     }
 
     pub fn poll_active_gamepad_state(
@@ -387,9 +420,11 @@ impl GamepadManager {
         machine: &mut Machine<TraceSummaryBuffer>,
     ) {
         let Some(active_joystick_id) = self.active else {
+            set_mbc7_accelerometer_input_if_supported(machine, Mbc7AccelerometerInput::neutral());
             return;
         };
         let Some(gamepad) = self.opened.get(&active_joystick_id) else {
+            set_mbc7_accelerometer_input_if_supported(machine, Mbc7AccelerometerInput::neutral());
             return;
         };
 
@@ -429,9 +464,19 @@ impl GamepadManager {
         ];
         let left_x = gamepad.gamepad.axis(Axis::LeftX);
         let left_y = gamepad.gamepad.axis(Axis::LeftY);
+        let right_x = gamepad.gamepad.axis(Axis::RightX);
+        let right_y = gamepad.gamepad.axis(Axis::RightY);
+        let accelerometer = if matches!(self.options.gyro_mode, GamepadGyroMode::PadGyro) {
+            gamepad
+                .accelerometer_sensor
+                .and_then(|sensor| read_gamepad_accelerometer(&gamepad.gamepad, sensor).ok())
+        } else {
+            None
+        };
 
         self.apply_polled_bound_buttons(bound_button_states, input_state, machine);
         self.apply_polled_directional_inputs(left_x, left_y, input_state, machine);
+        self.apply_polled_mbc7_accelerometer_input(accelerometer, right_x, right_y, machine);
     }
 
     pub fn is_active_gamepad(&self, joystick_id: JoystickId) -> bool {
@@ -479,6 +524,10 @@ impl GamepadManager {
         self.options.rumble_mode
     }
 
+    pub fn gyro_mode(&self) -> GamepadGyroMode {
+        self.options.gyro_mode
+    }
+
     pub fn button_bindings(&self) -> GamepadButtonBindings {
         self.options.bindings
     }
@@ -494,6 +543,11 @@ impl GamepadManager {
     pub fn active_gamepad_has_rumble(&self) -> bool {
         self.active_gamepad()
             .is_some_and(|gamepad| gamepad.supports_rumble)
+    }
+
+    pub fn active_gamepad_has_accelerometer(&self) -> bool {
+        self.active_gamepad()
+            .is_some_and(|gamepad| gamepad.accelerometer_sensor.is_some())
     }
 
     pub fn has_active_rumble_effect(&self) -> bool {
@@ -545,6 +599,24 @@ impl GamepadManager {
         self.options.rumble_mode = rumble_mode;
     }
 
+    pub fn set_gyro_mode(
+        &mut self,
+        gyro_mode: GamepadGyroMode,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) -> Result<(), String> {
+        if self.options.gyro_mode == gyro_mode {
+            return Ok(());
+        }
+
+        self.options.gyro_mode = gyro_mode;
+        self.gyro.baseline = None;
+        self.sync_accelerometer_sensor_enabled()?;
+        if matches!(gyro_mode, GamepadGyroMode::Off) {
+            set_mbc7_accelerometer_input_if_supported(machine, Mbc7AccelerometerInput::neutral());
+        }
+        Ok(())
+    }
+
     pub fn set_preferred_device(
         &mut self,
         preferred_device: PreferredGamepadIdentity,
@@ -559,6 +631,8 @@ impl GamepadManager {
         let previous_active = self.active;
         self.active = self.select_active_gamepad();
         if previous_active != self.active {
+            self.gyro.baseline = None;
+            self.sync_accelerometer_sensor_enabled_or_log();
             self.log_active_gamepad();
         }
         self.sync_active_gamepad_state(input_state, machine);
@@ -579,6 +653,8 @@ impl GamepadManager {
         }
 
         self.active = Some(joystick_id);
+        self.gyro.baseline = None;
+        self.sync_accelerometer_sensor_enabled_or_log();
         self.log_active_gamepad();
         self.sync_active_gamepad_state(input_state, machine);
         true
@@ -635,6 +711,36 @@ impl GamepadManager {
         }
 
         Ok(())
+    }
+
+    fn sync_accelerometer_sensor_enabled(&mut self) -> Result<(), String> {
+        for (joystick_id, gamepad) in &self.opened {
+            let Some(sensor) = gamepad.accelerometer_sensor else {
+                continue;
+            };
+            let enabled = self.active == Some(*joystick_id)
+                && matches!(self.options.gyro_mode, GamepadGyroMode::PadGyro);
+            if gamepad.gamepad.sensor_enabled(sensor) == enabled {
+                continue;
+            }
+            gamepad
+                .gamepad
+                .sensor_set_enabled(sensor, enabled)
+                .map_err(|error| {
+                    let action = if enabled { "enable" } else { "disable" };
+                    format!(
+                        "failed to {action} SDL3 gamepad accelerometer for {}: {error}",
+                        gamepad.name
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    fn sync_accelerometer_sensor_enabled_or_log(&mut self) {
+        if let Err(error) = self.sync_accelerometer_sensor_enabled() {
+            eprintln!("warning: {error}");
+        }
     }
 
     fn active_gamepad(&self) -> Option<&OpenGamepad> {
@@ -748,10 +854,96 @@ impl GamepadManager {
             machine,
         );
     }
+
+    fn apply_polled_mbc7_accelerometer_input(
+        &mut self,
+        accelerometer: Option<GamepadAccelerometerSample>,
+        right_x: i16,
+        right_y: i16,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) {
+        let input = match self.options.gyro_mode {
+            GamepadGyroMode::Off => {
+                self.gyro.baseline = None;
+                Mbc7AccelerometerInput::neutral()
+            }
+            GamepadGyroMode::PadGyro => {
+                let Some(accelerometer) = accelerometer else {
+                    self.gyro.baseline = None;
+                    set_mbc7_accelerometer_input_if_supported(
+                        machine,
+                        Mbc7AccelerometerInput::neutral(),
+                    );
+                    return;
+                };
+                let baseline = match self.gyro.baseline {
+                    Some(baseline) => baseline,
+                    None => {
+                        self.gyro.baseline = Some(accelerometer);
+                        accelerometer
+                    }
+                };
+                Mbc7AccelerometerInput::from_milli_g(
+                    acceleration_to_milli_g(accelerometer.x - baseline.x),
+                    acceleration_to_milli_g(accelerometer.y - baseline.y),
+                )
+            }
+            GamepadGyroMode::PadInput => {
+                self.gyro.baseline = None;
+                Mbc7AccelerometerInput::from_milli_g(
+                    right_stick_axis_to_milli_g(right_x),
+                    right_stick_axis_to_milli_g(right_y),
+                )
+            }
+        };
+        set_mbc7_accelerometer_input_if_supported(machine, input);
+    }
 }
 
 fn gamepad_button_binding_state(gamepad: &OpenGamepad, binding: GamepadButtonBinding) -> bool {
     gamepad.gamepad.button(sdl_button_for_binding(binding))
+}
+
+fn detect_gamepad_accelerometer_sensor(gamepad: &Gamepad) -> Option<SensorType> {
+    GAMEPAD_ACCELEROMETER_SENSORS
+        .into_iter()
+        .find(|sensor| unsafe { gamepad.has_sensor(*sensor) })
+}
+
+fn read_gamepad_accelerometer(
+    gamepad: &Gamepad,
+    sensor: SensorType,
+) -> Result<GamepadAccelerometerSample, String> {
+    let mut data = [0.0_f32; 3];
+    gamepad
+        .sensor_get_data(sensor, &mut data)
+        .map_err(|error| error.to_string())?;
+    Ok(GamepadAccelerometerSample {
+        x: data[0],
+        y: data[1],
+    })
+}
+
+fn set_mbc7_accelerometer_input_if_supported(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    input: Mbc7AccelerometerInput,
+) {
+    if machine.has_mbc7_accelerometer() {
+        let _ = machine.set_mbc7_accelerometer_input(input);
+    }
+}
+
+fn right_stick_axis_to_milli_g(value: i16) -> i16 {
+    ((i32::from(value) * i32::from(RIGHT_STICK_MBC7_MILLI_G_RANGE)) / i32::from(i16::MAX)).clamp(
+        -i32::from(RIGHT_STICK_MBC7_MILLI_G_RANGE),
+        i32::from(RIGHT_STICK_MBC7_MILLI_G_RANGE),
+    ) as i16
+}
+
+fn acceleration_to_milli_g(value: f32) -> i16 {
+    ((value / SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED) * 1_000.0)
+        .round()
+        .clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
 }
 
 fn rumble_intensity(mode: GamepadRumbleMode) -> Option<(u16, u16)> {
@@ -886,22 +1078,26 @@ fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> Str
 #[cfg(test)]
 mod tests {
     use super::{
-        AppliedGamepadRumble, FrontendInputState, GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
-        STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, axis_direction_state,
+        AppliedGamepadRumble, FrontendInputState, GAMEPAD_ACCELEROMETER_SENSORS,
+        GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
+        SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED, STRONG_GAMEPAD_RUMBLE_INTENSITY,
+        WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g, axis_direction_state,
         default_gamepad_name, format_gamepad_enumeration_error, format_open_gamepad_error,
-        gamepad_button_binding_from_sdl_button, joystick_id_from_event, rumble_intensity,
-        sdl_button_for_binding,
+        gamepad_button_binding_from_sdl_button, joystick_id_from_event,
+        right_stick_axis_to_milli_g, rumble_intensity, sdl_button_for_binding,
     };
     use gb_core::{
-        ConsoleModel, JoypadButton, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
+        ConsoleModel, JoypadButton, Machine, MachineConfig, Mbc7AccelerometerInput, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
-        GamepadButtonBinding, GamepadFaceLayout, GamepadOptions, GamepadRumbleMode,
-        PreferredGamepadIdentity,
+        GamepadButtonBinding, GamepadFaceLayout, GamepadGyroMode, GamepadOptions,
+        GamepadRumbleMode, PreferredGamepadIdentity,
     };
     use sdl3::event::Event;
     use sdl3::gamepad::{Axis, Button};
     use sdl3::joystick::JoystickId;
+    use sdl3::sensor::SensorType;
     use sdl3::{GamepadSubsystem, hint};
     use std::ffi::CString;
     use std::time::{Duration, Instant};
@@ -945,6 +1141,61 @@ mod tests {
         )
     }
 
+    fn mbc7_machine() -> Machine<TraceSummaryBuffer> {
+        let mut machine = test_machine();
+        machine
+            .load_cartridge(build_mbc7_rom())
+            .expect("MBC7 ROM should load");
+        machine
+    }
+
+    fn build_mbc7_rom() -> Vec<u8> {
+        const ROM_LEN: usize = 256 * 1024;
+        const ENTRY_POINT_START: usize = 0x0100;
+        const ENTRY_POINT_LEN: usize = 4;
+        const NINTENDO_LOGO_START: usize = 0x0104;
+        const NINTENDO_LOGO_LEN: usize = 48;
+        const TITLE_START: usize = 0x0134;
+        const CGB_FLAG_ADDRESS: usize = 0x0143;
+        const SGB_FLAG_ADDRESS: usize = 0x0146;
+        const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
+        const ROM_SIZE_ADDRESS: usize = 0x0148;
+        const RAM_SIZE_ADDRESS: usize = 0x0149;
+
+        let mut rom = vec![0xFF; ROM_LEN];
+        rom[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]
+            .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+        rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+            .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+        rom[TITLE_START..TITLE_START + 7].copy_from_slice(b"GBTEST1");
+        rom[CGB_FLAG_ADDRESS] = 0x80;
+        rom[SGB_FLAG_ADDRESS] = 0x03;
+        rom[CARTRIDGE_TYPE_ADDRESS] = 0x22;
+        rom[ROM_SIZE_ADDRESS] = 0x03;
+        rom[RAM_SIZE_ADDRESS] = 0x00;
+
+        for bank in 0..(ROM_LEN / 0x4000) {
+            let start = bank * 0x4000;
+            rom[start] = bank as u8;
+            rom[start + 0x0100] = bank as u8;
+        }
+
+        rom
+    }
+
+    fn latched_mbc7_accelerometer(
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) -> Mbc7AccelerometerInput {
+        machine.write_bus(0x0000, 0x0A);
+        machine.write_bus(0x4000, 0x40);
+        machine.write_bus(0xA000, 0x55);
+        machine.write_bus(0xA010, 0xAA);
+        Mbc7AccelerometerInput::from_raw(
+            u16::from(machine.read_bus(0xA020)) | (u16::from(machine.read_bus(0xA030)) << 8),
+            u16::from(machine.read_bus(0xA040)) | (u16::from(machine.read_bus(0xA050)) << 8),
+        )
+    }
+
     fn pressed_mask(machine: &Machine<TraceSummaryBuffer>) -> u8 {
         machine.joypad().snapshot().pressed_mask
     }
@@ -970,15 +1221,34 @@ mod tests {
         joystick_id: JoystickId,
         raw: *mut sdl3::sys::joystick::SDL_Joystick,
         _name: CString,
+        _sensors: Vec<sdl3::sys::joystick::SDL_VirtualJoystickSensorDesc>,
     }
 
     impl VirtualGamepad {
         fn attach(name: &str) -> Self {
+            Self::attach_with_sensors(name, Vec::new())
+        }
+
+        fn attach_with_accelerometer(name: &str) -> Self {
+            Self::attach_with_sensors(
+                name,
+                vec![sdl3::sys::joystick::SDL_VirtualJoystickSensorDesc {
+                    r#type: sdl3::sys::sensor::SDL_SensorType::ACCEL,
+                    rate: 60.0,
+                }],
+            )
+        }
+
+        fn attach_with_sensors(
+            name: &str,
+            sensors: Vec<sdl3::sys::joystick::SDL_VirtualJoystickSensorDesc>,
+        ) -> Self {
             let name = CString::new(name).expect("virtual gamepad name");
             let mut descriptor = sdl3::sys::joystick::SDL_VirtualJoystickDesc::new();
             descriptor.r#type = sdl3::sys::joystick::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
-            descriptor.naxes = 2;
+            descriptor.naxes = 4;
             descriptor.nbuttons = 16;
+            descriptor.nsensors = sensors.len() as u16;
             descriptor.button_mask = (1 << Button::South as u32)
                 | (1 << Button::East as u32)
                 | (1 << Button::Back as u32)
@@ -987,8 +1257,12 @@ mod tests {
                 | (1 << Button::DPadDown as u32)
                 | (1 << Button::DPadLeft as u32)
                 | (1 << Button::DPadRight as u32);
-            descriptor.axis_mask = (1 << Axis::LeftX as u32) | (1 << Axis::LeftY as u32);
+            descriptor.axis_mask = (1 << Axis::LeftX as u32)
+                | (1 << Axis::LeftY as u32)
+                | (1 << Axis::RightX as u32)
+                | (1 << Axis::RightY as u32);
             descriptor.name = name.as_ptr();
+            descriptor.sensors = sensors.as_ptr();
 
             let joystick_id =
                 unsafe { sdl3::sys::joystick::SDL_AttachVirtualJoystick(&descriptor) };
@@ -1000,6 +1274,7 @@ mod tests {
                 joystick_id,
                 raw,
                 _name: name,
+                _sensors: sensors,
             }
         }
 
@@ -1012,6 +1287,19 @@ mod tests {
         fn set_axis(&self, axis: Axis, value: i16) {
             assert!(unsafe {
                 sdl3::sys::joystick::SDL_SetJoystickVirtualAxis(self.raw, axis as i32, value)
+            });
+        }
+
+        fn set_accelerometer(&self, x: f32, y: f32, z: f32) {
+            let data = [x, y, z];
+            assert!(unsafe {
+                sdl3::sys::joystick::SDL_SendJoystickVirtualSensorData(
+                    self.raw,
+                    sdl3::sys::sensor::SDL_SensorType::ACCEL,
+                    0,
+                    data.as_ptr(),
+                    data.len() as i32,
+                )
             });
         }
     }
@@ -1060,6 +1348,29 @@ mod tests {
         assert_eq!(axis_direction_state(17_000, false, false), (false, true));
         assert_eq!(axis_direction_state(13_000, false, true), (false, true));
         assert_eq!(axis_direction_state(11_000, false, true), (false, false));
+    }
+
+    #[test]
+    fn mbc7_gyro_helpers_map_host_units_to_milli_g() {
+        assert_eq!(right_stick_axis_to_milli_g(0), 0);
+        assert_eq!(right_stick_axis_to_milli_g(i16::MAX), 1_000);
+        assert_eq!(right_stick_axis_to_milli_g(i16::MIN), -1_000);
+        assert_eq!(
+            acceleration_to_milli_g(SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED),
+            1_000
+        );
+        assert_eq!(
+            acceleration_to_milli_g(-SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED),
+            -1_000
+        );
+        assert_eq!(
+            GAMEPAD_ACCELEROMETER_SENSORS,
+            [
+                SensorType::Accelerometer,
+                SensorType::AccelerometerLeft,
+                SensorType::AccelerometerRight
+            ]
+        );
     }
 
     #[test]
@@ -1335,6 +1646,209 @@ mod tests {
             .supports_rumble = false;
         assert!(!manager.active_gamepad_has_rumble());
         assert!(manager.desired_rumble_effect().is_none());
+    }
+
+    #[test]
+    fn gamepad_manager_without_active_gamepad_keeps_mbc7_accelerometer_neutral() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+
+        let mut machine = mbc7_machine();
+        machine
+            .set_mbc7_accelerometer_input(Mbc7AccelerometerInput::from_milli_g(1_000, 1_000))
+            .expect("MBC7 accelerometer should be writable");
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            gyro_mode: GamepadGyroMode::PadInput,
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+
+        assert!(!manager.has_connected_gamepad());
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+
+        machine
+            .set_mbc7_accelerometer_input(Mbc7AccelerometerInput::from_milli_g(-1_000, -1_000))
+            .expect("MBC7 accelerometer should be writable");
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+    }
+
+    #[test]
+    fn gamepad_manager_pad_input_feeds_mbc7_accelerometer_from_right_stick() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let virtual_gamepad = VirtualGamepad::attach("Tilt Stick");
+        subsystem.update();
+
+        let mut machine = mbc7_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            gyro_mode: GamepadGyroMode::PadInput,
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Tilt Stick".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+
+        virtual_gamepad.set_axis(Axis::RightX, i16::MAX);
+        virtual_gamepad.set_axis(Axis::RightY, i16::MIN);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::from_milli_g(1_000, -1_000)
+        );
+
+        virtual_gamepad.set_axis(Axis::RightX, 0);
+        virtual_gamepad.set_axis(Axis::RightY, 0);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+    }
+
+    #[test]
+    fn gamepad_manager_gyro_off_returns_mbc7_accelerometer_to_neutral() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let virtual_gamepad = VirtualGamepad::attach("Tilt Toggle");
+        subsystem.update();
+
+        let mut machine = mbc7_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            gyro_mode: GamepadGyroMode::PadInput,
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Tilt Toggle".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+
+        virtual_gamepad.set_axis(Axis::RightX, i16::MAX);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_ne!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+
+        manager
+            .set_gyro_mode(GamepadGyroMode::Off, &mut machine)
+            .expect("gyro mode should change");
+        assert_eq!(manager.gyro_mode(), GamepadGyroMode::Off);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+    }
+
+    #[test]
+    fn gamepad_manager_pad_gyro_auto_centers_virtual_accelerometer() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let virtual_gamepad = VirtualGamepad::attach_with_accelerometer("Motion Pad");
+        subsystem.update();
+
+        let mut machine = mbc7_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Motion Pad".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+        assert!(manager.active_gamepad_has_accelerometer());
+
+        manager
+            .set_gyro_mode(GamepadGyroMode::PadGyro, &mut machine)
+            .expect("PAD GYRO should enable virtual accelerometer");
+        virtual_gamepad.set_accelerometer(
+            2.0 * SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
+            -SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
+            0.0,
+        );
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+        assert!(manager.gyro.baseline.is_some());
+
+        virtual_gamepad.set_accelerometer(
+            3.0 * SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
+            -2.0 * SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
+            0.0,
+        );
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::from_milli_g(1_000, -1_000)
+        );
+
+        manager
+            .set_gyro_mode(GamepadGyroMode::Off, &mut machine)
+            .expect("gyro off should disable virtual accelerometer");
+        manager
+            .set_gyro_mode(GamepadGyroMode::PadGyro, &mut machine)
+            .expect("gyro on should request a new baseline");
+        assert!(manager.gyro.baseline.is_none());
+    }
+
+    #[test]
+    fn gamepad_manager_active_gamepad_change_resets_pad_gyro_baseline() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let first = VirtualGamepad::attach_with_accelerometer("First Motion");
+        let second = VirtualGamepad::attach_with_accelerometer("Second Motion");
+        subsystem.update();
+
+        let mut machine = mbc7_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            gyro_mode: GamepadGyroMode::PadGyro,
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+
+        first.set_accelerometer(SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED, 0.0, 0.0);
+        second.set_accelerometer(0.0, SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED, 0.0);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert!(manager.gyro.baseline.is_some());
+
+        let next_active = if manager.is_active_gamepad(first.joystick_id) {
+            second.joystick_id
+        } else {
+            first.joystick_id
+        };
+        assert!(manager.activate_gamepad_from_input(next_active, &mut input_state, &mut machine));
+        assert_eq!(
+            latched_mbc7_accelerometer(&mut machine),
+            Mbc7AccelerometerInput::neutral()
+        );
+        assert!(manager.gyro.baseline.is_some());
     }
 
     #[test]

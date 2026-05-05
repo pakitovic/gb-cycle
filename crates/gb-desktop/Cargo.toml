@@ -12,11 +12,11 @@ sdl3-build-from-source = ["sdl3/build-from-source"]
 [dependencies]
 gb-core = { version = "0.1.0", path = "../gb-core" }
 gb-persistence = { version = "0.1.0", path = "../gb-persistence" }
-sdl3 = { version = "0.17.3", features = ["use-pkg-config"] }
+sdl3 = { version = "0.17.3", features = ["use-pkg-config", "hidapi"] }
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
 toml = "0.8"
 png = "0.18"
 
 [dev-dependencies]
-sdl3 = { version = "0.17.3", features = ["use-pkg-config", "test-mode"] }
+sdl3 = { version = "0.17.3", features = ["use-pkg-config", "hidapi", "test-mode"] }

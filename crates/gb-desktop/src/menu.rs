@@ -4,8 +4,8 @@ use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
     DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
     GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    MenuKeyboardBindings, RewindOptions,
+    GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+    JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
 };
 use std::time::{Duration, Instant};
 
@@ -124,13 +124,14 @@ const AUDIO_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::AudioDefaults,
     MenuItem::Return,
 ];
-const INPUT_MENU_ITEMS: [MenuItem; 9] = [
+const INPUT_MENU_ITEMS: [MenuItem; 10] = [
     MenuItem::KeyboardMenu,
     MenuItem::KeyboardMenuControls,
     MenuItem::HotkeysMenu,
     MenuItem::GamepadMenu,
     MenuItem::GamepadMenuControls,
     MenuItem::GamepadDirection,
+    MenuItem::GamepadGyro,
     MenuItem::GamepadRumble,
     MenuItem::InputDefaults,
     MenuItem::Return,
@@ -312,6 +313,7 @@ pub enum MenuAction {
     ToggleAudioRecording,
     ToggleAudioChannel(ApuRecordedChannel),
     CycleGamepadDirectionalSource,
+    CycleGamepadGyroMode,
     CycleGamepadRumbleMode,
     TogglePreferredGamepad,
     ResetVideoDefaults,
@@ -564,12 +566,15 @@ pub struct MenuPresentation {
     pub pocket_camera_live_enabled: bool,
     pub gamepad_available: bool,
     pub gamepad_directional_source: GamepadDirectionalSource,
+    pub gamepad_gyro_mode: GamepadGyroMode,
     pub gamepad_rumble_mode: GamepadRumbleMode,
     pub gamepad_bindings: GamepadButtonBindings,
     pub gamepad_action_bindings: GamepadActionBindings,
     pub gamepad_menu_bindings: GamepadMenuBindings,
     pub active_gamepad_connected: bool,
+    pub cartridge_mbc7_accelerometer_supported: bool,
     pub cartridge_rumble_supported: bool,
+    pub active_gamepad_accelerometer_supported: bool,
     pub active_gamepad_rumble_supported: bool,
     pub active_gamepad_label: CompactMenuLabel,
     pub preferred_gamepad_configured: bool,
@@ -662,6 +667,9 @@ impl MenuPresentation {
             }
             MenuItem::GamepadRumble => {
                 self.cartridge_rumble_supported && self.active_gamepad_rumble_supported
+            }
+            MenuItem::GamepadGyro => {
+                self.cartridge_mbc7_accelerometer_supported && self.active_gamepad_connected
             }
             MenuItem::GamepadMenu
             | MenuItem::GamepadMenuControls
@@ -1032,6 +1040,23 @@ impl MenuPresentation {
                 GamepadDirectionalSource::LeftStickOnly => "DIR LEFT".to_string(),
                 GamepadDirectionalSource::DpadAndLeftStick => "DIR ALL".to_string(),
             },
+            MenuItem::GamepadGyro => {
+                if !(self.cartridge_mbc7_accelerometer_supported && self.active_gamepad_connected) {
+                    "GYRO N/A".to_string()
+                } else {
+                    match self.gamepad_gyro_mode {
+                        GamepadGyroMode::Off => "GYRO OFF".to_string(),
+                        GamepadGyroMode::PadGyro => {
+                            if self.active_gamepad_accelerometer_supported {
+                                "GYRO PAD GYRO".to_string()
+                            } else {
+                                "GYRO N/A".to_string()
+                            }
+                        }
+                        GamepadGyroMode::PadInput => "GYRO PAD INPUT".to_string(),
+                    }
+                }
+            }
             MenuItem::GamepadRumble => {
                 if !(self.cartridge_rumble_supported && self.active_gamepad_rumble_supported) {
                     "RUMBLE N/A".to_string()
@@ -1417,6 +1442,7 @@ enum MenuItem {
     FourPlayerAdapterTwoPlayers,
     FourPlayerAdapterThreePlayers,
     FourPlayerAdapterFourPlayers,
+    GamepadGyro,
     GamepadRumble,
     InputDefaults,
     GamepadActive,
@@ -2155,6 +2181,7 @@ impl OverlayMenuState {
             MenuItem::FourPlayerAdapterFourPlayers => Some(MenuAction::SetFourPlayerAdapter(
                 DesktopDmg07PlayerCount::Four,
             )),
+            MenuItem::GamepadGyro => Some(MenuAction::CycleGamepadGyroMode),
             MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
@@ -3171,8 +3198,8 @@ mod tests {
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
         DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
         GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
-        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-        JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+        GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
+        HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
     };
     use std::time::Duration;
 
@@ -3225,12 +3252,15 @@ mod tests {
             pocket_camera_live_enabled: false,
             gamepad_available: false,
             gamepad_directional_source: GamepadDirectionalSource::DpadAndLeftStick,
+            gamepad_gyro_mode: GamepadGyroMode::Off,
             gamepad_rumble_mode: GamepadRumbleMode::Strong,
             gamepad_bindings: GamepadButtonBindings::default(),
             gamepad_action_bindings: GamepadActionBindings::default(),
             gamepad_menu_bindings: GamepadMenuBindings::default(),
             active_gamepad_connected: false,
+            cartridge_mbc7_accelerometer_supported: false,
             cartridge_rumble_supported: false,
+            active_gamepad_accelerometer_supported: false,
             active_gamepad_rumble_supported: false,
             active_gamepad_label: CompactMenuLabel::default(),
             preferred_gamepad_configured: false,
@@ -3553,6 +3583,25 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleGamepadRumbleMode)
+        );
+    }
+
+    #[test]
+    fn input_submenu_cycles_the_gamepad_gyro_mode_when_supported() {
+        let presentation = MenuPresentation {
+            audio_available: true,
+            gamepad_available: true,
+            active_gamepad_connected: true,
+            cartridge_mbc7_accelerometer_supported: true,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        open_input_menu(&mut menu, presentation);
+
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadGyro);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleGamepadGyroMode)
         );
     }
 
@@ -4301,7 +4350,10 @@ mod tests {
         assert_eq!(INPUT_MENU_ITEMS[2], MenuItem::HotkeysMenu);
         assert_eq!(INPUT_MENU_ITEMS[3], MenuItem::GamepadMenu);
         assert_eq!(INPUT_MENU_ITEMS[4], MenuItem::GamepadMenuControls);
-        assert_eq!(INPUT_MENU_ITEMS[8], MenuItem::Return);
+        assert_eq!(INPUT_MENU_ITEMS[5], MenuItem::GamepadDirection);
+        assert_eq!(INPUT_MENU_ITEMS[6], MenuItem::GamepadGyro);
+        assert_eq!(INPUT_MENU_ITEMS[7], MenuItem::GamepadRumble);
+        assert_eq!(INPUT_MENU_ITEMS[9], MenuItem::Return);
 
         assert_eq!(EXT_PORT_MENU_ITEMS[0], MenuItem::ExternalPortNone);
         assert_eq!(EXT_PORT_MENU_ITEMS[1], MenuItem::ExternalPortPrinter);
@@ -4701,6 +4753,25 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::GamepadDirection),
             "DIR LEFT"
+        );
+        assert!(!presentation.item_enabled(MenuItem::GamepadGyro));
+        assert_eq!(presentation.item_label(MenuItem::GamepadGyro), "GYRO N/A");
+        presentation.active_gamepad_connected = true;
+        assert!(!presentation.item_enabled(MenuItem::GamepadGyro));
+        presentation.cartridge_mbc7_accelerometer_supported = true;
+        assert!(presentation.item_enabled(MenuItem::GamepadGyro));
+        assert_eq!(presentation.item_label(MenuItem::GamepadGyro), "GYRO OFF");
+        presentation.gamepad_gyro_mode = GamepadGyroMode::PadInput;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadGyro),
+            "GYRO PAD INPUT"
+        );
+        presentation.gamepad_gyro_mode = GamepadGyroMode::PadGyro;
+        assert_eq!(presentation.item_label(MenuItem::GamepadGyro), "GYRO N/A");
+        presentation.active_gamepad_accelerometer_supported = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadGyro),
+            "GYRO PAD GYRO"
         );
         assert!(!presentation.item_enabled(MenuItem::GamepadRumble));
         assert_eq!(
@@ -5205,6 +5276,10 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::GamepadPreferred, presentation),
             Some(MenuAction::TogglePreferredGamepad)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GamepadGyro, presentation),
+            Some(MenuAction::CycleGamepadGyroMode)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::GamepadRumble, presentation),

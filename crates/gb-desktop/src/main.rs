@@ -34,9 +34,9 @@ use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
     DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
     GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+    JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
+    RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -8720,6 +8720,22 @@ fn execute_menu_action(
             }
             Ok(None)
         }
+        MenuAction::CycleGamepadGyroMode => {
+            if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
+                let next_gyro_mode = next_gamepad_gyro_mode(gamepad_manager.gyro_mode());
+                gamepad_manager.set_gyro_mode(
+                    next_gyro_mode,
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to an active desktop machine"),
+                )?;
+                context
+                    .settings_store
+                    .set_gamepad_gyro_mode(next_gyro_mode)?;
+            }
+            Ok(None)
+        }
         MenuAction::TogglePreferredGamepad => {
             if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
                 let preferred_device = toggled_preferred_gamepad_device(gamepad_manager);
@@ -8795,6 +8811,13 @@ fn execute_menu_action(
                         .expect("P1 should always map to an active desktop machine"),
                 );
                 gamepad_manager.set_rumble_mode(defaults.gamepad.rumble_mode);
+                gamepad_manager.set_gyro_mode(
+                    defaults.gamepad.gyro_mode,
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to an active desktop machine"),
+                )?;
                 gamepad_manager.set_preferred_device(
                     defaults.gamepad.preferred_device,
                     context.runtime.player_inputs.input_mut(PlayerSlot::P1),
@@ -8882,6 +8905,7 @@ fn current_menu_presentation(
         .and_then(GamepadManager::active_gamepad_name)
         .map(CompactMenuLabel::from_gamepad_name)
         .unwrap_or_default();
+    let cartridge_mbc7_accelerometer_supported = machine.primary_machine().has_mbc7_accelerometer();
     let cartridge_rumble_supported = machine.primary_machine().cartridge().has_rumble();
     let external_save_available = !machine.cartridge().is_empty()
         && uses_battery_backed_hardware_persistence(
@@ -8988,6 +9012,10 @@ fn current_menu_presentation(
             GamepadDirectionalSource::default(),
             GamepadManager::directional_source,
         ),
+        gamepad_gyro_mode: runtime
+            .gamepad_manager
+            .as_ref()
+            .map_or(GamepadGyroMode::default(), GamepadManager::gyro_mode),
         gamepad_rumble_mode: runtime
             .gamepad_manager
             .as_ref()
@@ -9008,7 +9036,12 @@ fn current_menu_presentation(
             .gamepad_manager
             .as_ref()
             .is_some_and(GamepadManager::has_connected_gamepad),
+        cartridge_mbc7_accelerometer_supported,
         cartridge_rumble_supported,
+        active_gamepad_accelerometer_supported: runtime
+            .gamepad_manager
+            .as_ref()
+            .is_some_and(GamepadManager::active_gamepad_has_accelerometer),
         active_gamepad_rumble_supported: runtime
             .gamepad_manager
             .as_ref()
@@ -9126,6 +9159,14 @@ fn next_gamepad_directional_source(
         GamepadDirectionalSource::DpadOnly => GamepadDirectionalSource::LeftStickOnly,
         GamepadDirectionalSource::LeftStickOnly => GamepadDirectionalSource::DpadAndLeftStick,
         GamepadDirectionalSource::DpadAndLeftStick => GamepadDirectionalSource::DpadOnly,
+    }
+}
+
+fn next_gamepad_gyro_mode(gyro_mode: GamepadGyroMode) -> GamepadGyroMode {
+    match gyro_mode {
+        GamepadGyroMode::Off => GamepadGyroMode::PadGyro,
+        GamepadGyroMode::PadGyro => GamepadGyroMode::PadInput,
+        GamepadGyroMode::PadInput => GamepadGyroMode::Off,
     }
 }
 
@@ -10902,8 +10943,8 @@ mod tests {
         menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
         next_boot_rom_kind, next_boot_rom_verification_mode, next_console_model,
         next_execution_mode, next_fast_forward_speed_multiplier, next_gamepad_directional_source,
-        next_gamepad_rumble_mode, next_machine_state_slot, next_save_flush_policy,
-        next_startup_mode, next_window_scale, parse_edge_trace_addresses,
+        next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot,
+        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
         parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
         parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
         parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
@@ -10928,8 +10969,8 @@ mod tests {
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
         DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
-        RewindOptions, SaveKeyPolicy,
+        GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
+        MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
     };
     use gb_persistence::{
         CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
@@ -15143,6 +15184,18 @@ mod tests {
         assert_eq!(
             next_gamepad_rumble_mode(GamepadRumbleMode::Weak),
             GamepadRumbleMode::Off
+        );
+        assert_eq!(
+            next_gamepad_gyro_mode(GamepadGyroMode::Off),
+            GamepadGyroMode::PadGyro
+        );
+        assert_eq!(
+            next_gamepad_gyro_mode(GamepadGyroMode::PadGyro),
+            GamepadGyroMode::PadInput
+        );
+        assert_eq!(
+            next_gamepad_gyro_mode(GamepadGyroMode::PadInput),
+            GamepadGyroMode::Off
         );
         assert_eq!(next_fast_forward_speed_multiplier(1), 2);
         assert_eq!(next_fast_forward_speed_multiplier(2), 4);
@@ -20535,6 +20588,12 @@ mod tests {
         );
         assert!(
             harness
+                .execute_action(super::MenuAction::CycleGamepadGyroMode)
+                .expect("gyro mode should no-op without a gamepad manager")
+                .is_none()
+        );
+        assert!(
+            harness
                 .execute_action(super::MenuAction::TogglePreferredGamepad)
                 .expect("preferred gamepad should no-op without a gamepad manager")
                 .is_none()
@@ -20601,6 +20660,7 @@ mod tests {
             gamepad_presentation.gamepad_rumble_mode,
             GamepadRumbleMode::Strong
         );
+        assert_eq!(gamepad_presentation.gamepad_gyro_mode, GamepadGyroMode::Off);
         assert_eq!(
             gamepad_presentation.preferred_gamepad_label.as_str(),
             "SAVED"
@@ -20613,6 +20673,17 @@ mod tests {
         assert_eq!(
             gamepad_presentation.active_gamepad_connected,
             manager.has_connected_gamepad()
+        );
+        assert_eq!(
+            gamepad_presentation.active_gamepad_accelerometer_supported,
+            manager.active_gamepad_has_accelerometer()
+        );
+        assert_eq!(
+            gamepad_presentation.cartridge_mbc7_accelerometer_supported,
+            gamepad_harness
+                .machine
+                .primary_machine()
+                .has_mbc7_accelerometer()
         );
         if manager.has_connected_gamepad() {
             assert!(!gamepad_presentation.active_gamepad_label.is_empty());
@@ -21239,6 +21310,25 @@ mod tests {
         );
         assert!(
             harness
+                .execute_action(super::MenuAction::CycleGamepadGyroMode)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .gyro_mode(),
+            GamepadGyroMode::PadGyro
+        );
+        assert_eq!(
+            harness.settings_store.base_config().input.gamepad.gyro_mode,
+            GamepadGyroMode::PadGyro
+        );
+        assert!(
+            harness
                 .execute_action(super::MenuAction::OpenRecentRom(99))
                 .unwrap()
                 .is_none()
@@ -21389,6 +21479,15 @@ mod tests {
                 .expect("gamepad manager")
                 .rumble_mode(),
             GamepadRumbleMode::Strong
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .gyro_mode(),
+            GamepadGyroMode::Off
         );
         assert!(
             harness
