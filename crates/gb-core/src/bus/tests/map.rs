@@ -416,28 +416,85 @@ fn native_cgb_pcm_registers_route_to_apu_owner_as_read_only_taps() {
 }
 
 #[test]
-fn cgb_compatibility_mode_keeps_slice3_registers_unavailable() {
+fn cgb_compatibility_mode_exposes_boot_hwio_visible_register_subset() {
     let bus = Bus::new_with_operating_mode(
         ConsoleModel::GameBoyColor,
         crate::model::OperatingMode::GbCompatible,
     );
-    let ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
+    let apu = crate::apu::Apu::new(ConsoleModel::GameBoyColor);
 
-    for address in [
-        0xFF4C, 0xFF4F, 0xFF51, 0xFF55, 0xFF56, 0xFF68, 0xFF69, 0xFF6C, 0xFF70, 0xFF72, 0xFF75,
-        0xFF76, 0xFF77,
-    ] {
-        assert_eq!(
-            bus.read_io_target(
-                address,
-                BusIoReadView {
-                    ppu: Some(&ppu),
-                    ..BusIoReadView::default()
-                }
-            ),
-            0xFF
-        );
-    }
+    assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF4F, BusIoReadView::default()), 0xFE);
+    assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF55, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF72, BusIoReadView::default()), 0x00);
+    assert_eq!(bus.read_io_target(0xFF73, BusIoReadView::default()), 0x00);
+    assert_eq!(bus.read_io_target(0xFF74, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0x8F);
+    assert_eq!(
+        bus.read_io_target(
+            0xFF68,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x40
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF69,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6A,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x40
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF76,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF77,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
 }
 
 #[test]

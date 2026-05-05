@@ -756,6 +756,7 @@ const fn synthetic_skip_boot_io_snapshot(console_model: ConsoleModel) -> BootIoS
         }
         ConsoleModel::GameBoyColor => {
             let mut io = dmg_family_synthetic_skip_boot_io_snapshot();
+            io.p1 = 0xFF;
             io.div = CGB_SKIP_BOOT_DIV;
             io
         }

@@ -3024,7 +3024,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_boot_hwio_suite_is_manifest_backed_internal_snapshot_probe() {
+    fn cgb_boot_hwio_suite_is_manifest_backed_internal_mooneye_gate() {
         let suite = cgb_boot_hwio_suite();
 
         assert_eq!(suite.name, "cgb-boot-hwio");
@@ -3042,11 +3042,10 @@ mod tests {
             Some(TEST_ROM_ROOT_ENV_VAR)
         );
         assert_eq!(case.timeout, Timeout::Frames(180));
-        assert_eq!(
-            case.pass_condition,
-            PassCondition::Informational(CaptureKind::Snapshot)
-        );
+        assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
+        assert!(case.capture_plan.contains(CaptureKind::Serial));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Serial));
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 

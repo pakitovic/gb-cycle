@@ -1804,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_boot_hwio_suite_is_manifest_backed_and_internal_informational() {
+    fn cgb_boot_hwio_suite_is_manifest_backed_and_internal_mooneye_gate() {
         let suite = cgb_boot_hwio_suite();
 
         assert_eq!(suite.name, "cgb-boot-hwio");
@@ -1823,7 +1823,7 @@ mod tests {
         );
         assert!(matches!(
             suite.cases[0].pass_condition,
-            PassCondition::Informational(CaptureKind::Snapshot)
+            PassCondition::MooneyeResult
         ));
     }
 
@@ -2940,7 +2940,7 @@ mod tests {
             cases: vec![report_case(
                 "cgb-boot-hwio-boot-hwio-c",
                 "mooneye/misc/boot_hwio-C.gb",
-                RomCaseOutcome::Informational,
+                RomCaseOutcome::Passed,
             )],
         };
         update_curated_test_report(&workspace_root, &cgb_boot_hwio_report)
@@ -3023,7 +3023,7 @@ mod tests {
             "| ax6 | rtc3test-3.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(extra_report.contains(&format!(
-            "| mooneye | misc/boot_hwio-C.gb | {REPORT_STATUS_INFO_EMOJI} |"
+            "| mooneye | misc/boot_hwio-C.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(extra_report.contains(&format!(
             "| samesuite | apu/div_write_trigger.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"

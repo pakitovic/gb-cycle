@@ -265,6 +265,8 @@ impl CgbPaletteState {
         self.background.write_palette_bytes(0, seed.bg_palette0);
         self.object.write_palette_bytes(0, seed.obj_palette0);
         self.object.write_palette_bytes(1, seed.obj_palette1);
+        self.background.write_index(0xC8);
+        self.object.write_index(0xD0);
     }
 
     pub(super) fn apply_cgb_native_boot_palette_seed(&mut self) {
