@@ -524,7 +524,7 @@ pub fn update_curated_test_report(
             status,
         });
     }
-    sort_persisted_case_statuses(family, &mut merged_case_statuses);
+    sort_persisted_case_statuses(&report.suite_name, family, &mut merged_case_statuses);
 
     let persisted = PersistedSuiteStatus {
         version: CURATED_TEST_ROM_REPORT_VERSION,
@@ -654,40 +654,109 @@ fn load_persisted_suite_status(path: &Path) -> Result<Option<PersistedSuiteStatu
 }
 
 fn normalize_persisted_suite_status(mut persisted: PersistedSuiteStatus) -> PersistedSuiteStatus {
-    for case in &mut persisted.cases {
+    let suite_has_manifest = curated_manifest_for_suite(&persisted.suite_name).is_some();
+    let mut normalized_cases = Vec::with_capacity(persisted.cases.len());
+    for mut case in persisted.cases {
         let family = case.family.as_deref().unwrap_or(&persisted.family);
-        if let Some(normalized_rom) = manifest_report_rom_for_persisted_case(family, &case.rom) {
-            case.rom = normalized_rom;
+        if let Some(metadata) = manifest_report_metadata_for_persisted_suite_case(
+            &persisted.suite_name,
+            family,
+            &case.rom,
+        ) {
+            case.family = (metadata.family != persisted.family).then_some(metadata.family);
+            case.rom = metadata.rom;
+            normalized_cases.push(case);
+        } else if !suite_has_manifest {
+            if let Some(metadata) =
+                manifest_report_metadata_for_any_persisted_case(family, &case.rom)
+            {
+                case.family = (metadata.family != persisted.family).then_some(metadata.family);
+                case.rom = metadata.rom;
+            }
+            normalized_cases.push(case);
         }
     }
-    sort_persisted_case_statuses(&persisted.family, &mut persisted.cases);
+    persisted.cases = normalized_cases;
+    sort_persisted_case_statuses(
+        &persisted.suite_name,
+        &persisted.family,
+        &mut persisted.cases,
+    );
     persisted
 }
 
-fn manifest_report_rom_for_persisted_case(family: &str, rom: &str) -> Option<String> {
+fn curated_manifest_for_suite(suite_name: &str) -> Option<CuratedTestRomManifest> {
+    curated_test_rom_manifests()
+        .into_iter()
+        .find(|manifest| manifest.suite_name == suite_name)
+}
+
+fn manifest_report_metadata_for_persisted_suite_case(
+    suite_name: &str,
+    family: &str,
+    rom: &str,
+) -> Option<ReportCaseMetadata> {
+    curated_test_rom_manifests()
+        .into_iter()
+        .filter(|manifest| manifest.suite_name == suite_name)
+        .flat_map(|manifest| manifest.cases)
+        .find(|case| persisted_case_matches_manifest_case(family, rom, case))
+        .map(manifest_case_report_metadata)
+}
+
+fn manifest_report_metadata_for_any_persisted_case(
+    family: &str,
+    rom: &str,
+) -> Option<ReportCaseMetadata> {
     curated_test_rom_manifests()
         .into_iter()
         .flat_map(|manifest| manifest.cases)
-        .filter(|case| case.family == family)
-        .find(|case| {
-            let rom_path = PathBuf::from(&case.family).join(&case.rom);
-            report_rom_display(&case.family, &rom_path) == rom
-                || manifest_case_report_rom_display(case) == rom
-                || rom_path.to_string_lossy() == rom
-        })
-        .map(|case| manifest_case_report_rom_display(&case))
+        .find(|case| persisted_case_matches_manifest_case(family, rom, case))
+        .map(manifest_case_report_metadata)
 }
 
-fn manifest_case_order(family: &str, rom: &str) -> Option<ReportCaseOrder> {
-    for (case_manifest_order, case) in curated_test_rom_manifests()
-        .into_iter()
-        .flat_map(|manifest| manifest.cases)
+fn manifest_case_report_metadata(case: CuratedTestRomCase) -> ReportCaseMetadata {
+    ReportCaseMetadata {
+        family: case.family.clone(),
+        rom: manifest_case_report_rom_display(&case),
+    }
+}
+
+fn persisted_case_matches_manifest_case(
+    family: &str,
+    rom: &str,
+    case: &CuratedTestRomCase,
+) -> bool {
+    let rom_path = PathBuf::from(&case.family).join(&case.rom);
+    let family_matches = case.family == family;
+    let display_matches = report_rom_display(&case.family, &rom_path) == rom
+        || manifest_case_report_rom_display(case) == rom;
+    let full_path_matches = rom_path.to_string_lossy() == rom;
+
+    family_matches && display_matches || full_path_matches
+}
+
+fn manifest_case_order(suite_name: &str, family: &str, rom: &str) -> Option<ReportCaseOrder> {
+    manifest_case_order_for_suite(suite_name, family, rom)
+        .or_else(|| manifest_case_order_for_any_suite(family, rom))
+}
+
+fn manifest_case_order_for_suite(
+    suite_name: &str,
+    family: &str,
+    rom: &str,
+) -> Option<ReportCaseOrder> {
+    let manifests = curated_test_rom_manifests();
+    let suite_manifest = manifests
+        .iter()
+        .find(|manifest| manifest.suite_name == suite_name)?;
+    for (case_manifest_order, case) in suite_manifest
+        .cases
+        .iter()
         .filter(|case| case.family == family)
         .enumerate()
     {
-        if report_rom_display(&case.family, &PathBuf::from(&case.family).join(&case.rom)) == rom
-            || manifest_case_report_rom_display(&case) == rom
-        {
+        if persisted_case_matches_manifest_case(family, rom, case) {
             let source_order = curated_source_rom_order(&case.family, &case.rom);
             return Some(ReportCaseOrder {
                 source_order_missing: source_order.is_none(),
@@ -701,14 +770,39 @@ fn manifest_case_order(family: &str, rom: &str) -> Option<ReportCaseOrder> {
     None
 }
 
-fn sort_persisted_case_statuses(family: &str, case_statuses: &mut [PersistedCaseStatus]) {
+fn manifest_case_order_for_any_suite(family: &str, rom: &str) -> Option<ReportCaseOrder> {
+    for (case_manifest_order, case) in curated_test_rom_manifests()
+        .into_iter()
+        .flat_map(|manifest| manifest.cases)
+        .filter(|case| case.family == family)
+        .enumerate()
+    {
+        if persisted_case_matches_manifest_case(family, rom, &case) {
+            let source_order = curated_source_rom_order(&case.family, &case.rom);
+            return Some(ReportCaseOrder {
+                source_order_missing: source_order.is_none(),
+                source_or_manifest_order: source_order.unwrap_or(case_manifest_order),
+                console_order: console_report_order(case.console_model),
+                manifest_order: case_manifest_order,
+            });
+        }
+    }
+
+    None
+}
+
+fn sort_persisted_case_statuses(
+    suite_name: &str,
+    family: &str,
+    case_statuses: &mut [PersistedCaseStatus],
+) {
     case_statuses.sort_by(|left, right| {
         let left_family = left.family.as_deref().unwrap_or(family);
         let right_family = right.family.as_deref().unwrap_or(family);
         let left_rank = report_family_rank(left_family);
         let right_rank = report_family_rank(right_family);
-        let left_order = manifest_case_order(left_family, &left.rom);
-        let right_order = manifest_case_order(right_family, &right.rom);
+        let left_order = manifest_case_order(suite_name, left_family, &left.rom);
+        let right_order = manifest_case_order(suite_name, right_family, &right.rom);
         (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
             .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
             .then_with(|| left_family.cmp(right_family))
@@ -1259,17 +1353,18 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
             suite
                 .cases
                 .iter()
-                .map(move |case| (suite.family.as_str(), case))
+                .map(move |case| (suite.suite_name.as_str(), suite.family.as_str(), case))
         })
         .collect::<Vec<_>>();
     rows.sort_by(
-        |(left_default_family, left), (right_default_family, right)| {
+        |(left_suite_name, left_default_family, left),
+         (right_suite_name, right_default_family, right)| {
             let left_family = left.family.as_deref().unwrap_or(left_default_family);
             let right_family = right.family.as_deref().unwrap_or(right_default_family);
             let left_rank = report_family_rank(left_family);
             let right_rank = report_family_rank(right_family);
-            let left_order = manifest_case_order(left_family, &left.rom);
-            let right_order = manifest_case_order(right_family, &right.rom);
+            let left_order = manifest_case_order(left_suite_name, left_family, &left.rom);
+            let right_order = manifest_case_order(right_suite_name, right_family, &right.rom);
 
             (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
                 .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
@@ -1297,7 +1392,7 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
     let _ = writeln!(&mut report, "| family | rom | status |");
     let _ = writeln!(&mut report, "| --- | --- | --- |");
 
-    for (default_family, case) in rows {
+    for (_, default_family, case) in rows {
         let family = case.family.as_deref().unwrap_or(default_family);
         let _ = writeln!(
             &mut report,
@@ -2933,6 +3028,39 @@ mod tests {
         update_curated_test_report(&workspace_root, &cgb_smoke_report)
             .expect("CGB smoke report should write");
 
+        let cgb_rtc_report = RomSuiteReport {
+            suite_name: "cgb-rtc".to_string(),
+            family: Some("cgb-rtc".to_string()),
+            subsystem: TestSubsystem::Cartridge,
+            cases: vec![report_case(
+                "cgb-rtc-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &cgb_rtc_report)
+            .expect("CGB RTC report should write");
+
+        let cgb_audio_samesuite_report = RomSuiteReport {
+            suite_name: "cgb-audio-samesuite".to_string(),
+            family: Some("cgb-audio-samesuite".to_string()),
+            subsystem: TestSubsystem::Apu,
+            cases: vec![
+                report_case(
+                    "cgb-audio-samesuite-div-write-trigger",
+                    "samesuite/apu/div_write_trigger.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "cgb-audio-samesuite-div-write-trigger-10",
+                    "samesuite/apu/div_write_trigger_10.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        update_curated_test_report(&workspace_root, &cgb_audio_samesuite_report)
+            .expect("CGB SameSuite report should write");
+
         let cgb_boot_hwio_report = RomSuiteReport {
             suite_name: "cgb-boot-hwio".to_string(),
             family: Some("cgb-boot-hwio".to_string()),
@@ -3002,13 +3130,23 @@ mod tests {
             test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME),
         )
         .expect("standard report should be readable");
-        assert!(standard_report.starts_with("# Test Report (1/1)\n"));
+        assert!(standard_report.starts_with("# Test Report (4/4)\n"));
+        assert!(standard_report.contains(&format!(
+            "| ax6 | rtc3test-1.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
         assert!(standard_report.contains(&format!(
             "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
+        assert!(standard_report.contains(&format!(
+            "| samesuite | apu/div_write_trigger.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(standard_report.contains(&format!(
+            "| samesuite | apu/div_write_trigger_10.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
         assert!(!standard_report.contains("boot_hwio-C.gb"));
-        assert!(!standard_report.contains("div_write_trigger"));
-        assert!(!standard_report.contains("rtc3test"));
+        assert!(!standard_report.contains("div_write_trigger.gb (DMG)"));
+        assert!(!standard_report.contains("div_write_trigger_10.gb (DMG)"));
+        assert!(!standard_report.contains("rtc3test-1.gb (DMG)"));
 
         let extra_report =
             fs::read_to_string(report_path).expect("extra report should be readable");
@@ -3034,6 +3172,82 @@ mod tests {
         assert!(!extra_report.contains("boot_regs-cgb.gb"));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_prunes_extra_model_rows_from_promoted_suite_status() {
+        let workspace_root = unique_temp_dir("report-prune-extra-model-rows");
+        let status_root = test_rom_store_root(&workspace_root).join(TEST_ROM_STATUS_DIR_NAME);
+        fs::create_dir_all(&status_root).expect("status root should be creatable");
+        fs::write(
+            status_root.join("cgb-rtc.toml"),
+            r#"version = 1
+suite_name = "cgb-rtc"
+family = "cgb-rtc"
+
+[[cases]]
+family = "ax6"
+rom = "rtc3test-1.gb"
+status = "PASS"
+
+[[cases]]
+family = "ax6"
+rom = "rtc3test-1.gb (DMG)"
+status = "PASS"
+"#,
+        )
+        .expect("stale CGB RTC status should be writable");
+
+        let cgb_rtc_report = RomSuiteReport {
+            suite_name: "cgb-rtc".to_string(),
+            family: Some("cgb-rtc".to_string()),
+            subsystem: TestSubsystem::Cartridge,
+            cases: vec![report_case(
+                "cgb-rtc-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &cgb_rtc_report)
+            .expect("CGB RTC report should write")
+            .expect("curated suite should emit a report path");
+
+        let suite_status = fs::read_to_string(status_root.join("cgb-rtc.toml"))
+            .expect("CGB RTC status should be readable");
+        assert!(suite_status.contains("rom = \"rtc3test-1.gb\""));
+        assert!(!suite_status.contains("rtc3test-1.gb (DMG)"));
+
+        let standard_report =
+            fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(standard_report.starts_with("# Test Report (1/1)\n"));
+        assert!(standard_report.contains(&format!(
+            "| ax6 | rtc3test-1.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!standard_report.contains("rtc3test-1.gb (DMG)"));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn render_markdown_report_preserves_family_from_legacy_full_path_rows() {
+        let rendered = render_markdown_report(&[PersistedSuiteStatus {
+            version: 1,
+            suite_name: "cgb-smoke".to_string(),
+            family: "cgb-smoke".to_string(),
+            cases: vec![PersistedCaseStatus {
+                family: None,
+                rom: "mooneye/misc/boot_regs-cgb.gb".to_string(),
+                status: "PASS".to_string(),
+            }],
+        }]);
+
+        assert!(rendered.starts_with("# Test Report (1/1)\n"));
+        assert!(rendered.contains(&format!(
+            "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered.contains(&format!(
+            "| cgb-smoke | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
     }
 
     #[test]
@@ -3349,7 +3563,7 @@ mod tests {
             },
         ];
 
-        sort_persisted_case_statuses("acid", &mut case_statuses);
+        sort_persisted_case_statuses("acid-dmg-curated", "acid", &mut case_statuses);
 
         assert_eq!(case_statuses[0].rom, "which.gb");
         assert_eq!(case_statuses[1].rom, "dmg-acid2.gb");
