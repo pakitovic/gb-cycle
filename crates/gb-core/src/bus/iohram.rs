@@ -182,8 +182,12 @@ impl IoHramDomain {
             return BLOCKED_READ_VALUE;
         };
 
-        if !io_register_is_available(info.availability(), console_model, operating_mode)
-            || info.implementation() != IoRegisterImplementation::Implemented
+        if !io_register_kind_is_available(
+            info.kind(),
+            info.availability(),
+            console_model,
+            operating_mode,
+        ) || info.implementation() != IoRegisterImplementation::Implemented
         {
             return BLOCKED_READ_VALUE;
         }
@@ -256,8 +260,12 @@ impl IoHramDomain {
             return;
         };
 
-        if !io_register_is_available(info.availability(), console_model, operating_mode)
-            || info.implementation() != IoRegisterImplementation::Implemented
+        if !io_register_kind_is_available(
+            info.kind(),
+            info.availability(),
+            console_model,
+            operating_mode,
+        ) || info.implementation() != IoRegisterImplementation::Implemented
         {
             return;
         }
@@ -577,7 +585,8 @@ impl CgbMiscIoState {
     }
 }
 
-fn io_register_is_available(
+pub(super) fn io_register_kind_is_available(
+    kind: IoRegisterKind,
     availability: IoRegisterAvailability,
     console_model: ConsoleModel,
     operating_mode: OperatingMode,
@@ -585,7 +594,37 @@ fn io_register_is_available(
     match availability {
         IoRegisterAvailability::Shared | IoRegisterAvailability::DmgCompatible => true,
         IoRegisterAvailability::CgbOnly => {
-            console_model.is_cgb_family() && operating_mode.enables_cgb_extensions()
+            cgb_io_register_is_available(kind, console_model, operating_mode)
         }
     }
+}
+
+fn cgb_io_register_is_available(
+    kind: IoRegisterKind,
+    console_model: ConsoleModel,
+    operating_mode: OperatingMode,
+) -> bool {
+    if !console_model.is_cgb_family() {
+        return false;
+    }
+
+    if operating_mode.enables_cgb_extensions() {
+        return true;
+    }
+
+    // CGB-family compatibility mode is not DMG silicon. Keep the small set of
+    // boot-HWIO-visible CGB registers routed even while native-only functional
+    // features such as banking writes, HDMA, infrared, and palette data remain
+    // unavailable to monochrome software.
+    matches!(
+        kind,
+        IoRegisterKind::Vbk
+            | IoRegisterKind::Bcps
+            | IoRegisterKind::Ocps
+            | IoRegisterKind::CgbUndocumented72
+            | IoRegisterKind::CgbUndocumented73
+            | IoRegisterKind::CgbUndocumented75
+            | IoRegisterKind::Pcm12
+            | IoRegisterKind::Pcm34
+    )
 }

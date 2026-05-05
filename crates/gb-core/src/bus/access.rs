@@ -2,6 +2,7 @@ use crate::boot::StartupMemoryPolicy;
 use crate::cartridge::CartridgeSlot;
 use crate::scheduler::TCycle;
 
+use super::iohram::io_register_kind_is_available;
 use super::{
     BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion,
     IoRegisterAvailability, IoRegisterImplementation, IoRegisterKind,
@@ -134,7 +135,7 @@ impl Bus {
             _ => return None,
         }
 
-        if !self.io_register_is_live(info.availability())
+        if !self.io_register_kind_is_live(info.kind(), info.availability())
             || info.implementation() != IoRegisterImplementation::Implemented
         {
             return Some(BLOCKED_READ_VALUE);
@@ -167,7 +168,7 @@ impl Bus {
             _ => return false,
         }
 
-        if !self.io_register_is_live(info.availability())
+        if !self.io_register_kind_is_live(info.kind(), info.availability())
             || info.implementation() != IoRegisterImplementation::Implemented
         {
             return true;
@@ -186,11 +187,12 @@ impl Bus {
         true
     }
 
-    fn io_register_is_live(&self, availability: IoRegisterAvailability) -> bool {
-        match availability {
-            IoRegisterAvailability::Shared | IoRegisterAvailability::DmgCompatible => true,
-            IoRegisterAvailability::CgbOnly => self.cgb_extensions_enabled(),
-        }
+    fn io_register_kind_is_live(
+        &self,
+        kind: IoRegisterKind,
+        availability: IoRegisterAvailability,
+    ) -> bool {
+        io_register_kind_is_available(kind, availability, self.console_model, self.operating_mode)
     }
 
     pub fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {

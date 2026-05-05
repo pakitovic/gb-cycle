@@ -53,7 +53,7 @@
 - Prefer reproducible validation over intuition.
 - Preserve the project's T-cycle timing foundation; do not introduce M-cycle-first scheduling shortcuts as a local convenience.
 - Preserve retained traces, snapshots, or before/after artifacts when they are the only practical way to explain a regression.
-- When rerunning curated external ROM suites for an existing failure or timing-sensitive change, follow the mandatory `/.roms/test/test-report.md` before/after workflow from `docs/index.md` and `docs/TESTING.md`.
+- When rerunning curated external ROM suites for an existing failure or timing-sensitive change, follow the mandatory `/.roms/test/test-report.md` or `/.roms/test/test-report-extra.md` before/after workflow from `docs/index.md` and `docs/TESTING.md`.
 
 ## When touching the global scheduler or cross-subsystem ordering
 

@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -14,11 +14,17 @@ help:
 	@echo "  make coverage             Run complete workspace coverage and emit the HTML report"
 	@echo "  make test-roms            Fetch and run all local curated DMG ROM suites"
 	@echo "  make test-roms-real-boot  Fetch and run all local curated DMG ROM suites through verified RealBoot"
+	@echo "  make test-roms-extra      Fetch and run the exploratory/internal extra ROM suites"
+	@echo "  make test-roms-extra-real-boot Fetch and run the exploratory/internal extra ROM suites through verified RealBoot"
 	@echo "  make test-roms-cgb        Fetch and run the promoted green local curated CGB ROM suites"
 	@echo "  make test-roms-cgb-real-boot Fetch and run the promoted green local curated CGB ROM suites through verified RealBoot"
+	@echo "  make test-roms-cgb-extra  Fetch and run the exploratory/internal CGB ROM suites"
+	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated Acid DMG suite"
+	@echo "  make run-ax6              Fetch and run the extra AX6 DMG RTC suite"
+	@echo "  make run-samesuite        Fetch and run the extra SameSuite DMG APU suite"
 	@echo "  make run-blargg           Fetch and run the curated Blargg DMG suite"
 	@echo "  make run-blargg-cpu-instrs Fetch and run the Blargg CPU instruction chunk"
 	@echo "  make run-blargg-dmg-sound Fetch and run the Blargg DMG sound chunk"
@@ -33,7 +39,7 @@ help:
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
 	@echo "  make run-cgb-smoke        Fetch and run the curated CGB smoke suite"
 	@echo "  make run-cgb-boot-div     Fetch and run the curated CGB boot DIV suite"
-	@echo "  make run-cgb-boot-hwio    Fetch and run the exploratory CGB boot HWIO suite"
+	@echo "  make run-cgb-boot-hwio    Fetch and run the exploratory/internal CGB boot HWIO suite"
 	@echo "  make run-cgb-speed        Fetch and run the curated CGB KEY1/speed suite"
 	@echo "  make run-cgb-ppu-basic    Fetch and run the curated CGB PPU baseline suite"
 	@echo "  make run-cgb-ppu-hard     Fetch and run the curated hard CGB PPU suite"
@@ -103,10 +109,17 @@ test-roms-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cpp
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mealybug
 
+test-roms-extra:
+	$(MAKE) run-ax6
+	$(MAKE) run-samesuite
+
+test-roms-extra-real-boot: require-boot-rom-root
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ax6
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite
+
 test-roms-cgb:
 	$(MAKE) run-cgb-smoke
 	$(MAKE) run-cgb-boot-div
-	$(MAKE) run-cgb-boot-hwio
 	$(MAKE) run-cgb-speed
 	$(MAKE) run-cgb-ppu-basic
 	$(MAKE) run-cgb-ppu-hard
@@ -118,7 +131,6 @@ test-roms-cgb:
 test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-smoke
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-div
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-speed
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-basic
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-ppu-hard
@@ -126,6 +138,12 @@ test-roms-cgb-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-blargg
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-audio-samesuite
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-rtc
+
+test-roms-cgb-extra:
+	$(MAKE) run-cgb-boot-hwio
+
+test-roms-cgb-extra-real-boot: require-boot-rom-root
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio
 
 fetch-test-roms:
 	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
@@ -136,6 +154,14 @@ require-boot-rom-root:
 run-acid:
 	$(MAKE) fetch-test-roms FAMILIES=acid
 	cargo test --release -p gb-test-runner --test external -- --ignored --exact acid_curated_suite_passes_from_repo_store --no-capture
+
+run-ax6:
+	$(MAKE) fetch-test-roms FAMILIES=ax6
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite ax6-dmg-extra --failure-artifact-root .artifacts/ax6
+
+run-samesuite:
+	$(MAKE) fetch-test-roms FAMILIES=samesuite
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-dmg-extra --failure-artifact-root .artifacts/samesuite
 
 run-blargg:
 	$(MAKE) fetch-test-roms FAMILIES=blargg

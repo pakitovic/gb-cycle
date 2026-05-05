@@ -673,7 +673,7 @@ impl Ppu {
     }
 
     fn read_cgb_palette_index(&self, kind: CgbPaletteKind) -> u8 {
-        if !self.is_cgb_native_mode() {
+        if !self.console_model.is_cgb_family() {
             return 0xFF;
         }
 

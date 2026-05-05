@@ -791,11 +791,11 @@ fn cgb_real_boot_ff50_handoff_applies_boot_selected_compatible_mode() {
     assert!(!machine.speed().switch_armed());
     assert_eq!(machine.read_bus(0xFF4C), 0xFF);
     assert_eq!(machine.read_bus(0xFF4D), 0xFF);
-    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFE);
 
     machine.write_bus(0xFF4C, 0x80);
     assert_eq!(machine.config().operating_mode, OperatingMode::GbCompatible);
-    assert_eq!(machine.read_bus(0xFF4F), 0xFF);
+    assert_eq!(machine.read_bus(0xFF4F), 0xFE);
 }
 
 #[test]
@@ -875,7 +875,7 @@ fn save_state_restore_preserves_locked_cgb_real_boot_handoff_state() {
     assert_eq!(target.config().operating_mode, OperatingMode::GbCompatible);
     assert!(!target.boot().is_boot_rom_mapped());
     assert_eq!(target.read_bus(0xFF4D), 0xFF);
-    assert_eq!(target.read_bus(0xFF4F), 0xFF);
+    assert_eq!(target.read_bus(0xFF4F), 0xFE);
 }
 
 #[test]

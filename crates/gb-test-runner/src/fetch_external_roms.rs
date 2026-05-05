@@ -473,11 +473,11 @@ mod tests {
     use std::process::Command;
 
     use crate::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
+        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, cgb_audio_blargg_suite,
+        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
+        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
         curated_test_rom_families, curated_test_rom_family_suites, external_rom_store_root,
-        test_rom_store_root,
+        samesuite_dmg_extra_suite, test_rom_store_root,
     };
 
     use super::{
@@ -600,6 +600,8 @@ mod tests {
         let required_files = curated_test_rom_family_suites()
             .into_iter()
             .chain([
+                ax6_dmg_extra_suite(),
+                samesuite_dmg_extra_suite(),
                 cgb_smoke_suite(),
                 cgb_boot_div_suite(),
                 cgb_boot_hwio_suite(),
@@ -633,6 +635,8 @@ mod tests {
 
     fn write_curated_shootout_repo(root: &Path) {
         for suite in curated_test_rom_family_suites().into_iter().chain([
+            ax6_dmg_extra_suite(),
+            samesuite_dmg_extra_suite(),
             cgb_smoke_suite(),
             cgb_boot_div_suite(),
             cgb_boot_hwio_suite(),

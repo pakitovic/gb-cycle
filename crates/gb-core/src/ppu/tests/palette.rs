@@ -153,17 +153,19 @@ fn dmg_family_ppu_ignores_cgb_palette_registers_directly() {
 }
 
 #[test]
-fn cgb_compatibility_mode_keeps_cgb_palette_mmio_unavailable_directly() {
+fn cgb_compatibility_mode_exposes_palette_index_reads_but_keeps_data_writes_unavailable() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
 
     ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
 
-    assert_eq!(ppu.read_register(0xFF68), 0xFF);
+    assert_eq!(ppu.read_register(0xFF68), 0x40);
     assert_eq!(ppu.read_register(0xFF69), 0xFF);
 
     ppu.write_register(0xFF68, 0x80);
     ppu.write_register(0xFF69, 0x12);
 
+    assert_eq!(ppu.read_register(0xFF68), 0x40);
+    assert_eq!(ppu.read_register(0xFF69), 0xFF);
     assert_eq!(
         ppu.cgb_palettes
             .port(CgbPaletteKind::Background)

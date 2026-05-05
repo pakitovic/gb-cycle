@@ -1,0 +1,31 @@
+version = 1
+family = "ax6"
+suite_name = "ax6-dmg-extra"
+subsystem = "Cartridge"
+
+[[case]]
+id = "ax6-dmg-rtc3test-1"
+rom = "rtc3test-1.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 1140
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.dmg.png"
+
+[[case]]
+id = "ax6-dmg-rtc3test-2"
+rom = "rtc3test-2.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 900
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.dmg.png"
+
+[[case]]
+id = "ax6-dmg-rtc3test-3"
+rom = "rtc3test-3.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 2400
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.dmg.png"

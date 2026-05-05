@@ -8,4 +8,4 @@ id = "cgb-boot-hwio-boot-hwio-c"
 rom = "misc/boot_hwio-C.gb"
 console = "cgb"
 timeout_frames = 180
-oracle = "info-snapshot"
+oracle = "mooneye-result"
