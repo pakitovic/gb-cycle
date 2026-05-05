@@ -658,16 +658,20 @@ fn normalize_persisted_suite_status(mut persisted: PersistedSuiteStatus) -> Pers
     let mut normalized_cases = Vec::with_capacity(persisted.cases.len());
     for mut case in persisted.cases {
         let family = case.family.as_deref().unwrap_or(&persisted.family);
-        if let Some(normalized_rom) =
-            manifest_report_rom_for_persisted_suite_case(&persisted.suite_name, family, &case.rom)
-        {
-            case.rom = normalized_rom;
+        if let Some(metadata) = manifest_report_metadata_for_persisted_suite_case(
+            &persisted.suite_name,
+            family,
+            &case.rom,
+        ) {
+            case.family = (metadata.family != persisted.family).then_some(metadata.family);
+            case.rom = metadata.rom;
             normalized_cases.push(case);
         } else if !suite_has_manifest {
-            if let Some(normalized_rom) =
-                manifest_report_rom_for_any_persisted_case(family, &case.rom)
+            if let Some(metadata) =
+                manifest_report_metadata_for_any_persisted_case(family, &case.rom)
             {
-                case.rom = normalized_rom;
+                case.family = (metadata.family != persisted.family).then_some(metadata.family);
+                case.rom = metadata.rom;
             }
             normalized_cases.push(case);
         }
@@ -687,25 +691,35 @@ fn curated_manifest_for_suite(suite_name: &str) -> Option<CuratedTestRomManifest
         .find(|manifest| manifest.suite_name == suite_name)
 }
 
-fn manifest_report_rom_for_persisted_suite_case(
+fn manifest_report_metadata_for_persisted_suite_case(
     suite_name: &str,
     family: &str,
     rom: &str,
-) -> Option<String> {
+) -> Option<ReportCaseMetadata> {
     curated_test_rom_manifests()
         .into_iter()
         .filter(|manifest| manifest.suite_name == suite_name)
         .flat_map(|manifest| manifest.cases)
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
-        .map(|case| manifest_case_report_rom_display(&case))
+        .map(manifest_case_report_metadata)
 }
 
-fn manifest_report_rom_for_any_persisted_case(family: &str, rom: &str) -> Option<String> {
+fn manifest_report_metadata_for_any_persisted_case(
+    family: &str,
+    rom: &str,
+) -> Option<ReportCaseMetadata> {
     curated_test_rom_manifests()
         .into_iter()
         .flat_map(|manifest| manifest.cases)
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
-        .map(|case| manifest_case_report_rom_display(&case))
+        .map(manifest_case_report_metadata)
+}
+
+fn manifest_case_report_metadata(case: CuratedTestRomCase) -> ReportCaseMetadata {
+    ReportCaseMetadata {
+        family: case.family.clone(),
+        rom: manifest_case_report_rom_display(&case),
+    }
 }
 
 fn persisted_case_matches_manifest_case(
@@ -3212,6 +3226,28 @@ status = "PASS"
         assert!(!standard_report.contains("rtc3test-1.gb (DMG)"));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn render_markdown_report_preserves_family_from_legacy_full_path_rows() {
+        let rendered = render_markdown_report(&[PersistedSuiteStatus {
+            version: 1,
+            suite_name: "cgb-smoke".to_string(),
+            family: "cgb-smoke".to_string(),
+            cases: vec![PersistedCaseStatus {
+                family: None,
+                rom: "mooneye/misc/boot_regs-cgb.gb".to_string(),
+                status: "PASS".to_string(),
+            }],
+        }]);
+
+        assert!(rendered.starts_with("# Test Report (1/1)\n"));
+        assert!(rendered.contains(&format!(
+            "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered.contains(&format!(
+            "| cgb-smoke | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
     }
 
     #[test]
