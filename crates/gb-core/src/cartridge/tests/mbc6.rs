@@ -655,6 +655,57 @@ fn mbc6_runtime_save_state_validates_all_nonvolatile_shapes() {
 }
 
 #[test]
+fn mbc6_runtime_save_state_rejects_malformed_program_buffers() {
+    let report = CartridgeSlot::load(build_banked_mbc6_rom(), &CompatibilityPolicy::strict())
+        .expect("MBC6 should load");
+    let cartridge = report.cartridge();
+    let mut state = cartridge.capture_save_state();
+
+    let Some(CartridgeDeviceSaveState::Mbc6(saved)) = &mut state.device else {
+        panic!("expected MBC6 save state");
+    };
+    saved.flash_mode = Mbc6FlashMode::Program(Mbc6ProgramState {
+        target: Mbc6ProgramTarget::MainFlash,
+        block_base: Some(0),
+        buffer: vec![0xFF; MBC6_FLASH_PROGRAM_BLOCK_BYTES - 1],
+        written: vec![false; MBC6_FLASH_PROGRAM_BLOCK_BYTES],
+        final_byte_seen: false,
+    });
+
+    assert!(matches!(
+        cartridge.validate_save_state(&state),
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field: "MBC6 program buffer",
+            expected,
+            actual,
+        }) if expected == Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES)
+            && actual == Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES - 1)
+    ));
+
+    let mut state = cartridge.capture_save_state();
+    let Some(CartridgeDeviceSaveState::Mbc6(saved)) = &mut state.device else {
+        panic!("expected MBC6 save state");
+    };
+    saved.flash_mode = Mbc6FlashMode::HiddenProgram(Mbc6ProgramState {
+        target: Mbc6ProgramTarget::HiddenRegion,
+        block_base: Some(0),
+        buffer: vec![0xFF; MBC6_FLASH_PROGRAM_BLOCK_BYTES],
+        written: vec![false; MBC6_FLASH_PROGRAM_BLOCK_BYTES - 1],
+        final_byte_seen: false,
+    });
+
+    assert!(matches!(
+        cartridge.validate_save_state(&state),
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field: "MBC6 program written bitmap",
+            expected,
+            actual,
+        }) if expected == Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES)
+            && actual == Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES - 1)
+    ));
+}
+
+#[test]
 fn mbc6_runtime_save_state_restores_registers_and_program_buffer_payload() {
     let (source, _) = CartridgeSlot::load(build_banked_mbc6_rom(), &CompatibilityPolicy::strict())
         .expect("MBC6 should load")

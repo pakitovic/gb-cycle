@@ -21,6 +21,39 @@ impl CartridgeLoadReport {
     }
 }
 
+fn validate_mbc6_flash_mode_shape(
+    flash_mode: &Mbc6FlashMode,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    match flash_mode {
+        Mbc6FlashMode::Program(state) | Mbc6FlashMode::HiddenProgram(state) => {
+            validate_mbc6_program_state_shape(state)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_mbc6_program_state_shape(
+    state: &Mbc6ProgramState,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    validate_mbc6_program_vec_shape("MBC6 program buffer", state.buffer.len())?;
+    validate_mbc6_program_vec_shape("MBC6 program written bitmap", state.written.len())
+}
+
+fn validate_mbc6_program_vec_shape(
+    field: &'static str,
+    actual: usize,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    if actual == MBC6_FLASH_PROGRAM_BLOCK_BYTES {
+        Ok(())
+    } else {
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field,
+            expected: Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES),
+            actual: Some(actual),
+        })
+    }
+}
+
 impl CartridgeSlot {
     pub fn empty() -> Self {
         Self {
@@ -89,7 +122,8 @@ impl CartridgeSlot {
                     "MBC6 hidden flash",
                     &current.hidden_region,
                     &saved.hidden_region,
-                )
+                )?;
+                validate_mbc6_flash_mode_shape(&saved.flash_mode)
             }
             (
                 Some(CartridgeDevice::PocketCamera(current)),

@@ -314,6 +314,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MBC3` persistence must cover the full validated SRAM backing plus live RTC state when the header type includes timer and battery support.
 - `MBC5` persistence must cover the full validated SRAM backing up to `128 KiB`; rumble state is not part of the ordinary battery-backed save payload.
 - `MBC6` persistence must cover SRAM, main flash, hidden flash, and the non-volatile sector-0 protection bit; volatile flash command state belongs to whole-machine runtime save states, not hardware-style cartridge saves.
+- Whole-machine runtime save states that capture an in-progress `MBC6` main-flash or hidden-flash program operation must preserve and validate the `128`-byte program buffer plus its `128`-entry written bitmap before restore, because those vectors model the pending aligned flash page commit rather than optional host metadata.
 - For `MBC3`, the persistible RTC payload must preserve at least seconds, minutes, hours, visible `9`-bit day counter, halt, carry, and enough elapsed-time bookkeeping to reconstruct powered-off advancement on reload.
 - The persistible RTC payload must reflect live RTC state, not the latched snapshot exposed for reads through the `0x00 -> 0x01` latch sequence.
 - Restoring hardware-style `MBC3` persistence into a live cartridge should refresh `rtc_live` while clearing runtime-local latch state (`rtc_latched`, latch-valid flag, edge-arming state, and advisory ready-at timing) so a stale read snapshot does not survive a persistence restore.
