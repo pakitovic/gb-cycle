@@ -592,6 +592,7 @@ impl Default for HotkeyBindings {
 pub struct GamepadOptions {
     pub enabled: bool,
     pub directional_source: GamepadDirectionalSource,
+    pub gyro_mode: GamepadGyroMode,
     pub rumble_mode: GamepadRumbleMode,
     pub bindings: GamepadButtonBindings,
     pub actions: GamepadActionBindings,
@@ -604,6 +605,7 @@ impl Default for GamepadOptions {
         Self {
             enabled: true,
             directional_source: GamepadDirectionalSource::default(),
+            gyro_mode: GamepadGyroMode::default(),
             rumble_mode: GamepadRumbleMode::default(),
             bindings: GamepadButtonBindings::default(),
             actions: GamepadActionBindings::default(),
@@ -759,6 +761,17 @@ pub enum GamepadRumbleMode {
     Weak,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GamepadGyroMode {
+    #[default]
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "pad-gyro")]
+    PadGyro,
+    #[serde(rename = "pad-input")]
+    PadInput,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GamepadFaceLayout {
     #[default]
@@ -880,6 +893,7 @@ mod tests {
             config.input.gamepad.directional_source,
             GamepadDirectionalSource::DpadAndLeftStick
         );
+        assert_eq!(config.input.gamepad.gyro_mode, GamepadGyroMode::Off);
         assert_eq!(config.input.gamepad.rumble_mode, GamepadRumbleMode::Strong);
         assert_eq!(
             config.input.gamepad.bindings,
@@ -1263,7 +1277,29 @@ mod tests {
         assert!(GamepadDirectionalSource::LeftStickOnly.uses_left_stick());
         assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_dpad());
         assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_left_stick());
+        assert_eq!(GamepadGyroMode::default(), GamepadGyroMode::Off);
         assert_eq!(GamepadRumbleMode::default(), GamepadRumbleMode::Strong);
+    }
+
+    #[test]
+    fn gamepad_gyro_mode_serializes_as_stable_kebab_case_values() {
+        #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+        struct GyroModeWrapper {
+            gyro_mode: GamepadGyroMode,
+        }
+
+        for (mode, serialized) in [
+            (GamepadGyroMode::Off, "off"),
+            (GamepadGyroMode::PadGyro, "pad-gyro"),
+            (GamepadGyroMode::PadInput, "pad-input"),
+        ] {
+            let wrapper = GyroModeWrapper { gyro_mode: mode };
+            let encoded = toml::to_string(&wrapper).expect("gyro mode should serialize");
+            assert_eq!(encoded.trim(), format!("gyro_mode = \"{serialized}\""));
+            let decoded: GyroModeWrapper =
+                toml::from_str(&encoded).expect("gyro mode should deserialize");
+            assert_eq!(decoded, wrapper);
+        }
     }
 
     #[test]

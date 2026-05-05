@@ -703,6 +703,65 @@ pub(in crate::cartridge) fn validate_mbc6(
     Ok(())
 }
 
+pub(in crate::cartridge) fn validate_mbc7(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<(), CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if declared_rom_bytes > MBC7_SUPPORTED_ROM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} exceeds the current MBC7 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            MBC7_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    if !header.cgb_flag.enables_cgb_native_mode() {
+        return Err(ctx.reject(format!(
+            "{} requires a CGB-capable header flag, but the header decoded as {:?}",
+            ctx.name(),
+            header.cgb_flag
+        )));
+    }
+
+    if header.ram_size.raw_code != 0x00 || header.ram_size.decoded_bytes != Some(0) {
+        return Err(ctx.reject(format!(
+            "{} uses a fixed 256-byte serial EEPROM instead of decoded SRAM, but the header declared RAM code {:#04X} ({:?} bytes)",
+            ctx.name(),
+            header.ram_size.raw_code,
+            header.ram_size.decoded_bytes
+        )));
+    }
+
+    Ok(())
+}
+
 pub(in crate::cartridge) fn validate_pocket_camera(
     header: &CartridgeHeader,
     actual_rom_size: usize,

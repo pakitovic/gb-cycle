@@ -14,6 +14,7 @@ mod mbc2;
 mod mbc3;
 mod mbc5;
 mod mbc6;
+mod mbc7;
 mod mmm01;
 mod no_mbc;
 mod persist;
@@ -97,6 +98,12 @@ const MBC6_FLASH_BYTES: usize = 1024 * 1024;
 const MBC6_HIDDEN_BYTES: usize = 256;
 const MBC6_FLASH_SECTOR_BYTES: usize = 128 * 1024;
 const MBC6_FLASH_PROGRAM_BLOCK_BYTES: usize = 128;
+const MBC7_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
+const MBC7_EEPROM_BYTES: usize = 256;
+const MBC7_EEPROM_WORDS: usize = MBC7_EEPROM_BYTES / 2;
+const MBC7_ACCELEROMETER_UNLATCHED_VALUE: u16 = 0x8000;
+const MBC7_ACCELEROMETER_NEUTRAL_VALUE: u16 = 0x81D0;
+const MBC7_ACCELEROMETER_DELTA_PER_G: i32 = 0x0070;
 const POCKET_CAMERA_SUPPORTED_ROM_BYTES: usize = 1024 * 1024;
 const POCKET_CAMERA_SUPPORTED_RAM_BYTES: usize = 128 * 1024;
 const POCKET_CAMERA_RAM_BANK_BYTES: usize = 8 * 1024;
@@ -135,6 +142,7 @@ pub enum CartridgeSlotState {
     Mbc3,
     Mbc5,
     Mbc6,
+    Mbc7,
     PocketCamera,
 }
 
@@ -220,6 +228,7 @@ pub enum SupportedCartridgeFamily {
     Mbc3,
     Mbc5,
     Mbc6,
+    Mbc7,
     PocketCamera,
 }
 
@@ -387,6 +396,7 @@ enum CartridgeDevice {
     Mbc3(Mbc3Cartridge),
     Mbc5(Mbc5Cartridge),
     Mbc6(Mbc6Cartridge),
+    Mbc7(Mbc7Cartridge),
     PocketCamera(PocketCameraCartridge),
 }
 
@@ -709,6 +719,56 @@ struct Mbc6Cartridge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc7Cartridge {
+    rom: Vec<u8>,
+    eeprom: Vec<u8>,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    ram_enabled: bool,
+    sensor_eeprom_enabled: bool,
+    rom_bank: u8,
+    accelerometer_input: Mbc7AccelerometerInput,
+    accelerometer_latch_armed: bool,
+    latched_x: u16,
+    latched_y: u16,
+    eeprom_pins: Mbc7EepromPins,
+    eeprom_command: Mbc7EepromCommand,
+    eeprom_write_enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc7EepromPins {
+    cs: bool,
+    clk: bool,
+    di: bool,
+    do_pin: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc7EepromCommand {
+    Idle,
+    ReceivingCommand {
+        bits: u8,
+        value: u16,
+    },
+    ReceivingData {
+        target: Mbc7EepromDataTarget,
+        bits: u8,
+        value: u16,
+    },
+    SendingRead {
+        bits_remaining: u8,
+        value: u16,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc7EepromDataTarget {
+    WriteWord { address: u8 },
+    WriteAll,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PocketCameraCartridge {
     rom: Vec<u8>,
     ram: Vec<u8>,
@@ -844,6 +904,7 @@ enum CartridgeDeviceSaveState {
     Mbc3(Mbc3CartridgeSaveState),
     Mbc5(Mbc5CartridgeSaveState),
     Mbc6(Mbc6CartridgeSaveState),
+    Mbc7(Mbc7CartridgeSaveState),
     PocketCamera(PocketCameraCartridgeSaveState),
 }
 
@@ -860,6 +921,7 @@ impl CartridgeDeviceSaveState {
             Self::Mbc3(_) => CartridgeSlotState::Mbc3,
             Self::Mbc5(_) => CartridgeSlotState::Mbc5,
             Self::Mbc6(_) => CartridgeSlotState::Mbc6,
+            Self::Mbc7(_) => CartridgeSlotState::Mbc7,
             Self::PocketCamera(_) => CartridgeSlotState::PocketCamera,
         }
     }
@@ -876,6 +938,7 @@ impl CartridgeDeviceSaveState {
             Self::Mbc3(state) => state.dynamic_payload_bytes(),
             Self::Mbc5(state) => state.dynamic_payload_bytes(),
             Self::Mbc6(state) => state.dynamic_payload_bytes(),
+            Self::Mbc7(state) => state.dynamic_payload_bytes(),
             Self::PocketCamera(state) => state.dynamic_payload_bytes(),
         }
     }
@@ -1073,6 +1136,27 @@ impl Mbc6CartridgeSaveState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc7CartridgeSaveState {
+    eeprom: Vec<u8>,
+    ram_enabled: bool,
+    sensor_eeprom_enabled: bool,
+    rom_bank: u8,
+    accelerometer_input: Mbc7AccelerometerInput,
+    accelerometer_latch_armed: bool,
+    latched_x: u16,
+    latched_y: u16,
+    eeprom_pins: Mbc7EepromPins,
+    eeprom_command: Mbc7EepromCommand,
+    eeprom_write_enabled: bool,
+}
+
+impl Mbc7CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.eeprom.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PocketCameraCartridgeSaveState {
     ram: Vec<u8>,
     ram_enabled: bool,
@@ -1130,8 +1214,13 @@ pub enum CartridgeRtcRegister {
 pub enum CartridgeExternalTarget {
     NoDevice,
     LinearRam,
-    BankedRam { bank: u8 },
-    Mbc6Ram { window: Mbc6Window, bank: u8 },
+    BankedRam {
+        bank: u8,
+    },
+    Mbc6Ram {
+        window: Mbc6Window,
+        bank: u8,
+    },
     Mbc2InternalRam,
     IrRegister,
     Huc3CommandMailbox,
@@ -1140,7 +1229,34 @@ pub enum CartridgeExternalTarget {
     Huc3InvalidSelector(u8),
     RtcRegister(CartridgeRtcRegister),
     ReservedSelector(u8),
-    PocketCameraRegister { offset: u8 },
+    Mbc7AccelerometerLatchReset,
+    Mbc7AccelerometerLatchCommit,
+    Mbc7AccelerometerAxis {
+        axis: Mbc7AccelerometerAxis,
+        byte: Mbc7AccelerometerByte,
+    },
+    Mbc7FixedRegister {
+        value: u8,
+    },
+    Mbc7EepromSerial,
+    Mbc7ReservedRegister {
+        selector: u8,
+    },
+    PocketCameraRegister {
+        offset: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Mbc7AccelerometerAxis {
+    X,
+    Y,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Mbc7AccelerometerByte {
+    Low,
+    High,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -1159,6 +1275,8 @@ pub enum CartridgeExternalReadBehavior {
     Huc3MailboxResponse,
     Huc3SemaphoreReady,
     RtcLatched,
+    Mbc7Accelerometer,
+    Mbc7EepromSerial,
     FallbackValue(u8),
 }
 
@@ -1169,6 +1287,8 @@ pub enum CartridgeExternalWriteBehavior {
     Huc3MailboxCommandArgument,
     Huc3SemaphoreControl,
     RtcLive,
+    Mbc7AccelerometerLatch,
+    Mbc7EepromSerial,
     Ignored,
 }
 
@@ -1264,6 +1384,9 @@ pub enum CartridgePersistenceProfile {
         flash_byte_len: usize,
         hidden_byte_len: usize,
     },
+    PersistentEeprom {
+        byte_len: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1352,6 +1475,9 @@ pub enum PersistentCartState {
         hidden_region: Vec<u8>,
         sector0_protected: bool,
     },
+    Mbc7Eeprom {
+        eeprom: Vec<u8>,
+    },
     PocketCameraRam {
         ram: Vec<u8>,
     },
@@ -1364,6 +1490,10 @@ pub enum CartridgePersistentStateError {
         actual: &'static str,
     },
     RamLengthMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    EepromLengthMismatch {
         expected: usize,
         actual: usize,
     },
@@ -1382,6 +1512,48 @@ pub struct PocketCameraFrame {
     pub width: u16,
     pub height: u16,
     pub grayscale_pixels: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Mbc7AccelerometerInput {
+    pub x_raw: u16,
+    pub y_raw: u16,
+}
+
+impl Mbc7AccelerometerInput {
+    pub const fn neutral() -> Self {
+        Self {
+            x_raw: MBC7_ACCELEROMETER_NEUTRAL_VALUE,
+            y_raw: MBC7_ACCELEROMETER_NEUTRAL_VALUE,
+        }
+    }
+
+    pub const fn from_raw(x_raw: u16, y_raw: u16) -> Self {
+        Self { x_raw, y_raw }
+    }
+
+    pub fn from_milli_g(x_milli_g: i16, y_milli_g: i16) -> Self {
+        Self {
+            x_raw: mbc7_accelerometer_raw_from_milli_g(x_milli_g),
+            y_raw: mbc7_accelerometer_raw_from_milli_g(y_milli_g),
+        }
+    }
+}
+
+impl Default for Mbc7AccelerometerInput {
+    fn default() -> Self {
+        Self::neutral()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Mbc7AccelerometerError {
+    UnsupportedCartridge,
+}
+
+fn mbc7_accelerometer_raw_from_milli_g(milli_g: i16) -> u16 {
+    let delta = (i32::from(milli_g) * MBC7_ACCELEROMETER_DELTA_PER_G) / 1000;
+    (i32::from(MBC7_ACCELEROMETER_NEUTRAL_VALUE) + delta).clamp(0, u16::MAX as i32) as u16
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -1544,7 +1544,7 @@ fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
 
     let rom_path = temp_dir.join("unsupported.gb");
-    let mut rom = build_test_rom_with_header(&[0x00], 0x22, 0x55, 0x06);
+    let mut rom = build_test_rom_with_header(&[0x00], 0xFD, 0x55, 0x06);
     rom[0x0143] = 0xAA;
     rom[0x0146] = 0x7F;
     fs::write(&rom_path, rom).expect("unsupported ROM should be writable");
@@ -1560,7 +1560,7 @@ fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     .expect("unsupported headers should still inspect successfully");
     let text = String::from_utf8(output).expect("inspect output should be UTF-8");
     assert!(text.contains("load_status=rejected"));
-    assert!(text.contains("selection=unsupported-documented"));
+    assert!(text.contains("selection=unsupported-accessory"));
     assert!(text.contains("rejection_reason="));
     assert!(text.contains("cgb_flag=supported-noncanonical(0xAA)"));
     assert!(text.contains("sgb_flag=unknown(0x7F)"));
@@ -2282,7 +2282,7 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         )
     );
     let rejected_message = format_cartridge_load_error(CartridgeLoadError::Rejected {
-        classification: CartridgeClassification::classify(0x22),
+        classification: CartridgeClassification::classify(0xFD),
         execution_mode: ExecutionMode::Experimental,
         reason: "requires dedicated hardware".to_string(),
         diagnostics: vec![
@@ -2297,11 +2297,11 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         ],
     });
     assert!(rejected_message.contains("cartridge rejected under experimental"));
-    assert!(rejected_message.contains("mapper=MBC7+SENSOR+RUMBLE+RAM+BATTERY"));
-    assert!(rejected_message.contains("selection=unsupported-documented"));
+    assert!(rejected_message.contains("mapper=BANDAI TAMA5"));
+    assert!(rejected_message.contains("selection=unsupported-accessory"));
     assert!(rejected_message.contains("diagnostics=[warning warn; error err]"));
     let rejected_without_diagnostics = format_cartridge_load_error(CartridgeLoadError::Rejected {
-        classification: CartridgeClassification::classify(0x22),
+        classification: CartridgeClassification::classify(0xFD),
         execution_mode: ExecutionMode::Strict,
         reason: "no diagnostics".to_string(),
         diagnostics: Vec::new(),

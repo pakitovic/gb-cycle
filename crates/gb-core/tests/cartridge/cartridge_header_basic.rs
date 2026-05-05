@@ -52,6 +52,12 @@ fn public_classification_distinguishes_supported_and_structured_unsupported_type
         camera.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::PocketCamera)
     );
+    let mbc7 = CartridgeClassification::classify(0x22);
+    assert_eq!(mbc7.detected_name(), "MBC7+SENSOR+RUMBLE+RAM+BATTERY");
+    assert_eq!(
+        mbc7.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc7)
+    );
     assert_eq!(
         accessory.selection(),
         CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::AccessorySpecialCase)
@@ -137,13 +143,8 @@ fn machine_load_cartridge_installs_the_loaded_slot() {
 }
 
 #[test]
-fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
+fn unsupported_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
     let cases = [
-        (
-            0x22,
-            "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        ),
         (
             0xFD,
             "BANDAI TAMA5",

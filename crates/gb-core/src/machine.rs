@@ -5,8 +5,8 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::Bus;
 use crate::cartridge::{
-    CartridgePersistentStateError, CartridgeSlot, PersistentCartState, PocketCameraFrame,
-    PocketCameraFrameError,
+    CartridgePersistentStateError, CartridgeSlot, Mbc7AccelerometerError, Mbc7AccelerometerInput,
+    PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
 };
 use crate::cpu::{CpuCore, CpuExecutionState};
 use crate::debugger::{
@@ -427,6 +427,17 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn clear_pocket_camera_frame(&mut self) -> Result<(), PocketCameraFrameError> {
         self.cartridge.clear_pocket_camera_frame()
+    }
+
+    pub fn has_mbc7_accelerometer(&self) -> bool {
+        self.cartridge.has_mbc7_accelerometer()
+    }
+
+    pub fn set_mbc7_accelerometer_input(
+        &mut self,
+        input: Mbc7AccelerometerInput,
+    ) -> Result<(), Mbc7AccelerometerError> {
+        self.cartridge.set_mbc7_accelerometer_input(input)
     }
 
     pub fn restore_cartridge_persistent_state(

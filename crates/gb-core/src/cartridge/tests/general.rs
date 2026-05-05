@@ -194,13 +194,13 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
 }
 
 #[test]
-fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_instead_of_fallback()
+fn unsupported_special_cartridge_loads_fail_with_explicit_typed_classification_instead_of_fallback()
 {
     let cases = [(
-        build_test_rom(256 * 1024, 0x22, 0x03, 0x00),
-        "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
-        UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        "EEPROM and accelerometer",
+        build_test_rom(256 * 1024, 0xFD, 0x03, 0x00),
+        "BANDAI TAMA5",
+        UnsupportedCartridgeCategory::AccessorySpecialCase,
+        "dedicated accessory hardware",
     )];
 
     for (rom, expected_name, expected_category, expected_reason_snippet) in cases {

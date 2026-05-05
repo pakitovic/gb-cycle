@@ -14,6 +14,7 @@ mod mbc3;
 mod mbc3_rtc;
 mod mbc5;
 mod mbc6;
+mod mbc7;
 mod mmm01;
 mod no_mbc;
 mod persistence;
@@ -352,6 +353,24 @@ fn build_banked_mbc6_rom() -> Vec<u8> {
             rom[start + 0x0100] = bank as u8;
         }
     }
+    rom
+}
+
+fn build_banked_mbc7_rom(rom_size_code: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, 0x22, rom_size_code, 0x00);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
     rom
 }
 

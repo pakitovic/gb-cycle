@@ -2,9 +2,10 @@ use gb_core::{BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
     DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
-    JoypadKeyboardBindings, MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity,
-    RewindOptions, SaveDirectoryPolicy, VideoOptions,
+    GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
+    HotkeyBindings, InputOptions, JoypadKeyboardBindings, MachineStateOptions,
+    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
+    VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -311,6 +312,15 @@ impl DesktopSettingsStore {
         }
 
         self.settings.input.gamepad.rumble_mode = rumble_mode;
+        self.save()
+    }
+
+    pub fn set_gamepad_gyro_mode(&mut self, gyro_mode: GamepadGyroMode) -> Result<(), String> {
+        if self.settings.input.gamepad.gyro_mode == gyro_mode {
+            return Ok(());
+        }
+
+        self.settings.input.gamepad.gyro_mode = gyro_mode;
         self.save()
     }
 
@@ -936,7 +946,7 @@ mod tests {
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
         DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
-        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource, GamepadGyroMode,
         GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
         JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
         SaveDirectoryPolicy, VideoOptions,
@@ -1207,6 +1217,7 @@ max_memory_mib = 128
         settings.input.keyboard.menu.confirm = DesktopKey::X;
         settings.input.keyboard.hotkeys.pause = DesktopKey::X;
         settings.input.gamepad.directional_source = GamepadDirectionalSource::LeftStickOnly;
+        settings.input.gamepad.gyro_mode = GamepadGyroMode::PadInput;
         settings.input.gamepad.rumble_mode = GamepadRumbleMode::Weak;
         settings.input.gamepad.bindings.a = GamepadButtonBinding::North;
         settings.input.gamepad.menu.cancel = GamepadButtonBinding::West;
@@ -1275,6 +1286,7 @@ max_memory_mib = 128
             config.input.gamepad.directional_source,
             GamepadDirectionalSource::LeftStickOnly
         );
+        assert_eq!(config.input.gamepad.gyro_mode, GamepadGyroMode::PadInput);
         assert_eq!(config.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(config.input.gamepad.bindings.a, GamepadButtonBinding::North);
         assert_eq!(config.input.gamepad.menu.cancel, GamepadButtonBinding::West);
@@ -1490,6 +1502,9 @@ max_memory_mib = 128
             .set_gamepad_directional_source(GamepadDirectionalSource::LeftStickOnly)
             .expect("gamepad direction should persist");
         store
+            .set_gamepad_gyro_mode(GamepadGyroMode::PadInput)
+            .expect("gamepad gyro mode should persist");
+        store
             .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
             .expect("gamepad rumble mode should persist");
         store
@@ -1551,6 +1566,7 @@ max_memory_mib = 128
             reloaded.input.gamepad.directional_source,
             GamepadDirectionalSource::LeftStickOnly
         );
+        assert_eq!(reloaded.input.gamepad.gyro_mode, GamepadGyroMode::PadInput);
         assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.input.gamepad.menu.cancel,
@@ -1853,6 +1869,12 @@ max_memory_mib = 128
             .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
             .expect("gamepad rumble mode should persist");
         store
+            .set_gamepad_gyro_mode(GamepadGyroMode::PadGyro)
+            .expect("gamepad gyro mode should persist");
+        store
+            .set_gamepad_gyro_mode(GamepadGyroMode::PadGyro)
+            .expect("reapplying the same gyro mode should be a no-op");
+        store
             .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
             .expect("reapplying the same rumble mode should be a no-op");
         store
@@ -1864,6 +1886,7 @@ max_memory_mib = 128
         let reloaded =
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
         assert_eq!(reloaded.input.gamepad.bindings, bindings);
+        assert_eq!(reloaded.input.gamepad.gyro_mode, GamepadGyroMode::PadGyro);
         assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.last_open_directory,

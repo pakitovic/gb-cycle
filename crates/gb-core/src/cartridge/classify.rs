@@ -47,11 +47,10 @@ impl CartridgeClassification {
                 SupportedCartridgeFamily::Mmm01,
             ),
             0x20 => supported(raw_type, "MBC6", SupportedCartridgeFamily::Mbc6),
-            0x22 => unsupported(
+            0x22 => supported(
                 raw_type,
                 "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "MBC7 requires EEPROM and accelerometer behavior that is not implemented yet",
+                SupportedCartridgeFamily::Mbc7,
             ),
             0xFD => unsupported(
                 raw_type,
