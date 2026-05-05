@@ -119,6 +119,8 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
 
 The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a promoted curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned GBEmulatorShootout source order from `crates/gb-test-runner/data/sources.toml`. Extra/internal suites render the same table shape in `/.roms/test/test-report-extra.md`, currently `ax6-dmg-extra`, `samesuite-dmg-extra`, and `cgb-boot-hwio`, so exploratory evidence stays visible without changing the promoted aggregate report. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
 
+Persisted `/.roms/test/.status/*.toml` rows are interpreted through their owning suite before any shared upstream family fallback, so a ROM reused by a promoted CGB suite and an extra DMG suite keeps separate report labels and stale extra-only model rows are pruned from promoted suite status files when that suite is updated.
+
 For GBEmulatorShootout rows whose label includes a model suffix, the associated manifest case must carry both `console = "dmg"` or `console = "cgb"` and `report_model_suffix = true`; this keeps rows such as `which.gb (DMG)` and `which.gb (GBC)` visible without adding a suffix to rows whose upstream label has none.
 
 ## Curated family details
