@@ -1,7 +1,8 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
     validate_huc1, validate_huc3, validate_m161, validate_mbc1, validate_mbc2, validate_mbc3,
-    validate_mbc5, validate_mbc7, validate_mmm01, validate_no_mbc, validate_pocket_camera,
+    validate_mbc5, validate_mbc6, validate_mbc7, validate_mmm01, validate_no_mbc,
+    validate_pocket_camera,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -18,6 +19,39 @@ impl CartridgeLoadReport {
 
     pub fn into_parts(self) -> (CartridgeSlot, Vec<CartridgeDiagnostic>) {
         (self.cartridge, self.diagnostics)
+    }
+}
+
+fn validate_mbc6_flash_mode_shape(
+    flash_mode: &Mbc6FlashMode,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    match flash_mode {
+        Mbc6FlashMode::Program(state) | Mbc6FlashMode::HiddenProgram(state) => {
+            validate_mbc6_program_state_shape(state)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_mbc6_program_state_shape(
+    state: &Mbc6ProgramState,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    validate_mbc6_program_vec_shape("MBC6 program buffer", state.buffer.len())?;
+    validate_mbc6_program_vec_shape("MBC6 program written bitmap", state.written.len())
+}
+
+fn validate_mbc6_program_vec_shape(
+    field: &'static str,
+    actual: usize,
+) -> Result<(), CartridgeRuntimeSaveStateError> {
+    if actual == MBC6_FLASH_PROGRAM_BLOCK_BYTES {
+        Ok(())
+    } else {
+        Err(CartridgeRuntimeSaveStateError::RamShapeMismatch {
+            field,
+            expected: Some(MBC6_FLASH_PROGRAM_BLOCK_BYTES),
+            actual: Some(actual),
+        })
     }
 }
 
@@ -81,6 +115,16 @@ impl CartridgeSlot {
             }
             (Some(CartridgeDevice::Mbc5(current)), Some(CartridgeDeviceSaveState::Mbc5(saved))) => {
                 validate_optional_ram_shape("MBC5 RAM", &current.ram, &saved.ram)
+            }
+            (Some(CartridgeDevice::Mbc6(current)), Some(CartridgeDeviceSaveState::Mbc6(saved))) => {
+                validate_ram_shape("MBC6 RAM", &current.ram, &saved.ram)?;
+                validate_ram_shape("MBC6 flash", &current.flash, &saved.flash)?;
+                validate_ram_shape(
+                    "MBC6 hidden flash",
+                    &current.hidden_region,
+                    &saved.hidden_region,
+                )?;
+                validate_mbc6_flash_mode_shape(&saved.flash_mode)
             }
             (Some(CartridgeDevice::Mbc7(current)), Some(CartridgeDeviceSaveState::Mbc7(saved))) => {
                 validate_ram_shape("MBC7 EEPROM", &current.eeprom, &saved.eeprom)
@@ -209,6 +253,25 @@ impl CartridgeSlot {
                 cartridge.rom_bank_high1 = state.rom_bank_high1;
                 cartridge.ram_bank_raw = state.ram_bank_raw;
                 cartridge.rumble_on = state.rumble_on;
+            }
+            (
+                Some(CartridgeDevice::Mbc6(cartridge)),
+                Some(CartridgeDeviceSaveState::Mbc6(state)),
+            ) => {
+                cartridge.ram.clone_from(&state.ram);
+                cartridge.flash.clone_from(&state.flash);
+                cartridge.hidden_region.clone_from(&state.hidden_region);
+                cartridge.ram_enabled = state.ram_enabled;
+                cartridge.flash_enabled = state.flash_enabled;
+                cartridge.flash_write_enabled = state.flash_write_enabled;
+                cartridge.ram_bank_a = state.ram_bank_a;
+                cartridge.ram_bank_b = state.ram_bank_b;
+                cartridge.rom_flash_bank_a = state.rom_flash_bank_a;
+                cartridge.rom_flash_bank_b = state.rom_flash_bank_b;
+                cartridge.window_select_a = state.window_select_a;
+                cartridge.window_select_b = state.window_select_b;
+                cartridge.sector0_protected = state.sector0_protected;
+                cartridge.flash_mode.clone_from(&state.flash_mode);
             }
             (
                 Some(CartridgeDevice::Mbc7(cartridge)),
@@ -554,6 +617,44 @@ impl CartridgeSlot {
                     diagnostics,
                 })
             }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc6) => {
+                validate_mbc6(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let cartridge = Self::with_loaded_device(
+                    CartridgeDevice::Mbc6(Mbc6Cartridge {
+                        rom: rom_bytes,
+                        ram: vec![0; MBC6_SUPPORTED_RAM_BYTES],
+                        flash: vec![0xFF; MBC6_FLASH_BYTES],
+                        hidden_region: vec![0xFF; MBC6_HIDDEN_BYTES],
+                        has_battery: true,
+                        header,
+                        classification,
+                        ram_enabled: false,
+                        flash_enabled: false,
+                        flash_write_enabled: false,
+                        ram_bank_a: 0,
+                        ram_bank_b: 1,
+                        rom_flash_bank_a: 2,
+                        rom_flash_bank_b: 3,
+                        window_select_a: Mbc6WindowSelect::Rom,
+                        window_select_b: Mbc6WindowSelect::Rom,
+                        sector0_protected: false,
+                        flash_mode: Mbc6FlashMode::ReadArray,
+                    }),
+                    rom_fingerprint,
+                );
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
             CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc7) => {
                 validate_mbc7(
                     &header,
@@ -639,6 +740,7 @@ impl CartridgeSlot {
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,
             Some(CartridgeDevice::Mbc5(_)) => CartridgeSlotState::Mbc5,
+            Some(CartridgeDevice::Mbc6(_)) => CartridgeSlotState::Mbc6,
             Some(CartridgeDevice::Mbc7(_)) => CartridgeSlotState::Mbc7,
             Some(CartridgeDevice::PocketCamera(_)) => CartridgeSlotState::PocketCamera,
         }
@@ -924,6 +1026,22 @@ impl From<&CartridgeDevice> for CartridgeDeviceSaveState {
                 rom_bank_high1: cartridge.rom_bank_high1,
                 ram_bank_raw: cartridge.ram_bank_raw,
                 rumble_on: cartridge.rumble_on,
+            }),
+            CartridgeDevice::Mbc6(cartridge) => Self::Mbc6(Mbc6CartridgeSaveState {
+                ram: cartridge.ram.clone(),
+                flash: cartridge.flash.clone(),
+                hidden_region: cartridge.hidden_region.clone(),
+                ram_enabled: cartridge.ram_enabled,
+                flash_enabled: cartridge.flash_enabled,
+                flash_write_enabled: cartridge.flash_write_enabled,
+                ram_bank_a: cartridge.ram_bank_a,
+                ram_bank_b: cartridge.ram_bank_b,
+                rom_flash_bank_a: cartridge.rom_flash_bank_a,
+                rom_flash_bank_b: cartridge.rom_flash_bank_b,
+                window_select_a: cartridge.window_select_a,
+                window_select_b: cartridge.window_select_b,
+                sector0_protected: cartridge.sector0_protected,
+                flash_mode: cartridge.flash_mode.clone(),
             }),
             CartridgeDevice::Mbc7(cartridge) => Self::Mbc7(Mbc7CartridgeSaveState {
                 eeprom: cartridge.eeprom.clone(),

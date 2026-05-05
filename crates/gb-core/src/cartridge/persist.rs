@@ -279,6 +279,7 @@ impl PersistentCartState {
             Self::Mbc3Ram { .. } => "Mbc3Ram",
             Self::Mbc3RamRtc { .. } => "Mbc3RamRtc",
             Self::Mbc5Ram { .. } => "Mbc5Ram",
+            Self::Mbc6 { .. } => "Mbc6",
             Self::Mbc7Eeprom { .. } => "Mbc7Eeprom",
             Self::PocketCameraRam { .. } => "PocketCameraRam",
         }

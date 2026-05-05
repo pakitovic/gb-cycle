@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-cgb test-roms-cgb-real-boot fetch-test-roms require-boot-rom-root run-acid run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -41,6 +41,7 @@ help:
 	@echo "  make run-cgb-audio-blargg Fetch and run the curated CGB Blargg sound suite"
 	@echo "  make run-cgb-audio-samesuite Fetch and run the exploratory CGB SameSuite APU suite"
 	@echo "  make run-cgb-rtc          Fetch and run the curated CGB MBC3 RTC suite"
+	@echo "  make run-mbc6-oracle      Run the built-in synthetic MBC6 split-window/flash oracle"
 	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
 	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
 	@echo "  make phase9-diff-cartridge    Compare Phase 6 cartridge oracle against SameBoy case-bundle artifacts"
@@ -227,6 +228,9 @@ run-cgb-audio-samesuite:
 run-cgb-rtc:
 	$(MAKE) fetch-test-roms FAMILIES=ax6
 	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-rtc --failure-artifact-root .artifacts/cgb-rtc
+
+run-mbc6-oracle:
+	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite phase-6-mbc6-oracle --failure-artifact-root .artifacts/phase-6-mbc6-oracle
 
 phase9-determinism-smoke:
 	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing

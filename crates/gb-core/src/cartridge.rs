@@ -13,6 +13,7 @@ mod mbc1;
 mod mbc2;
 mod mbc3;
 mod mbc5;
+mod mbc6;
 mod mbc7;
 mod mmm01;
 mod no_mbc;
@@ -89,6 +90,14 @@ const MBC30_SUPPORTED_ROM_BYTES_MAX: usize = 4 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC3_RTC_CLOCK_TICKS_PER_SECOND: u64 = 32_768;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
+const MBC6_SUPPORTED_ROM_BYTES: usize = 1024 * 1024;
+const MBC6_SUPPORTED_RAM_BYTES: usize = 32 * 1024;
+const MBC6_ROM_FLASH_BANK_BYTES: usize = 8 * 1024;
+const MBC6_RAM_BANK_BYTES: usize = 4 * 1024;
+const MBC6_FLASH_BYTES: usize = 1024 * 1024;
+const MBC6_HIDDEN_BYTES: usize = 256;
+const MBC6_FLASH_SECTOR_BYTES: usize = 128 * 1024;
+const MBC6_FLASH_PROGRAM_BLOCK_BYTES: usize = 128;
 const MBC7_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
 const MBC7_EEPROM_BYTES: usize = 256;
 const MBC7_EEPROM_WORDS: usize = MBC7_EEPROM_BYTES / 2;
@@ -132,6 +141,7 @@ pub enum CartridgeSlotState {
     Mbc2,
     Mbc3,
     Mbc5,
+    Mbc6,
     Mbc7,
     PocketCamera,
 }
@@ -217,6 +227,7 @@ pub enum SupportedCartridgeFamily {
     Mbc2,
     Mbc3,
     Mbc5,
+    Mbc6,
     Mbc7,
     PocketCamera,
 }
@@ -384,6 +395,7 @@ enum CartridgeDevice {
     Mbc2(Mbc2Cartridge),
     Mbc3(Mbc3Cartridge),
     Mbc5(Mbc5Cartridge),
+    Mbc6(Mbc6Cartridge),
     Mbc7(Mbc7Cartridge),
     PocketCamera(PocketCameraCartridge),
 }
@@ -625,6 +637,87 @@ struct Mbc5Cartridge {
     rumble_on: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Mbc6Window {
+    A,
+    B,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc6WindowSelect {
+    Rom,
+    Flash,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc6ProgramTarget {
+    MainFlash,
+    HiddenRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc6ProgramState {
+    target: Mbc6ProgramTarget,
+    block_base: Option<usize>,
+    buffer: Vec<u8>,
+    written: Vec<bool>,
+    final_byte_seen: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc6FlashStatusSource {
+    Program,
+    Erase,
+    Protect,
+    IgnoredWriteProtected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Mbc6FlashMode {
+    ReadArray,
+    AwaitUnlock2,
+    AwaitCommand,
+    EraseAwaitUnlock1,
+    EraseAwaitUnlock2,
+    EraseAwaitCommand,
+    ExtendedAwaitUnlock1,
+    ExtendedAwaitUnlock2,
+    ExtendedAwaitCommand,
+    HiddenReadAwaitUnlock1,
+    HiddenReadAwaitUnlock2,
+    HiddenReadAwaitCommand,
+    IdMode,
+    HiddenReadMode,
+    Program(Mbc6ProgramState),
+    HiddenProgram(Mbc6ProgramState),
+    Status {
+        source: Mbc6FlashStatusSource,
+        status: u8,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc6Cartridge {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    flash: Vec<u8>,
+    hidden_region: Vec<u8>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    ram_enabled: bool,
+    flash_enabled: bool,
+    flash_write_enabled: bool,
+    ram_bank_a: u8,
+    ram_bank_b: u8,
+    rom_flash_bank_a: u8,
+    rom_flash_bank_b: u8,
+    window_select_a: Mbc6WindowSelect,
+    window_select_b: Mbc6WindowSelect,
+    sector0_protected: bool,
+    flash_mode: Mbc6FlashMode,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc7Cartridge {
     rom: Vec<u8>,
@@ -810,6 +903,7 @@ enum CartridgeDeviceSaveState {
     Mbc2(Mbc2CartridgeSaveState),
     Mbc3(Mbc3CartridgeSaveState),
     Mbc5(Mbc5CartridgeSaveState),
+    Mbc6(Mbc6CartridgeSaveState),
     Mbc7(Mbc7CartridgeSaveState),
     PocketCamera(PocketCameraCartridgeSaveState),
 }
@@ -826,6 +920,7 @@ impl CartridgeDeviceSaveState {
             Self::Mbc2(_) => CartridgeSlotState::Mbc2,
             Self::Mbc3(_) => CartridgeSlotState::Mbc3,
             Self::Mbc5(_) => CartridgeSlotState::Mbc5,
+            Self::Mbc6(_) => CartridgeSlotState::Mbc6,
             Self::Mbc7(_) => CartridgeSlotState::Mbc7,
             Self::PocketCamera(_) => CartridgeSlotState::PocketCamera,
         }
@@ -842,6 +937,7 @@ impl CartridgeDeviceSaveState {
             Self::Mbc2(state) => state.dynamic_payload_bytes(),
             Self::Mbc3(state) => state.dynamic_payload_bytes(),
             Self::Mbc5(state) => state.dynamic_payload_bytes(),
+            Self::Mbc6(state) => state.dynamic_payload_bytes(),
             Self::Mbc7(state) => state.dynamic_payload_bytes(),
             Self::PocketCamera(state) => state.dynamic_payload_bytes(),
         }
@@ -1006,6 +1102,40 @@ impl Mbc5CartridgeSaveState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc6CartridgeSaveState {
+    ram: Vec<u8>,
+    flash: Vec<u8>,
+    hidden_region: Vec<u8>,
+    ram_enabled: bool,
+    flash_enabled: bool,
+    flash_write_enabled: bool,
+    ram_bank_a: u8,
+    ram_bank_b: u8,
+    rom_flash_bank_a: u8,
+    rom_flash_bank_b: u8,
+    window_select_a: Mbc6WindowSelect,
+    window_select_b: Mbc6WindowSelect,
+    sector0_protected: bool,
+    flash_mode: Mbc6FlashMode,
+}
+
+impl Mbc6CartridgeSaveState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.ram
+            .len()
+            .saturating_add(self.flash.len())
+            .saturating_add(self.hidden_region.len())
+            .saturating_add(match &self.flash_mode {
+                Mbc6FlashMode::Program(state) | Mbc6FlashMode::HiddenProgram(state) => state
+                    .buffer
+                    .len()
+                    .saturating_add(state.written.len().saturating_mul(mem::size_of::<bool>())),
+                _ => 0,
+            })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc7CartridgeSaveState {
     eeprom: Vec<u8>,
     ram_enabled: bool,
@@ -1085,6 +1215,10 @@ pub enum CartridgeExternalTarget {
     NoDevice,
     LinearRam,
     BankedRam {
+        bank: u8,
+    },
+    Mbc6Ram {
+        window: Mbc6Window,
         bank: u8,
     },
     Mbc2InternalRam,
@@ -1235,11 +1369,24 @@ pub enum CartridgeRamPayloadKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgePersistenceProfile {
     None,
-    NonPersistentRam { ram: CartridgeRamPayloadKind },
-    PersistentRam { ram: CartridgeRamPayloadKind },
+    NonPersistentRam {
+        ram: CartridgeRamPayloadKind,
+    },
+    PersistentRam {
+        ram: CartridgeRamPayloadKind,
+    },
     PersistentRtc,
-    PersistentRamAndRtc { ram: CartridgeRamPayloadKind },
-    PersistentEeprom { byte_len: usize },
+    PersistentRamAndRtc {
+        ram: CartridgeRamPayloadKind,
+    },
+    PersistentRamAndFlash {
+        ram: CartridgeRamPayloadKind,
+        flash_byte_len: usize,
+        hidden_byte_len: usize,
+    },
+    PersistentEeprom {
+        byte_len: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1321,6 +1468,12 @@ pub enum PersistentCartState {
     },
     Mbc5Ram {
         ram: Vec<u8>,
+    },
+    Mbc6 {
+        ram: Vec<u8>,
+        flash: Vec<u8>,
+        hidden_region: Vec<u8>,
+        sector0_protected: bool,
     },
     Mbc7Eeprom {
         eeprom: Vec<u8>,

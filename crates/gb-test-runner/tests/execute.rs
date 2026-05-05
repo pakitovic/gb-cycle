@@ -8,7 +8,7 @@ use gb_test_runner::{
     BootRomVerificationMode, CaptureKind, MemoryTextOutputSpec, PassCondition, RomCaseFailure,
     RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
     TEST_ROM_ROOT_ENV_VAR, Timeout, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
-    phase_6_cartridge_oracle_suite,
+    phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -227,6 +227,16 @@ fn runner_executes_phase_6_mbc3_banking_ram_and_rtc_fixture() {
 #[test]
 fn runner_executes_phase_6_mbc5_rom_banking_rumble_and_ram_fixture() {
     assert_phase_6_cartridge_oracle_case_passes("phase6-mbc5-rom-banking-rumble-and-ram");
+}
+
+#[test]
+fn runner_executes_phase_6_mbc6_split_window_flash_fixture() {
+    let suite = phase_6_mbc6_oracle_suite();
+    let report = RomRunner::new()
+        .run_case(&suite.cases[0])
+        .expect("phase 6 MBC6 oracle case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed, "{report:#?}");
 }
 
 fn assert_phase_6_cartridge_oracle_case_passes(case_id: &str) {

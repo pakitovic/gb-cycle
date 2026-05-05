@@ -46,12 +46,7 @@ impl CartridgeClassification {
                 "MMM01+RAM+BATTERY",
                 SupportedCartridgeFamily::Mmm01,
             ),
-            0x20 => unsupported(
-                raw_type,
-                "MBC6",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "MBC6 requires a dedicated cartridge-local implementation",
-            ),
+            0x20 => supported(raw_type, "MBC6", SupportedCartridgeFamily::Mbc6),
             0x22 => supported(
                 raw_type,
                 "MBC7+SENSOR+RUMBLE+RAM+BATTERY",

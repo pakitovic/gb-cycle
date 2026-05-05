@@ -93,6 +93,21 @@ impl BankedCartridgeBuilder {
         self
     }
 
+    pub fn stamp_8kib_bank_identity_markers(mut self) -> Self {
+        let bank_count = self.rom.len() / 0x2000;
+        for bank in 0..bank_count {
+            let start = bank * 0x2000;
+            self.rom[start] = bank as u8;
+            self.rom[start + 1] = (bank >> 8) as u8;
+        }
+        self
+    }
+
+    pub fn with_cgb_flag(mut self, cgb_flag: u8) -> Self {
+        self.rom[0x0143] = cgb_flag;
+        self
+    }
+
     pub fn write_bank_bytes(mut self, bank: usize, offset_in_bank: usize, bytes: &[u8]) -> Self {
         let start = bank * 0x4000 + offset_in_bank;
         self.rom[start..start + bytes.len()].copy_from_slice(bytes);

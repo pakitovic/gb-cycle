@@ -7,15 +7,22 @@ const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE6;
 const SENTINEL_VALUE: u8 = 0xA5;
 
 fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
+    load_fixture_machine_with_model(rom_name, expected_rom, ConsoleModel::GameBoy)
+}
+
+fn load_fixture_machine_with_model(
+    rom_name: &str,
+    expected_rom: &[u8],
+    console_model: ConsoleModel,
+) -> Machine {
     let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
         "phase6",
         rom_name,
         expected_rom,
         FIXTURE_ACCEPT_ENV,
     );
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-    );
+    let mut machine =
+        Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
     machine
         .load_cartridge(rom_fixture)
         .expect("synthetic cartridge test ROM should load");
@@ -47,3 +54,5 @@ mod phase6_mbc2;
 mod phase6_mbc3;
 #[path = "phase6/phase6_mbc5.rs"]
 mod phase6_mbc5;
+#[path = "phase6/phase6_mbc6.rs"]
+mod phase6_mbc6;

@@ -649,6 +649,60 @@ pub(in crate::cartridge) fn validate_mbc5(
     Ok(variant)
 }
 
+pub(in crate::cartridge) fn validate_mbc6(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<(), CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    if !header.cgb_flag.enables_cgb_native_mode() {
+        return Err(ctx.reject(format!(
+            "{} expects a CGB-capable header because the only documented MBC6 cartridge is a CGB-era Net de Get board",
+            ctx.name()
+        )));
+    }
+
+    if header.rom_size.raw_code != 0x05
+        || header.rom_size.decoded_bytes != Some(MBC6_SUPPORTED_ROM_BYTES)
+    {
+        return Err(ctx.reject(format!(
+            "{} expects the official 1 MiB ROM declaration (code 0x05), but the header declared code {:#04X} ({:?} bytes)",
+            ctx.name(),
+            header.rom_size.raw_code,
+            header.rom_size.decoded_bytes
+        )));
+    }
+
+    if actual_rom_size != MBC6_SUPPORTED_ROM_BYTES {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            MBC6_SUPPORTED_ROM_BYTES,
+            actual_rom_size
+        )));
+    }
+
+    if header.ram_size.raw_code != 0x03
+        || header.ram_size.decoded_bytes != Some(MBC6_SUPPORTED_RAM_BYTES)
+    {
+        return Err(ctx.reject(format!(
+            "{} expects the official 32 KiB SRAM declaration (code 0x03), but the header declared code {:#04X} ({:?} bytes)",
+            ctx.name(),
+            header.ram_size.raw_code,
+            header.ram_size.decoded_bytes
+        )));
+    }
+
+    Ok(())
+}
+
 pub(in crate::cartridge) fn validate_mbc7(
     header: &CartridgeHeader,
     actual_rom_size: usize,
