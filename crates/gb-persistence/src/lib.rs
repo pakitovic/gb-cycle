@@ -34,6 +34,7 @@ const PROFILE_NON_PERSISTENT_RAM_TAG: u8 = 1;
 const PROFILE_PERSISTENT_RAM_TAG: u8 = 2;
 const PROFILE_PERSISTENT_RTC_TAG: u8 = 3;
 const PROFILE_PERSISTENT_RAM_AND_RTC_TAG: u8 = 4;
+const PROFILE_PERSISTENT_RAM_AND_FLASH_TAG: u8 = 5;
 const STATE_NONE_TAG: u8 = 0;
 const STATE_NO_MBC_RAM_TAG: u8 = 1;
 const STATE_MBC1_RAM_TAG: u8 = 2;
@@ -46,6 +47,7 @@ const STATE_MMM01_RAM_TAG: u8 = 8;
 const STATE_HUC1_RAM_TAG: u8 = 9;
 const STATE_HUC3_TAG: u8 = 10;
 const STATE_POCKET_CAMERA_RAM_TAG: u8 = 11;
+const STATE_MBC6_TAG: u8 = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -280,6 +282,10 @@ pub enum ExternalSaveError {
         expected: ExternalSaveLengthExpectation,
         actual: usize,
     },
+    UnsupportedStateShape {
+        state_kind: &'static str,
+        reason: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -321,6 +327,12 @@ impl fmt::Display for ExternalSaveError {
                     "invalid external .sav length for {context}: expected {first} or {second} bytes, got {actual}"
                 ),
             },
+            Self::UnsupportedStateShape { state_kind, reason } => {
+                write!(
+                    f,
+                    "external .sav conversion does not support {state_kind}: {reason}"
+                )
+            }
         }
     }
 }
@@ -366,6 +378,7 @@ pub fn uses_battery_backed_hardware_persistence(metadata: CartridgePersistenceMe
             CartridgePersistenceProfile::PersistentRam { .. }
                 | CartridgePersistenceProfile::PersistentRtc
                 | CartridgePersistenceProfile::PersistentRamAndRtc { .. }
+                | CartridgePersistenceProfile::PersistentRamAndFlash { .. }
         )
 }
 
@@ -479,6 +492,36 @@ pub fn encode_external_cartridge_save(
             encode_external_mbc3_rtc_suffix(&mut bytes, *rtc, current_unix_seconds);
             Ok(bytes)
         }
+        (
+            CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+                flash_byte_len,
+                hidden_byte_len,
+            },
+            PersistentCartState::Mbc6 {
+                ram,
+                flash,
+                hidden_region,
+                sector0_protected,
+            },
+        ) => encode_external_mbc6_save(
+            ram,
+            flash,
+            hidden_region,
+            *sector0_protected,
+            byte_len,
+            flash_byte_len,
+            hidden_byte_len,
+        ),
+        (
+            CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
+                ..
+            },
+            _,
+        ) => Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        }),
         (
             CartridgePersistenceProfile::PersistentRamAndRtc {
                 ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
@@ -604,6 +647,34 @@ pub fn import_external_cartridge_save(
             let rtc = decode_external_mbc3_rtc_suffix(&bytes[byte_len..], current_unix_seconds)?;
             Ok(PersistentCartState::Mbc3RamRtc { ram, rtc })
         }
+        (
+            CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+                flash_byte_len,
+                hidden_byte_len,
+            },
+            PersistentCartState::Mbc6 {
+                hidden_region,
+                sector0_protected,
+                ..
+            },
+        ) => decode_external_mbc6_save(
+            bytes,
+            byte_len,
+            flash_byte_len,
+            hidden_byte_len,
+            hidden_region,
+            *sector0_protected,
+        ),
+        (
+            CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
+                ..
+            },
+            _,
+        ) => Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        }),
         (
             CartridgePersistenceProfile::PersistentRamAndRtc {
                 ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
@@ -1305,6 +1376,88 @@ fn decode_external_linear_ram(
     Ok(bytes.to_vec())
 }
 
+fn encode_external_mbc6_save(
+    ram: &[u8],
+    flash: &[u8],
+    hidden_region: &[u8],
+    sector0_protected: bool,
+    expected_ram_len: usize,
+    expected_flash_len: usize,
+    expected_hidden_len: usize,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    if ram.len() != expected_ram_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC6 RAM state",
+            expected: ExternalSaveLengthExpectation::Exact(expected_ram_len),
+            actual: ram.len(),
+        });
+    }
+    if flash.len() != expected_flash_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC6 flash state",
+            expected: ExternalSaveLengthExpectation::Exact(expected_flash_len),
+            actual: flash.len(),
+        });
+    }
+    if hidden_region.len() != expected_hidden_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC6 hidden flash state",
+            expected: ExternalSaveLengthExpectation::Exact(expected_hidden_len),
+            actual: hidden_region.len(),
+        });
+    }
+    if sector0_protected || hidden_region.iter().any(|byte| *byte != 0xFF) {
+        return Err(ExternalSaveError::UnsupportedStateShape {
+            state_kind: "Mbc6",
+            reason: "raw .sav only carries SRAM followed by main flash, not hidden flash or the non-volatile sector-0 protection bit",
+        });
+    }
+
+    let mut bytes = Vec::with_capacity(expected_ram_len + expected_flash_len);
+    bytes.extend_from_slice(ram);
+    bytes.extend_from_slice(flash);
+    Ok(bytes)
+}
+
+fn decode_external_mbc6_save(
+    bytes: &[u8],
+    expected_ram_len: usize,
+    expected_flash_len: usize,
+    expected_hidden_len: usize,
+    target_hidden_region: &[u8],
+    target_sector0_protected: bool,
+) -> Result<PersistentCartState, ExternalSaveError> {
+    if target_hidden_region.len() != expected_hidden_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC6 hidden flash target",
+            expected: ExternalSaveLengthExpectation::Exact(expected_hidden_len),
+            actual: target_hidden_region.len(),
+        });
+    }
+    if target_sector0_protected || target_hidden_region.iter().any(|byte| *byte != 0xFF) {
+        return Err(ExternalSaveError::UnsupportedStateShape {
+            state_kind: "Mbc6",
+            reason: "raw .sav import cannot merge into a target with hidden flash data or sector-0 protection already set",
+        });
+    }
+
+    let expected_len = expected_ram_len + expected_flash_len;
+    if bytes.len() != expected_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC6 RAM+flash",
+            expected: ExternalSaveLengthExpectation::Exact(expected_len),
+            actual: bytes.len(),
+        });
+    }
+
+    Ok(PersistentCartState::Mbc6 {
+        ram: bytes[..expected_ram_len].to_vec(),
+        flash: bytes[expected_ram_len..].to_vec(),
+        hidden_region: vec![0xFF; expected_hidden_len],
+        sector0_protected: false,
+    })
+}
+
 fn encode_external_mbc2_ram(
     ram_nibbles: &[u8; MBC2_RAM_NIBBLE_COUNT],
     expected_cell_count: usize,
@@ -1441,6 +1594,7 @@ fn persistent_state_kind_name(state: &PersistentCartState) -> &'static str {
         PersistentCartState::Mbc3Ram { .. } => "Mbc3Ram",
         PersistentCartState::Mbc3RamRtc { .. } => "Mbc3RamRtc",
         PersistentCartState::Mbc5Ram { .. } => "Mbc5Ram",
+        PersistentCartState::Mbc6 { .. } => "Mbc6",
         PersistentCartState::PocketCameraRam { .. } => "PocketCameraRam",
     }
 }
@@ -1772,6 +1926,7 @@ fn encode_cartridge_slot_state(value: CartridgeSlotState) -> u8 {
         CartridgeSlotState::Mbc3 => 8,
         CartridgeSlotState::Mbc5 => 9,
         CartridgeSlotState::PocketCamera => 10,
+        CartridgeSlotState::Mbc6 => 11,
     }
 }
 
@@ -1791,6 +1946,7 @@ fn decode_cartridge_slot_state(
         8 => Ok(CartridgeSlotState::Mbc3),
         9 => Ok(CartridgeSlotState::Mbc5),
         10 => Ok(CartridgeSlotState::PocketCamera),
+        11 => Ok(CartridgeSlotState::Mbc6),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -1847,6 +2003,16 @@ fn encode_persistence_profile(
             bytes.push(PROFILE_PERSISTENT_RAM_AND_RTC_TAG);
             encode_ram_payload_kind(bytes, ram)?;
         }
+        CartridgePersistenceProfile::PersistentRamAndFlash {
+            ram,
+            flash_byte_len,
+            hidden_byte_len,
+        } => {
+            bytes.push(PROFILE_PERSISTENT_RAM_AND_FLASH_TAG);
+            encode_ram_payload_kind(bytes, ram)?;
+            write_u32_checked(bytes, flash_byte_len, "MBC6 flash byte_len")?;
+            write_u32_checked(bytes, hidden_byte_len, "MBC6 hidden flash byte_len")?;
+        }
     }
     Ok(())
 }
@@ -1867,6 +2033,13 @@ fn decode_persistence_profile(
         PROFILE_PERSISTENT_RAM_AND_RTC_TAG => {
             Ok(CartridgePersistenceProfile::PersistentRamAndRtc {
                 ram: decode_ram_payload_kind(cursor)?,
+            })
+        }
+        PROFILE_PERSISTENT_RAM_AND_FLASH_TAG => {
+            Ok(CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: decode_ram_payload_kind(cursor)?,
+                flash_byte_len: cursor.read_u32()? as usize,
+                hidden_byte_len: cursor.read_u32()? as usize,
             })
         }
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistenceProfileTag { tag }),
@@ -1942,6 +2115,18 @@ fn encode_persistent_state(
         PersistentCartState::Mbc5Ram { ram } => {
             bytes.push(STATE_MBC5_RAM_TAG);
             encode_linear_ram(bytes, ram, "MBC5 RAM")?;
+        }
+        PersistentCartState::Mbc6 {
+            ram,
+            flash,
+            hidden_region,
+            sector0_protected,
+        } => {
+            bytes.push(STATE_MBC6_TAG);
+            encode_linear_ram(bytes, ram, "MBC6 RAM")?;
+            encode_linear_ram(bytes, flash, "MBC6 flash")?;
+            encode_linear_ram(bytes, hidden_region, "MBC6 hidden flash")?;
+            write_bool(bytes, *sector0_protected);
         }
         PersistentCartState::Mmm01Ram { ram } => {
             bytes.push(STATE_MMM01_RAM_TAG);
@@ -2043,6 +2228,12 @@ fn decode_persistent_state(
         }),
         STATE_MBC5_RAM_TAG => Ok(PersistentCartState::Mbc5Ram {
             ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_MBC6_TAG => Ok(PersistentCartState::Mbc6 {
+            ram: decode_linear_ram(cursor)?,
+            flash: decode_linear_ram(cursor)?,
+            hidden_region: decode_linear_ram(cursor)?,
+            sector0_protected: cursor.read_bool("mbc6.sector0_protected")?,
         }),
         STATE_MMM01_RAM_TAG => Ok(PersistentCartState::Mmm01Ram {
             ram: decode_linear_ram(cursor)?,
@@ -2428,6 +2619,7 @@ mod tests {
             CartridgeSlotState::Mbc2,
             CartridgeSlotState::Mbc3,
             CartridgeSlotState::Mbc5,
+            CartridgeSlotState::Mbc6,
             CartridgeSlotState::PocketCamera,
         ] {
             assert_eq!(
@@ -2755,6 +2947,27 @@ mod tests {
                 },
                 persistent_state: PersistentCartState::Mbc5Ram {
                     ram: vec![0x66, 0x77],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 151,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRamAndFlash {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+                        flash_byte_len: 4,
+                        hidden_byte_len: 3,
+                    },
+                },
+                persistent_state: PersistentCartState::Mbc6 {
+                    ram: vec![0x12, 0x34],
+                    flash: vec![0xFF, 0xFE, 0xFC, 0xF8],
+                    hidden_region: vec![0xAA, 0xBB, 0xCC],
+                    sector0_protected: true,
                 },
             },
             CartridgeSaveEnvelope {
@@ -3579,6 +3792,38 @@ mod tests {
     }
 
     #[test]
+    fn external_save_round_trips_mbc6_sram_plus_main_flash_when_hidden_state_is_default() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+                flash_byte_len: 4,
+                hidden_byte_len: 3,
+            },
+        };
+        let state = PersistentCartState::Mbc6 {
+            ram: vec![0x10, 0x20],
+            flash: vec![0xFF, 0x7F, 0x3F, 0x1F],
+            hidden_region: vec![0xFF; 3],
+            sector0_protected: false,
+        };
+
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_000,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("default MBC6 hidden state should export");
+        assert_eq!(external, [0x10, 0x20, 0xFF, 0x7F, 0x3F, 0x1F]);
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 1_700_000_001)
+            .expect("default MBC6 hidden state should import");
+        assert_eq!(imported, state);
+    }
+
+    #[test]
     fn external_save_exports_mbc2_in_mgba_packed_form_and_imports_sameboy_form() {
         let metadata = CartridgePersistenceMetadata {
             has_battery: true,
@@ -4049,6 +4294,54 @@ mod tests {
                 ..
             })
         ));
+
+        let mbc6_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRamAndFlash {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+                flash_byte_len: 4,
+                hidden_byte_len: 2,
+            },
+        };
+        let protected_mbc6_state = PersistentCartState::Mbc6 {
+            ram: vec![0; 2],
+            flash: vec![0xFF; 4],
+            hidden_region: vec![0xFF; 2],
+            sector0_protected: true,
+        };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                mbc6_metadata,
+                &protected_mbc6_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::UnsupportedStateShape {
+                state_kind: "Mbc6",
+                ..
+            })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(mbc6_metadata, &protected_mbc6_state, &[0; 6], 0),
+            Err(ExternalSaveError::UnsupportedStateShape {
+                state_kind: "Mbc6",
+                ..
+            })
+        ));
+        let mbc6_state = PersistentCartState::Mbc6 {
+            ram: vec![0; 2],
+            flash: vec![0xFF; 4],
+            hidden_region: vec![0xFF; 2],
+            sector0_protected: false,
+        };
+        assert!(matches!(
+            import_external_cartridge_save(mbc6_metadata, &mbc6_state, &[0; 5], 0),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC6 RAM+flash",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -4119,6 +4412,15 @@ mod tests {
                 "Mbc3RamRtc",
             ),
             (PersistentCartState::Mbc5Ram { ram: vec![] }, "Mbc5Ram"),
+            (
+                PersistentCartState::Mbc6 {
+                    ram: vec![],
+                    flash: vec![],
+                    hidden_region: vec![],
+                    sector0_protected: false,
+                },
+                "Mbc6",
+            ),
             (
                 PersistentCartState::PocketCameraRam { ram: vec![] },
                 "PocketCameraRam",

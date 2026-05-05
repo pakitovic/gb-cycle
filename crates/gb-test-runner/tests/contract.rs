@@ -8,7 +8,7 @@ use gb_test_runner::{
     Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
     daid_dmg_curated_suite, hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
-    phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite,
+    phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
 
 #[test]
@@ -1023,6 +1023,33 @@ fn phase_6_cartridge_oracle_suite_tracks_reserved_mapper_fixtures() {
         )
     );
     assert_eq!(mbc3.startup_cartridge_rtc_seconds, Some(93_784));
+}
+
+#[test]
+fn phase_6_mbc6_oracle_suite_tracks_the_dedicated_flash_fixture() {
+    let suite = phase_6_mbc6_oracle_suite();
+
+    assert_eq!(suite.name, "phase-6-mbc6-oracle");
+    assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.cases.len(), 1);
+
+    let case = &suite.cases[0];
+    assert_eq!(case.id, "phase6-mbc6-split-window-flash");
+    assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+    assert_eq!(
+        case.rom_path,
+        PathBuf::from(
+            "crates/gb-core/tests/fixtures/roms/phase6/phase6_mbc6_split_window_flash.gb"
+        )
+    );
+    assert_eq!(
+        case.pass_condition,
+        PassCondition::SerialHexExact("4D363A020304050011223344C281805A803C".to_string())
+    );
+    assert!(case.capture_plan.contains(CaptureKind::SerialHex));
+    assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(case.failure_artifacts.contains(CaptureKind::SerialHex));
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

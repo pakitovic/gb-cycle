@@ -109,7 +109,7 @@ Priority order:
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
 - CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
-- Do not claim functional closure for CGB-only special cartridges before the base CGB implementation can boot and validate CGB-only software end to end. `MBC30` is now implemented after that base gate as an explicit `MBC3`-family variant; `MBC7` and `MBC6` still require dedicated future runtime work rather than fallback mapper approximations.
+- Do not claim functional closure for CGB-only special cartridges before they have dedicated validation and runtime. `MBC30` is now implemented after the base CGB gate as an explicit `MBC3`-family variant, `MBC6` is now implemented through a dedicated cartridge-local runtime and persistence model, and `MBC7` still requires future runtime work rather than fallback mapper approximations.
 - The shared CPU execution model should already be based on in-flight fetch/read/write/internal steps so future double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
 - CPU `STOP` should already be represented separately from `HALT`, because future CGB speed-switch behavior should attach to an existing explicit control state rather than force a later CPU-state redesign.
 - The boot subsystem and bus treat boot-ROM mapping as model-aware routing state: CGB real boot overlays only `0000-00FF` and `0200-08FF`, while cartridge/header bytes remain visible through the `0100-01FF` gap while boot is still mapped.
@@ -167,7 +167,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - HDMA and GDMA core execution are now owned by `hardware/DMA.md`; Slice 5 promotes the initial SameSuite `cgb-dma` rows to blocking framebuffer fixtures and locks the active-HDMA live-bus bank/`VBK` plus HBlank seam policies there.
 - AGB/AGS/GBP and other post-CGB boot-ROM variants
 - DMG-on-CGB compatibility details
-- functional support for CGB-only special cartridges beyond the now-supported `MBC30`, such as `MBC7` and `MBC6`
+- functional support for remaining CGB-only special cartridges beyond the now-supported `MBC30` and `MBC6`, namely `MBC7`
 
 ## Known pitfalls
 

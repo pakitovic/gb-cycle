@@ -13,6 +13,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => &cartridge.rom,
             Self::Mbc3(cartridge) => &cartridge.rom,
             Self::Mbc5(cartridge) => &cartridge.rom,
+            Self::Mbc6(cartridge) => &cartridge.rom,
             Self::PocketCamera(cartridge) => &cartridge.rom,
         }
     }
@@ -32,6 +33,7 @@ impl CartridgeDevice {
             | Self::Mbc2(_)
             | Self::Mbc3(_)
             | Self::Mbc5(_)
+            | Self::Mbc6(_)
             | Self::PocketCamera(_) => String::new(),
         }
     }
@@ -50,6 +52,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.describe_external_access(address),
             Self::Mbc3(cartridge) => cartridge.describe_external_access(address),
             Self::Mbc5(cartridge) => cartridge.describe_external_access(address),
+            Self::Mbc6(cartridge) => cartridge.describe_external_access(address),
             Self::PocketCamera(cartridge) => cartridge.describe_external_access(address),
         }
     }
@@ -65,6 +68,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => &cartridge.header,
             Self::Mbc3(cartridge) => &cartridge.header,
             Self::Mbc5(cartridge) => &cartridge.header,
+            Self::Mbc6(cartridge) => &cartridge.header,
             Self::PocketCamera(cartridge) => &cartridge.header,
         }
     }
@@ -80,6 +84,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.classification,
             Self::Mbc3(cartridge) => cartridge.classification,
             Self::Mbc5(cartridge) => cartridge.classification,
+            Self::Mbc6(cartridge) => cartridge.classification,
             Self::PocketCamera(cartridge) => cartridge.classification,
         }
     }
@@ -95,6 +100,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.read_rom(address),
             Self::Mbc3(cartridge) => cartridge.read_rom(address),
             Self::Mbc5(cartridge) => cartridge.read_rom(address),
+            Self::Mbc6(cartridge) => cartridge.read_rom(address),
             Self::PocketCamera(cartridge) => cartridge.read_rom(address),
         }
     }
@@ -110,6 +116,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.write_rom(address, value),
             Self::Mbc3(cartridge) => cartridge.write_rom(address, value),
             Self::Mbc5(cartridge) => cartridge.write_rom(address, value),
+            Self::Mbc6(cartridge) => cartridge.write_rom(address, value),
             Self::PocketCamera(cartridge) => cartridge.write_rom(address, value),
         }
     }
@@ -125,6 +132,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.read_ram(address),
             Self::Mbc3(cartridge) => cartridge.read_ram(address),
             Self::Mbc5(cartridge) => cartridge.read_ram(address),
+            Self::Mbc6(cartridge) => cartridge.read_ram(address),
             Self::PocketCamera(cartridge) => cartridge.read_ram(address),
         }
     }
@@ -140,6 +148,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.read_ram(address),
             Self::Mbc3(cartridge) => cartridge.read_ram_timed(address, t_cycle),
             Self::Mbc5(cartridge) => cartridge.read_ram(address),
+            Self::Mbc6(cartridge) => cartridge.read_ram(address),
             Self::PocketCamera(cartridge) => cartridge.read_ram_timed(address, t_cycle),
         }
     }
@@ -155,6 +164,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc3(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc5(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc6(cartridge) => cartridge.write_ram(address, value),
             Self::PocketCamera(cartridge) => cartridge.write_ram(address, value),
         }
     }
@@ -175,6 +185,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc3(cartridge) => cartridge.write_ram_timed(address, value, t_cycle),
             Self::Mbc5(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc6(cartridge) => cartridge.write_ram(address, value),
             Self::PocketCamera(cartridge) => cartridge.write_ram_timed(address, value, t_cycle),
         }
     }
@@ -188,6 +199,7 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc5(_)
+            | Self::Mbc6(_)
             | Self::PocketCamera(_) => {}
             Self::Mbc3(cartridge) => cartridge.advance_rtc_seconds(seconds),
             Self::Huc3(cartridge) => cartridge.advance_rtc_seconds(seconds),
@@ -211,6 +223,7 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc3(_)
+            | Self::Mbc6(_)
             | Self::PocketCamera(_) => false,
         }
     }
@@ -226,6 +239,7 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc3(_)
+            | Self::Mbc6(_)
             | Self::PocketCamera(_) => false,
         }
     }
@@ -241,6 +255,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.persistence_metadata(),
             Self::Mbc3(cartridge) => cartridge.persistence_metadata(),
             Self::Mbc5(cartridge) => cartridge.persistence_metadata(),
+            Self::Mbc6(cartridge) => cartridge.persistence_metadata(),
             Self::PocketCamera(cartridge) => cartridge.persistence_metadata(),
         }
     }
@@ -256,6 +271,7 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc5(_)
+            | Self::Mbc6(_)
             | Self::PocketCamera(_) => None,
         }
     }
@@ -272,6 +288,7 @@ impl CartridgeDevice {
             | Self::Mbc2(_)
             | Self::Mbc3(_)
             | Self::Mbc5(_) => None,
+            Self::Mbc6(_) => None,
         }
     }
 
@@ -287,6 +304,7 @@ impl CartridgeDevice {
             | Self::Mbc2(_)
             | Self::Mbc3(_)
             | Self::Mbc5(_) => false,
+            Self::Mbc6(_) => false,
         }
     }
 
@@ -301,6 +319,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.persistent_state(),
             Self::Mbc3(cartridge) => cartridge.persistent_state(),
             Self::Mbc5(cartridge) => cartridge.persistent_state(),
+            Self::Mbc6(cartridge) => cartridge.persistent_state(),
             Self::PocketCamera(cartridge) => cartridge.persistent_state(),
         }
     }
@@ -319,6 +338,7 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.restore_persistent_state(state),
             Self::Mbc3(cartridge) => cartridge.restore_persistent_state(state),
             Self::Mbc5(cartridge) => cartridge.restore_persistent_state(state),
+            Self::Mbc6(cartridge) => cartridge.restore_persistent_state(state),
             Self::PocketCamera(cartridge) => cartridge.restore_persistent_state(state),
         }
     }
@@ -341,7 +361,8 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc3(_)
-            | Self::Mbc5(_) => Err(PocketCameraFrameError::UnsupportedCartridge),
+            | Self::Mbc5(_)
+            | Self::Mbc6(_) => Err(PocketCameraFrameError::UnsupportedCartridge),
         }
     }
 
@@ -361,7 +382,8 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc3(_)
-            | Self::Mbc5(_) => Err(PocketCameraFrameError::UnsupportedCartridge),
+            | Self::Mbc5(_)
+            | Self::Mbc6(_) => Err(PocketCameraFrameError::UnsupportedCartridge),
         }
     }
 }

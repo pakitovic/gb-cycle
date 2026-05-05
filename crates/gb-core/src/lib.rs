@@ -47,8 +47,8 @@ pub use cartridge::{
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
     CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CartridgeSnapshot, CgbFlag, Huc3RtcPersistentState, Mbc3RtcPersistentState,
-    PersistentCartState, PocketCameraFrame, PocketCameraFrameError, RamSizeInfo, RomSizeInfo,
-    SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    Mbc6Window, PersistentCartState, PocketCameraFrame, PocketCameraFrameError, RamSizeInfo,
+    RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,

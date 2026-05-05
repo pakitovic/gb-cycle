@@ -937,6 +937,18 @@ pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
         ))
 }
 
+pub fn phase_6_mbc6_oracle_suite() -> RomSuite {
+    RomSuite::new("phase-6-mbc6-oracle", TestSubsystem::Cartridge).with_case(
+        RomTestCase::new(
+            "phase6-mbc6-split-window-flash",
+            phase_6_rom_path("phase6_mbc6_split_window_flash.gb"),
+            Timeout::TCycles(300_000),
+            PassCondition::SerialHexExact("4D363A020304050011223344C281805A803C".to_string()),
+        )
+        .with_console_model(ConsoleModel::GameBoyColor),
+    )
+}
+
 pub fn blargg_dmg_curated_split_suites() -> Vec<RomSuite> {
     curated_test_roms::blargg_dmg_curated_split_suites()
 }
@@ -971,6 +983,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
+        phase_6_mbc6_oracle_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
@@ -1115,12 +1128,14 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "gb-core-unit-and-integration-coverage",
                 "hardware-style-persistence-tests",
                 "phase-6-cartridge-oracle",
+                "phase-6-mbc6-oracle",
                 "sameboy-case-bundle-differential",
                 "phase-9-save-load-determinism",
             ],
             active_oracles: &[
                 "unit-contracts",
                 "trace-fixture",
+                "synthetic-serial-hex",
                 "differential-case-bundle",
             ],
             remaining_gaps: &[],

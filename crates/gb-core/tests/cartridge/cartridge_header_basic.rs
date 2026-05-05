@@ -140,11 +140,6 @@ fn machine_load_cartridge_installs_the_loaded_slot() {
 fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
     let cases = [
         (
-            0x20,
-            "MBC6",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        ),
-        (
             0x22,
             "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
             UnsupportedCartridgeCategory::DocumentedButUnsupported,

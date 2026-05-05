@@ -13,6 +13,7 @@ mod mbc2;
 mod mbc3;
 mod mbc3_rtc;
 mod mbc5;
+mod mbc6;
 mod mmm01;
 mod no_mbc;
 mod persistence;
@@ -338,6 +339,19 @@ fn build_banked_mbc5_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u
         rom[start + 0x0100] = bank as u8;
     }
 
+    rom
+}
+
+fn build_banked_mbc6_rom() -> Vec<u8> {
+    let mut rom = build_test_rom(MBC6_SUPPORTED_ROM_BYTES, 0x20, 0x05, 0x03);
+    for bank in 0..(MBC6_SUPPORTED_ROM_BYTES / MBC6_ROM_FLASH_BANK_BYTES) {
+        let start = bank * MBC6_ROM_FLASH_BANK_BYTES;
+        rom[start] = bank as u8;
+        rom[start + 1] = (bank >> 8) as u8;
+        if start + 0x0100 < rom.len() {
+            rom[start + 0x0100] = bank as u8;
+        }
+    }
     rom
 }
 
