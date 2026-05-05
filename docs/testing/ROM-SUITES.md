@@ -26,6 +26,7 @@ make fetch-test-roms FAMILIES="blargg acid"
 /.roms/test/hacktix/
 /.roms/test/mealybug-tearoom-tests/
 /.roms/test/mooneye/
+/.roms/test/samesuite/
 ```
 
 Each curated family directory contains only the ROMs currently listed in the matching manifest under `crates/gb-test-runner/data/*.toml`.
@@ -35,11 +36,15 @@ Each curated family directory contains only the ROMs currently listed in the mat
 ```bash
 make test-roms         # fetch if needed + run all local curated DMG suites
 make test-roms-real-boot # fetch if needed + run all local curated DMG suites through verified RealBoot
+make test-roms-extra   # fetch if needed + run the exploratory/internal extra DMG suites
+make test-roms-extra-real-boot # fetch if needed + run the exploratory/internal extra DMG suites through verified RealBoot
 make run-blargg        # curated Blargg DMG family (includes dmg_sound 01..12)
 make run-blargg-cpu-instrs # Blargg CPU instruction chunk used by CI
 make run-blargg-dmg-sound # Blargg DMG sound chunk used by CI
 make run-blargg-timing-memory-oam # Blargg timing/memory/OAM chunk used by CI
 make run-acid          # curated Acid DMG family
+make run-ax6           # exploratory/internal AX6 DMG RTC suite
+make run-samesuite     # exploratory/internal SameSuite DMG APU suite
 make run-daid          # exploratory daid DMG subset
 make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
@@ -50,6 +55,8 @@ make run-mooneye-mbc1-mbc5 # Mooneye emulator-only MBC1/MBC5 chunk used by CI
 make run-mooneye-mbc2  # Mooneye emulator-only MBC2 chunk used by CI
 make test-roms-cgb     # fetch if needed + run the promoted green local curated CGB suites
 make test-roms-cgb-real-boot # fetch if needed + run the promoted green local curated CGB suites through verified RealBoot
+make test-roms-cgb-extra # fetch if needed + run the exploratory/internal CGB suites
+make test-roms-cgb-extra-real-boot # fetch if needed + run the exploratory/internal CGB suites through verified RealBoot
 make run-cgb-smoke     # manifest-backed Phase 10 CGB smoke suite
 make run-cgb-boot-div  # manifest-backed Phase 10 CGB boot DIV suite
 make run-cgb-boot-hwio # exploratory/internal Phase 10 CGB boot HWIO suite
@@ -68,7 +75,7 @@ make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against Li
 make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
 ```
 
-The aggregate `make test-roms-real-boot` and `make test-roms-cgb-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin` or `cgb_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without synthetic `SkipBoot` startup profiles, start each case timeout after the `FF50` handoff, and update the same `/.roms/test/test-report.md` rows as the default targets. Re-run `make test-roms` after a DMG RealBoot pass or `make test-roms-cgb` after a CGB RealBoot pass if you want the report to reflect the default SkipBoot baseline again. The CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb`, uses strict canonical `cgb_boot.bin` size/hash verification, and clears both startup-memory and startup-timer profiles through the `run_rom_suite` CLI so the executed boot firmware owns the handoff state.
+The aggregate `make test-roms-real-boot`, `make test-roms-extra-real-boot`, `make test-roms-cgb-real-boot`, and `make test-roms-cgb-extra-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin` or `cgb_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without synthetic `SkipBoot` startup profiles, and start each case timeout after the `FF50` handoff. Re-run `make test-roms` after a DMG RealBoot pass, `make test-roms-extra` after an extra DMG RealBoot pass, `make test-roms-cgb` after a promoted CGB RealBoot pass, or `make test-roms-cgb-extra` after an extra CGB RealBoot pass if you want the matching report to reflect the default SkipBoot baseline again. The extra DMG aggregate target `make test-roms-extra-real-boot` currently drives `ax6-dmg-extra` plus `samesuite-dmg-extra` and writes `/.roms/test/test-report-extra.md`; the CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb` and writes `/.roms/test/test-report.md`, while `make test-roms-cgb-extra-real-boot` currently drives `cgb-boot-hwio` and also writes `/.roms/test/test-report-extra.md`.
 
 Each `make run-*` target is autosufficient and materializes its own curated family before execution.
 
@@ -110,7 +117,7 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
 
 ## Test report
 
-The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned GBEmulatorShootout source order from `crates/gb-test-runner/data/sources.toml`. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
+The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a promoted curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned GBEmulatorShootout source order from `crates/gb-test-runner/data/sources.toml`. Extra/internal suites render the same table shape in `/.roms/test/test-report-extra.md`, currently `ax6-dmg-extra`, `samesuite-dmg-extra`, and `cgb-boot-hwio`, so exploratory evidence stays visible without changing the promoted aggregate report. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
 
 For GBEmulatorShootout rows whose label includes a model suffix, the associated manifest case must carry both `console = "dmg"` or `console = "cgb"` and `report_model_suffix = true`; this keeps rows such as `which.gb (DMG)` and `which.gb (GBC)` visible without adding a suffix to rows whose upstream label has none.
 
@@ -152,6 +159,20 @@ Do not treat those excluded cases as gb-cycle regressions just because `mealybug
 
 Workflow-managed DMG acceptance subset following the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list. Uses the upstream `mooneye` breakpoint/register result protocol instead of framebuffer oracles, with the documented manual sprite-priority exception handled by a committed framebuffer fixture; this is broad hardening evidence for the accepted Phase `9` closure matrix. The full built-in suite remains `mooneye-acceptance-dmg-curated`; CI runs the same case set through three filtered chunks, `mooneye-dmg-acceptance-manual`, `mooneye-dmg-emulator-mbc1-mbc5`, and `mooneye-dmg-emulator-mbc2`, so the mapper-heavy cases do not keep one Mooneye matrix job much longer than the smaller ROM-suite jobs.
 
+## Extra DMG suites
+
+```sh
+make run-ax6
+make run-samesuite
+make test-roms-extra
+make test-roms-extra-real-boot
+```
+
+- `ax6-dmg-extra` is the extra/internal AX6 DMG MBC3 RTC suite, not a promoted DMG closure lane; its suite definition is `crates/gb-test-runner/data/ax6.toml`, it materializes upstream AX6 `rtc3test-1.gb`, `rtc3test-2.gb`, and `rtc3test-3.gb`, forces `console = "dmg"` with `report_model_suffix = true`, compares against committed DMG grayscale fixtures `crates/gb-test-runner/data/fixtures/ax6/rtc3test-*.dmg.png`, and writes rows such as `ax6 | rtc3test-1.gb (DMG) | ✅` to `/.roms/test/test-report-extra.md`.
+- `run-ax6` materializes its upstream family with `make fetch-test-roms FAMILIES=ax6` before invoking `cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite ax6-dmg-extra --failure-artifact-root .artifacts/ax6`; the upstream ROM inventory lives in `crates/gb-test-runner/data/sources.toml`, while the suite contract and local DMG fixture paths live in `crates/gb-test-runner/data/ax6.toml`.
+- `samesuite-dmg-extra` is the extra/internal SameSuite DMG APU DIV-write trigger suite, not a promoted DMG closure lane; its suite definition is `crates/gb-test-runner/data/samesuite.toml`, it materializes upstream SameSuite `apu/div_write_trigger.gb` and `apu/div_write_trigger_10.gb`, forces `console = "dmg"` with `report_model_suffix = true`, compares against committed DMG grayscale fixtures `crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger*.dmg.png`, and writes rows such as `samesuite | apu/div_write_trigger.gb (DMG) | ✅` to `/.roms/test/test-report-extra.md`.
+- `run-samesuite` materializes its upstream family with `make fetch-test-roms FAMILIES=samesuite` before invoking `cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-dmg-extra --failure-artifact-root .artifacts/samesuite`; the upstream ROM inventory lives in `crates/gb-test-runner/data/sources.toml`, while the suite contract and local DMG fixture paths live in `crates/gb-test-runner/data/samesuite.toml`.
+
 ## Exploratory CGB suites
 
 ```sh
@@ -165,12 +186,14 @@ make run-cgb-audio-blargg
 make run-cgb-audio-samesuite
 make run-cgb-rtc
 make test-roms-cgb-real-boot
+make test-roms-cgb-extra
+make test-roms-cgb-extra-real-boot
 ```
 
 - `cgb-smoke` is the Phase `10` CGB catalog suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-smoke.toml`, the cases use the default centralized CGB `SkipBoot` handoff like the DMG `which.gb` informational lane, and `make run-cgb-smoke` fetches `mooneye acid` before invoking `run_rom_suite` without requiring boot ROM assets. Verified CGB `RealBoot` coverage for the same rows remains available through `make test-roms-cgb-real-boot`.
 - `cgb-boot-div` is the Phase `10` CGB boot/DIV timing gate, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-boot-div.toml`, it uses the default centralized CGB `SkipBoot` handoff so CI does not need boot ROM assets, and `make run-cgb-boot-div` fetches `mooneye` before invoking `run_rom_suite`.
 - `cgb-boot-div` currently runs Mooneye `misc/boot_div-cgbABCDE.gb` on `ConsoleModel::GameBoyColor` with a blocking `mooneye-result` oracle. It validates the CGB handoff/DIV timer baseline through the centralized CGB `SkipBoot` state; optional local `RealBoot` comparison remains available only through explicit `GB_CYCLE_TEST_ROM_STARTUP=real-boot` runs.
-- `cgb-boot-hwio` is the Slice `6` exploratory/internal CGB HWIO snapshot suite, not a blocking DMG or CGB aggregate signal yet; its suite definition is `crates/gb-test-runner/data/cgb-boot-hwio.toml`, its source row is `testroms/mooneye/misc/boot_hwio-C.gb` with pinned SHA-256 in `sources.toml`, it uses the default centralized CGB `SkipBoot` handoff so CI does not need boot ROM assets, `make run-cgb-boot-hwio` fetches `mooneye`, and the current oracle is `info-snapshot` until expected HWIO values and promotion rules are documented.
+- `cgb-boot-hwio` is the Slice `6` exploratory/internal CGB HWIO snapshot suite, not a blocking DMG or promoted CGB aggregate signal yet; its suite definition is `crates/gb-test-runner/data/cgb-boot-hwio.toml`, its source row is `testroms/mooneye/misc/boot_hwio-C.gb` with pinned SHA-256 in `sources.toml`, it uses the default centralized CGB `SkipBoot` handoff so CI does not need boot ROM assets, `make run-cgb-boot-hwio` fetches `mooneye`, and the current oracle is `info-snapshot` until expected HWIO values and promotion rules are documented. The suite is grouped under `make test-roms-cgb-extra` and `make test-roms-cgb-extra-real-boot`, and its persisted row renders in `/.roms/test/test-report-extra.md` rather than `/.roms/test/test-report.md`.
 - `cgb-speed` is the Phase `10` Slice `2` exploratory CGB speed-domain suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-speed.toml`, and `make run-cgb-speed` fetches `daid blargg` before invoking `run_rom_suite`.
 - `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` to a blocking final `framebuffer-rgb555-grayscale-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png`, preserving the absolute solid-black STOP result through a grayscale decode of the CGB RGB555 framebuffer; `stop_instr_gbc_mode3.gb` is a blocking rank-normalized `framebuffer-rgb555-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png`, matching the SameBoy/GBEmulatorShootout PASS screen where CGB STOP entered during Mode `3` leaves the LCD displaying the PASS text; `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized `framebuffer-rgb555-fixture` oracles using their matching `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_*.png` artifacts. These Daid cases use a `180`-frame budget so the terminal STOP or timing output has been presented to the framebuffer before comparison. Blargg `interrupt_time.gb` is promoted to a blocking `blargg-console-contains` oracle with expected text `Passed` and a `1800`-frame budget, because the CGB run emits its result through the upstream BG-map console rather than serial. Every current `cgb-speed` row now has a blocking oracle.
 - `cgb-ppu-basic` is the Phase `10` Slice `4` CGB PPU baseline promotion suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-ppu-basic.toml`, and `make run-cgb-ppu-basic` fetches `samesuite daid acid hacktix` before invoking `run_rom_suite`.
@@ -179,7 +202,7 @@ make test-roms-cgb-real-boot
 - `cgb-audio-blargg` contains the twelve upstream Blargg `cgb_sound` individual ROMs `01-registers.gb` through `12-wave.gb`, runs each on `ConsoleModel::GameBoyColor`, uses `blargg-memory-text-contains` with expected text `Passed`, retains memory-text plus snapshot failure artifacts, and is the first CGB audio ROM gate before promoting deeper SameSuite APU rows.
 - `cgb-audio-samesuite` is the Phase `10` Slice `7` advanced CGB APU suite; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-audio-samesuite.toml`, and `make run-cgb-audio-samesuite` fetches `samesuite` before invoking `run_rom_suite` with retained RGB555 framebuffer and snapshot artifacts. The manifest tracks all `61` SameSuite APU rows in roadmap coarse-to-fine order, and the now-green target is part of both `make test-roms-cgb` and the local boot-ROM-backed `make test-roms-cgb-real-boot` aggregate.
 - `cgb-rtc` is the Phase `10` Slice `8` CGB MBC3 RTC suite; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-rtc.toml`, and `make run-cgb-rtc` fetches `ax6` before invoking `run_rom_suite` with retained RGB555 framebuffer and snapshot artifacts. The manifest tracks AX6 `rtc3test-1.gb`, `rtc3test-2.gb`, and `rtc3test-3.gb` on `ConsoleModel::GameBoyColor` with blocking `framebuffer-rgb555-fixture` oracles and frame budgets of `1140`, `900`, and `2400`; the target is part of both `make test-roms-cgb` and the local boot-ROM-backed `make test-roms-cgb-real-boot` aggregate.
-- Keep exploratory CGB suites outside the DMG `make test-roms` and GitHub `test-roms` workflow until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the green CGB suite targets promoted by Phase `10` slices and `make test-roms-cgb-real-boot` reruns that same aggregate through verified CGB RealBoot for local closure evidence.
+- Keep exploratory CGB suites outside the DMG `make test-roms`, promoted `make test-roms-cgb`, and GitHub `test-roms` workflows until promoted intentionally; CGB failures during bring-up should produce retained artifacts without changing the accepted DMG `167/167` signal, while `make test-roms-cgb` aggregates the green CGB suite targets promoted by Phase `10` slices, `make test-roms-cgb-real-boot` reruns that same aggregate through verified CGB RealBoot for local closure evidence, and `make test-roms-cgb-extra` / `make test-roms-cgb-extra-real-boot` keep internal CGB evidence in the separate extra report.
 
 ## CI integration
 

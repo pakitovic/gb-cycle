@@ -16,6 +16,7 @@ use crate::{
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
 pub const TEST_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_ROOT";
 pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
+pub const TEST_ROM_EXTRA_REPORT_FILE_NAME: &str = "test-report-extra.md";
 
 const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const CURATED_TEST_ROM_MANIFEST_VERSION: u32 = 1;
@@ -36,6 +37,8 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
     "cpp",
     "mealybug-tearoom-tests",
 ];
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 3] =
+    ["ax6-dmg-extra", "cgb-boot-hwio", "samesuite-dmg-extra"];
 const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
@@ -194,6 +197,14 @@ pub fn discover_test_rom_store_root(workspace_root: &Path) -> Option<PathBuf> {
 
 pub fn acid_dmg_curated_suite() -> RomSuite {
     manifest_suite("acid")
+}
+
+pub fn ax6_dmg_extra_suite() -> RomSuite {
+    manifest_suite_by_name("ax6-dmg-extra")
+}
+
+pub fn samesuite_dmg_extra_suite() -> RomSuite {
+    manifest_suite_by_name("samesuite-dmg-extra")
 }
 
 pub fn blargg_dmg_curated_suite() -> RomSuite {
@@ -567,15 +578,58 @@ pub fn update_curated_test_report(
 
     suites.sort_by(compare_report_suites);
 
-    let report_path = store_root.join(TEST_ROM_REPORT_FILE_NAME);
-    fs::write(&report_path, render_markdown_report(&suites)).map_err(|error| {
+    let standard_suites = report_suites_for_extra_flag(&suites, false);
+    let extra_suites = report_suites_for_extra_flag(&suites, true);
+    let standard_report_path =
+        write_markdown_report_file(&store_root, TEST_ROM_REPORT_FILE_NAME, &standard_suites)?;
+    let extra_report_path = if extra_suites.is_empty() {
+        None
+    } else {
+        Some(write_markdown_report_file(
+            &store_root,
+            TEST_ROM_EXTRA_REPORT_FILE_NAME,
+            &extra_suites,
+        )?)
+    };
+
+    let report_path = if suite_uses_extra_test_report(&report.suite_name) {
+        extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME))
+    } else {
+        standard_report_path
+    };
+
+    Ok(Some(report_path))
+}
+
+fn report_suites_for_extra_flag(
+    suites: &[PersistedSuiteStatus],
+    extra_report: bool,
+) -> Vec<PersistedSuiteStatus> {
+    suites
+        .iter()
+        .filter(|suite| suite_uses_extra_test_report(&suite.suite_name) == extra_report)
+        .cloned()
+        .collect()
+}
+
+fn suite_uses_extra_test_report(suite_name: &str) -> bool {
+    EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
+fn write_markdown_report_file(
+    store_root: &Path,
+    file_name: &str,
+    suites: &[PersistedSuiteStatus],
+) -> Result<PathBuf, String> {
+    let report_path = store_root.join(file_name);
+    fs::write(&report_path, render_markdown_report(suites)).map_err(|error| {
         format!(
             "failed to write curated test ROM report {}: {error}",
             report_path.display()
         )
     })?;
 
-    Ok(Some(report_path))
+    Ok(report_path)
 }
 
 fn load_persisted_suite_status(path: &Path) -> Result<Option<PersistedSuiteStatus>, String> {
@@ -751,11 +805,19 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 17] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 19] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
             include_str!("../data/acid.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/ax6.toml",
+            include_str!("../data/ax6.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/samesuite.toml",
+            include_str!("../data/samesuite.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-audio-blargg.toml",
@@ -1456,8 +1518,9 @@ mod tests {
         ExecutionStopCondition, GBEMU_SHOOTOUT_TESTROMS_DIR,
         MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
-        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
-        blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
+        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
+        TEST_ROM_STATUS_DIR_NAME, ax6_dmg_extra_suite, blargg_dmg_curated_suite,
+        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
         capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
         cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
         cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
@@ -1469,8 +1532,9 @@ mod tests {
         materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
         mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_case,
         parse_manifest_console_model, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, sort_persisted_case_statuses,
-        test_rom_store_root, update_curated_test_report,
+        report_rom_display, report_status_display, samesuite_dmg_extra_suite,
+        sort_persisted_case_statuses, suite_uses_extra_test_report, test_rom_store_root,
+        update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
@@ -1966,6 +2030,117 @@ mod tests {
                 case.pass_condition,
                 PassCondition::FramebufferRgb555Fixture(PathBuf::from(fixture_path))
             );
+        }
+    }
+
+    #[test]
+    fn ax6_dmg_extra_suite_forces_dmg_model_and_report_suffixes() {
+        let suite = ax6_dmg_extra_suite();
+
+        assert_eq!(suite.name, "ax6-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("ax6"));
+        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+        assert_eq!(suite.cases.len(), 3);
+
+        let expected = [
+            (
+                "ax6-dmg-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                Timeout::Frames(1140),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.dmg.png",
+                "rtc3test-1.gb (DMG)",
+            ),
+            (
+                "ax6-dmg-rtc3test-2",
+                "ax6/rtc3test-2.gb",
+                Timeout::Frames(900),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.dmg.png",
+                "rtc3test-2.gb (DMG)",
+            ),
+            (
+                "ax6-dmg-rtc3test-3",
+                "ax6/rtc3test-3.gb",
+                Timeout::Frames(2400),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.dmg.png",
+                "rtc3test-3.gb (DMG)",
+            ),
+        ];
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "ax6-dmg-extra")
+            .expect("AX6 DMG extra manifest should exist");
+
+        for ((case, manifest_case), (id, rom_path, timeout, fixture_path, report_rom)) in
+            suite.cases.iter().zip(&manifest.cases).zip(expected)
+        {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(case.timeout, timeout);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+            assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
+        }
+    }
+
+    #[test]
+    fn samesuite_dmg_extra_suite_forces_dmg_model_and_report_suffixes() {
+        let suite = samesuite_dmg_extra_suite();
+
+        assert_eq!(suite.name, "samesuite-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 2);
+
+        let expected = [
+            (
+                "samesuite-dmg-div-write-trigger",
+                "samesuite/apu/div_write_trigger.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png",
+                "apu/div_write_trigger.gb (DMG)",
+            ),
+            (
+                "samesuite-dmg-div-write-trigger-10",
+                "samesuite/apu/div_write_trigger_10.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
+                "apu/div_write_trigger_10.gb (DMG)",
+            ),
+        ];
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "samesuite-dmg-extra")
+            .expect("SameSuite DMG extra manifest should exist");
+
+        for ((case, manifest_case), (id, rom_path, fixture_path, report_rom)) in
+            suite.cases.iter().zip(&manifest.cases).zip(expected)
+        {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+            assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
         }
     }
 
@@ -2740,6 +2915,128 @@ mod tests {
     }
 
     #[test]
+    fn curated_test_report_routes_extra_suites_to_extra_markdown_file() {
+        let workspace_root = unique_temp_dir("report-cgb-extra");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let cgb_smoke_report = RomSuiteReport {
+            suite_name: "cgb-smoke".to_string(),
+            family: Some("cgb-smoke".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "cgb-smoke-boot-regs-cgb",
+                "mooneye/misc/boot_regs-cgb.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &cgb_smoke_report)
+            .expect("CGB smoke report should write");
+
+        let cgb_boot_hwio_report = RomSuiteReport {
+            suite_name: "cgb-boot-hwio".to_string(),
+            family: Some("cgb-boot-hwio".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "cgb-boot-hwio-boot-hwio-c",
+                "mooneye/misc/boot_hwio-C.gb",
+                RomCaseOutcome::Informational,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &cgb_boot_hwio_report)
+            .expect("CGB boot HWIO report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let ax6_report = RomSuiteReport {
+            suite_name: "ax6-dmg-extra".to_string(),
+            family: Some("ax6".to_string()),
+            subsystem: TestSubsystem::Cartridge,
+            cases: vec![
+                report_case(
+                    "ax6-dmg-rtc3test-1",
+                    "ax6/rtc3test-1.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "ax6-dmg-rtc3test-2",
+                    "ax6/rtc3test-2.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "ax6-dmg-rtc3test-3",
+                    "ax6/rtc3test-3.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        update_curated_test_report(&workspace_root, &ax6_report)
+            .expect("AX6 DMG extra report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let samesuite_report = RomSuiteReport {
+            suite_name: "samesuite-dmg-extra".to_string(),
+            family: Some("samesuite".to_string()),
+            subsystem: TestSubsystem::Apu,
+            cases: vec![
+                report_case(
+                    "samesuite-dmg-div-write-trigger",
+                    "samesuite/apu/div_write_trigger.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "samesuite-dmg-div-write-trigger-10",
+                    "samesuite/apu/div_write_trigger_10.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &samesuite_report)
+            .expect("SameSuite DMG extra report should write")
+            .expect("extra curated suite should emit a report path");
+        assert_eq!(
+            report_path,
+            test_rom_store_root(&workspace_root).join(TEST_ROM_EXTRA_REPORT_FILE_NAME)
+        );
+
+        let standard_report = fs::read_to_string(
+            test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME),
+        )
+        .expect("standard report should be readable");
+        assert!(standard_report.starts_with("# Test Report (1/1)\n"));
+        assert!(standard_report.contains(&format!(
+            "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!standard_report.contains("boot_hwio-C.gb"));
+        assert!(!standard_report.contains("div_write_trigger"));
+        assert!(!standard_report.contains("rtc3test"));
+
+        let extra_report =
+            fs::read_to_string(report_path).expect("extra report should be readable");
+        assert!(extra_report.starts_with("# Test Report (6/6)\n"));
+        assert!(extra_report.contains(&format!(
+            "| ax6 | rtc3test-1.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| ax6 | rtc3test-2.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| ax6 | rtc3test-3.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| mooneye | misc/boot_hwio-C.gb | {REPORT_STATUS_INFO_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| samesuite | apu/div_write_trigger.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| samesuite | apu/div_write_trigger_10.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!extra_report.contains("boot_regs-cgb.gb"));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
     fn render_markdown_report_orders_mixed_rows_by_shootout_source_order() {
         let rendered = render_markdown_report(&[
             PersistedSuiteStatus {
@@ -3206,5 +3503,10 @@ mod tests {
     #[test]
     fn report_file_name_stays_stable() {
         assert_eq!(TEST_ROM_REPORT_FILE_NAME, "test-report.md");
+        assert_eq!(TEST_ROM_EXTRA_REPORT_FILE_NAME, "test-report-extra.md");
+        assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
+        assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
+        assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("cgb-smoke"));
     }
 }

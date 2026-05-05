@@ -28,16 +28,7 @@ Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/.roms/test/test-report.md` with a simple
-`family | rom | status` table after curated family runs, using `✅`, `❌`, and
-`ℹ️` in the status column. The `# Test Report (...)` header also summarizes
-`non-failing/total` across the exact persisted rows rendered in that file,
-counting both `PASS` and `INFO` in the numerator, so a first partial run
-reports only its own rows while later partial updates keep the full persisted
-context. The report keeps a fixed family inventory order:
-`acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`,
-`mealybug-tearoom-tests`. Families that have not produced persisted case
-statuses do not appear in the table.
+The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`, `mealybug-tearoom-tests`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -53,6 +44,16 @@ statuses do not appear in the table.
   current green set: `cpu_instrs 01..11`, `halt_bug`,
   `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`, and
   `dmg_sound 01..12`
+- `ax6-dmg-extra`
+  source family: `ax6`
+  current status: extra/internal local-only
+  oracle mix: framebuffer fixture
+  fixture ownership: committed DMG grayscale fixtures `rtc3test-*.dmg.png` generated from the DMG runner output, separate from the upstream AX6 CGB PNG references used by `cgb-rtc`
+- `samesuite-dmg-extra`
+  source family: `samesuite`
+  current status: extra/internal local-only
+  oracle mix: framebuffer fixture
+  fixture ownership: committed DMG grayscale fixtures `div_write_trigger*.dmg.png`, separate from the upstream SameSuite CGB PNG references used by `cgb-audio-samesuite`
 - `daid-dmg-curated`
   source family: `daid`
   current status: exploratory local-only
@@ -106,9 +107,7 @@ make run-mealybug
 make run-mooneye
 ```
 
-Each `make run-*` target materializes its own family before executing and
-updates `/.roms/test/test-report.md`. The currently exploratory local-only
-families are `daid`, `mealybug-tearoom-tests`, and `mooneye`.
+Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
 
 Run one curated family directly and update the report:
 

@@ -45,12 +45,13 @@ pub use boot_rom_verification::{
     expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
 };
 pub use curated_test_roms::{
-    TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite,
-    cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-    cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite,
-    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
-    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
+    TEST_ROM_STORE_DIR, acid_dmg_curated_suite, blargg_dmg_curated_suite,
+    blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+    cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+    cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
+    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use determinism::{
@@ -973,6 +974,14 @@ pub fn cgb_smoke_suite() -> RomSuite {
     curated_test_roms::cgb_smoke_suite()
 }
 
+pub fn ax6_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::ax6_dmg_extra_suite()
+}
+
+pub fn samesuite_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::samesuite_dmg_extra_suite()
+}
+
 pub fn cgb_rtc_suite() -> RomSuite {
     curated_test_roms::cgb_rtc_suite()
 }
@@ -984,6 +993,8 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
         phase_6_mbc6_oracle_suite(),
+        ax6_dmg_extra_suite(),
+        samesuite_dmg_extra_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
@@ -2792,7 +2803,7 @@ mod tests {
         FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
         MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
         RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
-        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name, ax6_dmg_extra_suite,
         blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
         budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
         capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
@@ -2801,7 +2812,7 @@ mod tests {
         early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output,
+        mooneye_result_for_signature, render_memory_text_output, samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3264,6 +3275,102 @@ mod tests {
         }
 
         assert!(built_in_rom_suite_by_name("cgb-rtc").is_some());
+    }
+
+    #[test]
+    fn ax6_dmg_extra_suite_runs_ax6_rows_on_dmg_with_blocking_framebuffer_oracles() {
+        let suite = ax6_dmg_extra_suite();
+
+        assert_eq!(suite.name, "ax6-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("ax6"));
+        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+        assert_eq!(suite.cases.len(), 3);
+
+        let expected = [
+            (
+                "ax6-dmg-rtc3test-1",
+                "ax6/rtc3test-1.gb",
+                Timeout::Frames(1140),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.dmg.png",
+            ),
+            (
+                "ax6-dmg-rtc3test-2",
+                "ax6/rtc3test-2.gb",
+                Timeout::Frames(900),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.dmg.png",
+            ),
+            (
+                "ax6-dmg-rtc3test-3",
+                "ax6/rtc3test-3.gb",
+                Timeout::Frames(2400),
+                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.dmg.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, timeout, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, timeout);
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+
+        assert!(built_in_rom_suite_by_name("ax6-dmg-extra").is_some());
+    }
+
+    #[test]
+    fn samesuite_dmg_extra_suite_runs_selected_apu_rows_on_dmg() {
+        let suite = samesuite_dmg_extra_suite();
+
+        assert_eq!(suite.name, "samesuite-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 2);
+
+        let expected = [
+            (
+                "samesuite-dmg-div-write-trigger",
+                "samesuite/apu/div_write_trigger.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png",
+            ),
+            (
+                "samesuite-dmg-div-write-trigger-10",
+                "samesuite/apu/div_write_trigger_10.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+
+        assert!(built_in_rom_suite_by_name("samesuite-dmg-extra").is_some());
     }
 
     #[test]
