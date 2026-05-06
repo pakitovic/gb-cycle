@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, FailureArtifactPolicy,
-    PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout,
+    MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout,
 };
 
 const SUPPORTED_LOCAL_ROM_SUITE_MANIFEST_VERSION: u32 = 1;
@@ -84,8 +84,16 @@ struct LocalRomSuiteCase {
     fixture: Option<PathBuf>,
     #[serde(default)]
     fixtures: Vec<PathBuf>,
+    #[serde(default)]
+    memory: Vec<LocalMemoryByteExpectation>,
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<LocalRomStimulus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+struct LocalMemoryByteExpectation {
+    address: u16,
+    value: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -176,6 +184,7 @@ fn build_case_from_manifest(
         case.expected,
         case.fixture,
         case.fixtures,
+        case.memory,
     )?;
 
     let mut rom_case = RomTestCase::new(case_id.clone(), rom_path, timeout, pass_condition.clone())
@@ -229,6 +238,7 @@ fn parse_pass_condition(
     expected: Option<String>,
     fixture: Option<PathBuf>,
     fixtures: Vec<PathBuf>,
+    memory: Vec<LocalMemoryByteExpectation>,
 ) -> Result<PassCondition, String> {
     match oracle {
         "serial-contains" => Ok(PassCondition::SerialContains(
@@ -242,6 +252,19 @@ fn parse_pass_condition(
         "serial-hex-exact" => Ok(PassCondition::SerialHexExact(
             expected.ok_or_else(|| format!("case {case_id} is missing expected for {oracle}"))?,
         )),
+        "memory-byte-equals" => {
+            if memory.is_empty() {
+                return Err(format!("case {case_id} is missing memory for {oracle}"));
+            }
+            Ok(PassCondition::MemoryBytesEqual(
+                memory
+                    .into_iter()
+                    .map(|expectation| {
+                        MemoryByteExpectation::new(expectation.address, expectation.value)
+                    })
+                    .collect(),
+            ))
+        }
         "info-serial" => Ok(PassCondition::Informational(CaptureKind::Serial)),
         "info-serial-hex" => Ok(PassCondition::Informational(CaptureKind::SerialHex)),
         "info-framebuffer" => Ok(PassCondition::Informational(CaptureKind::Framebuffer)),
@@ -385,6 +408,9 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::SerialHexExact(_) => CapturePlan::new()
             .with_capture(CaptureKind::SerialHex)
             .with_capture(CaptureKind::Snapshot),
+        PassCondition::MemoryBytesEqual(_) => CapturePlan::new()
+            .with_capture(CaptureKind::MemoryBytes)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::Informational(capture) => CapturePlan::new()
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
@@ -411,6 +437,9 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         }
         PassCondition::SerialHexExact(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::SerialHex)
+            .with_artifact(CaptureKind::Snapshot),
+        PassCondition::MemoryBytesEqual(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::MemoryBytes)
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
             .with_artifact(*capture)
@@ -456,8 +485,8 @@ mod tests {
         failure_artifacts_for_pass_condition, load_local_rom_suite_manifest,
     };
     use crate::{
-        CaptureKind, ExternalStimulusAction, MemoryTextOutputSpec, PassCondition, StimulusTime,
-        TestSubsystem,
+        CaptureKind, ExternalStimulusAction, MemoryByteExpectation, MemoryTextOutputSpec,
+        PassCondition, StimulusTime, TestSubsystem,
     };
     use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
     use std::fs;
@@ -657,6 +686,13 @@ console = "cgb"
 timeout_tcycles = 8192
 oracle = "serial-hex-exact"
 expected = "DEADBEEF"
+
+[[case]]
+id = "dmg-memory-byte"
+rom = "commercial/memory-oracle.gb"
+timeout_tcycles = 4096
+oracle = "memory-byte-equals"
+memory = [{{ address = 65410, value = 1 }}]
 "#,
                 absolute_fixture = absolute_fixture.display()
             ),
@@ -667,7 +703,7 @@ expected = "DEADBEEF"
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
-        assert_eq!(suite.cases.len(), 5);
+        assert_eq!(suite.cases.len(), 6);
 
         let serial_case = &suite.cases[0];
         assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
@@ -748,6 +784,22 @@ expected = "DEADBEEF"
             serial_hex_case
                 .capture_plan
                 .contains(CaptureKind::SerialHex)
+        );
+
+        let memory_byte_case = &suite.cases[5];
+        assert_eq!(
+            memory_byte_case.pass_condition,
+            PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(0xFF82, 0x01)])
+        );
+        assert!(
+            memory_byte_case
+                .capture_plan
+                .contains(CaptureKind::MemoryBytes)
+        );
+        assert!(
+            memory_byte_case
+                .failure_artifacts
+                .contains(CaptureKind::MemoryBytes)
         );
     }
 

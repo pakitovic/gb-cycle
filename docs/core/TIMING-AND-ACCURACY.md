@@ -80,7 +80,7 @@ When implementing timing:
 - Free-running divider-derived events such as timer input edges and `DIV-APU` edge detection belong to step `3`, after the shared counter advances and before autonomous peripherals consume those edges.
 - Immediate MMIO effects produced by a write on the access T-cycle, such as `DIV` reset behavior, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions, still belong to the owning device when the access commits in step `7`.
 - In the current March 27, 2026 DMG baseline, the shared scheduler now stages CPU-originated PPU MMIO writes during step `6` and commits them during step `7`. That keeps the runtime aligned with the documented phase contract without changing the existing DMG `Mode 3` rule that active-pipeline register snapshots only become visible on the next PPU dot after the commit.
-- `IF` updates from hardware sources belong to step `8`; CPU acceptance is a later CPU-owned decision and must not be collapsed into the producer path.
+- `IF` updates from hardware sources belong to step `8`; CPU acceptance is a later CPU-owned decision and must not be collapsed into the producer path, except that Timer reload requests already queued before CPU step `6` may preempt the next opcode slot and are consumed so step `8` does not reassert an already accepted Timer source.
 - Another internal implementation shape is acceptable only if these same observable dependencies remain true.
 
 ## Practical timing rule

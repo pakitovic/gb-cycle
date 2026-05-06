@@ -70,7 +70,8 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 
 - Hardware producers should only emit source requests; they must not call CPU interrupt-dispatch logic directly.
 - The scheduler should aggregate those source requests into `IF` after current-cycle MMIO side effects have committed, not during unrelated device-internal helper calls.
-- CPU wake from `HALT` / `STOP`, pending selection, and interrupt acceptance are later CPU-owned decisions based on live `IF`, `IE`, `IME`, priority, and CPU state.
+- A current-cycle Timer request produced before the CPU micro-operation can still win the next opcode slot when `IME` and `IE.Timer` are already open; the CPU-owned accept path consumes that queued Timer request before opcode fetch, and the later aggregation phase must not reassert the consumed source.
+- CPU wake from `HALT` / `STOP`, pending selection, and interrupt acceptance are later CPU-owned decisions based on live `IF`, `IE`, `IME`, priority, CPU state, and the narrow same-cycle Timer queued-request path used when the reload/IRQ event already exists before the opcode fetch micro-operation.
 - Timer keeps an explicit exception to any naive "request on source edge" simplification: logical TIMA overflow is not the same moment as the timer bit becoming set in `IF`.
 - Serial keeps its own completion point: the request belongs to the T-cycle that completes the eighth shift and clears `SC.7`.
 - Joypad keeps its own visibility rule: the request belongs only to a newly visible `High -> Low` transition in the `P1` low nibble.
@@ -138,7 +139,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - A helper such as `request_interrupt(kind)` is preferred over handwritten bit-twiddling at each producer site.
 - A helper such as `clear_interrupt(kind)` is also preferred over ad hoc bit masking outside the interrupt controller when software-visible acknowledge logic needs it.
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
-- Keep scheduler-phase aggregation explicit: producers should queue source requests for phase `8`, while the CPU should only observe the resulting live `IF` state during phase `9`.
+- Keep scheduler-phase aggregation explicit: producers should queue source requests for phase `8`, while normal CPU wake/accept observes the resulting live `IF` state during phase `9`; the exception is the same-cycle opcode-slot acceptance path for Timer reload requests queued before CPU phase `6`, which consumes the queued Timer source so phase `8` does not set a stale `IF` bit after acceptance.
 - Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
 - Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
 - Let the PPU own the generation rules for LCD STAT requests, including rising-edge detection and DMG STAT-write quirks; the interrupt controller should only observe the resulting request events.

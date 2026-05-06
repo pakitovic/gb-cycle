@@ -555,7 +555,7 @@ mod tests {
         cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
         cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
         curated_test_rom_families, curated_test_rom_family_suites, external_rom_store_root,
-        samesuite_dmg_extra_suite, test_rom_store_root,
+        gbmicrotest_dmg_extra_suite, samesuite_dmg_extra_suite, test_rom_store_root,
     };
 
     use super::{
@@ -802,6 +802,13 @@ mod tests {
             "tests/results/dmg/little-things-gb/whichboot.png",
             b"docboy-whichboot-png",
         );
+        for case in gbmicrotest_dmg_extra_suite().cases {
+            write_required_file(
+                root,
+                &format!("tests/roms/dmg/{}", case.rom_path.display()),
+                case.id.as_bytes(),
+            );
+        }
     }
 
     fn build_docboy_source(git_url: String, git_rev: String, root: &Path) -> ExternalRomSource {
@@ -850,7 +857,21 @@ mod tests {
                     "little-things-gb",
                     None,
                 ),
-            ],
+            ]
+            .into_iter()
+            .chain(gbmicrotest_dmg_extra_suite().cases.into_iter().map(|case| {
+                let rom = case
+                    .rom_path
+                    .strip_prefix("gbmicrotest")
+                    .expect("gbmicrotest manifest ROMs should stay under the gbmicrotest family");
+                let rom = rom.display().to_string();
+                required_file(
+                    &format!("tests/roms/dmg/{}", case.rom_path.display()),
+                    "gbmicrotest",
+                    Some(rom.as_str()),
+                )
+            }))
+            .collect(),
         }
     }
 

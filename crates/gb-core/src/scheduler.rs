@@ -183,6 +183,24 @@ impl<T: Copy + PartialEq, const N: usize> PartialEq for CycleRecordBuffer<T, N> 
 
 impl<T: Copy + Eq, const N: usize> Eq for CycleRecordBuffer<T, N> {}
 
+impl<T: Copy + PartialEq, const N: usize> CycleRecordBuffer<T, N> {
+    fn remove_first(&mut self, item: T) -> bool {
+        let Some(index) = self
+            .as_slice()
+            .iter()
+            .position(|&candidate| candidate == item)
+        else {
+            return false;
+        };
+
+        for next_index in index + 1..self.len {
+            self.items[next_index - 1] = self.items[next_index];
+        }
+        self.len -= 1;
+        true
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CycleContext {
     t_cycle: TCycle,
@@ -271,6 +289,10 @@ impl CycleContext {
 
     pub fn queue_interrupt_request(&mut self, interrupt: InterruptSource) {
         self.interrupt_requests.push(interrupt);
+    }
+
+    pub(crate) fn take_interrupt_request(&mut self, interrupt: InterruptSource) -> bool {
+        self.interrupt_requests.remove_first(interrupt)
     }
 }
 

@@ -269,14 +269,11 @@ fn rapid_timer_toggle_matches_the_mooneye_interrupt_window() {
 
     for _ in 0..20_000 {
         machine.step_t_cycle();
-        if matches!(
-            machine.cpu().execution_state(),
-            CpuExecutionState::ServiceInterrupt {
-                source: gb_core::InterruptSource::Timer,
-                step: 0,
-                t_cycle: 0,
-            }
-        ) {
+        if let CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Timer,
+            ..
+        } = machine.cpu().execution_state()
+        {
             let registers = machine.cpu().registers();
             assert_eq!(registers.b, 0xFF);
             assert_eq!(

@@ -74,13 +74,18 @@ fn address_is_cpu_mmio(address: u16) -> bool {
 }
 
 fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: &Joypad) -> u8 {
-    let mut mask = 0;
-    for &source in context.interrupt_requests() {
-        mask |= source.mask();
-    }
+    let mut mask = current_cycle_scheduler_interrupt_request_mask(context);
     mask |= ppu.pending_interrupt_request_mask();
     if joypad.interrupt_request_pending() {
         mask |= InterruptSource::Joypad.mask();
+    }
+    mask
+}
+
+fn current_cycle_scheduler_interrupt_request_mask(context: &CycleContext) -> u8 {
+    let mut mask = 0;
+    for &source in context.interrupt_requests() {
+        mask |= source.mask();
     }
     mask
 }
@@ -544,6 +549,14 @@ impl MachinePhaseRunner<'_> {
             let joypad = &mut self.joypad;
             let cartridge = &mut self.cartridge;
             let pending_ppu_mmio_write = &mut *self.pending_ppu_mmio_write;
+
+            if let Some(source) = cpu.evaluate_current_cycle_interrupt_requests(
+                interrupts,
+                current_cycle_scheduler_interrupt_request_mask(context)
+                    & InterruptSource::Timer.mask(),
+            ) {
+                context.take_interrupt_request(source);
+            }
 
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
