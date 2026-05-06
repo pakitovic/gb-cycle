@@ -22,9 +22,7 @@ impl Ppu {
     }
 
     fn published_stat_mode_at_line_start(&self) -> PpuAccessMode {
-        if self.ly == 0 {
-            self.current_access_mode()
-        } else if self.ly > VISIBLE_SCANLINES {
+        if self.ly > VISIBLE_SCANLINES {
             PpuAccessMode::VBlank
         } else {
             PpuAccessMode::HBlank

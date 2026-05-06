@@ -131,26 +131,23 @@ impl Ppu {
             }
     }
 
-    pub(in crate::ppu) fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
-        if source == PpuRegisterReadSource::CpuBusOperation
-            && self.is_lcd_enabled()
-            && self.line_dot == 0
-        {
-            false
-        } else {
-            self.effective_lyc_coincidence()
-        }
+    pub(in crate::ppu) fn read_stat_lyc_coincidence(&self, _source: PpuRegisterReadSource) -> bool {
+        self.effective_lyc_coincidence()
     }
 
     pub(in crate::ppu) fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
-        self.refresh_stat_irq_line(self.stat_write_quirk_active());
+        let quirk_active = self.stat_interrupt_enable == 0 && self.stat_write_quirk_active();
+        let new_line = self.ordinary_stat_irq_line() || quirk_active;
+        if !self.runtime.stat_state.irq_line && quirk_active {
+            self.queue_interrupt_request(InterruptSource::LcdStat);
+        }
+        self.runtime.stat_state.irq_line = new_line;
     }
 
     pub(in crate::ppu) fn read_ly(&self) -> u8 {
         if self.is_lcd_enabled()
             && !self.runtime.blank_frame_active
-            && self.console_model.is_cgb_family()
             && self.ly == TOTAL_SCANLINES - 1
             && self.line_dot >= LINE_153_LY0_DOT
         {

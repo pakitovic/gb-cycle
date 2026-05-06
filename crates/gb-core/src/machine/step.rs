@@ -75,7 +75,7 @@ fn address_is_cpu_mmio(address: u16) -> bool {
 
 fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: &Joypad) -> u8 {
     let mut mask = current_cycle_scheduler_interrupt_request_mask(context);
-    mask |= ppu.pending_interrupt_request_mask();
+    mask |= ppu.cpu_visible_pending_interrupt_request_mask();
     if joypad.interrupt_request_pending() {
         mask |= InterruptSource::Joypad.mask();
     }

@@ -1,7 +1,9 @@
 mod common;
 
 use common::machine_driver::run_until_halted;
-use common::synthetic_cartridge::{HEADER_MINIMUM_ROM_LEN, build_nom_bc_test_rom};
+use common::synthetic_cartridge::{
+    HEADER_MINIMUM_ROM_LEN, build_nom_bc_test_rom, build_nom_bc_test_rom_with_program_entry,
+};
 use gb_core::{
     ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, Machine,
     MachineConfig, OperatingMode, PpuAccessMode, PpuBgFetcherSource, PpuLcdState,

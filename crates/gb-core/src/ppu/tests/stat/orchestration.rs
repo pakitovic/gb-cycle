@@ -33,6 +33,23 @@ fn published_stat_line_start_falls_back_to_visible_line_hblank() {
 }
 
 #[test]
+fn published_stat_frame_start_keeps_the_line_start_hblank_fallback() {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 0;
+    ppu.line_dot = 0;
+
+    assert_eq!(ppu.access_mode_for_line_dot(0), PpuAccessMode::OamScan);
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation),
+        0x8C
+    );
+}
+
+#[test]
 fn published_stat_mode2_to_mode3_orchestrator_promotes_mode3_on_exact_boundary() {
     let mut ppu = dmg_stat_ppu(0x08);
     ppu.ly = 1;

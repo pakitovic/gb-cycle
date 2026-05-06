@@ -239,7 +239,44 @@ fn stat_write_quirk_requests_in_mode1_mode2_and_coincidence_but_not_plain_mode3(
 }
 
 #[test]
-fn lyc_coincidence_tracks_vblank_lines_and_the_153_to_0_wrap() {
+fn stat_write_arming_the_current_mode_source_latches_without_requesting_immediately() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x00,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 1,
+        lyc: 0x20,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.startup_mode_latch = None;
+    ppu.line_dot = 24;
+    ppu.refresh_stat_irq_line(false);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::OamScan);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+    ppu.write_register(0xFF41, STAT_MODE2_INTERRUPT_ENABLE_BIT);
+
+    assert!(ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+    ppu.tick_n(u64::from(MODE2_DOTS - 24));
+
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::Drawing);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+}
+
+#[test]
+fn lyc_coincidence_tracks_vblank_lines_and_the_line_153_ly0_window() {
     let mut ppu = PpuTestRig::dmg();
 
     ppu.apply_startup_state(PpuStartupState {
@@ -271,8 +308,8 @@ fn lyc_coincidence_tracks_vblank_lines_and_the_153_to_0_wrap() {
 
     ppu.tick_n(u64::from(LINE_153_LY0_DOT));
     assert_eq!(ppu.snapshot().ly, 153);
-    assert_eq!(ppu.read_register(0xFF44), 153);
-    assert!(!ppu.snapshot().lyc_coincidence);
+    assert_eq!(ppu.read_register(0xFF44), 0);
+    assert!(ppu.snapshot().lyc_coincidence);
 
     ppu.advance_until_line_start(0);
     assert_eq!(ppu.snapshot().ly, 0);

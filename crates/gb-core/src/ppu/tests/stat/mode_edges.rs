@@ -118,7 +118,7 @@ fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_rig
 }
 
 #[test]
-fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
+fn cpu_stat_read_keeps_lyc_coincidence_on_the_first_dot_of_a_new_line() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -141,7 +141,7 @@ fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
 
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
-        0x00
+        0x04
     );
 
     ppu.line_dot = 4;

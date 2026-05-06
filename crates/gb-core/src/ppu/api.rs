@@ -1386,15 +1386,26 @@ impl Ppu {
     pub(crate) fn take_pending_interrupt_request_mask(&mut self) -> u8 {
         let requests = self.pending_interrupt_request_mask();
         self.pending_interrupts = 0;
+        self.pending_interrupts_hidden_from_cpu_if = 0;
         requests
     }
 
     pub(crate) fn pending_interrupt_request_mask(&self) -> u8 {
+        Self::interrupt_request_mask_from_pending_bits(self.pending_interrupts)
+    }
+
+    pub(crate) fn cpu_visible_pending_interrupt_request_mask(&self) -> u8 {
+        Self::interrupt_request_mask_from_pending_bits(
+            self.pending_interrupts & !self.pending_interrupts_hidden_from_cpu_if,
+        )
+    }
+
+    fn interrupt_request_mask_from_pending_bits(pending_interrupts: u8) -> u8 {
         let mut mask = 0;
-        if self.pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
+        if pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
             mask |= 0x01;
         }
-        if self.pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
+        if pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
             mask |= 0x02;
         }
         mask

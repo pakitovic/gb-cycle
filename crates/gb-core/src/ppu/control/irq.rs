@@ -23,10 +23,7 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> u8 {
-        if self.console_model.is_cgb_family()
-            && self.ly == TOTAL_SCANLINES - 1
-            && self.line_dot >= LINE_153_LY0_DOT
-        {
+        if self.ly == TOTAL_SCANLINES - 1 && self.line_dot >= LINE_153_LY0_DOT {
             0
         } else {
             self.ly
@@ -104,12 +101,23 @@ impl Ppu {
     pub(in crate::ppu) fn refresh_stat_irq_line(&mut self, quirk_active: bool) {
         let new_line = self.compute_stat_irq_line(quirk_active);
         if !self.runtime.stat_state.irq_line && new_line {
-            self.queue_interrupt_request(InterruptSource::LcdStat);
+            self.queue_interrupt_request_with_cpu_if_visibility(
+                InterruptSource::LcdStat,
+                !self.stat_request_hidden_from_same_cycle_cpu_if(),
+            );
         }
         self.runtime.stat_state.irq_line = new_line;
     }
 
     pub(in crate::ppu) fn queue_interrupt_request(&mut self, source: InterruptSource) {
+        self.queue_interrupt_request_with_cpu_if_visibility(source, true);
+    }
+
+    pub(in crate::ppu) fn queue_interrupt_request_with_cpu_if_visibility(
+        &mut self,
+        source: InterruptSource,
+        cpu_if_visible: bool,
+    ) {
         let bit = match source {
             InterruptSource::VBlank => PPU_PENDING_VBLANK_INTERRUPT_BIT,
             InterruptSource::LcdStat => PPU_PENDING_LCD_STAT_INTERRUPT_BIT,
@@ -118,6 +126,20 @@ impl Ppu {
             }
         };
         self.runtime.pending_interrupts |= bit;
+        if cpu_if_visible {
+            self.runtime.pending_interrupts_hidden_from_cpu_if &= !bit;
+        } else {
+            self.runtime.pending_interrupts_hidden_from_cpu_if |= bit;
+        }
+    }
+
+    pub(in crate::ppu) fn stat_request_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self
+                .lcd_restart_phase
+                .is_first_line_after_enable_active(self.ly)
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + 4 >= self.current_scanline_length()
     }
 
     pub(in crate::ppu) fn stat_write_quirk_active(&self) -> bool {

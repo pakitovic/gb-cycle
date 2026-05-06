@@ -69,6 +69,7 @@ impl PpuRuntimeState {
     pub(in crate::ppu) fn reset_for_startup(&mut self, bgp: u8) {
         self.startup_mode_latch = None;
         self.pending_interrupts = 0;
+        self.pending_interrupts_hidden_from_cpu_if = 0;
         self.blank_frame_active = false;
         self.system_stop_active = false;
         self.oam_corruption_controller = OamCorruptionController;

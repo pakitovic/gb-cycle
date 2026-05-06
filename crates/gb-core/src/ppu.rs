@@ -517,6 +517,7 @@ pub struct PpuRuntimeState {
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
+    pending_interrupts_hidden_from_cpu_if: u8,
     blank_frame_active: bool,
     system_stop_active: bool,
     oam_corruption_controller: OamCorruptionController,
@@ -537,6 +538,8 @@ struct PpuRuntimeSaveState {
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
+    #[serde(default)]
+    pending_interrupts_hidden_from_cpu_if: u8,
     blank_frame_active: bool,
     system_stop_active: bool,
     oam_corruption_controller: OamCorruptionController,
@@ -558,6 +561,7 @@ impl PpuRuntimeState {
             startup_mode_latch: self.startup_mode_latch,
             stat_state: self.stat_state.clone(),
             pending_interrupts: self.pending_interrupts,
+            pending_interrupts_hidden_from_cpu_if: self.pending_interrupts_hidden_from_cpu_if,
             blank_frame_active: self.blank_frame_active,
             system_stop_active: self.system_stop_active,
             oam_corruption_controller: self.oam_corruption_controller,
@@ -578,6 +582,7 @@ impl PpuRuntimeState {
         self.startup_mode_latch = state.startup_mode_latch;
         self.stat_state = state.stat_state.clone();
         self.pending_interrupts = state.pending_interrupts;
+        self.pending_interrupts_hidden_from_cpu_if = state.pending_interrupts_hidden_from_cpu_if;
         self.blank_frame_active = state.blank_frame_active;
         self.system_stop_active = state.system_stop_active;
         self.oam_corruption_controller = state.oam_corruption_controller;
@@ -600,6 +605,7 @@ impl Default for PpuRuntimeState {
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
+            pending_interrupts_hidden_from_cpu_if: 0,
             blank_frame_active: false,
             system_stop_active: false,
             oam_corruption_controller: OamCorruptionController,

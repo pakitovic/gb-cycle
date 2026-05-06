@@ -127,7 +127,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - [hardware fact] `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
 - [inference] On DMG-family timing, the bus-facing `FF44` readback can advance to the next scanline during the last machine cycle of visible-line HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
 - [inference] Do not apply that early-read seam uniformly through VBlank. For VBlank lines, keep the bus-facing `LY` transition aligned to the explicit line-start update path instead of pre-advancing from the previous line's tail.
-- [inference] The current CGB-family timing model exposes a late line-`153` `LY=0` window: the internal raster line remains `153`, but `FF44` readback and `LYC` comparison expose `LY=0` from dot `8` onward so an enabled `LYC=0` STAT source can rise before visible line `0`. Keep this model-gated instead of applying it to the current DMG-family Daid `ppu_scanline_bgp.gb` acceptance lane.
+- [hardware fact] DMG-family and CGB-family timing expose a late line-`153` `LY=0` window: the internal raster line can remain `153`, but `FF44` readback and `LYC` comparison expose `LY=0` from dot `8` onward so an enabled `LYC=0` STAT source can rise before visible line `0`.
 - [hardware fact] The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - [hardware fact] Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - [inference] For a from-scratch implementation, do not treat LCD-off readback as "retain the last active-LCD coincidence result". While the LCD is disabled, the external `LY` / `STAT` contract should follow the LCD-off readback rules explicitly instead of pretending the active raster comparison is still live.
@@ -153,6 +153,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - Entry into Mode `2`, Mode `3`, Mode `0`, and Mode `1` should become visible to `STAT` at the real dot where the PPU scheduler changes mode.
 - Because Mode `3` is variable-length, the exact Mode `3 -> 0` transition point must propagate to the `STAT` line and LCD interrupt timing without being quantized to a fixed scanline template.
 - Keep room for the internal LCD STAT interrupt line to lead the readable `STAT.mode` bits by a few T-cycles on DMG-family hardware. Current oracle-backed closure in this repo requires the Mode `0` STAT source to be able to rise up to `4` dots before HBlank becomes visible through `STAT` readback and before VRAM bus release.
+- Keep the same distinction for Mode `2` at LCD restart and ordinary line starts: a pretriggered LCD STAT request may be aggregated in the same T-cycle and wake the CPU, but a CPU instruction reading `IF` earlier in that T-cycle must still see the previously aggregated `IF` value rather than the PPU's unaggregated pending bit.
 - Entering VBlank at `LY = 144` should be able to request both the dedicated VBlank interrupt and the LCD STAT interrupt for Mode `1` independently when the corresponding `STAT` enable is set.
 - The same live mode state that feeds `STAT` must also feed VRAM/OAM accessibility decisions so software polling `STAT` sees the same timing the bus uses for blocking.
 - On the shared scheduler, the PPU dot tick should happen before current-cycle bus arbitration and interrupt aggregation so `STAT`, LCD IRQ requests, `LY`, and VRAM/OAM restrictions remain coherent for that T-cycle.
@@ -162,6 +163,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 
 - On DMG-family hardware, writing `STAT` during Mode `0`, Mode `1`, Mode `2`, or while `LYC==LY` is true should support the documented spurious LCD STAT interrupt behavior.
 - That quirk should be modeled as a temporary elevation-equivalent effect on the internal STAT interrupt line rather than as "every write to `STAT` requests an interrupt."
+- A write that merely arms a source whose raw condition is already active should update the internal line level without synthesizing an immediate ordinary-source request; the next request still requires a later low-to-high edge, which keeps mid-Mode-`2` arming from preempting the next real OAM edge.
 - The quirk must not trigger from a Mode `3` write path merely because `STAT` was written.
 - Future GBC-in-DMG-mode support must keep this quirk model-gated rather than inheriting the DMG behavior accidentally.
 
