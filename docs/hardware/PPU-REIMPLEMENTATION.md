@@ -71,4 +71,5 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Use the strict `ppu_phase6` harness as the default before/after gate for PPU runtime experiments.
 - Do not prioritize a broad per-dot `Mode 3` context cache without new profiling evidence; previous release sampling did not show `mode3_register_latches()` or `mode3_window_policy()` as standalone hotspots.
 - If runtime work is revisited, transfer / raster-publication work (`current_transfer()` and related mode-boundary publication) is a better first target than a generic helper-view cache.
+- PPU timing caches must remain memoization-only: the active cache is limited to scanline length because its key is stable across the line/restart phase, while Mode `3 -> 0` boundary helpers use conservative no-op fast paths instead of broad same-dot keys until profiling justifies explicit invalidation; any future cache state must stay out of save states and the uncached hardware calculation remains the source of truth.
 - A shared OBJ FIFO write kernel may be acceptable as local deduplication, but previous benchmark evidence was noise-threshold; do not land it as a performance change alone.

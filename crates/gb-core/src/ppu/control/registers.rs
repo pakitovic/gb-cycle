@@ -170,7 +170,21 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn current_access_mode(&self) -> PpuAccessMode {
-        self.current_raster_state().access_mode()
+        let restart_raster_state = self.lcd_restart_phase.raster_state(self.ly, self.line_dot);
+        if !self.is_lcd_enabled() {
+            PpuAccessMode::HBlank
+        } else if let Some(raster_state) = restart_raster_state {
+            raster_state.access_mode()
+        } else if self.runtime.startup_mode_latch.is_none() && self.ly >= VISIBLE_SCANLINES {
+            PpuAccessMode::VBlank
+        } else if self.runtime.startup_mode_latch.is_none() && self.line_dot < MODE2_DOTS {
+            PpuAccessMode::OamScan
+        } else {
+            let mode0_start_dot = self.current_mode0_start_dot();
+            self.runtime
+                .startup_mode_latch
+                .unwrap_or_else(|| access_mode_from_raster(self.ly, self.line_dot, mode0_start_dot))
+        }
     }
 
     pub(in crate::ppu) fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {

@@ -829,62 +829,101 @@ impl Ppu {
         }
 
         let records_ppu_regions = observer.records_ppu_regions();
-        let step_region = if records_ppu_regions {
-            self.current_step_region_after_line_advance()
-        } else {
-            PpuStepRegion::Other
-        };
-        let previous_mode = observe_ppu_step_region(observer, step_region, || {
-            self.advance_mode3_register_latches_from_mmio();
-            let previous_mode = self.current_access_mode();
-            self.startup_mode_latch = None;
-            self.line_dot += 1;
-            self.advance_lcd_restart_phase();
-            self.prepare_visible_scanline_state();
-            previous_mode
-        });
-        observe_ppu_step_region(observer, PpuStepRegion::Mode2Scan, || {
-            self.advance_mode2_scan(&oam, dma_oam_active);
-        });
+        let previous_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::ModeTiming,
+            || {
+                self.advance_mode3_register_latches_from_mmio();
+                self.current_access_mode()
+            },
+        );
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::RasterAdvance,
+            || {
+                self.startup_mode_latch = None;
+                self.line_dot += 1;
+                if self.lcd_restart_phase != PpuLcdRestartPhase::Inactive {
+                    self.advance_lcd_restart_phase();
+                }
+            },
+        );
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::VisiblePrep,
+            || {
+                self.prepare_visible_scanline_state();
+            },
+        );
+        if self.mode2_scan_tick_due() {
+            observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::Mode2Scan,
+                || {
+                    self.advance_mode2_scan(&oam, dma_oam_active);
+                },
+            );
+        }
         self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
-        observe_ppu_step_region(observer, step_region, || {
-            if self.line_dot == self.current_scanline_length() {
-                let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
-                self.finalize_dmg_bgp_cpu_commit_scanline();
-                if self.bg_pipeline_state.window_start_count_this_line != 0 {
-                    self.window_state.window_line_counter = self
-                        .window_state
-                        .window_line_counter
-                        .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::RasterAdvance,
+            || {
+                if self.line_dot == self.current_scanline_length() {
+                    let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                    self.finalize_dmg_bgp_cpu_commit_scanline();
+                    if self.bg_pipeline_state.window_start_count_this_line != 0 {
+                        self.window_state.window_line_counter = self
+                            .window_state
+                            .window_line_counter
+                            .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
+                    }
+                    self.line_dot = 0;
+                    self.ly = if self.ly + 1 == TOTAL_SCANLINES {
+                        0
+                    } else {
+                        self.ly + 1
+                    };
+                    self.advance_lcd_restart_phase();
+                    if self.ly >= VISIBLE_SCANLINES {
+                        self.window_state.reset();
+                    }
+                    self.mode2_scan_state.reset_scanline();
+                    self.bg_pipeline_state.reset();
+                    self.obj_pipeline_state.reset();
+                    let bgp = self.bgp;
+                    self.panel.reset_for_scanline_start(bgp);
+                    if wraps_to_frame_start && self.blank_frame_active {
+                        self.blank_frame_active = false;
+                        self.refresh_visible_output();
+                    }
                 }
-                self.line_dot = 0;
-                self.ly = if self.ly + 1 == TOTAL_SCANLINES {
-                    0
-                } else {
-                    self.ly + 1
-                };
-                self.advance_lcd_restart_phase();
-                if self.ly >= VISIBLE_SCANLINES {
-                    self.window_state.reset();
-                }
-                self.mode2_scan_state.reset_scanline();
-                self.bg_pipeline_state.reset();
-                self.obj_pipeline_state.reset();
-                let bgp = self.bgp;
-                self.panel.reset_for_scanline_start(bgp);
-                if wraps_to_frame_start && self.blank_frame_active {
-                    self.blank_frame_active = false;
-                    self.refresh_visible_output();
-                }
-            }
+            },
+        );
 
-            let current_mode = self.current_access_mode();
-            if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-                self.queue_interrupt_request(InterruptSource::VBlank);
-            }
-            self.refresh_stat_irq_line(false);
-        });
+        let current_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::ModeTiming,
+            || self.current_access_mode(),
+        );
+        if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
+            self.queue_interrupt_request(InterruptSource::VBlank);
+        }
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::StatIrq,
+            || {
+                self.refresh_stat_irq_line(false);
+            },
+        );
     }
 
     pub fn snapshot(&self) -> PpuSnapshot {
@@ -1119,11 +1158,27 @@ impl Ppu {
     }
 
     pub(super) fn current_scanline_length(&self) -> u16 {
-        if self.is_restart_first_line_active() {
+        if let Some(entry) = self.runtime.mode_timing_cache.scanline_length.get()
+            && entry.restart_phase == self.lcd_restart_phase
+            && entry.ly == self.ly
+        {
+            return entry.value;
+        }
+
+        let value = if self.is_restart_first_line_active() {
             LCD_REENABLE_LINE0_TOTAL_DOTS
         } else {
             DOTS_PER_SCANLINE
-        }
+        };
+        self.runtime
+            .mode_timing_cache
+            .scanline_length
+            .set(Some(PpuScanlineLengthCacheEntry {
+                restart_phase: self.lcd_restart_phase,
+                ly: self.ly,
+                value,
+            }));
+        value
     }
 
     pub(super) fn current_ly_read_advance_start_dot(&self) -> u16 {

@@ -546,10 +546,15 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     assert_eq!(
         observer.ppu_regions,
         vec![
+            PpuStepRegion::BusState,
             PpuStepRegion::BusSync,
-            PpuStepRegion::Mode2Scan,
-            PpuStepRegion::Mode2Scan,
-            PpuStepRegion::Mode2Scan,
+            PpuStepRegion::ModeTiming,
+            PpuStepRegion::RasterAdvance,
+            PpuStepRegion::VisiblePrep,
+            PpuStepRegion::RasterAdvance,
+            PpuStepRegion::ModeTiming,
+            PpuStepRegion::StatIrq,
+            PpuStepRegion::BusState,
             PpuStepRegion::BusSync,
         ]
     );

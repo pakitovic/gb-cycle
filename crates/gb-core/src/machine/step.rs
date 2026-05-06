@@ -516,18 +516,25 @@ impl MachinePhaseRunner<'_> {
     ) where
         O: MachineStepObserver,
     {
-        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
         let records_regions = observer.records_regions();
+        let records_ppu_regions = observer.records_ppu_regions();
         if records_regions {
             observer.begin_region(MachineStepRegion::Ppu);
         }
-        if observer.records_ppu_regions() {
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusState);
+        }
+        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusState);
+        }
+        if records_ppu_regions {
             observer.begin_ppu_region(PpuStepRegion::BusSync);
         }
         self.bus
             .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
         let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
-        if observer.records_ppu_regions() {
+        if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
         }
         self.ppu.tick_t_cycle_with_observer(
@@ -538,14 +545,20 @@ impl MachinePhaseRunner<'_> {
             dma_oam_conflict,
             observer,
         );
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusState);
+        }
         let ppu_bus_states_after = self.ppu_bus_state_snapshot();
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusState);
+        }
         let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
-        if observer.records_ppu_regions() {
+        if records_ppu_regions {
             observer.begin_ppu_region(PpuStepRegion::BusSync);
         }
         self.bus
             .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
-        if observer.records_ppu_regions() {
+        if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
         }
         if records_regions {

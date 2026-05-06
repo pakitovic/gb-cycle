@@ -81,8 +81,9 @@ impl Ppu {
 
         let line_timing_policy = self.mode3_line_timing_policy();
         let selected_sprite_count = self.runtime.mode2_scan_state.selected_sprite_count();
+        let baseline_mode0_start_dot = line_timing_policy.baseline_mode0_start_dot();
         let all_selected_sprites_offscreen_right = self.runtime.bg_pipeline_state.mode0_start_dot
-            == line_timing_policy.baseline_mode0_start_dot()
+            == baseline_mode0_start_dot
             && self.obj_enabled()
             && selected_sprite_count > 0
             && (0..selected_sprite_count).all(|slot| {
@@ -91,6 +92,20 @@ impl Ppu {
                     .selected_sprite(slot)
                     .is_some_and(|sprite| sprite.x >= 168)
             });
+        let base_mode0_start_dot = self
+            .runtime
+            .bg_pipeline_state
+            .mode0_start_dot
+            .saturating_sub(u16::from(
+                self.runtime.bg_pipeline_state.mode0_start_dot == baseline_mode0_start_dot
+                    && self.obj_enabled()
+                    && selected_sprite_count > 0
+                    && all_selected_sprites_offscreen_right,
+            ));
+        if self.line_dot.saturating_add(1) < base_mode0_start_dot {
+            return base_mode0_start_dot;
+        }
+
         let obj_fetch_active =
             self.runtime.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle;
         let pending_obj_hit_owns_current_transfer_x =
@@ -191,17 +206,7 @@ impl Ppu {
         oam: &OamBusView<'_>,
         dma_oam_active: bool,
     ) {
-        if !self.is_lcd_enabled()
-            || self.ly >= VISIBLE_SCANLINES
-            || self
-                .lcd_restart_phase
-                .raster_state(self.ly, self.line_dot)
-                .is_some()
-            || self.line_dot == 0
-            || self.line_dot > MODE2_DOTS
-            || !self.line_dot.is_multiple_of(MODE2_T_CYCLES_PER_OAM_ENTRY)
-            || self.runtime.mode2_scan_state.scanned_entries() >= OAM_SPRITE_COUNT
-        {
+        if !self.mode2_scan_tick_due() {
             return;
         }
 
@@ -241,6 +246,19 @@ impl Ppu {
         if sprite_matches_line(sprite, self.ly, self.current_obj_height()) {
             self.runtime.mode2_scan_state.push(sprite);
         }
+    }
+
+    pub(in crate::ppu) fn mode2_scan_tick_due(&self) -> bool {
+        self.is_lcd_enabled()
+            && self.ly < VISIBLE_SCANLINES
+            && self
+                .lcd_restart_phase
+                .raster_state(self.ly, self.line_dot)
+                .is_none()
+            && self.line_dot != 0
+            && self.line_dot <= MODE2_DOTS
+            && self.line_dot.is_multiple_of(MODE2_T_CYCLES_PER_OAM_ENTRY)
+            && self.runtime.mode2_scan_state.scanned_entries() < OAM_SPRITE_COUNT
     }
 
     pub(in crate::ppu) fn current_obj_height(&self) -> u8 {

@@ -2,6 +2,7 @@ use crate::bus::{BusMaster, OamBusView, VramBusView};
 use crate::cartridge::CartridgeHeader;
 use crate::model::{ConsoleModel, OperatingMode, StartupMode};
 use crate::scheduler::{CycleContext, InterruptSource};
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -155,6 +156,11 @@ fn normalize_saved_ppu_operating_mode(
 pub enum PpuStepRegion {
     Other,
     BusSync,
+    BusState,
+    ModeTiming,
+    RasterAdvance,
+    StatIrq,
+    VisiblePrep,
     Mode0Or1,
     Mode2Scan,
     Mode3Startup,
@@ -194,7 +200,19 @@ fn observe_ppu_step_region<O, R>(
 where
     O: PpuStepObserver,
 {
-    if !observer.records_ppu_regions() {
+    observe_ppu_step_region_when(observer, observer.records_ppu_regions(), region, observe)
+}
+
+fn observe_ppu_step_region_when<O, R>(
+    observer: &mut O,
+    enabled: bool,
+    region: PpuStepRegion,
+    observe: impl FnOnce() -> R,
+) -> R
+where
+    O: PpuStepObserver,
+{
+    if !enabled {
         return observe();
     }
 
@@ -522,6 +540,32 @@ impl PpuPanelState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PpuScanlineLengthCacheEntry {
+    restart_phase: PpuLcdRestartPhase,
+    ly: u8,
+    value: u16,
+}
+
+#[derive(Debug, Default)]
+struct PpuModeTimingCache {
+    scanline_length: Cell<Option<PpuScanlineLengthCacheEntry>>,
+}
+
+impl Clone for PpuModeTimingCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for PpuModeTimingCache {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for PpuModeTimingCache {}
+
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuRuntimeState {
@@ -541,6 +585,8 @@ pub struct PpuRuntimeState {
     last_unsigned_tile_data_low_fetch: u8,
     last_unsigned_tile_data_high_fetch: u8,
     panel: PpuPanelState,
+    #[serde(skip, default)]
+    mode_timing_cache: PpuModeTimingCache,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -602,6 +648,7 @@ impl PpuRuntimeState {
         self.last_unsigned_tile_data_low_fetch = state.last_unsigned_tile_data_low_fetch;
         self.last_unsigned_tile_data_high_fetch = state.last_unsigned_tile_data_high_fetch;
         self.panel = state.panel.clone();
+        self.mode_timing_cache = PpuModeTimingCache::default();
     }
 }
 
@@ -624,6 +671,7 @@ impl Default for PpuRuntimeState {
             last_unsigned_tile_data_low_fetch: 0,
             last_unsigned_tile_data_high_fetch: 0,
             panel: PpuPanelState::default(),
+            mode_timing_cache: PpuModeTimingCache::default(),
         }
     }
 }
