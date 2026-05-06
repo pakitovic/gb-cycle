@@ -364,6 +364,11 @@ pub fn curated_test_rom_families() -> Vec<String> {
     families.into_iter().collect()
 }
 
+/// Materialize the legacy single-root GBEmulatorShootout subset of the curated ROM store.
+///
+/// Multi-source rows, such as DocBoy-only fixtures, must be fetched through
+/// `fetch_test_roms` or `materialize_curated_test_rom_source_families` so each
+/// source is copied from the root that actually owns its manifest paths.
 pub fn materialize_curated_test_rom_store(
     workspace_root: &Path,
     gbemu_shootout_root: &Path,
@@ -372,6 +377,10 @@ pub fn materialize_curated_test_rom_store(
     Ok(())
 }
 
+/// Materialize selected families from the legacy single-root GBEmulatorShootout source.
+///
+/// Families that only have non-GBEmulatorShootout rows are rejected here because
+/// `gbemu_shootout_root` cannot satisfy their source paths.
 pub fn materialize_curated_test_rom_families(
     workspace_root: &Path,
     gbemu_shootout_root: &Path,
@@ -393,10 +402,14 @@ fn materialize_curated_test_rom_store_filtered(
     source_root: &Path,
     selected_families: Option<&BTreeSet<&str>>,
 ) -> Result<(), String> {
-    replace_curated_test_rom_family_roots(workspace_root, selected_families)?;
+    replace_curated_test_rom_family_roots(
+        workspace_root,
+        Some(GBEMU_SHOOTOUT_SOURCE_ID),
+        selected_families,
+    )?;
     materialize_curated_test_rom_source_filtered(
         workspace_root,
-        None,
+        Some(GBEMU_SHOOTOUT_SOURCE_ID),
         source_root,
         selected_families,
     )
@@ -410,11 +423,12 @@ pub(crate) fn replace_curated_test_rom_families(
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
-    replace_curated_test_rom_family_roots(workspace_root, Some(&selected_families))
+    replace_curated_test_rom_family_roots(workspace_root, None, Some(&selected_families))
 }
 
 fn replace_curated_test_rom_family_roots(
     workspace_root: &Path,
+    source_id: Option<&str>,
     selected_families: Option<&BTreeSet<&str>>,
 ) -> Result<(), String> {
     let store_root = test_rom_store_root(workspace_root);
@@ -425,7 +439,8 @@ fn replace_curated_test_rom_family_roots(
         )
     })?;
 
-    let selected_cases_by_family = curated_test_rom_cases_by_family(selected_families);
+    let selected_cases_by_family =
+        curated_test_rom_cases_by_family_from_source(selected_families, source_id);
     let mut materialized_families = BTreeSet::new();
     for family in selected_cases_by_family.keys() {
         materialized_families.insert(family.clone());
@@ -488,13 +503,8 @@ fn materialize_curated_test_rom_source_filtered(
     selected_families: Option<&BTreeSet<&str>>,
 ) -> Result<(), String> {
     let store_root = test_rom_store_root(workspace_root);
-    for (_, cases) in curated_test_rom_cases_by_family(selected_families) {
+    for (_, cases) in curated_test_rom_cases_by_family_from_source(selected_families, source_id) {
         for case in cases.into_values() {
-            if let Some(source_id) = source_id
-                && case.source_id != source_id
-            {
-                continue;
-            }
             let family_root = store_root.join(&case.family);
             copy_curated_source_rom(source_root, &case.source_path, &family_root.join(&case.rom))?;
         }
@@ -502,12 +512,18 @@ fn materialize_curated_test_rom_source_filtered(
     Ok(())
 }
 
-fn curated_test_rom_cases_by_family(
+fn curated_test_rom_cases_by_family_from_source(
     selected_families: Option<&BTreeSet<&str>>,
+    source_id: Option<&str>,
 ) -> BTreeMap<String, BTreeMap<PathBuf, CuratedTestRomCase>> {
     let mut cases_by_family = BTreeMap::<String, BTreeMap<PathBuf, CuratedTestRomCase>>::new();
     for manifest in curated_test_rom_manifests() {
         for case in manifest.cases {
+            if let Some(source_id) = source_id
+                && case.source_id != source_id
+            {
+                continue;
+            }
             if let Some(selected_families) = selected_families
                 && !selected_families.contains(case.family.as_str())
             {
@@ -1791,7 +1807,11 @@ mod tests {
 
     fn write_fake_gbemu_shootout_tree(root: &Path) {
         for manifest in curated_test_rom_manifests() {
-            for case in &manifest.cases {
+            for case in manifest
+                .cases
+                .iter()
+                .filter(|case| case.source_id == GBEMU_SHOOTOUT_SOURCE_ID)
+            {
                 let source_path = root.join(&case.source_path);
                 let source_parent = source_path
                     .parent()
@@ -2867,7 +2887,11 @@ mod tests {
 
         assert!(!stale_family_root.join("stale.txt").exists());
         for manifest in curated_test_rom_manifests() {
-            for case in &manifest.cases {
+            for case in manifest
+                .cases
+                .iter()
+                .filter(|case| case.source_id == GBEMU_SHOOTOUT_SOURCE_ID)
+            {
                 let family_root = test_rom_store_root(&workspace_root).join(&case.family);
                 assert!(!family_root.join("catalog.toml").exists());
                 assert_eq!(
@@ -2883,6 +2907,16 @@ mod tests {
             )
             .expect("CGB smoke ROM should be materialized from the cgb-smoke manifest"),
             "mooneye:misc/boot_regs-cgb.gb"
+        );
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("samesuite/interrupt/ei_delay_halt.gb")
+                .exists()
+        );
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("little-things-gb")
+                .exists()
         );
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
@@ -2947,6 +2981,24 @@ mod tests {
         .expect_err("unknown curated families should be rejected");
         assert!(error.contains("unknown curated test ROM family selection"));
         assert!(error.contains("unknown"));
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
+    fn materialize_curated_store_rejects_docboy_only_selected_families() {
+        let workspace_root = unique_temp_dir("materialize-selected-docboy-only");
+        let gbemu_shootout_root = workspace_root.join("gbemu-shootout");
+        write_fake_gbemu_shootout_tree(&gbemu_shootout_root);
+
+        let error = materialize_curated_test_rom_families(
+            &workspace_root,
+            &gbemu_shootout_root,
+            &["little-things-gb".to_string()],
+        )
+        .expect_err("single-source GBEmulator materialization should reject DocBoy-only families");
+        assert!(error.contains("unknown curated test ROM family selection"));
+        assert!(error.contains("little-things-gb"));
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
