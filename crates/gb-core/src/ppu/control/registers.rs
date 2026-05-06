@@ -137,26 +137,41 @@ impl Ppu {
 
     pub(in crate::ppu) fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
+        if self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger() {
+            self.runtime.stat_state.irq_line = false;
+        }
         let quirk_active = self.stat_interrupt_enable == 0 && self.stat_write_quirk_active();
-        let new_line = self.ordinary_stat_irq_line() || quirk_active;
-        if !self.runtime.stat_state.irq_line && quirk_active {
-            self.queue_interrupt_request(InterruptSource::LcdStat);
+        let ordinary_line = self.ordinary_stat_irq_line();
+        let new_line = ordinary_line || quirk_active;
+        let write_requests_ordinary_edge = ordinary_line && self.mode2_stat_write_irq_source();
+        if !self.runtime.stat_state.irq_line && (quirk_active || write_requests_ordinary_edge) {
+            self.queue_interrupt_request_with_cpu_if_visibility(
+                InterruptSource::LcdStat,
+                !self.stat_request_hidden_from_same_cycle_cpu_if(),
+            );
         }
         self.runtime.stat_state.irq_line = new_line;
     }
 
     pub(in crate::ppu) fn read_ly(&self) -> u8 {
-        if self.is_lcd_enabled()
-            && !self.runtime.blank_frame_active
-            && self.ly == TOTAL_SCANLINES - 1
-            && self.line_dot >= LINE_153_LY0_DOT
-        {
+        let visible_ly = self.read_ly_without_skip_boot_lag();
+
+        if self.skip_boot_ly_read_lag_active() {
+            visible_ly.checked_sub(1).unwrap_or(TOTAL_SCANLINES - 1)
+        } else {
+            visible_ly
+        }
+    }
+
+    fn read_ly_without_skip_boot_lag(&self) -> u8 {
+        if self.line_153_reads_as_ly0() {
             return 0;
         }
 
         if self.is_lcd_enabled()
             && !self.runtime.blank_frame_active
             && self.ly < VISIBLE_SCANLINES
+            && !self.vblank_wrap_line0_ly_read_delay_active()
             && self.line_dot >= self.current_ly_read_advance_start_dot()
             && self.ly + 1 < TOTAL_SCANLINES
         {
@@ -164,6 +179,20 @@ impl Ppu {
         } else {
             self.ly
         }
+    }
+
+    fn skip_boot_ly_read_lag_active(&self) -> bool {
+        self.runtime.stat_state.skip_boot_ly_read_lag_active && self.is_lcd_enabled()
+    }
+
+    fn line_153_reads_as_ly0(&self) -> bool {
+        self.is_lcd_enabled()
+            && self.ly == TOTAL_SCANLINES - 1
+            && self.line_dot >= LINE_153_LY_READ_ZERO_DOT
+    }
+
+    fn vblank_wrap_line0_ly_read_delay_active(&self) -> bool {
+        self.runtime.stat_state.vblank_wrap_line0_stat_delay_active && self.ly == 0
     }
 
     pub(in crate::ppu) fn current_access_mode(&self) -> PpuAccessMode {

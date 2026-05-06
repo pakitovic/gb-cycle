@@ -586,6 +586,7 @@ impl Ppu {
                 self.lyc = value;
                 if self.is_lcd_enabled() {
                     self.refresh_stat_irq_line(false);
+                    self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger();
                 }
             }
             PpuRegister::Wy => self.wy = value,
@@ -761,6 +762,9 @@ impl Ppu {
         self.stat_state.startup_mode0_irq_phase_active = false;
         self.stat_state
             .real_boot_handoff_mode0_scx_seam_phase_active = false;
+        self.stat_state.vblank_wrap_line0_stat_delay_active = false;
+        self.stat_state.skip_boot_ly_read_lag_active = false;
+        self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
         self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
     }
@@ -780,6 +784,7 @@ impl Ppu {
 
     pub(crate) fn apply_dmg_skip_boot_stat_irq_startup_phase(&mut self) {
         if self.console_model.is_dmg_family() && self.lcd_state.is_enabled() && self.ly == 0 {
+            self.stat_state.skip_boot_ly_read_lag_active = true;
             self.stat_state.startup_mode0_irq_phase_active = true;
             self.stat_state.irq_line = self.compute_stat_irq_line(false);
         }
@@ -885,6 +890,7 @@ impl Ppu {
                 } else {
                     self.ly + 1
                 };
+                self.stat_state.vblank_wrap_line0_stat_delay_active = wraps_to_frame_start;
                 self.advance_lcd_restart_phase();
                 if self.ly >= 2 {
                     self.stat_state.startup_mode0_irq_phase_active = false;
@@ -894,6 +900,7 @@ impl Ppu {
                     self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
                     self.stat_state
                         .real_boot_handoff_mode0_scx_seam_phase_active = false;
+                    self.stat_state.skip_boot_ly_read_lag_active = false;
                 }
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();
@@ -908,7 +915,10 @@ impl Ppu {
 
             let current_mode = self.current_access_mode();
             if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-                self.queue_interrupt_request(InterruptSource::VBlank);
+                self.queue_interrupt_request_with_cpu_if_visibility(
+                    InterruptSource::VBlank,
+                    !self.console_model.is_dmg_family(),
+                );
             }
             self.refresh_stat_irq_line(false);
         });
@@ -1419,6 +1429,7 @@ impl Ppu {
         let requests = self.pending_interrupt_request_mask();
         self.pending_interrupts = 0;
         self.pending_interrupts_hidden_from_cpu_if = 0;
+        self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
         requests
     }
 

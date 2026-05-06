@@ -204,7 +204,9 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
-            self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+            if !self.cartridge.is_empty() {
+                self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+            }
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
             self.dma.apply_startup_state(startup_state.dma);

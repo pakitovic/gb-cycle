@@ -79,7 +79,7 @@ fn stat_line_blocks_new_requests_while_an_enabled_source_keeps_it_high() {
 }
 
 #[test]
-fn dmg_mode2_enable_requests_lcd_stat_at_vblank_entry_only() {
+fn dmg_mode2_enable_requests_lcd_stat_at_line144_pretrigger_only() {
     let mut ppu = PpuTestRig::dmg();
 
     ppu.apply_startup_state(PpuStartupState {
@@ -94,27 +94,41 @@ fn dmg_mode2_enable_requests_lcd_stat_at_vblank_entry_only() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
-    ppu.line_dot = DOTS_PER_SCANLINE - 1;
+    ppu.line_dot = DOTS_PER_SCANLINE - 5;
     ppu.refresh_stat_irq_line(false);
     assert!(!ppu.snapshot().stat_irq_line);
     assert!(drain_ppu_interrupts(&mut ppu).is_empty());
 
     ppu.tick();
 
-    assert_eq!(ppu.snapshot().ly, 144);
-    assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+    assert_eq!(ppu.snapshot().ly, 143);
+    assert_eq!(ppu.snapshot().line_dot, DOTS_PER_SCANLINE - 4);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::HBlank);
     assert!(ppu.snapshot().stat_irq_line);
     assert_eq!(
         drain_ppu_interrupts(&mut ppu),
-        vec![InterruptSource::VBlank, InterruptSource::LcdStat]
+        vec![InterruptSource::LcdStat]
     );
 
     ppu.tick();
 
-    assert_eq!(ppu.snapshot().ly, 144);
-    assert_eq!(ppu.snapshot().line_dot, 1);
+    assert_eq!(ppu.snapshot().ly, 143);
+    assert_eq!(ppu.snapshot().line_dot, DOTS_PER_SCANLINE - 3);
     assert!(!ppu.snapshot().stat_irq_line);
     assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+    for _ in 0..3 {
+        ppu.tick();
+    }
+
+    assert_eq!(ppu.snapshot().ly, 144);
+    assert_eq!(ppu.snapshot().line_dot, 0);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu),
+        vec![InterruptSource::VBlank]
+    );
 }
 
 #[test]
@@ -301,12 +315,22 @@ fn lyc_coincidence_tracks_vblank_lines_and_the_line_153_ly0_window() {
 
     ppu.advance_until_line_start(153);
     assert_eq!(ppu.snapshot().ly, 153);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
+    ppu.tick_n(u64::from(LINE_153_LYC153_COMPARE_START_DOT));
     assert!(ppu.snapshot().lyc_coincidence);
+
+    ppu.tick_n(u64::from(
+        LINE_153_LYC153_COMPARE_END_DOT - LINE_153_LYC153_COMPARE_START_DOT,
+    ));
+    assert!(!ppu.snapshot().lyc_coincidence);
 
     ppu.write_register(0xFF45, 0);
     assert!(!ppu.snapshot().lyc_coincidence);
 
-    ppu.tick_n(u64::from(LINE_153_LY0_DOT));
+    ppu.tick_n(u64::from(
+        LINE_153_LYC0_COMPARE_START_DOT - LINE_153_LYC153_COMPARE_END_DOT,
+    ));
     assert_eq!(ppu.snapshot().ly, 153);
     assert_eq!(ppu.read_register(0xFF44), 0);
     assert!(ppu.snapshot().lyc_coincidence);
@@ -336,7 +360,7 @@ fn cgb_lyc_zero_coincidence_rises_during_the_line_153_ly0_window() {
     assert_eq!(ppu.snapshot().ly, 153);
     assert!(!ppu.snapshot().lyc_coincidence);
 
-    ppu.tick_n(u64::from(LINE_153_LY0_DOT));
+    ppu.tick_n(u64::from(LINE_153_LYC0_COMPARE_START_DOT));
 
     assert_eq!(ppu.snapshot().ly, 153);
     assert_eq!(ppu.read_register(0xFF44), 0);
@@ -378,6 +402,35 @@ fn ly_read_advances_early_only_on_visible_hblank_lines() {
     vblank.line_dot = LY_READ_ADVANCE_START_DOT;
     assert_eq!(vblank.snapshot().mode, PpuAccessMode::VBlank);
     assert_eq!(vblank.read_register(0xFF44), 0x90);
+}
+
+#[test]
+fn dmg_skip_boot_ly_readback_lags_the_synthetic_first_frame_until_vblank() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+
+    assert_eq!(ppu.read_register(0xFF44), 153);
+
+    ppu.ly = 65;
+    ppu.line_dot = 56;
+    assert_eq!(ppu.read_register(0xFF44), 64);
+
+    ppu.ly = VISIBLE_SCANLINES - 1;
+    ppu.line_dot = DOTS_PER_SCANLINE - 1;
+    ppu.tick();
+    assert_eq!(ppu.read_register(0xFF44), VISIBLE_SCANLINES);
 }
 
 #[test]

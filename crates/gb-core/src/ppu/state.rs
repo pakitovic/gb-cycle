@@ -3414,6 +3414,12 @@ pub(super) struct StatState {
     pub(super) startup_mode0_irq_phase_active: bool,
     #[serde(default)]
     pub(super) real_boot_handoff_mode0_scx_seam_phase_active: bool,
+    #[serde(default)]
+    pub(super) vblank_wrap_line0_stat_delay_active: bool,
+    #[serde(default)]
+    pub(super) skip_boot_ly_read_lag_active: bool,
+    #[serde(default)]
+    pub(super) line_153_lyc0_stat_irq_pretrigger_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

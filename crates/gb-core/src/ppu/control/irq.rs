@@ -19,15 +19,22 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn live_lyc_coincidence(&self) -> bool {
-        self.live_ly_for_lyc_compare() == self.lyc
+        self.live_ly_for_lyc_compare()
+            .is_some_and(|compare_ly| compare_ly == self.lyc)
     }
 
-    pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> u8 {
-        if self.ly == TOTAL_SCANLINES - 1 && self.line_dot >= LINE_153_LY0_DOT {
-            0
-        } else {
-            self.ly
+    pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> Option<u8> {
+        if self.ly == TOTAL_SCANLINES - 1 {
+            return match self.line_dot {
+                LINE_153_LYC153_COMPARE_START_DOT..LINE_153_LYC153_COMPARE_END_DOT => {
+                    Some(TOTAL_SCANLINES - 1)
+                }
+                LINE_153_LYC0_COMPARE_START_DOT.. => Some(0),
+                _ => None,
+            };
         }
+
+        Some(self.ly)
     }
 
     pub(in crate::ppu) fn effective_lyc_coincidence(&self) -> bool {
@@ -53,6 +60,7 @@ impl Ppu {
 
         let coincidence_source = stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.effective_lyc_coincidence();
+        let line_153_lyc0_pretrigger_source = self.line_153_lyc0_stat_irq_pretrigger_source();
 
         if !self.is_lcd_enabled() {
             return coincidence_source || self.lcd_enable_pending_lyc_rise_source();
@@ -64,7 +72,7 @@ impl Ppu {
                 | STAT_MODE2_INTERRUPT_ENABLE_BIT)
             != 0;
         if !mode_interrupt_enable {
-            return coincidence_source;
+            return coincidence_source || line_153_lyc0_pretrigger_source;
         }
 
         let mode0_start_dot = self.current_mode0_start_dot();
@@ -83,14 +91,8 @@ impl Ppu {
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot < mode0_start_dot
             && self.line_dot + 4 >= mode0_start_dot;
-        let mode2_pretrigger_source = stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-            && self.ly + 1 < VISIBLE_SCANLINES
-            && self.line_dot + 4 >= self.current_scanline_length();
-        let dmg_mode2_vblank_entry_source = self.console_model.is_dmg_family()
-            && stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-            && self.current_access_mode() == PpuAccessMode::VBlank
-            && self.ly == VISIBLE_SCANLINES
-            && self.line_dot == 0;
+        let mode2_pretrigger_source = self.ordinary_mode2_stat_pretrigger_source();
+        let dmg_mode2_vblank_entry_source = self.dmg_mode2_vblank_entry_stat_source();
         let mode_source = match self.current_stat_irq_access_mode() {
             PpuAccessMode::HBlank => stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0,
             PpuAccessMode::VBlank => stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0,
@@ -99,6 +101,7 @@ impl Ppu {
         };
 
         coincidence_source
+            || line_153_lyc0_pretrigger_source
             || mode_source
             || mode0_pretrigger_source
             || mode2_pretrigger_source
@@ -231,21 +234,135 @@ impl Ppu {
             && self.current_stat_irq_access_mode() == PpuAccessMode::HBlank
     }
 
+    fn ordinary_mode2_stat_pretrigger_source(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + 4 >= self.current_scanline_length()
+    }
+
+    fn ordinary_mode2_stat_pretrigger_edge(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + 4 == self.current_scanline_length()
+    }
+
+    fn dmg_mode2_vblank_entry_stat_source(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 == VISIBLE_SCANLINES
+            && self.current_access_mode() == PpuAccessMode::HBlank
+            && self.line_dot + 4 == self.current_scanline_length()
+    }
+
+    fn line_153_lyc0_stat_irq_pretrigger_source(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly == TOTAL_SCANLINES - 1
+            && self.lyc == 0
+            && self.line_dot == LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    }
+
+    fn mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+        {
+            return false;
+        }
+
+        self.ordinary_mode2_stat_pretrigger_edge() || self.dmg_mode2_vblank_entry_stat_source()
+    }
+
+    fn mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly == VISIBLE_SCANLINES
+            && self.line_dot == 0
+            && self.current_access_mode() == PpuAccessMode::VBlank
+    }
+
+    fn lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT == 0 || !self.is_lcd_enabled()
+        {
+            return false;
+        }
+
+        if self.line_153_lyc0_stat_irq_pretrigger_source() {
+            return true;
+        }
+
+        if !self.live_lyc_coincidence() {
+            return false;
+        }
+
+        if self.ly == TOTAL_SCANLINES - 1 {
+            return (self.lyc == TOTAL_SCANLINES - 1
+                && self.line_dot == LINE_153_LYC153_COMPARE_START_DOT)
+                || (self.lyc == 0 && self.line_dot == LINE_153_LYC0_COMPARE_START_DOT);
+        }
+
+        self.line_dot == 0
+    }
+
+    pub(in crate::ppu) fn mode2_stat_write_irq_source(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot == 0
+            && self.current_access_mode() == PpuAccessMode::OamScan
+    }
+
+    pub(crate) fn dmg_mode2_oam_halt_wake_deferred(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.runtime.blank_frame_active
+            && self.ordinary_mode2_stat_pretrigger_source()
+    }
+
     pub(in crate::ppu) fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
         self.ordinary_stat_irq_line() || quirk_active
     }
 
     pub(in crate::ppu) fn refresh_stat_irq_line(&mut self, quirk_active: bool) {
         let new_line = self.compute_stat_irq_line(quirk_active);
+        let line_153_lyc0_pretrigger_request = !self.runtime.stat_state.irq_line
+            && new_line
+            && self.line_153_lyc0_stat_irq_pretrigger_source();
         if !self.runtime.stat_state.irq_line && new_line {
             self.queue_interrupt_request_with_cpu_if_visibility(
                 InterruptSource::LcdStat,
                 !self.stat_request_hidden_from_same_cycle_cpu_if(),
             );
         }
+        if line_153_lyc0_pretrigger_request {
+            self.runtime
+                .stat_state
+                .line_153_lyc0_stat_irq_pretrigger_pending = true;
+        }
         self.runtime.stat_state.irq_line = new_line;
     }
 
+    pub(in crate::ppu) fn cancel_obsolete_line_153_lyc0_stat_irq_pretrigger(&mut self) -> bool {
+        if !self
+            .runtime
+            .stat_state
+            .line_153_lyc0_stat_irq_pretrigger_pending
+            || self.line_153_lyc0_stat_irq_pretrigger_source()
+        {
+            return false;
+        }
+
+        self.runtime.pending_interrupts &= !PPU_PENDING_LCD_STAT_INTERRUPT_BIT;
+        self.runtime.pending_interrupts_hidden_from_cpu_if &= !PPU_PENDING_LCD_STAT_INTERRUPT_BIT;
+        self.runtime
+            .stat_state
+            .line_153_lyc0_stat_irq_pretrigger_pending = false;
+        true
+    }
+
+    #[cfg(test)]
     pub(in crate::ppu) fn queue_interrupt_request(&mut self, source: InterruptSource) {
         self.queue_interrupt_request_with_cpu_if_visibility(source, true);
     }
@@ -271,15 +388,10 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn stat_request_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        let mode2_restart_pretrigger_hidden =
-            self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-                && self
-                    .lcd_restart_phase
-                    .is_first_line_after_enable_active(self.ly)
-                && self.ly + 1 < VISIBLE_SCANLINES
-                && self.line_dot + 4 >= self.current_scanline_length();
-
-        self.mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if() || mode2_restart_pretrigger_hidden
+        self.mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if()
     }
 
     pub(in crate::ppu) fn stat_write_quirk_active(&self) -> bool {
@@ -323,6 +435,11 @@ impl Ppu {
         self.runtime
             .stat_state
             .real_boot_handoff_mode0_scx_seam_phase_active = false;
+        self.runtime.stat_state.vblank_wrap_line0_stat_delay_active = false;
+        self.runtime.stat_state.skip_boot_ly_read_lag_active = false;
+        self.runtime
+            .stat_state
+            .line_153_lyc0_stat_irq_pretrigger_pending = false;
         self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
@@ -351,6 +468,11 @@ impl Ppu {
             .stat_state
             .suppress_mode0_pretrigger_until_vblank = true;
         self.runtime.stat_state.startup_mode0_irq_phase_active = false;
+        self.runtime.stat_state.vblank_wrap_line0_stat_delay_active = false;
+        self.runtime.stat_state.skip_boot_ly_read_lag_active = false;
+        self.runtime
+            .stat_state
+            .line_153_lyc0_stat_irq_pretrigger_pending = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
         self.runtime.panel.clear_visible_buffers();

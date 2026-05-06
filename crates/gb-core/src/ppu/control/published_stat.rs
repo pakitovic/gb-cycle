@@ -10,15 +10,27 @@ impl Ppu {
     }
 
     fn current_published_stat_mode_context(&self) -> Option<PpuPublishedStatModeContext> {
-        if self.line_dot == 0 {
-            return None;
-        }
+        let published_line_dot = self.current_published_stat_line_dot()?;
 
         Some(PpuPublishedStatModeContext {
-            published_mode: self.access_mode_for_line_dot(self.line_dot - 1),
+            published_mode: self.access_mode_for_line_dot(published_line_dot),
             current_mode: self.access_mode_for_line_dot(self.line_dot),
             sprite_extended_mode3: self.current_mode0_start_dot() > self.baseline_mode0_start_dot(),
         })
+    }
+
+    fn current_published_stat_line_dot(&self) -> Option<u16> {
+        if self.vblank_wrap_line0_stat_readback_delay_active() {
+            return self
+                .line_dot
+                .checked_sub(LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS);
+        }
+
+        self.line_dot.checked_sub(1)
+    }
+
+    fn vblank_wrap_line0_stat_readback_delay_active(&self) -> bool {
+        self.runtime.stat_state.vblank_wrap_line0_stat_delay_active && self.ly == 0
     }
 
     fn published_stat_mode_at_line_start(&self) -> PpuAccessMode {
@@ -58,6 +70,7 @@ impl Ppu {
     ) -> bool {
         context.published_mode == PpuAccessMode::OamScan
             && context.current_mode == PpuAccessMode::Drawing
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
             && !self.runtime.blank_frame_active
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == MODE2_DOTS
@@ -122,6 +135,7 @@ impl Ppu {
     ) -> Option<PpuAccessMode> {
         if context.published_mode == PpuAccessMode::Drawing
             && context.current_mode == PpuAccessMode::HBlank
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
             && !self.runtime.blank_frame_active
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == self.current_mode0_start_dot()
