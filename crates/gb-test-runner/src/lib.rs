@@ -982,6 +982,10 @@ pub fn samesuite_dmg_extra_suite() -> RomSuite {
     curated_test_roms::samesuite_dmg_extra_suite()
 }
 
+pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::little_things_gb_dmg_extra_suite()
+}
+
 pub fn cgb_rtc_suite() -> RomSuite {
     curated_test_roms::cgb_rtc_suite()
 }
@@ -995,6 +999,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_6_mbc6_oracle_suite(),
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
+        little_things_gb_dmg_extra_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
@@ -2810,9 +2815,10 @@ mod tests {
         cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
         cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
         early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output, samesuite_dmg_extra_suite,
+        external_rom_store_root, hacktix_dmg_curated_suite, little_things_gb_dmg_extra_suite,
+        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output, samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3329,13 +3335,13 @@ mod tests {
     }
 
     #[test]
-    fn samesuite_dmg_extra_suite_runs_selected_apu_rows_on_dmg() {
+    fn samesuite_dmg_extra_suite_runs_selected_rows_on_dmg() {
         let suite = samesuite_dmg_extra_suite();
 
         assert_eq!(suite.name, "samesuite-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
-        assert_eq!(suite.cases.len(), 2);
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 3);
 
         let expected = [
             (
@@ -3347,6 +3353,11 @@ mod tests {
                 "samesuite-dmg-div-write-trigger-10",
                 "samesuite/apu/div_write_trigger_10.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
+            ),
+            (
+                "samesuite-dmg-ei-delay-halt",
+                "samesuite/interrupt/ei_delay_halt.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/interrupt/ei_delay_halt.png",
             ),
         ];
 
@@ -3370,6 +3381,50 @@ mod tests {
         }
 
         assert!(built_in_rom_suite_by_name("samesuite-dmg-extra").is_some());
+    }
+
+    #[test]
+    fn little_things_gb_dmg_extra_suite_runs_selected_rows_on_dmg() {
+        let suite = little_things_gb_dmg_extra_suite();
+
+        assert_eq!(suite.name, "little-things-gb-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+
+        let expected = [
+            (
+                "little-things-gb-dmg-double-halt-cancel",
+                "little-things-gb/double-halt-cancel.gb",
+                "crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png",
+            ),
+            (
+                "little-things-gb-dmg-whichboot",
+                "little-things-gb/whichboot.gb",
+                "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png",
+            ),
+        ];
+
+        for (case, (id, rom_path, fixture_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+
+        assert!(built_in_rom_suite_by_name("little-things-gb-dmg-extra").is_some());
     }
 
     #[test]

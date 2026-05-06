@@ -1486,3 +1486,43 @@ sha256 = "62840a75f224d4470442e1875c899a133b2f4d8ebd294339fc0f2df3fc8b28d4"
 [[source.required_file]]
 path = "testroms/mooneye/misc/boot_regs-cgb.gb"
 sha256 = "82938fa70b85a3197c4aea906000347770f0ee3773c84072b49d962e6d479062"
+
+[[source]]
+id = "docboy"
+git_url = "https://github.com/Docheinstein/docboy.git"
+git_rev = "214905562590c35ba2bc41f36da3a5d636d99378"
+local_dir = "docboy"
+root_env_var = "GB_CYCLE_DOCBOY_ROOT"
+
+[[source.required_file]]
+path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"
+family = "samesuite"
+rom = "interrupt/ei_delay_halt.gb"
+sha256 = "001d6572c192a630447afd2fffd1194d3105adaf7dd5ffdff7baf615930b8624"
+
+[[source.required_file]]
+path = "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png"
+family = "samesuite"
+sha256 = "d48a48a3e9ea8446b18cbb005a958dafde99cb867b6a2dff8318c403b177d3c9"
+
+[[source.required_file]]
+path = "tests/roms/dmg/little-things-gb/double-halt-cancel.gb"
+family = "little-things-gb"
+rom = "double-halt-cancel.gb"
+sha256 = "a223bafbd93c0e89a36ecb99683953d1ca31403f0abcfe0376afb8fd7c7da0c3"
+
+[[source.required_file]]
+path = "tests/results/dmg/little-things-gb/double-halt-cancel.png"
+family = "little-things-gb"
+sha256 = "b762d20f61ca8ca79f6b464cee77b019c8fb1acacaea2f8d4cc454333ce61ab5"
+
+[[source.required_file]]
+path = "tests/roms/dmg/little-things-gb/whichboot.gb"
+family = "little-things-gb"
+rom = "whichboot.gb"
+sha256 = "225c4cb0a237d74d8adf3aee2c7aa3b9e604a64e5bdd0b2f2fed05eb7a0dc679"
+
+[[source.required_file]]
+path = "tests/results/dmg/little-things-gb/whichboot.png"
+family = "little-things-gb"
+sha256 = "b8e74772c3edfb152a0806e5902e0ad6d13b0b39fa82cec6856860853841bc68"

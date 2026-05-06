@@ -1,7 +1,7 @@
 version = 1
 family = "samesuite"
 suite_name = "samesuite-dmg-extra"
-subsystem = "Apu"
+subsystem = "CrossSubsystem"
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger"
@@ -20,3 +20,13 @@ report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png"
+
+[[case]]
+id = "samesuite-dmg-ei-delay-halt"
+rom = "interrupt/ei_delay_halt.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"
+console = "dmg"
+timeout_frames = 180
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/interrupt/ei_delay_halt.png"

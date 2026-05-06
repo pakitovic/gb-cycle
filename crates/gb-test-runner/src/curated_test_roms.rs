@@ -22,11 +22,12 @@ const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const CURATED_TEST_ROM_MANIFEST_VERSION: u32 = 1;
 const CURATED_SOURCE_MANIFEST_VERSION: u32 = 1;
 const CURATED_TEST_ROM_REPORT_VERSION: u32 = 1;
+const GBEMU_SHOOTOUT_SOURCE_ID: &str = "gbemu-shootout";
 const GBEMU_SHOOTOUT_TESTROMS_DIR: &str = "testroms";
 const REPORT_STATUS_PASS_EMOJI: &str = "✅";
 const REPORT_STATUS_FAIL_EMOJI: &str = "❌";
 const REPORT_STATUS_INFO_EMOJI: &str = "ℹ️";
-const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
+const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 10] = [
     "acid",
     "blargg",
     "daid",
@@ -36,9 +37,14 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
     "hacktix",
     "cpp",
     "mealybug-tearoom-tests",
+    "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 3] =
-    ["ax6-dmg-extra", "cgb-boot-hwio", "samesuite-dmg-extra"];
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
+    "ax6-dmg-extra",
+    "cgb-boot-hwio",
+    "samesuite-dmg-extra",
+    "little-things-gb-dmg-extra",
+];
 const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
@@ -93,6 +99,8 @@ struct CuratedTestRomCaseFile {
     family: Option<String>,
     id: String,
     rom: PathBuf,
+    source_id: Option<String>,
+    source_path: Option<PathBuf>,
     report_model_suffix: Option<bool>,
     timeout_frames: u32,
     oracle: String,
@@ -120,6 +128,8 @@ struct CuratedTestRomCase {
     family: String,
     id: String,
     rom: PathBuf,
+    source_id: String,
+    source_path: PathBuf,
     report_model_suffix: bool,
     timeout_frames: u32,
     oracle: String,
@@ -180,6 +190,8 @@ struct CuratedSourceFile {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedRequiredFile {
     path: PathBuf,
+    family: Option<String>,
+    rom: Option<PathBuf>,
 }
 
 pub fn test_rom_store_root(workspace_root: &Path) -> PathBuf {
@@ -205,6 +217,10 @@ pub fn ax6_dmg_extra_suite() -> RomSuite {
 
 pub fn samesuite_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("samesuite-dmg-extra")
+}
+
+pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
+    manifest_suite_by_name("little-things-gb-dmg-extra")
 }
 
 pub fn blargg_dmg_curated_suite() -> RomSuite {
@@ -348,13 +364,23 @@ pub fn curated_test_rom_families() -> Vec<String> {
     families.into_iter().collect()
 }
 
+/// Materialize the legacy single-root GBEmulatorShootout subset of the curated ROM store.
+///
+/// Multi-source rows, such as DocBoy-only fixtures, must be fetched through
+/// `fetch_test_roms` or `materialize_curated_test_rom_source_families` so each
+/// source is copied from the root that actually owns its manifest paths.
 pub fn materialize_curated_test_rom_store(
     workspace_root: &Path,
     gbemu_shootout_root: &Path,
 ) -> Result<(), String> {
-    materialize_curated_test_rom_store_filtered(workspace_root, gbemu_shootout_root, None)
+    materialize_curated_test_rom_store_filtered(workspace_root, gbemu_shootout_root, None)?;
+    Ok(())
 }
 
+/// Materialize selected families from the legacy single-root GBEmulatorShootout source.
+///
+/// Families that only have non-GBEmulatorShootout rows are rejected here because
+/// `gbemu_shootout_root` cannot satisfy their source paths.
 pub fn materialize_curated_test_rom_families(
     workspace_root: &Path,
     gbemu_shootout_root: &Path,
@@ -373,7 +399,36 @@ pub fn materialize_curated_test_rom_families(
 
 fn materialize_curated_test_rom_store_filtered(
     workspace_root: &Path,
-    gbemu_shootout_root: &Path,
+    source_root: &Path,
+    selected_families: Option<&BTreeSet<&str>>,
+) -> Result<(), String> {
+    replace_curated_test_rom_family_roots(
+        workspace_root,
+        Some(GBEMU_SHOOTOUT_SOURCE_ID),
+        selected_families,
+    )?;
+    materialize_curated_test_rom_source_filtered(
+        workspace_root,
+        Some(GBEMU_SHOOTOUT_SOURCE_ID),
+        source_root,
+        selected_families,
+    )
+}
+
+pub(crate) fn replace_curated_test_rom_families(
+    workspace_root: &Path,
+    selected_families: &[String],
+) -> Result<(), String> {
+    let selected_families = selected_families
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    replace_curated_test_rom_family_roots(workspace_root, None, Some(&selected_families))
+}
+
+fn replace_curated_test_rom_family_roots(
+    workspace_root: &Path,
+    source_id: Option<&str>,
     selected_families: Option<&BTreeSet<&str>>,
 ) -> Result<(), String> {
     let store_root = test_rom_store_root(workspace_root);
@@ -384,11 +439,12 @@ fn materialize_curated_test_rom_store_filtered(
         )
     })?;
 
-    let selected_roms_by_family = curated_test_roms_by_family(selected_families);
+    let selected_cases_by_family =
+        curated_test_rom_cases_by_family_from_source(selected_families, source_id);
     let mut materialized_families = BTreeSet::new();
-    for (family, roms) in selected_roms_by_family {
+    for family in selected_cases_by_family.keys() {
         materialized_families.insert(family.clone());
-        let family_root = store_root.join(&family);
+        let family_root = store_root.join(family);
         if family_root.exists() {
             fs::remove_dir_all(&family_root).map_err(|error| {
                 format!(
@@ -403,10 +459,6 @@ fn materialize_curated_test_rom_store_filtered(
                 family_root.display()
             )
         })?;
-
-        for rom in roms {
-            copy_curated_rom(gbemu_shootout_root, &family, &rom, &family_root.join(&rom))?;
-        }
     }
 
     if let Some(selected_families) = selected_families {
@@ -426,36 +478,86 @@ fn materialize_curated_test_rom_store_filtered(
     Ok(())
 }
 
-fn curated_test_roms_by_family(
+pub(crate) fn materialize_curated_test_rom_source_families(
+    workspace_root: &Path,
+    source_id: &str,
+    source_root: &Path,
+    selected_families: &[String],
+) -> Result<(), String> {
+    let selected_families = selected_families
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    materialize_curated_test_rom_source_filtered(
+        workspace_root,
+        Some(source_id),
+        source_root,
+        Some(&selected_families),
+    )
+}
+
+fn materialize_curated_test_rom_source_filtered(
+    workspace_root: &Path,
+    source_id: Option<&str>,
+    source_root: &Path,
     selected_families: Option<&BTreeSet<&str>>,
-) -> BTreeMap<String, BTreeSet<PathBuf>> {
-    let mut roms_by_family = BTreeMap::<String, BTreeSet<PathBuf>>::new();
+) -> Result<(), String> {
+    let store_root = test_rom_store_root(workspace_root);
+    for (_, cases) in curated_test_rom_cases_by_family_from_source(selected_families, source_id) {
+        for case in cases.into_values() {
+            let family_root = store_root.join(&case.family);
+            copy_curated_source_rom(source_root, &case.source_path, &family_root.join(&case.rom))?;
+        }
+    }
+    Ok(())
+}
+
+fn curated_test_rom_cases_by_family_from_source(
+    selected_families: Option<&BTreeSet<&str>>,
+    source_id: Option<&str>,
+) -> BTreeMap<String, BTreeMap<PathBuf, CuratedTestRomCase>> {
+    let mut cases_by_family = BTreeMap::<String, BTreeMap<PathBuf, CuratedTestRomCase>>::new();
     for manifest in curated_test_rom_manifests() {
         for case in manifest.cases {
+            if let Some(source_id) = source_id
+                && case.source_id != source_id
+            {
+                continue;
+            }
             if let Some(selected_families) = selected_families
                 && !selected_families.contains(case.family.as_str())
             {
                 continue;
             }
-            roms_by_family
-                .entry(case.family)
+            cases_by_family
+                .entry(case.family.clone())
                 .or_default()
-                .insert(case.rom);
+                .entry(case.rom.clone())
+                .or_insert(case);
         }
     }
-    roms_by_family
+    cases_by_family
 }
 
+#[cfg(test)]
 fn copy_curated_rom(
     gbemu_shootout_root: &Path,
     family: &str,
     rom: &Path,
     target_path: &Path,
 ) -> Result<(), String> {
-    let source_path = gbemu_shootout_root
-        .join(GBEMU_SHOOTOUT_TESTROMS_DIR)
+    let source_path = PathBuf::from(GBEMU_SHOOTOUT_TESTROMS_DIR)
         .join(family)
         .join(rom);
+    copy_curated_source_rom(gbemu_shootout_root, &source_path, target_path)
+}
+
+fn copy_curated_source_rom(
+    source_root: &Path,
+    source_path: &Path,
+    target_path: &Path,
+) -> Result<(), String> {
+    let source_path = source_root.join(source_path);
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
             format!(
@@ -899,7 +1001,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 19] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 20] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -912,6 +1014,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 19] {
         (
             "crates/gb-test-runner/data/samesuite.toml",
             include_str!("../data/samesuite.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/little-things-gb.toml",
+            include_str!("../data/little-things-gb.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-audio-blargg.toml",
@@ -1024,11 +1130,21 @@ fn parse_manifest_case(
         &case.id,
         case.startup.as_deref().unwrap_or("skip-boot"),
     );
+    let source_id = case
+        .source_id
+        .unwrap_or_else(|| GBEMU_SHOOTOUT_SOURCE_ID.to_string());
+    let source_path = case.source_path.unwrap_or_else(|| {
+        PathBuf::from(GBEMU_SHOOTOUT_TESTROMS_DIR)
+            .join(&family)
+            .join(&case.rom)
+    });
 
     CuratedTestRomCase {
         family,
         id: case.id,
         rom: case.rom,
+        source_id,
+        source_path,
         report_model_suffix: case.report_model_suffix.unwrap_or(false),
         timeout_frames: case.timeout_frames,
         oracle: case.oracle,
@@ -1082,6 +1198,8 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         family,
         id,
         rom,
+        source_id: _,
+        source_path: _,
         report_model_suffix: _,
         timeout_frames,
         oracle,
@@ -1564,16 +1682,21 @@ fn curated_source_rom_paths() -> Vec<(String, PathBuf)> {
         .sources
         .into_iter()
         .flat_map(|source| source.required_files)
-        .filter_map(|file| curated_required_rom_path(&file.path))
+        .filter_map(curated_required_rom_path)
         .collect()
 }
 
-fn curated_required_rom_path(path: &Path) -> Option<(String, PathBuf)> {
+fn curated_required_rom_path(file: CuratedRequiredFile) -> Option<(String, PathBuf)> {
+    let path = file.path;
     if !matches!(
         path.extension().and_then(|extension| extension.to_str()),
         Some("gb" | "gbc")
     ) {
         return None;
+    }
+
+    if let (Some(family), Some(rom)) = (file.family, file.rom) {
+        return Some((family, rom));
     }
 
     let stripped = path.strip_prefix(GBEMU_SHOOTOUT_TESTROMS_DIR).ok()?;
@@ -1610,7 +1733,7 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 mod tests {
     use super::{
         CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
-        ExecutionStopCondition, GBEMU_SHOOTOUT_TESTROMS_DIR,
+        ExecutionStopCondition, GBEMU_SHOOTOUT_SOURCE_ID,
         MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
@@ -1622,14 +1745,14 @@ mod tests {
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
-        load_persisted_suite_status, manifest_case_report_rom_display,
-        manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
-        materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
-        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_case,
-        parse_manifest_console_model, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, samesuite_dmg_extra_suite,
-        sort_persisted_case_statuses, suite_uses_extra_test_report, test_rom_store_root,
-        update_curated_test_report,
+        little_things_gb_dmg_extra_suite, load_persisted_suite_status,
+        manifest_case_report_rom_display, manifest_case_to_rom_test_case,
+        materialize_curated_test_rom_families, materialize_curated_test_rom_store,
+        mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
+        parse_manifest_case, parse_manifest_console_model, parse_manifest_subsystem,
+        render_markdown_report, report_rom_display, report_status_display,
+        samesuite_dmg_extra_suite, sort_persisted_case_statuses, suite_uses_extra_test_report,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
@@ -1684,11 +1807,12 @@ mod tests {
 
     fn write_fake_gbemu_shootout_tree(root: &Path) {
         for manifest in curated_test_rom_manifests() {
-            for case in &manifest.cases {
-                let source_path = root
-                    .join(GBEMU_SHOOTOUT_TESTROMS_DIR)
-                    .join(&case.family)
-                    .join(&case.rom);
+            for case in manifest
+                .cases
+                .iter()
+                .filter(|case| case.source_id == GBEMU_SHOOTOUT_SOURCE_ID)
+            {
+                let source_path = root.join(&case.source_path);
                 let source_parent = source_path
                     .parent()
                     .expect("curated ROM path should always have a parent");
@@ -2194,8 +2318,8 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
-        assert_eq!(suite.cases.len(), 2);
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 3);
 
         let expected = [
             (
@@ -2209,6 +2333,12 @@ mod tests {
                 "samesuite/apu/div_write_trigger_10.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
                 "apu/div_write_trigger_10.gb (DMG)",
+            ),
+            (
+                "samesuite-dmg-ei-delay-halt",
+                "samesuite/interrupt/ei_delay_halt.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/interrupt/ei_delay_halt.png",
+                "interrupt/ei_delay_halt.gb",
             ),
         ];
         let manifest = curated_test_rom_manifests()
@@ -2235,6 +2365,63 @@ mod tests {
             assert!(case.capture_plan.contains(CaptureKind::Snapshot));
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+            assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
+        }
+    }
+
+    #[test]
+    fn little_things_gb_dmg_extra_suite_forces_dmg_model_and_boot_logo_seed() {
+        let suite = little_things_gb_dmg_extra_suite();
+
+        assert_eq!(suite.name, "little-things-gb-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+
+        let expected = [
+            (
+                "little-things-gb-dmg-double-halt-cancel",
+                "little-things-gb/double-halt-cancel.gb",
+                "crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png",
+                "double-halt-cancel.gb",
+                None,
+            ),
+            (
+                "little-things-gb-dmg-whichboot",
+                "little-things-gb/whichboot.gb",
+                "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png",
+                "whichboot.gb",
+                Some("dmg-boot-logo-vram"),
+            ),
+        ];
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "little-things-gb-dmg-extra")
+            .expect("little-things-gb DMG extra manifest should exist");
+
+        for ((case, manifest_case), (id, rom_path, fixture_path, report_rom, startup_memory)) in
+            suite.cases.iter().zip(&manifest.cases).zip(expected)
+        {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
+            );
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+            assert_eq!(
+                manifest_case.startup_memory_profile.as_deref(),
+                startup_memory
+            );
             assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
         }
     }
@@ -2648,6 +2835,7 @@ mod tests {
                 "cpp".to_string(),
                 "daid".to_string(),
                 "hacktix".to_string(),
+                "little-things-gb".to_string(),
                 "mealybug-tearoom-tests".to_string(),
                 "mooneye".to_string(),
                 "samesuite".to_string(),
@@ -2699,7 +2887,11 @@ mod tests {
 
         assert!(!stale_family_root.join("stale.txt").exists());
         for manifest in curated_test_rom_manifests() {
-            for case in &manifest.cases {
+            for case in manifest
+                .cases
+                .iter()
+                .filter(|case| case.source_id == GBEMU_SHOOTOUT_SOURCE_ID)
+            {
                 let family_root = test_rom_store_root(&workspace_root).join(&case.family);
                 assert!(!family_root.join("catalog.toml").exists());
                 assert_eq!(
@@ -2715,6 +2907,16 @@ mod tests {
             )
             .expect("CGB smoke ROM should be materialized from the cgb-smoke manifest"),
             "mooneye:misc/boot_regs-cgb.gb"
+        );
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("samesuite/interrupt/ei_delay_halt.gb")
+                .exists()
+        );
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("little-things-gb")
+                .exists()
         );
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
@@ -2779,6 +2981,24 @@ mod tests {
         .expect_err("unknown curated families should be rejected");
         assert!(error.contains("unknown curated test ROM family selection"));
         assert!(error.contains("unknown"));
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
+    fn materialize_curated_store_rejects_docboy_only_selected_families() {
+        let workspace_root = unique_temp_dir("materialize-selected-docboy-only");
+        let gbemu_shootout_root = workspace_root.join("gbemu-shootout");
+        write_fake_gbemu_shootout_tree(&gbemu_shootout_root);
+
+        let error = materialize_curated_test_rom_families(
+            &workspace_root,
+            &gbemu_shootout_root,
+            &["little-things-gb".to_string()],
+        )
+        .expect_err("single-source GBEmulator materialization should reject DocBoy-only families");
+        assert!(error.contains("unknown curated test ROM family selection"));
+        assert!(error.contains("little-things-gb"));
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
@@ -3116,10 +3336,36 @@ mod tests {
                     "samesuite/apu/div_write_trigger_10.gb",
                     RomCaseOutcome::Passed,
                 ),
+                report_case(
+                    "samesuite-dmg-ei-delay-halt",
+                    "samesuite/interrupt/ei_delay_halt.gb",
+                    RomCaseOutcome::Passed,
+                ),
             ],
         };
-        let report_path = update_curated_test_report(&workspace_root, &samesuite_report)
+        let _report_path = update_curated_test_report(&workspace_root, &samesuite_report)
             .expect("SameSuite DMG extra report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let little_things_report = RomSuiteReport {
+            suite_name: "little-things-gb-dmg-extra".to_string(),
+            family: Some("little-things-gb".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "little-things-gb-dmg-double-halt-cancel",
+                    "little-things-gb/double-halt-cancel.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "little-things-gb-dmg-whichboot",
+                    "little-things-gb/whichboot.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &little_things_report)
+            .expect("little-things-gb DMG extra report should write")
             .expect("extra curated suite should emit a report path");
         assert_eq!(
             report_path,
@@ -3146,11 +3392,13 @@ mod tests {
         assert!(!standard_report.contains("boot_hwio-C.gb"));
         assert!(!standard_report.contains("div_write_trigger.gb (DMG)"));
         assert!(!standard_report.contains("div_write_trigger_10.gb (DMG)"));
+        assert!(!standard_report.contains("ei_delay_halt.gb"));
         assert!(!standard_report.contains("rtc3test-1.gb (DMG)"));
+        assert!(!standard_report.contains("whichboot.gb"));
 
         let extra_report =
             fs::read_to_string(report_path).expect("extra report should be readable");
-        assert!(extra_report.starts_with("# Test Report (6/6)\n"));
+        assert!(extra_report.starts_with("# Test Report (9/9)\n"));
         assert!(extra_report.contains(&format!(
             "| ax6 | rtc3test-1.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -3168,6 +3416,15 @@ mod tests {
         )));
         assert!(extra_report.contains(&format!(
             "| samesuite | apu/div_write_trigger_10.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| samesuite | interrupt/ei_delay_halt.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| little-things-gb | double-halt-cancel.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| little-things-gb | whichboot.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(!extra_report.contains("boot_regs-cgb.gb"));
 
@@ -3465,6 +3722,7 @@ status = "PASS"
         assert!(!rendered.contains("| hacktix | - | - |"));
         assert!(!rendered.contains("| cpp | - | - |"));
         assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
+        assert!(!rendered.contains("| little-things-gb | - | - |"));
     }
 
     #[test]
@@ -3489,6 +3747,7 @@ status = "PASS"
         assert!(future_case > 0);
         assert!(!rendered.contains("| acid | - | - |"));
         assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
+        assert!(!rendered.contains("| little-things-gb | - | - |"));
     }
 
     #[test]
@@ -3632,6 +3891,8 @@ status = "PASS"
                 family: None,
                 id: "familyless".to_string(),
                 rom: PathBuf::from("familyless.gb"),
+                source_id: None,
+                source_path: None,
                 report_model_suffix: None,
                 timeout_frames: 1,
                 oracle: "info-framebuffer".to_string(),
@@ -3655,6 +3916,8 @@ status = "PASS"
             family: "blargg".to_string(),
             id: "bad-oracle".to_string(),
             rom: PathBuf::from("bad.gb"),
+            source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
+            source_path: PathBuf::from("testroms/blargg/bad.gb"),
             report_model_suffix: false,
             timeout_frames: 1,
             oracle: "unknown".to_string(),
@@ -3677,6 +3940,8 @@ status = "PASS"
             family: "hacktix".to_string(),
             id: "bad-timer-profile".to_string(),
             rom: PathBuf::from("bad.gb"),
+            source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
+            source_path: PathBuf::from("testroms/hacktix/bad.gb"),
             report_model_suffix: false,
             timeout_frames: 1,
             oracle: "framebuffer-rgb555-fixture".to_string(),
@@ -3699,6 +3964,8 @@ status = "PASS"
             family: "mealybug-tearoom-tests".to_string(),
             id: "bad-profile".to_string(),
             rom: PathBuf::from("ppu/bad.gb"),
+            source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
+            source_path: PathBuf::from("testroms/mealybug-tearoom-tests/ppu/bad.gb"),
             report_model_suffix: false,
             timeout_frames: 1,
             oracle: "framebuffer-fixture".to_string(),
@@ -3721,6 +3988,7 @@ status = "PASS"
         assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
+        assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
         assert!(!suite_uses_extra_test_report("cgb-smoke"));
     }
 }

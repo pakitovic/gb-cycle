@@ -3,20 +3,27 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
+use crate::curated_test_roms::{
+    materialize_curated_test_rom_source_families, replace_curated_test_rom_families,
+};
 use crate::{
     ExternalRomRequiredFile, ExternalRomSource, curated_test_rom_families, external_rom_store_root,
-    load_external_rom_source_manifest, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store,
+    load_external_rom_source_manifest,
 };
-const CURATED_TEST_ROM_SOURCE_ID: &str = "gbemu-shootout";
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug)]
+struct FetchedExternalRomSource {
+    source: ExternalRomSource,
+    temp_root: PathBuf,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FetchExternalRomsAction {
@@ -34,7 +41,7 @@ pub fn fetch_external_roms_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin fetch_test_roms -- [--force] [all | family ...]\n",
         "\n",
-        "Fetches the pinned upstream ROM source into a temporary checkout, materializes the curated runnable families under .roms/test/, and removes the raw checkout afterwards.\n",
+        "Fetches the pinned upstream ROM source(s) into temporary checkout(s), materializes the curated runnable families under .roms/test/, and removes the raw checkout afterwards.\n",
         "When no family is provided, or when `all` is provided, all curated families are materialized.\n",
     )
 }
@@ -56,44 +63,49 @@ where
                 .map_err(|error| error.to_string())?;
             let _ = options.force;
             let selected_families = select_curated_families(&options.requested_families)?;
-            let Some(source) = manifest.source_by_id(CURATED_TEST_ROM_SOURCE_ID) else {
-                return Err(format!(
-                    "missing curated test ROM source {CURATED_TEST_ROM_SOURCE_ID:?} in external ROM source manifest"
-                ));
-            };
-            let filtered_source = filter_source_for_curated_families(source, &selected_families)?;
-            with_fetched_source_temp(
-                workspace_root,
-                &filtered_source,
-                output,
-                |fetched_root, output| {
-                    if selected_families.len() == curated_test_rom_families().len() {
-                        materialize_curated_test_rom_store(workspace_root, fetched_root)?;
-                        writeln_checked(
-                            output,
-                            &format!(
-                                "materialized curated test ROM store into {}",
-                                workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
-                            ),
-                        )?;
-                    } else {
-                        materialize_curated_test_rom_families(
-                            workspace_root,
-                            fetched_root,
-                            &selected_families,
-                        )?;
-                        writeln_checked(
-                            output,
-                            &format!(
-                                "materialized curated test ROM families {} into {}",
-                                selected_families.join(", "),
-                                workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
-                            ),
-                        )?;
-                    }
-                    Ok(())
-                },
-            )?;
+            let filtered_sources =
+                filter_sources_for_curated_families(manifest.sources(), &selected_families)?;
+            let fetched_sources = fetch_sources_into_temps(&filtered_sources, output)?;
+            let result = (|| {
+                replace_curated_test_rom_families(workspace_root, &selected_families)?;
+                for fetched_source in &fetched_sources {
+                    materialize_curated_test_rom_source_families(
+                        workspace_root,
+                        &fetched_source.source.id,
+                        &fetched_source.temp_root,
+                        &selected_families,
+                    )?;
+                    remove_legacy_source_cache(workspace_root, &fetched_source.source)?;
+                }
+                if selected_families.len() == curated_test_rom_families().len() {
+                    writeln_checked(
+                        output,
+                        &format!(
+                            "materialized curated test ROM store into {}",
+                            workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
+                        ),
+                    )?;
+                } else {
+                    writeln_checked(
+                        output,
+                        &format!(
+                            "materialized curated test ROM families {} into {}",
+                            selected_families.join(", "),
+                            workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
+                        ),
+                    )?;
+                }
+                Ok(())
+            })();
+            let cleanup = cleanup_fetched_sources(&fetched_sources);
+            match (result, cleanup) {
+                (Ok(()), Ok(())) => Ok(()),
+                (Ok(()), Err(error)) => Err(error),
+                (Err(error), Ok(())) => Err(error),
+                (Err(error), Err(cleanup_error)) => {
+                    Err(format!("{error}; additionally {cleanup_error}"))
+                }
+            }?;
 
             Ok(())
         }
@@ -155,10 +167,45 @@ fn select_curated_families(requested_families: &[String]) -> Result<Vec<String>,
     Ok(selected)
 }
 
+fn filter_sources_for_curated_families(
+    sources: &[ExternalRomSource],
+    selected_families: &[String],
+) -> Result<Vec<ExternalRomSource>, String> {
+    let filtered_sources = sources
+        .iter()
+        .filter_map(|source| filter_source_for_curated_families(source, selected_families))
+        .collect::<Vec<_>>();
+
+    if filtered_sources.is_empty() {
+        return Err(format!(
+            "no pinned upstream files matched curated family selection {}",
+            selected_families.join(", ")
+        ));
+    }
+    let matched_family_set = filtered_sources
+        .iter()
+        .flat_map(|source| &source.required_files)
+        .filter_map(required_file_curated_family)
+        .collect::<BTreeSet<_>>();
+    let missing_families = selected_families
+        .iter()
+        .filter(|family| !matched_family_set.contains(family.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_families.is_empty() {
+        return Err(format!(
+            "no pinned upstream files matched curated family selection {}",
+            missing_families.join(", ")
+        ));
+    }
+
+    Ok(filtered_sources)
+}
+
 fn filter_source_for_curated_families(
     source: &ExternalRomSource,
     selected_families: &[String],
-) -> Result<ExternalRomSource, String> {
+) -> Option<ExternalRomSource> {
     let selected_family_set = selected_families
         .iter()
         .map(String::as_str)
@@ -167,58 +214,89 @@ fn filter_source_for_curated_families(
         .required_files
         .iter()
         .filter(|required_file| {
-            required_file_family(&required_file.path)
-                .is_some_and(|family| selected_family_set.contains(family))
+            required_file_matches_any_family(required_file, &selected_family_set)
         })
         .cloned()
         .collect::<Vec<_>>();
 
     if required_files.is_empty() {
-        return Err(format!(
-            "no pinned upstream files matched curated family selection {}",
-            selected_families.join(", ")
-        ));
+        return None;
     }
 
-    Ok(ExternalRomSource {
+    Some(ExternalRomSource {
         required_files,
         ..source.clone()
     })
 }
-fn with_fetched_source_temp<W: Write, F, T>(
-    workspace_root: &Path,
+
+fn required_file_matches_any_family(
+    required_file: &ExternalRomRequiredFile,
+    selected_families: &BTreeSet<&str>,
+) -> bool {
+    required_file_curated_family(required_file)
+        .is_some_and(|family| selected_families.contains(family))
+}
+
+fn required_file_curated_family(required_file: &ExternalRomRequiredFile) -> Option<&str> {
+    required_file
+        .family
+        .as_deref()
+        .or_else(|| required_file_family(&required_file.path))
+}
+
+fn fetch_sources_into_temps<W: Write>(
+    sources: &[ExternalRomSource],
+    output: &mut W,
+) -> Result<Vec<FetchedExternalRomSource>, String> {
+    let mut fetched_sources = Vec::new();
+    for source in sources {
+        let temp_root = unique_temp_fetch_root(source);
+        if let Err(error) = fetch_source_into_temp(&temp_root, source, output) {
+            let current_cleanup =
+                remove_directory_if_present(&temp_root, "temporary fetch directory");
+            let previous_cleanup = cleanup_fetched_sources(&fetched_sources);
+            return match (current_cleanup, previous_cleanup) {
+                (Ok(()), Ok(())) => Err(error),
+                (Err(cleanup_error), Ok(())) | (Ok(()), Err(cleanup_error)) => {
+                    Err(format!("{error}; additionally {cleanup_error}"))
+                }
+                (Err(cleanup_error), Err(previous_cleanup_error)) => Err(format!(
+                    "{error}; additionally {cleanup_error}; additionally {previous_cleanup_error}"
+                )),
+            };
+        }
+        fetched_sources.push(FetchedExternalRomSource {
+            source: source.clone(),
+            temp_root,
+        });
+    }
+    Ok(fetched_sources)
+}
+
+fn fetch_source_into_temp<W: Write>(
+    temp_root: &Path,
     source: &ExternalRomSource,
     output: &mut W,
-    action: F,
-) -> Result<T, String>
-where
-    F: FnOnce(&Path, &mut W) -> Result<T, String>,
-{
-    let temp_root = unique_temp_fetch_root(source);
-    let result = (|| {
-        remove_directory_if_present(&temp_root, "stale temporary fetch directory")?;
-        checkout_source_into_temp(&temp_root, source)?;
-        verify_required_files(&temp_root, source)?;
-        writeln_checked(
-            output,
-            &format!(
-                "fetched test ROM source {} into temporary workspace {}",
-                source.id,
-                temp_root.display()
-            ),
-        )?;
-        let value = action(&temp_root, output)?;
-        remove_legacy_source_cache(workspace_root, source)?;
-        Ok(value)
-    })();
+) -> Result<(), String> {
+    remove_directory_if_present(temp_root, "stale temporary fetch directory")?;
+    checkout_source_into_temp(temp_root, source)?;
+    verify_required_files(temp_root, source)?;
+    writeln_checked(
+        output,
+        &format!(
+            "fetched test ROM source {} into temporary workspace {}",
+            source.id,
+            temp_root.display()
+        ),
+    )?;
+    Ok(())
+}
 
-    let cleanup = remove_directory_if_present(&temp_root, "temporary fetch directory");
-    match (result, cleanup) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Ok(_), Err(error)) => Err(error),
-        (Err(error), Ok(())) => Err(error),
-        (Err(error), Err(cleanup_error)) => Err(format!("{error}; additionally {cleanup_error}")),
+fn cleanup_fetched_sources(fetched_sources: &[FetchedExternalRomSource]) -> Result<(), String> {
+    for fetched_source in fetched_sources {
+        remove_directory_if_present(&fetched_source.temp_root, "temporary fetch directory")?;
     }
+    Ok(())
 }
 
 fn unique_temp_fetch_root(source: &ExternalRomSource) -> std::path::PathBuf {
@@ -519,32 +597,46 @@ mod tests {
     }
 
     fn write_manifest(workspace_root: &Path, source: &ExternalRomSource) {
+        write_manifest_sources(workspace_root, &[source]);
+    }
+
+    fn write_manifest_sources(workspace_root: &Path, sources: &[&ExternalRomSource]) {
         let manifest_path = workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH);
         let manifest_parent = manifest_path
             .parent()
             .expect("manifest path should have a parent");
         fs::create_dir_all(manifest_parent).expect("manifest parent should be creatable");
 
-        let mut required_files = String::new();
-        for required_file in &source.required_files {
+        let mut manifest = "version = 1\n".to_string();
+        for source in sources {
+            let mut required_files = String::new();
+            for required_file in &source.required_files {
+                let family = required_file
+                    .family
+                    .as_ref()
+                    .map_or(String::new(), |family| format!("family = {family:?}\n"));
+                let rom = required_file.rom.as_ref().map_or(String::new(), |rom| {
+                    format!("rom = {:?}\n", rom.display().to_string())
+                });
+                let _ = write!(
+                    &mut required_files,
+                    concat!(
+                        "\n[[source.required_file]]\n",
+                        "path = {:?}\n",
+                        "{}",
+                        "{}",
+                        "sha256 = {:?}\n",
+                    ),
+                    required_file.path.display().to_string(),
+                    family,
+                    rom,
+                    required_file.sha256,
+                );
+            }
             let _ = write!(
-                &mut required_files,
+                &mut manifest,
                 concat!(
-                    "\n[[source.required_file]]\n",
-                    "path = {:?}\n",
-                    "sha256 = {:?}\n",
-                ),
-                required_file.path.display().to_string(),
-                required_file.sha256,
-            );
-        }
-
-        fs::write(
-            manifest_path,
-            format!(
-                concat!(
-                    "version = 1\n\n",
-                    "[[source]]\n",
+                    "\n[[source]]\n",
                     "id = {:?}\n",
                     "git_url = {:?}\n",
                     "git_rev = {:?}\n",
@@ -558,9 +650,10 @@ mod tests {
                 source.local_dir,
                 source.root_env_var,
                 required_files,
-            ),
-        )
-        .expect("manifest should be writable");
+            );
+        }
+
+        fs::write(manifest_path, manifest).expect("manifest should be writable");
     }
 
     fn git(args: &[&str], current_dir: &Path) {
@@ -591,6 +684,8 @@ mod tests {
             root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
             required_files: vec![ExternalRomRequiredFile {
                 path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
+                family: None,
+                rom: None,
                 sha256,
             }],
         }
@@ -616,6 +711,8 @@ mod tests {
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| ExternalRomRequiredFile {
                 path: PathBuf::from("testroms").join(&path),
+                family: None,
+                rom: None,
                 sha256: sha256_hex(
                     &fs::read(root.join("testroms").join(&path))
                         .expect("required curated source file should be readable"),
@@ -659,6 +756,101 @@ mod tests {
                 fs::write(&source_path, case.id.as_bytes())
                     .expect("source ROM fixture should be writable");
             }
+        }
+    }
+
+    fn write_required_file(root: &Path, path: &str, bytes: &[u8]) -> String {
+        let full_path = root.join(path);
+        fs::create_dir_all(
+            full_path
+                .parent()
+                .expect("required file should have a parent"),
+        )
+        .expect("required file parent should be creatable");
+        fs::write(&full_path, bytes).expect("required file should be writable");
+        sha256_hex(bytes)
+    }
+
+    fn write_docboy_repo(root: &Path) {
+        write_required_file(
+            root,
+            "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb",
+            b"docboy-ei-delay-halt",
+        );
+        write_required_file(
+            root,
+            "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png",
+            b"docboy-ei-delay-halt-png",
+        );
+        write_required_file(
+            root,
+            "tests/roms/dmg/little-things-gb/double-halt-cancel.gb",
+            b"docboy-double-halt-cancel",
+        );
+        write_required_file(
+            root,
+            "tests/results/dmg/little-things-gb/double-halt-cancel.png",
+            b"docboy-double-halt-cancel-png",
+        );
+        write_required_file(
+            root,
+            "tests/roms/dmg/little-things-gb/whichboot.gb",
+            b"docboy-whichboot",
+        );
+        write_required_file(
+            root,
+            "tests/results/dmg/little-things-gb/whichboot.png",
+            b"docboy-whichboot-png",
+        );
+    }
+
+    fn build_docboy_source(git_url: String, git_rev: String, root: &Path) -> ExternalRomSource {
+        let required_file = |path: &str, family: &str, rom: Option<&str>| ExternalRomRequiredFile {
+            path: PathBuf::from(path),
+            family: Some(family.to_string()),
+            rom: rom.map(PathBuf::from),
+            sha256: sha256_hex(
+                &fs::read(root.join(path)).expect("required DocBoy file should be readable"),
+            ),
+        };
+        ExternalRomSource {
+            id: "docboy".to_string(),
+            git_url,
+            git_rev,
+            local_dir: "docboy".to_string(),
+            root_env_var: "GB_CYCLE_DOCBOY_ROOT".to_string(),
+            required_files: vec![
+                required_file(
+                    "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb",
+                    "samesuite",
+                    Some("interrupt/ei_delay_halt.gb"),
+                ),
+                required_file(
+                    "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png",
+                    "samesuite",
+                    None,
+                ),
+                required_file(
+                    "tests/roms/dmg/little-things-gb/double-halt-cancel.gb",
+                    "little-things-gb",
+                    Some("double-halt-cancel.gb"),
+                ),
+                required_file(
+                    "tests/results/dmg/little-things-gb/double-halt-cancel.png",
+                    "little-things-gb",
+                    None,
+                ),
+                required_file(
+                    "tests/roms/dmg/little-things-gb/whichboot.gb",
+                    "little-things-gb",
+                    Some("whichboot.gb"),
+                ),
+                required_file(
+                    "tests/results/dmg/little-things-gb/whichboot.png",
+                    "little-things-gb",
+                    None,
+                ),
+            ],
         }
     }
 
@@ -719,10 +911,14 @@ mod tests {
             required_files: vec![
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
+                    family: None,
+                    rom: None,
                     sha256: "a".repeat(64),
                 },
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/blargg/cpu_instrs/02-interrupts.gb"),
+                    family: None,
+                    rom: None,
                     sha256: "b".repeat(64),
                 },
             ],
@@ -755,11 +951,21 @@ mod tests {
             required_files: vec![
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
+                    family: None,
+                    rom: None,
                     sha256: "a".repeat(64),
                 },
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/mooneye/acceptance/div_timing.gb"),
+                    family: None,
+                    rom: None,
                     sha256: "b".repeat(64),
+                },
+                ExternalRomRequiredFile {
+                    path: PathBuf::from("tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"),
+                    family: Some("samesuite".to_string()),
+                    rom: Some(PathBuf::from("interrupt/ei_delay_halt.gb")),
+                    sha256: "c".repeat(64),
                 },
             ],
         };
@@ -777,12 +983,17 @@ mod tests {
     fn fetch_command_materializes_curated_store_and_removes_the_legacy_raw_cache() {
         let workspace_root = unique_temp_dir("materialize");
         let upstream_root = workspace_root.join("upstream");
+        let docboy_root = workspace_root.join("docboy-upstream");
         fs::create_dir_all(&upstream_root).expect("upstream root should be creatable");
         write_curated_shootout_repo(&upstream_root);
+        write_docboy_repo(&docboy_root);
         let git_rev = commit_upstream_repo(&upstream_root);
+        let docboy_rev = commit_upstream_repo(&docboy_root);
         let source =
             build_curated_source(upstream_root.display().to_string(), git_rev, &upstream_root);
-        write_manifest(&workspace_root, &source);
+        let docboy_source =
+            build_docboy_source(docboy_root.display().to_string(), docboy_rev, &docboy_root);
+        write_manifest_sources(&workspace_root, &[&source, &docboy_source]);
 
         let legacy_raw_root = external_rom_store_root(&workspace_root).join(&source.local_dir);
         fs::create_dir_all(&legacy_raw_root).expect("legacy raw root should be creatable");
@@ -796,6 +1007,11 @@ mod tests {
         assert!(
             test_rom_store_root(&workspace_root)
                 .join("blargg/cpu_instrs/01-special.gb")
+                .exists()
+        );
+        assert!(
+            test_rom_store_root(&workspace_root)
+                .join("little-things-gb/whichboot.gb")
                 .exists()
         );
         assert!(!legacy_raw_root.exists());
@@ -834,6 +1050,123 @@ mod tests {
                 .expect("command output should be utf-8")
                 .contains("materialized curated test ROM families blargg")
         );
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
+    fn fetch_command_materializes_one_family_from_multiple_sources() {
+        let workspace_root = unique_temp_dir("materialize-multi-source-family");
+        let gbemu_root = workspace_root.join("gbemu-upstream");
+        let docboy_root = workspace_root.join("docboy-upstream");
+        write_curated_shootout_repo(&gbemu_root);
+
+        let write_required_file = |root: &Path, path: &str, bytes: &[u8]| -> String {
+            let full_path = root.join(path);
+            fs::create_dir_all(
+                full_path
+                    .parent()
+                    .expect("required file should have a parent"),
+            )
+            .expect("required file parent should be creatable");
+            fs::write(&full_path, bytes).expect("required file should be writable");
+            sha256_hex(bytes)
+        };
+        let sha_for_file = |root: &Path, path: &str| -> String {
+            sha256_hex(&fs::read(root.join(path)).expect("required file should be readable"))
+        };
+
+        let div_write_sha =
+            sha_for_file(&gbemu_root, "testroms/samesuite/apu/div_write_trigger.gb");
+        let div_write_10_sha = sha_for_file(
+            &gbemu_root,
+            "testroms/samesuite/apu/div_write_trigger_10.gb",
+        );
+        let ei_delay_halt_sha = write_required_file(
+            &docboy_root,
+            "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb",
+            b"docboy-ei-delay-halt",
+        );
+        let ei_delay_halt_png_sha = write_required_file(
+            &docboy_root,
+            "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png",
+            b"docboy-ei-delay-halt-png",
+        );
+
+        let gbemu_rev = commit_upstream_repo(&gbemu_root);
+        let docboy_rev = commit_upstream_repo(&docboy_root);
+        let manifest_path = workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH);
+        fs::create_dir_all(
+            manifest_path
+                .parent()
+                .expect("manifest path should have a parent"),
+        )
+        .expect("manifest parent should be creatable");
+        fs::write(
+            &manifest_path,
+            format!(
+                r#"version = 1
+
+[[source]]
+id = "gbemu-shootout"
+git_url = "{}"
+git_rev = "{}"
+local_dir = "gbemu-shootout"
+root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/div_write_trigger.gb"
+sha256 = "{}"
+
+[[source.required_file]]
+path = "testroms/samesuite/apu/div_write_trigger_10.gb"
+sha256 = "{}"
+
+[[source]]
+id = "docboy"
+git_url = "{}"
+git_rev = "{}"
+local_dir = "docboy"
+root_env_var = "GB_CYCLE_DOCBOY_ROOT"
+
+[[source.required_file]]
+path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"
+family = "samesuite"
+rom = "interrupt/ei_delay_halt.gb"
+sha256 = "{}"
+
+[[source.required_file]]
+path = "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png"
+family = "samesuite"
+sha256 = "{}"
+"#,
+                gbemu_root.display(),
+                gbemu_rev,
+                div_write_sha,
+                div_write_10_sha,
+                docboy_root.display(),
+                docboy_rev,
+                ei_delay_halt_sha,
+                ei_delay_halt_png_sha,
+            ),
+        )
+        .expect("manifest should be writable");
+
+        let mut output = Vec::new();
+        run_fetch_external_roms_command(["samesuite"], &workspace_root, &mut output)
+            .expect("multi-source SameSuite fetch should succeed");
+
+        let samesuite_root = test_rom_store_root(&workspace_root).join("samesuite");
+        assert!(samesuite_root.join("apu/div_write_trigger.gb").exists());
+        assert!(samesuite_root.join("apu/div_write_trigger_10.gb").exists());
+        assert_eq!(
+            fs::read_to_string(samesuite_root.join("interrupt/ei_delay_halt.gb"))
+                .expect("DocBoy SameSuite ROM should materialize"),
+            "docboy-ei-delay-halt"
+        );
+        let output = String::from_utf8(output).expect("command output should be utf-8");
+        assert!(output.contains("fetched test ROM source gbemu-shootout"));
+        assert!(output.contains("fetched test ROM source docboy"));
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
