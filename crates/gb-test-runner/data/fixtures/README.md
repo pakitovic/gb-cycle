@@ -1,34 +1,23 @@
 # Curated ROM Fixtures
 
-This directory documents the repo-managed contract for redistributable external
-ROM suites used by `gb-test-runner`.
+This directory documents the repo-managed contract for redistributable external ROM suites used by `gb-test-runner`.
 
 ## Stores
 
 - Curated runnable store: `/.roms/test/`
 - Curated root env var override: `GB_CYCLE_TEST_ROM_ROOT`
 
-`make fetch-test-roms` downloads the pinned upstream source declared in
-`crates/gb-test-runner/data/sources.toml` into a temporary checkout and
-then materializes the curated runnable families under `/.roms/test/`. By
-default it fetches `all`, but it also accepts one or more explicit families
-through `FAMILIES=...`.
-`make test-roms` performs that fetch/materialization step automatically before
-running all local curated DMG suites currently wired in the `Makefile`. The
-GitHub `test-roms` workflow runs the workflow-managed subset of those suites.
+`make fetch-test-roms` downloads the pinned upstream source(s) declared in `crates/gb-test-runner/data/sources.toml` into temporary checkout(s) and then materializes the curated runnable families under `/.roms/test/`. By default it fetches `all`, but it also accepts one or more explicit families through `FAMILIES=...`.
+`make test-roms` performs that fetch/materialization step automatically before running all local curated DMG suites currently wired in the `Makefile`. The GitHub `test-roms` workflow runs the workflow-managed subset of those suites.
 
-The upstream source for redistributable suites is `GBEmulatorShootout`. The
-runnable store keeps only the ROMs currently listed in the family manifests
-under `crates/gb-test-runner/data/*.toml`.
-The repo-managed framebuffer fixtures checked into this tree are stored as
-human-visible `PNG` images; the runner still accepts legacy `PGM` fixtures
-during the transition, but `PNG` is now the default checked-in oracle format.
+Most redistributable suite assets come from `GBEmulatorShootout`; source-specific exceptions such as DocBoy are also pinned in `sources.toml` and must declare their materialized family/ROM alias explicitly. The runnable store keeps only the ROMs currently listed in the family manifests under `crates/gb-test-runner/data/*.toml`.
+The repo-managed framebuffer fixtures checked into this tree are stored as human-visible `PNG` images; the runner still accepts legacy `PGM` fixtures during the transition, but `PNG` is now the default checked-in oracle format.
 
 Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`, `mealybug-tearoom-tests`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -53,7 +42,12 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   source family: `samesuite`
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
-  fixture ownership: committed DMG grayscale fixtures `div_write_trigger*.dmg.png`, separate from the upstream SameSuite CGB PNG references used by `cgb-audio-samesuite`
+  fixture ownership: committed DMG fixtures for `div_write_trigger*.dmg.png` and DocBoy `interrupt/ei_delay_halt.png`, separate from the upstream SameSuite CGB PNG references used by `cgb-audio-samesuite`
+- `little-things-gb-dmg-extra`
+  source family: `little-things-gb`
+  current status: extra/internal local-only
+  oracle mix: framebuffer fixture
+  fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses the narrow `dmg-boot-logo-vram` SkipBoot startup memory profile so its boot-logo/map checks match DocBoy without requiring private boot ROM assets
 - `daid-dmg-curated`
   source family: `daid`
   current status: exploratory local-only
@@ -105,9 +99,10 @@ make run-acid
 make run-hacktix
 make run-mealybug
 make run-mooneye
+make run-little-things-gb
 ```
 
-Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
+Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `little-things-gb`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
 
 Run one curated family directly and update the report:
 

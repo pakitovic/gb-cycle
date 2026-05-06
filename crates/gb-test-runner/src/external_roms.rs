@@ -65,6 +65,8 @@ pub struct ExternalRomSource {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ExternalRomRequiredFile {
     pub path: PathBuf,
+    pub family: Option<String>,
+    pub rom: Option<PathBuf>,
     pub sha256: String,
 }
 
