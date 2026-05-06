@@ -62,6 +62,18 @@ impl Ppu {
     }
 
     pub(crate) fn bus_state_snapshot(&self) -> PpuBusStateSnapshot {
+        let mut observer = NoopPpuStepObserver;
+        self.bus_state_snapshot_with_observer(&mut observer, false)
+    }
+
+    pub(crate) fn bus_state_snapshot_with_observer<O>(
+        &self,
+        observer: &mut O,
+        records_ppu_regions: bool,
+    ) -> PpuBusStateSnapshot
+    where
+        O: PpuStepObserver,
+    {
         if !self.is_lcd_enabled() {
             let disabled = PpuBusState::lcd_disabled();
             return PpuBusStateSnapshot {
@@ -71,15 +83,71 @@ impl Ppu {
             };
         }
 
-        let owner_mode = self.current_bus_access_mode();
-        let cpu_read_mode = self.current_published_bus_access_mode();
-        let cpu_write_mode = self.current_published_video_write_access_mode();
+        if let Some(snapshot) = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::BusSnapshot,
+            || self.stable_bus_state_snapshot(),
+        ) {
+            return snapshot;
+        }
+
+        let owner_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::BusSnapshot,
+            || self.current_bus_access_mode(),
+        );
+        let (cpu_read_mode, cpu_write_mode) = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::PublishedAccess,
+            || {
+                (
+                    self.current_published_bus_access_mode(),
+                    self.current_published_video_write_access_mode(),
+                )
+            },
+        );
 
         PpuBusStateSnapshot {
             owner: PpuBusState::lcd_enabled(owner_mode),
             cpu_read: PpuBusState::lcd_enabled(cpu_read_mode),
             cpu_write: PpuBusState::lcd_enabled(cpu_write_mode),
         }
+    }
+
+    pub(in crate::ppu) fn stable_bus_state_snapshot(&self) -> Option<PpuBusStateSnapshot> {
+        if !self.is_lcd_enabled()
+            || self.runtime.blank_frame_active
+            || self.lcd_restart_phase != PpuLcdRestartPhase::Inactive
+            || self.runtime.startup_mode_latch.is_some()
+            || self.ly >= VISIBLE_SCANLINES
+            || self.line_dot == 0
+            || self.line_dot <= MODE2_DOTS
+        {
+            return None;
+        }
+
+        let scanline_length = self.current_scanline_length();
+        if self.line_dot + 4 >= scanline_length {
+            return None;
+        }
+
+        let mode0_start_dot = self.current_mode0_start_dot();
+        let mode = if self.line_dot < mode0_start_dot {
+            PpuAccessMode::Drawing
+        } else if self.line_dot > mode0_start_dot {
+            PpuAccessMode::HBlank
+        } else {
+            return None;
+        };
+        let state = PpuBusState::lcd_enabled(mode);
+        Some(PpuBusStateSnapshot {
+            owner: state,
+            cpu_read: state,
+            cpu_write: state,
+        })
     }
 
     #[cfg(test)]

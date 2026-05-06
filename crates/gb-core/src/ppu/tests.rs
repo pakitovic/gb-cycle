@@ -173,3 +173,86 @@ fn access_mode_fast_path_and_scanline_length_cache_track_raster_keys() {
     ppu.ly = 0;
     assert_eq!(ppu.current_scanline_length(), LCD_REENABLE_LINE0_TOTAL_DOTS);
 }
+
+fn stable_bus_snapshot_fixture() -> Ppu {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.lcdc = LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT;
+    ppu.lcd_state = PpuLcdState::Enabled;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.startup_mode_latch = None;
+    ppu.reload_mode3_register_latches_from_mmio();
+    ppu.ly = 42;
+    ppu.line_dot = MODE2_DOTS + 4;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 8;
+    ppu
+}
+
+fn direct_bus_state_snapshot(ppu: &Ppu) -> PpuBusStateSnapshot {
+    PpuBusStateSnapshot {
+        owner: ppu.owner_bus_state(),
+        cpu_read: ppu.cpu_bus_state(),
+        cpu_write: ppu.cpu_write_bus_state(),
+    }
+}
+
+#[test]
+fn stable_bus_state_snapshot_matches_direct_helpers_on_stable_dots() {
+    let mut ppu = stable_bus_snapshot_fixture();
+
+    ppu.line_dot = MODE2_DOTS + 4;
+    assert_eq!(
+        ppu.stable_bus_state_snapshot(),
+        Some(direct_bus_state_snapshot(&ppu))
+    );
+
+    ppu.line_dot = ppu.current_mode0_start_dot() + 8;
+    assert_eq!(
+        ppu.stable_bus_state_snapshot(),
+        Some(direct_bus_state_snapshot(&ppu))
+    );
+}
+
+#[test]
+fn stable_bus_state_snapshot_falls_back_on_publication_seams() {
+    let mut ppu = stable_bus_snapshot_fixture();
+
+    for line_dot in [
+        0,
+        MODE2_DOTS,
+        ppu.current_scanline_length() - 4,
+        ppu.current_scanline_length() - 1,
+    ] {
+        ppu.ly = 42;
+        ppu.line_dot = line_dot;
+        assert_eq!(ppu.stable_bus_state_snapshot(), None, "line_dot={line_dot}");
+        assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+    }
+
+    ppu = stable_bus_snapshot_fixture();
+    ppu.bg_pipeline_state.mode3_started = false;
+    ppu.line_dot = ppu.current_mode0_start_dot();
+    assert_eq!(ppu.stable_bus_state_snapshot(), None);
+    assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+
+    ppu.line_dot = MODE2_DOTS + 4;
+    ppu.ly = VISIBLE_SCANLINES;
+    assert_eq!(ppu.stable_bus_state_snapshot(), None);
+    assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+
+    ppu = stable_bus_snapshot_fixture();
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::first_line_after_enable();
+    assert_eq!(ppu.stable_bus_state_snapshot(), None);
+    assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+
+    ppu = stable_bus_snapshot_fixture();
+    ppu.blank_frame_active = true;
+    assert_eq!(ppu.stable_bus_state_snapshot(), None);
+    assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+
+    ppu = stable_bus_snapshot_fixture();
+    ppu.startup_mode_latch = Some(PpuAccessMode::Drawing);
+    assert_eq!(ppu.stable_bus_state_snapshot(), None);
+    assert_eq!(ppu.bus_state_snapshot(), direct_bus_state_snapshot(&ppu));
+}

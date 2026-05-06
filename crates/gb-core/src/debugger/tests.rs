@@ -51,6 +51,8 @@ fn trace_buffer_clear_drops_buffered_events() {
 fn summary_tracer_skips_sequence_and_buffering_events() {
     let mut tracer = Tracer::summary();
 
+    assert!(!tracer.records_events());
+
     tracer.emit_with(TraceSubsystem::Core, TraceLevel::Info, || "trace ready");
 
     let snapshot = tracer.snapshot();
@@ -74,6 +76,13 @@ fn summary_tracer_skips_lazy_message_construction() {
     });
 
     assert!(!built.get());
+}
+
+#[test]
+fn in_memory_tracer_reports_that_it_records_events() {
+    let tracer = Tracer::in_memory();
+
+    assert!(tracer.records_events());
 }
 
 #[test]

@@ -548,13 +548,16 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
         vec![
             PpuStepRegion::BusState,
             PpuStepRegion::BusSync,
+            PpuStepRegion::BusView,
             PpuStepRegion::ModeTiming,
             PpuStepRegion::RasterAdvance,
             PpuStepRegion::VisiblePrep,
             PpuStepRegion::RasterAdvance,
             PpuStepRegion::ModeTiming,
             PpuStepRegion::StatIrq,
-            PpuStepRegion::BusState,
+            PpuStepRegion::BusSnapshot,
+            PpuStepRegion::BusSnapshot,
+            PpuStepRegion::PublishedAccess,
             PpuStepRegion::BusSync,
         ]
     );

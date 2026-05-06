@@ -768,6 +768,10 @@ impl<S: TraceSink> Tracer<S> {
         self.next_sequence
     }
 
+    pub fn records_events(&self) -> bool {
+        self.sink.records_events()
+    }
+
     pub fn sink(&self) -> &S {
         &self.sink
     }

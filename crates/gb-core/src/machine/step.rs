@@ -521,21 +521,33 @@ impl MachinePhaseRunner<'_> {
         if records_regions {
             observer.begin_region(MachineStepRegion::Ppu);
         }
-        if records_ppu_regions {
-            observer.begin_ppu_region(PpuStepRegion::BusState);
-        }
-        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
-        if records_ppu_regions {
-            observer.end_ppu_region(PpuStepRegion::BusState);
-        }
+        #[cfg(any(debug_assertions, test))]
+        let ppu_owner_bus_state_before = {
+            if records_ppu_regions {
+                observer.begin_ppu_region(PpuStepRegion::BusState);
+            }
+            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+            if records_ppu_regions {
+                observer.end_ppu_region(PpuStepRegion::BusState);
+            }
+            ppu_owner_bus_state_before
+        };
+        #[cfg(not(any(debug_assertions, test)))]
+        let ppu_owner_bus_state_before = crate::ppu::PpuBusState::default();
         if records_ppu_regions {
             observer.begin_ppu_region(PpuStepRegion::BusSync);
         }
         self.bus
             .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
-        let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
         if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
+        }
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusView);
+        }
+        let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusView);
         }
         self.ppu.tick_t_cycle_with_observer(
             context,
@@ -545,13 +557,8 @@ impl MachinePhaseRunner<'_> {
             dma_oam_conflict,
             observer,
         );
-        if records_ppu_regions {
-            observer.begin_ppu_region(PpuStepRegion::BusState);
-        }
-        let ppu_bus_states_after = self.ppu_bus_state_snapshot();
-        if records_ppu_regions {
-            observer.end_ppu_region(PpuStepRegion::BusState);
-        }
+        let ppu_bus_states_after =
+            self.ppu_bus_state_snapshot_with_observer(observer, records_ppu_regions);
         let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
         if records_ppu_regions {
             observer.begin_ppu_region(PpuStepRegion::BusSync);
@@ -571,6 +578,10 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
+        if !tracer.records_events() {
+            return;
+        }
+
         let arbitration_state = self.cpu_bus_arbitration_states().pre_cpu;
         tracer.emit_with(TraceSubsystem::Bus, TraceLevel::Trace, || {
             self.bus
@@ -845,6 +856,25 @@ impl MachinePhaseRunner<'_> {
         }
 
         let snapshot = self.ppu.bus_state_snapshot();
+        self.cached_ppu_bus_state_snapshot = Some(snapshot);
+        snapshot
+    }
+
+    fn ppu_bus_state_snapshot_with_observer<O>(
+        &mut self,
+        observer: &mut O,
+        records_ppu_regions: bool,
+    ) -> PpuBusStateSnapshot
+    where
+        O: MachineStepObserver,
+    {
+        if let Some(snapshot) = self.cached_ppu_bus_state_snapshot {
+            return snapshot;
+        }
+
+        let snapshot = self
+            .ppu
+            .bus_state_snapshot_with_observer(observer, records_ppu_regions);
         self.cached_ppu_bus_state_snapshot = Some(snapshot);
         snapshot
     }
