@@ -1027,6 +1027,10 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
+        if let Some(mode) = self.dmg_boot_power_on_bus_access_mode() {
+            return mode;
+        }
+
         let published_mode = self.current_published_video_write_access_mode();
         self.current_published_oam_write_access_mode_from(published_mode)
     }
@@ -1046,6 +1050,10 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
+        if let Some(mode) = self.dmg_boot_power_on_bus_access_mode() {
+            return mode;
+        }
+
         let published_mode = self.current_published_bus_access_mode();
         self.current_published_oam_read_access_mode_from(published_mode)
     }

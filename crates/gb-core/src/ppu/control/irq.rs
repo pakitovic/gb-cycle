@@ -460,6 +460,8 @@ impl Ppu {
             .real_boot_handoff_mode0_scx_seam_phase_active = false;
         self.runtime.stat_state.vblank_wrap_line0_stat_delay_active = false;
         self.runtime.stat_state.skip_boot_ly_read_lag_active = false;
+        self.runtime.stat_state.boot_power_on_ppu_phase_active = false;
+        self.runtime.stat_state.boot_power_on_ppu_phase_base_dot = 0;
         self.runtime
             .stat_state
             .line_153_lyc0_stat_irq_pretrigger_pending = false;
@@ -493,6 +495,8 @@ impl Ppu {
         self.runtime.stat_state.startup_mode0_irq_phase_active = false;
         self.runtime.stat_state.vblank_wrap_line0_stat_delay_active = false;
         self.runtime.stat_state.skip_boot_ly_read_lag_active = false;
+        self.runtime.stat_state.boot_power_on_ppu_phase_active = false;
+        self.runtime.stat_state.boot_power_on_ppu_phase_base_dot = 0;
         self.runtime
             .stat_state
             .line_153_lyc0_stat_irq_pretrigger_pending = false;

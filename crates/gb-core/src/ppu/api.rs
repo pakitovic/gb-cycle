@@ -541,7 +541,7 @@ impl Ppu {
             PpuRegister::Stat => self.read_stat(source),
             PpuRegister::Scy => self.scy,
             PpuRegister::Scx => self.scx,
-            PpuRegister::Ly => self.read_ly(),
+            PpuRegister::Ly => self.read_ly(source),
             PpuRegister::Lyc => self.lyc,
             PpuRegister::Bgp => self.bgp,
             PpuRegister::Obp0 => self
@@ -764,6 +764,8 @@ impl Ppu {
             .real_boot_handoff_mode0_scx_seam_phase_active = false;
         self.stat_state.vblank_wrap_line0_stat_delay_active = false;
         self.stat_state.skip_boot_ly_read_lag_active = false;
+        self.stat_state.boot_power_on_ppu_phase_active = false;
+        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
         self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
         self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
@@ -779,12 +781,20 @@ impl Ppu {
         if self.console_model.is_dmg_family() && self.lcd_state.is_enabled() {
             self.stat_state
                 .real_boot_handoff_mode0_scx_seam_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_base_dot = (self
+                .dmg_boot_power_on_current_frame_dot()
+                + DMG_BOOT_POWER_ON_CPU_READ_DELAY_DOTS)
+                % self.dmg_boot_power_on_frame_dots();
         }
     }
 
     pub(crate) fn apply_dmg_skip_boot_stat_irq_startup_phase(&mut self) {
         if self.console_model.is_dmg_family() && self.lcd_state.is_enabled() && self.ly == 0 {
             self.stat_state.skip_boot_ly_read_lag_active = true;
+            self.stat_state.boot_power_on_ppu_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_base_dot =
+                DMG_BOOT_POWER_ON_CPU_READ_DELAY_DOTS;
             self.stat_state.startup_mode0_irq_phase_active = true;
             self.stat_state.irq_line = self.compute_stat_irq_line(false);
         }
@@ -895,12 +905,18 @@ impl Ppu {
                 if self.ly >= 2 {
                     self.stat_state.startup_mode0_irq_phase_active = false;
                 }
+                if self.ly >= 3 {
+                    self.stat_state.boot_power_on_ppu_phase_active = false;
+                    self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
+                }
                 if self.ly >= VISIBLE_SCANLINES {
                     self.window_state.reset();
                     self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
                     self.stat_state
                         .real_boot_handoff_mode0_scx_seam_phase_active = false;
                     self.stat_state.skip_boot_ly_read_lag_active = false;
+                    self.stat_state.boot_power_on_ppu_phase_active = false;
+                    self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
                 }
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();

@@ -121,9 +121,9 @@ impl Ppu {
             | if self.is_lcd_enabled() {
                 match source {
                     PpuRegisterReadSource::Immediate => self.current_cpu_visible_access_mode(),
-                    PpuRegisterReadSource::CpuBusOperation => {
-                        self.current_published_stat_access_mode()
-                    }
+                    PpuRegisterReadSource::CpuBusOperation => self
+                        .dmg_boot_power_on_stat_access_mode()
+                        .unwrap_or_else(|| self.current_published_stat_access_mode()),
                 }
                 .stat_bits()
             } else {
@@ -131,7 +131,13 @@ impl Ppu {
             }
     }
 
-    pub(in crate::ppu) fn read_stat_lyc_coincidence(&self, _source: PpuRegisterReadSource) -> bool {
+    pub(in crate::ppu) fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
+        if source == PpuRegisterReadSource::CpuBusOperation
+            && let Some(ly) = self.dmg_boot_power_on_visible_ly()
+        {
+            return ly == self.lyc;
+        }
+
         self.effective_lyc_coincidence()
     }
 
@@ -153,7 +159,13 @@ impl Ppu {
         self.runtime.stat_state.irq_line = new_line;
     }
 
-    pub(in crate::ppu) fn read_ly(&self) -> u8 {
+    pub(in crate::ppu) fn read_ly(&self, source: PpuRegisterReadSource) -> u8 {
+        if source == PpuRegisterReadSource::CpuBusOperation
+            && let Some(ly) = self.dmg_boot_power_on_visible_ly()
+        {
+            return ly;
+        }
+
         let visible_ly = self.read_ly_without_skip_boot_lag();
 
         if self.skip_boot_ly_read_lag_active() {
@@ -241,11 +253,19 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn current_published_bus_access_mode(&self) -> PpuAccessMode {
+        if let Some(mode) = self.dmg_boot_power_on_bus_access_mode() {
+            return mode;
+        }
+
         let published_line_dot = self.line_dot.saturating_sub(1);
         self.bus_access_mode_for_line_dot(published_line_dot)
     }
 
     pub(in crate::ppu) fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
+        if let Some(mode) = self.dmg_boot_power_on_bus_access_mode() {
+            return mode;
+        }
+
         if self.line_dot != 0 {
             self.access_mode_for_line_dot(self.line_dot - 1)
         } else if self.ly == 0 {
@@ -255,5 +275,74 @@ impl Ppu {
         } else {
             PpuAccessMode::HBlank
         }
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_visible_ly(&self) -> Option<u8> {
+        let elapsed_mcycles = self.dmg_boot_power_on_elapsed_mcycles()?;
+        Some(match elapsed_mcycles {
+            0..=119 => 0,
+            120..=233 => 1,
+            _ => 2,
+        })
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_stat_access_mode(&self) -> Option<PpuAccessMode> {
+        let elapsed_mcycles = self.dmg_boot_power_on_elapsed_mcycles()?;
+        Some(match elapsed_mcycles {
+            0..=5 => PpuAccessMode::VBlank,
+            6 => PpuAccessMode::HBlank,
+            7..=26 => PpuAccessMode::OamScan,
+            27..=69 => PpuAccessMode::Drawing,
+            70..=120 => PpuAccessMode::HBlank,
+            121..=140 => PpuAccessMode::OamScan,
+            141..=183 => PpuAccessMode::Drawing,
+            184..=234 => PpuAccessMode::HBlank,
+            235 => PpuAccessMode::OamScan,
+            _ => return None,
+        })
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_bus_access_mode(&self) -> Option<PpuAccessMode> {
+        let elapsed_mcycles = self.dmg_boot_power_on_elapsed_mcycles()?;
+        Some(match elapsed_mcycles {
+            0..=5 => PpuAccessMode::HBlank,
+            6..=25 => PpuAccessMode::OamScan,
+            26..=69 => PpuAccessMode::Drawing,
+            70..=119 => PpuAccessMode::HBlank,
+            120..=139 => PpuAccessMode::OamScan,
+            140..=183 => PpuAccessMode::Drawing,
+            184..=233 => PpuAccessMode::HBlank,
+            234..=235 => PpuAccessMode::OamScan,
+            _ => return None,
+        })
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_elapsed_mcycles(&self) -> Option<u16> {
+        if !self.runtime.stat_state.boot_power_on_ppu_phase_active
+            || !self.console_model.is_dmg_family()
+            || !self.is_lcd_enabled()
+        {
+            return None;
+        }
+
+        let frame_dots = self.dmg_boot_power_on_frame_dots();
+        let base_dot = self.runtime.stat_state.boot_power_on_ppu_phase_base_dot % frame_dots;
+        let current_dot = self.dmg_boot_power_on_current_frame_dot();
+        let elapsed_dots = if current_dot >= base_dot {
+            current_dot - base_dot
+        } else {
+            frame_dots - base_dot + current_dot
+        };
+        let elapsed_mcycles = (elapsed_dots / 4) as u16;
+        (elapsed_mcycles <= DMG_BOOT_POWER_ON_MAX_DELAY_M_CYCLES).then_some(elapsed_mcycles)
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_current_frame_dot(&self) -> u32 {
+        (u32::from(self.ly) * u32::from(DOTS_PER_SCANLINE) + u32::from(self.line_dot))
+            % self.dmg_boot_power_on_frame_dots()
+    }
+
+    pub(in crate::ppu) fn dmg_boot_power_on_frame_dots(&self) -> u32 {
+        u32::from(DOTS_PER_SCANLINE) * u32::from(TOTAL_SCANLINES)
     }
 }

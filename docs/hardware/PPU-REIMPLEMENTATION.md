@@ -31,6 +31,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep the DMG `WX = 0 && (SCX & 7) == 3` terminal readback seam ahead of generic terminal-tail early-HBlank publication; this is a CPU-visible `STAT` seam, not a renderer-only detail.
 - Keep DMG `SkipBoot`'s startup Mode `0` STAT IRQ phase explicit and boot-gated; do not leak that first-frame hidden phase into ordinary PPU startup-state unit tests or into LCD off/on restart timing.
 - Keep DMG `SkipBoot`'s first-frame `FF44` readback lag separate from the internal synthetic raster line; changing the internal machine skip-boot `LY=0` state to direct-boot `LY=153` would reopen unrelated startup seams.
+- Keep DMG-family boot-facing `poweron_*` publication tables as CPU-bus overlays for early `FF41` / `FF44` reads and OAM/VRAM access; `SkipBoot` uses the synthetic frame-origin base, verified `RealBoot` uses its own handoff-relative base, and neither path should be satisfied by moving the internal raster, changing `BootController::direct_boot_state()`, changing LCD restart, or changing renderer / sprite-selection state.
 - LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state. The first blank frame after re-enable is panel behavior, not a delayed internal scheduler start.
 
 ### Mode 3 and fetch arbitration

@@ -1,5 +1,56 @@
 use super::super::*;
 
+fn dmg_skip_boot_power_on_rig() -> PpuTestRig {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+    ppu
+}
+
+fn set_dmg_skip_boot_power_on_delay(ppu: &mut PpuTestRig, delay_mcycles: u16) {
+    let absolute_dot = 36 + u32::from(delay_mcycles) * 4;
+    ppu.ly = (absolute_dot / u32::from(DOTS_PER_SCANLINE)) as u8;
+    ppu.line_dot = (absolute_dot % u32::from(DOTS_PER_SCANLINE)) as u16;
+}
+
+fn dmg_real_boot_handoff_power_on_rig() -> PpuTestRig {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 153,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = 392;
+    ppu.apply_dmg_real_boot_handoff_stat_irq_phase();
+    ppu
+}
+
+fn set_dmg_real_boot_handoff_power_on_delay(ppu: &mut PpuTestRig, delay_mcycles: u16) {
+    let frame_dots = u32::from(DOTS_PER_SCANLINE) * u32::from(TOTAL_SCANLINES);
+    let base_dot = (153 * u32::from(DOTS_PER_SCANLINE) + 428) % frame_dots;
+    let absolute_dot = (base_dot + u32::from(delay_mcycles) * 4) % frame_dots;
+    ppu.ly = (absolute_dot / u32::from(DOTS_PER_SCANLINE)) as u8;
+    ppu.line_dot = (absolute_dot % u32::from(DOTS_PER_SCANLINE)) as u16;
+}
+
 #[test]
 fn stat_keeps_live_mode_and_coincidence_bits_outside_the_writable_mask() {
     let mut ppu = PpuTestRig::dmg();
@@ -548,6 +599,87 @@ fn dmg_skip_boot_ly_readback_lags_the_synthetic_first_frame_until_vblank() {
     ppu.line_dot = DOTS_PER_SCANLINE - 1;
     ppu.tick();
     assert_eq!(ppu.read_register(0xFF44), VISIBLE_SCANLINES);
+}
+
+#[test]
+fn dmg_skip_boot_power_on_cpu_ly_read_uses_the_boot_facing_publication_table() {
+    let mut ppu = dmg_skip_boot_power_on_rig();
+
+    for (delay_mcycles, expected_ly) in [(0, 0), (119, 0), (120, 1), (233, 1), (234, 2)] {
+        set_dmg_skip_boot_power_on_delay(&mut ppu, delay_mcycles);
+
+        assert_eq!(
+            ppu.read_register_with_source(0xFF44, PpuRegisterReadSource::CpuBusOperation),
+            expected_ly,
+            "delay {delay_mcycles}"
+        );
+    }
+}
+
+#[test]
+fn dmg_skip_boot_power_on_cpu_stat_read_uses_the_boot_facing_publication_table() {
+    let mut ppu = dmg_skip_boot_power_on_rig();
+
+    for (delay_mcycles, expected_stat) in [
+        (0, 0x85),
+        (5, 0x85),
+        (6, 0x84),
+        (7, 0x86),
+        (26, 0x86),
+        (27, 0x87),
+        (69, 0x87),
+        (70, 0x84),
+        (119, 0x84),
+        (120, 0x80),
+        (121, 0x82),
+        (140, 0x82),
+        (141, 0x83),
+        (183, 0x83),
+        (184, 0x80),
+        (234, 0x80),
+        (235, 0x82),
+    ] {
+        set_dmg_skip_boot_power_on_delay(&mut ppu, delay_mcycles);
+
+        assert_eq!(
+            ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation),
+            expected_stat,
+            "delay {delay_mcycles}"
+        );
+    }
+}
+
+#[test]
+fn dmg_real_boot_handoff_power_on_cpu_reads_use_the_wrapped_boot_facing_publication_table() {
+    let mut ppu = dmg_real_boot_handoff_power_on_rig();
+
+    for (delay_mcycles, expected_ly) in [(0, 0), (119, 0), (120, 1), (233, 1), (234, 2)] {
+        set_dmg_real_boot_handoff_power_on_delay(&mut ppu, delay_mcycles);
+
+        assert_eq!(
+            ppu.read_register_with_source(0xFF44, PpuRegisterReadSource::CpuBusOperation),
+            expected_ly,
+            "LY delay {delay_mcycles}"
+        );
+    }
+
+    for (delay_mcycles, expected_stat) in [
+        (0, 0x85),
+        (6, 0x84),
+        (7, 0x86),
+        (120, 0x80),
+        (121, 0x82),
+        (234, 0x80),
+        (235, 0x82),
+    ] {
+        set_dmg_real_boot_handoff_power_on_delay(&mut ppu, delay_mcycles);
+
+        assert_eq!(
+            ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation),
+            expected_stat,
+            "STAT delay {delay_mcycles}"
+        );
+    }
 }
 
 #[test]

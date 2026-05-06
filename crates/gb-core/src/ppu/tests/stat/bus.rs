@@ -1,5 +1,56 @@
 use super::super::*;
 
+fn dmg_skip_boot_power_on_bus_rig() -> PpuTestRig {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+    ppu
+}
+
+fn set_dmg_skip_boot_power_on_delay(ppu: &mut PpuTestRig, delay_mcycles: u16) {
+    let absolute_dot = 36 + u32::from(delay_mcycles) * 4;
+    ppu.ly = (absolute_dot / u32::from(DOTS_PER_SCANLINE)) as u8;
+    ppu.line_dot = (absolute_dot % u32::from(DOTS_PER_SCANLINE)) as u16;
+}
+
+fn dmg_real_boot_handoff_power_on_bus_rig() -> PpuTestRig {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 153,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = 392;
+    ppu.apply_dmg_real_boot_handoff_stat_irq_phase();
+    ppu
+}
+
+fn set_dmg_real_boot_handoff_power_on_delay(ppu: &mut PpuTestRig, delay_mcycles: u16) {
+    let frame_dots = u32::from(DOTS_PER_SCANLINE) * u32::from(TOTAL_SCANLINES);
+    let base_dot = (153 * u32::from(DOTS_PER_SCANLINE) + 428) % frame_dots;
+    let absolute_dot = (base_dot + u32::from(delay_mcycles) * 4) % frame_dots;
+    ppu.ly = (absolute_dot / u32::from(DOTS_PER_SCANLINE)) as u8;
+    ppu.line_dot = (absolute_dot % u32::from(DOTS_PER_SCANLINE)) as u16;
+}
+
 #[test]
 fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and_mode2_end() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
@@ -31,6 +82,77 @@ fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and
 
     ppu.line_dot = MODE2_DOTS + 4;
     assert_eq!(ppu.cpu_oam_write_bus_state().mode(), PpuAccessMode::Drawing);
+}
+
+#[test]
+fn dmg_skip_boot_power_on_cpu_bus_access_uses_the_boot_facing_oam_and_vram_windows() {
+    let mut ppu = dmg_skip_boot_power_on_bus_rig();
+
+    for (delay_mcycles, oam_blocked, vram_blocked) in [
+        (0, false, false),
+        (5, false, false),
+        (6, true, false),
+        (25, true, false),
+        (26, true, true),
+        (69, true, true),
+        (70, false, false),
+        (119, false, false),
+        (120, true, false),
+        (139, true, false),
+        (140, true, true),
+        (183, true, true),
+        (184, false, false),
+        (233, false, false),
+        (234, true, false),
+        (235, true, false),
+    ] {
+        set_dmg_skip_boot_power_on_delay(&mut ppu, delay_mcycles);
+
+        let oam_mode = ppu.cpu_oam_read_bus_state().mode();
+        let vram_mode = ppu.cpu_bus_state().mode();
+        assert_eq!(
+            matches!(oam_mode, PpuAccessMode::OamScan | PpuAccessMode::Drawing),
+            oam_blocked,
+            "OAM delay {delay_mcycles}"
+        );
+        assert_eq!(
+            vram_mode == PpuAccessMode::Drawing,
+            vram_blocked,
+            "VRAM delay {delay_mcycles}"
+        );
+    }
+}
+
+#[test]
+fn dmg_real_boot_handoff_power_on_cpu_bus_access_uses_the_wrapped_boot_facing_windows() {
+    let mut ppu = dmg_real_boot_handoff_power_on_bus_rig();
+
+    for (delay_mcycles, oam_blocked, vram_blocked) in [
+        (0, false, false),
+        (6, true, false),
+        (26, true, true),
+        (70, false, false),
+        (120, true, false),
+        (140, true, true),
+        (184, false, false),
+        (234, true, false),
+        (235, true, false),
+    ] {
+        set_dmg_real_boot_handoff_power_on_delay(&mut ppu, delay_mcycles);
+
+        let oam_mode = ppu.cpu_oam_read_bus_state().mode();
+        let vram_mode = ppu.cpu_bus_state().mode();
+        assert_eq!(
+            matches!(oam_mode, PpuAccessMode::OamScan | PpuAccessMode::Drawing),
+            oam_blocked,
+            "OAM delay {delay_mcycles}"
+        );
+        assert_eq!(
+            vram_mode == PpuAccessMode::Drawing,
+            vram_blocked,
+            "VRAM delay {delay_mcycles}"
+        );
+    }
 }
 
 #[test]

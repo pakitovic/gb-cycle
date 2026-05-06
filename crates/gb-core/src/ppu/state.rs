@@ -3419,6 +3419,10 @@ pub(super) struct StatState {
     #[serde(default)]
     pub(super) skip_boot_ly_read_lag_active: bool,
     #[serde(default)]
+    pub(super) boot_power_on_ppu_phase_active: bool,
+    #[serde(default)]
+    pub(super) boot_power_on_ppu_phase_base_dot: u32,
+    #[serde(default)]
     pub(super) line_153_lyc0_stat_irq_pretrigger_pending: bool,
 }
 
