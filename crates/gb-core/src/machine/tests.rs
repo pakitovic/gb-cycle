@@ -10,7 +10,9 @@ use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
-use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion, PpuVisibleOutputState};
+use crate::ppu::{
+    PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
+};
 use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
@@ -472,6 +474,21 @@ fn step_t_cycle_advances_exactly_one_cycle_per_call() {
     assert_eq!(machine.next_t_cycle(), TCycle::new(2));
 }
 
+#[test]
+fn machine_accessors_expose_scheduler_config_and_tracer_without_side_effects() {
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.config().console_model, ConsoleModel::GameBoyColor);
+    assert_eq!(machine.scheduler().next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.tracer().next_sequence(), 0);
+
+    machine.tracer_mut().reset();
+
+    assert_eq!(machine.tracer().next_sequence(), 0);
+}
+
 #[derive(Default)]
 struct RegionCollector {
     regions: Vec<MachineStepRegion>,
@@ -489,6 +506,25 @@ impl MachineStepObserver for RegionCollector {
 }
 
 #[test]
+fn step_observer_region_recording_capability_matches_default_and_noop_contracts() {
+    let observer = RegionCollector::default();
+    assert!(observer.records_regions());
+    assert!(MachineStepObserver::records_ppu_regions(&observer));
+    assert!(PpuStepObserver::records_ppu_regions(&observer));
+
+    let observer = NoopMachineStepObserver;
+    assert!(!observer.records_regions());
+    assert!(!MachineStepObserver::records_ppu_regions(&observer));
+    assert!(!PpuStepObserver::records_ppu_regions(&observer));
+
+    let mut observer = NoopMachineStepObserver;
+    observer.begin_region(MachineStepRegion::Cpu);
+    observer.end_region(MachineStepRegion::Cpu);
+    MachineStepObserver::begin_ppu_region(&mut observer, PpuStepRegion::Other);
+    MachineStepObserver::end_ppu_region(&mut observer, PpuStepRegion::Other);
+}
+
+#[test]
 fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
@@ -500,25 +536,21 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     assert_eq!(
         observer.regions,
         vec![
-            MachineStepRegion::ExternalEvents,
             MachineStepRegion::Timer,
             MachineStepRegion::Apu,
-            MachineStepRegion::Dma,
-            MachineStepRegion::Dma,
             MachineStepRegion::Ppu,
-            MachineStepRegion::Serial,
             MachineStepRegion::Cpu,
-            MachineStepRegion::Ppu,
-            MachineStepRegion::Interrupts,
             MachineStepRegion::Cpu,
         ]
     );
     assert_eq!(
         observer.ppu_regions,
         vec![
+            PpuStepRegion::BusSync,
             PpuStepRegion::Mode2Scan,
             PpuStepRegion::Mode2Scan,
             PpuStepRegion::Mode2Scan,
+            PpuStepRegion::BusSync,
         ]
     );
 }

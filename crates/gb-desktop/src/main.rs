@@ -22,7 +22,7 @@ use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
-    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent,
+    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CgbSpeedMode, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
     CpuExecutionState, CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
@@ -623,6 +623,8 @@ struct EmulationBreakdownSample {
     core_apu_duration: Duration,
     core_dma_duration: Duration,
     core_ppu_duration: Duration,
+    core_ppu_bus_sync_duration: Duration,
+    core_ppu_misc_duration: Duration,
     core_ppu_mode0_1_duration: Duration,
     core_ppu_mode2_duration: Duration,
     core_ppu_mode3_startup_duration: Duration,
@@ -648,11 +650,13 @@ struct StepUntilNextFrameResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct FrameLoopTelemetry {
+    speed_mode: Option<CgbSpeedMode>,
     start_ly: u8,
     start_dot: u16,
     end_ly: u8,
     end_dot: u16,
     stepped_t_cycles: usize,
+    video_dots: usize,
     frame_origin_crossings: u8,
     scanline_transitions: u16,
     scanlines_over_456: u16,
@@ -924,7 +928,8 @@ impl EmulationBreakdownSample {
 
     fn add_ppu_region_duration(&mut self, region: PpuStepRegion, duration: Duration) {
         match region {
-            PpuStepRegion::Other => {}
+            PpuStepRegion::Other => self.core_ppu_misc_duration += duration,
+            PpuStepRegion::BusSync => self.core_ppu_bus_sync_duration += duration,
             PpuStepRegion::Mode0Or1 => self.core_ppu_mode0_1_duration += duration,
             PpuStepRegion::Mode2Scan => self.core_ppu_mode2_duration += duration,
             PpuStepRegion::Mode3Startup => self.core_ppu_mode3_startup_duration += duration,
@@ -948,6 +953,8 @@ impl EmulationBreakdownSample {
         self.core_apu_duration += other.core_apu_duration;
         self.core_dma_duration += other.core_dma_duration;
         self.core_ppu_duration += other.core_ppu_duration;
+        self.core_ppu_bus_sync_duration += other.core_ppu_bus_sync_duration;
+        self.core_ppu_misc_duration += other.core_ppu_misc_duration;
         self.core_ppu_mode0_1_duration += other.core_ppu_mode0_1_duration;
         self.core_ppu_mode2_duration += other.core_ppu_mode2_duration;
         self.core_ppu_mode3_startup_duration += other.core_ppu_mode3_startup_duration;
@@ -988,6 +995,8 @@ impl EmulationBreakdownSample {
 
     fn ppu_profiled_duration(self) -> Duration {
         self.core_ppu_mode0_1_duration
+            + self.core_ppu_bus_sync_duration
+            + self.core_ppu_misc_duration
             + self.core_ppu_mode2_duration
             + self.core_ppu_mode3_startup_duration
             + self.core_ppu_bg_fetch_duration
@@ -2602,7 +2611,9 @@ struct FramePerformanceSample {
     audio_submit_queue_after_ms: Option<f64>,
     audio_queue_before_pacing_ms: Option<f64>,
     audio_queue_after_pacing_ms: Option<f64>,
+    speed_mode: Option<CgbSpeedMode>,
     frame_step_t_cycles: Option<usize>,
+    frame_video_dots: Option<usize>,
     frame_start_ly: Option<u8>,
     frame_start_dot: Option<u16>,
     frame_end_ly: Option<u8>,
@@ -2680,8 +2691,12 @@ struct PerformanceCounter {
     sample_audio_queue_before_pacing_observations: u32,
     sample_audio_queue_after_pacing_ms: f64,
     sample_audio_queue_after_pacing_observations: u32,
+    sample_speed_mode_normal_frames: u32,
+    sample_speed_mode_double_frames: u32,
     sample_frame_step_t_cycles: u64,
     sample_frame_step_t_cycles_observations: u32,
+    sample_frame_video_dots: u64,
+    sample_frame_video_dots_observations: u32,
     sample_frame_start_ly: u64,
     sample_frame_start_ly_observations: u32,
     sample_frame_start_dot: u64,
@@ -2812,8 +2827,12 @@ impl PerformanceCounter {
             sample_audio_queue_before_pacing_observations: 0,
             sample_audio_queue_after_pacing_ms: 0.0,
             sample_audio_queue_after_pacing_observations: 0,
+            sample_speed_mode_normal_frames: 0,
+            sample_speed_mode_double_frames: 0,
             sample_frame_step_t_cycles: 0,
             sample_frame_step_t_cycles_observations: 0,
+            sample_frame_video_dots: 0,
+            sample_frame_video_dots_observations: 0,
             sample_frame_start_ly: 0,
             sample_frame_start_ly_observations: 0,
             sample_frame_start_dot: 0,
@@ -2950,9 +2969,24 @@ impl PerformanceCounter {
             self.sample_audio_queue_after_pacing_ms += audio_queue_ms;
             self.sample_audio_queue_after_pacing_observations += 1;
         }
+        match sample.speed_mode {
+            Some(CgbSpeedMode::Normal) => {
+                self.sample_speed_mode_normal_frames =
+                    self.sample_speed_mode_normal_frames.saturating_add(1);
+            }
+            Some(CgbSpeedMode::Double) => {
+                self.sample_speed_mode_double_frames =
+                    self.sample_speed_mode_double_frames.saturating_add(1);
+            }
+            None => {}
+        }
         if let Some(t_cycles) = sample.frame_step_t_cycles {
             self.sample_frame_step_t_cycles += t_cycles as u64;
             self.sample_frame_step_t_cycles_observations += 1;
+        }
+        if let Some(video_dots) = sample.frame_video_dots {
+            self.sample_frame_video_dots += video_dots as u64;
+            self.sample_frame_video_dots_observations += 1;
         }
         if let Some(start_ly) = sample.frame_start_ly {
             self.sample_frame_start_ly += u64::from(start_ly);
@@ -3281,11 +3315,29 @@ impl PerformanceCounter {
         } else {
             "off".to_string()
         };
+        let speed_mode = match (
+            self.sample_speed_mode_normal_frames,
+            self.sample_speed_mode_double_frames,
+        ) {
+            (0, 0) => "off",
+            (_, 0) => "normal",
+            (0, _) => "double",
+            _ => "mixed",
+        };
         let frame_step_t_cycles = if self.sample_frame_step_t_cycles_observations > 0 {
             format!(
                 "{:.2}",
                 self.sample_frame_step_t_cycles as f64
                     / f64::from(self.sample_frame_step_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_video_dots = if self.sample_frame_video_dots_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_video_dots as f64
+                    / f64::from(self.sample_frame_video_dots_observations)
             )
         } else {
             "off".to_string()
@@ -3672,7 +3724,7 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_bus_ms={:.2} ppu_misc_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} scheduler_tcycles={frame_step_t_cycles} video_dots={frame_video_dots} speed_mode={speed_mode} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
@@ -3783,6 +3835,18 @@ impl PerformanceCounter {
                 profiled_frames_f64,
             ),
             scaled_average_duration_ms(
+                breakdown.core_ppu_bus_sync_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_misc_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
                 breakdown.ppu_other_duration(),
                 breakdown.core_duration(),
                 estimated_core_duration,
@@ -3829,8 +3893,12 @@ impl PerformanceCounter {
         self.sample_audio_queue_before_pacing_observations = 0;
         self.sample_audio_queue_after_pacing_ms = 0.0;
         self.sample_audio_queue_after_pacing_observations = 0;
+        self.sample_speed_mode_normal_frames = 0;
+        self.sample_speed_mode_double_frames = 0;
         self.sample_frame_step_t_cycles = 0;
         self.sample_frame_step_t_cycles_observations = 0;
+        self.sample_frame_video_dots = 0;
+        self.sample_frame_video_dots_observations = 0;
         self.sample_frame_start_ly = 0;
         self.sample_frame_start_ly_observations = 0;
         self.sample_frame_start_dot = 0;
@@ -4678,7 +4746,9 @@ fn run_desktop_with_startup_fallback_persistence(
                 audio_submit_queue_after_ms,
                 audio_queue_before_pacing_ms: audio_queue_ms_before_pacing,
                 audio_queue_after_pacing_ms: audio_queue_ms_after_pacing,
+                speed_mode: frame_loop_telemetry.speed_mode,
                 frame_step_t_cycles: Some(frame_loop_telemetry.stepped_t_cycles),
+                frame_video_dots: Some(frame_loop_telemetry.video_dots),
                 frame_start_ly: Some(frame_loop_telemetry.start_ly),
                 frame_start_dot: Some(frame_loop_telemetry.start_dot),
                 frame_end_ly: Some(frame_loop_telemetry.end_ly),
@@ -5915,6 +5985,7 @@ fn step_until_next_frame(
     let mut profile_request = None::<EmulationProfileRequest>;
     let mut pending_event_poll_duration = Duration::ZERO;
     let mut stepped_t_cycles = 0usize;
+    let mut video_dots = 0usize;
     let mut frame_origin_crossings = 0u8;
     let mut scanline_transitions = 0u16;
     let mut scanlines_over_456 = 0u16;
@@ -6064,6 +6135,9 @@ fn step_until_next_frame(
                 let blank_frame_active = context.machine.ppu().is_blank_frame_active();
                 let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
                 current_scanline_t_cycles += 1;
+                if current_ly != previous_ly || current_dot != previous_dot {
+                    video_dots = video_dots.saturating_add(1);
+                }
                 if !current_lcd_enabled {
                     lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
                     if current_ly == 0 {
@@ -6249,11 +6323,13 @@ fn step_until_next_frame(
                     emulation_profile_request: profile_request,
                     frame_loop_telemetry: if collect_frame_telemetry {
                         FrameLoopTelemetry {
+                            speed_mode: Some(context.machine.speed().current_speed()),
                             start_ly: frame_start_ly,
                             start_dot: frame_start_dot,
                             end_ly: current_ly,
                             end_dot: current_dot,
                             stepped_t_cycles,
+                            video_dots,
                             frame_origin_crossings,
                             scanline_transitions,
                             scanlines_over_456,
@@ -10958,13 +11034,13 @@ mod tests {
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, BootRomKind,
-        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
-        CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
-        CpuExecutionState, Dmg07Port, ExecutionMode, ExternalPortAttachmentKind,
-        ExternalPortAttachmentSnapshot, JoypadButton, JoypadSnapshot, JoypadStatus,
-        LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
-        PocketCameraFrame, PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState,
-        PrinterCommand, StartupMode, TraceSummaryBuffer,
+        CartridgeDiagnostic, CartridgeDiagnosticSeverity, CgbSpeedMode, ConsoleModel,
+        CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
+        CpuBusActivitySnapshot, CpuExecutionState, Dmg07Port, ExecutionMode,
+        ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot, JoypadButton, JoypadSnapshot,
+        JoypadStatus, LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion,
+        PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource, PpuStepRegion,
+        PpuVisibleOutputState, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -12541,8 +12617,11 @@ mod tests {
         counter.sample_audio_queue_before_pacing_observations = 2;
         counter.sample_audio_queue_after_pacing_ms = 36.0;
         counter.sample_audio_queue_after_pacing_observations = 2;
+        counter.sample_speed_mode_normal_frames = 2;
         counter.sample_frame_step_t_cycles = 140_448;
         counter.sample_frame_step_t_cycles_observations = 2;
+        counter.sample_frame_video_dots = 140_448;
+        counter.sample_frame_video_dots_observations = 2;
         counter.sample_frame_start_ly = 0;
         counter.sample_frame_start_ly_observations = 2;
         counter.sample_frame_start_dot = 0;
@@ -12633,6 +12712,8 @@ mod tests {
             core_apu_duration: Duration::from_millis(1),
             core_dma_duration: Duration::from_millis(1),
             core_ppu_duration: Duration::from_millis(10),
+            core_ppu_bus_sync_duration: Duration::from_millis(0),
+            core_ppu_misc_duration: Duration::from_millis(0),
             core_ppu_mode0_1_duration: Duration::from_millis(2),
             core_ppu_mode2_duration: Duration::from_millis(1),
             core_ppu_mode3_startup_duration: Duration::from_millis(1),
@@ -12680,12 +12761,17 @@ mod tests {
         assert!(summary.contains("ppu_push_ms=0.50"));
         assert!(summary.contains("ppu_obj_ms=0.50"));
         assert!(summary.contains("ppu_px_ms=0.00"));
+        assert!(summary.contains("ppu_bus_ms=0.00"));
+        assert!(summary.contains("ppu_misc_ms=0.00"));
         assert!(summary.contains("ppu_other_ms=0.50"));
         assert!(summary.contains("host_ms=2.00"));
         assert!(summary.contains("poll_ms=1.00"));
         assert!(summary.contains("audsubmit_ms=0.50"));
         assert!(summary.contains("save_ms=0.50"));
         assert!(summary.contains("frame_tcycles=70224.00"));
+        assert!(summary.contains("scheduler_tcycles=70224.00"));
+        assert!(summary.contains("video_dots=70224.00"));
+        assert!(summary.contains("speed_mode=normal"));
         assert!(summary.contains("frame_start_ly=0.00"));
         assert!(summary.contains("frame_start_dot=0.00"));
         assert!(summary.contains("frame_end_ly=0.00"));
@@ -12824,7 +12910,7 @@ mod tests {
             (MachineStepRegion::Timer, 2),
             (MachineStepRegion::Apu, 3),
             (MachineStepRegion::Dma, 4),
-            (MachineStepRegion::Ppu, 8),
+            (MachineStepRegion::Ppu, 10),
             (MachineStepRegion::Serial, 6),
             (MachineStepRegion::Cpu, 7),
             (MachineStepRegion::Interrupts, 8),
@@ -12835,6 +12921,8 @@ mod tests {
         breakdown.add_host_audio_submit_duration(Duration::from_millis(10));
         breakdown.add_host_save_flush_duration(Duration::from_millis(11));
         for (region, millis) in [
+            (PpuStepRegion::Other, 1),
+            (PpuStepRegion::BusSync, 1),
             (PpuStepRegion::Mode0Or1, 1),
             (PpuStepRegion::Mode2Scan, 1),
             (PpuStepRegion::Mode3Startup, 1),
@@ -12847,10 +12935,10 @@ mod tests {
             breakdown.add_ppu_region_duration(region, Duration::from_millis(millis));
         }
 
-        assert_eq!(breakdown.core_duration(), Duration::from_millis(39));
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(41));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(30));
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
-        assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(8));
+        assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(10));
         assert_eq!(breakdown.ppu_other_duration(), Duration::ZERO);
 
         breakdown.accumulate(super::EmulationBreakdownSample {
@@ -12860,7 +12948,7 @@ mod tests {
             host_event_poll_duration: Duration::from_millis(3),
             ..Default::default()
         });
-        assert_eq!(breakdown.core_ppu_duration, Duration::from_millis(10));
+        assert_eq!(breakdown.core_ppu_duration, Duration::from_millis(12));
         assert_eq!(breakdown.core_cpu_duration, Duration::from_millis(8));
         assert_eq!(
             breakdown.core_ppu_bg_fetch_duration,
@@ -12870,7 +12958,7 @@ mod tests {
             breakdown.host_event_poll_duration,
             Duration::from_millis(12)
         );
-        assert_eq!(breakdown.core_duration(), Duration::from_millis(42));
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(44));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(33));
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_other_duration(), Duration::from_millis(1));
@@ -13039,7 +13127,9 @@ mod tests {
                     audio_submit_queue_after_ms: Some(28.0),
                     audio_queue_before_pacing_ms: Some(20.0),
                     audio_queue_after_pacing_ms: Some(18.0),
+                    speed_mode: Some(CgbSpeedMode::Normal),
                     frame_step_t_cycles: Some(70_224),
+                    frame_video_dots: Some(70_224),
                     frame_start_ly: Some(0),
                     frame_start_dot: Some(0),
                     frame_end_ly: Some(0),
@@ -13109,8 +13199,12 @@ mod tests {
         assert_eq!(counter.sample_audio_queue_before_pacing_observations, 0);
         assert_eq!(counter.sample_audio_queue_after_pacing_ms, 0.0);
         assert_eq!(counter.sample_audio_queue_after_pacing_observations, 0);
+        assert_eq!(counter.sample_speed_mode_normal_frames, 0);
+        assert_eq!(counter.sample_speed_mode_double_frames, 0);
         assert_eq!(counter.sample_frame_step_t_cycles, 0);
         assert_eq!(counter.sample_frame_step_t_cycles_observations, 0);
+        assert_eq!(counter.sample_frame_video_dots, 0);
+        assert_eq!(counter.sample_frame_video_dots_observations, 0);
         assert_eq!(counter.sample_frame_start_ly, 0);
         assert_eq!(counter.sample_frame_start_ly_observations, 0);
         assert_eq!(counter.sample_frame_start_dot, 0);
@@ -16823,7 +16917,9 @@ mod tests {
                     audio_submit_queue_after_ms: Some(28.0),
                     audio_queue_before_pacing_ms: Some(20.0),
                     audio_queue_after_pacing_ms: Some(18.0),
+                    speed_mode: Some(CgbSpeedMode::Normal),
                     frame_step_t_cycles: Some(70_224),
+                    frame_video_dots: Some(70_224),
                     frame_start_ly: Some(0),
                     frame_start_dot: Some(0),
                     frame_end_ly: Some(0),

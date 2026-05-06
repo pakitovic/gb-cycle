@@ -154,6 +154,7 @@ fn normalize_saved_ppu_operating_mode(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {
     Other,
+    BusSync,
     Mode0Or1,
     Mode2Scan,
     Mode3Startup,
@@ -165,6 +166,10 @@ pub enum PpuStepRegion {
 }
 
 pub trait PpuStepObserver {
+    fn records_ppu_regions(&self) -> bool {
+        true
+    }
+
     fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
 
     fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
@@ -175,7 +180,11 @@ pub trait PpuStepObserver {
 )]
 pub struct NoopPpuStepObserver;
 
-impl PpuStepObserver for NoopPpuStepObserver {}
+impl PpuStepObserver for NoopPpuStepObserver {
+    fn records_ppu_regions(&self) -> bool {
+        false
+    }
+}
 
 fn observe_ppu_step_region<O, R>(
     observer: &mut O,
@@ -185,6 +194,10 @@ fn observe_ppu_step_region<O, R>(
 where
     O: PpuStepObserver,
 {
+    if !observer.records_ppu_regions() {
+        return observe();
+    }
+
     observer.begin_ppu_region(region);
     let result = observe();
     observer.end_ppu_region(region);

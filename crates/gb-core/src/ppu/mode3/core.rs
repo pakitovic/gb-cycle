@@ -22,6 +22,8 @@ impl Ppu {
         if self.ly >= VISIBLE_SCANLINES || self.line_dot < MODE2_DOTS {
             return;
         }
+        let records_ppu_regions = observer.records_ppu_regions();
+        let dmg_family = self.console_model.is_dmg_family();
 
         if !self.runtime.bg_pipeline_state.mode3_started {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
@@ -46,11 +48,17 @@ impl Ppu {
             return;
         }
 
-        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        let bg_pipeline_region = if records_ppu_regions {
+            self.current_mode3_bg_pipeline_region()
+        } else {
+            PpuStepRegion::Other
+        };
         observe_ppu_step_region(observer, bg_pipeline_region, || {
             self.maybe_recompute_pending_background_fill(vram);
             self.flush_pending_bg_fifo_fill();
-            self.apply_pending_dmg_lcdc2_observed_write_effects(vram);
+            if dmg_family {
+                self.apply_pending_dmg_lcdc2_observed_write_effects(vram);
+            }
         });
 
         if observe_ppu_step_region(observer, PpuStepRegion::Mode3ObjFetch, || {
@@ -64,17 +72,25 @@ impl Ppu {
                 self.advance_mode3_output_phase_with_vram(vram)
             });
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
-            self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
-            self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
+            if dmg_family {
+                self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
+                self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
+            }
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
-            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
-            self.apply_dmg_late_window_enable_override_repaint_up_to(
-                usize::from(self.runtime.bg_pipeline_state.visible_pixels_output),
-                vram,
-            );
+            if dmg_family {
+                self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
+                self.apply_dmg_late_window_enable_override_repaint_up_to(
+                    usize::from(self.runtime.bg_pipeline_state.visible_pixels_output),
+                    vram,
+                );
+            }
         });
-        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        let bg_pipeline_region = if records_ppu_regions {
+            self.current_mode3_bg_pipeline_region()
+        } else {
+            PpuStepRegion::Other
+        };
         let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
             self.advance_bg_fetcher(vram)
         });
@@ -105,7 +121,9 @@ impl Ppu {
             .bg_pipeline_state
             .consume_startup_transfer_entry_delay_dot()
         {
-            self.consume_dmg_bgp_cpu_commit_output_delay();
+            if self.console_model.is_dmg_family() {
+                self.consume_dmg_bgp_cpu_commit_output_delay();
+            }
             return Mode3TransferDot::not_served();
         }
 
@@ -132,10 +150,12 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .consume_startup_source_window_dot();
-        if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
-            self.repeat_last_dmg_recent_panel_dot();
+        if self.console_model.is_dmg_family() {
+            if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
+                self.repeat_last_dmg_recent_panel_dot();
+            }
+            self.consume_dmg_bgp_cpu_commit_output_delay();
         }
-        self.consume_dmg_bgp_cpu_commit_output_delay();
         transfer_dot
     }
 

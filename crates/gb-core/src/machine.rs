@@ -93,6 +93,10 @@ impl PendingExternalEvents {
         true
     }
 
+    fn has_pending_work(&self) -> bool {
+        self.joypad_state_dirty || self.external_serial_clock_pulses_pending != 0
+    }
+
     fn joypad_pressed_mask(&self) -> u8 {
         self.joypad_pressed_mask
     }
@@ -180,6 +184,14 @@ pub enum MachineStepRegion {
 }
 
 pub trait MachineStepObserver {
+    fn records_regions(&self) -> bool {
+        true
+    }
+
+    fn records_ppu_regions(&self) -> bool {
+        self.records_regions()
+    }
+
     fn begin_region(&mut self, _region: MachineStepRegion) {}
 
     fn end_region(&mut self, _region: MachineStepRegion) {}
@@ -192,12 +204,20 @@ pub trait MachineStepObserver {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct NoopMachineStepObserver;
 
-impl MachineStepObserver for NoopMachineStepObserver {}
+impl MachineStepObserver for NoopMachineStepObserver {
+    fn records_regions(&self) -> bool {
+        false
+    }
+}
 
 impl<T> PpuStepObserver for T
 where
     T: MachineStepObserver,
 {
+    fn records_ppu_regions(&self) -> bool {
+        MachineStepObserver::records_ppu_regions(self)
+    }
+
     fn begin_ppu_region(&mut self, region: PpuStepRegion) {
         MachineStepObserver::begin_ppu_region(self, region);
     }

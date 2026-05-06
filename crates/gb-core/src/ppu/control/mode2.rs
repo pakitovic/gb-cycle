@@ -75,15 +75,24 @@ impl Ppu {
         if self.ly >= VISIBLE_SCANLINES {
             return MODE0_START_DOT;
         }
+        if !self.runtime.bg_pipeline_state.mode3_started {
+            return self.baseline_mode0_start_dot();
+        }
 
+        let line_timing_policy = self.mode3_line_timing_policy();
         let selected_sprite_count = self.runtime.mode2_scan_state.selected_sprite_count();
-        let all_selected_sprites_offscreen_right = selected_sprite_count > 0
+        let all_selected_sprites_offscreen_right = self.runtime.bg_pipeline_state.mode0_start_dot
+            == line_timing_policy.baseline_mode0_start_dot()
+            && self.obj_enabled()
+            && selected_sprite_count > 0
             && (0..selected_sprite_count).all(|slot| {
                 self.runtime
                     .mode2_scan_state
                     .selected_sprite(slot)
                     .is_some_and(|sprite| sprite.x >= 168)
             });
+        let obj_fetch_active =
+            self.runtime.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle;
         let pending_obj_hit_owns_current_transfer_x =
             self.runtime.obj_pipeline_state.pending_match_x
                 == Some(self.runtime.bg_pipeline_state.current_transfer_x)
@@ -92,19 +101,29 @@ impl Ppu {
                     .obj_pipeline_state
                     .pending_sprite_slots
                     .is_empty();
-        let live_transfer_still_owned_by_mode3 = self.current_transfer().is_some();
-        self.mode3_line_timing_policy()
-            .current_mode0_start_dot(PpuMode3LineTimingContext {
-                line_dot: self.line_dot,
-                selected_sprite_count,
-                all_selected_sprites_offscreen_right,
-                obj_fetch_active: self.runtime.obj_pipeline_state.fetch.stage
-                    != PpuObjFetcherStage::Idle,
-                pending_obj_hit_owns_current_transfer_x,
-                live_transfer_still_owned_by_mode3,
-                saturated_placeholder_tail_still_owned_by_mode3: self
-                    .saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(),
-            })
+        let live_transfer_still_owned_by_mode3 =
+            if obj_fetch_active || pending_obj_hit_owns_current_transfer_x {
+                false
+            } else {
+                self.current_transfer().is_some()
+            };
+        let saturated_placeholder_tail_still_owned_by_mode3 = if obj_fetch_active
+            || pending_obj_hit_owns_current_transfer_x
+            || live_transfer_still_owned_by_mode3
+        {
+            false
+        } else {
+            self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3()
+        };
+        line_timing_policy.current_mode0_start_dot(PpuMode3LineTimingContext {
+            line_dot: self.line_dot,
+            selected_sprite_count,
+            all_selected_sprites_offscreen_right,
+            obj_fetch_active,
+            pending_obj_hit_owns_current_transfer_x,
+            live_transfer_still_owned_by_mode3,
+            saturated_placeholder_tail_still_owned_by_mode3,
+        })
     }
 
     pub(in crate::ppu) fn baseline_mode0_start_dot(&self) -> u16 {

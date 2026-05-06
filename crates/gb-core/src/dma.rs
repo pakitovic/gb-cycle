@@ -942,6 +942,12 @@ impl DmaController {
         self.transfer_state.is_in_flight()
     }
 
+    pub(crate) fn requires_t_cycle_tick(&self) -> bool {
+        self.transfer_state.is_in_flight()
+            || self.pending_restart.is_some()
+            || matches!(self.vram_dma_state, VramDmaState::HBlankActive(_))
+    }
+
     pub fn transfer_status(&self) -> DmaTransferStatusView {
         DmaTransferStatusView::new(
             self.transfer_lifecycle(),

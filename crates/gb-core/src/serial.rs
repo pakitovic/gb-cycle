@@ -321,6 +321,18 @@ impl Serial {
         self.latest_completed_output_byte
     }
 
+    pub(crate) fn requires_full_t_cycle_tick(&self) -> bool {
+        matches!(
+            self.transfer_state,
+            SerialTransferState::TransferRequested { .. }
+        ) || self.external_clock_pulses_pending != 0
+    }
+
+    pub(crate) fn tick_idle_t_cycle(&mut self) {
+        self.latest_completed_output_byte = None;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
+    }
+
     pub(crate) fn internal_clock_edge_pending_this_t_cycle_for_speed(
         &self,
         speed_mode: CgbSpeedMode,
@@ -374,16 +386,16 @@ impl Serial {
 
         let previous_clock_counter = self.clock_counter;
         self.clock_counter = self.clock_counter.wrapping_add(1);
+        let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
+            return;
+        };
+
         let internal_clock_edge = serial_internal_clock_edge(
             previous_clock_counter,
             self.clock_counter,
             speed_mode,
             self.cgb_high_speed_clock(),
         );
-
-        let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
-            return;
-        };
 
         match self.clock_mode {
             SerialClockMode::Internal => self.advance_internal_clock(context, internal_clock_edge),

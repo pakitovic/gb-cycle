@@ -828,7 +828,12 @@ impl Ppu {
             }
         }
 
-        let step_region = self.current_step_region_after_line_advance();
+        let records_ppu_regions = observer.records_ppu_regions();
+        let step_region = if records_ppu_regions {
+            self.current_step_region_after_line_advance()
+        } else {
+            PpuStepRegion::Other
+        };
         let previous_mode = observe_ppu_step_region(observer, step_region, || {
             self.advance_mode3_register_latches_from_mmio();
             let previous_mode = self.current_access_mode();
