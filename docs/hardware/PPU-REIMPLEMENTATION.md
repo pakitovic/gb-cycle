@@ -27,6 +27,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep DMG Mode `2` STAT as an internal source that can lead readable/bus OAM mode, including the line `143 -> 144` STAT-only edge; it must not imply real OAM locking or sprite selection on line `144`.
 - Keep line-`153` LY readback, LYC comparison, and line-`0` post-wrap published `STAT.mode` seams as separate helpers; collapsing them back into one `LY=0` dot loses the gbmicrotest `line_153_*` timing windows.
 - Keep the line-`153` `LYC=0` STAT IRQ pretrigger separate from readable `STAT.2`: the request edge is dot `8`, visible coincidence is dot `12`, and same-dot CPU `LYC`/`STAT` writes can cancel the unaggregated edge before interrupt aggregation.
+- Keep the DMG `STAT` write quirk in explicit line/dot write windows rather than deriving it from readable mode or bus access mode; ordinary HBlank, ordinary OAM, and the frame-start line-`0` exception intentionally differ.
 - Keep the DMG `WX = 0 && (SCX & 7) == 3` terminal readback seam ahead of generic terminal-tail early-HBlank publication; this is a CPU-visible `STAT` seam, not a renderer-only detail.
 - Keep DMG `SkipBoot`'s startup Mode `0` STAT IRQ phase explicit and boot-gated; do not leak that first-frame hidden phase into ordinary PPU startup-state unit tests or into LCD off/on restart timing.
 - Keep DMG `SkipBoot`'s first-frame `FF44` readback lag separate from the internal synthetic raster line; changing the internal machine skip-boot `LY=0` state to direct-boot `LY=153` would reopen unrelated startup seams.

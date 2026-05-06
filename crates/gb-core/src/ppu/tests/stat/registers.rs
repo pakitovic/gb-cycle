@@ -253,6 +253,123 @@ fn stat_write_quirk_requests_in_mode1_mode2_and_coincidence_but_not_plain_mode3(
 }
 
 #[test]
+fn dmg_stat_write_quirk_uses_explicit_line_dot_windows() {
+    let startup = PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 1,
+        lyc: 0x20,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    };
+
+    let mut hblank_start = PpuTestRig::dmg();
+    hblank_start.apply_startup_state(startup);
+    hblank_start.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    hblank_start.blank_frame_active = false;
+    hblank_start.startup_mode_latch = None;
+    hblank_start.line_dot = hblank_start.current_mode0_start_dot();
+
+    hblank_start.write_register(0xFF41, 0x00);
+
+    assert!(!hblank_start.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut hblank_start).is_empty());
+
+    let mut hblank_quirk = PpuTestRig::dmg();
+    hblank_quirk.apply_startup_state(startup);
+    hblank_quirk.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    hblank_quirk.blank_frame_active = false;
+    hblank_quirk.startup_mode_latch = None;
+    hblank_quirk.line_dot = hblank_quirk.current_mode0_start_dot() + 4;
+
+    hblank_quirk.write_register(0xFF41, 0x00);
+
+    assert!(hblank_quirk.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut hblank_quirk),
+        vec![InterruptSource::LcdStat]
+    );
+
+    let mut oam_start = PpuTestRig::dmg();
+    oam_start.apply_startup_state(PpuStartupState { ly: 2, ..startup });
+    oam_start.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    oam_start.blank_frame_active = false;
+    oam_start.startup_mode_latch = None;
+    oam_start.line_dot = 0;
+
+    oam_start.write_register(0xFF41, 0x00);
+
+    assert!(oam_start.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut oam_start),
+        vec![InterruptSource::LcdStat]
+    );
+
+    let mut oam_late = PpuTestRig::dmg();
+    oam_late.apply_startup_state(PpuStartupState { ly: 2, ..startup });
+    oam_late.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    oam_late.blank_frame_active = false;
+    oam_late.startup_mode_latch = None;
+    oam_late.line_dot = 4;
+
+    oam_late.write_register(0xFF41, 0x00);
+
+    assert!(!oam_late.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut oam_late).is_empty());
+
+    let mut frame_start = PpuTestRig::dmg();
+    frame_start.apply_startup_state(PpuStartupState { ly: 0, ..startup });
+    frame_start.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    frame_start.blank_frame_active = false;
+    frame_start.startup_mode_latch = None;
+    frame_start.line_dot = 12;
+
+    frame_start.write_register(0xFF41, 0x00);
+
+    assert!(frame_start.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut frame_start),
+        vec![InterruptSource::LcdStat]
+    );
+}
+
+#[test]
+fn cgb_stat_write_does_not_inherit_the_dmg_spurious_interrupt_quirk() {
+    for operating_mode in [OperatingMode::Cgb, OperatingMode::GbCompatible] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x80,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 1,
+            lyc: 0x20,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+        ppu.blank_frame_active = false;
+        ppu.startup_mode_latch = None;
+        ppu.line_dot = ppu.current_mode0_start_dot() + 4;
+
+        ppu.write_register(0xFF41, 0x00);
+
+        assert!(
+            !ppu.snapshot().stat_irq_line,
+            "{operating_mode:?} must not reuse the DMG STAT write quirk"
+        );
+        assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+    }
+}
+
+#[test]
 fn stat_write_arming_the_current_mode_source_latches_without_requesting_immediately() {
     let mut ppu = PpuTestRig::dmg();
 

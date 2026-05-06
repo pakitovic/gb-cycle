@@ -395,12 +395,35 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn stat_write_quirk_active(&self) -> bool {
-        self.console_model.is_dmg_family()
-            && self.is_lcd_enabled()
-            && (matches!(
-                self.current_access_mode(),
-                PpuAccessMode::HBlank | PpuAccessMode::VBlank | PpuAccessMode::OamScan
-            ) || self.live_lyc_coincidence())
+        if !self.console_model.is_dmg_family() || !self.is_lcd_enabled() {
+            return false;
+        }
+
+        self.live_lyc_coincidence()
+            || self.stat_write_quirk_vblank_window_active()
+            || self.stat_write_quirk_line0_oam_window_active()
+            || self.stat_write_quirk_oam_start_window_active()
+            || self.stat_write_quirk_hblank_window_active()
+    }
+
+    fn stat_write_quirk_vblank_window_active(&self) -> bool {
+        self.ly >= VISIBLE_SCANLINES
+    }
+
+    fn stat_write_quirk_line0_oam_window_active(&self) -> bool {
+        self.ly == 0 && self.line_dot < MODE2_DOTS
+    }
+
+    fn stat_write_quirk_oam_start_window_active(&self) -> bool {
+        self.ly < VISIBLE_SCANLINES && self.line_dot == 0
+    }
+
+    fn stat_write_quirk_hblank_window_active(&self) -> bool {
+        let mode0_quirk_start_dot = self.current_mode0_start_dot().saturating_add(4);
+
+        self.ly < VISIBLE_SCANLINES
+            && self.line_dot >= mode0_quirk_start_dot
+            && self.line_dot < self.current_scanline_length()
     }
 
     pub(in crate::ppu) fn refresh_visible_output(&mut self) {

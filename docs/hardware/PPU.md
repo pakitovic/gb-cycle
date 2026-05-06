@@ -173,8 +173,9 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 
 ## STAT write quirk baseline
 
-- On DMG-family hardware, writing `STAT` during Mode `0`, Mode `1`, Mode `2`, or while `LYC==LY` is true should support the documented spurious LCD STAT interrupt behavior.
+- On DMG-family hardware, writing `STAT` during selected Mode `0`, Mode `1`, Mode `2`, or `LYC==LY` windows should support the documented spurious LCD STAT interrupt behavior.
 - That quirk should be modeled as a temporary elevation-equivalent effect on the internal STAT interrupt line rather than as "every write to `STAT` requests an interrupt."
+- [inference] The write-quirk timing has its own DMG line/dot windows and must not reuse `current_access_mode()` directly: ordinary HBlank writes start at the visible HBlank dot plus `4`, ordinary OAM writes only use the line-start dot, and the frame-start/line-`0` OAM window remains a separate early exception.
 - A write that merely arms a source whose raw condition is already active should update the internal line level without synthesizing an immediate ordinary-source request; the next request still requires a later low-to-high edge, which keeps mid-Mode-`2` arming from preempting the next real OAM edge.
 - The quirk must not trigger from a Mode `3` write path merely because `STAT` was written.
 - Future GBC-in-DMG-mode support must keep this quirk model-gated rather than inheriting the DMG behavior accidentally.
