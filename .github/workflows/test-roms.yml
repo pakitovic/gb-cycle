@@ -36,6 +36,24 @@ jobs:
             command: make run-mooneye-mbc2
           - name: mealybug
             command: make run-mealybug
+          - name: cgb-smoke
+            command: make run-cgb-smoke
+          - name: cgb-boot-div
+            command: make run-cgb-boot-div
+          - name: cgb-speed
+            command: make run-cgb-speed
+          - name: cgb-ppu-basic
+            command: make run-cgb-ppu-basic
+          - name: cgb-ppu-hard
+            command: make run-cgb-ppu-hard
+          - name: cgb-dma
+            command: make run-cgb-dma
+          - name: cgb-audio-blargg
+            command: make run-cgb-audio-blargg
+          - name: cgb-audio-samesuite
+            command: make run-cgb-audio-samesuite
+          - name: cgb-rtc
+            command: make run-cgb-rtc
 
     steps:
       - name: Checkout
