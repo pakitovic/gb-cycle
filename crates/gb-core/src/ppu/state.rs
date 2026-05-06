@@ -3408,6 +3408,12 @@ impl WindowState {
 pub(super) struct StatState {
     pub(super) irq_line: bool,
     pub(super) lcd_disabled_lyc_coincidence: bool,
+    #[serde(default)]
+    pub(super) suppress_mode0_pretrigger_until_vblank: bool,
+    #[serde(default)]
+    pub(super) startup_mode0_irq_phase_active: bool,
+    #[serde(default)]
+    pub(super) real_boot_handoff_mode0_scx_seam_phase_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

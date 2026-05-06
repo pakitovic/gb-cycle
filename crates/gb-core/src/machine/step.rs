@@ -46,6 +46,14 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
     boot: &BootController,
     boot_rom_newly_unmapped: bool,
 ) {
+    if boot_rom_newly_unmapped
+        && !boot.is_boot_rom_mapped()
+        && config.startup_mode == StartupMode::RealBoot
+        && config.console_model.is_dmg_family()
+    {
+        ppu.apply_dmg_real_boot_handoff_stat_irq_phase();
+    }
+
     if !boot_rom_newly_unmapped
         || boot.is_boot_rom_mapped()
         || config.startup_mode != StartupMode::RealBoot
@@ -746,6 +754,13 @@ impl MachinePhaseRunner<'_> {
             let cpu = &mut self.cpu;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
+            let ppu = &*self.ppu;
+            if cpu.execution_state() == CpuExecutionState::Halted
+                && interrupts.highest_pending() == Some(InterruptSource::LcdStat)
+                && ppu.dmg_lcd_reenable_mode0_halt_wake_deferred()
+            {
+                return;
+            }
             cpu.evaluate_wake_and_interrupts(interrupts, joypad);
         });
 

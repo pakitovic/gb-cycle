@@ -22,6 +22,10 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep the scheduler seam explicit: CPU micro-op effects stage first, PPU MMIO commits on the same T-cycle, then interrupt aggregation observes the result.
 - Keep one internal LCD STAT line and request LCD STAT only on rising edges.
 - Keep published `STAT` / visible access-mode evaluation expressed as ordered named rule families rather than one large inline branch chain.
+- Keep the current split between bus/readback access mode and the DMG-family STAT IRQ mode source; LCD restart and SCX-dependent HBlank tests rely on those seams not being collapsed back into one raw `current_access_mode()` decision.
+- Keep the LCD re-enable first-line Mode `0` HALT wake aperture separate from the non-HALT `IF` publication edge; moving the PPU request edge instead of gating the halted CPU wake regresses the running-CPU HBlank timing tests.
+- Keep the DMG `WX = 0 && (SCX & 7) == 3` terminal readback seam ahead of generic terminal-tail early-HBlank publication; this is a CPU-visible `STAT` seam, not a renderer-only detail.
+- Keep DMG `SkipBoot`'s startup Mode `0` STAT IRQ phase explicit and boot-gated; do not leak that first-frame hidden phase into ordinary PPU startup-state unit tests or into LCD off/on restart timing.
 - LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state. The first blank frame after re-enable is panel behavior, not a delayed internal scheduler start.
 
 ### Mode 3 and fetch arbitration
@@ -45,6 +49,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.
 - Keep `WX = 0`, `WX = 166`, and `WX = 0 && (SCX & 7) > 0` as explicit edge-case paths.
+- Keep the later-DMG `RealBoot` first-LCD-enable dot phase and `FF50`-armed Mode `0` SCX seam separate from ordinary LCD re-enable behavior; this is a boot/handoff hidden-state contract, not a generic `LCDC.7` restart rule.
 
 ### DMA, OAM, and corruption
 

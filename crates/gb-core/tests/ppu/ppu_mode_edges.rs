@@ -90,7 +90,7 @@ fn mode0_stat_request_can_precede_visible_hblank_while_vram_stays_blocked() {
 
     machine.write_bus(0x8000, 0x12);
     machine.write_bus(0xFF45, 0x01);
-    step_until_line_dot(&mut machine, 80);
+    step_until_position(&mut machine, 2, 80);
     machine.write_bus(0xFF41, 0x08);
     machine.write_bus(0xFF0F, 0x00);
 

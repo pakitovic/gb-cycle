@@ -204,6 +204,7 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
+            self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
             self.dma.apply_startup_state(startup_state.dma);
@@ -214,6 +215,7 @@ impl<S: TraceSink> Machine<S> {
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
         if let Some(startup_state) = self.boot.real_boot_power_on_state() {
+            self.ppu.apply_dmg_real_boot_power_on_lcd_enable_phase();
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
             self.joypad.apply_startup_state(startup_state.joypad);

@@ -55,6 +55,7 @@ const RGB555_BLACK: u16 = 0x0000;
 const DOTS_PER_SCANLINE: u16 = 456;
 const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 0;
+const DMG_REAL_BOOT_POWER_ON_LCD_ENABLE_INITIAL_LINE_DOT: u16 = 92;
 const LCD_REENABLE_LINE0_TOTAL_DOTS: u16 = DOTS_PER_SCANLINE - 8;
 const LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT: u16 = LCD_REENABLE_LINE0_TOTAL_DOTS - 4;
 const LCD_REENABLE_LINE0_MODE3_START_DOT: u16 = MODE2_DOTS - 8;
@@ -663,6 +664,8 @@ pub struct Ppu {
     cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeState,
+    #[serde(default)]
+    dmg_real_boot_power_on_lcd_enable_phase_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -694,6 +697,8 @@ pub struct PpuSaveState {
     cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,
+    #[serde(default)]
+    dmg_real_boot_power_on_lcd_enable_phase_active: bool,
 }
 
 impl PpuSaveState {
@@ -737,6 +742,8 @@ impl Ppu {
             cgb_palettes: self.cgb_palettes.clone(),
             obj_palette_read_policy: self.obj_palette_read_policy,
             runtime: self.runtime.capture_save_state(),
+            dmg_real_boot_power_on_lcd_enable_phase_active: self
+                .dmg_real_boot_power_on_lcd_enable_phase_active,
         }
     }
 
@@ -768,6 +775,8 @@ impl Ppu {
         self.cgb_palettes = state.cgb_palettes.clone();
         self.obj_palette_read_policy = state.obj_palette_read_policy;
         self.runtime.restore_save_state(&state.runtime);
+        self.dmg_real_boot_power_on_lcd_enable_phase_active =
+            state.dmg_real_boot_power_on_lcd_enable_phase_active;
     }
 }
 

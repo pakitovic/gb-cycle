@@ -202,6 +202,10 @@ impl Ppu {
                 .count()
                 >= 5;
 
+        if self.dmg_wx0_scx3_window_tail_should_keep_published_drawing() {
+            return false;
+        }
+
         self.ly < VISIBLE_SCANLINES
             && self.line_dot + 1 == self.current_mode0_start_dot()
             && self.runtime.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
@@ -233,6 +237,20 @@ impl Ppu {
                                 Mode3TransferReadiness::WaitingForFifo(_)
                             )))
             })
+    }
+
+    fn dmg_wx0_scx3_window_tail_should_keep_published_drawing(&self) -> bool {
+        let visible_registers = self.mode3_register_latches().visible();
+
+        self.console_model.is_dmg_family()
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot + 1 == self.current_mode0_start_dot()
+            && self.runtime.mode2_scan_state.selected_sprite_count() == 0
+            && self.runtime.bg_pipeline_state.window_started_this_line
+            && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window
+            && visible_registers.window_enabled()
+            && visible_registers.wx == 0
+            && visible_registers.scx & 0x07 == 3
     }
 
     pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(

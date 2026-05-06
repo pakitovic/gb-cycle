@@ -68,7 +68,18 @@ impl Ppu {
         }
 
         let mode0_start_dot = self.current_mode0_start_dot();
+        let real_boot_scx_seam_suppresses_pretrigger = self
+            .runtime
+            .stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active
+            && matches!(self.scx & 0x07, 3 | 7);
         let mode0_pretrigger_source = stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
+            && !self
+                .runtime
+                .stat_state
+                .suppress_mode0_pretrigger_until_vblank
+            && !self.runtime.stat_state.startup_mode0_irq_phase_active
+            && !real_boot_scx_seam_suppresses_pretrigger
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot < mode0_start_dot
             && self.line_dot + 4 >= mode0_start_dot;
@@ -80,7 +91,7 @@ impl Ppu {
             && self.current_access_mode() == PpuAccessMode::VBlank
             && self.ly == VISIBLE_SCANLINES
             && self.line_dot == 0;
-        let mode_source = match self.current_access_mode() {
+        let mode_source = match self.current_stat_irq_access_mode() {
             PpuAccessMode::HBlank => stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0,
             PpuAccessMode::VBlank => stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0,
             PpuAccessMode::OamScan => stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0,
@@ -92,6 +103,132 @@ impl Ppu {
             || mode0_pretrigger_source
             || mode2_pretrigger_source
             || dmg_mode2_vblank_entry_source
+    }
+
+    fn current_stat_irq_access_mode(&self) -> PpuAccessMode {
+        let lcd_restart_first_line = self
+            .lcd_restart_phase
+            .is_first_line_after_enable_active(self.ly);
+        if lcd_restart_first_line
+            && (self.line_dot < LCD_REENABLE_LINE0_MODE3_START_DOT
+                || self.line_dot < self.lcd_reenable_line0_mode0_irq_dot())
+        {
+            return PpuAccessMode::Drawing;
+        }
+
+        if !lcd_restart_first_line
+            && self.runtime.stat_state.startup_mode0_irq_phase_active
+            && self.current_access_mode() == PpuAccessMode::HBlank
+            && self.line_dot < self.current_mode0_stat_irq_start_dot()
+        {
+            return PpuAccessMode::Drawing;
+        }
+
+        if !lcd_restart_first_line
+            && self
+                .runtime
+                .stat_state
+                .suppress_mode0_pretrigger_until_vblank
+            && matches!(self.scx & 0x07, 3 | 7)
+            && self.current_access_mode() == PpuAccessMode::HBlank
+            && self.line_dot < self.current_mode0_stat_irq_start_dot()
+        {
+            return PpuAccessMode::Drawing;
+        }
+
+        self.current_access_mode()
+    }
+
+    fn current_mode0_stat_irq_start_dot(&self) -> u16 {
+        let mode0_start_dot = self.current_mode0_start_dot();
+        if self.runtime.stat_state.startup_mode0_irq_phase_active {
+            let startup_scx_seam_delay = if matches!(self.scx & 0x07, 3 | 7) {
+                64
+            } else {
+                60
+            };
+            return mode0_start_dot.saturating_add(startup_scx_seam_delay);
+        }
+
+        if !self
+            .runtime
+            .stat_state
+            .suppress_mode0_pretrigger_until_vblank
+        {
+            return mode0_start_dot;
+        }
+
+        match self.scx & 0x07 {
+            3 => mode0_start_dot.saturating_add(4),
+            7 => mode0_start_dot.saturating_add(1),
+            _ => mode0_start_dot,
+        }
+    }
+
+    fn lcd_reenable_line0_mode0_irq_dot(&self) -> u16 {
+        let scx_group_delay = u16::from((self.scx & 0x07).saturating_add(3) / 4) * 4;
+        LCD_REENABLE_LINE0_MODE0_RESTORE_DOT + scx_group_delay
+    }
+
+    fn lcd_reenable_line0_mode0_halt_wake_dot(&self) -> u16 {
+        self.current_mode0_start_dot().saturating_sub(3) & !0x0003
+    }
+
+    pub(crate) fn dmg_lcd_reenable_mode0_halt_wake_deferred(&self) -> bool {
+        if !self.console_model.is_dmg_family()
+            || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+            || !self
+                .lcd_restart_phase
+                .is_first_line_after_enable_active(self.ly)
+            || self.current_stat_irq_access_mode() != PpuAccessMode::HBlank
+        {
+            return false;
+        }
+
+        let irq_dot = self.lcd_reenable_line0_mode0_irq_dot();
+        let halt_wake_dot = self.lcd_reenable_line0_mode0_halt_wake_dot().max(irq_dot);
+
+        self.line_dot >= irq_dot && self.line_dot < halt_wake_dot
+    }
+
+    fn mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+            || self.ly >= VISIBLE_SCANLINES
+        {
+            return false;
+        }
+
+        let real_boot_scx_seam_suppresses_pretrigger = self
+            .runtime
+            .stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active
+            && matches!(self.scx & 0x07, 3 | 7);
+        let ordinary_pretrigger_allowed = !self
+            .runtime
+            .stat_state
+            .suppress_mode0_pretrigger_until_vblank
+            && !self.runtime.stat_state.startup_mode0_irq_phase_active
+            && !real_boot_scx_seam_suppresses_pretrigger;
+        let ordinary_pretrigger_source = ordinary_pretrigger_allowed
+            && self.line_dot < self.current_mode0_start_dot()
+            && self.line_dot + 4 >= self.current_mode0_start_dot();
+        if ordinary_pretrigger_source {
+            return true;
+        }
+
+        let mode0_start_dot = if self
+            .lcd_restart_phase
+            .is_first_line_after_enable_active(self.ly)
+        {
+            self.lcd_reenable_line0_mode0_irq_dot()
+        } else {
+            self.current_mode0_stat_irq_start_dot()
+        };
+
+        self.line_dot == mode0_start_dot
+            && self.current_stat_irq_access_mode() == PpuAccessMode::HBlank
     }
 
     pub(in crate::ppu) fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
@@ -134,12 +271,15 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn stat_request_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-            && self
-                .lcd_restart_phase
-                .is_first_line_after_enable_active(self.ly)
-            && self.ly + 1 < VISIBLE_SCANLINES
-            && self.line_dot + 4 >= self.current_scanline_length()
+        let mode2_restart_pretrigger_hidden =
+            self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+                && self
+                    .lcd_restart_phase
+                    .is_first_line_after_enable_active(self.ly)
+                && self.ly + 1 < VISIBLE_SCANLINES
+                && self.line_dot + 4 >= self.current_scanline_length();
+
+        self.mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if() || mode2_restart_pretrigger_hidden
     }
 
     pub(in crate::ppu) fn stat_write_quirk_active(&self) -> bool {
@@ -176,6 +316,14 @@ impl Ppu {
         self.ly = 0;
         self.line_dot = 0;
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+        self.runtime
+            .stat_state
+            .suppress_mode0_pretrigger_until_vblank = false;
+        self.runtime.stat_state.startup_mode0_irq_phase_active = false;
+        self.runtime
+            .stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active = false;
+        self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
         self.runtime.panel.clear_visible_buffers();
@@ -187,9 +335,22 @@ impl Ppu {
         self.lcd_enable_pending_delay_tcycles = 0;
         self.runtime.blank_frame_active = true;
         self.ly = 0;
-        self.line_dot = LCD_REENABLE_INITIAL_LINE_DOT;
+        self.line_dot = if self.dmg_real_boot_power_on_lcd_enable_phase_active {
+            DMG_REAL_BOOT_POWER_ON_LCD_ENABLE_INITIAL_LINE_DOT
+        } else {
+            LCD_REENABLE_INITIAL_LINE_DOT
+        };
+        self.runtime
+            .stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active =
+            self.dmg_real_boot_power_on_lcd_enable_phase_active;
+        self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.lcd_restart_phase = PpuLcdRestartPhase::first_line_after_enable();
         self.runtime.stat_state.lcd_disabled_lyc_coincidence = false;
+        self.runtime
+            .stat_state
+            .suppress_mode0_pretrigger_until_vblank = true;
+        self.runtime.stat_state.startup_mode0_irq_phase_active = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
         self.runtime.panel.clear_visible_buffers();
