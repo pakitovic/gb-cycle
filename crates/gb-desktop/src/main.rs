@@ -608,11 +608,20 @@ struct DesktopCpuWindowTraceRecord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum EmulationProfileDetail {
+    #[default]
+    Full,
+    CoreOnly,
+    Overhead,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum EmulationProfileMode {
     #[default]
     Disabled,
     SampledSummary {
         sample_every_frames: u32,
+        detail: EmulationProfileDetail,
     },
 }
 
@@ -653,6 +662,11 @@ struct EmulationBreakdownSample {
     host_event_poll_duration: Duration,
     host_audio_submit_duration: Duration,
     host_save_flush_duration: Duration,
+    profile_base_duration: Duration,
+    profile_core_duration: Duration,
+    profile_full_duration: Duration,
+    profile_core_overhead_duration: Duration,
+    profile_ppu_observer_overhead_duration: Duration,
 }
 
 #[derive(Debug)]
@@ -713,12 +727,14 @@ struct FrameLoopTelemetry {
 #[derive(Debug)]
 struct EmulationProfileRequest {
     machine: DesktopEmulationSession,
+    detail: EmulationProfileDetail,
     breakdown: EmulationBreakdownSample,
 }
 
 #[derive(Debug)]
 struct EmulationProfileWorkItem {
     machine: DesktopEmulationSession,
+    detail: EmulationProfileDetail,
     emulation_duration: Duration,
     breakdown: EmulationBreakdownSample,
 }
@@ -729,9 +745,10 @@ struct CompletedEmulationProfileSample {
     breakdown: EmulationBreakdownSample,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ReplayFrameCoreProfiler {
     sample: EmulationBreakdownSample,
+    records_ppu_regions: bool,
     active_region: Option<(MachineStepRegion, Instant)>,
     active_ppu_region: Option<(PpuStepRegion, Instant)>,
 }
@@ -878,6 +895,7 @@ impl EmulationProfileMode {
         };
 
         let value = value.to_string_lossy();
+        let value = value.trim();
         if value.is_empty()
             || value == "0"
             || value.eq_ignore_ascii_case("false")
@@ -888,18 +906,11 @@ impl EmulationProfileMode {
             Self::Disabled
         } else {
             let normalized = value.trim().to_ascii_lowercase();
-            let sample_every_frames = ["summary:", "sampled:", "every:", "stride:"]
-                .iter()
-                .find_map(|prefix| {
-                    normalized.strip_prefix(prefix).and_then(|rest| {
-                        rest.parse::<u32>()
-                            .ok()
-                            .filter(|sample_every| *sample_every > 0)
-                    })
-                })
-                .unwrap_or(DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES);
+            let (detail, sample_every_frames) =
+                parse_emulation_profile_detail_and_sample_stride(&normalized);
             Self::SampledSummary {
                 sample_every_frames,
+                detail,
             }
         }
     }
@@ -913,9 +924,62 @@ impl EmulationProfileMode {
             Self::Disabled => None,
             Self::SampledSummary {
                 sample_every_frames,
+                ..
             } => Some(sample_every_frames),
         }
     }
+
+    fn detail(self) -> Option<EmulationProfileDetail> {
+        match self {
+            Self::Disabled => None,
+            Self::SampledSummary { detail, .. } => Some(detail),
+        }
+    }
+}
+
+impl EmulationProfileDetail {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::CoreOnly => "core",
+            Self::Overhead => "overhead",
+        }
+    }
+
+    const fn records_ppu_regions(self) -> bool {
+        matches!(self, Self::Full | Self::Overhead)
+    }
+}
+
+fn parse_emulation_profile_detail_and_sample_stride(
+    normalized: &str,
+) -> (EmulationProfileDetail, u32) {
+    for (prefix, detail) in [
+        ("summary-lite:", EmulationProfileDetail::CoreOnly),
+        ("lite:", EmulationProfileDetail::CoreOnly),
+        ("summary-overhead:", EmulationProfileDetail::Overhead),
+        ("overhead:", EmulationProfileDetail::Overhead),
+        ("summary:", EmulationProfileDetail::Full),
+        ("sampled:", EmulationProfileDetail::Full),
+        ("every:", EmulationProfileDetail::Full),
+        ("stride:", EmulationProfileDetail::Full),
+    ] {
+        if let Some(rest) = normalized.strip_prefix(prefix) {
+            let sample_every_frames = rest
+                .parse::<u32>()
+                .ok()
+                .filter(|sample_every| *sample_every > 0)
+                .unwrap_or(DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES);
+            return (detail, sample_every_frames);
+        }
+    }
+
+    let detail = match normalized {
+        "summary-lite" | "lite" => EmulationProfileDetail::CoreOnly,
+        "summary-overhead" | "overhead" => EmulationProfileDetail::Overhead,
+        _ => EmulationProfileDetail::Full,
+    };
+    (detail, DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES)
 }
 
 impl EmulationBreakdownSample {
@@ -977,6 +1041,19 @@ impl EmulationBreakdownSample {
         self.host_save_flush_duration += duration;
     }
 
+    fn add_profile_replay_durations(
+        &mut self,
+        base_duration: Duration,
+        core_duration: Duration,
+        full_duration: Duration,
+    ) {
+        self.profile_base_duration += base_duration;
+        self.profile_core_duration += core_duration;
+        self.profile_full_duration += full_duration;
+        self.profile_core_overhead_duration += core_duration.saturating_sub(base_duration);
+        self.profile_ppu_observer_overhead_duration += full_duration.saturating_sub(core_duration);
+    }
+
     fn accumulate(&mut self, other: Self) {
         self.core_external_events_duration += other.core_external_events_duration;
         self.core_timer_duration += other.core_timer_duration;
@@ -1013,6 +1090,11 @@ impl EmulationBreakdownSample {
         self.host_event_poll_duration += other.host_event_poll_duration;
         self.host_audio_submit_duration += other.host_audio_submit_duration;
         self.host_save_flush_duration += other.host_save_flush_duration;
+        self.profile_base_duration += other.profile_base_duration;
+        self.profile_core_duration += other.profile_core_duration;
+        self.profile_full_duration += other.profile_full_duration;
+        self.profile_core_overhead_duration += other.profile_core_overhead_duration;
+        self.profile_ppu_observer_overhead_duration += other.profile_ppu_observer_overhead_duration;
     }
 
     fn core_duration(self) -> Duration {
@@ -1071,9 +1153,15 @@ impl EmulationBreakdownSample {
 }
 
 impl EmulationProfileRequest {
+    #[cfg(test)]
     fn new(machine: DesktopEmulationSession) -> Self {
+        Self::new_with_detail(machine, EmulationProfileDetail::Full)
+    }
+
+    fn new_with_detail(machine: DesktopEmulationSession, detail: EmulationProfileDetail) -> Self {
         Self {
             machine,
+            detail,
             breakdown: EmulationBreakdownSample::default(),
         }
     }
@@ -1093,6 +1181,7 @@ impl EmulationProfileRequest {
     fn into_work_item(self, emulation_duration: Duration) -> EmulationProfileWorkItem {
         EmulationProfileWorkItem {
             machine: self.machine,
+            detail: self.detail,
             emulation_duration,
             breakdown: self.breakdown,
         }
@@ -1100,13 +1189,36 @@ impl EmulationProfileRequest {
 }
 
 impl ReplayFrameCoreProfiler {
+    fn new(records_ppu_regions: bool) -> Self {
+        Self {
+            records_ppu_regions,
+            ..Default::default()
+        }
+    }
+
     fn finish(self) -> EmulationBreakdownSample {
         debug_assert!(self.active_region.is_none());
+        debug_assert!(self.active_ppu_region.is_none());
         self.sample
     }
 }
 
+impl Default for ReplayFrameCoreProfiler {
+    fn default() -> Self {
+        Self {
+            sample: EmulationBreakdownSample::default(),
+            records_ppu_regions: true,
+            active_region: None,
+            active_ppu_region: None,
+        }
+    }
+}
+
 impl MachineStepObserver for ReplayFrameCoreProfiler {
+    fn records_ppu_regions(&self) -> bool {
+        self.records_ppu_regions
+    }
+
     fn begin_region(&mut self, region: MachineStepRegion) {
         debug_assert!(self.active_region.is_none());
         self.active_region = Some((region, Instant::now()));
@@ -1184,25 +1296,106 @@ impl Drop for AsyncEmulationProfileWorker {
 fn profile_emulation_work_item(
     mut work_item: EmulationProfileWorkItem,
 ) -> CompletedEmulationProfileSample {
-    let mut profiler = ReplayFrameCoreProfiler::default();
-    let mut at_frame_origin =
-        work_item.machine.ppu().ly() == 0 && work_item.machine.ppu().line_dot() == 0;
+    match work_item.detail {
+        EmulationProfileDetail::Full | EmulationProfileDetail::CoreOnly => {
+            let mut profiler = ReplayFrameCoreProfiler::new(work_item.detail.records_ppu_regions());
+            step_profile_replay_frame_with_observer(&mut work_item.machine, &mut profiler);
+            work_item.breakdown.accumulate(profiler.finish());
+        }
+        EmulationProfileDetail::Overhead => {
+            let starting_machine = work_item.machine;
+            let mut base_machine = starting_machine.clone();
+            let mut core_machine = starting_machine.clone();
+            let mut full_machine = starting_machine;
+
+            let base_started_at = Instant::now();
+            step_profile_replay_frame_unobserved(&mut base_machine);
+            let base_duration = base_started_at.elapsed();
+
+            let mut core_profiler = ReplayFrameCoreProfiler::new(false);
+            let core_started_at = Instant::now();
+            step_profile_replay_frame_with_observer(&mut core_machine, &mut core_profiler);
+            let core_duration = core_started_at.elapsed();
+
+            let mut full_profiler = ReplayFrameCoreProfiler::new(true);
+            let full_started_at = Instant::now();
+            step_profile_replay_frame_with_observer(&mut full_machine, &mut full_profiler);
+            let full_duration = full_started_at.elapsed();
+
+            debug_assert_profile_replay_equivalent(&base_machine, &core_machine);
+            debug_assert_profile_replay_equivalent(&base_machine, &full_machine);
+
+            work_item.breakdown.add_profile_replay_durations(
+                base_duration,
+                core_duration,
+                full_duration,
+            );
+            work_item.breakdown.accumulate(full_profiler.finish());
+        }
+    }
+
+    CompletedEmulationProfileSample {
+        emulation_duration: work_item.emulation_duration,
+        breakdown: work_item.breakdown,
+    }
+}
+
+fn step_profile_replay_frame_unobserved(machine: &mut DesktopEmulationSession) {
+    step_profile_replay_frame(machine, |machine| machine.step_t_cycle());
+}
+
+fn step_profile_replay_frame_with_observer(
+    machine: &mut DesktopEmulationSession,
+    observer: &mut impl MachineStepObserver,
+) {
+    step_profile_replay_frame(machine, |machine| {
+        machine.step_t_cycle_with_observer(observer);
+    });
+}
+
+fn step_profile_replay_frame(
+    machine: &mut DesktopEmulationSession,
+    mut step_t_cycle: impl FnMut(&mut DesktopEmulationSession),
+) {
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
 
     loop {
-        work_item.machine.step_t_cycle_with_observer(&mut profiler);
-        let now_at_frame_origin =
-            work_item.machine.ppu().ly() == 0 && work_item.machine.ppu().line_dot() == 0;
+        step_t_cycle(machine);
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
         if now_at_frame_origin && !at_frame_origin {
             break;
         }
         at_frame_origin = now_at_frame_origin;
     }
+}
 
-    work_item.breakdown.accumulate(profiler.finish());
-    CompletedEmulationProfileSample {
-        emulation_duration: work_item.emulation_duration,
-        breakdown: work_item.breakdown,
+#[cfg(debug_assertions)]
+fn debug_assert_profile_replay_equivalent(
+    expected: &DesktopEmulationSession,
+    actual: &DesktopEmulationSession,
+) {
+    for slot in PlayerSlot::ALL {
+        match (
+            expected.machine_for_player_slot(slot),
+            actual.machine_for_player_slot(slot),
+        ) {
+            (Some(expected), Some(actual)) => {
+                debug_assert_eq!(expected.snapshot(), actual.snapshot())
+            }
+            (None, None) => {}
+            _ => debug_assert!(
+                false,
+                "profile replay paths should preserve the same linked session shape"
+            ),
+        }
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_assert_profile_replay_equivalent(
+    _expected: &DesktopEmulationSession,
+    _actual: &DesktopEmulationSession,
+) {
 }
 
 impl DesktopTraceCapture {
@@ -3251,6 +3444,10 @@ impl PerformanceCounter {
         self.emulation_profile_mode.enabled()
     }
 
+    fn emulation_profile_detail(&self) -> Option<EmulationProfileDetail> {
+        self.emulation_profile_mode.detail()
+    }
+
     fn should_profile_next_frame(&mut self) -> bool {
         self.collect_emulation_profile_results();
         let Some(sample_every_frames) = self.emulation_profile_mode.sample_every_frames() else {
@@ -3308,6 +3505,25 @@ impl PerformanceCounter {
             .emulation_profile_mode
             .sample_every_frames()
             .expect("sampled emulation profile mode should provide a frame stride");
+        let profile_detail_label = self
+            .emulation_profile_mode
+            .detail()
+            .expect("sampled emulation profile mode should provide a detail mode")
+            .label();
+        let profile_base_ms =
+            average_duration_ms(breakdown.profile_base_duration, profiled_frames_f64);
+        let profile_core_ms =
+            average_duration_ms(breakdown.profile_core_duration, profiled_frames_f64);
+        let profile_full_ms =
+            average_duration_ms(breakdown.profile_full_duration, profiled_frames_f64);
+        let profile_core_overhead_ms = average_duration_ms(
+            breakdown.profile_core_overhead_duration,
+            profiled_frames_f64,
+        );
+        let profile_ppu_observer_overhead_ms = average_duration_ms(
+            breakdown.profile_ppu_observer_overhead_duration,
+            profiled_frames_f64,
+        );
         let audio_submit_samples = if self.sample_audio_submit_sample_count_observations > 0 {
             format!(
                 "{:.2}",
@@ -3782,7 +3998,7 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_bus_ms={:.2} ppu_busstate_ms={:.2} ppu_busview_ms={:.2} ppu_snapshot_ms={:.2} ppu_pub_ms={:.2} ppu_tick_ms={:.2} ppu_mode3_ctrl_ms={:.2} ppu_bg_edge_ms={:.2} ppu_win_edge_ms={:.2} ppu_obj_edge_ms={:.2} ppu_raster_pub_ms={:.2} ppu_mode_ms={:.2} ppu_raster_ms={:.2} ppu_stat_ms={:.2} ppu_visible_ms={:.2} ppu_misc_ms={:.2} ppu_other_ms={:.2} ppu_unbucketed_ms={:.2} ppu_profile_gap_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} scheduler_tcycles={frame_step_t_cycles} video_dots={frame_video_dots} speed_mode={speed_mode} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} profile_detail={profile_detail_label} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} profile_base_ms={profile_base_ms:.2} profile_core_ms={profile_core_ms:.2} profile_full_ms={profile_full_ms:.2} profile_core_overhead_ms={profile_core_overhead_ms:.2} profile_ppu_observer_overhead_ms={profile_ppu_observer_overhead_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_bus_ms={:.2} ppu_busstate_ms={:.2} ppu_busview_ms={:.2} ppu_snapshot_ms={:.2} ppu_pub_ms={:.2} ppu_tick_ms={:.2} ppu_mode3_ctrl_ms={:.2} ppu_bg_edge_ms={:.2} ppu_win_edge_ms={:.2} ppu_obj_edge_ms={:.2} ppu_raster_pub_ms={:.2} ppu_mode_ms={:.2} ppu_raster_ms={:.2} ppu_stat_ms={:.2} ppu_visible_ms={:.2} ppu_misc_ms={:.2} ppu_other_ms={:.2} ppu_unbucketed_ms={:.2} ppu_profile_gap_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} scheduler_tcycles={frame_step_t_cycles} video_dots={frame_video_dots} speed_mode={speed_mode} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
@@ -6213,7 +6429,13 @@ fn step_until_next_frame(
             });
         }
         if profile_this_frame && profile_request.is_none() {
-            let mut request = EmulationProfileRequest::new(context.machine.clone());
+            let mut request = EmulationProfileRequest::new_with_detail(
+                context.machine.clone(),
+                context
+                    .performance_counter
+                    .emulation_profile_detail()
+                    .expect("enabled emulation profile mode should expose a detail mode"),
+            );
             request.record_host_event_poll_duration(pending_event_poll_duration);
             profile_request = Some(request);
             pending_event_poll_duration = Duration::ZERO;
@@ -12725,18 +12947,49 @@ mod tests {
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("1"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Full,
             }
         );
         assert_eq!(
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Full,
             }
         );
         assert_eq!(
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary:8"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 8,
+                detail: super::EmulationProfileDetail::Full,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary-lite"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::CoreOnly,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary-lite:8"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 8,
+                detail: super::EmulationProfileDetail::CoreOnly,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary-overhead"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Overhead,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary-overhead:8"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 8,
+                detail: super::EmulationProfileDetail::Overhead,
             }
         );
     }
@@ -12747,6 +13000,7 @@ mod tests {
             "gb-desktop | no rom".to_string(),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Full,
             },
         );
         counter.frames_in_sample = 2;
@@ -12896,6 +13150,11 @@ mod tests {
             host_event_poll_duration: Duration::from_millis(2),
             host_audio_submit_duration: Duration::from_millis(1),
             host_save_flush_duration: Duration::from_millis(1),
+            profile_base_duration: Duration::from_millis(0),
+            profile_core_duration: Duration::from_millis(0),
+            profile_full_duration: Duration::from_millis(0),
+            profile_core_overhead_duration: Duration::from_millis(0),
+            profile_ppu_observer_overhead_duration: Duration::from_millis(0),
         };
         let elapsed = Duration::from_millis(34);
         let snapshot = counter.snapshot_from_elapsed(elapsed);
@@ -12910,8 +13169,14 @@ mod tests {
             "sample_every={}",
             super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES
         )));
+        assert!(summary.contains("profile_detail=full"));
         assert!(summary.contains("sampled_emu_ms=12.00"));
         assert!(summary.contains("core_est_ms=10.00"));
+        assert!(summary.contains("profile_base_ms=0.00"));
+        assert!(summary.contains("profile_core_ms=0.00"));
+        assert!(summary.contains("profile_full_ms=0.00"));
+        assert!(summary.contains("profile_core_overhead_ms=0.00"));
+        assert!(summary.contains("profile_ppu_observer_overhead_ms=0.00"));
         assert!(summary.contains("ppu_ms=5.00"));
         assert!(summary.contains("cpu_ms=2.00"));
         assert!(summary.contains("core_other_ms=3.00"));
@@ -13057,36 +13322,71 @@ mod tests {
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("sampled:7"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 7,
+                detail: super::EmulationProfileDetail::Full,
             }
         );
         assert_eq!(
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("every:9"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 9,
+                detail: super::EmulationProfileDetail::Full,
             }
         );
         assert_eq!(
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("stride:11"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 11,
+                detail: super::EmulationProfileDetail::Full,
             }
         );
         assert_eq!(
             super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary:0"))),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Full,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("lite"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::CoreOnly,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("lite:3"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 3,
+                detail: super::EmulationProfileDetail::CoreOnly,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("overhead"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+                detail: super::EmulationProfileDetail::Overhead,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("overhead:5"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 5,
+                detail: super::EmulationProfileDetail::Overhead,
             }
         );
 
         let disabled = super::EmulationProfileMode::Disabled;
         assert!(!disabled.enabled());
         assert_eq!(disabled.sample_every_frames(), None);
+        assert_eq!(disabled.detail(), None);
 
         let sampled = super::EmulationProfileMode::SampledSummary {
             sample_every_frames: 7,
+            detail: super::EmulationProfileDetail::Full,
         };
         assert!(sampled.enabled());
         assert_eq!(sampled.sample_every_frames(), Some(7));
+        assert_eq!(sampled.detail(), Some(super::EmulationProfileDetail::Full));
 
         let mut breakdown = super::EmulationBreakdownSample::default();
         for (region, millis) in [
@@ -13135,6 +13435,25 @@ mod tests {
 
         assert_eq!(breakdown.core_duration(), Duration::from_millis(55));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(30));
+        assert_eq!(breakdown.profile_base_duration, Duration::ZERO);
+        assert_eq!(breakdown.profile_core_duration, Duration::ZERO);
+        assert_eq!(breakdown.profile_full_duration, Duration::ZERO);
+        breakdown.add_profile_replay_durations(
+            Duration::from_millis(13),
+            Duration::from_millis(17),
+            Duration::from_millis(23),
+        );
+        assert_eq!(breakdown.profile_base_duration, Duration::from_millis(13));
+        assert_eq!(breakdown.profile_core_duration, Duration::from_millis(17));
+        assert_eq!(breakdown.profile_full_duration, Duration::from_millis(23));
+        assert_eq!(
+            breakdown.profile_core_overhead_duration,
+            Duration::from_millis(4)
+        );
+        assert_eq!(
+            breakdown.profile_ppu_observer_overhead_duration,
+            Duration::from_millis(6)
+        );
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_other_duration(), Duration::ZERO);
@@ -13156,10 +13475,84 @@ mod tests {
             breakdown.host_event_poll_duration,
             Duration::from_millis(12)
         );
+        assert_eq!(breakdown.profile_base_duration, Duration::from_millis(13));
+        assert_eq!(breakdown.profile_core_duration, Duration::from_millis(17));
+        assert_eq!(breakdown.profile_full_duration, Duration::from_millis(23));
         assert_eq!(breakdown.core_duration(), Duration::from_millis(58));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(33));
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_other_duration(), Duration::from_millis(1));
+    }
+
+    #[test]
+    fn emulation_profile_summary_reports_detail_and_overhead_fields() {
+        let elapsed = Duration::from_secs(1);
+        let snapshot = super::PerformanceHudSnapshot {
+            fps: 60.0,
+            speed_percent: 100.0,
+            frame_time_ms: 16.67,
+            emulation_time_ms: 10.0,
+            render_time_ms: 1.0,
+            pacing_time_ms: 5.0,
+            audio_queue_ms: None,
+            rewind: RewindHudSnapshot::default(),
+        };
+
+        let mut lite_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | profile-lite".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 1,
+                detail: super::EmulationProfileDetail::CoreOnly,
+            },
+        );
+        lite_counter.frames_in_sample = 1;
+        lite_counter.sample_profiled_frames = 1;
+        lite_counter.sample_profiled_emulation_duration = Duration::from_millis(10);
+        lite_counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
+            core_ppu_duration: Duration::from_millis(6),
+            core_cpu_duration: Duration::from_millis(2),
+            ..Default::default()
+        };
+        let lite_summary = lite_counter
+            .emulation_profile_summary(elapsed, snapshot)
+            .expect("summary-lite should render a profile line");
+        assert!(lite_summary.contains("profile_detail=core"));
+        assert!(lite_summary.contains("profile_base_ms=0.00"));
+        assert!(lite_summary.contains("profile_core_ms=0.00"));
+        assert!(lite_summary.contains("profile_full_ms=0.00"));
+        assert!(lite_summary.contains("profile_core_overhead_ms=0.00"));
+        assert!(lite_summary.contains("profile_ppu_observer_overhead_ms=0.00"));
+
+        let mut overhead_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | profile-overhead".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 30,
+                detail: super::EmulationProfileDetail::Overhead,
+            },
+        );
+        overhead_counter.frames_in_sample = 1;
+        overhead_counter.sample_profiled_frames = 1;
+        overhead_counter.sample_profiled_emulation_duration = Duration::from_millis(15);
+        overhead_counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
+            core_ppu_duration: Duration::from_millis(7),
+            core_cpu_duration: Duration::from_millis(2),
+            profile_base_duration: Duration::from_millis(8),
+            profile_core_duration: Duration::from_millis(11),
+            profile_full_duration: Duration::from_millis(17),
+            profile_core_overhead_duration: Duration::from_millis(3),
+            profile_ppu_observer_overhead_duration: Duration::from_millis(6),
+            ..Default::default()
+        };
+        let overhead_summary = overhead_counter
+            .emulation_profile_summary(elapsed, snapshot)
+            .expect("summary-overhead should render a profile line");
+        assert!(overhead_summary.contains("profile_detail=overhead"));
+        assert!(overhead_summary.contains("sample_every=30"));
+        assert!(overhead_summary.contains("profile_base_ms=8.00"));
+        assert!(overhead_summary.contains("profile_core_ms=11.00"));
+        assert!(overhead_summary.contains("profile_full_ms=17.00"));
+        assert!(overhead_summary.contains("profile_core_overhead_ms=3.00"));
+        assert!(overhead_summary.contains("profile_ppu_observer_overhead_ms=6.00"));
     }
 
     #[test]
@@ -13188,6 +13581,75 @@ mod tests {
             completed.breakdown.host_duration(),
             Duration::from_millis(9)
         );
+    }
+
+    #[test]
+    fn emulation_profile_core_only_replay_keeps_core_regions_without_ppu_subregions() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let request = super::EmulationProfileRequest::new_with_detail(
+            super::DesktopEmulationSession::new_single(machine),
+            super::EmulationProfileDetail::CoreOnly,
+        );
+
+        let completed =
+            super::profile_emulation_work_item(request.into_work_item(Duration::from_millis(9)));
+
+        assert!(completed.breakdown.core_duration() > Duration::ZERO);
+        assert!(completed.breakdown.core_ppu_duration > Duration::ZERO);
+        assert_eq!(completed.breakdown.ppu_profiled_duration(), Duration::ZERO);
+        assert_eq!(
+            completed.breakdown.ppu_other_duration(),
+            completed.breakdown.core_ppu_duration
+        );
+    }
+
+    #[test]
+    fn emulation_profile_overhead_replay_reports_three_equivalent_paths() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let starting_session = super::DesktopEmulationSession::new_single(machine);
+        let mut unobserved = starting_session.clone();
+        let mut core_only = starting_session.clone();
+        let mut full = starting_session.clone();
+        let mut core_profiler = super::ReplayFrameCoreProfiler::new(false);
+        let mut full_profiler = super::ReplayFrameCoreProfiler::new(true);
+
+        super::step_profile_replay_frame_unobserved(&mut unobserved);
+        super::step_profile_replay_frame_with_observer(&mut core_only, &mut core_profiler);
+        super::step_profile_replay_frame_with_observer(&mut full, &mut full_profiler);
+
+        assert_eq!(
+            unobserved.primary_machine().snapshot(),
+            core_only.primary_machine().snapshot()
+        );
+        assert_eq!(
+            unobserved.primary_machine().snapshot(),
+            full.primary_machine().snapshot()
+        );
+        let core_breakdown = core_profiler.finish();
+        let full_breakdown = full_profiler.finish();
+        assert!(core_breakdown.core_duration() > Duration::ZERO);
+        assert_eq!(core_breakdown.ppu_profiled_duration(), Duration::ZERO);
+        assert!(full_breakdown.core_duration() > Duration::ZERO);
+        assert!(full_breakdown.ppu_profiled_duration() > Duration::ZERO);
+
+        let request = super::EmulationProfileRequest::new_with_detail(
+            starting_session,
+            super::EmulationProfileDetail::Overhead,
+        );
+        let completed =
+            super::profile_emulation_work_item(request.into_work_item(Duration::from_millis(11)));
+
+        assert_eq!(completed.emulation_duration, Duration::from_millis(11));
+        assert!(completed.breakdown.core_duration() > Duration::ZERO);
+        assert!(completed.breakdown.core_ppu_duration > Duration::ZERO);
+        assert!(completed.breakdown.ppu_profiled_duration() > Duration::ZERO);
+        assert!(completed.breakdown.profile_base_duration > Duration::ZERO);
+        assert!(completed.breakdown.profile_core_duration > Duration::ZERO);
+        assert!(completed.breakdown.profile_full_duration > Duration::ZERO);
     }
 
     #[test]
@@ -13258,6 +13720,7 @@ mod tests {
             "gb-desktop | sampled".to_string(),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 2,
+                detail: super::EmulationProfileDetail::Full,
             },
         );
         assert!(counter.emulation_profile_enabled());
@@ -13292,6 +13755,7 @@ mod tests {
             "gb-desktop | profile-summary".to_string(),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 4,
+                detail: super::EmulationProfileDetail::Full,
             },
         );
         counter.sample_started_at = Instant::now() - Duration::from_secs(2);
@@ -13565,6 +14029,7 @@ mod tests {
             "gb-desktop | step-stop-forced-blank".to_string(),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 2,
+                detail: super::EmulationProfileDetail::Full,
             },
         );
         let mut machine = Machine::new_summary(
@@ -13618,6 +14083,7 @@ mod tests {
             "gb-desktop | step-profile".to_string(),
             super::EmulationProfileMode::SampledSummary {
                 sample_every_frames: 2,
+                detail: super::EmulationProfileDetail::CoreOnly,
             },
         );
         harness.performance_counter.presented_frames_total = 1;
@@ -13652,6 +14118,7 @@ mod tests {
         assert_eq!(result.frame_loop_telemetry.end_dot, 0);
         assert!(result.frame_loop_telemetry.stepped_t_cycles > 0);
         assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 1);
+        assert_eq!(request.detail, super::EmulationProfileDetail::CoreOnly);
         assert!(request.breakdown.host_event_poll_duration <= Duration::from_millis(50));
         assert!(request.breakdown.host_audio_submit_duration <= Duration::from_millis(50));
     }
