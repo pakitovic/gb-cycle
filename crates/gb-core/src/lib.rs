@@ -117,7 +117,7 @@ pub use scheduler::{
 };
 pub use serial::{
     Serial, SerialClockMode, SerialPeer, SerialSnapshot, SerialStartupState, SerialStatus,
-    SerialTransferState,
+    SerialTickTelemetry, SerialTransferState,
 };
 pub use speed::{
     CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,

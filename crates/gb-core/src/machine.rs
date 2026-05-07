@@ -26,7 +26,7 @@ use crate::save_state::{
     MachineSaveStateRestoreError, SchedulerSaveState,
 };
 use crate::scheduler::GlobalScheduler;
-use crate::serial::{Serial, SerialClockMode, SerialTransferState};
+use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -199,6 +199,8 @@ pub trait MachineStepObserver {
     fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
 
     fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
+
+    fn record_serial_tick(&mut self, _telemetry: SerialTickTelemetry) {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

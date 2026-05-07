@@ -20,7 +20,7 @@ use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
     scheduler_phase_trace_message,
 };
-use crate::serial::Serial;
+use crate::serial::{Serial, SerialTickTelemetry};
 use crate::speed::CgbSpeedMode;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
@@ -445,24 +445,31 @@ impl MachinePhaseRunner<'_> {
             if self.serial.requires_full_t_cycle_tick()
                 || self.external_port.requires_t_cycle_tick()
             {
-                observe_machine_step_region(observer, MachineStepRegion::Serial, || {
-                    if self.external_port.requires_t_cycle_tick() {
-                        self.external_port.tick_t_cycle();
-                    }
-                    self.serial
-                        .tick_t_cycle_for_speed(context, self.speed.current_speed());
-                    if self.external_port.handles_completed_serial_byte()
-                        && let Some(output_byte) = self.serial.latest_completed_output_byte()
-                    {
-                        self.external_port.handle_completed_serial_byte(output_byte);
-                    }
-                    if self
-                        .external_port
-                        .requires_serial_peer_refresh_after_t_cycle()
-                    {
-                        self.serial.set_peer(self.external_port.serial_peer());
-                    }
-                });
+                let serial_telemetry =
+                    observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                        let mut serial_telemetry = SerialTickTelemetry::default();
+                        if self.external_port.requires_t_cycle_tick() {
+                            self.external_port.tick_t_cycle();
+                            serial_telemetry.accumulate(SerialTickTelemetry::external_port_tick());
+                        }
+                        serial_telemetry.accumulate(
+                            self.serial
+                                .tick_t_cycle_for_speed(context, self.speed.current_speed()),
+                        );
+                        if self.external_port.handles_completed_serial_byte()
+                            && let Some(output_byte) = self.serial.latest_completed_output_byte()
+                        {
+                            self.external_port.handle_completed_serial_byte(output_byte);
+                        }
+                        if self
+                            .external_port
+                            .requires_serial_peer_refresh_after_t_cycle()
+                        {
+                            self.serial.set_peer(self.external_port.serial_peer());
+                        }
+                        serial_telemetry
+                    });
+                observer.record_serial_tick(serial_telemetry);
             } else {
                 self.serial.tick_idle_t_cycle();
             }
