@@ -4751,6 +4751,6 @@ source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/interrupts/is_if_set_during_ime0.gb"
 console = "dmg"
 execution_mode = "strict"
-timeout_tcycles = 1000000
+timeout_tcycles = 2000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]

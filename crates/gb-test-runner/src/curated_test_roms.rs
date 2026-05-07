@@ -2520,7 +2520,6 @@ mod tests {
             case.console_model == ConsoleModel::GameBoy
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.execution_mode == crate::ExecutionMode::Strict
-                && case.timeout == Timeout::TCycles(1_000_000)
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.capture_plan.contains(CaptureKind::MemoryBytes)
                 && case.capture_plan.contains(CaptureKind::Snapshot)
@@ -2532,6 +2531,15 @@ mod tests {
                     == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(
                         0xFF82, 0x01,
                     )])
+        }));
+        let long_spin_if_ime0 = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "gbmicrotest-interrupts-is-if-set-during-ime0")
+            .expect("long IME=0 IF visibility row should stay in the DocBoy manifest");
+        assert_eq!(long_spin_if_ime0.timeout, Timeout::TCycles(2_000_000));
+        assert!(suite.cases.iter().all(|case| {
+            case.id == long_spin_if_ime0.id || case.timeout == Timeout::TCycles(1_000_000)
         }));
         assert!(
             !suite
