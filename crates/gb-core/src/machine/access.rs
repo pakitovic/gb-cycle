@@ -220,6 +220,7 @@ impl<S: TraceSink> Machine<S> {
             self.ppu.apply_dmg_real_boot_power_on_lcd_enable_phase();
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
+            self.dma.apply_startup_state(startup_state.dma);
             self.joypad.apply_startup_state(startup_state.joypad);
         }
         self.ppu

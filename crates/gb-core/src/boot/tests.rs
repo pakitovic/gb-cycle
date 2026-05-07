@@ -236,7 +236,7 @@ fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
         .real_boot_power_on_state()
         .expect("RealBoot should expose power-on hidden clock state");
 
-    assert_eq!(startup_state.timer.system_counter, 0x0024);
+    assert_eq!(startup_state.timer.system_counter, 0x0064);
     assert_eq!(startup_state.timer.tima, 0x00);
     assert_eq!(startup_state.timer.tma, 0x00);
     assert_eq!(startup_state.timer.tac, 0x00);
@@ -246,6 +246,7 @@ fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
         crate::serial::SerialClockMode::External
     );
     assert_eq!(startup_state.serial.clock_counter, 0x0028);
+    assert_eq!(startup_state.dma.source_page_latch, 0xFF);
     assert_eq!(startup_state.joypad.selection_bits, 0x00);
     assert_eq!(startup_state.joypad.pressed_mask, 0x00);
 

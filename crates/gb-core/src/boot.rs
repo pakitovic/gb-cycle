@@ -390,6 +390,7 @@ pub struct BootDirectBootState {
 pub(crate) struct BootRealBootPowerOnState {
     pub timer: TimerStartupState,
     pub serial: SerialStartupState,
+    pub dma: DmaStartupState,
     pub joypad: JoypadStartupState,
 }
 
@@ -569,6 +570,9 @@ impl BootController {
             },
             serial: SerialStartupState::from_registers(0x00, 0x00)
                 .with_clock_counter(real_boot_power_on_serial_clock_counter(self.console_model)),
+            dma: DmaStartupState {
+                source_page_latch: 0xFF,
+            },
             joypad: real_boot_power_on_joypad_state(self.console_model),
         })
     }
@@ -914,7 +918,7 @@ const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 const CGB_SKIP_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
-const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0024;
+const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0064;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER: u16 = 0x0028;
 const CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0xFFFB;
 const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xABC8;
