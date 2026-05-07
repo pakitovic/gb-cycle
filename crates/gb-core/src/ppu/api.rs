@@ -877,26 +877,45 @@ impl Ppu {
             self.is_lcd_enabled() && self.current_bus_access_mode() == PpuAccessMode::Drawing
         );
 
-        if !self.is_lcd_enabled() {
-            if self.lcd_enable_pending_delay_tcycles > 0 {
-                self.lcd_enable_pending_delay_tcycles -= 1;
-                if self.lcd_enable_pending_delay_tcycles == 2 {
-                    self.refresh_stat_irq_line(false);
-                    return;
-                }
+        let records_ppu_regions = observer.records_ppu_regions();
+        let lcd_enabled = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Tick,
+            || self.is_lcd_enabled(),
+        );
+        if !lcd_enabled {
+            let lcd_restart_ready = observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::Tick,
+                || {
+                    if self.lcd_enable_pending_delay_tcycles == 0 {
+                        return false;
+                    }
 
-                if self.lcd_enable_pending_delay_tcycles == 0 && self.lcdc & LCDC_ENABLE_BIT != 0 {
-                    self.enter_lcd_enabled_restart_state();
-                    self.refresh_stat_irq_line(false);
-                } else {
-                    return;
-                }
-            } else {
+                    self.lcd_enable_pending_delay_tcycles -= 1;
+                    if self.lcd_enable_pending_delay_tcycles == 2 {
+                        self.refresh_stat_irq_line(false);
+                        return false;
+                    }
+
+                    if self.lcd_enable_pending_delay_tcycles == 0
+                        && self.lcdc & LCDC_ENABLE_BIT != 0
+                    {
+                        self.enter_lcd_enabled_restart_state();
+                        self.refresh_stat_irq_line(false);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            );
+            if !lcd_restart_ready {
                 return;
             }
         }
 
-        let records_ppu_regions = observer.records_ppu_regions();
         let previous_mode = observe_ppu_step_region_when(
             observer,
             records_ppu_regions,
@@ -938,12 +957,18 @@ impl Ppu {
         }
         self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
-        observe_ppu_step_region_when(
+        let scanline_length = observe_ppu_step_region_when(
             observer,
             records_ppu_regions,
             PpuStepRegion::RasterAdvance,
-            || {
-                if self.line_dot == self.current_scanline_length() {
+            || self.current_scanline_length(),
+        );
+        if self.line_dot == scanline_length {
+            observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::RasterPublication,
+                || {
                     let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
                     self.finalize_dmg_bgp_cpu_commit_scanline();
                     if self.bg_pipeline_state.window_start_count_this_line != 0 {
@@ -971,9 +996,9 @@ impl Ppu {
                         self.blank_frame_active = false;
                         self.refresh_visible_output();
                     }
-                }
-            },
-        );
+                },
+            );
+        }
 
         let current_mode = observe_ppu_step_region_when(
             observer,

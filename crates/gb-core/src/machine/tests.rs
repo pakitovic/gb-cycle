@@ -549,9 +549,11 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
             PpuStepRegion::BusState,
             PpuStepRegion::BusSync,
             PpuStepRegion::BusView,
+            PpuStepRegion::Tick,
             PpuStepRegion::ModeTiming,
             PpuStepRegion::RasterAdvance,
             PpuStepRegion::VisiblePrep,
+            PpuStepRegion::Mode3Control,
             PpuStepRegion::RasterAdvance,
             PpuStepRegion::ModeTiming,
             PpuStepRegion::StatIrq,
@@ -561,6 +563,30 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
             PpuStepRegion::BusSync,
         ]
     );
+}
+
+#[test]
+fn step_t_cycle_with_observer_preserves_ppu_state_across_a_frame() {
+    let config =
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot);
+    let mut unobserved = Machine::new_summary(config.clone());
+    let mut observed = Machine::new_summary(config);
+    let rom = build_cgb_native_test_rom(&[0x00; 16]);
+    unobserved
+        .load_cartridge(rom.clone())
+        .expect("CGB native test ROM should load");
+    observed
+        .load_cartridge(rom)
+        .expect("CGB native test ROM should load");
+
+    let mut observer = RegionCollector::default();
+    for _ in 0..(PPU_DOTS_PER_LINE * PPU_LINES_PER_FRAME) {
+        unobserved.step_t_cycle();
+        observed.step_t_cycle_with_observer(&mut observer);
+    }
+
+    assert_eq!(unobserved.next_t_cycle(), observed.next_t_cycle());
+    assert_eq!(unobserved.ppu().snapshot(), observed.ppu().snapshot());
 }
 
 #[test]

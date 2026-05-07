@@ -628,17 +628,23 @@ struct EmulationBreakdownSample {
     core_ppu_bus_view_duration: Duration,
     core_ppu_bus_snapshot_duration: Duration,
     core_ppu_published_access_duration: Duration,
+    core_ppu_tick_duration: Duration,
     core_ppu_misc_duration: Duration,
     core_ppu_mode_timing_duration: Duration,
     core_ppu_raster_advance_duration: Duration,
+    core_ppu_raster_publication_duration: Duration,
     core_ppu_stat_irq_duration: Duration,
     core_ppu_visible_prep_duration: Duration,
     core_ppu_mode0_1_duration: Duration,
     core_ppu_mode2_duration: Duration,
+    core_ppu_mode3_control_duration: Duration,
     core_ppu_mode3_startup_duration: Duration,
     core_ppu_bg_fetch_duration: Duration,
+    core_ppu_bg_edge_duration: Duration,
     core_ppu_window_fetch_duration: Duration,
+    core_ppu_window_edge_duration: Duration,
     core_ppu_push_duration: Duration,
+    core_ppu_obj_edge_duration: Duration,
     core_ppu_obj_fetch_duration: Duration,
     core_ppu_pixel_transfer_duration: Duration,
     core_serial_duration: Duration,
@@ -942,16 +948,24 @@ impl EmulationBreakdownSample {
             PpuStepRegion::BusView => self.core_ppu_bus_view_duration += duration,
             PpuStepRegion::BusSnapshot => self.core_ppu_bus_snapshot_duration += duration,
             PpuStepRegion::PublishedAccess => self.core_ppu_published_access_duration += duration,
+            PpuStepRegion::Tick => self.core_ppu_tick_duration += duration,
             PpuStepRegion::ModeTiming => self.core_ppu_mode_timing_duration += duration,
             PpuStepRegion::RasterAdvance => self.core_ppu_raster_advance_duration += duration,
+            PpuStepRegion::RasterPublication => {
+                self.core_ppu_raster_publication_duration += duration;
+            }
             PpuStepRegion::StatIrq => self.core_ppu_stat_irq_duration += duration,
             PpuStepRegion::VisiblePrep => self.core_ppu_visible_prep_duration += duration,
             PpuStepRegion::Mode0Or1 => self.core_ppu_mode0_1_duration += duration,
             PpuStepRegion::Mode2Scan => self.core_ppu_mode2_duration += duration,
+            PpuStepRegion::Mode3Control => self.core_ppu_mode3_control_duration += duration,
             PpuStepRegion::Mode3Startup => self.core_ppu_mode3_startup_duration += duration,
             PpuStepRegion::Mode3BgFetch => self.core_ppu_bg_fetch_duration += duration,
+            PpuStepRegion::Mode3BgEdge => self.core_ppu_bg_edge_duration += duration,
             PpuStepRegion::Mode3WindowFetch => self.core_ppu_window_fetch_duration += duration,
+            PpuStepRegion::Mode3WindowEdge => self.core_ppu_window_edge_duration += duration,
             PpuStepRegion::Mode3Push => self.core_ppu_push_duration += duration,
+            PpuStepRegion::Mode3ObjEdge => self.core_ppu_obj_edge_duration += duration,
             PpuStepRegion::Mode3ObjFetch => self.core_ppu_obj_fetch_duration += duration,
             PpuStepRegion::Mode3PixelTransfer => {
                 self.core_ppu_pixel_transfer_duration += duration;
@@ -974,17 +988,23 @@ impl EmulationBreakdownSample {
         self.core_ppu_bus_view_duration += other.core_ppu_bus_view_duration;
         self.core_ppu_bus_snapshot_duration += other.core_ppu_bus_snapshot_duration;
         self.core_ppu_published_access_duration += other.core_ppu_published_access_duration;
+        self.core_ppu_tick_duration += other.core_ppu_tick_duration;
         self.core_ppu_misc_duration += other.core_ppu_misc_duration;
         self.core_ppu_mode_timing_duration += other.core_ppu_mode_timing_duration;
         self.core_ppu_raster_advance_duration += other.core_ppu_raster_advance_duration;
+        self.core_ppu_raster_publication_duration += other.core_ppu_raster_publication_duration;
         self.core_ppu_stat_irq_duration += other.core_ppu_stat_irq_duration;
         self.core_ppu_visible_prep_duration += other.core_ppu_visible_prep_duration;
         self.core_ppu_mode0_1_duration += other.core_ppu_mode0_1_duration;
         self.core_ppu_mode2_duration += other.core_ppu_mode2_duration;
+        self.core_ppu_mode3_control_duration += other.core_ppu_mode3_control_duration;
         self.core_ppu_mode3_startup_duration += other.core_ppu_mode3_startup_duration;
         self.core_ppu_bg_fetch_duration += other.core_ppu_bg_fetch_duration;
+        self.core_ppu_bg_edge_duration += other.core_ppu_bg_edge_duration;
         self.core_ppu_window_fetch_duration += other.core_ppu_window_fetch_duration;
+        self.core_ppu_window_edge_duration += other.core_ppu_window_edge_duration;
         self.core_ppu_push_duration += other.core_ppu_push_duration;
+        self.core_ppu_obj_edge_duration += other.core_ppu_obj_edge_duration;
         self.core_ppu_obj_fetch_duration += other.core_ppu_obj_fetch_duration;
         self.core_ppu_pixel_transfer_duration += other.core_ppu_pixel_transfer_duration;
         self.core_serial_duration += other.core_serial_duration;
@@ -1024,16 +1044,22 @@ impl EmulationBreakdownSample {
             + self.core_ppu_bus_view_duration
             + self.core_ppu_bus_snapshot_duration
             + self.core_ppu_published_access_duration
+            + self.core_ppu_tick_duration
             + self.core_ppu_misc_duration
             + self.core_ppu_mode_timing_duration
             + self.core_ppu_raster_advance_duration
+            + self.core_ppu_raster_publication_duration
             + self.core_ppu_stat_irq_duration
             + self.core_ppu_visible_prep_duration
             + self.core_ppu_mode2_duration
+            + self.core_ppu_mode3_control_duration
             + self.core_ppu_mode3_startup_duration
             + self.core_ppu_bg_fetch_duration
+            + self.core_ppu_bg_edge_duration
             + self.core_ppu_window_fetch_duration
+            + self.core_ppu_window_edge_duration
             + self.core_ppu_push_duration
+            + self.core_ppu_obj_edge_duration
             + self.core_ppu_obj_fetch_duration
             + self.core_ppu_pixel_transfer_duration
     }
@@ -3756,7 +3782,7 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_bus_ms={:.2} ppu_busstate_ms={:.2} ppu_busview_ms={:.2} ppu_snapshot_ms={:.2} ppu_pub_ms={:.2} ppu_mode_ms={:.2} ppu_raster_ms={:.2} ppu_stat_ms={:.2} ppu_visible_ms={:.2} ppu_misc_ms={:.2} ppu_other_ms={:.2} ppu_unbucketed_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} scheduler_tcycles={frame_step_t_cycles} video_dots={frame_video_dots} speed_mode={speed_mode} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_bus_ms={:.2} ppu_busstate_ms={:.2} ppu_busview_ms={:.2} ppu_snapshot_ms={:.2} ppu_pub_ms={:.2} ppu_tick_ms={:.2} ppu_mode3_ctrl_ms={:.2} ppu_bg_edge_ms={:.2} ppu_win_edge_ms={:.2} ppu_obj_edge_ms={:.2} ppu_raster_pub_ms={:.2} ppu_mode_ms={:.2} ppu_raster_ms={:.2} ppu_stat_ms={:.2} ppu_visible_ms={:.2} ppu_misc_ms={:.2} ppu_other_ms={:.2} ppu_unbucketed_ms={:.2} ppu_profile_gap_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} scheduler_tcycles={frame_step_t_cycles} video_dots={frame_video_dots} speed_mode={speed_mode} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
@@ -3897,6 +3923,42 @@ impl PerformanceCounter {
                 profiled_frames_f64,
             ),
             scaled_average_duration_ms(
+                breakdown.core_ppu_tick_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_mode3_control_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_bg_edge_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_window_edge_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_obj_edge_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_raster_publication_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
                 breakdown.core_ppu_mode_timing_duration,
                 breakdown.core_duration(),
                 estimated_core_duration,
@@ -3922,6 +3984,12 @@ impl PerformanceCounter {
             ),
             scaled_average_duration_ms(
                 breakdown.core_ppu_misc_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.ppu_other_duration(),
                 breakdown.core_duration(),
                 estimated_core_duration,
                 profiled_frames_f64,
@@ -12803,17 +12871,23 @@ mod tests {
             core_ppu_bus_view_duration: Duration::from_millis(0),
             core_ppu_bus_snapshot_duration: Duration::from_millis(0),
             core_ppu_published_access_duration: Duration::from_millis(0),
+            core_ppu_tick_duration: Duration::from_millis(0),
             core_ppu_misc_duration: Duration::from_millis(0),
             core_ppu_mode_timing_duration: Duration::from_millis(0),
             core_ppu_raster_advance_duration: Duration::from_millis(0),
+            core_ppu_raster_publication_duration: Duration::from_millis(0),
             core_ppu_stat_irq_duration: Duration::from_millis(0),
             core_ppu_visible_prep_duration: Duration::from_millis(0),
             core_ppu_mode0_1_duration: Duration::from_millis(2),
             core_ppu_mode2_duration: Duration::from_millis(1),
+            core_ppu_mode3_control_duration: Duration::from_millis(0),
             core_ppu_mode3_startup_duration: Duration::from_millis(1),
             core_ppu_bg_fetch_duration: Duration::from_millis(2),
+            core_ppu_bg_edge_duration: Duration::from_millis(0),
             core_ppu_window_fetch_duration: Duration::from_millis(1),
+            core_ppu_window_edge_duration: Duration::from_millis(0),
             core_ppu_push_duration: Duration::from_millis(1),
+            core_ppu_obj_edge_duration: Duration::from_millis(0),
             core_ppu_obj_fetch_duration: Duration::from_millis(1),
             core_ppu_pixel_transfer_duration: Duration::from_millis(0),
             core_cpu_duration: Duration::from_millis(4),
@@ -12860,6 +12934,12 @@ mod tests {
         assert!(summary.contains("ppu_busview_ms=0.00"));
         assert!(summary.contains("ppu_snapshot_ms=0.00"));
         assert!(summary.contains("ppu_pub_ms=0.00"));
+        assert!(summary.contains("ppu_tick_ms=0.00"));
+        assert!(summary.contains("ppu_mode3_ctrl_ms=0.00"));
+        assert!(summary.contains("ppu_bg_edge_ms=0.00"));
+        assert!(summary.contains("ppu_win_edge_ms=0.00"));
+        assert!(summary.contains("ppu_obj_edge_ms=0.00"));
+        assert!(summary.contains("ppu_raster_pub_ms=0.00"));
         assert!(summary.contains("ppu_mode_ms=0.00"));
         assert!(summary.contains("ppu_raster_ms=0.00"));
         assert!(summary.contains("ppu_stat_ms=0.00"));
@@ -12867,6 +12947,7 @@ mod tests {
         assert!(summary.contains("ppu_misc_ms=0.00"));
         assert!(summary.contains("ppu_other_ms=0.50"));
         assert!(summary.contains("ppu_unbucketed_ms=0.50"));
+        assert!(summary.contains("ppu_profile_gap_ms=0.50"));
         assert!(summary.contains("host_ms=2.00"));
         assert!(summary.contains("poll_ms=1.00"));
         assert!(summary.contains("audsubmit_ms=0.50"));
@@ -13013,7 +13094,7 @@ mod tests {
             (MachineStepRegion::Timer, 2),
             (MachineStepRegion::Apu, 3),
             (MachineStepRegion::Dma, 4),
-            (MachineStepRegion::Ppu, 18),
+            (MachineStepRegion::Ppu, 24),
             (MachineStepRegion::Serial, 6),
             (MachineStepRegion::Cpu, 7),
             (MachineStepRegion::Interrupts, 8),
@@ -13030,26 +13111,32 @@ mod tests {
             (PpuStepRegion::BusView, 1),
             (PpuStepRegion::BusSnapshot, 1),
             (PpuStepRegion::PublishedAccess, 1),
+            (PpuStepRegion::Tick, 1),
             (PpuStepRegion::ModeTiming, 1),
             (PpuStepRegion::RasterAdvance, 1),
+            (PpuStepRegion::RasterPublication, 1),
             (PpuStepRegion::StatIrq, 1),
             (PpuStepRegion::VisiblePrep, 1),
             (PpuStepRegion::Mode0Or1, 1),
             (PpuStepRegion::Mode2Scan, 1),
+            (PpuStepRegion::Mode3Control, 1),
             (PpuStepRegion::Mode3Startup, 1),
             (PpuStepRegion::Mode3BgFetch, 1),
+            (PpuStepRegion::Mode3BgEdge, 1),
             (PpuStepRegion::Mode3WindowFetch, 1),
+            (PpuStepRegion::Mode3WindowEdge, 1),
             (PpuStepRegion::Mode3Push, 1),
+            (PpuStepRegion::Mode3ObjEdge, 1),
             (PpuStepRegion::Mode3ObjFetch, 1),
             (PpuStepRegion::Mode3PixelTransfer, 1),
         ] {
             breakdown.add_ppu_region_duration(region, Duration::from_millis(millis));
         }
 
-        assert_eq!(breakdown.core_duration(), Duration::from_millis(49));
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(55));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(30));
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
-        assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(18));
+        assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_other_duration(), Duration::ZERO);
 
         breakdown.accumulate(super::EmulationBreakdownSample {
@@ -13059,7 +13146,7 @@ mod tests {
             host_event_poll_duration: Duration::from_millis(3),
             ..Default::default()
         });
-        assert_eq!(breakdown.core_ppu_duration, Duration::from_millis(20));
+        assert_eq!(breakdown.core_ppu_duration, Duration::from_millis(26));
         assert_eq!(breakdown.core_cpu_duration, Duration::from_millis(8));
         assert_eq!(
             breakdown.core_ppu_bg_fetch_duration,
@@ -13069,7 +13156,7 @@ mod tests {
             breakdown.host_event_poll_duration,
             Duration::from_millis(12)
         );
-        assert_eq!(breakdown.core_duration(), Duration::from_millis(52));
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(58));
         assert_eq!(breakdown.host_duration(), Duration::from_millis(33));
         assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
         assert_eq!(breakdown.ppu_other_duration(), Duration::from_millis(1));
