@@ -24,6 +24,14 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> Option<u8> {
+        if self.console_model.is_cgb_family() && self.ly == TOTAL_SCANLINES - 1 {
+            return Some(if self.line_dot >= CGB_LINE_153_LY_READ_ZERO_DOT {
+                0
+            } else {
+                self.ly
+            });
+        }
+
         if self.ly == TOTAL_SCANLINES - 1 {
             return match self.line_dot {
                 LINE_153_LYC153_COMPARE_START_DOT..LINE_153_LYC153_COMPARE_END_DOT => {
@@ -299,6 +307,11 @@ impl Ppu {
         }
 
         if self.ly == TOTAL_SCANLINES - 1 {
+            if self.console_model.is_cgb_family() {
+                return (self.lyc == TOTAL_SCANLINES - 1 && self.line_dot == 0)
+                    || (self.lyc == 0 && self.line_dot == CGB_LINE_153_LY_READ_ZERO_DOT);
+            }
+
             return (self.lyc == TOTAL_SCANLINES - 1
                 && self.line_dot == LINE_153_LYC153_COMPARE_START_DOT)
                 || (self.lyc == 0 && self.line_dot == LINE_153_LYC0_COMPARE_START_DOT);

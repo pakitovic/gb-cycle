@@ -248,6 +248,70 @@ fn dmg_line153_lyc0_stat_pretrigger_can_be_cancelled_by_same_dot_lyc_write() {
 }
 
 #[test]
+fn cgb_line153_lyc_edges_keep_the_cgb_ly0_window() {
+    let mut lyc153 = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    lyc153.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_LYC_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: TOTAL_SCANLINES - 2,
+        lyc: TOTAL_SCANLINES - 1,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    lyc153.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    lyc153.blank_frame_active = false;
+    lyc153.stat_state.irq_line = false;
+    lyc153.line_dot = DOTS_PER_SCANLINE - 1;
+
+    lyc153.tick();
+
+    assert_eq!(lyc153.snapshot().ly, TOTAL_SCANLINES - 1);
+    assert_eq!(lyc153.snapshot().line_dot, 0);
+    assert!(lyc153.snapshot().lyc_coincidence);
+    assert_ne!(
+        lyc153.pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
+        0
+    );
+    assert_eq!(
+        lyc153.cpu_visible_pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
+        0
+    );
+
+    let mut lyc0 = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    lyc0.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_LYC_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: TOTAL_SCANLINES - 1,
+        lyc: 0,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    lyc0.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    lyc0.blank_frame_active = false;
+    lyc0.startup_mode_latch = None;
+    lyc0.stat_state.irq_line = false;
+    lyc0.line_dot = CGB_LINE_153_LY_READ_ZERO_DOT - 1;
+
+    lyc0.tick();
+
+    assert_eq!(lyc0.snapshot().line_dot, CGB_LINE_153_LY_READ_ZERO_DOT);
+    assert!(lyc0.snapshot().lyc_coincidence);
+    assert_eq!(
+        lyc0.pending_interrupt_request_mask(),
+        InterruptSource::LcdStat.mask()
+    );
+    assert_eq!(lyc0.cpu_visible_pending_interrupt_request_mask(), 0);
+}
+
+#[test]
 fn ordinary_mode1_stat_edge_is_hidden_from_same_cycle_cpu_if_reads() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {

@@ -198,9 +198,13 @@ impl Ppu {
     }
 
     fn line_153_reads_as_ly0(&self) -> bool {
-        self.is_lcd_enabled()
-            && self.ly == TOTAL_SCANLINES - 1
-            && self.line_dot >= LINE_153_LY_READ_ZERO_DOT
+        let ly0_dot = if self.console_model.is_cgb_family() {
+            CGB_LINE_153_LY_READ_ZERO_DOT
+        } else {
+            LINE_153_LY_READ_ZERO_DOT
+        };
+
+        self.is_lcd_enabled() && self.ly == TOTAL_SCANLINES - 1 && self.line_dot >= ly0_dot
     }
 
     fn vblank_wrap_line0_ly_read_delay_active(&self) -> bool {

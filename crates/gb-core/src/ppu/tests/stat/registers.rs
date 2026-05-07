@@ -527,8 +527,15 @@ fn cgb_lyc_zero_coincidence_rises_during_the_line_153_ly0_window() {
 
     assert_eq!(ppu.snapshot().ly, 153);
     assert!(!ppu.snapshot().lyc_coincidence);
+    assert_eq!(ppu.read_register(0xFF44), 153);
 
-    ppu.tick_n(u64::from(LINE_153_LYC0_COMPARE_START_DOT));
+    ppu.tick_n(u64::from(CGB_LINE_153_LY_READ_ZERO_DOT - 1));
+
+    assert_eq!(ppu.snapshot().ly, 153);
+    assert_eq!(ppu.read_register(0xFF44), 153);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
+    ppu.tick();
 
     assert_eq!(ppu.snapshot().ly, 153);
     assert_eq!(ppu.read_register(0xFF44), 0);
