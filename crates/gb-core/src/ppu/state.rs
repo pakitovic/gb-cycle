@@ -3424,6 +3424,8 @@ pub(super) struct StatState {
     pub(super) boot_power_on_ppu_phase_base_dot: u32,
     #[serde(default)]
     pub(super) line_153_lyc0_stat_irq_pretrigger_pending: bool,
+    #[serde(default)]
+    pub(super) dmg_stat_write_quirk_blocks_line153_lyc0: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

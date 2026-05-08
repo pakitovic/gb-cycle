@@ -125,6 +125,11 @@ impl<S: TraceSink> Machine<S> {
             .apply_div_apu_startup_phase_from_system_counter(startup_state.system_counter);
     }
 
+    /// Applies the DMG-family synthetic power-on PPU phase used by tests that intentionally start at reset-facing LCD timing rather than at the verified cartridge-entry handoff.
+    pub fn apply_dmg_skip_boot_power_on_ppu_phase(&mut self) {
+        self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+    }
+
     pub fn load_cartridge(
         &mut self,
         rom_bytes: Vec<u8>,
@@ -204,9 +209,6 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
-            if !self.cartridge.is_empty() {
-                self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
-            }
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
             self.dma.apply_startup_state(startup_state.dma);

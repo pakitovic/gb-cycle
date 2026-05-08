@@ -2,6 +2,7 @@ version = 1
 family = "gbmicrotest"
 suite_name = "gbmicrotest-dmg-extra"
 subsystem = "CrossSubsystem"
+startup_ppu_profile = "dmg-power-on"
 
 [[case]]
 id = "gbmicrotest-halt-halt-bug"

@@ -767,6 +767,7 @@ impl Ppu {
         self.stat_state.boot_power_on_ppu_phase_active = false;
         self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
         self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.stat_state.dmg_stat_write_quirk_blocks_line153_lyc0 = false;
         self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
     }

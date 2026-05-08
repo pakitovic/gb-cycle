@@ -371,6 +371,23 @@ fn dmg_line144_mode2_stat_source_is_hidden_and_does_not_lock_oam() {
 }
 
 #[test]
+fn dmg_line144_mode2_stat_service_defers_only_until_vblank_entry() {
+    let mut ppu = dmg_mode2_stat_ppu();
+    ppu.ly = VISIBLE_SCANLINES - 1;
+    ppu.line_dot = ppu.current_scanline_length() - 4;
+
+    assert!(ppu.dmg_mode2_vblank_entry_interrupt_service_deferred());
+
+    ppu.line_dot = ppu.current_scanline_length() - 1;
+    assert!(ppu.dmg_mode2_vblank_entry_interrupt_service_deferred());
+
+    ppu.ly = VISIBLE_SCANLINES;
+    ppu.line_dot = 0;
+
+    assert!(!ppu.dmg_mode2_vblank_entry_interrupt_service_deferred());
+}
+
+#[test]
 fn mode2_stat_write_requests_only_on_the_oam_start_dot() {
     let mut oam_start = dmg_mode2_stat_ppu();
     oam_start.stat_interrupt_enable = 0;

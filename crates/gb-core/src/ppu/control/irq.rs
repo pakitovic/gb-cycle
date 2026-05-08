@@ -67,7 +67,8 @@ impl Ppu {
         }
 
         let coincidence_source = stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
-            && self.effective_lyc_coincidence();
+            && self.effective_lyc_coincidence()
+            && !self.dmg_stat_write_quirk_blocks_line153_lyc0_stat_source();
         let line_153_lyc0_pretrigger_source = self.line_153_lyc0_stat_irq_pretrigger_source();
 
         if !self.is_lcd_enabled() {
@@ -269,9 +270,25 @@ impl Ppu {
         self.console_model.is_dmg_family()
             && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
+            && !self.dmg_stat_write_quirk_blocks_line153_lyc0()
             && self.ly == TOTAL_SCANLINES - 1
             && self.lyc == 0
             && self.line_dot == LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    }
+
+    fn dmg_stat_write_quirk_blocks_line153_lyc0_stat_source(&self) -> bool {
+        self.dmg_stat_write_quirk_blocks_line153_lyc0()
+            && self.ly == TOTAL_SCANLINES - 1
+            && self.lyc == 0
+            && self.line_dot >= LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    }
+
+    fn dmg_stat_write_quirk_blocks_line153_lyc0(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self
+                .runtime
+                .stat_state
+                .dmg_stat_write_quirk_blocks_line153_lyc0
     }
 
     fn mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
@@ -328,10 +345,34 @@ impl Ppu {
             && self.current_access_mode() == PpuAccessMode::OamScan
     }
 
+    pub(in crate::ppu) fn mode1_stat_write_irq_source(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.current_access_mode() == PpuAccessMode::VBlank
+    }
+
     pub(crate) fn dmg_mode2_oam_halt_wake_deferred(&self) -> bool {
         self.console_model.is_dmg_family()
             && self.runtime.blank_frame_active
             && self.ordinary_mode2_stat_pretrigger_source()
+    }
+
+    pub(crate) fn dmg_mode2_vblank_entry_halt_wake_deferred(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 == VISIBLE_SCANLINES
+            && self.current_access_mode() == PpuAccessMode::HBlank
+            && self.line_dot + 4 >= self.current_scanline_length()
+    }
+
+    pub(crate) fn dmg_mode2_vblank_entry_interrupt_service_deferred(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 == VISIBLE_SCANLINES
+            && self.current_access_mode() == PpuAccessMode::HBlank
+            && self.line_dot + 4 >= self.current_scanline_length()
     }
 
     pub(in crate::ppu) fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
@@ -407,14 +448,20 @@ impl Ppu {
             || self.lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if()
     }
 
-    pub(in crate::ppu) fn stat_write_quirk_active(&self) -> bool {
+    pub(in crate::ppu) fn stat_write_quirk_active_for_write(&self, value: u8) -> bool {
         if !self.console_model.is_dmg_family() || !self.is_lcd_enabled() {
             return false;
         }
 
-        self.live_lyc_coincidence()
-            || self.stat_write_quirk_vblank_window_active()
-            || self.stat_write_quirk_line0_oam_window_active()
+        if self.stat_write_quirk_vblank_window_active() || self.live_lyc_coincidence() {
+            return true;
+        }
+
+        if value & STAT_WRITABLE_ENABLE_MASK != 0 {
+            return false;
+        }
+
+        self.stat_write_quirk_line0_oam_window_active()
             || self.stat_write_quirk_oam_start_window_active()
             || self.stat_write_quirk_hblank_window_active()
     }
@@ -478,6 +525,9 @@ impl Ppu {
         self.runtime
             .stat_state
             .line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.runtime
+            .stat_state
+            .dmg_stat_write_quirk_blocks_line153_lyc0 = false;
         self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
@@ -513,6 +563,9 @@ impl Ppu {
         self.runtime
             .stat_state
             .line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.runtime
+            .stat_state
+            .dmg_stat_write_quirk_blocks_line153_lyc0 = false;
         self.runtime.reset_runtime_pipeline_state();
         self.reload_mode3_register_latches_from_mmio();
         self.runtime.panel.clear_visible_buffers();

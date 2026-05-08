@@ -84,11 +84,12 @@ impl Ppu {
             return false;
         }
 
-        let ordered_early_hblank_rules: [PpuPublishedStatPredicate; 14] = [
+        let ordered_early_hblank_rules: [PpuPublishedStatPredicate; 15] = [
             Self::saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early,
             Self::terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early,
             Self::saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early,
             Self::terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early,
+            Self::saturated_same_x_terminal_tail_should_publish_hblank_one_dot_early,
             Self::single_left_sprite_placeholder_backed_tail_should_publish_hblank_early,
             Self::single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early,
             Self::single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early,
@@ -265,6 +266,84 @@ impl Ppu {
             && visible_registers.window_enabled()
             && visible_registers.wx == 0
             && visible_registers.scx & 0x07 == 3
+    }
+
+    pub(in crate::ppu) fn saturated_same_x_terminal_tail_should_publish_hblank_one_dot_early(
+        &self,
+    ) -> bool {
+        if self.ly >= VISIBLE_SCANLINES
+            || self.line_dot + 1 != self.current_mode0_start_dot()
+            || self.runtime.mode2_scan_state.selected_sprite_count()
+                != MAX_SELECTED_SPRITES_PER_LINE as u8
+        {
+            return false;
+        }
+
+        let first_sprite_x = self
+            .runtime
+            .mode2_scan_state
+            .selected_sprite(0)
+            .map(|sprite| sprite.x);
+        let all_sprites_share_x =
+            (0..self.runtime.mode2_scan_state.selected_sprite_count()).all(|slot| {
+                self.runtime
+                    .mode2_scan_state
+                    .selected_sprite(slot)
+                    .is_some_and(|sprite| Some(sprite.x) == first_sprite_x)
+            });
+        let same_x_tail_ready = match first_sprite_x {
+            Some(0 | 3) => !self.runtime.bg_pipeline_state.push.pending,
+            Some(1) => {
+                self.runtime.bg_pipeline_state.push.pending
+                    && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 1
+            }
+            Some(10..=15) => {
+                usize::from(self.runtime.bg_pipeline_state.current_transfer_x)
+                    + self.runtime.bg_pipeline_state.fifo.len()
+                    >= SCREEN_WIDTH
+                    && !self.runtime.bg_pipeline_state.push.pending
+            }
+            Some(17 | 32 | 33 | 160 | 161) => {
+                usize::from(self.runtime.bg_pipeline_state.current_transfer_x)
+                    + self.runtime.bg_pipeline_state.fifo.len()
+                    >= SCREEN_WIDTH + 8
+                    && !self.runtime.bg_pipeline_state.push.pending
+            }
+            _ => false,
+        };
+
+        all_sprites_share_x
+            && same_x_tail_ready
+            && self.runtime.bg_pipeline_state.mode3_started
+            && (self.runtime.bg_pipeline_state.current_transfer_x >= 168
+                || matches!(first_sprite_x, Some(10..=15 | 17 | 32 | 33 | 160 | 161)))
+            && (self.runtime.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
+                || matches!(first_sprite_x, Some(10..=15 | 17 | 32 | 33)))
+            && (self.runtime.bg_pipeline_state.startup_fifo_placeholders == 4
+                || matches!(first_sprite_x, Some(10..=15 | 17 | 32 | 33 | 160 | 161)))
+            && (self.runtime.bg_pipeline_state.fifo.len() == 8
+                || matches!(first_sprite_x, Some(10..=15 | 17 | 32 | 33 | 160 | 161)))
+            && self.runtime.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.runtime.obj_pipeline_state.pending_match_x.is_none()
+            && self
+                .runtime
+                .obj_pipeline_state
+                .pending_sprite_slots
+                .is_empty()
+            && (self.current_transfer().is_none()
+                || (matches!(first_sprite_x, Some(10..=15 | 17 | 32 | 33 | 160 | 161))
+                    && self.current_transfer().is_some_and(|transfer| {
+                        matches!(
+                            transfer,
+                            Mode3CurrentTransfer {
+                                context: Mode3TransferContext {
+                                    lane: Mode3TransferLane::Visible,
+                                    source_window: Mode3TransferSourceWindow::FifoBacked,
+                                },
+                                readiness: Mode3TransferReadiness::Ready(_),
+                            }
+                        )
+                    })))
     }
 
     pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(
@@ -725,7 +804,6 @@ impl Ppu {
         if self.ly >= VISIBLE_SCANLINES
             || usize::from(self.runtime.mode2_scan_state.selected_sprite_count()) != 2
             || self.runtime.bg_pipeline_state.fifo.is_empty()
-            || self.runtime.bg_pipeline_state.push.pending
         {
             return false;
         }
@@ -747,7 +825,8 @@ impl Ppu {
             && right_x == 0x0A
             && self.runtime.bg_pipeline_state.startup_fifo_placeholders == 4
             && current_transfer_x == 164
-            && fifo_len == 4;
+            && fifo_len == 4
+            && !self.runtime.bg_pipeline_state.push.pending;
         let x4_to_x7_visible_fifo_tail = (4..=7).contains(&left_x)
             && right_x == left_x.saturating_add(8)
             && right_x <= 0x0F
@@ -755,9 +834,18 @@ impl Ppu {
             && usize::from(current_transfer_x) + fifo_len == 168
             && usize::from(current_transfer_x)
                 + usize::from(self.runtime.bg_pipeline_state.startup_fifo_placeholders)
-                == 163;
+                == 163
+            && !self.runtime.bg_pipeline_state.push.pending;
+        let x4_to_x7_placeholder_backed_terminal_tail = (4..=7).contains(&left_x)
+            && right_x == left_x.saturating_add(8)
+            && right_x <= 0x0F
+            && current_transfer_x == left_x.saturating_add(159)
+            && usize::from(current_transfer_x) + fifo_len == 168
+            && self.runtime.bg_pipeline_state.startup_fifo_placeholders == 8 - left_x
+            && self.runtime.bg_pipeline_state.push.pending
+            && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0;
 
-        (x2_x0a_tail || x4_to_x7_visible_fifo_tail)
+        (x2_x0a_tail || x4_to_x7_visible_fifo_tail || x4_to_x7_placeholder_backed_terminal_tail)
             && self.line_dot + fifo_len as u16 - 2 == self.current_mode0_start_dot()
             && self.runtime.bg_pipeline_state.visible_pixels_output
                 == current_transfer_x.saturating_sub(8)
@@ -976,6 +1064,13 @@ impl Ppu {
         } else {
             matches!(transfer_plus_fifo, 128 | 160)
         };
+        let early_push_transfer_sum = if min_x == 4 { 136 } else { 128 };
+        let push_tail_ready = if transfer_plus_fifo == early_push_transfer_sum {
+            self.runtime.bg_pipeline_state.push.pending
+                && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0
+        } else {
+            !self.runtime.bg_pipeline_state.push.pending
+        };
         let Some(transfer) = self.current_transfer() else {
             return false;
         };
@@ -992,7 +1087,7 @@ impl Ppu {
                 ..
             }
         ) && self.runtime.bg_pipeline_state.mode3_started
-            && !self.runtime.bg_pipeline_state.push.pending
+            && push_tail_ready
             && self.runtime.bg_pipeline_state.startup_fifo_placeholders == expected_placeholders
             && matches_transfer_sum
             && self.runtime.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle

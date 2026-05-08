@@ -138,7 +138,21 @@ impl Ppu {
             return ly == self.lyc;
         }
 
+        if source == PpuRegisterReadSource::CpuBusOperation
+            && self.dmg_lcd_restart_line1_lyc_readback_delay_active()
+        {
+            return false;
+        }
+
         self.effective_lyc_coincidence()
+    }
+
+    fn dmg_lcd_restart_line1_lyc_readback_delay_active(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.is_lcd_enabled()
+            && self.runtime.blank_frame_active
+            && self.ly == 1
+            && self.line_dot < LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS
     }
 
     pub(in crate::ppu) fn write_stat(&mut self, value: u8) {
@@ -146,10 +160,22 @@ impl Ppu {
         if self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger() {
             self.runtime.stat_state.irq_line = false;
         }
-        let quirk_active = self.stat_interrupt_enable == 0 && self.stat_write_quirk_active();
+        let quirk_active = self.stat_write_quirk_active_for_write(value);
+        self.runtime
+            .stat_state
+            .dmg_stat_write_quirk_blocks_line153_lyc0 = false;
+        if quirk_active
+            && self.console_model.is_dmg_family()
+            && self.current_access_mode() == PpuAccessMode::VBlank
+        {
+            self.runtime
+                .stat_state
+                .dmg_stat_write_quirk_blocks_line153_lyc0 = true;
+        }
         let ordinary_line = self.ordinary_stat_irq_line();
         let new_line = ordinary_line || quirk_active;
-        let write_requests_ordinary_edge = ordinary_line && self.mode2_stat_write_irq_source();
+        let write_requests_ordinary_edge = ordinary_line
+            && (self.mode1_stat_write_irq_source() || self.mode2_stat_write_irq_source());
         if !self.runtime.stat_state.irq_line && (quirk_active || write_requests_ordinary_edge) {
             self.queue_interrupt_request_with_cpu_if_visibility(
                 InterruptSource::LcdStat,
