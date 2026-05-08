@@ -248,6 +248,53 @@ fn dmg_line153_lyc0_stat_pretrigger_can_be_cancelled_by_same_dot_lyc_write() {
 }
 
 #[test]
+fn dmg_line153_lyc0_stat_pretrigger_bridges_to_visible_coincidence_without_retrigger() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_LYC_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: TOTAL_SCANLINES - 1,
+        lyc: 0,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.startup_mode_latch = None;
+    ppu.stat_state.irq_line = false;
+    ppu.line_dot = LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT - 1;
+
+    ppu.tick();
+
+    assert_eq!(
+        ppu.snapshot().line_dot,
+        LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    );
+    assert!(ppu.snapshot().stat_irq_line);
+    assert!(!ppu.snapshot().lyc_coincidence);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu.ppu),
+        vec![InterruptSource::LcdStat]
+    );
+
+    ppu.tick_n(u64::from(
+        LINE_153_LYC0_COMPARE_START_DOT - LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT,
+    ));
+
+    assert_eq!(ppu.snapshot().line_dot, LINE_153_LYC0_COMPARE_START_DOT);
+    assert!(ppu.snapshot().stat_irq_line);
+    assert!(ppu.snapshot().lyc_coincidence);
+    assert!(
+        drain_ppu_interrupts(&mut ppu.ppu).is_empty(),
+        "the visible LYC=0 seam must continue the pretriggered STAT line instead of creating a second IRQ edge"
+    );
+}
+
+#[test]
 fn cgb_line153_lyc_edges_keep_the_cgb_ly0_window() {
     let mut lyc153 = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     lyc153.apply_startup_state(PpuStartupState {
