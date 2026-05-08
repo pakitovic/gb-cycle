@@ -12,9 +12,12 @@ use gb_core::{
     CpuExecutionState, LinkedMachines, LinkedMachinesError, TraceBuffer, TraceSummaryBuffer,
 };
 
+use crate::framebuffer_oracle::{
+    NormalizedFramebuffer, decode_fixture_framebuffer_path, normalize_dmg_framebuffer,
+};
 use crate::{
     BootRomVerificationIssue, ExternalRomSourceManifestError, LinkedSessionCaptureKind,
-    LinkedSessionCase, LinkedSessionParticipant, LinkedSessionSuite,
+    LinkedSessionCase, LinkedSessionParticipant, LinkedSessionPassCondition, LinkedSessionSuite,
     LinkedSessionSuiteValidationError, RomRunner, Timeout, discard_trace_events_if_needed,
 };
 
@@ -63,6 +66,7 @@ impl LinkedSessionCaseOutcome {
 pub struct LinkedSessionParticipantArtifacts {
     pub serial: String,
     pub serial_hex: String,
+    pub framebuffer_pgm: Option<Vec<u8>>,
     pub trace_text: Option<String>,
     pub snapshot_text: Option<String>,
 }
@@ -179,6 +183,16 @@ type LinkedMachineBuild = (
 
 type LoadedParticipantMachine<S> = (gb_core::Machine<S>, Vec<CartridgeDiagnostic>, PathBuf);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkedFramebufferUntilMatchOracle {
+    participant_index: usize,
+    expected: NormalizedFramebuffer,
+    check_interval_tcycles: u64,
+    check_at_tcycles: Option<u64>,
+    pending_periodic_check: bool,
+    matched: bool,
+}
+
 impl RunnerLinkedMachines {
     fn with_linked<R>(
         &self,
@@ -263,6 +277,29 @@ impl RunnerLinkedMachines {
             |machine| machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
             |machine| machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
         )
+    }
+
+    fn participant_in_vblank(&self, participant_index: usize) -> bool {
+        self.with_machine(
+            participant_index,
+            |machine| machine.ppu().ly() >= 144,
+            |machine| machine.ppu().ly() >= 144,
+        )
+    }
+
+    fn participant_framebuffer(&self, participant_index: usize) -> &[u8] {
+        match self {
+            Self::Buffered(linked) => linked
+                .machine(participant_index)
+                .expect("participant should exist")
+                .ppu()
+                .framebuffer(),
+            Self::Summary(linked) => linked
+                .machine(participant_index)
+                .expect("participant should exist")
+                .ppu()
+                .framebuffer(),
+        }
     }
 
     fn set_joypad_button_pressed(
@@ -448,6 +485,8 @@ impl LinkedSessionRunner {
         } else {
             self.build_summary_linked_machines(session)?
         };
+        let mut framebuffer_until_match_oracle =
+            self.framebuffer_until_match_oracle(session, &linked)?;
 
         let participant_count = session.participants.len();
         let mut executed_t_cycles = 0_u64;
@@ -496,11 +535,29 @@ impl LinkedSessionRunner {
                 break;
             }
 
+            if let Some(oracle) = &mut framebuffer_until_match_oracle
+                && linked_framebuffer_until_match_poll_due(
+                    session.id.as_str(),
+                    &linked,
+                    executed_t_cycles,
+                    oracle,
+                )?
+            {
+                break;
+            }
+
             linked.discard_trace_events_if_needed(executed_t_cycles);
         }
 
         let artifacts = self.capture_artifacts(session, &linked, &serial_bytes);
-        let outcome = self.evaluate_session(session, &artifacts, diagnostic_trap)?;
+        let outcome = self.evaluate_session(
+            session,
+            &artifacts,
+            diagnostic_trap,
+            framebuffer_until_match_oracle
+                .as_ref()
+                .is_some_and(|oracle| oracle.matched),
+        )?;
         let retained_failure_artifacts = if outcome.failed() {
             self.persist_failure_artifacts(session, &artifacts)?
         } else {
@@ -531,6 +588,94 @@ impl LinkedSessionRunner {
             retained_failure_artifacts,
         })
     }
+
+    fn framebuffer_until_match_oracle(
+        &self,
+        session: &LinkedSessionCase,
+        _linked: &RunnerLinkedMachines,
+    ) -> Result<Option<LinkedFramebufferUntilMatchOracle>, LinkedSessionExecutionError> {
+        let LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+            participant_id,
+            fixture_path,
+            check_interval_tcycles,
+            check_at_tcycles,
+        } = &session.pass_condition
+        else {
+            return Ok(None);
+        };
+        let participant_index = session
+            .participants
+            .iter()
+            .position(|participant| participant.id == *participant_id)
+            .expect("linked session should validate target participant existence");
+        let resolved_fixture = self.runner.resolve_path(fixture_path);
+        let expected = decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+            let path = error.path.clone();
+            LinkedSessionExecutionError::FileOperation {
+                path,
+                operation: "decode participant framebuffer fixture",
+                source: Box::new(error.into_invalid_data_error()),
+            }
+        })?;
+
+        Ok(Some(LinkedFramebufferUntilMatchOracle {
+            participant_index,
+            expected,
+            check_interval_tcycles: *check_interval_tcycles,
+            check_at_tcycles: *check_at_tcycles,
+            pending_periodic_check: false,
+            matched: false,
+        }))
+    }
+}
+
+fn linked_framebuffer_until_match_poll_due(
+    session_id: &str,
+    linked: &RunnerLinkedMachines,
+    executed_t_cycles: u64,
+    oracle: &mut LinkedFramebufferUntilMatchOracle,
+) -> Result<bool, LinkedSessionExecutionError> {
+    if let Some(check_at_tcycles) = oracle.check_at_tcycles {
+        if executed_t_cycles == check_at_tcycles {
+            oracle.matched = linked_framebuffer_matches_fixture(session_id, linked, oracle)?;
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    if executed_t_cycles != 0 && executed_t_cycles.is_multiple_of(oracle.check_interval_tcycles) {
+        oracle.pending_periodic_check = true;
+    }
+
+    if oracle.pending_periodic_check && linked.participant_in_vblank(oracle.participant_index) {
+        oracle.pending_periodic_check = false;
+        if linked_framebuffer_matches_fixture(session_id, linked, oracle)? {
+            oracle.matched = true;
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn linked_framebuffer_matches_fixture(
+    session_id: &str,
+    linked: &RunnerLinkedMachines,
+    oracle: &LinkedFramebufferUntilMatchOracle,
+) -> Result<bool, LinkedSessionExecutionError> {
+    let actual = normalize_dmg_framebuffer(
+        session_id,
+        linked.participant_framebuffer(oracle.participant_index),
+    )
+    .map_err(|error| {
+        let path = error.path.clone();
+        LinkedSessionExecutionError::FileOperation {
+            path,
+            operation: "normalize participant framebuffer",
+            source: Box::new(error.into_invalid_data_error()),
+        }
+    })?;
+    Ok(actual == oracle.expected)
 }
 
 fn linked_budget_exhausted(

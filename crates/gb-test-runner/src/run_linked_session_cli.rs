@@ -1,11 +1,16 @@
+use std::env;
 use std::io::Write;
 use std::path::PathBuf;
+
+use gb_core::StartupMode;
 
 use crate::{
     LinkedSessionCaseFailure, LinkedSessionCaseOutcome, LinkedSessionRunner, LinkedSessionSuite,
     LinkedSessionSuiteReport, built_in_linked_session_suite_by_name,
     built_in_linked_session_suite_catalog, load_linked_session_suite_manifest,
 };
+
+const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LinkedSessionCliAction {
@@ -25,6 +30,13 @@ struct LinkedSessionCliOptions {
     target: LinkedSessionCliTarget,
     session_id: Option<String>,
     failure_artifact_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfiguredLinkedSessionStartup {
+    Manifest,
+    SkipBoot,
+    RealBoot,
 }
 
 pub fn linked_session_cli_help_text() -> &'static str {
@@ -133,7 +145,8 @@ fn run_selected_suite<W: Write>(
     runner: LinkedSessionRunner,
     output: &mut W,
 ) -> Result<(), String> {
-    let suite = select_suite_for_options(&options, &runner)?;
+    let mut suite = select_suite_for_options(&options, &runner)?;
+    apply_configured_startup_override(&mut suite)?;
 
     let mut runner = runner;
     if let Some(root) = options.failure_artifact_root {
@@ -203,6 +216,57 @@ fn select_session_for_options(
     }
 
     Ok(suite)
+}
+
+fn configured_linked_session_startup() -> Result<ConfiguredLinkedSessionStartup, String> {
+    configured_linked_session_startup_from_env_value(env::var(TEST_ROM_STARTUP_ENV_VAR))
+}
+
+fn configured_linked_session_startup_from_env_value(
+    value: Result<String, env::VarError>,
+) -> Result<ConfiguredLinkedSessionStartup, String> {
+    match value {
+        Ok(value) => match value.as_str() {
+            "skip-boot" => Ok(ConfiguredLinkedSessionStartup::SkipBoot),
+            "real-boot" => Ok(ConfiguredLinkedSessionStartup::RealBoot),
+            other => Err(format!(
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+            )),
+        },
+        Err(env::VarError::NotPresent) => Ok(ConfiguredLinkedSessionStartup::Manifest),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+        )),
+    }
+}
+
+fn apply_configured_startup_override(suite: &mut LinkedSessionSuite) -> Result<(), String> {
+    apply_configured_startup_override_for(suite, configured_linked_session_startup()?)
+}
+
+fn apply_configured_startup_override_for(
+    suite: &mut LinkedSessionSuite,
+    startup: ConfiguredLinkedSessionStartup,
+) -> Result<(), String> {
+    match startup {
+        ConfiguredLinkedSessionStartup::Manifest => {}
+        ConfiguredLinkedSessionStartup::SkipBoot => {
+            for session in &mut suite.sessions {
+                for participant in &mut session.participants {
+                    participant.startup_mode = StartupMode::SkipBoot;
+                }
+            }
+        }
+        ConfiguredLinkedSessionStartup::RealBoot => {
+            for session in &mut suite.sessions {
+                for participant in &mut session.participants {
+                    participant.startup_mode = StartupMode::RealBoot;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
@@ -320,7 +384,10 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::default_workspace_root;
+    use crate::{
+        LinkedSessionCaptureKind, LinkedSessionCase, LinkedSessionParticipant,
+        LinkedSessionPassCondition, TestSubsystem, Timeout, default_workspace_root,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -349,6 +416,55 @@ mod tests {
         let missing = parse_linked_session_arguments(std::iter::empty::<&str>())
             .expect_err("missing target should fail");
         assert!(missing.contains("missing required --suite"));
+    }
+
+    #[test]
+    fn configured_startup_override_rewrites_all_participants() {
+        let session = LinkedSessionCase::new(
+            "startup-override",
+            crate::LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(1),
+            LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+        )
+        .with_participant(
+            LinkedSessionParticipant::new("left", "left.gb")
+                .with_startup_mode(StartupMode::SkipBoot),
+        )
+        .with_participant(
+            LinkedSessionParticipant::new("right", "right.gb")
+                .with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut suite =
+            LinkedSessionSuite::new("startup-suite", TestSubsystem::Serial).with_session(session);
+
+        apply_configured_startup_override_for(&mut suite, ConfiguredLinkedSessionStartup::RealBoot)
+            .expect("startup override should succeed");
+
+        assert!(
+            suite.sessions[0]
+                .participants
+                .iter()
+                .all(|participant| participant.startup_mode == StartupMode::RealBoot)
+        );
+    }
+
+    #[test]
+    fn configured_startup_env_parser_matches_rom_suite_values() {
+        assert_eq!(
+            configured_linked_session_startup_from_env_value(Ok("skip-boot".to_string()))
+                .expect("skip boot should parse"),
+            ConfiguredLinkedSessionStartup::SkipBoot
+        );
+        assert_eq!(
+            configured_linked_session_startup_from_env_value(Ok("real-boot".to_string()))
+                .expect("real boot should parse"),
+            ConfiguredLinkedSessionStartup::RealBoot
+        );
+        assert!(
+            configured_linked_session_startup_from_env_value(Ok("boot-rom".to_string()))
+                .expect_err("unknown startup should fail")
+                .contains("unsupported GB_CYCLE_TEST_ROM_STARTUP")
+        );
     }
 
     #[test]

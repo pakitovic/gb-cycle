@@ -20,6 +20,7 @@ enum ManifestOracle {
     ParticipantSerialHexExact,
     ParticipantTraceFixture,
     ParticipantSnapshotFixture,
+    ParticipantFramebufferFixtureUntilMatch,
     InformationalTrace,
     InformationalSnapshot,
 }
@@ -30,6 +31,8 @@ impl ManifestOracle {
     const PARTICIPANT_SERIAL_HEX_EXACT_NAME: &str = "linked-participant-serial-hex-exact";
     const PARTICIPANT_TRACE_FIXTURE_NAME: &str = "linked-participant-trace-fixture";
     const PARTICIPANT_SNAPSHOT_FIXTURE_NAME: &str = "linked-participant-snapshot-fixture";
+    const PARTICIPANT_FRAMEBUFFER_FIXTURE_UNTIL_MATCH_NAME: &str =
+        "linked-participant-framebuffer-fixture-until-match";
     const INFORMATIONAL_TRACE_NAME: &str = "info-linked-trace";
     const INFORMATIONAL_SNAPSHOT_NAME: &str = "info-linked-snapshot";
     const DEFAULT: Self = Self::InformationalTrace;
@@ -41,6 +44,9 @@ impl ManifestOracle {
             Self::ParticipantSerialHexExact => Self::PARTICIPANT_SERIAL_HEX_EXACT_NAME,
             Self::ParticipantTraceFixture => Self::PARTICIPANT_TRACE_FIXTURE_NAME,
             Self::ParticipantSnapshotFixture => Self::PARTICIPANT_SNAPSHOT_FIXTURE_NAME,
+            Self::ParticipantFramebufferFixtureUntilMatch => {
+                Self::PARTICIPANT_FRAMEBUFFER_FIXTURE_UNTIL_MATCH_NAME
+            }
             Self::InformationalTrace => Self::INFORMATIONAL_TRACE_NAME,
             Self::InformationalSnapshot => Self::INFORMATIONAL_SNAPSHOT_NAME,
         }
@@ -53,6 +59,9 @@ impl ManifestOracle {
             Self::PARTICIPANT_SERIAL_HEX_EXACT_NAME => Some(Self::ParticipantSerialHexExact),
             Self::PARTICIPANT_TRACE_FIXTURE_NAME => Some(Self::ParticipantTraceFixture),
             Self::PARTICIPANT_SNAPSHOT_FIXTURE_NAME => Some(Self::ParticipantSnapshotFixture),
+            Self::PARTICIPANT_FRAMEBUFFER_FIXTURE_UNTIL_MATCH_NAME => {
+                Some(Self::ParticipantFramebufferFixtureUntilMatch)
+            }
             Self::INFORMATIONAL_TRACE_NAME => Some(Self::InformationalTrace),
             Self::INFORMATIONAL_SNAPSHOT_NAME => Some(Self::InformationalSnapshot),
             _ => None,
@@ -80,8 +89,20 @@ struct LinkedSessionCaseManifest {
     expected: Option<String>,
     target_participant: Option<String>,
     fixture: Option<PathBuf>,
+    check_interval_tcycles: Option<u64>,
+    check_at_tcycles: Option<u64>,
     #[serde(rename = "participant", default)]
     participants: Vec<LinkedSessionParticipantManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkedSessionPassConditionFields {
+    oracle: Option<String>,
+    expected: Option<String>,
+    participant: Option<String>,
+    fixture: Option<PathBuf>,
+    check_interval_tcycles: Option<u64>,
+    check_at_tcycles: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -182,13 +203,14 @@ fn build_session_from_manifest(
     let pass_condition = parse_pass_condition(
         manifest_dir,
         &session_id,
-        session
-            .oracle
-            .as_deref()
-            .unwrap_or(ManifestOracle::DEFAULT.manifest_name()),
-        session.expected,
-        session.target_participant,
-        session.fixture,
+        LinkedSessionPassConditionFields {
+            oracle: session.oracle,
+            expected: session.expected,
+            participant: session.target_participant,
+            fixture: session.fixture,
+            check_interval_tcycles: session.check_interval_tcycles,
+            check_at_tcycles: session.check_at_tcycles,
+        },
     )?;
 
     let mut built_session = LinkedSessionCase::new(
@@ -294,19 +316,22 @@ fn parse_timeout(
 fn parse_pass_condition(
     manifest_dir: &Path,
     session_id: &str,
-    oracle: &str,
-    expected: Option<String>,
-    participant: Option<String>,
-    fixture: Option<PathBuf>,
+    fields: LinkedSessionPassConditionFields,
 ) -> Result<LinkedSessionPassCondition, String> {
-    let oracle = ManifestOracle::from_manifest_name(oracle)
-        .ok_or_else(|| format!("linked session {session_id} uses unsupported oracle {oracle:?}"))?;
+    let oracle_name = fields
+        .oracle
+        .as_deref()
+        .unwrap_or(ManifestOracle::DEFAULT.manifest_name());
+    let oracle = ManifestOracle::from_manifest_name(oracle_name).ok_or_else(|| {
+        format!("linked session {session_id} uses unsupported oracle {oracle_name:?}")
+    })?;
 
     match oracle {
         ManifestOracle::TraceFixture => Ok(LinkedSessionPassCondition::TraceFixture(
             resolve_fixture_path(
                 manifest_dir,
-                fixture
+                fields
+                    .fixture
                     .clone()
                     .ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
             ),
@@ -314,25 +339,32 @@ fn parse_pass_condition(
         ManifestOracle::SnapshotFixture => Ok(LinkedSessionPassCondition::SnapshotFixture(
             resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
+                fields
+                    .fixture
+                    .ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
             ),
         )),
         ManifestOracle::ParticipantSerialHexExact => {
-            let participant_id = participant
+            let participant_id = fields
+                .participant
                 .ok_or_else(|| missing_oracle_field(session_id, oracle, "participant"))?;
-            let expected =
-                expected.ok_or_else(|| missing_oracle_field(session_id, oracle, "expected"))?;
+            let expected = fields
+                .expected
+                .ok_or_else(|| missing_oracle_field(session_id, oracle, "expected"))?;
             Ok(LinkedSessionPassCondition::ParticipantSerialHexExact {
                 participant_id,
                 expected,
             })
         }
         ManifestOracle::ParticipantTraceFixture => {
-            let participant_id = participant
+            let participant_id = fields
+                .participant
                 .ok_or_else(|| missing_oracle_field(session_id, oracle, "participant"))?;
             let fixture_path = resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
+                fields
+                    .fixture
+                    .ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
             );
             Ok(LinkedSessionPassCondition::ParticipantTraceFixture {
                 participant_id,
@@ -340,16 +372,38 @@ fn parse_pass_condition(
             })
         }
         ManifestOracle::ParticipantSnapshotFixture => {
-            let participant_id = participant
+            let participant_id = fields
+                .participant
                 .ok_or_else(|| missing_oracle_field(session_id, oracle, "participant"))?;
             let fixture_path = resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
+                fields
+                    .fixture
+                    .ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
             );
             Ok(LinkedSessionPassCondition::ParticipantSnapshotFixture {
                 participant_id,
                 fixture_path,
             })
+        }
+        ManifestOracle::ParticipantFramebufferFixtureUntilMatch => {
+            let participant_id = fields
+                .participant
+                .ok_or_else(|| missing_oracle_field(session_id, oracle, "participant"))?;
+            let fixture_path = resolve_fixture_path(
+                manifest_dir,
+                fields
+                    .fixture
+                    .ok_or_else(|| missing_oracle_field(session_id, oracle, "fixture"))?,
+            );
+            Ok(
+                LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+                    participant_id,
+                    fixture_path,
+                    check_interval_tcycles: fields.check_interval_tcycles.unwrap_or(100_000),
+                    check_at_tcycles: fields.check_at_tcycles,
+                },
+            )
         }
         ManifestOracle::InformationalTrace => Ok(LinkedSessionPassCondition::Informational(
             LinkedSessionCaptureKind::Trace,
@@ -473,6 +527,7 @@ pub(super) fn capture_plan_for_pass_condition(
         | LinkedSessionPassCondition::SnapshotFixture(_)
         | LinkedSessionPassCondition::ParticipantTraceFixture { .. }
         | LinkedSessionPassCondition::ParticipantSnapshotFixture { .. }
+        | LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch { .. }
         | LinkedSessionPassCondition::ParticipantSerialHexExact { .. } => {
             LinkedSessionCapturePlan::debugging_minimum_for(pass_condition)
         }
@@ -490,6 +545,7 @@ pub(super) fn failure_artifacts_for_pass_condition(
         | LinkedSessionPassCondition::SnapshotFixture(_)
         | LinkedSessionPassCondition::ParticipantTraceFixture { .. }
         | LinkedSessionPassCondition::ParticipantSnapshotFixture { .. }
+        | LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch { .. }
         | LinkedSessionPassCondition::ParticipantSerialHexExact { .. } => {
             LinkedSessionFailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }

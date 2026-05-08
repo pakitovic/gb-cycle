@@ -1,0 +1,92 @@
+version = 1
+suite_name = "docboy-dmg-linked-extra"
+family = "docboy"
+subsystem = "serial"
+
+[[session]]
+id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-master-framebuffer"
+topology = "dmg04"
+timeout_tcycles = 100000000
+oracle = "linked-participant-framebuffer-fixture-until-match"
+target_participant = "master"
+fixture = "fixtures/docboy/ok.png"
+
+[[session.participant]]
+id = "master"
+rom = "docboy/serial/serial_two_players_basic_transfer_master.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session.participant]]
+id = "slave"
+rom = "docboy/serial/serial_two_players_basic_transfer_slave.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session]]
+id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-slave-framebuffer"
+topology = "dmg04"
+timeout_tcycles = 100000000
+oracle = "linked-participant-framebuffer-fixture-until-match"
+target_participant = "slave"
+fixture = "fixtures/docboy/ok.png"
+
+[[session.participant]]
+id = "master"
+rom = "docboy/serial/serial_two_players_basic_transfer_master.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session.participant]]
+id = "slave"
+rom = "docboy/serial/serial_two_players_basic_transfer_slave.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session]]
+id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-master-framebuffer"
+topology = "dmg04"
+timeout_tcycles = 100000000
+oracle = "linked-participant-framebuffer-fixture-until-match"
+target_participant = "master"
+fixture = "fixtures/docboy/ok.png"
+
+[[session.participant]]
+id = "master"
+rom = "docboy/serial/serial_two_players_basic_transfer_master.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session.participant]]
+id = "slave"
+rom = "docboy/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session]]
+id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-slave-framebuffer"
+topology = "dmg04"
+timeout_tcycles = 100000000
+oracle = "linked-participant-framebuffer-fixture-until-match"
+target_participant = "slave"
+fixture = "fixtures/docboy/ok.png"
+
+[[session.participant]]
+id = "master"
+rom = "docboy/serial/serial_two_players_basic_transfer_master.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"
+
+[[session.participant]]
+id = "slave"
+rom = "docboy/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+console = "dmg"
+mode = "strict"

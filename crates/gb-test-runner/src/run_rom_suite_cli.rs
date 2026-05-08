@@ -194,14 +194,21 @@ fn run_selected_suite<W: Write>(
         runner = runner.with_failure_artifact_root(root);
     }
 
-    let report = runner
-        .run_suite(&suite)
-        .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
+    let (report, report_path) = match &options.target {
+        RomSuiteCliTarget::BuiltIn { .. } => {
+            run_built_in_suite_with_incremental_report(&runner, &suite)?
+        }
+        RomSuiteCliTarget::Manifest { .. } => {
+            let report = runner
+                .run_suite(&suite)
+                .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
+            (report, None)
+        }
+    };
     write_suite_report(output, &report)?;
     match &options.target {
         RomSuiteCliTarget::BuiltIn { .. } => {
-            if let Some(report_path) = update_curated_test_report(runner.workspace_root(), &report)?
-            {
+            if let Some(report_path) = report_path {
                 writeln_checked(output, &format!("test_report={}", report_path.display()))?;
             }
         }
@@ -215,6 +222,57 @@ fn run_selected_suite<W: Write>(
     } else {
         Err("one or more ROM cases failed".to_string())
     }
+}
+
+fn run_built_in_suite_with_incremental_report(
+    runner: &RomRunner,
+    suite: &RomSuite,
+) -> Result<(RomSuiteReport, Option<PathBuf>), String> {
+    suite.validate().map_err(|error| {
+        format!(
+            "failed to execute suite {}: InvalidSuite({error:?})",
+            suite.name
+        )
+    })?;
+
+    let mut case_reports = Vec::with_capacity(suite.cases.len());
+    let mut report_path = None;
+    for case in &suite.cases {
+        let case_report = runner
+            .run_case(case)
+            .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
+        let partial_report = RomSuiteReport {
+            suite_name: suite.name.clone(),
+            family: suite.family.clone(),
+            subsystem: suite.subsystem,
+            cases: vec![case_report.clone()],
+        };
+        if let Some(path) = update_curated_test_report(runner.workspace_root(), &partial_report)? {
+            report_path = Some(path);
+        }
+        case_reports.push(case_report);
+    }
+
+    if case_reports.is_empty() {
+        let empty_report = RomSuiteReport {
+            suite_name: suite.name.clone(),
+            family: suite.family.clone(),
+            subsystem: suite.subsystem,
+            cases: Vec::new(),
+        };
+        report_path = update_curated_test_report(runner.workspace_root(), &empty_report)?;
+        return Ok((empty_report, report_path));
+    }
+
+    Ok((
+        RomSuiteReport {
+            suite_name: suite.name.clone(),
+            family: suite.family.clone(),
+            subsystem: suite.subsystem,
+            cases: case_reports,
+        },
+        report_path,
+    ))
 }
 
 fn select_suite_for_options(options: &RomSuiteCliOptions) -> Result<RomSuite, String> {
@@ -624,6 +682,9 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
             crate::CaptureKind::Snapshot => "info-snapshot",
         },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
+        crate::PassCondition::FramebufferFixtureUntilMatch { .. } => {
+            "framebuffer-fixture-until-match"
+        }
         crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
         crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
         crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
@@ -735,12 +796,13 @@ mod tests {
         ConfiguredRomSuiteStartup, RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget,
         TEST_ROM_STARTUP_ENV_VAR, apply_configured_startup_override_for,
         configured_rom_suite_startup_from_env_value, parse_rom_suite_arguments,
-        rom_suite_cli_help_text, run_rom_suite_command_with_runner, select_case_for_options,
-        select_suite_for_options, write_suite_report,
+        rom_suite_cli_help_text, run_built_in_suite_with_incremental_report,
+        run_rom_suite_command_with_runner, select_case_for_options, select_suite_for_options,
+        write_suite_report,
     };
     use crate::{
-        CapturedArtifacts, PassCondition, RomCaseOutcome, RomCaseReport, RomRunner, RomSuite,
-        RomSuiteReport, RomTestCase, Timeout, default_workspace_root,
+        CaptureKind, CapturedArtifacts, PassCondition, RomCaseOutcome, RomCaseReport, RomRunner,
+        RomSuite, RomSuiteReport, RomTestCase, Timeout, default_workspace_root,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -1069,6 +1131,7 @@ mod tests {
                         bytes: vec![CapturedMemoryByte {
                             address: 0xFF82,
                             expected: 0x01,
+                            fail_value: None,
                             actual: 0x56,
                         }],
                     }),
@@ -1154,6 +1217,67 @@ mod tests {
         let output = String::from_utf8(output).expect("command output should be utf-8");
         assert!(output.contains("suite=phase-2-cpu-timing"));
         assert!(output.contains("case=phase2-fetch-immediate-order outcome=Passed"));
+    }
+
+    #[test]
+    fn built_in_suite_status_is_persisted_after_each_completed_case() {
+        let workspace_root = default_workspace_root();
+        let temp_root = unique_temp_dir("incremental-report");
+        let first_rom = temp_root.join("blargg").join("first.gb");
+        fs::create_dir_all(
+            first_rom
+                .parent()
+                .expect("temporary ROM path should have a parent"),
+        )
+        .expect("temporary ROM parent should be creatable");
+        fs::copy(
+            workspace_root
+                .join("crates/gb-core/tests/fixtures/roms/phase2/phase2_fetch_immediate_order.gb"),
+            &first_rom,
+        )
+        .expect("fixture ROM should copy into the temporary workspace");
+
+        let suite = RomSuite::new("synthetic-incremental", TestSubsystem::Cpu)
+            .with_family("blargg")
+            .with_case(RomTestCase::new(
+                "first",
+                "blargg/first.gb",
+                Timeout::TCycles(4),
+                PassCondition::Informational(CaptureKind::Snapshot),
+            ))
+            .with_case(RomTestCase::new(
+                "missing",
+                "blargg/missing.gb",
+                Timeout::TCycles(4),
+                PassCondition::Informational(CaptureKind::Snapshot),
+            ));
+
+        let error = run_built_in_suite_with_incremental_report(
+            &RomRunner::new().with_workspace_root(&temp_root),
+            &suite,
+        )
+        .expect_err("missing second ROM should abort the suite");
+        assert!(error.contains("failed to execute suite synthetic-incremental"));
+
+        let status_path = temp_root
+            .join(crate::TEST_ROM_STORE_DIR)
+            .join(".status")
+            .join("synthetic-incremental.toml");
+        let status_text =
+            fs::read_to_string(&status_path).expect("partial status should be persisted");
+        assert!(status_text.contains("rom = \"first.gb\""));
+        assert!(status_text.contains("status = \"INFO\""));
+        assert!(!status_text.contains("missing.gb"));
+
+        let report_path = temp_root
+            .join(crate::TEST_ROM_STORE_DIR)
+            .join(crate::TEST_ROM_REPORT_FILE_NAME);
+        let report_text =
+            fs::read_to_string(&report_path).expect("partial report should be persisted");
+        assert!(report_text.contains("| blargg | first.gb | ℹ️ |"));
+        assert!(!report_text.contains("missing.gb"));
+
+        fs::remove_dir_all(temp_root).expect("temp workspace should be removable");
     }
 
     #[test]

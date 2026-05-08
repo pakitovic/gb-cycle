@@ -88,6 +88,37 @@ pub(crate) fn decode_local_pgm_framebuffer(
     decode_pgm_framebuffer(&path, bytes)
 }
 
+pub(crate) fn normalize_dmg_framebuffer(
+    case_id: &str,
+    framebuffer: &[u8],
+) -> Result<NormalizedFramebuffer, FramebufferOracleError> {
+    let path = PathBuf::from(format!("<local framebuffer for {case_id}>"));
+    let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+    if framebuffer.len() != expected_len {
+        return Err(FramebufferOracleError {
+            path,
+            message: format!(
+                "DMG framebuffer length {} does not match expected {expected_len}",
+                framebuffer.len()
+            ),
+        });
+    }
+
+    let grayscale_pixels = framebuffer
+        .iter()
+        .copied()
+        .map(|pixel| match pixel {
+            0..=3 => DMG_GRAYSCALE_SHADES[usize::from(pixel)],
+            _ => DMG_GRAYSCALE_SHADES[3],
+        })
+        .collect::<Vec<_>>();
+    Ok(normalize_indexed_pixels(
+        FRAMEBUFFER_WIDTH,
+        FRAMEBUFFER_HEIGHT,
+        &grayscale_pixels,
+    ))
+}
+
 pub(crate) fn decode_local_pgm_grayscale_framebuffer(
     case_id: &str,
     bytes: &[u8],

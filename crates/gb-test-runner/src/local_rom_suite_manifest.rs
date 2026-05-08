@@ -94,6 +94,7 @@ struct LocalRomSuiteCase {
 struct LocalMemoryByteExpectation {
     address: u16,
     value: u8,
+    fail_value: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -260,7 +261,15 @@ fn parse_pass_condition(
                 memory
                     .into_iter()
                     .map(|expectation| {
-                        MemoryByteExpectation::new(expectation.address, expectation.value)
+                        if let Some(fail_value) = expectation.fail_value {
+                            MemoryByteExpectation::with_fail_value(
+                                expectation.address,
+                                expectation.value,
+                                fail_value,
+                            )
+                        } else {
+                            MemoryByteExpectation::new(expectation.address, expectation.value)
+                        }
                     })
                     .collect(),
             ))
@@ -274,6 +283,14 @@ fn parse_pass_condition(
             manifest_dir,
             fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
         ))),
+        "framebuffer-fixture-until-match" => Ok(PassCondition::FramebufferFixtureUntilMatch {
+            fixture_path: resolve_fixture_path(
+                manifest_dir,
+                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            ),
+            check_interval_tcycles: 100_000,
+            check_at_tcycles: None,
+        }),
         "framebuffer-grayscale-fixture" => Ok(PassCondition::FramebufferGrayscaleFixture(
             resolve_fixture_path(
                 manifest_dir,
@@ -415,6 +432,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
@@ -445,6 +463,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
             .with_artifact(*capture)
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
+        | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
@@ -693,6 +712,13 @@ rom = "commercial/memory-oracle.gb"
 timeout_tcycles = 4096
 oracle = "memory-byte-equals"
 memory = [{{ address = 65410, value = 1 }}]
+
+[[case]]
+id = "dmg-framebuffer-until-match"
+rom = "commercial/framebuffer-until-match.gb"
+timeout_tcycles = 8192
+oracle = "framebuffer-fixture-until-match"
+fixture = "fixtures/until-match.png"
 "#,
                 absolute_fixture = absolute_fixture.display()
             ),
@@ -703,7 +729,7 @@ memory = [{{ address = 65410, value = 1 }}]
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
-        assert_eq!(suite.cases.len(), 6);
+        assert_eq!(suite.cases.len(), 7);
 
         let serial_case = &suite.cases[0];
         assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
@@ -800,6 +826,26 @@ memory = [{{ address = 65410, value = 1 }}]
             memory_byte_case
                 .failure_artifacts
                 .contains(CaptureKind::MemoryBytes)
+        );
+
+        let framebuffer_until_match_case = &suite.cases[6];
+        assert_eq!(
+            framebuffer_until_match_case.pass_condition,
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path: workspace.join("fixtures").join("until-match.png"),
+                check_interval_tcycles: 100_000,
+                check_at_tcycles: None,
+            }
+        );
+        assert!(
+            framebuffer_until_match_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            framebuffer_until_match_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
         );
     }
 

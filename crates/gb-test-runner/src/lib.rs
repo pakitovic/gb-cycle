@@ -29,10 +29,11 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use framebuffer_oracle::{
-    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_fixture_grayscale_framebuffer_path,
-    decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer,
-    decode_local_rgb555_framebuffer, decode_local_rgb555_grayscale_framebuffer,
-    encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
+    NormalizedFramebuffer, convert_pgm_to_png, decode_fixture_framebuffer_path,
+    decode_fixture_grayscale_framebuffer_path, decode_local_pgm_framebuffer,
+    decode_local_pgm_grayscale_framebuffer, decode_local_rgb555_framebuffer,
+    decode_local_rgb555_grayscale_framebuffer, encode_framebuffer_pgm,
+    encode_rgb555_framebuffer_png, normalize_dmg_framebuffer,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
@@ -299,11 +300,24 @@ pub enum ExecutionStopCondition {
 pub struct MemoryByteExpectation {
     pub address: u16,
     pub value: u8,
+    pub fail_value: Option<u8>,
 }
 
 impl MemoryByteExpectation {
     pub const fn new(address: u16, value: u8) -> Self {
-        Self { address, value }
+        Self {
+            address,
+            value,
+            fail_value: None,
+        }
+    }
+
+    pub const fn with_fail_value(address: u16, value: u8, fail_value: u8) -> Self {
+        Self {
+            address,
+            value,
+            fail_value: Some(fail_value),
+        }
     }
 }
 
@@ -311,6 +325,7 @@ impl MemoryByteExpectation {
 pub struct CapturedMemoryByte {
     pub address: u16,
     pub expected: u8,
+    pub fail_value: Option<u8>,
     pub actual: u8,
 }
 
@@ -366,6 +381,11 @@ pub enum PassCondition {
     MooneyeResult,
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
+    FramebufferFixtureUntilMatch {
+        fixture_path: PathBuf,
+        check_interval_tcycles: u64,
+        check_at_tcycles: Option<u64>,
+    },
     FramebufferGrayscaleFixture(PathBuf),
     FramebufferRgb555Fixture(PathBuf),
     FramebufferRgb555GrayscaleFixture(PathBuf),
@@ -384,6 +404,7 @@ impl PassCondition {
             Self::MooneyeResult => CaptureKind::Snapshot,
             Self::Informational(capture) => *capture,
             Self::FramebufferFixture(_)
+            | Self::FramebufferFixtureUntilMatch { .. }
             | Self::FramebufferGrayscaleFixture(_)
             | Self::FramebufferRgb555Fixture(_)
             | Self::FramebufferRgb555GrayscaleFixture(_)
@@ -470,6 +491,7 @@ pub enum RomCaseValidationError {
     MissingRequiredFailureArtifact(CaptureKind),
     ArtifactNotCaptured(CaptureKind),
     MissingFailureArtifacts,
+    InvalidFramebufferCheckInterval,
     DuplicateExternalStimulus(ExternalStimulus),
 }
 
@@ -615,6 +637,15 @@ impl RomTestCase {
 
         if !self.timeout.is_valid() {
             return Err(RomCaseValidationError::InvalidTimeout);
+        }
+
+        if let PassCondition::FramebufferFixtureUntilMatch {
+            check_interval_tcycles,
+            ..
+        } = &self.pass_condition
+            && *check_interval_tcycles == 0
+        {
+            return Err(RomCaseValidationError::InvalidFramebufferCheckInterval);
         }
 
         let required_capture = self.pass_condition.required_capture();
@@ -1030,6 +1061,10 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
     curated_test_roms::gbmicrotest_dmg_extra_suite()
 }
 
+pub fn docboy_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::docboy_dmg_extra_suite()
+}
+
 pub fn cgb_rtc_suite() -> RomSuite {
     curated_test_roms::cgb_rtc_suite()
 }
@@ -1045,6 +1080,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         samesuite_dmg_extra_suite(),
         little_things_gb_dmg_extra_suite(),
         gbmicrotest_dmg_extra_suite(),
+        docboy_dmg_extra_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
@@ -1081,6 +1117,10 @@ const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[
     (
         "linked-dmg07-smoke",
         "crates/gb-test-runner/data/linked-dmg07-smoke.toml",
+    ),
+    (
+        "docboy-dmg-linked-extra",
+        "crates/gb-test-runner/data/docboy-linked.toml",
     ),
 ];
 
@@ -1410,6 +1450,7 @@ struct CaseEvaluationInputs<'a> {
     serial_contains_matched: bool,
     diagnostic_trap: Option<CpuDiagnosticTrap>,
     mooneye_result: Option<MooneyeTestResult>,
+    framebuffer_until_match_matched: bool,
     executed_t_cycles: u64,
     completed_frames: u32,
 }
@@ -1438,6 +1479,15 @@ const MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES: u16 = 256;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct DeterministicMbc3RtcClock {
     half_normal_t_cycle_remainder: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FramebufferUntilMatchOracle {
+    expected: NormalizedFramebuffer,
+    check_interval_tcycles: u64,
+    check_at_tcycles: Option<u64>,
+    pending_periodic_check: bool,
+    matched: bool,
 }
 
 impl DeterministicMbc3RtcClock {
@@ -1594,6 +1644,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
             Self::Summary(machine) => machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
+        }
+    }
+
+    fn in_vblank(&self) -> bool {
+        match self {
+            Self::Buffered(machine) => machine.ppu().ly() >= 144,
+            Self::Summary(machine) => machine.ppu().ly() >= 144,
         }
     }
 
@@ -1763,6 +1820,7 @@ impl RomRunner {
 
     pub fn run_case(&self, case: &RomTestCase) -> Result<RomCaseReport, RomExecutionError> {
         case.validate().map_err(RomExecutionError::InvalidCase)?;
+        let mut framebuffer_until_match_oracle = self.framebuffer_until_match_oracle(case)?;
 
         let rom_path = self.resolve_case_rom_path(case)?;
         let rom_bytes = fs::read(&rom_path).map_err(|source| RomExecutionError::ReadFile {
@@ -1829,6 +1887,17 @@ impl RomRunner {
             }
             at_frame_origin = now_at_frame_origin;
 
+            if let Some(oracle) = &mut framebuffer_until_match_oracle
+                && framebuffer_until_match_poll_due(
+                    case.id.as_str(),
+                    &mut machine,
+                    executed_t_cycles,
+                    oracle,
+                )?
+            {
+                break;
+            }
+
             if let PassCondition::SerialContains(expected) = &case.pass_condition
                 && String::from_utf8_lossy(&serial_bytes).contains(expected)
             {
@@ -1845,7 +1914,7 @@ impl RomRunner {
             }
 
             if executed_t_cycles.is_multiple_of(100_000)
-                && memory_bytes_equal(&case.pass_condition, &mut machine)
+                && memory_bytes_terminal(&case.pass_condition, &mut machine)
             {
                 break;
             }
@@ -1881,6 +1950,9 @@ impl RomRunner {
             serial_contains_matched,
             diagnostic_trap,
             mooneye_result,
+            framebuffer_until_match_matched: framebuffer_until_match_oracle
+                .as_ref()
+                .is_some_and(|oracle| oracle.matched),
             executed_t_cycles,
             completed_frames,
         };
@@ -1980,6 +2052,37 @@ impl RomRunner {
         } else {
             self.workspace_root.join(path)
         }
+    }
+
+    fn framebuffer_until_match_oracle(
+        &self,
+        case: &RomTestCase,
+    ) -> Result<Option<FramebufferUntilMatchOracle>, RomExecutionError> {
+        let PassCondition::FramebufferFixtureUntilMatch {
+            fixture_path,
+            check_interval_tcycles,
+            check_at_tcycles,
+        } = &case.pass_condition
+        else {
+            return Ok(None);
+        };
+        let resolved_fixture = self.resolve_path(fixture_path);
+        let expected = decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+            let path = error.path.clone();
+            RomExecutionError::ReadFile {
+                path,
+                operation: "decode framebuffer fixture",
+                source: error.into_invalid_data_error(),
+            }
+        })?;
+
+        Ok(Some(FramebufferUntilMatchOracle {
+            expected,
+            check_interval_tcycles: *check_interval_tcycles,
+            check_at_tcycles: *check_at_tcycles,
+            pending_periodic_check: false,
+            matched: false,
+        }))
     }
 
     fn resolve_case_path(
@@ -2310,6 +2413,53 @@ impl RomRunner {
                     RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
                         fixture_path: resolved_fixture,
                     })
+                }
+            }
+            PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. } => {
+                if evaluation.framebuffer_until_match_matched {
+                    RomCaseOutcome::Passed
+                } else {
+                    let resolved_fixture = self.resolve_path(fixture_path);
+                    let actual = decode_local_pgm_framebuffer(
+                        case.id.as_str(),
+                        evaluation
+                            .artifacts
+                            .framebuffer_pgm
+                            .as_deref()
+                            .ok_or_else(|| RomExecutionError::ReadFile {
+                                path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
+                                operation: "decode local framebuffer artifact",
+                                source: io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "missing local framebuffer capture",
+                                ),
+                            })?,
+                    )
+                    .map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode local framebuffer artifact",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+                    let expected =
+                        decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+                            let path = error.path.clone();
+                            RomExecutionError::ReadFile {
+                                path,
+                                operation: "decode framebuffer fixture",
+                                source: error.into_invalid_data_error(),
+                            }
+                        })?;
+
+                    if actual == expected {
+                        RomCaseOutcome::Passed
+                    } else {
+                        RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                            fixture_path: resolved_fixture,
+                        })
+                    }
                 }
             }
             PassCondition::FramebufferGrayscaleFixture(fixture_path) => {
@@ -2694,15 +2844,65 @@ fn memory_text_output_spec(pass_condition: &PassCondition) -> Option<&MemoryText
     }
 }
 
-fn memory_bytes_equal(pass_condition: &PassCondition, machine: &mut RunnerMachine) -> bool {
+fn memory_bytes_terminal(pass_condition: &PassCondition, machine: &mut RunnerMachine) -> bool {
     let PassCondition::MemoryBytesEqual(expectations) = pass_condition else {
         return false;
     };
 
-    capture_memory_bytes(expectations, machine)
+    let captured = capture_memory_bytes(expectations, machine);
+    captured
         .bytes
         .iter()
         .all(|byte| byte.actual == byte.expected)
+        || captured
+            .bytes
+            .iter()
+            .any(|byte| byte.fail_value == Some(byte.actual))
+}
+
+fn framebuffer_until_match_poll_due(
+    case_id: &str,
+    machine: &mut RunnerMachine,
+    executed_t_cycles: u64,
+    oracle: &mut FramebufferUntilMatchOracle,
+) -> Result<bool, RomExecutionError> {
+    if let Some(check_at_tcycles) = oracle.check_at_tcycles {
+        if executed_t_cycles == check_at_tcycles {
+            oracle.matched = framebuffer_matches_fixture(case_id, machine, &oracle.expected)?;
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    if executed_t_cycles != 0 && executed_t_cycles.is_multiple_of(oracle.check_interval_tcycles) {
+        oracle.pending_periodic_check = true;
+    }
+
+    if oracle.pending_periodic_check && machine.in_vblank() {
+        oracle.pending_periodic_check = false;
+        if framebuffer_matches_fixture(case_id, machine, &oracle.expected)? {
+            oracle.matched = true;
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn framebuffer_matches_fixture(
+    case_id: &str,
+    machine: &RunnerMachine,
+    expected: &NormalizedFramebuffer,
+) -> Result<bool, RomExecutionError> {
+    let actual = normalize_dmg_framebuffer(case_id, machine.framebuffer()).map_err(|error| {
+        let path = error.path.clone();
+        RomExecutionError::ReadFile {
+            path,
+            operation: "normalize local framebuffer",
+            source: error.into_invalid_data_error(),
+        }
+    })?;
+    Ok(&actual == expected)
 }
 
 fn memory_text_output_completion_candidate(
@@ -2839,6 +3039,7 @@ fn capture_memory_bytes(
             .map(|expectation| CapturedMemoryByte {
                 address: expectation.address,
                 expected: expectation.value,
+                fail_value: expectation.fail_value,
                 actual: machine.read_bus(expectation.address),
             })
             .collect(),
@@ -2848,13 +3049,23 @@ fn capture_memory_bytes(
 pub(crate) fn render_memory_bytes(captured: &CapturedMemoryBytes) -> String {
     let mut rendered = String::new();
     for byte in &captured.bytes {
-        let _ = writeln!(
-            &mut rendered,
-            "address=0x{address:04X} expected=0x{expected:02X} actual=0x{actual:02X}",
-            address = byte.address,
-            expected = byte.expected,
-            actual = byte.actual,
-        );
+        if let Some(fail_value) = byte.fail_value {
+            let _ = writeln!(
+                &mut rendered,
+                "address=0x{address:04X} expected=0x{expected:02X} fail_value=0x{fail_value:02X} actual=0x{actual:02X}",
+                address = byte.address,
+                expected = byte.expected,
+                actual = byte.actual,
+            );
+        } else {
+            let _ = writeln!(
+                &mut rendered,
+                "address=0x{address:04X} expected=0x{expected:02X} actual=0x{actual:02X}",
+                address = byte.address,
+                expected = byte.expected,
+                actual = byte.actual,
+            );
+        }
     }
     rendered
 }
@@ -3074,6 +3285,7 @@ mod tests {
             serial_contains_matched: false,
             diagnostic_trap: None,
             mooneye_result: None,
+            framebuffer_until_match_matched: false,
             executed_t_cycles,
             completed_frames,
         }
@@ -4718,6 +4930,45 @@ mod tests {
             })
         );
 
+        let framebuffer_until_match_case = RomTestCase::new(
+            "framebuffer-until-match",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path: fixture_path.clone(),
+                check_interval_tcycles: 1,
+                check_at_tcycles: Some(1),
+            },
+        );
+        let mut matched_early = evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0);
+        matched_early.framebuffer_until_match_matched = true;
+        assert_eq!(
+            runner
+                .evaluate_case(&framebuffer_until_match_case, &matched_early)
+                .expect("framebuffer until-match should trust an early match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_until_match_case,
+                    &evaluation_inputs(&framebuffer_artifacts, 1, 0)
+                )
+                .expect("framebuffer until-match fallback fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_until_match_case,
+                    &evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0)
+                )
+                .expect("framebuffer until-match mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: fixture_path.clone(),
+            })
+        );
+
         let grayscale_fixture_path = temp_dir.join("white.pgm");
         fs::write(
             &grayscale_fixture_path,
@@ -4988,6 +5239,122 @@ mod tests {
         assert!(!case_dir.join("framebuffer_rgb555.png").exists());
 
         fs::remove_dir_all(artifact_root).expect("artifact root should be removable");
+    }
+
+    #[test]
+    fn run_case_supports_framebuffer_until_match_check_at_tcycle() {
+        let workspace = unique_temp_dir("framebuffer-until-match-check-at-pass");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        let rom_path = workspace.join("idle.gb");
+        let fixture_path = workspace.join("white.pgm");
+        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+            .expect("test ROM should be writable");
+        fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
+            .expect("framebuffer fixture should be writable");
+
+        let case = RomTestCase::new(
+            "framebuffer-until-match-check-at-pass",
+            &rom_path,
+            Timeout::TCycles(8),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path,
+                check_interval_tcycles: 1,
+                check_at_tcycles: Some(1),
+            },
+        );
+
+        let report = RomRunner::new()
+            .run_case(&case)
+            .expect("framebuffer until-match ROM should run");
+        assert_eq!(report.outcome, RomCaseOutcome::Passed);
+        assert_eq!(report.executed_t_cycles, 1);
+        assert!(report.artifacts.framebuffer_pgm.is_some());
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+
+    #[test]
+    fn run_case_reports_framebuffer_until_match_fallback_mismatches() {
+        let workspace = unique_temp_dir("framebuffer-until-match-mismatch");
+        let artifact_root = workspace.join("artifacts");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        let rom_path = workspace.join("idle.gb");
+        let fixture_path = workspace.join("mismatching.pgm");
+        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+            .expect("test ROM should be writable");
+        let mut mismatching_framebuffer = vec![0; 160 * 144];
+        mismatching_framebuffer[0] = 1;
+        fs::write(
+            &fixture_path,
+            encode_framebuffer_pgm(&mismatching_framebuffer),
+        )
+        .expect("framebuffer fixture should be writable");
+
+        let case = RomTestCase::new(
+            "framebuffer-until-match-mismatch",
+            &rom_path,
+            Timeout::TCycles(8),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path: fixture_path.clone(),
+                check_interval_tcycles: 1,
+                check_at_tcycles: Some(1),
+            },
+        );
+
+        let report = RomRunner::new()
+            .with_failure_artifact_root(&artifact_root)
+            .run_case(&case)
+            .expect("framebuffer until-match ROM should run");
+        assert_eq!(
+            report.outcome,
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch { fixture_path })
+        );
+        assert!(
+            artifact_root
+                .join("framebuffer-until-match-mismatch")
+                .join("framebuffer.png")
+                .is_file()
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+
+    #[test]
+    fn run_case_polling_framebuffer_until_match_waits_for_vblank() {
+        let workspace = unique_temp_dir("framebuffer-until-match-vblank-pass");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        let rom_path = workspace.join("idle.gb");
+        let fixture_path = workspace.join("white.pgm");
+        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+            .expect("test ROM should be writable");
+        fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
+            .expect("framebuffer fixture should be writable");
+
+        let case = RomTestCase::new(
+            "framebuffer-until-match-vblank-pass",
+            &rom_path,
+            Timeout::TCycles(80_000),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path,
+                check_interval_tcycles: 1,
+                check_at_tcycles: None,
+            },
+        );
+
+        let report = RomRunner::new()
+            .run_case(&case)
+            .expect("framebuffer until-match ROM should run");
+        assert_eq!(report.outcome, RomCaseOutcome::Passed);
+        assert!(
+            report.executed_t_cycles > 1,
+            "periodic framebuffer matching should wait past the first T-cycle"
+        );
+        assert!(
+            report.executed_t_cycles < 80_000,
+            "matching during VBlank should stop before timeout"
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
     }
 
     #[test]

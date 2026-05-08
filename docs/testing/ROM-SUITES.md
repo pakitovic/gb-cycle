@@ -12,7 +12,7 @@ make fetch-test-roms FAMILIES="blargg acid"
 
 - `make fetch-test-roms` fetches the pinned upstream source(s) from `crates/gb-test-runner/data/sources.toml` into temporary checkout(s), materializes the curated runnable store under `/.roms/test/`, and removes the raw checkout afterwards.
 - By default it fetches `all`, but it can materialize one or more explicit families through `FAMILIES=...`.
-- The pinned upstream source inventory and per-file SHA-256 hashes are recorded in `crates/gb-test-runner/data/sources.toml`; most rows come from `GBEmulatorShootout`, while source-specific exceptions such as DocBoy SameSuite, little-things-gb, and gbmicrotest rows declare their materialized family/ROM alias explicitly.
+- The pinned upstream source inventory and per-file SHA-256 hashes are recorded in `crates/gb-test-runner/data/sources.toml`; most rows come from `GBEmulatorShootout`, while source-specific exceptions such as DocBoy SameSuite, little-things-gb, gbmicrotest, and docboy rows declare their materialized family/ROM alias explicitly.
 
 ## ROM store layout
 
@@ -23,6 +23,7 @@ make fetch-test-roms FAMILIES="blargg acid"
 /.roms/test/ax6/
 /.roms/test/blargg/
 /.roms/test/daid/
+/.roms/test/docboy/
 /.roms/test/gbmicrotest/
 /.roms/test/hacktix/
 /.roms/test/mealybug-tearoom-tests/
@@ -48,6 +49,7 @@ make run-ax6           # exploratory/internal AX6 DMG RTC suite
 make run-samesuite     # exploratory/internal SameSuite DMG suite
 make run-little-things-gb # exploratory/internal DocBoy little-things-gb DMG suite
 make run-gbmicrotest   # exploratory/internal DocBoy gbmicrotest DMG suite
+make run-docboy        # exploratory/internal DocBoy docboy/* DMG suite
 make run-daid          # exploratory daid DMG subset
 make run-cpp           # curated cpp MBC3 subset
 make run-hacktix       # curated hacktix DMG subset
@@ -79,7 +81,7 @@ make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against Li
 make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
 ```
 
-The aggregate `make test-roms-real-boot`, `make test-roms-extra-real-boot`, `make test-roms-cgb-real-boot`, and `make test-roms-cgb-extra-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin` or `cgb_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without synthetic `SkipBoot` startup profiles, and start each case timeout after the `FF50` handoff. Re-run `make test-roms` after a DMG RealBoot pass, `make test-roms-extra` after an extra DMG RealBoot pass, `make test-roms-cgb` after a promoted CGB RealBoot pass, or `make test-roms-cgb-extra` after an extra CGB RealBoot pass if you want the matching report to reflect the default SkipBoot baseline again. The extra DMG aggregate target `make test-roms-extra-real-boot` currently drives `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `gbmicrotest-dmg-extra` and writes `/.roms/test/test-report-extra.md`; the CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb` and writes `/.roms/test/test-report.md`, while `make test-roms-cgb-extra-real-boot` currently drives `cgb-boot-hwio` and also writes `/.roms/test/test-report-extra.md`.
+The aggregate `make test-roms-real-boot`, `make test-roms-extra-real-boot`, `make test-roms-cgb-real-boot`, and `make test-roms-cgb-extra-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames such as `dmg_boot.bin` or `cgb_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without synthetic `SkipBoot` startup profiles, and start each case timeout after the `FF50` handoff. Re-run `make test-roms` after a DMG RealBoot pass, `make test-roms-extra` after an extra DMG RealBoot pass, `make test-roms-cgb` after a promoted CGB RealBoot pass, or `make test-roms-cgb-extra` after an extra CGB RealBoot pass if you want the matching report to reflect the default SkipBoot baseline again. The extra DMG aggregate target `make test-roms-extra-real-boot` currently drives `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, `gbmicrotest-dmg-extra`, `docboy-dmg-extra`, and `docboy-dmg-linked-extra`; the single-machine extra suites write `/.roms/test/test-report-extra.md`, while linked-session rows currently report through `run_linked_session` stdout and retained failure artifacts. The CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb` and writes `/.roms/test/test-report.md`, while `make test-roms-cgb-extra-real-boot` currently drives `cgb-boot-hwio` and also writes `/.roms/test/test-report-extra.md`.
 
 Each `make run-*` target is autosufficient and materializes its own curated family before execution.
 
@@ -101,6 +103,9 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
 # Show early hardening status by subsystem
 cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 
+# Run the DocBoy serial-link participant framebuffer sessions
+cargo run -p gb-test-runner --bin run_linked_session -- --suite docboy-dmg-linked-extra
+
 # Run deterministic replay plus in-memory save/load continuation checks
 cargo run -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
 ```
@@ -121,7 +126,9 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
 
 ## Test report
 
-The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a promoted curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned source order from `crates/gb-test-runner/data/sources.toml`. Extra/internal suites render the same table shape in `/.roms/test/test-report-extra.md`, currently `ax6-dmg-extra`, `samesuite-dmg-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio`, so exploratory evidence stays visible without changing the promoted aggregate report. The legacy full Mooneye manifest suite `mooneye-acceptance-dmg-curated` may persist local status when run directly, but it is intentionally omitted from markdown aggregation because `make run-mooneye` and the promoted report are owned by the split `mooneye-dmg-acceptance-manual`, `mooneye-dmg-emulator-mbc1-mbc5`, and `mooneye-dmg-emulator-mbc2` suites. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
+The runner updates `/.roms/test/test-report.md` with a `family | rom | status` table when a promoted curated family suite executes, using `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total` summary in the header, and keeping each family's pinned source order from `crates/gb-test-runner/data/sources.toml`. Extra/internal single-machine suites render the same table shape in `/.roms/test/test-report-extra.md`, currently `ax6-dmg-extra`, `samesuite-dmg-extra`, `gbmicrotest-dmg-extra`, `docboy-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio`, so exploratory evidence stays visible without changing the promoted aggregate report; linked-session suites such as `docboy-dmg-linked-extra` currently print their participant status to stdout and retain failure artifacts but do not append markdown rows. The legacy full Mooneye manifest suite `mooneye-acceptance-dmg-curated` may persist local status when run directly, but it is intentionally omitted from markdown aggregation because `make run-mooneye` and the promoted report are owned by the split `mooneye-dmg-acceptance-manual`, `mooneye-dmg-emulator-mbc1-mbc5`, and `mooneye-dmg-emulator-mbc2` suites. Same-ROM model variants are ordered DMG before GBC, and manifest order is only the fallback for cases without a pinned source path.
+
+For built-in suite runs, `run_rom_suite` persists the suite status file and rewrites the relevant markdown report after each completed case. This means a long exploratory suite such as `docboy-dmg-extra` can leave partial `/.roms/test/test-report-extra.md` rows even if a later case aborts the process or the run is stopped before the final `test_report=...` line is printed.
 
 Persisted `/.roms/test/.status/*.toml` rows are interpreted through their owning suite before any shared upstream family fallback, so a ROM reused by a promoted CGB suite and an extra DMG suite keeps separate report labels and stale extra-only model rows are pruned from promoted suite status files when that suite is updated. Legacy rows that stored the upstream full path are normalized atomically from the matched manifest row, preserving both the manifest report family and the stripped ROM label together.
 
@@ -172,6 +179,7 @@ make run-ax6
 make run-samesuite
 make run-little-things-gb
 make run-gbmicrotest
+make run-docboy
 make test-roms-extra
 make test-roms-extra-real-boot
 ```
@@ -186,6 +194,10 @@ make test-roms-extra-real-boot
 - `gbmicrotest/interrupts/is_if_set_during_ime0.gb` is the only `gbmicrotest-dmg-extra` row with a `2,000,000` T-cycle timeout because the source intentionally clears `IF`, leaves `IME=0`, then burns a full `BC` spin before reading `IF`; the remaining rows keep the normal `1,000,000` T-cycle budget.
 - `gbmicrotest-dmg-extra` intentionally omits an explicit `startup` field in every case; `make run-gbmicrotest` and `make test-roms-extra` therefore use the default SkipBoot path, while `make test-roms-extra-real-boot` reruns the same manifest with `GB_CYCLE_TEST_ROM_STARTUP=real-boot`. The suite does declare the narrow `startup_ppu_profile = "dmg-power-on"` overlay so the reset-facing `poweron_*` ROMs get the boot-facing PPU publication table under SkipBoot without changing the selected startup mode or applying synthetic startup memory writes.
 - `run-gbmicrotest` materializes its upstream family with `make fetch-test-roms FAMILIES=gbmicrotest` before invoking `cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite gbmicrotest-dmg-extra --failure-artifact-root .artifacts/gbmicrotest`; the DocBoy source pin, explicit `family = "gbmicrotest"` / `rom = ...` aliases, and per-ROM hashes live in `crates/gb-test-runner/data/sources.toml`.
+- `docboy-dmg-extra` is the extra/internal DocBoy `docboy/*` DMG suite, not a promoted DMG closure lane; its suite definition is `crates/gb-test-runner/data/docboy.toml`, its membership source of truth is DocBoy `tests/config/dmg.json` at `214905562590c35ba2bc41f36da3a5d636d99378`, it materializes the enabled unique single-machine `docboy/...` rows from `tests/roms/dmg/docboy`, excludes the disabled `docboy/mbc/huc3/huc3_tick.gb` row and the duplicate `docboy/boot/boot_hram.gb` config row, checks memory rows with `$FFF0 == $01` plus fail-fast `$FFF0 == $02`, and checks visual rows with the DocBoy until-match framebuffer fixture oracle against committed image fixtures under `crates/gb-test-runner/data/fixtures/docboy/`.
+- `docboy-dmg-extra` carries deterministic t-cycle joypad stimuli for input-driven rows and unique report labels for same-ROM variants that differ only by input or fixture; it intentionally omits explicit `startup` fields so `make run-docboy` and `make test-roms-extra` use the default SkipBoot path, while `make test-roms-extra-real-boot` reruns the same single-machine manifest with `GB_CYCLE_TEST_ROM_STARTUP=real-boot`.
+- `docboy-dmg-linked-extra` covers the two DocBoy serial two-player `rom2` rows as four participant-scoped framebuffer checks, runs through `run_linked_session` with topology `dmg04`, resolves its ROMs from the same `docboy` materialized family, and honors `GB_CYCLE_TEST_ROM_STARTUP=real-boot` for the local RealBoot aggregate; these linked participant results currently appear in the command output and retained artifacts rather than `/.roms/test/test-report-extra.md`. The `serial_two_players_basic_transfer_slave_sc_00.gb` participant pair is intentionally kept as a blocking hardware-question row even though it is red in the current core, because DocBoy asserts a slave-side transfer can complete when the slave writes `SC = 0` while Pan Docs describes external-clock receivers as needing `SC.7 = 1`; do not retune serial gating for that row without stronger hardware-facing evidence.
+- `run-docboy` materializes the DocBoy family with `make fetch-test-roms FAMILIES=docboy` before invoking `cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-dmg-extra --failure-artifact-root .artifacts/docboy` and `cargo run --release -q -p gb-test-runner --bin run_linked_session -- --suite docboy-dmg-linked-extra --failure-artifact-root .artifacts/docboy-linked`; the DocBoy source pin, explicit `family = "docboy"` / `rom = ...` aliases, fixture hashes, and linked-only ROM hashes live in `crates/gb-test-runner/data/sources.toml`.
 
 ## CGB suites
 
