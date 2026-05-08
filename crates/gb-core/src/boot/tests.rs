@@ -201,6 +201,20 @@ fn cgb_boot_rom_assets_also_accept_sparse_address_space_images() {
 }
 
 #[test]
+fn cgb_revision_boot_rom_assets_are_stored_independently() {
+    let assets = BootRomAssets::none()
+        .with_bytes(BootRomKind::Cgb0, vec![0xC0; CGB_BOOT_ROM_RAW_LEN])
+        .expect("CGB0 image should validate")
+        .with_bytes(BootRomKind::CgbE, vec![0xCE; CGB_BOOT_ROM_RAW_LEN])
+        .expect("CGBE image should validate");
+
+    assert_eq!(assets.dynamic_payload_bytes(), CGB_BOOT_ROM_RAW_LEN * 2);
+    assert_eq!(assets.read_byte(BootRomKind::Cgb0, 0x0000), Some(0xC0));
+    assert_eq!(assets.read_byte(BootRomKind::CgbE, 0x0000), Some(0xCE));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0000), None);
+}
+
+#[test]
 fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let direct_boot = boot
@@ -245,10 +259,11 @@ fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
         startup_state.serial.clock_mode,
         crate::serial::SerialClockMode::External
     );
-    assert_eq!(startup_state.serial.clock_counter, 0x0028);
+    assert_eq!(startup_state.serial.clock_counter, 0x0068);
     assert_eq!(startup_state.dma.source_page_latch, 0xFF);
     assert_eq!(startup_state.joypad.selection_bits, 0x00);
     assert_eq!(startup_state.joypad.pressed_mask, 0x00);
+    assert!(real_boot.direct_boot_state(None).is_none());
 
     let cgb_real_boot = boot(
         ConsoleModel::GameBoyColor,
@@ -350,6 +365,32 @@ fn patterned_startup_memory_policy_is_deterministic_without_zero_filling_wram_or
 }
 
 #[test]
+fn cgb_real_boot_entry_memory_policy_uses_boot_visible_prefixes() {
+    let mut vram = [0xFF; 40];
+    let mut wram = [0xFF; 8];
+    let mut hram = [0xFF; 56];
+    let mut no_op = [0xAA; 4];
+
+    StartupMemoryPolicy::CgbRealBootEntry.initialize_vram(&mut vram);
+    StartupMemoryPolicy::CgbRealBootEntry.initialize_wram(&mut wram);
+    StartupMemoryPolicy::CgbRealBootEntry.initialize_hram(&mut hram);
+    StartupMemoryPolicy::CgbRealBootEntry.fill_bytes(&mut no_op, 0xC000);
+
+    assert_eq!(
+        &vram[..CGB_REAL_BOOT_VRAM_PREFIX.len()],
+        CGB_REAL_BOOT_VRAM_PREFIX
+    );
+    assert_eq!(vram[CGB_REAL_BOOT_VRAM_PREFIX.len()], 0x00);
+    assert_eq!(wram, [0x00; 8]);
+    assert_eq!(
+        &hram[..CGB_BOOT_LOGO_HRAM_PREFIX.len()],
+        CGB_BOOT_LOGO_HRAM_PREFIX
+    );
+    assert_eq!(hram[CGB_BOOT_LOGO_HRAM_PREFIX.len()], 0x00);
+    assert_eq!(no_op, [0xAA; 4]);
+}
+
+#[test]
 fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
     let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let mut rom = vec![0x00; 0x150];
@@ -403,6 +444,42 @@ fn boot_rom_assets_can_load_a_configured_directory_source() {
 }
 
 #[test]
+fn boot_rom_assets_can_load_all_directory_images_independently() {
+    let directory = unique_temp_dir();
+    fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
+    for (kind, marker, len) in [
+        (BootRomKind::Dmg0, 0xD0, DMG_FAMILY_BOOT_ROM_LEN),
+        (BootRomKind::Dmg, 0xD1, DMG_FAMILY_BOOT_ROM_LEN),
+        (BootRomKind::Mgb, 0xD2, DMG_FAMILY_BOOT_ROM_LEN),
+        (BootRomKind::Cgb0, 0xC0, CGB_BOOT_ROM_RAW_LEN),
+        (BootRomKind::Cgb, 0xC1, CGB_BOOT_ROM_RAW_LEN),
+        (BootRomKind::CgbE, 0xCE, CGB_BOOT_ROM_RAW_LEN),
+    ] {
+        fs::write(
+            directory.join(BootRomAssets::filename(kind)),
+            vec![marker; len],
+        )
+        .expect("boot ROM file should be writable");
+    }
+
+    let assets = BootRomAssets::from_directory(&directory)
+        .expect("complete directory-backed boot ROM assets should load");
+
+    assert_eq!(
+        assets.dynamic_payload_bytes(),
+        DMG_FAMILY_BOOT_ROM_LEN * 3 + CGB_BOOT_ROM_RAW_LEN * 3
+    );
+    assert_eq!(assets.read_byte(BootRomKind::Dmg0, 0x0000), Some(0xD0));
+    assert_eq!(assets.read_byte(BootRomKind::Dmg, 0x0000), Some(0xD1));
+    assert_eq!(assets.read_byte(BootRomKind::Mgb, 0x0000), Some(0xD2));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb0, 0x0000), Some(0xC0));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0000), Some(0xC1));
+    assert_eq!(assets.read_byte(BootRomKind::CgbE, 0x0000), Some(0xCE));
+
+    fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
+}
+
+#[test]
 fn boot_rom_asset_errors_cover_missing_non_directory_and_read_failure_paths() {
     let missing_directory = unique_temp_dir();
     let missing_error = BootRomAssets::from_directory(&missing_directory)
@@ -439,6 +516,40 @@ fn boot_rom_asset_errors_cover_missing_non_directory_and_read_failure_paths() {
     );
     assert!(std::error::Error::source(&read_error).is_some());
     fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
+}
+
+#[test]
+fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
+    for (kind, len) in [
+        (BootRomKind::Dmg0, DMG_FAMILY_BOOT_ROM_LEN - 1),
+        (BootRomKind::Dmg, DMG_FAMILY_BOOT_ROM_LEN - 1),
+        (BootRomKind::Mgb, DMG_FAMILY_BOOT_ROM_LEN - 1),
+        (BootRomKind::Cgb0, CGB_BOOT_ROM_RAW_LEN - 1),
+        (BootRomKind::Cgb, CGB_BOOT_ROM_RAW_LEN - 1),
+        (BootRomKind::CgbE, CGB_BOOT_ROM_RAW_LEN - 1),
+    ] {
+        let directory = unique_temp_dir();
+        fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
+        fs::write(
+            directory.join(BootRomAssets::filename(kind)),
+            vec![0xFF; len],
+        )
+        .expect("short boot ROM file should be writable");
+
+        let error = BootRomAssets::from_directory(&directory)
+            .expect_err("too-short boot ROM files should be rejected");
+        assert!(matches!(
+            error,
+            BootRomAssetError::ImageTooShort {
+                kind: error_kind,
+                ..
+            } if error_kind == kind
+        ));
+        assert!(error.to_string().contains("too short"));
+        assert!(std::error::Error::source(&error).is_none());
+
+        fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
+    }
 }
 
 #[test]
