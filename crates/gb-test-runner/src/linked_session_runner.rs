@@ -40,6 +40,11 @@ pub enum LinkedSessionCaseFailure {
         capture: LinkedSessionCaptureKind,
         fixture_path: PathBuf,
     },
+    ParticipantFramebufferCheckAtNotReached {
+        participant_id: String,
+        check_at_tcycles: u64,
+        executed_t_cycles: u64,
+    },
     FixtureMismatch {
         fixture_path: PathBuf,
     },
@@ -191,6 +196,7 @@ struct LinkedFramebufferUntilMatchOracle {
     check_at_tcycles: Option<u64>,
     pending_periodic_check: bool,
     matched: bool,
+    check_at_reached: bool,
 }
 
 impl RunnerLinkedMachines {
@@ -557,6 +563,10 @@ impl LinkedSessionRunner {
             framebuffer_until_match_oracle
                 .as_ref()
                 .is_some_and(|oracle| oracle.matched),
+            framebuffer_until_match_oracle
+                .as_ref()
+                .is_some_and(|oracle| oracle.check_at_reached),
+            executed_t_cycles,
         )?;
         let retained_failure_artifacts = if outcome.failed() {
             self.persist_failure_artifacts(session, &artifacts)?
@@ -625,6 +635,7 @@ impl LinkedSessionRunner {
             check_at_tcycles: *check_at_tcycles,
             pending_periodic_check: false,
             matched: false,
+            check_at_reached: false,
         }))
     }
 }
@@ -637,6 +648,7 @@ fn linked_framebuffer_until_match_poll_due(
 ) -> Result<bool, LinkedSessionExecutionError> {
     if let Some(check_at_tcycles) = oracle.check_at_tcycles {
         if executed_t_cycles == check_at_tcycles {
+            oracle.check_at_reached = true;
             oracle.matched = linked_framebuffer_matches_fixture(session_id, linked, oracle)?;
             return Ok(true);
         }

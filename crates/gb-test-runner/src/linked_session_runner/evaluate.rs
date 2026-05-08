@@ -15,6 +15,8 @@ impl LinkedSessionRunner {
         artifacts: &LinkedSessionRunArtifacts,
         diagnostic_trap: Option<(usize, CpuDiagnosticTrap)>,
         framebuffer_until_match_matched: bool,
+        framebuffer_until_match_check_at_reached: bool,
+        executed_t_cycles: u64,
     ) -> Result<LinkedSessionCaseOutcome, LinkedSessionExecutionError> {
         if let Some((participant_index, trap)) = diagnostic_trap {
             return Ok(LinkedSessionCaseOutcome::Failed(
@@ -85,10 +87,21 @@ impl LinkedSessionRunner {
             LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
                 participant_id,
                 fixture_path,
+                check_at_tcycles,
                 ..
             } => {
                 if framebuffer_until_match_matched {
                     LinkedSessionCaseOutcome::Passed
+                } else if let Some(check_at_tcycles) = check_at_tcycles
+                    && !framebuffer_until_match_check_at_reached
+                {
+                    LinkedSessionCaseOutcome::Failed(
+                        LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                            participant_id: participant_id.clone(),
+                            check_at_tcycles: *check_at_tcycles,
+                            executed_t_cycles,
+                        },
+                    )
                 } else {
                     let participant_index = session
                         .participants
@@ -266,6 +279,25 @@ pub(super) fn participant_outcome_for_session(
                         participant_id: failed_participant_id.clone(),
                         capture: *capture,
                         fixture_path: fixture_path.clone(),
+                    },
+                )
+            } else {
+                LinkedSessionCaseOutcome::Passed
+            }
+        }
+        LinkedSessionCaseOutcome::Failed(
+            LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                participant_id: failed_participant_id,
+                check_at_tcycles,
+                executed_t_cycles,
+            },
+        ) => {
+            if failed_participant_id == participant_id {
+                LinkedSessionCaseOutcome::Failed(
+                    LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                        participant_id: failed_participant_id.clone(),
+                        check_at_tcycles: *check_at_tcycles,
+                        executed_t_cycles: *executed_t_cycles,
                     },
                 )
             } else {

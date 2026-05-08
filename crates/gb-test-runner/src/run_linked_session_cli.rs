@@ -362,6 +362,14 @@ fn render_failure(failure: &LinkedSessionCaseFailure) -> String {
             capture,
             fixture_path.display()
         ),
+        LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+            participant_id,
+            check_at_tcycles,
+            executed_t_cycles,
+        } => format!(
+            "participant-framebuffer-check-at-not-reached participant={} check_at_tcycles={} executed_t_cycles={}",
+            participant_id, check_at_tcycles, executed_t_cycles
+        ),
         LinkedSessionCaseFailure::FixtureMismatch { fixture_path } => {
             format!("fixture-mismatch fixture={}", fixture_path.display())
         }
@@ -622,6 +630,19 @@ mod tests {
         assert_eq!(
             rendered,
             "participant-fixture-mismatch participant=left capture=Snapshot fixture=/tmp/left.snapshot"
+        );
+
+        let rendered = render_failure(
+            &LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                participant_id: "left".to_string(),
+                check_at_tcycles: 16,
+                executed_t_cycles: 8,
+            },
+        );
+
+        assert_eq!(
+            rendered,
+            "participant-framebuffer-check-at-not-reached participant=left check_at_tcycles=16 executed_t_cycles=8"
         );
     }
 }

@@ -1335,6 +1335,10 @@ pub enum RomCaseFailure {
     FramebufferFixtureMismatch {
         fixture_path: PathBuf,
     },
+    FramebufferCheckAtNotReached {
+        check_at_tcycles: u64,
+        executed_t_cycles: u64,
+    },
     FramebufferFixtureSetMismatch {
         fixture_paths: Vec<PathBuf>,
     },
@@ -1451,6 +1455,7 @@ struct CaseEvaluationInputs<'a> {
     diagnostic_trap: Option<CpuDiagnosticTrap>,
     mooneye_result: Option<MooneyeTestResult>,
     framebuffer_until_match_matched: bool,
+    framebuffer_until_match_check_at_reached: bool,
     executed_t_cycles: u64,
     completed_frames: u32,
 }
@@ -1488,6 +1493,7 @@ struct FramebufferUntilMatchOracle {
     check_at_tcycles: Option<u64>,
     pending_periodic_check: bool,
     matched: bool,
+    check_at_reached: bool,
 }
 
 impl DeterministicMbc3RtcClock {
@@ -1953,6 +1959,9 @@ impl RomRunner {
             framebuffer_until_match_matched: framebuffer_until_match_oracle
                 .as_ref()
                 .is_some_and(|oracle| oracle.matched),
+            framebuffer_until_match_check_at_reached: framebuffer_until_match_oracle
+                .as_ref()
+                .is_some_and(|oracle| oracle.check_at_reached),
             executed_t_cycles,
             completed_frames,
         };
@@ -2082,6 +2091,7 @@ impl RomRunner {
             check_at_tcycles: *check_at_tcycles,
             pending_periodic_check: false,
             matched: false,
+            check_at_reached: false,
         }))
     }
 
@@ -2415,9 +2425,20 @@ impl RomRunner {
                     })
                 }
             }
-            PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. } => {
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path,
+                check_at_tcycles,
+                ..
+            } => {
                 if evaluation.framebuffer_until_match_matched {
                     RomCaseOutcome::Passed
+                } else if let Some(check_at_tcycles) = check_at_tcycles
+                    && !evaluation.framebuffer_until_match_check_at_reached
+                {
+                    RomCaseOutcome::Failed(RomCaseFailure::FramebufferCheckAtNotReached {
+                        check_at_tcycles: *check_at_tcycles,
+                        executed_t_cycles: evaluation.executed_t_cycles,
+                    })
                 } else {
                     let resolved_fixture = self.resolve_path(fixture_path);
                     let actual = decode_local_pgm_framebuffer(
@@ -2868,6 +2889,7 @@ fn framebuffer_until_match_poll_due(
 ) -> Result<bool, RomExecutionError> {
     if let Some(check_at_tcycles) = oracle.check_at_tcycles {
         if executed_t_cycles == check_at_tcycles {
+            oracle.check_at_reached = true;
             oracle.matched = framebuffer_matches_fixture(case_id, machine, &oracle.expected)?;
             return Ok(true);
         }
@@ -3286,6 +3308,7 @@ mod tests {
             diagnostic_trap: None,
             mooneye_result: None,
             framebuffer_until_match_matched: false,
+            framebuffer_until_match_check_at_reached: false,
             executed_t_cycles,
             completed_frames,
         }
@@ -4952,17 +4975,28 @@ mod tests {
             runner
                 .evaluate_case(
                     &framebuffer_until_match_case,
-                    &evaluation_inputs(&framebuffer_artifacts, 1, 0)
+                    &evaluation_inputs(&framebuffer_artifacts, 0, 0)
                 )
+                .expect("framebuffer until-match should report an unreached check_at"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferCheckAtNotReached {
+                check_at_tcycles: 1,
+                executed_t_cycles: 0,
+            })
+        );
+        let mut check_at_reached_match = evaluation_inputs(&framebuffer_artifacts, 1, 0);
+        check_at_reached_match.framebuffer_until_match_check_at_reached = true;
+        assert_eq!(
+            runner
+                .evaluate_case(&framebuffer_until_match_case, &check_at_reached_match)
                 .expect("framebuffer until-match fallback fixture should match"),
             RomCaseOutcome::Passed
         );
+        let mut check_at_reached_mismatch =
+            evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0);
+        check_at_reached_mismatch.framebuffer_until_match_check_at_reached = true;
         assert_eq!(
             runner
-                .evaluate_case(
-                    &framebuffer_until_match_case,
-                    &evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0)
-                )
+                .evaluate_case(&framebuffer_until_match_case, &check_at_reached_mismatch)
                 .expect("framebuffer until-match mismatch should evaluate"),
             RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
                 fixture_path: fixture_path.clone(),
@@ -5268,6 +5302,44 @@ mod tests {
             .expect("framebuffer until-match ROM should run");
         assert_eq!(report.outcome, RomCaseOutcome::Passed);
         assert_eq!(report.executed_t_cycles, 1);
+        assert!(report.artifacts.framebuffer_pgm.is_some());
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+
+    #[test]
+    fn run_case_reports_framebuffer_until_match_unreached_check_at() {
+        let workspace = unique_temp_dir("framebuffer-until-match-check-at-missed");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        let rom_path = workspace.join("idle.gb");
+        let fixture_path = workspace.join("white.pgm");
+        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+            .expect("test ROM should be writable");
+        fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
+            .expect("framebuffer fixture should be writable");
+
+        let case = RomTestCase::new(
+            "framebuffer-until-match-check-at-missed",
+            &rom_path,
+            Timeout::TCycles(8),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path,
+                check_interval_tcycles: 1,
+                check_at_tcycles: Some(16),
+            },
+        );
+
+        let report = RomRunner::new()
+            .run_case(&case)
+            .expect("framebuffer until-match ROM should run");
+        assert_eq!(
+            report.outcome,
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferCheckAtNotReached {
+                check_at_tcycles: 16,
+                executed_t_cycles: 8,
+            })
+        );
+        assert_eq!(report.executed_t_cycles, 8);
         assert!(report.artifacts.framebuffer_pgm.is_some());
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");

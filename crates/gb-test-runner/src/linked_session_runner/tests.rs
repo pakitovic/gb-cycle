@@ -731,6 +731,68 @@ fn linked_session_runner_supports_participant_framebuffer_until_match_check_at_t
 }
 
 #[test]
+fn linked_session_runner_reports_participant_framebuffer_unreached_check_at() {
+    let temp_dir = unique_temp_dir("participant-framebuffer-check-at-missed");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let left_rom = temp_dir.join("left.gb");
+    let right_rom = temp_dir.join("right.gb");
+    let fixture_path = temp_dir.join("left.pgm");
+    fs::write(&left_rom, build_test_rom(&[0xC3, 0x00, 0x01])).expect("left ROM should be writable");
+    fs::write(&right_rom, build_test_rom(&[0xC3, 0x00, 0x01]))
+        .expect("right ROM should be writable");
+    fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
+        .expect("participant framebuffer fixture should be writable");
+
+    let session = LinkedSessionCase::new(
+        "participant-framebuffer-check-at-missed",
+        LinkedSessionTopology::Dmg04,
+        Timeout::TCycles(8),
+        LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+            participant_id: "left".to_string(),
+            fixture_path,
+            check_interval_tcycles: 1,
+            check_at_tcycles: Some(16),
+        },
+    )
+    .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+    .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+    let report = LinkedSessionRunner::new()
+        .run_session(&session)
+        .expect("participant framebuffer fixture session should execute");
+
+    assert_eq!(
+        report.outcome,
+        LinkedSessionCaseOutcome::Failed(
+            LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                participant_id: "left".to_string(),
+                check_at_tcycles: 16,
+                executed_t_cycles: 8,
+            },
+        )
+    );
+    assert_eq!(
+        report.participants[0].outcome,
+        LinkedSessionCaseOutcome::Failed(
+            LinkedSessionCaseFailure::ParticipantFramebufferCheckAtNotReached {
+                participant_id: "left".to_string(),
+                check_at_tcycles: 16,
+                executed_t_cycles: 8,
+            },
+        )
+    );
+    assert_eq!(
+        report.participants[1].outcome,
+        LinkedSessionCaseOutcome::Passed
+    );
+    assert_eq!(report.executed_t_cycles, 8);
+    assert!(report.participants[0].artifacts.framebuffer_pgm.is_some());
+    assert!(report.participants[1].artifacts.framebuffer_pgm.is_some());
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn linked_session_runner_reports_participant_framebuffer_fixture_mismatches_per_participant() {
     let temp_dir = unique_temp_dir("participant-framebuffer-mismatch");
     let artifact_root = temp_dir.join("artifacts");
