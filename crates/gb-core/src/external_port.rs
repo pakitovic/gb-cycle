@@ -184,6 +184,18 @@ impl ExternalPort {
         }
     }
 
+    pub(crate) fn requires_t_cycle_tick(&self) -> bool {
+        matches!(&self.attachment, ExternalPortAttachment::Printer(_))
+    }
+
+    pub(crate) fn requires_serial_peer_refresh_after_t_cycle(&self) -> bool {
+        matches!(&self.attachment, ExternalPortAttachment::Printer(_))
+    }
+
+    pub(crate) fn handles_completed_serial_byte(&self) -> bool {
+        matches!(&self.attachment, ExternalPortAttachment::Printer(_))
+    }
+
     pub(crate) fn handle_completed_serial_byte(&mut self, outgoing_byte: u8) {
         if let ExternalPortAttachment::Printer(printer) = &mut self.attachment {
             printer.receive_serial_byte(outgoing_byte);

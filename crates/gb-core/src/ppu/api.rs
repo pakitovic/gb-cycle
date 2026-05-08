@@ -62,6 +62,18 @@ impl Ppu {
     }
 
     pub(crate) fn bus_state_snapshot(&self) -> PpuBusStateSnapshot {
+        let mut observer = NoopPpuStepObserver;
+        self.bus_state_snapshot_with_observer(&mut observer, false)
+    }
+
+    pub(crate) fn bus_state_snapshot_with_observer<O>(
+        &self,
+        observer: &mut O,
+        records_ppu_regions: bool,
+    ) -> PpuBusStateSnapshot
+    where
+        O: PpuStepObserver,
+    {
         if !self.is_lcd_enabled() {
             let disabled = PpuBusState::lcd_disabled();
             return PpuBusStateSnapshot {
@@ -71,15 +83,71 @@ impl Ppu {
             };
         }
 
-        let owner_mode = self.current_bus_access_mode();
-        let cpu_read_mode = self.current_published_bus_access_mode();
-        let cpu_write_mode = self.current_published_video_write_access_mode();
+        if let Some(snapshot) = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::BusSnapshot,
+            || self.stable_bus_state_snapshot(),
+        ) {
+            return snapshot;
+        }
+
+        let owner_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::BusSnapshot,
+            || self.current_bus_access_mode(),
+        );
+        let (cpu_read_mode, cpu_write_mode) = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::PublishedAccess,
+            || {
+                (
+                    self.current_published_bus_access_mode(),
+                    self.current_published_video_write_access_mode(),
+                )
+            },
+        );
 
         PpuBusStateSnapshot {
             owner: PpuBusState::lcd_enabled(owner_mode),
             cpu_read: PpuBusState::lcd_enabled(cpu_read_mode),
             cpu_write: PpuBusState::lcd_enabled(cpu_write_mode),
         }
+    }
+
+    pub(in crate::ppu) fn stable_bus_state_snapshot(&self) -> Option<PpuBusStateSnapshot> {
+        if !self.is_lcd_enabled()
+            || self.runtime.blank_frame_active
+            || self.lcd_restart_phase != PpuLcdRestartPhase::Inactive
+            || self.runtime.startup_mode_latch.is_some()
+            || self.ly >= VISIBLE_SCANLINES
+            || self.line_dot == 0
+            || self.line_dot <= MODE2_DOTS
+        {
+            return None;
+        }
+
+        let scanline_length = self.current_scanline_length();
+        if self.line_dot + 4 >= scanline_length {
+            return None;
+        }
+
+        let mode0_start_dot = self.current_mode0_start_dot();
+        let mode = if self.line_dot < mode0_start_dot {
+            PpuAccessMode::Drawing
+        } else if self.line_dot > mode0_start_dot {
+            PpuAccessMode::HBlank
+        } else {
+            return None;
+        };
+        let state = PpuBusState::lcd_enabled(mode);
+        Some(PpuBusStateSnapshot {
+            owner: state,
+            cpu_read: state,
+            cpu_write: state,
+        })
     }
 
     #[cfg(test)]
@@ -809,77 +877,146 @@ impl Ppu {
             self.is_lcd_enabled() && self.current_bus_access_mode() == PpuAccessMode::Drawing
         );
 
-        if !self.is_lcd_enabled() {
-            if self.lcd_enable_pending_delay_tcycles > 0 {
-                self.lcd_enable_pending_delay_tcycles -= 1;
-                if self.lcd_enable_pending_delay_tcycles == 2 {
-                    self.refresh_stat_irq_line(false);
-                    return;
-                }
+        let records_ppu_regions = observer.records_ppu_regions();
+        let lcd_enabled = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Tick,
+            || self.is_lcd_enabled(),
+        );
+        if !lcd_enabled {
+            let lcd_restart_ready = observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::Tick,
+                || {
+                    if self.lcd_enable_pending_delay_tcycles == 0 {
+                        return false;
+                    }
 
-                if self.lcd_enable_pending_delay_tcycles == 0 && self.lcdc & LCDC_ENABLE_BIT != 0 {
-                    self.enter_lcd_enabled_restart_state();
-                    self.refresh_stat_irq_line(false);
-                } else {
-                    return;
-                }
-            } else {
+                    self.lcd_enable_pending_delay_tcycles -= 1;
+                    if self.lcd_enable_pending_delay_tcycles == 2 {
+                        self.refresh_stat_irq_line(false);
+                        return false;
+                    }
+
+                    if self.lcd_enable_pending_delay_tcycles == 0
+                        && self.lcdc & LCDC_ENABLE_BIT != 0
+                    {
+                        self.enter_lcd_enabled_restart_state();
+                        self.refresh_stat_irq_line(false);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            );
+            if !lcd_restart_ready {
                 return;
             }
         }
 
-        let step_region = self.current_step_region_after_line_advance();
-        let previous_mode = observe_ppu_step_region(observer, step_region, || {
-            self.advance_mode3_register_latches_from_mmio();
-            let previous_mode = self.current_access_mode();
-            self.startup_mode_latch = None;
-            self.line_dot += 1;
-            self.advance_lcd_restart_phase();
-            self.prepare_visible_scanline_state();
-            previous_mode
-        });
-        observe_ppu_step_region(observer, PpuStepRegion::Mode2Scan, || {
-            self.advance_mode2_scan(&oam, dma_oam_active);
-        });
+        let previous_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::ModeTiming,
+            || {
+                self.advance_mode3_register_latches_from_mmio();
+                self.current_access_mode()
+            },
+        );
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::RasterAdvance,
+            || {
+                self.startup_mode_latch = None;
+                self.line_dot += 1;
+                if self.lcd_restart_phase != PpuLcdRestartPhase::Inactive {
+                    self.advance_lcd_restart_phase();
+                }
+            },
+        );
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::VisiblePrep,
+            || {
+                self.prepare_visible_scanline_state();
+            },
+        );
+        if self.mode2_scan_tick_due() {
+            observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::Mode2Scan,
+                || {
+                    self.advance_mode2_scan(&oam, dma_oam_active);
+                },
+            );
+        }
         self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
-        observe_ppu_step_region(observer, step_region, || {
-            if self.line_dot == self.current_scanline_length() {
-                let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
-                self.finalize_dmg_bgp_cpu_commit_scanline();
-                if self.bg_pipeline_state.window_start_count_this_line != 0 {
-                    self.window_state.window_line_counter = self
-                        .window_state
-                        .window_line_counter
-                        .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
-                }
-                self.line_dot = 0;
-                self.ly = if self.ly + 1 == TOTAL_SCANLINES {
-                    0
-                } else {
-                    self.ly + 1
-                };
-                self.advance_lcd_restart_phase();
-                if self.ly >= VISIBLE_SCANLINES {
-                    self.window_state.reset();
-                }
-                self.mode2_scan_state.reset_scanline();
-                self.bg_pipeline_state.reset();
-                self.obj_pipeline_state.reset();
-                let bgp = self.bgp;
-                self.panel.reset_for_scanline_start(bgp);
-                if wraps_to_frame_start && self.blank_frame_active {
-                    self.blank_frame_active = false;
-                    self.refresh_visible_output();
-                }
-            }
+        let scanline_length = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::RasterAdvance,
+            || self.current_scanline_length(),
+        );
+        if self.line_dot == scanline_length {
+            observe_ppu_step_region_when(
+                observer,
+                records_ppu_regions,
+                PpuStepRegion::RasterPublication,
+                || {
+                    let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                    self.finalize_dmg_bgp_cpu_commit_scanline();
+                    if self.bg_pipeline_state.window_start_count_this_line != 0 {
+                        self.window_state.window_line_counter = self
+                            .window_state
+                            .window_line_counter
+                            .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
+                    }
+                    self.line_dot = 0;
+                    self.ly = if self.ly + 1 == TOTAL_SCANLINES {
+                        0
+                    } else {
+                        self.ly + 1
+                    };
+                    self.advance_lcd_restart_phase();
+                    if self.ly >= VISIBLE_SCANLINES {
+                        self.window_state.reset();
+                    }
+                    self.mode2_scan_state.reset_scanline();
+                    self.bg_pipeline_state.reset();
+                    self.obj_pipeline_state.reset();
+                    let bgp = self.bgp;
+                    self.panel.reset_for_scanline_start(bgp);
+                    if wraps_to_frame_start && self.blank_frame_active {
+                        self.blank_frame_active = false;
+                        self.refresh_visible_output();
+                    }
+                },
+            );
+        }
 
-            let current_mode = self.current_access_mode();
-            if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-                self.queue_interrupt_request(InterruptSource::VBlank);
-            }
-            self.refresh_stat_irq_line(false);
-        });
+        let current_mode = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::ModeTiming,
+            || self.current_access_mode(),
+        );
+        if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
+            self.queue_interrupt_request(InterruptSource::VBlank);
+        }
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::StatIrq,
+            || {
+                self.refresh_stat_irq_line(false);
+            },
+        );
     }
 
     pub fn snapshot(&self) -> PpuSnapshot {
@@ -1114,11 +1251,27 @@ impl Ppu {
     }
 
     pub(super) fn current_scanline_length(&self) -> u16 {
-        if self.is_restart_first_line_active() {
+        if let Some(entry) = self.runtime.mode_timing_cache.scanline_length.get()
+            && entry.restart_phase == self.lcd_restart_phase
+            && entry.ly == self.ly
+        {
+            return entry.value;
+        }
+
+        let value = if self.is_restart_first_line_active() {
             LCD_REENABLE_LINE0_TOTAL_DOTS
         } else {
             DOTS_PER_SCANLINE
-        }
+        };
+        self.runtime
+            .mode_timing_cache
+            .scanline_length
+            .set(Some(PpuScanlineLengthCacheEntry {
+                restart_phase: self.lcd_restart_phase,
+                ly: self.ly,
+                value,
+            }));
+        value
     }
 
     pub(super) fn current_ly_read_advance_start_dot(&self) -> u16 {

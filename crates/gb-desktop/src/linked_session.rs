@@ -350,8 +350,8 @@ mod tests {
     use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
     use gb_core::{
         ConsoleModel, Dmg07Port, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
-        LinkedMachinesError, LinkedTopologyKind, Machine, MachineConfig, MachineStepObserver,
-        MachineStepRegion, StartupMode, TCycle, TraceSummaryBuffer,
+        JoypadButton, LinkedMachinesError, LinkedTopologyKind, Machine, MachineConfig,
+        MachineStepObserver, MachineStepRegion, StartupMode, TCycle, TraceSummaryBuffer,
     };
     use std::collections::HashMap;
 
@@ -500,7 +500,7 @@ mod tests {
         single.step_t_cycle_with_observer(&mut observer);
 
         assert!(
-            observer
+            !observer
                 .begins
                 .contains_key(&MachineStepRegion::ExternalEvents)
         );
@@ -508,6 +508,25 @@ mod tests {
         assert_eq!(
             observer.begins.get(&MachineStepRegion::Cpu),
             observer.ends.get(&MachineStepRegion::Cpu)
+        );
+
+        single
+            .primary_machine_mut()
+            .set_joypad_button_pressed(JoypadButton::A, true);
+        let mut pending_observer = CountingObserver::default();
+        single.step_t_cycle_with_observer(&mut pending_observer);
+        assert!(
+            pending_observer
+                .begins
+                .contains_key(&MachineStepRegion::ExternalEvents)
+        );
+        assert_eq!(
+            pending_observer
+                .begins
+                .get(&MachineStepRegion::ExternalEvents),
+            pending_observer
+                .ends
+                .get(&MachineStepRegion::ExternalEvents)
         );
 
         let mut linked = DesktopEmulationSession::new_linked_dmg04_two_player(
@@ -519,18 +538,36 @@ mod tests {
         linked.step_t_cycle_with_observer(&mut linked_observer);
 
         assert!(
-            linked_observer
+            !linked_observer
                 .begins
                 .contains_key(&MachineStepRegion::ExternalEvents)
         );
         assert!(linked_observer.begins.contains_key(&MachineStepRegion::Cpu));
         assert_eq!(
-            linked_observer
-                .begins
-                .get(&MachineStepRegion::ExternalEvents),
-            linked_observer.ends.get(&MachineStepRegion::ExternalEvents)
+            linked_observer.begins.get(&MachineStepRegion::Cpu),
+            linked_observer.ends.get(&MachineStepRegion::Cpu)
         );
         assert_eq!(linked.next_t_cycle(), TCycle::new(1));
+
+        linked
+            .primary_machine_mut()
+            .set_joypad_button_pressed(JoypadButton::A, true);
+        let mut linked_pending_observer = CountingObserver::default();
+        linked.step_t_cycle_with_observer(&mut linked_pending_observer);
+        assert!(
+            linked_pending_observer
+                .begins
+                .contains_key(&MachineStepRegion::ExternalEvents)
+        );
+        assert_eq!(
+            linked_pending_observer
+                .begins
+                .get(&MachineStepRegion::ExternalEvents),
+            linked_pending_observer
+                .ends
+                .get(&MachineStepRegion::ExternalEvents)
+        );
+        assert_eq!(linked.next_t_cycle(), TCycle::new(2));
     }
 
     #[test]

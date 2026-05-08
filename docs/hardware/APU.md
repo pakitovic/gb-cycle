@@ -215,6 +215,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - the T-cycle-accurate APU core producing analog stereo state
   - the later host-facing sample capture / resampler / export path
 - The host sample rate, host buffer size, or host callback timing must not feed back into channel timers, mixer semantics, HPF behavior, or pop generation.
+- Host-facing sample capture consumes the same undoubled APU domain as the core output boundary on CGB double-speed; a frontend must not call the resampler once per doubled CPU scheduler T-cycle unless the core APU actually advanced on that scheduler tick.
 - The host-facing resampler should only change representation and cadence, not hardware semantics.
 - The core APU should therefore remain runnable without a real host audio backend, exposing deterministic internal analog output or captured samples for tests and offline validation.
 

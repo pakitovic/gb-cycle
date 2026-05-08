@@ -44,6 +44,45 @@ pub enum SerialTransferState {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct SerialTickTelemetry {
+    pub active_t_cycles: u64,
+    pub internal_ticks: u64,
+    pub external_ticks: u64,
+    pub external_wait_ticks: u64,
+    pub shift_edges: u64,
+    pub completed_bytes: u64,
+    pub external_port_ticks: u64,
+}
+
+impl SerialTickTelemetry {
+    pub const fn external_port_tick() -> Self {
+        Self {
+            external_port_ticks: 1,
+            active_t_cycles: 0,
+            internal_ticks: 0,
+            external_ticks: 0,
+            external_wait_ticks: 0,
+            shift_edges: 0,
+            completed_bytes: 0,
+        }
+    }
+
+    pub fn accumulate(&mut self, other: Self) {
+        self.active_t_cycles = self.active_t_cycles.saturating_add(other.active_t_cycles);
+        self.internal_ticks = self.internal_ticks.saturating_add(other.internal_ticks);
+        self.external_ticks = self.external_ticks.saturating_add(other.external_ticks);
+        self.external_wait_ticks = self
+            .external_wait_ticks
+            .saturating_add(other.external_wait_ticks);
+        self.shift_edges = self.shift_edges.saturating_add(other.shift_edges);
+        self.completed_bytes = self.completed_bytes.saturating_add(other.completed_bytes);
+        self.external_port_ticks = self
+            .external_port_ticks
+            .saturating_add(other.external_port_ticks);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SerialStartupState {
     pub sb: u8,
@@ -321,6 +360,40 @@ impl Serial {
         self.latest_completed_output_byte
     }
 
+    pub(crate) fn requires_full_t_cycle_tick(&self) -> bool {
+        matches!(
+            self.transfer_state,
+            SerialTransferState::TransferRequested { .. }
+        ) || self.external_clock_pulses_pending != 0
+    }
+
+    pub(crate) fn external_wait_without_pending_clock(&self) -> bool {
+        self.clock_mode == SerialClockMode::External
+            && matches!(
+                self.transfer_state,
+                SerialTransferState::TransferRequested { .. }
+            )
+            && self.external_clock_pulses_pending == 0
+    }
+
+    pub(crate) fn tick_external_wait_t_cycle(&mut self) -> SerialTickTelemetry {
+        debug_assert!(self.external_wait_without_pending_clock());
+
+        self.latest_completed_output_byte = None;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
+        SerialTickTelemetry {
+            active_t_cycles: 1,
+            external_ticks: 1,
+            external_wait_ticks: 1,
+            ..Default::default()
+        }
+    }
+
+    pub(crate) fn tick_idle_t_cycle(&mut self) {
+        self.latest_completed_output_byte = None;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
+    }
+
     pub(crate) fn internal_clock_edge_pending_this_t_cycle_for_speed(
         &self,
         speed_mode: CgbSpeedMode,
@@ -361,34 +434,56 @@ impl Serial {
     }
 
     #[cfg(test)]
-    pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
-        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal);
+    pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) -> SerialTickTelemetry {
+        self.tick_t_cycle_for_speed(context, CgbSpeedMode::Normal)
     }
 
     pub(crate) fn tick_t_cycle_for_speed(
         &mut self,
         context: &mut CycleContext,
         speed_mode: CgbSpeedMode,
-    ) {
+    ) -> SerialTickTelemetry {
         self.latest_completed_output_byte = None;
 
         let previous_clock_counter = self.clock_counter;
         self.clock_counter = self.clock_counter.wrapping_add(1);
-        let internal_clock_edge = serial_internal_clock_edge(
-            previous_clock_counter,
-            self.clock_counter,
-            speed_mode,
-            self.cgb_high_speed_clock(),
-        );
-
         let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
-            return;
+            return SerialTickTelemetry::default();
         };
 
+        let mut telemetry = SerialTickTelemetry {
+            active_t_cycles: 1,
+            ..Default::default()
+        };
         match self.clock_mode {
-            SerialClockMode::Internal => self.advance_internal_clock(context, internal_clock_edge),
-            SerialClockMode::External => self.consume_external_clock_if_present(context),
+            SerialClockMode::Internal => {
+                telemetry.internal_ticks = 1;
+                if serial_internal_clock_edge(
+                    previous_clock_counter,
+                    self.clock_counter,
+                    speed_mode,
+                    self.cgb_high_speed_clock(),
+                ) {
+                    telemetry.shift_edges = 1;
+                    if self.shift_one_bit(context) {
+                        telemetry.completed_bytes = 1;
+                    }
+                }
+            }
+            SerialClockMode::External => {
+                telemetry.external_ticks = 1;
+                if self.external_clock_pulses_pending != 0 {
+                    self.external_clock_pulses_pending -= 1;
+                    telemetry.shift_edges = 1;
+                    if self.shift_one_bit(context) {
+                        telemetry.completed_bytes = 1;
+                    }
+                } else {
+                    telemetry.external_wait_ticks = 1;
+                }
+            }
         }
+        telemetry
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
@@ -413,23 +508,6 @@ impl Serial {
         )
     }
 
-    fn advance_internal_clock(&mut self, context: &mut CycleContext, internal_clock_edge: bool) {
-        if !internal_clock_edge {
-            return;
-        }
-
-        self.shift_one_bit(context);
-    }
-
-    fn consume_external_clock_if_present(&mut self, context: &mut CycleContext) {
-        if self.external_clock_pulses_pending == 0 {
-            return;
-        }
-
-        self.external_clock_pulses_pending -= 1;
-        self.shift_one_bit(context);
-    }
-
     fn accepts_external_clock_pulse(&self) -> bool {
         self.clock_mode == SerialClockMode::External
             && matches!(
@@ -450,9 +528,9 @@ impl Serial {
         }
     }
 
-    fn shift_one_bit(&mut self, context: &mut CycleContext) {
+    fn shift_one_bit(&mut self, context: &mut CycleContext) -> bool {
         let SerialTransferState::TransferRequested { bits_shifted } = self.transfer_state else {
-            return;
+            return false;
         };
 
         if bits_shifted == 0 {
@@ -477,8 +555,10 @@ impl Serial {
             self.current_outgoing_shift_byte = 0;
             self.current_incoming_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
+            true
         } else {
             self.transfer_state = SerialTransferState::TransferRequested { bits_shifted };
+            false
         }
     }
 }

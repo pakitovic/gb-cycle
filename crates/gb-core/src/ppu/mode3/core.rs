@@ -19,9 +19,22 @@ impl Ppu {
     ) where
         O: PpuStepObserver,
     {
-        if self.ly >= VISIBLE_SCANLINES || self.line_dot < MODE2_DOTS {
+        let records_ppu_regions = observer.records_ppu_regions();
+        let is_visible_mode3_dot = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3Control,
+            || self.ly < VISIBLE_SCANLINES && self.line_dot >= MODE2_DOTS,
+        );
+        if !is_visible_mode3_dot {
             return;
         }
+        let dmg_family = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3Control,
+            || self.console_model.is_dmg_family(),
+        );
 
         if !self.runtime.bg_pipeline_state.mode3_started {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
@@ -42,20 +55,41 @@ impl Ppu {
         observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
             self.maybe_retune_previsible_live_scx_discard();
         });
-        if self.line_dot >= self.current_mode0_start_dot() {
+        let in_pixel_transfer = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3Control,
+            || self.line_dot < self.current_mode0_start_dot(),
+        );
+        if !in_pixel_transfer {
             return;
         }
 
-        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
-        observe_ppu_step_region(observer, bg_pipeline_region, || {
-            self.maybe_recompute_pending_background_fill(vram);
-            self.flush_pending_bg_fifo_fill();
-            self.apply_pending_dmg_lcdc2_observed_write_effects(vram);
-        });
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3BgEdge,
+            || {
+                self.maybe_recompute_pending_background_fill(vram);
+                self.flush_pending_bg_fifo_fill();
+                if dmg_family {
+                    self.apply_pending_dmg_lcdc2_observed_write_effects(vram);
+                }
+            },
+        );
 
-        if observe_ppu_step_region(observer, PpuStepRegion::Mode3ObjFetch, || {
-            self.advance_mode3_object_phase(oam, vram, dma_oam_conflict)
-        }) {
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3ObjEdge,
+            || self.advance_mode3_object_edge(),
+        );
+        if observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3ObjFetch,
+            || self.advance_object_fetch(oam, vram, dma_oam_conflict),
+        ) {
             return;
         }
 
@@ -63,29 +97,45 @@ impl Ppu {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3PixelTransfer, || {
                 self.advance_mode3_output_phase_with_vram(vram)
             });
-        observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
-            self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
-            self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
-            self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
-            let _ = self.maybe_start_window_after_transfer_dot(output_dot);
-            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
-            self.apply_dmg_late_window_enable_override_repaint_up_to(
-                usize::from(self.runtime.bg_pipeline_state.visible_pixels_output),
-                vram,
-            );
-        });
-        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
-        let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
-            self.advance_bg_fetcher(vram)
-        });
+        observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3WindowEdge,
+            || {
+                if dmg_family {
+                    self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
+                    self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
+                }
+                self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
+                let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+                if dmg_family {
+                    self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
+                    self.apply_dmg_late_window_enable_override_repaint_up_to(
+                        usize::from(self.runtime.bg_pipeline_state.visible_pixels_output),
+                        vram,
+                    );
+                }
+            },
+        );
+        let bg_pipeline_region = observe_ppu_step_region_when(
+            observer,
+            records_ppu_regions,
+            PpuStepRegion::Mode3Control,
+            || {
+                if records_ppu_regions {
+                    self.current_mode3_bg_pipeline_region()
+                } else {
+                    PpuStepRegion::Other
+                }
+            },
+        );
+        let _ =
+            observe_ppu_step_region_when(observer, records_ppu_regions, bg_pipeline_region, || {
+                self.advance_bg_fetcher(vram)
+            });
     }
 
-    pub(in crate::ppu) fn advance_mode3_object_phase(
-        &mut self,
-        oam: &OamBusView<'_>,
-        vram: &VramBusView<'_>,
-        dma_oam_conflict: Option<PpuDmaOamConflict>,
-    ) -> bool {
+    pub(in crate::ppu) fn advance_mode3_object_edge(&mut self) {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
         let started = self
@@ -93,6 +143,16 @@ impl Ppu {
         if started && self.terminal_mode3_dot_started_shared_obj_fetch() {
             self.runtime.bg_pipeline_state.extend_mode3_by_one_dot();
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ppu) fn advance_mode3_object_phase(
+        &mut self,
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+    ) -> bool {
+        self.advance_mode3_object_edge();
         self.advance_object_fetch(oam, vram, dma_oam_conflict)
     }
 
@@ -105,7 +165,9 @@ impl Ppu {
             .bg_pipeline_state
             .consume_startup_transfer_entry_delay_dot()
         {
-            self.consume_dmg_bgp_cpu_commit_output_delay();
+            if self.console_model.is_dmg_family() {
+                self.consume_dmg_bgp_cpu_commit_output_delay();
+            }
             return Mode3TransferDot::not_served();
         }
 
@@ -132,10 +194,12 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .consume_startup_source_window_dot();
-        if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
-            self.repeat_last_dmg_recent_panel_dot();
+        if self.console_model.is_dmg_family() {
+            if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
+                self.repeat_last_dmg_recent_panel_dot();
+            }
+            self.consume_dmg_bgp_cpu_commit_output_delay();
         }
-        self.consume_dmg_bgp_cpu_commit_output_delay();
         transfer_dot
     }
 
