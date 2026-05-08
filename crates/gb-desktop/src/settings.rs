@@ -1220,6 +1220,8 @@ max_memory_mib = 128
         settings.input.gamepad.gyro_mode = GamepadGyroMode::PadInput;
         settings.input.gamepad.rumble_mode = GamepadRumbleMode::Weak;
         settings.input.gamepad.bindings.a = GamepadButtonBinding::North;
+        settings.input.gamepad.actions.rewind = Some(GamepadButtonBinding::LeftTrigger);
+        settings.input.gamepad.actions.fast_forward = Some(GamepadButtonBinding::RightTrigger);
         settings.input.gamepad.menu.cancel = GamepadButtonBinding::West;
         settings.input.gamepad.preferred_device = PreferredGamepadIdentity {
             name: Some("Nintendo Switch Pro Controller".to_string()),
@@ -1289,6 +1291,14 @@ max_memory_mib = 128
         assert_eq!(config.input.gamepad.gyro_mode, GamepadGyroMode::PadInput);
         assert_eq!(config.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(config.input.gamepad.bindings.a, GamepadButtonBinding::North);
+        assert_eq!(
+            config.input.gamepad.actions.rewind,
+            Some(GamepadButtonBinding::LeftTrigger)
+        );
+        assert_eq!(
+            config.input.gamepad.actions.fast_forward,
+            Some(GamepadButtonBinding::RightTrigger)
+        );
         assert_eq!(config.input.gamepad.menu.cancel, GamepadButtonBinding::West);
         assert_eq!(
             config.input.gamepad.preferred_device,

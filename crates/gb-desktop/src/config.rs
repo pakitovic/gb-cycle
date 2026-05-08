@@ -700,6 +700,10 @@ pub enum GamepadButtonBinding {
     LeftShoulder,
     #[serde(rename = "right-shoulder")]
     RightShoulder,
+    #[serde(rename = "left-trigger")]
+    LeftTrigger,
+    #[serde(rename = "right-trigger")]
+    RightTrigger,
     #[serde(rename = "left-stick-click")]
     LeftStickClick,
     #[serde(rename = "right-stick-click")]

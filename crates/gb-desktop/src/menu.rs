@@ -2775,6 +2775,8 @@ fn gamepad_binding_label(binding: GamepadButtonBinding) -> &'static str {
         GamepadButtonBinding::Guide => "GUIDE",
         GamepadButtonBinding::LeftShoulder => "L1",
         GamepadButtonBinding::RightShoulder => "R1",
+        GamepadButtonBinding::LeftTrigger => "L2",
+        GamepadButtonBinding::RightTrigger => "R2",
         GamepadButtonBinding::LeftStickClick => "LSTICK",
         GamepadButtonBinding::RightStickClick => "RSTICK",
         GamepadButtonBinding::DPadUp => "D UP",
@@ -4170,6 +4172,14 @@ mod tests {
         assert_eq!(
             gamepad_binding_label(GamepadButtonBinding::RightShoulder),
             "R1"
+        );
+        assert_eq!(
+            gamepad_binding_label(GamepadButtonBinding::LeftTrigger),
+            "L2"
+        );
+        assert_eq!(
+            gamepad_binding_label(GamepadButtonBinding::RightTrigger),
+            "R2"
         );
         assert_eq!(desktop_key_label(DesktopKey::Tab), "TAB");
         assert_eq!(desktop_key_label(DesktopKey::LeftShift), "L SHIFT");

@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 
 const LEFT_STICK_PRESS_THRESHOLD: i16 = 16_384;
 const LEFT_STICK_RELEASE_THRESHOLD: i16 = 12_288;
+const GAMEPAD_TRIGGER_PRESS_THRESHOLD: i16 = 16_384;
+const GAMEPAD_TRIGGER_RELEASE_THRESHOLD: i16 = 12_288;
 const GAMEPAD_RUMBLE_DURATION: Duration = Duration::from_millis(250);
 const GAMEPAD_RUMBLE_REFRESH_INTERVAL: Duration = Duration::from_millis(125);
 const STRONG_GAMEPAD_RUMBLE_INTENSITY: u16 = u16::MAX;
@@ -901,7 +903,12 @@ impl GamepadManager {
 }
 
 fn gamepad_button_binding_state(gamepad: &OpenGamepad, binding: GamepadButtonBinding) -> bool {
-    gamepad.gamepad.button(sdl_button_for_binding(binding))
+    if let Some(button) = sdl_button_for_binding(binding) {
+        return gamepad.gamepad.button(button);
+    }
+
+    gamepad_trigger_axis_for_binding(binding)
+        .is_some_and(|axis| gamepad_trigger_axis_is_pressed(gamepad.gamepad.axis(axis)))
 }
 
 fn detect_gamepad_accelerometer_sensor(gamepad: &Gamepad) -> Option<SensorType> {
@@ -959,24 +966,68 @@ fn rumble_intensity(mode: GamepadRumbleMode) -> Option<(u16, u16)> {
     }
 }
 
-pub fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Button {
+pub fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Option<Button> {
     match binding {
-        GamepadButtonBinding::South => Button::South,
-        GamepadButtonBinding::East => Button::East,
-        GamepadButtonBinding::West => Button::West,
-        GamepadButtonBinding::North => Button::North,
-        GamepadButtonBinding::Back => Button::Back,
-        GamepadButtonBinding::Start => Button::Start,
-        GamepadButtonBinding::Guide => Button::Guide,
-        GamepadButtonBinding::LeftShoulder => Button::LeftShoulder,
-        GamepadButtonBinding::RightShoulder => Button::RightShoulder,
-        GamepadButtonBinding::LeftStickClick => Button::LeftStick,
-        GamepadButtonBinding::RightStickClick => Button::RightStick,
-        GamepadButtonBinding::DPadUp => Button::DPadUp,
-        GamepadButtonBinding::DPadDown => Button::DPadDown,
-        GamepadButtonBinding::DPadLeft => Button::DPadLeft,
-        GamepadButtonBinding::DPadRight => Button::DPadRight,
-        GamepadButtonBinding::Misc1 => Button::Misc1,
+        GamepadButtonBinding::South => Some(Button::South),
+        GamepadButtonBinding::East => Some(Button::East),
+        GamepadButtonBinding::West => Some(Button::West),
+        GamepadButtonBinding::North => Some(Button::North),
+        GamepadButtonBinding::Back => Some(Button::Back),
+        GamepadButtonBinding::Start => Some(Button::Start),
+        GamepadButtonBinding::Guide => Some(Button::Guide),
+        GamepadButtonBinding::LeftShoulder => Some(Button::LeftShoulder),
+        GamepadButtonBinding::RightShoulder => Some(Button::RightShoulder),
+        GamepadButtonBinding::LeftTrigger | GamepadButtonBinding::RightTrigger => None,
+        GamepadButtonBinding::LeftStickClick => Some(Button::LeftStick),
+        GamepadButtonBinding::RightStickClick => Some(Button::RightStick),
+        GamepadButtonBinding::DPadUp => Some(Button::DPadUp),
+        GamepadButtonBinding::DPadDown => Some(Button::DPadDown),
+        GamepadButtonBinding::DPadLeft => Some(Button::DPadLeft),
+        GamepadButtonBinding::DPadRight => Some(Button::DPadRight),
+        GamepadButtonBinding::Misc1 => Some(Button::Misc1),
+    }
+}
+
+pub fn gamepad_trigger_axis_for_binding(binding: GamepadButtonBinding) -> Option<Axis> {
+    match binding {
+        GamepadButtonBinding::LeftTrigger => Some(Axis::TriggerLeft),
+        GamepadButtonBinding::RightTrigger => Some(Axis::TriggerRight),
+        GamepadButtonBinding::South
+        | GamepadButtonBinding::East
+        | GamepadButtonBinding::West
+        | GamepadButtonBinding::North
+        | GamepadButtonBinding::Back
+        | GamepadButtonBinding::Start
+        | GamepadButtonBinding::Guide
+        | GamepadButtonBinding::LeftShoulder
+        | GamepadButtonBinding::RightShoulder
+        | GamepadButtonBinding::LeftStickClick
+        | GamepadButtonBinding::RightStickClick
+        | GamepadButtonBinding::DPadUp
+        | GamepadButtonBinding::DPadDown
+        | GamepadButtonBinding::DPadLeft
+        | GamepadButtonBinding::DPadRight
+        | GamepadButtonBinding::Misc1 => None,
+    }
+}
+
+pub fn gamepad_button_binding_from_sdl_axis(axis: Axis) -> Option<GamepadButtonBinding> {
+    match axis {
+        Axis::TriggerLeft => Some(GamepadButtonBinding::LeftTrigger),
+        Axis::TriggerRight => Some(GamepadButtonBinding::RightTrigger),
+        Axis::LeftX | Axis::LeftY | Axis::RightX | Axis::RightY => None,
+    }
+}
+
+pub fn gamepad_trigger_axis_is_pressed(value: i16) -> bool {
+    value >= GAMEPAD_TRIGGER_PRESS_THRESHOLD
+}
+
+pub fn gamepad_trigger_axis_next_pressed(value: i16, was_pressed: bool) -> bool {
+    if was_pressed {
+        value >= GAMEPAD_TRIGGER_RELEASE_THRESHOLD
+    } else {
+        value >= GAMEPAD_TRIGGER_PRESS_THRESHOLD
     }
 }
 
@@ -1083,7 +1134,9 @@ mod tests {
         LeftStickDigitalState, SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
         STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g,
         axis_direction_state, default_gamepad_name, format_gamepad_enumeration_error,
-        format_open_gamepad_error, gamepad_button_binding_from_sdl_button, joystick_id_from_event,
+        format_open_gamepad_error, gamepad_button_binding_from_sdl_axis,
+        gamepad_button_binding_from_sdl_button, gamepad_trigger_axis_for_binding,
+        gamepad_trigger_axis_is_pressed, gamepad_trigger_axis_next_pressed, joystick_id_from_event,
         right_stick_axis_to_milli_g, rumble_intensity, sdl_button_for_binding,
     };
     use gb_core::{
@@ -1247,7 +1300,7 @@ mod tests {
             let name = CString::new(name).expect("virtual gamepad name");
             let mut descriptor = sdl3::sys::joystick::SDL_VirtualJoystickDesc::new();
             descriptor.r#type = sdl3::sys::joystick::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
-            descriptor.naxes = 4;
+            descriptor.naxes = 6;
             descriptor.nbuttons = 16;
             descriptor.nsensors = sensors.len() as u16;
             descriptor.button_mask = (1 << Button::South as u32)
@@ -1261,7 +1314,9 @@ mod tests {
             descriptor.axis_mask = (1 << Axis::LeftX as u32)
                 | (1 << Axis::LeftY as u32)
                 | (1 << Axis::RightX as u32)
-                | (1 << Axis::RightY as u32);
+                | (1 << Axis::RightY as u32)
+                | (1 << Axis::TriggerLeft as u32)
+                | (1 << Axis::TriggerRight as u32);
             descriptor.name = name.as_ptr();
             descriptor.sensors = sensors.as_ptr();
 
@@ -1336,12 +1391,42 @@ mod tests {
     fn shoulder_bindings_map_to_the_expected_sdl_buttons() {
         assert_eq!(
             sdl_button_for_binding(GamepadButtonBinding::LeftShoulder),
-            Button::LeftShoulder
+            Some(Button::LeftShoulder)
         );
         assert_eq!(
             sdl_button_for_binding(GamepadButtonBinding::RightShoulder),
-            Button::RightShoulder
+            Some(Button::RightShoulder)
         );
+    }
+
+    #[test]
+    fn trigger_bindings_map_to_the_expected_sdl_axes() {
+        assert_eq!(
+            gamepad_trigger_axis_for_binding(GamepadButtonBinding::LeftTrigger),
+            Some(Axis::TriggerLeft)
+        );
+        assert_eq!(
+            gamepad_trigger_axis_for_binding(GamepadButtonBinding::RightTrigger),
+            Some(Axis::TriggerRight)
+        );
+        assert_eq!(
+            gamepad_button_binding_from_sdl_axis(Axis::TriggerLeft),
+            Some(GamepadButtonBinding::LeftTrigger)
+        );
+        assert_eq!(
+            gamepad_button_binding_from_sdl_axis(Axis::TriggerRight),
+            Some(GamepadButtonBinding::RightTrigger)
+        );
+        assert_eq!(gamepad_button_binding_from_sdl_axis(Axis::LeftX), None);
+        assert_eq!(
+            sdl_button_for_binding(GamepadButtonBinding::LeftTrigger),
+            None
+        );
+        assert!(gamepad_trigger_axis_next_pressed(17_000, false));
+        assert!(gamepad_trigger_axis_next_pressed(13_000, true));
+        assert!(!gamepad_trigger_axis_next_pressed(11_000, true));
+        assert!(gamepad_trigger_axis_is_pressed(i16::MAX));
+        assert!(!gamepad_trigger_axis_is_pressed(0));
     }
 
     #[test]
@@ -1525,7 +1610,7 @@ mod tests {
             (GamepadButtonBinding::DPadRight, Button::DPadRight),
             (GamepadButtonBinding::Misc1, Button::Misc1),
         ] {
-            assert_eq!(sdl_button_for_binding(binding), button);
+            assert_eq!(sdl_button_for_binding(binding), Some(button));
             assert_eq!(
                 gamepad_button_binding_from_sdl_button(button),
                 Some(binding)
@@ -1927,6 +2012,20 @@ mod tests {
         manager.poll_active_gamepad_state(&mut input_state, &mut machine);
         ingest_host_input(&mut machine);
         assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
+
+        let mut bindings = manager.button_bindings();
+        bindings.b = GamepadButtonBinding::LeftTrigger;
+        manager.set_button_bindings(bindings, &mut input_state, &mut machine);
+        virtual_gamepad.set_axis(Axis::TriggerLeft, i16::MAX);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        ingest_host_input(&mut machine);
+        assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::B) != 0);
+        virtual_gamepad.set_axis(Axis::TriggerLeft, 0);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine) & joypad_mask(JoypadButton::B), 0);
 
         manager.set_menu_bindings(gb_desktop::GamepadMenuBindings {
             confirm: GamepadButtonBinding::North,

@@ -48,8 +48,9 @@ use gb_persistence::{
     uses_battery_backed_hardware_persistence,
 };
 use input::{
-    FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_button,
-    sdl_button_for_binding,
+    FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_axis,
+    gamepad_button_binding_from_sdl_button, gamepad_trigger_axis_is_pressed,
+    gamepad_trigger_axis_next_pressed,
 };
 use linked_session::DesktopEmulationSession;
 use menu::{
@@ -74,7 +75,7 @@ use sdl3::dialog::{
     show_save_file_dialog,
 };
 use sdl3::event::Event;
-use sdl3::gamepad::Button;
+use sdl3::gamepad::{Axis, Button};
 use sdl3::hint;
 use sdl3::keyboard::{Keycode, Scancode};
 use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
@@ -88,7 +89,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs;
-use std::io::BufReader;
+use std::io::{BufReader, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
@@ -326,6 +327,43 @@ enum HotkeyAction {
     TogglePerformanceHud,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GamepadActionEvent {
+    action: HotkeyAction,
+    pressed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct GamepadTriggerState {
+    left: bool,
+    right: bool,
+}
+
+impl GamepadTriggerState {
+    fn pressed_mut(&mut self, binding: GamepadButtonBinding) -> Option<&mut bool> {
+        match binding {
+            GamepadButtonBinding::LeftTrigger => Some(&mut self.left),
+            GamepadButtonBinding::RightTrigger => Some(&mut self.right),
+            GamepadButtonBinding::South
+            | GamepadButtonBinding::East
+            | GamepadButtonBinding::West
+            | GamepadButtonBinding::North
+            | GamepadButtonBinding::Back
+            | GamepadButtonBinding::Start
+            | GamepadButtonBinding::Guide
+            | GamepadButtonBinding::LeftShoulder
+            | GamepadButtonBinding::RightShoulder
+            | GamepadButtonBinding::LeftStickClick
+            | GamepadButtonBinding::RightStickClick
+            | GamepadButtonBinding::DPadUp
+            | GamepadButtonBinding::DPadDown
+            | GamepadButtonBinding::DPadLeft
+            | GamepadButtonBinding::DPadRight
+            | GamepadButtonBinding::Misc1 => None,
+        }
+    }
+}
+
 struct FrontendRuntime {
     paused: bool,
     menu_state: OverlayMenuState,
@@ -346,6 +384,7 @@ struct FrontendRuntime {
     rewind_gamepad_active: bool,
     fast_forward_hotkey_active: bool,
     fast_forward_gamepad_active: bool,
+    gamepad_trigger_state: GamepadTriggerState,
     fast_forward_audio_suppressed: bool,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
@@ -4857,6 +4896,7 @@ fn run_desktop_with_startup_fallback_persistence(
         rewind_gamepad_active: false,
         fast_forward_hotkey_active: false,
         fast_forward_gamepad_active: false,
+        gamepad_trigger_state: GamepadTriggerState::default(),
         fast_forward_audio_suppressed: false,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
@@ -5976,16 +6016,33 @@ fn process_events(
             if active_gamepad_before_event != gamepad_manager.active_gamepad_joystick_id() {
                 clear_gamepad_hold_latches_after_event = true;
             }
-            if let Event::ControllerButtonDown { which, .. } = &event
-                && gamepad_manager.activate_gamepad_from_input(
-                    gamepad_event_joystick_id(*which),
-                    runtime.player_inputs.input_mut(PlayerSlot::P1),
-                    machine
-                        .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to an active desktop machine"),
-                )
-            {
-                clear_gamepad_hold_latches_after_event = true;
+            let should_activate_from_input = match &event {
+                Event::ControllerButtonDown { .. } => true,
+                Event::ControllerAxisMotion { axis, value, .. } => {
+                    gamepad_button_binding_from_sdl_axis(*axis).is_some()
+                        && gamepad_trigger_axis_is_pressed(*value)
+                }
+                _ => false,
+            };
+            if should_activate_from_input {
+                let input_joystick_id = match &event {
+                    Event::ControllerButtonDown { which, .. }
+                    | Event::ControllerAxisMotion { which, .. } => {
+                        Some(gamepad_event_joystick_id(*which))
+                    }
+                    _ => None,
+                };
+                if let Some(input_joystick_id) = input_joystick_id
+                    && gamepad_manager.activate_gamepad_from_input(
+                        input_joystick_id,
+                        runtime.player_inputs.input_mut(PlayerSlot::P1),
+                        machine
+                            .machine_for_player_slot_mut(PlayerSlot::P1)
+                            .expect("P1 should always map to an active desktop machine"),
+                    )
+                {
+                    clear_gamepad_hold_latches_after_event = true;
+                }
             }
         }
         if clear_gamepad_hold_latches_after_event {
@@ -6062,8 +6119,47 @@ fn process_events(
                         || runtime
                             .menu_state
                             .pending_gamepad_action_binding_target()
+                            .is_some()
+                        || runtime
+                            .menu_state
+                            .pending_gamepad_menu_binding_target()
                             .is_some())
                         && let Some(binding) = gamepad_button_binding_from_sdl_button(*button)
+                        && let Some(action) =
+                            runtime.menu_state.handle_gamepad_binding_capture(binding)
+                    {
+                        let mut context = FrontendActionContext {
+                            session,
+                            machine,
+                            runtime,
+                            performance_counter,
+                            frame_pacer,
+                            settings_store,
+                        };
+                        let _ = execute_menu_action(action, event_pump, canvas, &mut context)?;
+                    }
+                    continue;
+                }
+                Event::ControllerAxisMotion {
+                    which, axis, value, ..
+                } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
+                    manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                }) =>
+                {
+                    if (runtime
+                        .menu_state
+                        .pending_gamepad_binding_target()
+                        .is_some()
+                        || runtime
+                            .menu_state
+                            .pending_gamepad_action_binding_target()
+                            .is_some()
+                        || runtime
+                            .menu_state
+                            .pending_gamepad_menu_binding_target()
+                            .is_some())
+                        && gamepad_trigger_axis_is_pressed(*value)
+                        && let Some(binding) = gamepad_button_binding_from_sdl_axis(*axis)
                         && let Some(action) =
                             runtime.menu_state.handle_gamepad_binding_capture(binding)
                     {
@@ -6151,6 +6247,28 @@ fn process_events(
                         })
                         .and_then(|input| runtime.menu_state.handle_input(input, presentation))
                 }
+                Event::ControllerAxisMotion {
+                    which, axis, value, ..
+                } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
+                    manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                }) =>
+                {
+                    if let Some((binding, true)) = gamepad_trigger_event_binding(
+                        &mut runtime.gamepad_trigger_state,
+                        *axis,
+                        *value,
+                    ) {
+                        runtime
+                            .gamepad_manager
+                            .as_ref()
+                            .and_then(|manager| {
+                                menu_input_for_gamepad_binding(manager.menu_bindings(), binding)
+                            })
+                            .and_then(|input| runtime.menu_state.handle_input(input, presentation))
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             };
 
@@ -6207,31 +6325,14 @@ fn process_events(
                             }
                         }
                         HotkeyAction::LoadState => {
-                            let slot = runtime.machine_state_slot;
-                            match load_machine_state_slot(
+                            handle_load_machine_state_action(
                                 session,
                                 machine,
                                 runtime,
+                                performance_counter,
                                 frame_pacer,
-                                slot,
-                            ) {
-                                Ok(path) => {
-                                    eprintln!("info: state loaded from {}", path.display());
-                                    sync_audio_playback_state(machine, runtime)?;
-                                    performance_counter.reset_base_title(
-                                        canvas.window_mut(),
-                                        window_title(session, &session.config),
-                                    )?;
-                                }
-                                Err(error) => {
-                                    show_warning_message(
-                                        Some(canvas.window()),
-                                        "Load State",
-                                        &error,
-                                    );
-                                    eprintln!("warning: {error}");
-                                }
-                            }
+                                canvas,
+                            )?;
                         }
                         HotkeyAction::SelectStateSlot(slot) => {
                             runtime.machine_state_slot = slot;
@@ -6320,22 +6421,14 @@ fn process_events(
                         }
                     }
                     HotkeyAction::LoadState => {
-                        let slot = runtime.machine_state_slot;
-                        match load_machine_state_slot(session, machine, runtime, frame_pacer, slot)
-                        {
-                            Ok(path) => {
-                                eprintln!("info: state loaded from {}", path.display());
-                                sync_audio_playback_state(machine, runtime)?;
-                                performance_counter.reset_base_title(
-                                    canvas.window_mut(),
-                                    window_title(session, &session.config),
-                                )?;
-                            }
-                            Err(error) => {
-                                show_warning_message(Some(canvas.window()), "Load State", &error);
-                                eprintln!("warning: {error}");
-                            }
-                        }
+                        handle_load_machine_state_action(
+                            session,
+                            machine,
+                            runtime,
+                            performance_counter,
+                            frame_pacer,
+                            canvas,
+                        )?;
                     }
                     HotkeyAction::Rewind => {
                         runtime.rewind_gamepad_active = true;
@@ -6367,6 +6460,36 @@ fn process_events(
                 }
                 if matches!(action, HotkeyAction::FastForward) {
                     runtime.fast_forward_gamepad_active = false;
+                }
+            }
+            Event::ControllerAxisMotion {
+                which, axis, value, ..
+            } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
+                manager.is_active_gamepad(gamepad_event_joystick_id(which))
+            }) =>
+            {
+                if let Some((binding, pressed)) =
+                    gamepad_trigger_event_binding(&mut runtime.gamepad_trigger_state, axis, value)
+                {
+                    let action = runtime
+                        .gamepad_manager
+                        .as_ref()
+                        .map(GamepadManager::action_bindings)
+                        .map(|bindings| gamepad_action_for_binding(bindings, binding))
+                        .unwrap_or(HotkeyAction::None);
+                    let mut context = FrontendActionContext {
+                        session,
+                        machine,
+                        runtime,
+                        performance_counter,
+                        frame_pacer,
+                        settings_store,
+                    };
+                    apply_gamepad_action_event(
+                        GamepadActionEvent { action, pressed },
+                        canvas,
+                        &mut context,
+                    )?;
                 }
             }
             _ => {}
@@ -8405,6 +8528,7 @@ fn rewind_hold_active(runtime: &FrontendRuntime) -> bool {
 fn clear_gamepad_hold_latches(runtime: &mut FrontendRuntime) {
     runtime.rewind_gamepad_active = false;
     runtime.fast_forward_gamepad_active = false;
+    runtime.gamepad_trigger_state = GamepadTriggerState::default();
 }
 
 fn fast_forward_hold_active(runtime: &FrontendRuntime) -> bool {
@@ -8644,6 +8768,44 @@ fn load_machine_state_slot(
             path.display()
         )
     })?;
+    restore_machine_state_slot_from_bytes(&path, bytes, machine, runtime, frame_pacer)
+}
+
+fn load_machine_state_slot_if_present(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+    slot: u8,
+) -> Result<Option<PathBuf>, String> {
+    if !machine_state_actions_available(session, machine) {
+        return Err(
+            "machine save states are only available for single-machine sessions".to_string(),
+        );
+    }
+
+    let path = machine_state_slot_path(session, slot)?;
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read .{} state {}: {error}",
+                MACHINE_SAVE_STATE_FILE_EXTENSION,
+                path.display()
+            ));
+        }
+    };
+    restore_machine_state_slot_from_bytes(&path, bytes, machine, runtime, frame_pacer).map(Some)
+}
+
+fn restore_machine_state_slot_from_bytes(
+    path: &Path,
+    bytes: Vec<u8>,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+) -> Result<PathBuf, String> {
     let envelope = decode_machine_save_state_envelope(&bytes).map_err(|error| {
         format!(
             "failed to decode .{} state {}: {error}",
@@ -8658,7 +8820,32 @@ fn load_machine_state_slot(
 
     reset_host_state_after_machine_restore(machine, runtime, frame_pacer)?;
     reset_rewind_state(runtime);
-    Ok(path)
+    Ok(path.to_path_buf())
+}
+
+fn handle_load_machine_state_action(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    performance_counter: &mut PerformanceCounter,
+    frame_pacer: &mut FramePacer,
+    canvas: &mut Canvas<Window>,
+) -> Result<(), String> {
+    let slot = runtime.machine_state_slot;
+    match load_machine_state_slot_if_present(session, machine, runtime, frame_pacer, slot) {
+        Ok(Some(path)) => {
+            eprintln!("info: state loaded from {}", path.display());
+            sync_audio_playback_state(machine, runtime)?;
+            performance_counter
+                .reset_base_title(canvas.window_mut(), window_title(session, &session.config))?;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            show_warning_message(Some(canvas.window()), "Load State", &error);
+            eprintln!("warning: {error}");
+        }
+    }
+    Ok(())
 }
 
 fn execute_menu_action(
@@ -8877,27 +9064,14 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::LoadState => {
-            let slot = context.runtime.machine_state_slot;
-            match load_machine_state_slot(
+            handle_load_machine_state_action(
                 context.session,
                 context.machine,
                 context.runtime,
+                context.performance_counter,
                 context.frame_pacer,
-                slot,
-            ) {
-                Ok(path) => {
-                    eprintln!("info: state loaded from {}", path.display());
-                    sync_audio_playback_state(context.machine, context.runtime)?;
-                    context.performance_counter.reset_base_title(
-                        canvas.window_mut(),
-                        window_title(context.session, &context.session.config),
-                    )?;
-                }
-                Err(error) => {
-                    show_warning_message(Some(canvas.window()), "Load State", &error);
-                    eprintln!("warning: {error}");
-                }
-            }
+                canvas,
+            )?;
             Ok(None)
         }
         MenuAction::CycleStateSlot => {
@@ -10413,13 +10587,21 @@ fn menu_input_for_gamepad_button(
     bindings: GamepadMenuBindings,
     button: Button,
 ) -> Option<MenuInput> {
-    if button == sdl_button_for_binding(bindings.up) {
+    let binding = gamepad_button_binding_from_sdl_button(button)?;
+    menu_input_for_gamepad_binding(bindings, binding)
+}
+
+fn menu_input_for_gamepad_binding(
+    bindings: GamepadMenuBindings,
+    binding: GamepadButtonBinding,
+) -> Option<MenuInput> {
+    if binding == bindings.up {
         Some(MenuInput::Up)
-    } else if button == sdl_button_for_binding(bindings.down) {
+    } else if binding == bindings.down {
         Some(MenuInput::Down)
-    } else if button == sdl_button_for_binding(bindings.confirm) {
+    } else if binding == bindings.confirm {
         Some(MenuInput::Confirm)
-    } else if button == sdl_button_for_binding(bindings.cancel) {
+    } else if binding == bindings.cancel {
         Some(MenuInput::Cancel)
     } else {
         None
@@ -11205,6 +11387,13 @@ fn gamepad_action_for_button(bindings: GamepadActionBindings, button: Button) ->
         return HotkeyAction::None;
     };
 
+    gamepad_action_for_binding(bindings, binding)
+}
+
+fn gamepad_action_for_binding(
+    bindings: GamepadActionBindings,
+    binding: GamepadButtonBinding,
+) -> HotkeyAction {
     if bindings.save_state == Some(binding) {
         HotkeyAction::SaveState
     } else if bindings.load_state == Some(binding) {
@@ -11216,6 +11405,77 @@ fn gamepad_action_for_button(bindings: GamepadActionBindings, button: Button) ->
     } else {
         HotkeyAction::None
     }
+}
+
+fn gamepad_trigger_event_binding(
+    state: &mut GamepadTriggerState,
+    axis: Axis,
+    value: i16,
+) -> Option<(GamepadButtonBinding, bool)> {
+    let binding = gamepad_button_binding_from_sdl_axis(axis)?;
+    let current = state.pressed_mut(binding)?;
+    let next = gamepad_trigger_axis_next_pressed(value, *current);
+    if *current == next {
+        return None;
+    }
+    *current = next;
+    Some((binding, next))
+}
+
+fn apply_gamepad_action_event(
+    event: GamepadActionEvent,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !event.pressed {
+        if matches!(event.action, HotkeyAction::Rewind) {
+            context.runtime.rewind_gamepad_active = false;
+        }
+        if matches!(event.action, HotkeyAction::FastForward) {
+            context.runtime.fast_forward_gamepad_active = false;
+        }
+        return Ok(());
+    }
+
+    match event.action {
+        HotkeyAction::SaveState => {
+            match save_machine_state_slot(
+                context.session,
+                context.machine,
+                context.runtime.machine_state_slot,
+            ) {
+                Ok(path) => eprintln!("info: state saved to {}", path.display()),
+                Err(error) => {
+                    show_warning_message(Some(canvas.window()), "Save State", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+        }
+        HotkeyAction::LoadState => {
+            handle_load_machine_state_action(
+                context.session,
+                context.machine,
+                context.runtime,
+                context.performance_counter,
+                context.frame_pacer,
+                canvas,
+            )?;
+        }
+        HotkeyAction::Rewind => {
+            context.runtime.rewind_gamepad_active = true;
+        }
+        HotkeyAction::FastForward => {
+            context.runtime.fast_forward_gamepad_active = true;
+        }
+        HotkeyAction::None
+        | HotkeyAction::ManualSave
+        | HotkeyAction::SelectStateSlot(_)
+        | HotkeyAction::Reset
+        | HotkeyAction::ToggleFullscreen
+        | HotkeyAction::TogglePerformanceHud => {}
+    }
+
+    Ok(())
 }
 
 fn desktop_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
@@ -11485,7 +11745,7 @@ mod tests {
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_key_event, desktop_key_from_keycode, desktop_key_from_scancode,
         desktop_key_scancode, entered_pc_ranges, gamepad_action_binding_target_for_binding,
-        gamepad_action_for_button, gamepad_binding_target_for_binding,
+        gamepad_action_for_binding, gamepad_action_for_button, gamepad_binding_target_for_binding,
         gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
         joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
         load_machine_state_slot, machine_state_actions_available,
@@ -11529,7 +11789,7 @@ mod tests {
     };
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
-    use sdl3::gamepad::Button;
+    use sdl3::gamepad::{Axis, Button};
     use sdl3::joystick::JoystickId;
     use sdl3::keyboard::{Keycode, Mod, Scancode};
     use sdl3::render::Canvas;
@@ -12714,6 +12974,7 @@ mod tests {
                 rewind_gamepad_active: false,
                 fast_forward_hotkey_active: false,
                 fast_forward_gamepad_active: false,
+                gamepad_trigger_state: super::GamepadTriggerState::default(),
                 fast_forward_audio_suppressed: false,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
@@ -16370,6 +16631,17 @@ mod tests {
             gamepad_action_for_button(bindings, Button::Misc2),
             HotkeyAction::None
         );
+
+        bindings.rewind = Some(GamepadButtonBinding::LeftTrigger);
+        bindings.fast_forward = Some(GamepadButtonBinding::RightTrigger);
+        assert_eq!(
+            gamepad_action_for_binding(bindings, GamepadButtonBinding::LeftTrigger),
+            HotkeyAction::Rewind
+        );
+        assert_eq!(
+            gamepad_action_for_binding(bindings, GamepadButtonBinding::RightTrigger),
+            HotkeyAction::FastForward
+        );
     }
 
     #[test]
@@ -18399,6 +18671,18 @@ mod tests {
         .expect_err("missing state slot should fail");
         assert!(missing_error.contains("failed to read .gbstate state"));
         assert_eq!(harness.machine.capture_save_state(), before_missing);
+        assert_eq!(
+            super::load_machine_state_slot_if_present(
+                &harness.session,
+                &mut harness.machine,
+                &mut harness.runtime,
+                &mut harness.frame_pacer,
+                2,
+            )
+            .expect("missing state slot should be ignored for hotkey-style loads"),
+            None
+        );
+        assert_eq!(harness.machine.capture_save_state(), before_missing);
 
         let corrupt_path =
             machine_state_slot_path(&harness.session, 2).expect("corrupt path should resolve");
@@ -18420,6 +18704,15 @@ mod tests {
         .expect_err("corrupt state slot should fail");
         assert!(corrupt_error.contains("failed to decode .gbstate state"));
         assert_eq!(harness.machine.capture_save_state(), before_corrupt);
+        let optional_corrupt_error = super::load_machine_state_slot_if_present(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+            2,
+        )
+        .expect_err("corrupt state slot should still fail for hotkey-style loads");
+        assert!(optional_corrupt_error.contains("failed to decode .gbstate state"));
     }
 
     #[test]
@@ -18898,10 +19191,16 @@ mod tests {
 
         harness.runtime.rewind_gamepad_active = true;
         harness.runtime.fast_forward_gamepad_active = true;
+        harness.runtime.gamepad_trigger_state.left = true;
+        harness.runtime.gamepad_trigger_state.right = true;
         super::clear_gamepad_hold_latches(&mut harness.runtime);
 
         assert!(!harness.runtime.rewind_gamepad_active);
         assert!(!harness.runtime.fast_forward_gamepad_active);
+        assert_eq!(
+            harness.runtime.gamepad_trigger_state,
+            super::GamepadTriggerState::default()
+        );
         assert!(!super::rewind_hold_active(&harness.runtime));
         assert!(!super::fast_forward_hold_active(&harness.runtime));
     }
@@ -21211,6 +21510,32 @@ mod tests {
             GamepadButtonBinding::North
         );
 
+        harness
+            .runtime
+            .menu_state
+            .begin_gamepad_action_binding_capture_for_tests(GamepadActionBindingTarget::Rewind);
+        events
+            .push_event(Event::ControllerAxisMotion {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                axis: Axis::TriggerLeft,
+                value: i16::MAX,
+            })
+            .expect("gamepad trigger capture event should be pushable");
+        harness
+            .process_events()
+            .expect("gamepad trigger binding capture should process");
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .action_bindings()
+                .rewind,
+            Some(GamepadButtonBinding::LeftTrigger)
+        );
+
         events
             .push_event(Event::ControllerButtonDown {
                 timestamp: 0,
@@ -21267,6 +21592,108 @@ mod tests {
         harness
             .process_events()
             .expect("gamepad removal should clear hold latches");
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
+    }
+
+    #[test]
+    fn frontend_harness_routes_gamepad_trigger_axis_actions() {
+        let _guard = crate::lock_sdl_test();
+        let virtual_gamepad = VirtualGamepad::attach("Trigger Pad");
+        let mut harness = FrontendHarness::new("gamepad-trigger-actions", true, false, true);
+        harness
+            ._gamepad_subsystem
+            .as_ref()
+            .expect("gamepad subsystem")
+            .update();
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_preferred_device(
+                gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Trigger Pad".to_string()),
+                },
+                harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to an active desktop machine"),
+            );
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_action_bindings(gb_desktop::GamepadActionBindings {
+                save_state: None,
+                load_state: None,
+                rewind: Some(GamepadButtonBinding::LeftTrigger),
+                fast_forward: Some(GamepadButtonBinding::RightTrigger),
+            });
+
+        let events = harness
+            .sdl
+            .event()
+            .expect("event subsystem should initialize for controller events");
+        events
+            .push_event(Event::ControllerAxisMotion {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                axis: Axis::TriggerLeft,
+                value: i16::MAX,
+            })
+            .expect("left trigger press should be pushable");
+        harness
+            .process_events()
+            .expect("left trigger press should process");
+        assert!(harness.runtime.rewind_gamepad_active);
+        assert!(!harness.runtime.fast_forward_gamepad_active);
+
+        events
+            .push_event(Event::ControllerAxisMotion {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                axis: Axis::TriggerRight,
+                value: i16::MAX,
+            })
+            .expect("right trigger press should be pushable");
+        harness
+            .process_events()
+            .expect("right trigger press should process");
+        assert!(harness.runtime.rewind_gamepad_active);
+        assert!(harness.runtime.fast_forward_gamepad_active);
+
+        events
+            .push_event(Event::ControllerAxisMotion {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                axis: Axis::TriggerLeft,
+                value: 0,
+            })
+            .expect("left trigger release should be pushable");
+        harness
+            .process_events()
+            .expect("left trigger release should process");
+        assert!(!harness.runtime.rewind_gamepad_active);
+        assert!(harness.runtime.fast_forward_gamepad_active);
+
+        events
+            .push_event(Event::ControllerAxisMotion {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                axis: Axis::TriggerRight,
+                value: 0,
+            })
+            .expect("right trigger release should be pushable");
+        harness
+            .process_events()
+            .expect("right trigger release should process");
         assert!(!harness.runtime.rewind_gamepad_active);
         assert!(!harness.runtime.fast_forward_gamepad_active);
     }

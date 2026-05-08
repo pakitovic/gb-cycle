@@ -302,10 +302,10 @@ pub fn help_text() -> &'static str {
         "  --gamepad-face-layout <east-a|south-a>\n",
         "                                         Apply a face-button preset for A/B (default: east-a)\n",
         "  --gamepad-bind-<up|down|left|right|a|b|select|start> <button>\n",
-        "                                         Remap any GB gamepad button to a standard SDL button name\n",
+        "                                         Remap any GB gamepad button to a standard SDL button or trigger name\n",
         "                                         Button names: south, east, west, north, back, start, guide, left-shoulder,\n",
-        "                                         right-shoulder, left-stick-click, right-stick-click, dpad-up, dpad-down,\n",
-        "                                         dpad-left, dpad-right, misc1\n",
+        "                                         right-shoulder, left-trigger, right-trigger, left-stick-click,\n",
+        "                                         right-stick-click, dpad-up, dpad-down, dpad-left, dpad-right, misc1\n",
         "  --gamepad-preferred-name <name>\n",
         "                                         Prefer a gamepad with the exact SDL device name when choosing the active pad\n",
         "  --gamepad-preferred-path <path>\n",
@@ -446,6 +446,8 @@ fn parse_gamepad_button_binding(value: &str) -> Result<GamepadButtonBinding, Str
         "guide" => Ok(GamepadButtonBinding::Guide),
         "left-shoulder" => Ok(GamepadButtonBinding::LeftShoulder),
         "right-shoulder" => Ok(GamepadButtonBinding::RightShoulder),
+        "left-trigger" => Ok(GamepadButtonBinding::LeftTrigger),
+        "right-trigger" => Ok(GamepadButtonBinding::RightTrigger),
         "left-stick-click" => Ok(GamepadButtonBinding::LeftStickClick),
         "right-stick-click" => Ok(GamepadButtonBinding::RightStickClick),
         "dpad-up" => Ok(GamepadButtonBinding::DPadUp),
@@ -454,7 +456,7 @@ fn parse_gamepad_button_binding(value: &str) -> Result<GamepadButtonBinding, Str
         "dpad-right" => Ok(GamepadButtonBinding::DPadRight),
         "misc1" => Ok(GamepadButtonBinding::Misc1),
         _ => Err(format!(
-            "unsupported gamepad binding value {value:?}; expected a standard SDL button name"
+            "unsupported gamepad binding value {value:?}; expected a standard SDL button or trigger name"
         )),
     }
 }
@@ -1152,6 +1154,14 @@ mod tests {
         assert_eq!(
             parse_gamepad_button_binding("guide"),
             Ok(GamepadButtonBinding::Guide)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("left-trigger"),
+            Ok(GamepadButtonBinding::LeftTrigger)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("right-trigger"),
+            Ok(GamepadButtonBinding::RightTrigger)
         );
         assert_eq!(
             parse_gamepad_button_binding("dpad-up"),
