@@ -11,16 +11,16 @@ use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::{DmaController, VramDmaRuntimeContext};
-use crate::external_port::ExternalPort;
+use crate::external_port::{ExternalPort, ExternalPortAttachmentKind};
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::model::{MachineConfig, StartupMode};
-use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
+use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict, PpuStepRegion};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
     scheduler_phase_trace_message,
 };
-use crate::serial::Serial;
+use crate::serial::{Serial, SerialTickTelemetry};
 use crate::speed::CgbSpeedMode;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
@@ -222,6 +222,10 @@ fn observe_machine_step_region<O, R>(
 where
     O: MachineStepObserver,
 {
+    if !observer.records_regions() {
+        return observe();
+    }
+
     observer.begin_region(region);
     let result = observe();
     observer.end_region(region);
@@ -304,6 +308,10 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
+        if !self.pending_external_events.has_pending_work() {
+            return;
+        }
+
         observe_machine_step_region(observer, MachineStepRegion::ExternalEvents, || {
             if let Some(pressed_mask) = self
                 .pending_external_events
@@ -364,53 +372,66 @@ impl MachinePhaseRunner<'_> {
                 self.apu
                     .tick_t_cycle_for_speed(context, self.speed.current_speed());
             });
-            let boot_bus_state = self.boot.bus_state();
-            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
-            let dma_transfer_work =
-                observe_machine_step_region(observer, MachineStepRegion::Dma, || {
-                    self.dma.tick_t_cycle_with_vram_dma_context(
-                        context,
-                        VramDmaRuntimeContext::new(
-                            ppu_owner_bus_state_before,
-                            self.ppu.ly(),
-                            self.cpu.execution_state() == CpuExecutionState::Halted,
-                        ),
-                    )
-                });
-            let dma_bus_state = self.dma.bus_state();
-            let dma_arbitration_state = BusArbitrationState::default()
-                .with_boot_rom(boot_bus_state)
-                .with_ppu(ppu_owner_bus_state_before)
-                .with_dma(dma_bus_state);
-            let dma_transfer_byte =
-                observe_machine_step_region(observer, MachineStepRegion::Dma, || {
-                    dma_transfer_work.map(|transfer_work| {
-                        transfer_work
-                            .source_read_value_override()
-                            .unwrap_or_else(|| {
-                                self.bus.read_with_t_cycle_context(
-                                    transfer_work.source_address(),
-                                    BusRequester::Dma,
-                                    &dma_arbitration_state,
-                                    context.t_cycle(),
-                                    Some(&mut self.cartridge),
-                                    BusIoReadView {
-                                        apu: Some(self.apu),
-                                        timer: Some(self.timer),
-                                        serial: Some(self.serial),
-                                        dma: Some(self.dma),
-                                        boot: Some(self.boot),
-                                        interrupts: Some(self.interrupts),
-                                        interrupt_flag_pending_mask: 0,
-                                        joypad: Some(self.joypad),
-                                        ppu: Some(self.ppu),
-                                        speed: Some(self.speed),
-                                        ppu_cpu_visible_read: false,
-                                    },
-                                )
+
+            let dma_requires_tick = self.dma.requires_t_cycle_tick();
+            let (dma_bus_state, dma_arbitration_state, dma_transfer_work, dma_transfer_byte) =
+                if dma_requires_tick {
+                    let boot_bus_state = self.boot.bus_state();
+                    let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+                    let dma_transfer_work =
+                        observe_machine_step_region(observer, MachineStepRegion::Dma, || {
+                            self.dma.tick_t_cycle_with_vram_dma_context(
+                                context,
+                                VramDmaRuntimeContext::new(
+                                    ppu_owner_bus_state_before,
+                                    self.ppu.ly(),
+                                    self.cpu.execution_state() == CpuExecutionState::Halted,
+                                ),
+                            )
+                        });
+                    let dma_bus_state = self.dma.bus_state();
+                    let dma_arbitration_state = BusArbitrationState::default()
+                        .with_boot_rom(boot_bus_state)
+                        .with_ppu(ppu_owner_bus_state_before)
+                        .with_dma(dma_bus_state);
+                    let dma_transfer_byte =
+                        observe_machine_step_region(observer, MachineStepRegion::Dma, || {
+                            dma_transfer_work.map(|transfer_work| {
+                                transfer_work
+                                    .source_read_value_override()
+                                    .unwrap_or_else(|| {
+                                        self.bus.read_with_t_cycle_context(
+                                            transfer_work.source_address(),
+                                            BusRequester::Dma,
+                                            &dma_arbitration_state,
+                                            context.t_cycle(),
+                                            Some(&mut self.cartridge),
+                                            BusIoReadView {
+                                                apu: Some(self.apu),
+                                                timer: Some(self.timer),
+                                                serial: Some(self.serial),
+                                                dma: Some(self.dma),
+                                                boot: Some(self.boot),
+                                                interrupts: Some(self.interrupts),
+                                                interrupt_flag_pending_mask: 0,
+                                                joypad: Some(self.joypad),
+                                                ppu: Some(self.ppu),
+                                                speed: Some(self.speed),
+                                                ppu_cpu_visible_read: false,
+                                            },
+                                        )
+                                    })
                             })
-                    })
-                });
+                        });
+                    (
+                        dma_bus_state,
+                        Some(dma_arbitration_state),
+                        dma_transfer_work,
+                        dma_transfer_byte,
+                    )
+                } else {
+                    (DmaBusState::unrestricted(), None, None, None)
+                };
             let dma_oam_conflict =
                 dma_transfer_work
                     .zip(dma_transfer_byte)
@@ -434,17 +455,49 @@ impl MachinePhaseRunner<'_> {
                     observer,
                 );
             }
-            observe_machine_step_region(observer, MachineStepRegion::Serial, || {
-                self.external_port.tick_t_cycle();
-                self.serial
-                    .tick_t_cycle_for_speed(context, self.speed.current_speed());
-                if let Some(output_byte) = self.serial.latest_completed_output_byte() {
-                    self.external_port.handle_completed_serial_byte(output_byte);
-                }
-                self.serial.set_peer(self.external_port.serial_peer());
-            });
+            if self.external_port.attachment_kind() == ExternalPortAttachmentKind::None
+                && self.serial.external_wait_without_pending_clock()
+            {
+                let serial_telemetry =
+                    observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                        self.serial.tick_external_wait_t_cycle()
+                    });
+                observer.record_serial_tick(serial_telemetry);
+            } else if self.serial.requires_full_t_cycle_tick()
+                || self.external_port.requires_t_cycle_tick()
+            {
+                let serial_telemetry =
+                    observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                        let mut serial_telemetry = SerialTickTelemetry::default();
+                        if self.external_port.requires_t_cycle_tick() {
+                            self.external_port.tick_t_cycle();
+                            serial_telemetry.accumulate(SerialTickTelemetry::external_port_tick());
+                        }
+                        serial_telemetry.accumulate(
+                            self.serial
+                                .tick_t_cycle_for_speed(context, self.speed.current_speed()),
+                        );
+                        if self.external_port.handles_completed_serial_byte()
+                            && let Some(output_byte) = self.serial.latest_completed_output_byte()
+                        {
+                            self.external_port.handle_completed_serial_byte(output_byte);
+                        }
+                        if self
+                            .external_port
+                            .requires_serial_peer_refresh_after_t_cycle()
+                        {
+                            self.serial.set_peer(self.external_port.serial_peer());
+                        }
+                        serial_telemetry
+                    });
+                observer.record_serial_tick(serial_telemetry);
+            } else {
+                self.serial.tick_idle_t_cycle();
+            }
 
             if let Some((transfer_work, value)) = dma_transfer_work.zip(dma_transfer_byte) {
+                let dma_arbitration_state = dma_arbitration_state
+                    .expect("DMA transfer work should have a matching arbitration state");
                 observe_machine_step_region(observer, MachineStepRegion::Dma, || {
                     self.bus.write_with_context(
                         transfer_work.destination_address(),
@@ -491,11 +544,39 @@ impl MachinePhaseRunner<'_> {
     ) where
         O: MachineStepObserver,
     {
-        let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
-        observer.begin_region(MachineStepRegion::Ppu);
+        let records_regions = observer.records_regions();
+        let records_ppu_regions = observer.records_ppu_regions();
+        if records_regions {
+            observer.begin_region(MachineStepRegion::Ppu);
+        }
+        #[cfg(any(debug_assertions, test))]
+        let ppu_owner_bus_state_before = {
+            if records_ppu_regions {
+                observer.begin_ppu_region(PpuStepRegion::BusState);
+            }
+            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
+            if records_ppu_regions {
+                observer.end_ppu_region(PpuStepRegion::BusState);
+            }
+            ppu_owner_bus_state_before
+        };
+        #[cfg(not(any(debug_assertions, test)))]
+        let ppu_owner_bus_state_before = crate::ppu::PpuBusState::default();
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusSync);
+        }
         self.bus
             .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusSync);
+        }
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusView);
+        }
         let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusView);
+        }
         self.ppu.tick_t_cycle_with_observer(
             context,
             oam_view,
@@ -504,11 +585,20 @@ impl MachinePhaseRunner<'_> {
             dma_oam_conflict,
             observer,
         );
-        let ppu_bus_states_after = self.ppu_bus_state_snapshot();
+        let ppu_bus_states_after =
+            self.ppu_bus_state_snapshot_with_observer(observer, records_ppu_regions);
         let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
+        if records_ppu_regions {
+            observer.begin_ppu_region(PpuStepRegion::BusSync);
+        }
         self.bus
             .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
-        observer.end_region(MachineStepRegion::Ppu);
+        if records_ppu_regions {
+            observer.end_ppu_region(PpuStepRegion::BusSync);
+        }
+        if records_regions {
+            observer.end_region(MachineStepRegion::Ppu);
+        }
     }
 
     fn step_bus_arbitration<S: TraceSink>(
@@ -516,6 +606,10 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
+        if !tracer.records_events() {
+            return;
+        }
+
         let arbitration_state = self.cpu_bus_arbitration_states().pre_cpu;
         tracer.emit_with(TraceSubsystem::Bus, TraceLevel::Trace, || {
             self.bus
@@ -681,6 +775,13 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
+        if self.pending_ppu_mmio_write.is_none() {
+            tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
+                self.boot.scheduler_trace_message(context)
+            });
+            return;
+        }
+
         if let Some(write) = observe_machine_step_region(observer, MachineStepRegion::Ppu, || {
             commit_pending_ppu_mmio_write(self.ppu, self.pending_ppu_mmio_write)
         }) {
@@ -708,6 +809,16 @@ impl MachinePhaseRunner<'_> {
             tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
                 self.joypad.scheduler_trace_message(context)
             });
+        }
+
+        let has_interrupt_work = !context.interrupt_requests().is_empty()
+            || self.ppu.pending_interrupt_request_mask() != 0
+            || self.joypad.interrupt_request_pending();
+        if !has_interrupt_work {
+            tracer.emit_with(TraceSubsystem::Interrupts, TraceLevel::Trace, || {
+                self.interrupts.scheduler_trace_message(context)
+            });
+            return;
         }
 
         observe_machine_step_region(observer, MachineStepRegion::Interrupts, || {
@@ -796,6 +907,25 @@ impl MachinePhaseRunner<'_> {
         }
 
         let snapshot = self.ppu.bus_state_snapshot();
+        self.cached_ppu_bus_state_snapshot = Some(snapshot);
+        snapshot
+    }
+
+    fn ppu_bus_state_snapshot_with_observer<O>(
+        &mut self,
+        observer: &mut O,
+        records_ppu_regions: bool,
+    ) -> PpuBusStateSnapshot
+    where
+        O: MachineStepObserver,
+    {
+        if let Some(snapshot) = self.cached_ppu_bus_state_snapshot {
+            return snapshot;
+        }
+
+        let snapshot = self
+            .ppu
+            .bus_state_snapshot_with_observer(observer, records_ppu_regions);
         self.cached_ppu_bus_state_snapshot = Some(snapshot);
         snapshot
     }

@@ -10,7 +10,9 @@ use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
-use crate::ppu::{PpuAccessMode, PpuLcdState, PpuStepRegion, PpuVisibleOutputState};
+use crate::ppu::{
+    PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
+};
 use crate::rewind::{MachineRewindBuffer, MachineRewindConfig, MachineRewindSubframeCadence};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::{SerialPeer, SerialTransferState};
@@ -533,6 +535,21 @@ fn step_t_cycle_advances_exactly_one_cycle_per_call() {
     assert_eq!(machine.next_t_cycle(), TCycle::new(2));
 }
 
+#[test]
+fn machine_accessors_expose_scheduler_config_and_tracer_without_side_effects() {
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert_eq!(machine.config().console_model, ConsoleModel::GameBoyColor);
+    assert_eq!(machine.scheduler().next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.tracer().next_sequence(), 0);
+
+    machine.tracer_mut().reset();
+
+    assert_eq!(machine.tracer().next_sequence(), 0);
+}
+
 #[derive(Default)]
 struct RegionCollector {
     regions: Vec<MachineStepRegion>,
@@ -550,6 +567,25 @@ impl MachineStepObserver for RegionCollector {
 }
 
 #[test]
+fn step_observer_region_recording_capability_matches_default_and_noop_contracts() {
+    let observer = RegionCollector::default();
+    assert!(observer.records_regions());
+    assert!(MachineStepObserver::records_ppu_regions(&observer));
+    assert!(PpuStepObserver::records_ppu_regions(&observer));
+
+    let observer = NoopMachineStepObserver;
+    assert!(!observer.records_regions());
+    assert!(!MachineStepObserver::records_ppu_regions(&observer));
+    assert!(!PpuStepObserver::records_ppu_regions(&observer));
+
+    let mut observer = NoopMachineStepObserver;
+    observer.begin_region(MachineStepRegion::Cpu);
+    observer.end_region(MachineStepRegion::Cpu);
+    MachineStepObserver::begin_ppu_region(&mut observer, PpuStepRegion::Other);
+    MachineStepObserver::end_ppu_region(&mut observer, PpuStepRegion::Other);
+}
+
+#[test]
 fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
@@ -561,27 +597,57 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
     assert_eq!(
         observer.regions,
         vec![
-            MachineStepRegion::ExternalEvents,
             MachineStepRegion::Timer,
             MachineStepRegion::Apu,
-            MachineStepRegion::Dma,
-            MachineStepRegion::Dma,
             MachineStepRegion::Ppu,
-            MachineStepRegion::Serial,
             MachineStepRegion::Cpu,
-            MachineStepRegion::Ppu,
-            MachineStepRegion::Interrupts,
             MachineStepRegion::Cpu,
         ]
     );
     assert_eq!(
         observer.ppu_regions,
         vec![
-            PpuStepRegion::Mode2Scan,
-            PpuStepRegion::Mode2Scan,
-            PpuStepRegion::Mode2Scan,
+            PpuStepRegion::BusState,
+            PpuStepRegion::BusSync,
+            PpuStepRegion::BusView,
+            PpuStepRegion::Tick,
+            PpuStepRegion::ModeTiming,
+            PpuStepRegion::RasterAdvance,
+            PpuStepRegion::VisiblePrep,
+            PpuStepRegion::Mode3Control,
+            PpuStepRegion::RasterAdvance,
+            PpuStepRegion::ModeTiming,
+            PpuStepRegion::StatIrq,
+            PpuStepRegion::BusSnapshot,
+            PpuStepRegion::BusSnapshot,
+            PpuStepRegion::PublishedAccess,
+            PpuStepRegion::BusSync,
         ]
     );
+}
+
+#[test]
+fn step_t_cycle_with_observer_preserves_ppu_state_across_a_frame() {
+    let config =
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot);
+    let mut unobserved = Machine::new_summary(config.clone());
+    let mut observed = Machine::new_summary(config);
+    let rom = build_cgb_native_test_rom(&[0x00; 16]);
+    unobserved
+        .load_cartridge(rom.clone())
+        .expect("CGB native test ROM should load");
+    observed
+        .load_cartridge(rom)
+        .expect("CGB native test ROM should load");
+
+    let mut observer = RegionCollector::default();
+    for _ in 0..(PPU_DOTS_PER_LINE * PPU_LINES_PER_FRAME) {
+        unobserved.step_t_cycle();
+        observed.step_t_cycle_with_observer(&mut observer);
+    }
+
+    assert_eq!(unobserved.next_t_cycle(), observed.next_t_cycle());
+    assert_eq!(unobserved.ppu().snapshot(), observed.ppu().snapshot());
 }
 
 #[test]

@@ -26,7 +26,7 @@ use crate::save_state::{
     MachineSaveStateRestoreError, SchedulerSaveState,
 };
 use crate::scheduler::GlobalScheduler;
-use crate::serial::{Serial, SerialClockMode, SerialTransferState};
+use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -91,6 +91,10 @@ impl PendingExternalEvents {
 
         self.external_serial_clock_pulses_pending -= 1;
         true
+    }
+
+    fn has_pending_work(&self) -> bool {
+        self.joypad_state_dirty || self.external_serial_clock_pulses_pending != 0
     }
 
     fn joypad_pressed_mask(&self) -> u8 {
@@ -180,6 +184,14 @@ pub enum MachineStepRegion {
 }
 
 pub trait MachineStepObserver {
+    fn records_regions(&self) -> bool {
+        true
+    }
+
+    fn records_ppu_regions(&self) -> bool {
+        self.records_regions()
+    }
+
     fn begin_region(&mut self, _region: MachineStepRegion) {}
 
     fn end_region(&mut self, _region: MachineStepRegion) {}
@@ -187,17 +199,27 @@ pub trait MachineStepObserver {
     fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
 
     fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
+
+    fn record_serial_tick(&mut self, _telemetry: SerialTickTelemetry) {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct NoopMachineStepObserver;
 
-impl MachineStepObserver for NoopMachineStepObserver {}
+impl MachineStepObserver for NoopMachineStepObserver {
+    fn records_regions(&self) -> bool {
+        false
+    }
+}
 
 impl<T> PpuStepObserver for T
 where
     T: MachineStepObserver,
 {
+    fn records_ppu_regions(&self) -> bool {
+        MachineStepObserver::records_ppu_regions(self)
+    }
+
     fn begin_ppu_region(&mut self, region: PpuStepRegion) {
         MachineStepObserver::begin_ppu_region(self, region);
     }

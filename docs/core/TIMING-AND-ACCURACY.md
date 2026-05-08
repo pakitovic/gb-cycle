@@ -62,6 +62,7 @@ When implementing timing:
 - Treat M-cycles only as a descriptive grouping of four T-cycles, not as the project's primary timing abstraction.
 - When external documentation expresses a timing rule in M-cycles or microseconds, restate the corresponding T-cycle value in project docs and code whenever that rule becomes behaviorally relevant or is recorded as deferred validation work.
 - Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
+- In CGB double-speed mode the scheduler T-cycle remains CPU-visible, so a full LCD frame can contain `140448` scheduler T-cycles while the LCD/video domain still advances `70224` dots by gating video-domain work to every other scheduler T-cycle.
 
 ## Global scheduler rule
 

@@ -94,6 +94,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
   - current ownership or arbitration facts
   - queued side effects and interrupt requests
 - The scheduler coordinates ordering and synchronization points; it must not reimplement timer, PPU, DMA, serial, joypad, APU, cartridge, or CPU-local quirks internally.
+- Idle fast paths inside a scheduler phase may skip subsystem calls only when the owning subsystem exposes that no hardware-visible work is pending for the current T-cycle; they must not batch elapsed time or hide a pending MMIO, interrupt, DMA, serial, or video-domain edge.
 
 ## Console model policy
 

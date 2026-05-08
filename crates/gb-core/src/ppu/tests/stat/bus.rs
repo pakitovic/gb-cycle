@@ -314,6 +314,32 @@ fn bus_state_snapshot_matches_the_individual_bus_state_helpers() {
 }
 
 #[test]
+fn bus_state_snapshot_preserves_boot_power_on_publication_windows() {
+    let mut ppu = dmg_skip_boot_power_on_bus_rig();
+
+    for &delay_mcycles in &[25, 26, 69, 70, 139, 140, 183, 184] {
+        set_dmg_skip_boot_power_on_delay(&mut ppu, delay_mcycles);
+
+        let snapshot = ppu.bus_state_snapshot();
+        assert_eq!(
+            snapshot.owner,
+            ppu.owner_bus_state(),
+            "owner delay {delay_mcycles}"
+        );
+        assert_eq!(
+            snapshot.cpu_read,
+            ppu.cpu_bus_state(),
+            "cpu read delay {delay_mcycles}"
+        );
+        assert_eq!(
+            snapshot.cpu_write,
+            ppu.cpu_write_bus_state(),
+            "cpu write delay {delay_mcycles}"
+        );
+    }
+}
+
+#[test]
 fn owns_mmio_register_matches_the_ppu_register_window() {
     for address in 0xFF00..=0xFF7F {
         let expected = matches!(

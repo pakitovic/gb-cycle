@@ -380,6 +380,10 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn refresh_stat_irq_line(&mut self, quirk_active: bool) {
+        if !quirk_active && self.stat_interrupt_enable == 0 && !self.runtime.stat_state.irq_line {
+            return;
+        }
+
         let new_line = self.compute_stat_irq_line(quirk_active);
         let line_153_lyc0_pretrigger_request = !self.runtime.stat_state.irq_line
             && new_line

@@ -114,6 +114,9 @@ where
             "--no-saves" => {
                 config.saves.enabled = false;
             }
+            "--no-rewind" => {
+                config.rewind.enabled = false;
+            }
             "--fullscreen" => {
                 config.video.fullscreen = true;
             }
@@ -282,6 +285,7 @@ pub fn help_text() -> &'static str {
         "  --save-policy <manual|on-close|on-write|debounced>\n",
         "                                         Select battery-save flushing (default: debounced)\n",
         "  --no-saves                             Disable battery-save load/save\n",
+        "  --no-rewind                            Disable desktop rewind capture for this run\n",
         "  --scale <n>                            Set the initial window scale (default: 4)\n",
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
@@ -852,6 +856,7 @@ mod tests {
         assert!(text.contains("--boot-rom-dir <dir>"));
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
+        assert!(text.contains("--no-rewind"));
         assert!(text.contains("--mute"));
         assert!(text.contains("--audio-record <path.wav|path.aifc>"));
         assert!(text.contains("--audio-record-rate <hz>"));
@@ -884,6 +889,7 @@ mod tests {
             "saves",
             "--save-key",
             "slot_1",
+            "--no-rewind",
             "--fullscreen",
             "--no-vsync",
             "--mute",
@@ -926,6 +932,7 @@ mod tests {
             options.config.saves.directory_policy,
             SaveDirectoryPolicy::Custom(PathBuf::from("saves"))
         );
+        assert!(!options.config.rewind.enabled);
         let SaveKeyPolicy::Explicit(save_key) = &options.config.saves.key_policy else {
             panic!("expected an explicit save key override");
         };

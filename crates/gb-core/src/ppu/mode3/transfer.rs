@@ -6,7 +6,9 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
-        self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
+        if self.console_model.is_dmg_family() {
+            self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
+        }
         let pixel = self.take_transfer_service_bg_pixel(plan);
         self.begin_transfer_service_execution(plan);
         self.execute_transfer_service_execution(plan, pixel, vram)
@@ -114,17 +116,22 @@ impl Ppu {
         } else {
             bg_pixel
         };
+        let dmg_family = self.console_model.is_dmg_family();
         let effective_bg_priority_pixel = if bg_enabled { bg_pixel.color } else { 0 };
         let obj_pixel = self.pop_obj_fifo_pixel();
-        let obj_pixel =
-            self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram);
+        let obj_pixel = if dmg_family {
+            self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram)
+        } else {
+            obj_pixel
+        };
         let output_pixel = self.mix_bg_and_obj(
             bg_pixel.color,
             bg_pixel.cgb_bg_attrs,
             effective_bg_priority_pixel,
             obj_pixel,
         );
-        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let dmg_bg_forced_white =
+            dmg_family && self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let panel_pixel = if self.runtime.panel.visible_output == PpuVisibleOutputState::Driving {
             if dmg_bg_forced_white {
                 0
@@ -159,12 +166,18 @@ impl Ppu {
             output_pixel,
             panel_pixel,
         );
-        self.record_dmg_recent_panel_dot(visible_x_index as u8, output_pixel, dmg_bg_forced_white);
-        self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
-        self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
-        self.consume_dmg_lcdc0_bg_enable_visible_hold();
-        self.consume_dmg_lcdc1_obj_enable_visible_hold();
-        self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
+        if dmg_family {
+            self.record_dmg_recent_panel_dot(
+                visible_x_index as u8,
+                output_pixel,
+                dmg_bg_forced_white,
+            );
+            self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
+            self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
+            self.consume_dmg_lcdc0_bg_enable_visible_hold();
+            self.consume_dmg_lcdc1_obj_enable_visible_hold();
+            self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
+        }
         self.runtime.bg_pipeline_state.current_transfer_x = self
             .runtime
             .bg_pipeline_state
