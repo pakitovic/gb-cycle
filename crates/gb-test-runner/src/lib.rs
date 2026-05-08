@@ -23,6 +23,7 @@ mod test_support;
 mod workspace_paths;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
@@ -179,6 +180,7 @@ pub struct EarlyHardeningChecklistEntry {
 pub enum CaptureKind {
     Serial,
     SerialHex,
+    MemoryBytes,
     MemoryTextOutput,
     BlarggConsoleText,
     Framebuffer,
@@ -293,6 +295,30 @@ pub enum ExecutionStopCondition {
     CurrentOpcodeEquals { opcode: u8 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MemoryByteExpectation {
+    pub address: u16,
+    pub value: u8,
+}
+
+impl MemoryByteExpectation {
+    pub const fn new(address: u16, value: u8) -> Self {
+        Self { address, value }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CapturedMemoryByte {
+    pub address: u16,
+    pub expected: u8,
+    pub actual: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CapturedMemoryBytes {
+    pub bytes: Vec<CapturedMemoryByte>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MemoryTextOutputSpec {
     pub status_address: u16,
@@ -331,6 +357,7 @@ pub enum PassCondition {
     SerialExact(String),
     SerialContains(String),
     SerialHexExact(String),
+    MemoryBytesEqual(Vec<MemoryByteExpectation>),
     MemoryTextOutputContains {
         spec: MemoryTextOutputSpec,
         expected_substring: String,
@@ -351,6 +378,7 @@ impl PassCondition {
         match self {
             Self::SerialExact(_) | Self::SerialContains(_) => CaptureKind::Serial,
             Self::SerialHexExact(_) => CaptureKind::SerialHex,
+            Self::MemoryBytesEqual(_) => CaptureKind::MemoryBytes,
             Self::MemoryTextOutputContains { .. } => CaptureKind::MemoryTextOutput,
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
@@ -427,6 +455,11 @@ impl FailureArtifactPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartupPpuProfile {
+    DmgPowerOn,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RomCaseValidationError {
     EmptyCaseId,
@@ -450,6 +483,7 @@ pub struct RomTestCase {
     pub execution_mode: ExecutionMode,
     pub startup_cartridge_rtc_seconds: Option<u64>,
     pub startup_timer_state: Option<TimerStartupState>,
+    pub startup_ppu_profile: Option<StartupPpuProfile>,
     pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
@@ -478,6 +512,7 @@ impl RomTestCase {
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
             startup_timer_state: None,
+            startup_ppu_profile: None,
             startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
@@ -510,6 +545,11 @@ impl RomTestCase {
 
     pub fn with_startup_timer_state(mut self, startup_timer_state: TimerStartupState) -> Self {
         self.startup_timer_state = Some(startup_timer_state);
+        self
+    }
+
+    pub fn with_startup_ppu_profile(mut self, startup_ppu_profile: StartupPpuProfile) -> Self {
+        self.startup_ppu_profile = Some(startup_ppu_profile);
         self
     }
 
@@ -986,6 +1026,10 @@ pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
     curated_test_roms::little_things_gb_dmg_extra_suite()
 }
 
+pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::gbmicrotest_dmg_extra_suite()
+}
+
 pub fn cgb_rtc_suite() -> RomSuite {
     curated_test_roms::cgb_rtc_suite()
 }
@@ -1000,6 +1044,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
         little_things_gb_dmg_extra_suite(),
+        gbmicrotest_dmg_extra_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
@@ -1235,6 +1280,9 @@ pub enum RomCaseFailure {
         actual_signature: [u8; 3],
         actual_text: String,
     },
+    MemoryByteMismatch {
+        bytes: Vec<CapturedMemoryByte>,
+    },
     BlarggConsoleTextMissingSubstring {
         expected_substring: String,
         actual: String,
@@ -1288,6 +1336,7 @@ pub struct CapturedMemoryTextOutput {
 pub struct CapturedArtifacts {
     pub serial: Option<String>,
     pub serial_hex: Option<String>,
+    pub memory_bytes: Option<CapturedMemoryBytes>,
     pub memory_text_output: Option<CapturedMemoryTextOutput>,
     pub blargg_console_text: Option<String>,
     pub framebuffer_pgm: Option<Vec<u8>>,
@@ -1636,6 +1685,15 @@ impl RunnerMachine {
             Self::Summary(machine) => machine.apply_timer_startup_state(startup_timer_state),
         }
     }
+
+    fn apply_startup_ppu_profile(&mut self, startup_ppu_profile: StartupPpuProfile) {
+        match startup_ppu_profile {
+            StartupPpuProfile::DmgPowerOn => match self {
+                Self::Buffered(machine) => machine.apply_dmg_skip_boot_power_on_ppu_phase(),
+                Self::Summary(machine) => machine.apply_dmg_skip_boot_power_on_ppu_phase(),
+            },
+        }
+    }
 }
 
 impl Default for RomRunner {
@@ -1727,6 +1785,7 @@ impl RomRunner {
         if startup_failure.is_none() {
             self.apply_startup_cartridge_state(case, &mut machine);
             self.apply_startup_timer_state(case, &mut machine);
+            self.apply_startup_ppu_profile(case, &mut machine);
             self.apply_startup_memory_writes(case, &mut machine);
         }
 
@@ -1783,6 +1842,12 @@ impl RomRunner {
                 if mooneye_result.is_some() {
                     break;
                 }
+            }
+
+            if executed_t_cycles.is_multiple_of(100_000)
+                && memory_bytes_equal(&case.pass_condition, &mut machine)
+            {
+                break;
             }
 
             if executed_t_cycles.is_multiple_of(1_024) {
@@ -2005,6 +2070,16 @@ impl RomRunner {
         }
     }
 
+    fn apply_startup_ppu_profile(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        if case.startup_mode != StartupMode::SkipBoot {
+            return;
+        }
+
+        if let Some(startup_ppu_profile) = case.startup_ppu_profile {
+            machine.apply_startup_ppu_profile(startup_ppu_profile);
+        }
+    }
+
     fn apply_startup_memory_writes(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
         for write in &case.startup_memory_writes {
             machine.write_bus(write.address, write.value);
@@ -2025,6 +2100,12 @@ impl RomRunner {
 
         if case.capture_plan.contains(CaptureKind::SerialHex) {
             artifacts.serial_hex = Some(encode_bytes_as_upper_hex(serial_bytes));
+        }
+
+        if case.capture_plan.contains(CaptureKind::MemoryBytes)
+            && let PassCondition::MemoryBytesEqual(expectations) = &case.pass_condition
+        {
+            artifacts.memory_bytes = Some(capture_memory_bytes(expectations, machine));
         }
 
         if case.capture_plan.contains(CaptureKind::MemoryTextOutput)
@@ -2101,6 +2182,24 @@ impl RomRunner {
                     RomCaseOutcome::Failed(RomCaseFailure::SerialExactMismatch {
                         expected: expected.clone(),
                         actual: evaluation.artifacts.serial_hex.clone().unwrap_or_default(),
+                    })
+                }
+            }
+            PassCondition::MemoryBytesEqual(_) => {
+                let captured = evaluation
+                    .artifacts
+                    .memory_bytes
+                    .clone()
+                    .unwrap_or_default();
+                if captured
+                    .bytes
+                    .iter()
+                    .all(|byte| byte.actual == byte.expected)
+                {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::MemoryByteMismatch {
+                        bytes: captured.bytes,
                     })
                 }
             }
@@ -2442,6 +2541,20 @@ impl RomRunner {
                     })?;
                     written_paths.push(path);
                 }
+                CaptureKind::MemoryBytes => {
+                    let Some(memory_bytes) = &artifacts.memory_bytes else {
+                        continue;
+                    };
+                    let path = case_dir.join("memory_bytes.txt");
+                    fs::write(&path, render_memory_bytes(memory_bytes)).map_err(|source| {
+                        RomExecutionError::ReadFile {
+                            path: path.clone(),
+                            operation: "write memory bytes artifact",
+                            source,
+                        }
+                    })?;
+                    written_paths.push(path);
+                }
                 CaptureKind::MemoryTextOutput => {
                     let Some(memory_text_output) = &artifacts.memory_text_output else {
                         continue;
@@ -2581,6 +2694,17 @@ fn memory_text_output_spec(pass_condition: &PassCondition) -> Option<&MemoryText
     }
 }
 
+fn memory_bytes_equal(pass_condition: &PassCondition, machine: &mut RunnerMachine) -> bool {
+    let PassCondition::MemoryBytesEqual(expectations) = pass_condition else {
+        return false;
+    };
+
+    capture_memory_bytes(expectations, machine)
+        .bytes
+        .iter()
+        .all(|byte| byte.actual == byte.expected)
+}
+
 fn memory_text_output_completion_candidate(
     pass_condition: &PassCondition,
     machine: &mut RunnerMachine,
@@ -2705,6 +2829,36 @@ fn capture_memory_text_output(
     }
 }
 
+fn capture_memory_bytes(
+    expectations: &[MemoryByteExpectation],
+    machine: &mut RunnerMachine,
+) -> CapturedMemoryBytes {
+    CapturedMemoryBytes {
+        bytes: expectations
+            .iter()
+            .map(|expectation| CapturedMemoryByte {
+                address: expectation.address,
+                expected: expectation.value,
+                actual: machine.read_bus(expectation.address),
+            })
+            .collect(),
+    }
+}
+
+pub(crate) fn render_memory_bytes(captured: &CapturedMemoryBytes) -> String {
+    let mut rendered = String::new();
+    for byte in &captured.bytes {
+        let _ = writeln!(
+            &mut rendered,
+            "address=0x{address:04X} expected=0x{expected:02X} actual=0x{actual:02X}",
+            address = byte.address,
+            expected = byte.expected,
+            actual = byte.actual,
+        );
+    }
+    rendered
+}
+
 pub(crate) fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
     format!(
         "status=0x{status:02X}\nsignature={sig0:02X} {sig1:02X} {sig2:02X}\ntext={text:?}\n",
@@ -2729,6 +2883,7 @@ pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
     match capture {
         CaptureKind::Serial => "serial.txt",
         CaptureKind::SerialHex => "serial_hex.txt",
+        CaptureKind::MemoryBytes => "memory_bytes.txt",
         CaptureKind::MemoryTextOutput => "memory_text_output.txt",
         CaptureKind::BlarggConsoleText => "blargg_console.txt",
         CaptureKind::Framebuffer => "framebuffer.png",
@@ -4767,6 +4922,7 @@ mod tests {
         let artifacts = CapturedArtifacts {
             serial: Some("serial".to_string()),
             serial_hex: Some("73657269616C".to_string()),
+            memory_bytes: None,
             memory_text_output: Some(CapturedMemoryTextOutput {
                 status: 0x00,
                 signature: [0xDE, 0xB0, 0x61],

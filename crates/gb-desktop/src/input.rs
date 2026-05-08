@@ -1079,11 +1079,11 @@ fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> Str
 mod tests {
     use super::{
         AppliedGamepadRumble, FrontendInputState, GAMEPAD_ACCELEROMETER_SENSORS,
-        GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
-        SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED, STRONG_GAMEPAD_RUMBLE_INTENSITY,
-        WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g, axis_direction_state,
-        default_gamepad_name, format_gamepad_enumeration_error, format_open_gamepad_error,
-        gamepad_button_binding_from_sdl_button, joystick_id_from_event,
+        GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadGyroState, GamepadManager, GamepadRumbleState,
+        LeftStickDigitalState, SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
+        STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g,
+        axis_direction_state, default_gamepad_name, format_gamepad_enumeration_error,
+        format_open_gamepad_error, gamepad_button_binding_from_sdl_button, joystick_id_from_event,
         right_stick_axis_to_milli_g, rumble_intensity, sdl_button_for_binding,
     };
     use gb_core::{
@@ -1099,6 +1099,7 @@ mod tests {
     use sdl3::joystick::JoystickId;
     use sdl3::sensor::SensorType;
     use sdl3::{GamepadSubsystem, hint};
+    use std::collections::BTreeMap;
     use std::ffi::CString;
     use std::time::{Duration, Instant};
 
@@ -1662,8 +1663,16 @@ mod tests {
             gyro_mode: GamepadGyroMode::PadInput,
             ..GamepadOptions::default()
         };
-        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
-            .expect("gamepad manager");
+        let mut manager = GamepadManager {
+            subsystem,
+            options,
+            opened: BTreeMap::new(),
+            active: None,
+            left_stick_state: LeftStickDigitalState::default(),
+            rumble: GamepadRumbleState::default(),
+            gyro: GamepadGyroState::default(),
+        };
+        manager.sync_active_gamepad_state(&mut input_state, &mut machine);
 
         assert!(!manager.has_connected_gamepad());
         assert_eq!(

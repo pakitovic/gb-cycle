@@ -22,6 +22,19 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep the scheduler seam explicit: CPU micro-op effects stage first, PPU MMIO commits on the same T-cycle, then interrupt aggregation observes the result.
 - Keep one internal LCD STAT line and request LCD STAT only on rising edges.
 - Keep published `STAT` / visible access-mode evaluation expressed as ordered named rule families rather than one large inline branch chain.
+- Keep the current split between bus/readback access mode and the DMG-family STAT IRQ mode source; LCD restart and SCX-dependent HBlank tests rely on those seams not being collapsed back into one raw `current_access_mode()` decision.
+- Keep the LCD re-enable first-line Mode `0` HALT wake aperture separate from the non-HALT `IF` publication edge; moving the PPU request edge instead of gating the halted CPU wake regresses the running-CPU HBlank timing tests.
+- Keep DMG Mode `2` STAT as an internal source that can lead readable/bus OAM mode, including the line `143 -> 144` STAT-only edge; it must not imply real OAM locking or sprite selection on line `144`.
+- Keep the line `143 -> 144` DMG Mode `2` STAT `IF` pretrigger separate from CPU interrupt service priority: the `IF` edge stays early for gbmicrotest, but service is deferred across the last HBlank dots when VBlank is enabled so line `144` VBlank can win priority.
+- Keep line-`153` LY readback, LYC comparison, and line-`0` post-wrap published `STAT.mode` seams as separate helpers; collapsing them back into one `LY=0` dot loses the gbmicrotest `line_153_*` timing windows, while applying the DMG dot-`4`/dot-`12` split to CGB regresses the CGB-family dot-`8` LY0 seam.
+- Keep the line-`153` `LYC=0` STAT IRQ pretrigger separate from readable `STAT.2`: the request edge is dot `8`, visible coincidence is dot `12`, and same-dot CPU `LYC`/`STAT` writes can cancel the unaggregated edge before interrupt aggregation.
+- Keep the DMG `STAT` write quirk in explicit line/dot write windows rather than deriving it from readable mode or bus access mode; ordinary HBlank, ordinary OAM, and the frame-start line-`0` exception intentionally differ.
+- Keep DMG VBlank `STAT` write quirk effects separate from ordinary LYC sources: nonzero writes can still generate the quirk pulse in VBlank/coincidence windows, and the quirk can block the repeated line-`153` `LYC=0` source without disabling the ordinary line-`153` path when no VBlank quirk occurred.
+- Do not let nonzero STAT enable writes reuse the zero-write OAM/HBlank/restart quirk windows; `gbmicrotest` LYC1 setup depends on `STAT=$40` during LCD restart line `0` not leaving IF STAT pending before the line-`1` coincidence edge.
+- Keep the DMG `WX = 0 && (SCX & 7) == 3` terminal readback seam ahead of generic terminal-tail early-HBlank publication; this is a CPU-visible `STAT` seam, not a renderer-only detail.
+- Keep DMG `SkipBoot`'s startup Mode `0` STAT IRQ phase explicit and boot-gated; do not leak that first-frame hidden phase into ordinary PPU startup-state unit tests or into LCD off/on restart timing.
+- Keep DMG `SkipBoot`'s first-frame `FF44` readback lag separate from the internal synthetic raster line; changing the internal machine skip-boot `LY=0` state to direct-boot `LY=153` would reopen unrelated startup seams.
+- Keep DMG-family boot-facing `poweron_*` publication tables as CPU-bus overlays for early `FF41` / `FF44` reads and OAM/VRAM access; `SkipBoot` uses the synthetic frame-origin base, verified `RealBoot` uses its own handoff-relative base, and neither path should be satisfied by moving the internal raster, changing `BootController::direct_boot_state()`, changing LCD restart, or changing renderer / sprite-selection state.
 - LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state. The first blank frame after re-enable is panel behavior, not a delayed internal scheduler start.
 
 ### Mode 3 and fetch arbitration
@@ -45,6 +58,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.
 - Keep `WX = 0`, `WX = 166`, and `WX = 0 && (SCX & 7) > 0` as explicit edge-case paths.
+- Keep the later-DMG `RealBoot` first-LCD-enable dot phase and `FF50`-armed Mode `0` SCX seam separate from ordinary LCD re-enable behavior; this is a boot/handoff hidden-state contract, not a generic `LCDC.7` restart rule.
 
 ### DMA, OAM, and corruption
 

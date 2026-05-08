@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use crate::{
     CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport,
     TEST_ROM_ROOT_ENV_VAR, Timeout, built_in_rom_suite_by_name, built_in_rom_suites,
-    early_phase_9_partial_checklist, load_local_rom_suite_manifest, update_curated_test_report,
+    early_phase_9_partial_checklist, load_local_rom_suite_manifest, render_memory_bytes,
+    update_curated_test_report,
 };
 
 const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
@@ -503,6 +504,13 @@ fn write_artifacts<W: Write>(output: &mut W, artifacts: &CapturedArtifacts) -> R
         )?;
     }
 
+    if let Some(memory_bytes) = &artifacts.memory_bytes {
+        writeln_checked(
+            output,
+            &format!("memory_bytes=\n{}", render_memory_bytes(memory_bytes)),
+        )?;
+    }
+
     if let Some(console_text) = &artifacts.blargg_console_text {
         writeln_checked(output, &format!("blargg_console_text=\n{console_text}"))?;
     }
@@ -601,12 +609,14 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         crate::PassCondition::SerialExact(_) => "serial-exact",
         crate::PassCondition::SerialContains(_) => "serial-contains",
         crate::PassCondition::SerialHexExact(_) => "serial-hex-exact",
+        crate::PassCondition::MemoryBytesEqual(_) => "memory-byte-equals",
         crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
         crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
         crate::PassCondition::MooneyeResult => "mooneye-result",
         crate::PassCondition::Informational(capture) => match capture {
             crate::CaptureKind::Serial => "info-serial",
             crate::CaptureKind::SerialHex => "info-serial-hex",
+            crate::CaptureKind::MemoryBytes => "info-memory-bytes",
             crate::CaptureKind::MemoryTextOutput => "info-memory-text-output",
             crate::CaptureKind::BlarggConsoleText => "info-blargg-console-text",
             crate::CaptureKind::Framebuffer => "info-framebuffer",
@@ -628,6 +638,7 @@ fn capture_name(capture: crate::CaptureKind) -> &'static str {
     match capture {
         crate::CaptureKind::Serial => "serial",
         crate::CaptureKind::SerialHex => "serial-hex",
+        crate::CaptureKind::MemoryBytes => "memory-bytes",
         crate::CaptureKind::MemoryTextOutput => "memory-text-output",
         crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
         crate::CaptureKind::Framebuffer => "framebuffer",
@@ -718,7 +729,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::{CapturedMemoryTextOutput, TestSubsystem};
+    use crate::{CapturedMemoryByte, CapturedMemoryBytes, CapturedMemoryTextOutput, TestSubsystem};
 
     use super::{
         ConfiguredRomSuiteStartup, RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget,
@@ -1054,6 +1065,13 @@ mod tests {
                 artifacts: CapturedArtifacts {
                     serial: Some("serial-text".to_string()),
                     serial_hex: Some("73657269616C2D74657874".to_string()),
+                    memory_bytes: Some(CapturedMemoryBytes {
+                        bytes: vec![CapturedMemoryByte {
+                            address: 0xFF82,
+                            expected: 0x01,
+                            actual: 0x56,
+                        }],
+                    }),
                     memory_text_output: Some(CapturedMemoryTextOutput {
                         status: 0,
                         signature: [0xDE, 0xB0, 0x61],
@@ -1076,6 +1094,7 @@ mod tests {
         assert!(output.contains("suite=synthetic subsystem=Cpu"));
         assert!(output.contains("case=case-a outcome=Failed"));
         assert!(output.contains("serial=\nserial-text"));
+        assert!(output.contains("memory_bytes=\naddress=0xFF82 expected=0x01 actual=0x56"));
         assert!(output.contains("memory_text_output=status=0x00"));
         assert!(output.contains("blargg_console_text=\nconsole-text"));
         assert!(output.contains("snapshot=\nsnapshot-text"));

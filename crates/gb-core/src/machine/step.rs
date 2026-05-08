@@ -46,6 +46,14 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
     boot: &BootController,
     boot_rom_newly_unmapped: bool,
 ) {
+    if boot_rom_newly_unmapped
+        && !boot.is_boot_rom_mapped()
+        && config.startup_mode == StartupMode::RealBoot
+        && config.console_model.is_dmg_family()
+    {
+        ppu.apply_dmg_real_boot_handoff_stat_irq_phase();
+    }
+
     if !boot_rom_newly_unmapped
         || boot.is_boot_rom_mapped()
         || config.startup_mode != StartupMode::RealBoot
@@ -74,13 +82,18 @@ fn address_is_cpu_mmio(address: u16) -> bool {
 }
 
 fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: &Joypad) -> u8 {
+    let mut mask = current_cycle_scheduler_interrupt_request_mask(context);
+    mask |= ppu.cpu_visible_pending_interrupt_request_mask();
+    if joypad.interrupt_request_pending() {
+        mask |= InterruptSource::Joypad.mask();
+    }
+    mask
+}
+
+fn current_cycle_scheduler_interrupt_request_mask(context: &CycleContext) -> u8 {
     let mut mask = 0;
     for &source in context.interrupt_requests() {
         mask |= source.mask();
-    }
-    mask |= ppu.pending_interrupt_request_mask();
-    if joypad.interrupt_request_pending() {
-        mask |= InterruptSource::Joypad.mask();
     }
     mask
 }
@@ -639,6 +652,14 @@ impl MachinePhaseRunner<'_> {
             let cartridge = &mut self.cartridge;
             let pending_ppu_mmio_write = &mut *self.pending_ppu_mmio_write;
 
+            if let Some(source) = cpu.evaluate_current_cycle_interrupt_requests(
+                interrupts,
+                current_cycle_scheduler_interrupt_request_mask(context)
+                    & InterruptSource::Timer.mask(),
+            ) {
+                context.take_interrupt_request(source);
+            }
+
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
                     let read_arbitration_state =
@@ -844,6 +865,21 @@ impl MachinePhaseRunner<'_> {
             let cpu = &mut self.cpu;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
+            let ppu = &*self.ppu;
+            if interrupts.highest_pending() == Some(InterruptSource::LcdStat)
+                && (interrupts.read_ie() & InterruptSource::VBlank.mask()) != 0
+                && ppu.dmg_mode2_vblank_entry_interrupt_service_deferred()
+            {
+                return;
+            }
+            if cpu.execution_state() == CpuExecutionState::Halted
+                && interrupts.highest_pending() == Some(InterruptSource::LcdStat)
+                && (ppu.dmg_lcd_reenable_mode0_halt_wake_deferred()
+                    || ppu.dmg_mode2_oam_halt_wake_deferred()
+                    || ppu.dmg_mode2_vblank_entry_halt_wake_deferred())
+            {
+                return;
+            }
             cpu.evaluate_wake_and_interrupts(interrupts, joypad);
         });
 

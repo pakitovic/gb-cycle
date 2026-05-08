@@ -42,6 +42,7 @@ impl Ppu {
             cgb_palettes: CgbPaletteState::default(),
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             runtime: PpuRuntimeState::default(),
+            dmg_real_boot_power_on_lcd_enable_phase_active: false,
         }
     }
 
@@ -122,6 +123,7 @@ impl Ppu {
             || self.runtime.blank_frame_active
             || self.lcd_restart_phase != PpuLcdRestartPhase::Inactive
             || self.runtime.startup_mode_latch.is_some()
+            || self.runtime.stat_state.boot_power_on_ppu_phase_active
             || self.ly >= VISIBLE_SCANLINES
             || self.line_dot == 0
             || self.line_dot <= MODE2_DOTS
@@ -608,7 +610,7 @@ impl Ppu {
             PpuRegister::Stat => self.read_stat(source),
             PpuRegister::Scy => self.scy,
             PpuRegister::Scx => self.scx,
-            PpuRegister::Ly => self.read_ly(),
+            PpuRegister::Ly => self.read_ly(source),
             PpuRegister::Lyc => self.lyc,
             PpuRegister::Bgp => self.bgp,
             PpuRegister::Obp0 => self
@@ -653,6 +655,7 @@ impl Ppu {
                 self.lyc = value;
                 if self.is_lcd_enabled() {
                     self.refresh_stat_irq_line(false);
+                    self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger();
                 }
             }
             PpuRegister::Wy => self.wy = value,
@@ -824,7 +827,47 @@ impl Ppu {
             None
         };
         self.stat_state.lcd_disabled_lyc_coincidence = startup_state.ly == startup_state.lyc;
+        self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
+        self.stat_state.startup_mode0_irq_phase_active = false;
+        self.stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active = false;
+        self.stat_state.vblank_wrap_line0_stat_delay_active = false;
+        self.stat_state.skip_boot_ly_read_lag_active = false;
+        self.stat_state.boot_power_on_ppu_phase_active = false;
+        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
+        self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.stat_state.dmg_stat_write_quirk_blocks_line153_lyc0 = false;
+        self.dmg_real_boot_power_on_lcd_enable_phase_active = false;
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
+    }
+
+    pub(crate) fn apply_dmg_real_boot_power_on_lcd_enable_phase(&mut self) {
+        if self.console_model.is_dmg_family() && !self.lcd_state.is_enabled() {
+            self.dmg_real_boot_power_on_lcd_enable_phase_active = true;
+        }
+    }
+
+    pub(crate) fn apply_dmg_real_boot_handoff_stat_irq_phase(&mut self) {
+        if self.console_model.is_dmg_family() && self.lcd_state.is_enabled() {
+            self.stat_state
+                .real_boot_handoff_mode0_scx_seam_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_base_dot = (self
+                .dmg_boot_power_on_current_frame_dot()
+                + DMG_BOOT_POWER_ON_CPU_READ_DELAY_DOTS)
+                % self.dmg_boot_power_on_frame_dots();
+        }
+    }
+
+    pub(crate) fn apply_dmg_skip_boot_stat_irq_startup_phase(&mut self) {
+        if self.console_model.is_dmg_family() && self.lcd_state.is_enabled() && self.ly == 0 {
+            self.stat_state.skip_boot_ly_read_lag_active = true;
+            self.stat_state.boot_power_on_ppu_phase_active = true;
+            self.stat_state.boot_power_on_ppu_phase_base_dot =
+                DMG_BOOT_POWER_ON_CPU_READ_DELAY_DOTS;
+            self.stat_state.startup_mode0_irq_phase_active = true;
+            self.stat_state.irq_line = self.compute_stat_irq_line(false);
+        }
     }
 
     #[cfg(test)]
@@ -983,9 +1026,23 @@ impl Ppu {
                     } else {
                         self.ly + 1
                     };
+                    self.stat_state.vblank_wrap_line0_stat_delay_active = wraps_to_frame_start;
                     self.advance_lcd_restart_phase();
+                    if self.ly >= 2 {
+                        self.stat_state.startup_mode0_irq_phase_active = false;
+                    }
+                    if self.ly >= 3 {
+                        self.stat_state.boot_power_on_ppu_phase_active = false;
+                        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
+                    }
                     if self.ly >= VISIBLE_SCANLINES {
                         self.window_state.reset();
+                        self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
+                        self.stat_state
+                            .real_boot_handoff_mode0_scx_seam_phase_active = false;
+                        self.stat_state.skip_boot_ly_read_lag_active = false;
+                        self.stat_state.boot_power_on_ppu_phase_active = false;
+                        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
                     }
                     self.mode2_scan_state.reset_scanline();
                     self.bg_pipeline_state.reset();
@@ -1007,7 +1064,10 @@ impl Ppu {
             || self.current_access_mode(),
         );
         if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-            self.queue_interrupt_request(InterruptSource::VBlank);
+            self.queue_interrupt_request_with_cpu_if_visibility(
+                InterruptSource::VBlank,
+                !self.console_model.is_dmg_family(),
+            );
         }
         observe_ppu_step_region_when(
             observer,
@@ -1539,15 +1599,27 @@ impl Ppu {
     pub(crate) fn take_pending_interrupt_request_mask(&mut self) -> u8 {
         let requests = self.pending_interrupt_request_mask();
         self.pending_interrupts = 0;
+        self.pending_interrupts_hidden_from_cpu_if = 0;
+        self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
         requests
     }
 
     pub(crate) fn pending_interrupt_request_mask(&self) -> u8 {
+        Self::interrupt_request_mask_from_pending_bits(self.pending_interrupts)
+    }
+
+    pub(crate) fn cpu_visible_pending_interrupt_request_mask(&self) -> u8 {
+        Self::interrupt_request_mask_from_pending_bits(
+            self.pending_interrupts & !self.pending_interrupts_hidden_from_cpu_if,
+        )
+    }
+
+    fn interrupt_request_mask_from_pending_bits(pending_interrupts: u8) -> u8 {
         let mut mask = 0;
-        if self.pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
+        if pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
             mask |= 0x01;
         }
-        if self.pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
+        if pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
             mask |= 0x02;
         }
         mask

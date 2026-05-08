@@ -208,7 +208,7 @@ impl IoHramDomain {
                     interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
                 })
             }
-            IoRegisterKind::Stat => io.ppu.map_or(BLOCKED_READ_VALUE, |ppu| {
+            IoRegisterKind::Stat | IoRegisterKind::Ly => io.ppu.map_or(BLOCKED_READ_VALUE, |ppu| {
                 let source = if io.ppu_cpu_visible_read {
                     crate::ppu::PpuRegisterReadSource::CpuBusOperation
                 } else {

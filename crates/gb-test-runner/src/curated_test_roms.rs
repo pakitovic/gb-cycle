@@ -3,14 +3,15 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use gb_core::{ConsoleModel, StartupMode, TimerStartupState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, FailureArtifactPolicy,
-    MemoryTextOutputSpec, PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupMemoryWrite,
-    TestSubsystem, Timeout,
+    MemoryByteExpectation, MemoryTextOutputSpec, PassCondition, RomSuite, RomSuiteReport,
+    RomTestCase, StartupMemoryWrite, StartupPpuProfile, TestSubsystem, Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
@@ -27,24 +28,30 @@ const GBEMU_SHOOTOUT_TESTROMS_DIR: &str = "testroms";
 const REPORT_STATUS_PASS_EMOJI: &str = "✅";
 const REPORT_STATUS_FAIL_EMOJI: &str = "❌";
 const REPORT_STATUS_INFO_EMOJI: &str = "ℹ️";
-const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 10] = [
+static CURATED_TEST_ROM_MANIFEST_CACHE: OnceLock<Vec<CuratedTestRomManifest>> = OnceLock::new();
+static CURATED_SOURCE_ROM_PATH_CACHE: OnceLock<Vec<(String, PathBuf)>> = OnceLock::new();
+const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 11] = [
     "acid",
     "blargg",
     "daid",
     "ax6",
     "mooneye",
     "samesuite",
+    "gbmicrotest",
     "hacktix",
     "cpp",
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 5] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "samesuite-dmg-extra",
+    "gbmicrotest-dmg-extra",
     "little-things-gb-dmg-extra",
 ];
+const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
+    ["mooneye-acceptance-dmg-curated"];
 const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
@@ -90,6 +97,7 @@ struct CuratedTestRomManifestFile {
     family: Option<String>,
     suite_name: String,
     subsystem: String,
+    startup_ppu_profile: Option<String>,
     #[serde(rename = "case")]
     cases: Vec<CuratedTestRomCaseFile>,
 }
@@ -102,17 +110,27 @@ struct CuratedTestRomCaseFile {
     source_id: Option<String>,
     source_path: Option<PathBuf>,
     report_model_suffix: Option<bool>,
-    timeout_frames: u32,
+    timeout_frames: Option<u32>,
+    timeout_tcycles: Option<u64>,
     oracle: String,
     expected: Option<String>,
     fixture: Option<PathBuf>,
     fixtures: Option<Vec<PathBuf>>,
+    #[serde(default)]
+    memory: Vec<CuratedMemoryByteExpectationFile>,
     console: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
+    startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+struct CuratedMemoryByteExpectationFile {
+    address: u16,
+    value: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,16 +149,18 @@ struct CuratedTestRomCase {
     source_id: String,
     source_path: PathBuf,
     report_model_suffix: bool,
-    timeout_frames: u32,
+    timeout: Timeout,
     oracle: String,
     expected: Option<String>,
     fixture: Option<PathBuf>,
     fixtures: Option<Vec<PathBuf>>,
+    memory: Vec<MemoryByteExpectation>,
     console_model: ConsoleModel,
     startup_mode: StartupMode,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
+    startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
 }
 
@@ -221,6 +241,10 @@ pub fn samesuite_dmg_extra_suite() -> RomSuite {
 
 pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("little-things-gb-dmg-extra")
+}
+
+pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
+    manifest_suite_by_name("gbmicrotest-dmg-extra")
 }
 
 pub fn blargg_dmg_curated_suite() -> RomSuite {
@@ -694,13 +718,15 @@ pub fn update_curated_test_report(
         )?)
     };
 
-    let report_path = if suite_uses_extra_test_report(&report.suite_name) {
-        extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME))
+    let report_path = if suite_uses_status_only_test_report(&report.suite_name) {
+        None
+    } else if suite_uses_extra_test_report(&report.suite_name) {
+        Some(extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME)))
     } else {
-        standard_report_path
+        Some(standard_report_path)
     };
 
-    Ok(Some(report_path))
+    Ok(report_path)
 }
 
 fn report_suites_for_extra_flag(
@@ -709,13 +735,20 @@ fn report_suites_for_extra_flag(
 ) -> Vec<PersistedSuiteStatus> {
     suites
         .iter()
-        .filter(|suite| suite_uses_extra_test_report(&suite.suite_name) == extra_report)
+        .filter(|suite| {
+            !suite_uses_status_only_test_report(&suite.suite_name)
+                && suite_uses_extra_test_report(&suite.suite_name) == extra_report
+        })
         .cloned()
         .collect()
 }
 
 fn suite_uses_extra_test_report(suite_name: &str) -> bool {
     EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
+fn suite_uses_status_only_test_report(suite_name: &str) -> bool {
+    STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
 }
 
 fn write_markdown_report_file(
@@ -995,13 +1028,23 @@ fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
 }
 
 fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
+    curated_test_rom_manifest_catalog().to_vec()
+}
+
+fn curated_test_rom_manifest_catalog() -> &'static [CuratedTestRomManifest] {
+    CURATED_TEST_ROM_MANIFEST_CACHE
+        .get_or_init(parse_curated_test_rom_manifests)
+        .as_slice()
+}
+
+fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
     curated_test_rom_manifest_texts()
         .into_iter()
         .map(|(source_path, source_text)| parse_manifest(source_path, source_text))
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 20] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 21] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1018,6 +1061,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 20] {
         (
             "crates/gb-test-runner/data/little-things-gb.toml",
             include_str!("../data/little-things-gb.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/gbmicrotest.toml",
+            include_str!("../data/gbmicrotest.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-audio-blargg.toml",
@@ -1101,7 +1148,14 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
         cases: parsed
             .cases
             .into_iter()
-            .map(|case| parse_manifest_case(source_path, parsed.family.as_deref(), case))
+            .map(|case| {
+                parse_manifest_case(
+                    source_path,
+                    parsed.family.as_deref(),
+                    parsed.startup_ppu_profile.as_deref(),
+                    case,
+                )
+            })
             .collect(),
     }
 }
@@ -1109,6 +1163,7 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
 fn parse_manifest_case(
     source_path: &str,
     manifest_family: Option<&str>,
+    manifest_startup_ppu_profile: Option<&str>,
     case: CuratedTestRomCaseFile,
 ) -> CuratedTestRomCase {
     let family = case
@@ -1138,6 +1193,7 @@ fn parse_manifest_case(
             .join(&family)
             .join(&case.rom)
     });
+    let timeout = parse_manifest_timeout(&source_path, case.timeout_frames, case.timeout_tcycles);
 
     CuratedTestRomCase {
         family,
@@ -1146,17 +1202,48 @@ fn parse_manifest_case(
         source_id,
         source_path,
         report_model_suffix: case.report_model_suffix.unwrap_or(false),
-        timeout_frames: case.timeout_frames,
+        timeout,
         oracle: case.oracle,
         expected: case.expected,
         fixture: case.fixture,
         fixtures: case.fixtures,
+        memory: case
+            .memory
+            .into_iter()
+            .map(|expectation| MemoryByteExpectation::new(expectation.address, expectation.value))
+            .collect(),
         console_model,
         startup_mode,
         execution_mode: case.execution_mode,
         stop_condition: case.stop_condition,
         startup_timer_profile: case.startup_timer_profile,
+        startup_ppu_profile: case
+            .startup_ppu_profile
+            .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
         startup_memory_profile: case.startup_memory_profile,
+    }
+}
+
+fn parse_manifest_timeout(
+    source_path: &Path,
+    timeout_frames: Option<u32>,
+    timeout_tcycles: Option<u64>,
+) -> Timeout {
+    match (timeout_frames, timeout_tcycles) {
+        (Some(frames), None) => Timeout::Frames(frames),
+        (None, Some(t_cycles)) => Timeout::TCycles(t_cycles),
+        (Some(_), Some(_)) => {
+            panic!(
+                "curated case in {} cannot specify both timeout_frames and timeout_tcycles",
+                source_path.display()
+            )
+        }
+        (None, None) => {
+            panic!(
+                "curated case in {} must specify timeout_frames or timeout_tcycles",
+                source_path.display()
+            )
+        }
     }
 }
 
@@ -1201,16 +1288,18 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         source_id: _,
         source_path: _,
         report_model_suffix: _,
-        timeout_frames,
+        timeout,
         oracle,
         expected,
         fixture,
         fixtures,
+        memory,
         console_model,
         startup_mode,
         execution_mode,
         stop_condition,
         startup_timer_profile,
+        startup_ppu_profile,
         startup_memory_profile,
     } = case;
 
@@ -1230,6 +1319,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
                 .unwrap_or_else(|| panic!("missing expected string for case {id}")),
         },
         "mooneye-result" => PassCondition::MooneyeResult,
+        "memory-byte-equals" => PassCondition::MemoryBytesEqual(memory),
         "info-serial" => PassCondition::Informational(CaptureKind::Serial),
         "info-serial-hex" => PassCondition::Informational(CaptureKind::SerialHex),
         "info-memory-text-output" => PassCondition::Informational(CaptureKind::MemoryTextOutput),
@@ -1260,7 +1350,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     let mut rom_case = RomTestCase::new(
         id,
         PathBuf::from(&family).join(rom),
-        Timeout::Frames(timeout_frames),
+        timeout,
         pass_condition,
     )
     .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR)
@@ -1297,6 +1387,16 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
             }),
             other => panic!(
                 "unsupported startup timer profile {other:?} for curated case {}",
+                rom_case.id
+            ),
+        };
+    }
+
+    if let Some(profile) = startup_ppu_profile.as_deref() {
+        rom_case = match profile {
+            "dmg-power-on" => rom_case.with_startup_ppu_profile(StartupPpuProfile::DmgPowerOn),
+            other => panic!(
+                "unsupported startup PPU profile {other:?} for curated case {}",
                 rom_case.id
             ),
         };
@@ -1356,6 +1456,9 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::SerialHexExact(_) => CapturePlan::new()
             .with_capture(CaptureKind::SerialHex)
             .with_capture(CaptureKind::Snapshot),
+        PassCondition::MemoryBytesEqual(_) => CapturePlan::new()
+            .with_capture(CaptureKind::MemoryBytes)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::MemoryTextOutputContains { .. } => CapturePlan::new()
             .with_capture(CaptureKind::MemoryTextOutput)
             .with_capture(CaptureKind::Snapshot),
@@ -1388,6 +1491,9 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         }
         PassCondition::SerialHexExact(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::SerialHex)
+            .with_artifact(CaptureKind::Snapshot),
+        PassCondition::MemoryBytesEqual(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::MemoryBytes)
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::MemoryTextOutputContains { .. } => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::MemoryTextOutput)
@@ -1665,12 +1771,18 @@ impl ReportCaseOrder {
 }
 
 fn curated_source_rom_order(family: &str, rom: &Path) -> Option<usize> {
-    curated_source_rom_paths()
-        .into_iter()
+    curated_source_rom_path_catalog()
+        .iter()
         .position(|(source_family, source_rom)| source_family == family && source_rom == rom)
 }
 
-fn curated_source_rom_paths() -> Vec<(String, PathBuf)> {
+fn curated_source_rom_path_catalog() -> &'static [(String, PathBuf)] {
+    CURATED_SOURCE_ROM_PATH_CACHE
+        .get_or_init(parse_curated_source_rom_paths)
+        .as_slice()
+}
+
+fn parse_curated_source_rom_paths() -> Vec<(String, PathBuf)> {
     let parsed: CuratedSourceManifestFile = toml::from_str(include_str!("../data/sources.toml"))
         .unwrap_or_else(|error| panic!("failed to parse curated source manifest: {error}"));
     assert_eq!(
@@ -1745,7 +1857,7 @@ mod tests {
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root,
         dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
-        little_things_gb_dmg_extra_suite, load_persisted_suite_status,
+        gbmicrotest_dmg_extra_suite, little_things_gb_dmg_extra_suite, load_persisted_suite_status,
         manifest_case_report_rom_display, manifest_case_to_rom_test_case,
         materialize_curated_test_rom_families, materialize_curated_test_rom_store,
         mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
@@ -1755,8 +1867,8 @@ mod tests {
         test_rom_store_root, update_curated_test_report,
     };
     use crate::{
-        CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
-        RomCaseReport, RomSuiteReport, TestSubsystem, Timeout,
+        CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
+        RomCaseOutcome, RomCaseReport, RomSuiteReport, StartupPpuProfile, TestSubsystem, Timeout,
     };
     use gb_core::{ConsoleModel, StartupMode};
     use std::env;
@@ -2427,6 +2539,56 @@ mod tests {
     }
 
     #[test]
+    fn gbmicrotest_dmg_extra_suite_tracks_docboy_memory_oracles_without_startup_override() {
+        let manifest_text = include_str!("../data/gbmicrotest.toml");
+        assert!(
+            !manifest_text.contains("startup ="),
+            "gbmicrotest manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
+        );
+
+        let suite = gbmicrotest_dmg_extra_suite();
+
+        assert_eq!(suite.name, "gbmicrotest-dmg-extra");
+        assert_eq!(suite.family.as_deref(), Some("gbmicrotest"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 432);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoy
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.startup_ppu_profile == Some(StartupPpuProfile::DmgPowerOn)
+                && case.execution_mode == crate::ExecutionMode::Strict
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.capture_plan.contains(CaptureKind::MemoryBytes)
+                && case.capture_plan.contains(CaptureKind::Snapshot)
+                && case.failure_artifacts.contains(CaptureKind::MemoryBytes)
+                && case.failure_artifacts.contains(CaptureKind::Snapshot)
+                && case.rom_path.starts_with("gbmicrotest")
+                && !case.rom_path.starts_with("gbmicrotest/dma")
+                && case.pass_condition
+                    == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(
+                        0xFF82, 0x01,
+                    )])
+        }));
+        let long_spin_if_ime0 = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "gbmicrotest-interrupts-is-if-set-during-ime0")
+            .expect("long IME=0 IF visibility row should stay in the DocBoy manifest");
+        assert_eq!(long_spin_if_ime0.timeout, Timeout::TCycles(2_000_000));
+        assert!(suite.cases.iter().all(|case| {
+            case.id == long_spin_if_ime0.id || case.timeout == Timeout::TCycles(1_000_000)
+        }));
+        assert!(
+            !suite
+                .cases
+                .iter()
+                .any(|case| case.rom_path.starts_with("gbmicrotest/dma")),
+            "DocBoy dmg.json excludes the six gbmicrotest/dma ROMs"
+        );
+        assert!(suite_uses_extra_test_report("gbmicrotest-dmg-extra"));
+    }
+
+    #[test]
     fn cgb_audio_blargg_suite_tracks_the_full_cgb_sound_lane() {
         let suite = cgb_audio_blargg_suite();
 
@@ -2834,6 +2996,7 @@ mod tests {
                 "blargg".to_string(),
                 "cpp".to_string(),
                 "daid".to_string(),
+                "gbmicrotest".to_string(),
                 "hacktix".to_string(),
                 "little-things-gb".to_string(),
                 "mealybug-tearoom-tests".to_string(),
@@ -3133,6 +3296,81 @@ mod tests {
         assert!(!rendered_report.contains(&format!(
             "| blargg | halt_bug.gb | {REPORT_STATUS_FAIL_EMOJI} |"
         )));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_omits_status_only_mooneye_curated_rows_from_markdown() {
+        let workspace_root = unique_temp_dir("report-status-only-mooneye");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let manual_report = RomSuiteReport {
+            suite_name: "mooneye-dmg-acceptance-manual".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "mooneye-boot-hwio-dmgabcmgb",
+                    "mooneye/acceptance/boot_hwio-dmgABCmgb.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "mooneye-ppu-lcdon-timing-gs",
+                    "mooneye/acceptance/ppu/lcdon_timing-GS.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        update_curated_test_report(&workspace_root, &manual_report)
+            .expect("Mooneye manual report should write");
+
+        let status_only_report = RomSuiteReport {
+            suite_name: "mooneye-acceptance-dmg-curated".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "mooneye-boot-hwio-dmgabcmgb",
+                    "mooneye/acceptance/boot_hwio-dmgABCmgb.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "mooneye-emulator-only-mbc1-bits-bank1",
+                    "mooneye/emulator-only/mbc1/bits_bank1.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        assert_eq!(
+            update_curated_test_report(&workspace_root, &status_only_report)
+                .expect("Mooneye status-only report should write"),
+            None
+        );
+
+        let status_root = test_rom_store_root(&workspace_root).join(TEST_ROM_STATUS_DIR_NAME);
+        let status_only_status =
+            fs::read_to_string(status_root.join("mooneye-acceptance-dmg-curated.toml"))
+                .expect("status-only Mooneye status should be readable");
+        assert!(status_only_status.contains("acceptance/boot_hwio-dmgABCmgb.gb"));
+        assert!(status_only_status.contains("emulator-only/mbc1/bits_bank1.gb"));
+
+        let rendered_report = fs::read_to_string(
+            test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME),
+        )
+        .expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (2/2)\n"));
+        assert_eq!(
+            rendered_report
+                .matches("| mooneye | acceptance/boot_hwio-dmgABCmgb.gb |")
+                .count(),
+            1
+        );
+        assert!(rendered_report.contains(&format!(
+            "| mooneye | acceptance/ppu/lcdon_timing-GS.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered_report.contains("emulator-only/mbc1/bits_bank1.gb"));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
@@ -3887,6 +4125,7 @@ status = "PASS"
         let _ = parse_manifest_case(
             "test-manifest.toml",
             None,
+            None,
             CuratedTestRomCaseFile {
                 family: None,
                 id: "familyless".to_string(),
@@ -3894,16 +4133,19 @@ status = "PASS"
                 source_id: None,
                 source_path: None,
                 report_model_suffix: None,
-                timeout_frames: 1,
+                timeout_frames: Some(1),
+                timeout_tcycles: None,
                 oracle: "info-framebuffer".to_string(),
                 expected: None,
                 fixture: None,
                 fixtures: None,
+                memory: Vec::new(),
                 console: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
                 startup_timer_profile: None,
+                startup_ppu_profile: None,
                 startup_memory_profile: None,
             },
         );
@@ -3919,16 +4161,18 @@ status = "PASS"
             source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
             source_path: PathBuf::from("testroms/blargg/bad.gb"),
             report_model_suffix: false,
-            timeout_frames: 1,
+            timeout: Timeout::Frames(1),
             oracle: "unknown".to_string(),
             expected: None,
             fixture: None,
             fixtures: None,
+            memory: Vec::new(),
             console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
             startup_timer_profile: None,
+            startup_ppu_profile: None,
             startup_memory_profile: None,
         });
     }
@@ -3943,16 +4187,44 @@ status = "PASS"
             source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
             source_path: PathBuf::from("testroms/hacktix/bad.gb"),
             report_model_suffix: false,
-            timeout_frames: 1,
+            timeout: Timeout::Frames(1),
             oracle: "framebuffer-rgb555-fixture".to_string(),
             expected: None,
             fixture: Some(PathBuf::from("fixture.png")),
             fixtures: None,
+            memory: Vec::new(),
             console_model: ConsoleModel::GameBoyColor,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
             startup_timer_profile: Some("unknown-profile".to_string()),
+            startup_ppu_profile: None,
+            startup_memory_profile: None,
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported startup PPU profile")]
+    fn manifest_case_to_rom_test_case_rejects_unknown_startup_ppu_profiles() {
+        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
+            family: "gbmicrotest".to_string(),
+            id: "bad-ppu-profile".to_string(),
+            rom: PathBuf::from("bad.gb"),
+            source_id: "docboy".to_string(),
+            source_path: PathBuf::from("tests/roms/dmg/gbmicrotest/bad.gb"),
+            report_model_suffix: false,
+            timeout: Timeout::TCycles(1),
+            oracle: "memory-byte-equals".to_string(),
+            expected: None,
+            fixture: None,
+            fixtures: None,
+            memory: vec![MemoryByteExpectation::new(0xFF82, 0x01)],
+            console_model: ConsoleModel::GameBoy,
+            startup_mode: StartupMode::SkipBoot,
+            execution_mode: None,
+            stop_condition: None,
+            startup_timer_profile: None,
+            startup_ppu_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
         });
     }
@@ -3967,16 +4239,18 @@ status = "PASS"
             source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
             source_path: PathBuf::from("testroms/mealybug-tearoom-tests/ppu/bad.gb"),
             report_model_suffix: false,
-            timeout_frames: 1,
+            timeout: Timeout::Frames(1),
             oracle: "framebuffer-fixture".to_string(),
             expected: None,
             fixture: Some(PathBuf::from("fixture.png")),
             fixtures: None,
+            memory: Vec::new(),
             console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
             startup_timer_profile: None,
+            startup_ppu_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
         });
     }

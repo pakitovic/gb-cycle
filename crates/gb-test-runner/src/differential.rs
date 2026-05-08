@@ -13,7 +13,7 @@ use crate::{
         NormalizedFramebuffer, convert_pgm_to_png, decode_fixture_framebuffer_path,
         decode_local_pgm_framebuffer,
     },
-    render_memory_text_output,
+    render_memory_bytes, render_memory_text_output,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +99,11 @@ pub enum DifferentialCaseMismatch {
         oracle: String,
         local: String,
     },
+    MemoryBytesMismatch {
+        oracle_artifact_path: PathBuf,
+        oracle: String,
+        local: String,
+    },
     MemoryTextOutputMismatch {
         oracle_artifact_path: PathBuf,
         oracle: CapturedMemoryTextOutput,
@@ -142,6 +147,7 @@ impl DifferentialCaseMismatch {
         match self {
             Self::MissingOracleArtifact { .. } => "missing-oracle-artifact",
             Self::SerialMismatch { .. } => "serial-mismatch",
+            Self::MemoryBytesMismatch { .. } => "memory-bytes-mismatch",
             Self::MemoryTextOutputMismatch { .. } => "memory-text-output-mismatch",
             Self::BlarggConsoleTextMismatch { .. } => "blargg-console-text-mismatch",
             Self::TraceMismatch { .. } => "trace-mismatch",
@@ -158,6 +164,9 @@ impl DifferentialCaseMismatch {
                 capture_name(*capture)
             ),
             Self::SerialMismatch { oracle, local, .. } => describe_text_difference(local, oracle),
+            Self::MemoryBytesMismatch { oracle, local, .. } => {
+                describe_text_difference(local, oracle)
+            }
             Self::MemoryTextOutputMismatch { oracle, local, .. } => {
                 describe_memory_text_output_difference(local, oracle)
             }
@@ -436,6 +445,34 @@ impl DifferentialRunner {
                         oracle,
                         local,
                     })
+                }
+            }
+            CaptureKind::MemoryBytes => {
+                let local = artifacts.memory_bytes.clone().ok_or(
+                    DifferentialExecutionError::MissingLocalArtifact {
+                        case_id: local_report.case_id.clone(),
+                        capture: compared_capture,
+                    },
+                )?;
+                let local = render_memory_bytes(&local);
+                let oracle = fs::read_to_string(oracle_artifact_path).map_err(|source| {
+                    DifferentialExecutionError::ReadOracleArtifact {
+                        path: oracle_artifact_path.to_path_buf(),
+                        operation: "read memory bytes oracle artifact",
+                        source,
+                    }
+                })?;
+
+                if local == oracle {
+                    DifferentialCaseOutcome::Matched
+                } else {
+                    DifferentialCaseOutcome::Diverged(
+                        DifferentialCaseMismatch::MemoryBytesMismatch {
+                            oracle_artifact_path: oracle_artifact_path.to_path_buf(),
+                            oracle,
+                            local,
+                        },
+                    )
                 }
             }
             CaptureKind::MemoryTextOutput => {
@@ -819,6 +856,18 @@ fn write_captured_artifact(
                 DifferentialExecutionError::WriteArtifact {
                     path: path.clone(),
                     operation: "write serial hex artifact",
+                    source,
+                }
+            })?;
+        }
+        CaptureKind::MemoryBytes => {
+            let Some(memory_bytes) = &artifacts.memory_bytes else {
+                return Ok(None);
+            };
+            fs::write(&path, render_memory_bytes(memory_bytes)).map_err(|source| {
+                DifferentialExecutionError::WriteArtifact {
+                    path: path.clone(),
+                    operation: "write memory bytes artifact",
                     source,
                 }
             })?;
@@ -1268,6 +1317,7 @@ fn capture_name(capture: CaptureKind) -> &'static str {
     match capture {
         CaptureKind::Serial => "serial",
         CaptureKind::SerialHex => "serial-hex",
+        CaptureKind::MemoryBytes => "memory-bytes",
         CaptureKind::MemoryTextOutput => "memory-text-output",
         CaptureKind::BlarggConsoleText => "blargg-console-text",
         CaptureKind::Framebuffer => "framebuffer",
@@ -1833,6 +1883,7 @@ mod tests {
         let artifacts = CapturedArtifacts {
             serial: Some("serial".to_string()),
             serial_hex: Some("73657269616C".to_string()),
+            memory_bytes: None,
             memory_text_output: Some(memory.clone()),
             blargg_console_text: Some("console".to_string()),
             framebuffer_pgm: Some(vec![
@@ -2582,6 +2633,7 @@ mod tests {
         let artifacts = CapturedArtifacts {
             serial: Some("serial".to_string()),
             serial_hex: Some("4F4B".to_string()),
+            memory_bytes: None,
             memory_text_output: Some(sample_memory_text_output()),
             blargg_console_text: Some("console".to_string()),
             trace: Some("trace".to_string()),

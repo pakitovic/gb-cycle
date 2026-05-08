@@ -42,6 +42,332 @@ fn run_lcd_enable_read_probe(address: u16, delay_nops: u16, lyc: Option<u8>) -> 
     run_until_halted(&mut machine, 1_000_000)
 }
 
+fn build_lcd_reenable_mode2_if_probe_rom(delay_nops: usize) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 2 source
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    program.extend(std::iter::repeat_n(0x00, delay_nops)); // nops
+    program.extend_from_slice(&[0xF0, 0x0F]); // ldh a,($0F)
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, 0x0150, &[])
+}
+
+fn run_lcd_reenable_mode2_if_probe(delay_nops: usize) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_mode2_if_probe_rom(delay_nops))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_lcd_reenable_mode0_if_probe_rom(delay_nops: usize) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 0 source
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    program.extend(std::iter::repeat_n(0x00, delay_nops));
+    program.extend_from_slice(&[0xF0, 0x0F]); // ldh a,($0F)
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, 0x0150, &[])
+}
+
+fn run_lcd_reenable_mode0_if_probe(delay_nops: usize) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_mode0_if_probe_rom(delay_nops))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_lcd_reenable_line0_mode0_counter_rom(scx: u8) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a ; SCX
+    program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 0 source
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.push(0xFB); // ei
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    program.push(0xAF); // xor a
+    program.extend(std::iter::repeat_n(0x3C, 200)); // inc a
+    program.extend_from_slice(&[0x06, 0xEE]); // ld b,$EE ; no interrupt marker
+    program.push(0x76); // halt
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, 0x0150, &[(0x0048, &[0x47, 0x76])])
+}
+
+fn run_lcd_reenable_line0_mode0_counter(scx: u8) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_line0_mode0_counter_rom(scx))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_lcd_reenable_line0_mode0_halt_cycle_rom(scx: u8) -> Vec<u8> {
+    let mut program = vec![0x00, 0xC3, 0x50, 0x01]; // nop; jp $0150
+    program.resize(0x50, 0x00);
+    program.extend_from_slice(&[0x3E, 0x00]); // ld a,$00
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a ; SCX
+    program.extend_from_slice(&[0x3E, 0x05]); // ld a,$05
+    program.extend_from_slice(&[0xE0, 0x07]); // ldh ($07),a ; TAC = 262144 Hz
+    program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 0 source
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    program.push(0xFB); // ei
+    program.push(0xAF); // xor a
+    program.push(0x76); // halt
+    program.extend_from_slice(&[0x06, 0xEE]); // ld b,$EE ; no interrupt marker
+    program.push(0x76); // halt
+    build_nom_bc_test_rom(
+        &program,
+        0x00,
+        &[(
+            0x0048,
+            &[
+                0x21, 0x05, 0xFF, // ld hl,$FF05
+                0xAF, // xor a
+                0x86, // add (hl)
+                0x00, // nop
+                0x86, // add (hl)
+                0x00, // nop
+                0x86, // add (hl)
+                0x00, // nop
+                0x86, // add (hl)
+                0x47, // ld b,a
+                0x76, // halt
+            ],
+        )],
+    )
+}
+
+fn run_lcd_reenable_line0_mode0_halt_cycle(scx: u8) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_line0_mode0_halt_cycle_rom(scx))
+        .expect("probe ROM should load");
+    for _ in 0..1_000_000 {
+        machine.step_t_cycle();
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().pc < 0x0100
+        {
+            return machine.cpu().registers().b;
+        }
+    }
+
+    panic!(
+        "halt wake probe did not finish; pc={:#06X} state={:?} ly={} line_dot={}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot
+    );
+}
+
+fn build_lcd_reenable_wx0_scx3_stat_probe_rom(delay_nops: usize) -> Vec<u8> {
+    let mut program = vec![0x00, 0xC3, 0x50, 0x01]; // nop; jp $0150
+    program.resize(0x50, 0x00);
+    program.extend_from_slice(&[0x3E, 0x00]); // ld a,$00
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, 0x00]); // ld a,$00
+    program.extend_from_slice(&[0xE0, 0x4A]); // ldh ($4A),a ; WY = 0
+    program.extend_from_slice(&[0x3E, 0x00]); // ld a,$00
+    program.extend_from_slice(&[0xE0, 0x4B]); // ldh ($4B),a ; WX = 0
+    program.extend_from_slice(&[0x3E, 0x03]); // ld a,$03
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a ; SCX = 3
+    program.extend_from_slice(&[0x3E, 0xB1]); // ld a,$B1
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = BG/window on
+    program.extend(std::iter::repeat_n(0x00, 112 + delay_nops)); // nops
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+    build_nom_bc_test_rom(&program, 0x00, &[])
+}
+
+fn run_lcd_reenable_wx0_scx3_stat_probe(delay_nops: usize) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_wx0_scx3_stat_probe_rom(delay_nops))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_lcd_reenable_line1_mode0_counter_rom(scx: u8) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    program.extend(std::iter::repeat_n(0x00, 114));
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a ; SCX
+    program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 0 source
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+    program.push(0xFB); // ei
+    program.push(0xAF); // xor a
+    program.extend(std::iter::repeat_n(0x3C, 200)); // inc a
+    program.extend_from_slice(&[0x06, 0xEE]); // ld b,$EE ; no interrupt marker
+    program.push(0x76); // halt
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, 0x0150, &[(0x0048, &[0x47, 0x76])])
+}
+
+fn run_lcd_reenable_line1_mode0_counter(scx: u8) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_line1_mode0_counter_rom(scx))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_skip_boot_startup_mode0_if_probe_rom(
+    scx: u8,
+    delay_nops: usize,
+    vector_passthrough: bool,
+) -> Vec<u8> {
+    let mut program = vec![0x00, 0xC3, 0x50, 0x01]; // nop; jp $0150
+    program.resize(0x50, 0x00);
+    program.extend(std::iter::repeat_n(0x00, 123));
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a ; SCX
+    program.extend_from_slice(&[0x21, 0x0F, 0xFF]); // ld hl,$FF0F
+    program.extend_from_slice(&[0x3E, 0x08]); // ld a,$08
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 0 source
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.push(0xFB); // ei
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x04]); // ldh ($04),a ; DIV = 0
+    program.extend(std::iter::repeat_n(0x00, delay_nops));
+    program.push(0x7E); // ld a,(hl)
+    program.push(0xF3); // di
+    program.push(0x47); // ld b,a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = 0
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+    program.push(0x76); // halt
+
+    let vector = if vector_passthrough {
+        vec![0x47, 0xAF, 0xE0, 0xFF, 0xE0, 0x0F, 0x76] // ld b,a; clear IE/IF; halt
+    } else {
+        vec![0x06, 0xFF, 0xAF, 0xE0, 0xFF, 0xE0, 0x0F, 0x76] // ld b,$FF; clear IE/IF; halt
+    };
+    build_nom_bc_test_rom(&program, 0x00, &[(0x0048, vector.as_slice())])
+}
+
+fn run_skip_boot_startup_mode0_if_probe(
+    scx: u8,
+    delay_nops: usize,
+    vector_passthrough: bool,
+) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_skip_boot_startup_mode0_if_probe_rom(
+            scx,
+            delay_nops,
+            vector_passthrough,
+        ))
+        .expect("probe ROM should load");
+    machine.apply_dmg_skip_boot_power_on_ppu_phase();
+    run_until_halted(&mut machine, 1_000_000)
+}
+
+fn build_lcd_reenable_mode2_irq_counter_rom(arm_after_lcd_on_nops: Option<usize>) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+
+    if let Some(arm_after_lcd_on_nops) = arm_after_lcd_on_nops {
+        program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+        program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+        program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+        program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+        program.extend(std::iter::repeat_n(0x00, arm_after_lcd_on_nops));
+        program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20
+        program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 2 source
+        program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+        program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+        program.push(0xFB); // ei
+    } else {
+        program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = off
+        program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20
+        program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a ; STAT Mode 2 source
+        program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+        program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+        program.push(0xAF); // xor a
+        program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a ; IF = 0
+        program.push(0xFB); // ei
+        program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91
+        program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; LCDC = on
+    }
+
+    program.push(0xAF); // xor a
+    program.extend(std::iter::repeat_n(0x3C, 200)); // inc a
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, 0x0150, &[(0x0048, &[0x47, 0x76])])
+}
+
+fn run_lcd_reenable_mode2_irq_counter(arm_after_lcd_on_nops: Option<usize>) -> u8 {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_mode2_irq_counter_rom(
+            arm_after_lcd_on_nops,
+        ))
+        .expect("probe ROM should load");
+    run_until_halted(&mut machine, 1_000_000)
+}
+
 fn assert_lcd_enable_read_probe_points(label: &str, actual: [u8; 24], expected: [u8; 24]) {
     assert_eq!(actual, expected, "{label}={actual:?}");
 }
@@ -160,6 +486,67 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     assert_eq!(visible_line.mode, PpuAccessMode::HBlank);
     assert_eq!(visible_line.visible_output, PpuVisibleOutputState::Driving);
     assert_eq!(&visible_line.current_scanline_pixels[..8], &[2; 8]);
+}
+
+#[test]
+fn lcd_reenable_mode2_pretrigger_is_not_visible_to_same_cycle_if_reads() {
+    assert_eq!(run_lcd_reenable_mode2_if_probe(109), 0xE0);
+    assert_eq!(run_lcd_reenable_mode2_if_probe(110), 0xE2);
+}
+
+#[test]
+fn lcd_reenable_mode0_edge_is_not_visible_to_same_cycle_if_reads() {
+    assert_eq!(run_lcd_reenable_mode0_if_probe(59), 0xE0);
+    assert_eq!(run_lcd_reenable_mode0_if_probe(60), 0xE2);
+}
+
+#[test]
+fn lcd_reenable_prearmed_mode2_stat_services_on_the_first_oam_pretrigger() {
+    assert_eq!(run_lcd_reenable_mode2_irq_counter(None), 111);
+}
+
+#[test]
+fn lcd_reenable_arming_mode2_stat_during_oam_waits_for_the_next_oam_edge() {
+    assert_eq!(run_lcd_reenable_mode2_irq_counter(Some(114)), 100);
+}
+
+#[test]
+fn lcd_reenable_line0_mode0_stat_uses_scx_grouped_irq_dots() {
+    assert_eq!(run_lcd_reenable_line0_mode0_counter(0), 0x3D);
+    assert_eq!(run_lcd_reenable_line0_mode0_counter(1), 0x3E);
+    assert_eq!(run_lcd_reenable_line0_mode0_counter(5), 0x3F);
+}
+
+#[test]
+fn lcd_reenable_line0_mode0_halt_wake_uses_the_scx_aligned_aperture() {
+    assert_eq!(run_lcd_reenable_line0_mode0_halt_cycle(0), 0x62);
+    assert_eq!(run_lcd_reenable_line0_mode0_halt_cycle(1), 0x62);
+    assert_eq!(run_lcd_reenable_line0_mode0_halt_cycle(3), 0x63);
+    assert_eq!(run_lcd_reenable_line0_mode0_halt_cycle(4), 0x63);
+    assert_eq!(run_lcd_reenable_line0_mode0_halt_cycle(7), 0x64);
+}
+
+#[test]
+fn lcd_reenable_wx0_scx3_keeps_stat_drawing_until_the_terminal_boundary() {
+    assert_eq!(run_lcd_reenable_wx0_scx3_stat_probe(63), 0x83);
+    assert_eq!(run_lcd_reenable_wx0_scx3_stat_probe(64), 0x80);
+}
+
+#[test]
+fn lcd_reenable_first_frame_mode0_stat_suppresses_pretrigger_and_keeps_scx_seams() {
+    assert_eq!(run_lcd_reenable_line1_mode0_counter(0), 0x2D);
+    assert_eq!(run_lcd_reenable_line1_mode0_counter(3), 0x2E);
+    assert_eq!(run_lcd_reenable_line1_mode0_counter(7), 0x2F);
+}
+
+#[test]
+fn skip_boot_startup_mode0_stat_uses_the_boot_phase_for_if_visibility() {
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 34, false), 0xE0);
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 35, true), 0xE0);
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 36, true), 0xE2);
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 37, true), 0x00);
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(3, 35, true), 0xE0);
+    assert_eq!(run_skip_boot_startup_mode0_if_probe(7, 35, true), 0xE0);
 }
 
 #[test]

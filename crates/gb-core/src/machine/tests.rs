@@ -33,6 +33,15 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn build_test_rom_with_vector(program: &[u8], vector: u16, handler: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    let vector = usize::from(vector);
+    for (offset, byte) in handler.iter().copied().enumerate() {
+        rom[vector + offset] = byte;
+    }
+    rom
+}
+
 fn build_cgb_native_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = build_test_rom(program);
     rom[0x0143] = 0x80;
@@ -174,6 +183,58 @@ fn step_until_cpu_state(
     }
 
     panic!("timed out before reaching CPU state: {description}");
+}
+
+#[test]
+fn current_cycle_timer_request_can_preempt_the_next_opcode_fetch() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom_with_vector(
+            &[
+                0x3E, 0x00, // ld a,$00
+                0xE0, 0x06, // ldh (TMA),a
+                0xE0, 0x04, // ldh (DIV),a
+                0x3E, 0x04, // ld a,$04
+                0xE0, 0xFF, // ldh (IE),a
+                0xAF, // xor a
+                0xE0, 0x0F, // ldh (IF),a
+                0x3E, 0xFE, // ld a,$FE
+                0xE0, 0x05, // ldh (TIMA),a
+                0x3E, 0x05, // ld a,$05
+                0xE0, 0x07, // ldh (TAC),a
+                0xFB, // ei
+                0x00, // nop
+                0x00, // nop
+                0x00, // nop
+                0x00, // nop
+                0xF3, // di, must be preempted by the timer request
+                0x3E, 0x99, // ld a,$99
+                0xE0, 0x83, // ldh ($83),a
+                0x18, 0xFE, // jr .
+            ],
+            0x0050,
+            &[
+                0x3E, 0x42, // ld a,$42
+                0xE0, 0x83, // ldh ($83),a
+                0x18, 0xFE, // jr .
+            ],
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_until(
+        &mut machine,
+        256,
+        "timer interrupt handler marker",
+        |machine| matches!(machine.debug_hram_bytes()[0x03], 0x42 | 0x99),
+    );
+
+    assert_eq!(
+        machine.debug_hram_bytes()[0x03],
+        0x42,
+        "the timer request becomes visible on the same T-cycle as the next opcode slot, so DI must not run before service starts"
+    );
 }
 
 fn assert_save_state_restores_continuation(

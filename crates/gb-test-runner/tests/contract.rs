@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
-    FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
-    RomSuiteValidationError, RomTestCase, StimulusTime, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
-    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
-    daid_dmg_curated_suite, hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec, PassCondition,
+    RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
+    TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, acid_dmg_curated_suite,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, daid_dmg_curated_suite,
+    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
     phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
@@ -86,6 +87,29 @@ fn rom_test_case_requires_memory_text_capture_for_memory_text_output_conditions(
         case.validate(),
         Err(RomCaseValidationError::MissingRequiredCapture(
             CaptureKind::MemoryTextOutput
+        ))
+    );
+}
+
+#[test]
+fn rom_test_case_requires_memory_bytes_capture_for_memory_byte_conditions() {
+    let case = RomTestCase::new(
+        "memory-byte-case",
+        PathBuf::from("memory_byte.gb"),
+        Timeout::TCycles(100_000),
+        PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(0xFF82, 0x01)]),
+    )
+    .with_capture_plan(CapturePlan::new().with_capture(CaptureKind::Snapshot))
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::MemoryBytes)
+            .with_artifact(CaptureKind::Snapshot),
+    );
+
+    assert_eq!(
+        case.validate(),
+        Err(RomCaseValidationError::MissingRequiredCapture(
+            CaptureKind::MemoryBytes
         ))
     );
 }

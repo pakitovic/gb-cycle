@@ -686,3 +686,59 @@ fn unusable_area_descriptor_is_model_aware() {
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
     assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());
 }
+
+#[test]
+fn cpu_visible_ppu_mmio_read_source_applies_to_stat_and_ly() {
+    let bus = Bus::new(ConsoleModel::GameBoy);
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+    for t_cycle in 0..36 {
+        tick_ppu(&mut ppu, t_cycle);
+    }
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF44,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ppu_cpu_visible_read: false,
+                ..BusIoReadView::default()
+            }
+        ),
+        0x99
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF44,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ppu_cpu_visible_read: true,
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF41,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ppu_cpu_visible_read: true,
+                ..BusIoReadView::default()
+            }
+        ),
+        0x85
+    );
+}

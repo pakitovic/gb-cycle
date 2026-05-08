@@ -85,7 +85,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
   8. interrupt aggregation into `IF`
   9. CPU wake / interrupt-accept evaluation
 - This phase order is an architectural contract for observable behavior, not a claim that Nintendo published one canonical internal scheduler.
-- Another internal decomposition is acceptable only if it preserves the same observable dependencies for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge timing, MMIO visibility, and CPU interrupt acceptance.
+- Another internal decomposition is acceptable only if it preserves the same observable dependencies for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge timing, MMIO visibility, same-cycle Timer queued-request opcode preemption, and CPU interrupt acceptance.
 - Phase `3` is for events derived from the free-running shared clock. Device-local MMIO semantics such as `DIV` reset effects, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions still belong to the device that owns the register when the access commits in phase `7`.
 - The scheduler should keep one cycle-local context object or equivalent that can carry at least:
   - the global T-cycle index

@@ -119,6 +119,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - The authoritative action of a write to `FF46` is "start OAM DMA with this source page" on that access, not "update a memory-mapped variable that may later cause DMA."
 - If a write to `FF46` is visible while a DMG OAM DMA burst is already in flight, it should not cancel the current burst immediately; the current transfer keeps running until the restarted burst reaches its own CPU-visible start seam, at which point the new source page takes over.
 - Any MMIO-visible `FF46` readback should come from DMA-owned latched state rather than from a generic bus byte.
+- The DMG-family power-on `RealBoot` baseline seeds that DMA-owned `FF46` source-page latch to `0xFF`, matching `gbmicrotest/boot/poweron_dma_000.gb`; this startup value must not start an OAM DMA transfer by itself.
 - Internal debug state for DMA may exist separately, but it must not replace explicit in-flight transfer state or the MMIO-owned register view.
 
 ## Timing / accuracy requirements

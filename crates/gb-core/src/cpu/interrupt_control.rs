@@ -106,6 +106,28 @@ impl CpuCore {
         self.accept_pending_interrupt(interrupts);
     }
 
+    pub(crate) fn evaluate_current_cycle_interrupt_requests(
+        &mut self,
+        interrupts: &mut InterruptController,
+        current_cycle_request_mask: u8,
+    ) -> Option<InterruptSource> {
+        if current_cycle_request_mask == 0 || !self.ime() || !self.can_accept_interrupt() {
+            return None;
+        }
+
+        let pending_mask =
+            interrupts.pending_mask() | (interrupts.read_ie() & current_cycle_request_mask);
+        let source = InterruptSource::highest_priority_from_mask(pending_mask)?;
+
+        // If the source was already present in IF, acknowledge it here. If it
+        // only exists as a same-cycle producer request, the machine scheduler
+        // will consume that queued request so the later aggregation phase does
+        // not re-assert a bit that the CPU has already accepted.
+        interrupts.clear(source);
+        self.begin_interrupt_service(source);
+        Some(source)
+    }
+
     pub(super) fn finish_and_request_halt(&mut self) {
         self.clear_in_flight_instruction_state();
         let ime_enabled = self.ime();

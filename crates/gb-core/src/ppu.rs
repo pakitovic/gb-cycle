@@ -54,8 +54,11 @@ const RGB555_LIGHT_GRAY: u16 = 0x5294;
 const RGB555_DARK_GRAY: u16 = 0x294A;
 const RGB555_BLACK: u16 = 0x0000;
 const DOTS_PER_SCANLINE: u16 = 456;
+const DMG_BOOT_POWER_ON_CPU_READ_DELAY_DOTS: u32 = 36;
+const DMG_BOOT_POWER_ON_MAX_DELAY_M_CYCLES: u16 = 235;
 const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 0;
+const DMG_REAL_BOOT_POWER_ON_LCD_ENABLE_INITIAL_LINE_DOT: u16 = 92;
 const LCD_REENABLE_LINE0_TOTAL_DOTS: u16 = DOTS_PER_SCANLINE - 8;
 const LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT: u16 = LCD_REENABLE_LINE0_TOTAL_DOTS - 4;
 const LCD_REENABLE_LINE0_MODE3_START_DOT: u16 = MODE2_DOTS - 8;
@@ -64,7 +67,13 @@ const LCD_REENABLE_LINE0_MODE0_RESTORE_DOT: u16 =
 const CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES: u8 = 5;
 const VISIBLE_SCANLINES: u8 = 144;
 const TOTAL_SCANLINES: u8 = 154;
-const LINE_153_LY0_DOT: u16 = 8;
+const CGB_LINE_153_LY_READ_ZERO_DOT: u16 = 8;
+const LINE_153_LY_READ_ZERO_DOT: u16 = 4;
+const LINE_153_LYC153_COMPARE_START_DOT: u16 = 4;
+const LINE_153_LYC153_COMPARE_END_DOT: u16 = 8;
+const LINE_153_LYC0_COMPARE_START_DOT: u16 = 12;
+const LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT: u16 = LINE_153_LYC0_COMPARE_START_DOT - 4;
+const LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS: u16 = 4;
 const MODE2_DOTS: u16 = 80;
 const MODE3_BASELINE_DOTS: u16 = 172;
 const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
@@ -583,6 +592,7 @@ pub struct PpuRuntimeState {
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
+    pending_interrupts_hidden_from_cpu_if: u8,
     blank_frame_active: bool,
     system_stop_active: bool,
     oam_corruption_controller: OamCorruptionController,
@@ -605,6 +615,8 @@ struct PpuRuntimeSaveState {
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
+    #[serde(default)]
+    pending_interrupts_hidden_from_cpu_if: u8,
     blank_frame_active: bool,
     system_stop_active: bool,
     oam_corruption_controller: OamCorruptionController,
@@ -626,6 +638,7 @@ impl PpuRuntimeState {
             startup_mode_latch: self.startup_mode_latch,
             stat_state: self.stat_state.clone(),
             pending_interrupts: self.pending_interrupts,
+            pending_interrupts_hidden_from_cpu_if: self.pending_interrupts_hidden_from_cpu_if,
             blank_frame_active: self.blank_frame_active,
             system_stop_active: self.system_stop_active,
             oam_corruption_controller: self.oam_corruption_controller,
@@ -646,6 +659,7 @@ impl PpuRuntimeState {
         self.startup_mode_latch = state.startup_mode_latch;
         self.stat_state = state.stat_state.clone();
         self.pending_interrupts = state.pending_interrupts;
+        self.pending_interrupts_hidden_from_cpu_if = state.pending_interrupts_hidden_from_cpu_if;
         self.blank_frame_active = state.blank_frame_active;
         self.system_stop_active = state.system_stop_active;
         self.oam_corruption_controller = state.oam_corruption_controller;
@@ -669,6 +683,7 @@ impl Default for PpuRuntimeState {
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
+            pending_interrupts_hidden_from_cpu_if: 0,
             blank_frame_active: false,
             system_stop_active: false,
             oam_corruption_controller: OamCorruptionController,
@@ -727,6 +742,8 @@ pub struct Ppu {
     cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeState,
+    #[serde(default)]
+    dmg_real_boot_power_on_lcd_enable_phase_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -758,6 +775,8 @@ pub struct PpuSaveState {
     cgb_palettes: CgbPaletteState,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeSaveState,
+    #[serde(default)]
+    dmg_real_boot_power_on_lcd_enable_phase_active: bool,
 }
 
 impl PpuSaveState {
@@ -801,6 +820,8 @@ impl Ppu {
             cgb_palettes: self.cgb_palettes.clone(),
             obj_palette_read_policy: self.obj_palette_read_policy,
             runtime: self.runtime.capture_save_state(),
+            dmg_real_boot_power_on_lcd_enable_phase_active: self
+                .dmg_real_boot_power_on_lcd_enable_phase_active,
         }
     }
 
@@ -832,6 +853,8 @@ impl Ppu {
         self.cgb_palettes = state.cgb_palettes.clone();
         self.obj_palette_read_policy = state.obj_palette_read_policy;
         self.runtime.restore_save_state(&state.runtime);
+        self.dmg_real_boot_power_on_lcd_enable_phase_active =
+            state.dmg_real_boot_power_on_lcd_enable_phase_active;
     }
 }
 

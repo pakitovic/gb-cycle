@@ -33,6 +33,65 @@ fn published_stat_line_start_falls_back_to_visible_line_hblank() {
 }
 
 #[test]
+fn published_stat_frame_start_keeps_the_line_start_hblank_fallback() {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 0;
+    ppu.line_dot = 0;
+
+    assert_eq!(ppu.access_mode_for_line_dot(0), PpuAccessMode::OamScan);
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation),
+        0x8C
+    );
+}
+
+#[test]
+fn published_stat_line0_after_vblank_wrap_lags_mode_edges_by_four_dots() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_LYC_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 153,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.advance_until_line_start(0);
+
+    ppu.line_dot = MODE2_DOTS;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x06
+    );
+
+    ppu.line_dot = MODE2_DOTS + LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x07
+    );
+
+    ppu.line_dot = MODE0_START_DOT;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x07
+    );
+
+    ppu.line_dot = MODE0_START_DOT + LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x04
+    );
+}
+
+#[test]
 fn published_stat_mode2_to_mode3_orchestrator_promotes_mode3_on_exact_boundary() {
     let mut ppu = dmg_stat_ppu(0x08);
     ppu.ly = 1;
