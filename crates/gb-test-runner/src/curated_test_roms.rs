@@ -50,6 +50,8 @@ const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 5] = [
     "gbmicrotest-dmg-extra",
     "little-things-gb-dmg-extra",
 ];
+const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
+    ["mooneye-acceptance-dmg-curated"];
 const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
@@ -716,13 +718,15 @@ pub fn update_curated_test_report(
         )?)
     };
 
-    let report_path = if suite_uses_extra_test_report(&report.suite_name) {
-        extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME))
+    let report_path = if suite_uses_status_only_test_report(&report.suite_name) {
+        None
+    } else if suite_uses_extra_test_report(&report.suite_name) {
+        Some(extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME)))
     } else {
-        standard_report_path
+        Some(standard_report_path)
     };
 
-    Ok(Some(report_path))
+    Ok(report_path)
 }
 
 fn report_suites_for_extra_flag(
@@ -731,13 +735,20 @@ fn report_suites_for_extra_flag(
 ) -> Vec<PersistedSuiteStatus> {
     suites
         .iter()
-        .filter(|suite| suite_uses_extra_test_report(&suite.suite_name) == extra_report)
+        .filter(|suite| {
+            !suite_uses_status_only_test_report(&suite.suite_name)
+                && suite_uses_extra_test_report(&suite.suite_name) == extra_report
+        })
         .cloned()
         .collect()
 }
 
 fn suite_uses_extra_test_report(suite_name: &str) -> bool {
     EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
+fn suite_uses_status_only_test_report(suite_name: &str) -> bool {
+    STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
 }
 
 fn write_markdown_report_file(
@@ -3285,6 +3296,81 @@ mod tests {
         assert!(!rendered_report.contains(&format!(
             "| blargg | halt_bug.gb | {REPORT_STATUS_FAIL_EMOJI} |"
         )));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_omits_status_only_mooneye_curated_rows_from_markdown() {
+        let workspace_root = unique_temp_dir("report-status-only-mooneye");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let manual_report = RomSuiteReport {
+            suite_name: "mooneye-dmg-acceptance-manual".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "mooneye-boot-hwio-dmgabcmgb",
+                    "mooneye/acceptance/boot_hwio-dmgABCmgb.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "mooneye-ppu-lcdon-timing-gs",
+                    "mooneye/acceptance/ppu/lcdon_timing-GS.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        update_curated_test_report(&workspace_root, &manual_report)
+            .expect("Mooneye manual report should write");
+
+        let status_only_report = RomSuiteReport {
+            suite_name: "mooneye-acceptance-dmg-curated".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "mooneye-boot-hwio-dmgabcmgb",
+                    "mooneye/acceptance/boot_hwio-dmgABCmgb.gb",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "mooneye-emulator-only-mbc1-bits-bank1",
+                    "mooneye/emulator-only/mbc1/bits_bank1.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        assert_eq!(
+            update_curated_test_report(&workspace_root, &status_only_report)
+                .expect("Mooneye status-only report should write"),
+            None
+        );
+
+        let status_root = test_rom_store_root(&workspace_root).join(TEST_ROM_STATUS_DIR_NAME);
+        let status_only_status =
+            fs::read_to_string(status_root.join("mooneye-acceptance-dmg-curated.toml"))
+                .expect("status-only Mooneye status should be readable");
+        assert!(status_only_status.contains("acceptance/boot_hwio-dmgABCmgb.gb"));
+        assert!(status_only_status.contains("emulator-only/mbc1/bits_bank1.gb"));
+
+        let rendered_report = fs::read_to_string(
+            test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME),
+        )
+        .expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (2/2)\n"));
+        assert_eq!(
+            rendered_report
+                .matches("| mooneye | acceptance/boot_hwio-dmgABCmgb.gb |")
+                .count(),
+            1
+        );
+        assert!(rendered_report.contains(&format!(
+            "| mooneye | acceptance/ppu/lcdon_timing-GS.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered_report.contains("emulator-only/mbc1/bits_bank1.gb"));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
