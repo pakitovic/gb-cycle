@@ -2899,6 +2899,19 @@ fn audio_queue_pacing_correction_with_policy(
     Duration::from_secs_f64(correction_ms / 1_000.0)
 }
 
+fn host_audio_capture_due_for_t_cycle(
+    speed_mode: CgbSpeedMode,
+    scheduler_t_cycle: u64,
+    cpu_execution_state: CpuExecutionState,
+) -> bool {
+    !matches!(
+        cpu_execution_state,
+        CpuExecutionState::Stopped
+            | CpuExecutionState::ZombieStopped
+            | CpuExecutionState::SpeedSwitchPause { .. }
+    ) && speed_mode.apu_tick_due_at_scheduler_t_cycle(scheduler_t_cycle)
+}
+
 #[derive(Debug)]
 struct FramePerformanceSample {
     session_kind: EmulationProfileSessionKind,
@@ -6516,6 +6529,7 @@ fn step_until_next_frame(
         }
 
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
+            let scheduler_t_cycle = context.machine.next_t_cycle().get();
             context.machine.step_t_cycle();
             stepped_t_cycles += 1;
             drain_printed_pages_into_printer_output(
@@ -6555,11 +6569,21 @@ fn step_until_next_frame(
                 .cpu_window_trace
                 .record_t_cycle(audio_source_machine(context.machine));
 
-            if let Some(audio_output) = &mut context.runtime.audio_output {
-                audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
-            }
-            if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
-                audio_recorder.capture_t_cycle(audio_source_machine(context.machine).apu());
+            let host_audio_capture_due = {
+                let audio_machine = audio_source_machine(context.machine);
+                host_audio_capture_due_for_t_cycle(
+                    audio_machine.speed().current_speed(),
+                    scheduler_t_cycle,
+                    audio_machine.cpu().execution_state(),
+                )
+            };
+            if host_audio_capture_due {
+                if let Some(audio_output) = &mut context.runtime.audio_output {
+                    audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
+                }
+                if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                    audio_recorder.capture_t_cycle(audio_source_machine(context.machine).apu());
+                }
             }
 
             let rumble_result =
@@ -11483,14 +11507,14 @@ mod tests {
     use gb_core::{
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
-        ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, BootRomKind,
-        CartridgeDiagnostic, CartridgeDiagnosticSeverity, CgbSpeedMode, ConsoleModel,
-        CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
-        CpuBusActivitySnapshot, CpuExecutionState, Dmg07Port, ExecutionMode,
-        ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot, JoypadButton, JoypadSnapshot,
-        JoypadStatus, LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion,
-        PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource, PpuStepRegion,
-        PpuVisibleOutputState, PrinterCommand, SerialTickTelemetry, StartupMode,
+        ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
+        ApuSampleCapture, BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+        CgbSpeedMode, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
+        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
+        Dmg07Port, ExecutionMode, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
+        JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine, MachineConfig,
+        MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource,
+        PpuStepRegion, PpuVisibleOutputState, PrinterCommand, SerialTickTelemetry, StartupMode,
         TraceSummaryBuffer,
     };
     use gb_desktop::{
@@ -12966,6 +12990,76 @@ mod tests {
             super::audio_queue_pacing_correction_with_policy(Some(2_000.0), false),
             Duration::ZERO
         );
+    }
+
+    #[test]
+    fn host_audio_capture_uses_undoubled_cgb_apu_domain() {
+        assert!(super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Normal,
+            0,
+            CpuExecutionState::FetchOpcode { t_cycle: 0 },
+        ));
+        assert!(super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Normal,
+            1,
+            CpuExecutionState::FetchOpcode { t_cycle: 0 },
+        ));
+        assert!(super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Double,
+            0,
+            CpuExecutionState::FetchOpcode { t_cycle: 0 },
+        ));
+        assert!(!super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Double,
+            1,
+            CpuExecutionState::FetchOpcode { t_cycle: 0 },
+        ));
+        assert!(!super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Double,
+            0,
+            CpuExecutionState::Stopped,
+        ));
+        assert!(!super::host_audio_capture_due_for_t_cycle(
+            CgbSpeedMode::Double,
+            0,
+            CpuExecutionState::SpeedSwitchPause {
+                remaining_t_cycles: 1,
+            },
+        ));
+    }
+
+    #[test]
+    fn cgb_double_speed_host_audio_captures_one_video_frame_of_samples() {
+        fn captured_samples_for_scheduler_t_cycles(
+            speed_mode: CgbSpeedMode,
+            scheduler_t_cycles: u64,
+        ) -> usize {
+            let apu = Apu::new(ConsoleModel::GameBoyColor);
+            let mut capture = ApuSampleCapture::new(48_000).expect("valid sample rate");
+            for scheduler_t_cycle in 0..scheduler_t_cycles {
+                if super::host_audio_capture_due_for_t_cycle(
+                    speed_mode,
+                    scheduler_t_cycle,
+                    CpuExecutionState::FetchOpcode { t_cycle: 0 },
+                ) {
+                    capture.record_t_cycle(&apu);
+                }
+            }
+            let mut samples = Vec::new();
+            capture.drain_samples_into(&mut samples);
+            samples.len()
+        }
+
+        let normal_speed_samples =
+            captured_samples_for_scheduler_t_cycles(CgbSpeedMode::Normal, 70_224);
+        let double_speed_samples =
+            captured_samples_for_scheduler_t_cycles(CgbSpeedMode::Double, 140_448);
+        let ungated_double_speed_samples =
+            captured_samples_for_scheduler_t_cycles(CgbSpeedMode::Normal, 140_448);
+
+        assert!(normal_speed_samples > 0);
+        assert_eq!(double_speed_samples, normal_speed_samples);
+        assert!(ungated_double_speed_samples >= normal_speed_samples * 2 - 1);
     }
 
     #[test]

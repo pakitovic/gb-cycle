@@ -36,6 +36,8 @@ When a ROM is already loaded, `SYSTEM -> MODE` rebuilds the session under the ne
 
 Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-core`, so the desktop frontend only performs final host-side `f32` normalization and SDL3 queueing instead of owning APU semantics.
 
+In CGB double-speed, desktop playback and recording capture that host-facing boundary only on the undoubled APU/LCD domain tick, not on every CPU-visible scheduler T-cycle, so a double-speed video frame enqueues roughly one frame of host audio instead of two.
+
 ## Audio investigation
 
 - Use `--audio-record path/to/capture.wav` to export direct digital stereo APU output to `WAV` or `AIFC` without going through speakers, room acoustics, the macOS microphone path, or the frontend mute/volume controls.
@@ -53,7 +55,7 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - Set `GB_CYCLE_DESKTOP_AUDIO_DISABLE_PACING_CORRECTION=1` to keep PR45 audio submit and queue behavior but remove the extra frame sleep derived from queued audio backlog, so host-side slowdown can be compared against the exact same `gb-desktop` build without switching branches.
 - Both modes record stream pause/resume, queue clears, capture resets, mute, and volume changes so you can rule out host-side queue starvation or queue clears while reproducing a commercial-ROM audio issue in `gb-desktop`; they do not change APU timing or host audio policy.
 - Steady-state frame pacing remains active even when renderer `vsync` is enabled, and applies a host-side correction from the current queued audio duration so normal gameplay converges toward roughly `100 ms` of queued audio instead of drifting upward when SDL presentation timing is loose.
-- Automatic SDL queue clears remain a final emergency recovery path for catastrophic multi-second backlog, not the normal steady-state audio policy.
+- Automatic SDL queue clears remain a final emergency recovery path for oversized byte queues or repeated high-latency queues above roughly half a second, not the normal steady-state audio policy.
 
 ## Core trace capture
 

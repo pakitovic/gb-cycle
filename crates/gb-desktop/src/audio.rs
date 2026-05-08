@@ -15,6 +15,8 @@ const AUDIO_CHANNEL_COUNT: i32 = 2;
 const BYTES_PER_F32_SAMPLE: i32 = size_of::<f32>() as i32;
 const OVERSIZED_QUEUE_CLEAR_BUFFER_MULTIPLIER: i32 = 192;
 const OVERSIZED_QUEUE_CLEAR_STREAK: u8 = 3;
+const LATENCY_QUEUE_CLEAR_MS: f64 = 500.0;
+const LATENCY_QUEUE_CLEAR_STREAK: u8 = 3;
 pub(crate) const DESKTOP_AUDIO_LOG_ENV_VAR: &str = "GB_CYCLE_DESKTOP_AUDIO_LOG";
 pub(crate) const DESKTOP_AUDIO_DISABLE_AUTO_CLEAR_ENV_VAR: &str =
     "GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR";
@@ -55,6 +57,7 @@ pub struct DesktopAudioOutput {
     auto_queue_clear_enabled: bool,
     max_queued_bytes: i32,
     oversized_queue_streak: u8,
+    latency_queue_streak: u8,
     captured_t_cycles_since_submit: usize,
     telemetry: AudioTelemetry,
     last_submit_telemetry: Option<AudioSubmitTelemetry>,
@@ -221,6 +224,7 @@ impl DesktopAudioOutput {
                 * BYTES_PER_F32_SAMPLE
                 * OVERSIZED_QUEUE_CLEAR_BUFFER_MULTIPLIER,
             oversized_queue_streak: 0,
+            latency_queue_streak: 0,
             captured_t_cycles_since_submit: 0,
             telemetry: AudioTelemetry::from_env(),
             last_submit_telemetry: None,
@@ -297,6 +301,40 @@ impl DesktopAudioOutput {
             }
         } else {
             self.oversized_queue_streak = 0;
+        }
+        if !cleared_queue {
+            let latency_queue_oversized =
+                queued_ms_before.is_some_and(|queued_ms| queued_ms > LATENCY_QUEUE_CLEAR_MS);
+            if latency_queue_oversized {
+                if self.latency_queue_streak < LATENCY_QUEUE_CLEAR_STREAK {
+                    self.latency_queue_streak += 1;
+                }
+                if self.auto_queue_clear_enabled
+                    && self.latency_queue_streak >= LATENCY_QUEUE_CLEAR_STREAK
+                {
+                    self.clear_stream("latency-queue", Some(queued_bytes))?;
+                    self.latency_queue_streak = 0;
+                    cleared_queue = true;
+                } else if !self.auto_queue_clear_enabled
+                    && self.latency_queue_streak == LATENCY_QUEUE_CLEAR_STREAK
+                {
+                    self.telemetry.log_event(
+                        "latency-queue-observed",
+                        format!(
+                            "queued_before_bytes={} queued_before_ms={} muted={} volume_percent={} auto_queue_clear_enabled={}",
+                            queued_bytes,
+                            format_optional_ms(queued_ms_before),
+                            self.muted,
+                            self.volume_percent,
+                            self.auto_queue_clear_enabled,
+                        ),
+                    );
+                }
+            } else {
+                self.latency_queue_streak = 0;
+            }
+        } else {
+            self.latency_queue_streak = 0;
         }
         let sample_count = self.captured_samples.len();
         let enqueued_ms = self.sample_frames_duration_ms(sample_count);
@@ -391,6 +429,7 @@ impl DesktopAudioOutput {
             format!("muted={muted} volume_percent={}", self.volume_percent),
         );
         self.oversized_queue_streak = 0;
+        self.latency_queue_streak = 0;
         self.clear_stream("mute-toggle", None)
     }
 
@@ -410,6 +449,7 @@ impl DesktopAudioOutput {
             ),
         );
         self.oversized_queue_streak = 0;
+        self.latency_queue_streak = 0;
         self.clear_stream("volume-change", None)
     }
 
@@ -422,6 +462,7 @@ impl DesktopAudioOutput {
             masked_mix_hpf.reset();
         }
         self.oversized_queue_streak = 0;
+        self.latency_queue_streak = 0;
         self.captured_t_cycles_since_submit = 0;
         self.telemetry.log_event(
             "capture-reset",
@@ -520,7 +561,7 @@ impl DesktopAudioOutput {
         self.telemetry.log_event(
             "stream-clear",
             format!(
-                "reason={reason} clear_count={} queued_before_bytes={} queued_before_ms={} muted={} volume_percent={} oversized_queue_streak={}",
+                "reason={reason} clear_count={} queued_before_bytes={} queued_before_ms={} muted={} volume_percent={} oversized_queue_streak={} latency_queue_streak={}",
                 self.telemetry.record_queue_clear(),
                 format_optional_i32(queued_bytes_before),
                 format_optional_ms(
@@ -529,6 +570,7 @@ impl DesktopAudioOutput {
                 self.muted,
                 self.volume_percent,
                 self.oversized_queue_streak,
+                self.latency_queue_streak,
             ),
         );
         Ok(())
@@ -614,6 +656,16 @@ mod tests {
         while output.capture.pending_sample_count() == pending_before {
             output.capture.record_output_t_cycle(sample);
         }
+    }
+
+    fn queue_silence_ms(output: &DesktopAudioOutput, duration_ms: f64) {
+        let sample_frames =
+            (duration_ms * f64::from(output.output_sample_rate_hz) / 1_000.0).ceil() as usize;
+        let interleaved_silence = vec![0.0; sample_frames * AUDIO_CHANNEL_COUNT as usize];
+        output
+            .stream
+            .put_data_f32(&interleaved_silence)
+            .expect("dummy stream should accept queued silence");
     }
 
     fn configure_constant_ch1_output(apu: &mut Apu) {
@@ -740,6 +792,40 @@ mod tests {
 
         assert_eq!(output.telemetry.queue_clear_count.get(), 0);
         assert_eq!(output.oversized_queue_streak, OVERSIZED_QUEUE_CLEAR_STREAK);
+    }
+
+    #[test]
+    fn desktop_audio_output_clears_high_latency_queue_after_streak() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::GameBoy)
+                .expect("audio output");
+        output.pause().expect("pause");
+        output.max_queued_bytes = i32::MAX;
+
+        for streak in 1..=super::LATENCY_QUEUE_CLEAR_STREAK {
+            queue_silence_ms(&output, super::LATENCY_QUEUE_CLEAR_MS + 50.0);
+            push_captured_sample(
+                &mut output,
+                ApuHostSample {
+                    left: APU_HOST_MAX_ABS_SAMPLE,
+                    right: APU_HOST_MAX_ABS_SAMPLE,
+                },
+            );
+            output
+                .submit_captured_samples()
+                .expect("submit_captured_samples should recover high-latency queues");
+            let expected_streak = if streak == super::LATENCY_QUEUE_CLEAR_STREAK {
+                0
+            } else {
+                streak
+            };
+            assert_eq!(output.latency_queue_streak, expected_streak);
+            assert_eq!(output.oversized_queue_streak, 0);
+        }
+
+        assert_eq!(output.telemetry.queue_clear_count.get(), 1);
     }
 
     #[test]
