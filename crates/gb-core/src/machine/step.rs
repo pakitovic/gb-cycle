@@ -11,7 +11,7 @@ use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::{DmaController, VramDmaRuntimeContext};
-use crate::external_port::ExternalPort;
+use crate::external_port::{ExternalPort, ExternalPortAttachmentKind};
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::model::{MachineConfig, StartupMode};
@@ -442,7 +442,15 @@ impl MachinePhaseRunner<'_> {
                     observer,
                 );
             }
-            if self.serial.requires_full_t_cycle_tick()
+            if self.external_port.attachment_kind() == ExternalPortAttachmentKind::None
+                && self.serial.external_wait_without_pending_clock()
+            {
+                let serial_telemetry =
+                    observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                        self.serial.tick_external_wait_t_cycle()
+                    });
+                observer.record_serial_tick(serial_telemetry);
+            } else if self.serial.requires_full_t_cycle_tick()
                 || self.external_port.requires_t_cycle_tick()
             {
                 let serial_telemetry =

@@ -178,6 +178,7 @@ fn external_transfer_without_pending_pulse_reports_wait_tick_without_shift() {
         SerialTickTelemetry {
             active_t_cycles: 1,
             external_ticks: 1,
+            external_wait_ticks: 1,
             ..Default::default()
         }
     );
@@ -186,6 +187,67 @@ fn external_transfer_without_pending_pulse_reports_wait_tick_without_shift() {
     assert_eq!(
         serial.transfer_state(),
         SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+    assert!(context.interrupt_requests().is_empty());
+}
+
+#[test]
+fn external_wait_fast_path_matches_full_tick_for_long_windows() {
+    for ticks in [1_u64, 512, 140_448] {
+        let mut fast = Serial::new(ConsoleModel::GameBoyColor);
+        fast.apply_startup_state(
+            SerialStartupState::from_registers(0xA5, 0x80).with_clock_counter(0xFF00),
+        );
+        fast.set_peer(SerialPeer::StagedIncomingByte { byte: 0x5A });
+        let mut full = fast.clone();
+        let mut full_context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+        let mut fast_telemetry = SerialTickTelemetry::default();
+        let mut full_telemetry = SerialTickTelemetry::default();
+
+        for _ in 0..ticks {
+            assert!(fast.external_wait_without_pending_clock());
+            fast_telemetry.accumulate(fast.tick_external_wait_t_cycle());
+            full_telemetry
+                .accumulate(full.tick_t_cycle_for_speed(&mut full_context, CgbSpeedMode::Double));
+        }
+
+        assert_eq!(
+            fast, full,
+            "external wait fast path diverged after {ticks} T-cycles"
+        );
+        assert_eq!(fast_telemetry, full_telemetry);
+        assert_eq!(fast_telemetry.active_t_cycles, ticks);
+        assert_eq!(fast_telemetry.external_ticks, ticks);
+        assert_eq!(fast_telemetry.external_wait_ticks, ticks);
+        assert_eq!(fast_telemetry.shift_edges, 0);
+        assert!(full_context.interrupt_requests().is_empty());
+    }
+}
+
+#[test]
+fn external_transfer_with_pending_pulse_reports_shift_edge_not_wait_tick() {
+    let mut serial = Serial::new(ConsoleModel::GameBoy);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    serial.write_sb(0x81);
+    serial.write_sc(0x80);
+
+    assert!(serial.queue_external_clock_pulse());
+    let telemetry = serial.tick_t_cycle(&mut context);
+
+    assert_eq!(
+        telemetry,
+        SerialTickTelemetry {
+            active_t_cycles: 1,
+            external_ticks: 1,
+            shift_edges: 1,
+            ..Default::default()
+        }
+    );
+    assert_eq!(serial.read_sb(), 0x03);
+    assert_eq!(
+        serial.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
     );
     assert!(context.interrupt_requests().is_empty());
 }

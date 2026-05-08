@@ -49,6 +49,7 @@ pub struct SerialTickTelemetry {
     pub active_t_cycles: u64,
     pub internal_ticks: u64,
     pub external_ticks: u64,
+    pub external_wait_ticks: u64,
     pub shift_edges: u64,
     pub completed_bytes: u64,
     pub external_port_ticks: u64,
@@ -61,6 +62,7 @@ impl SerialTickTelemetry {
             active_t_cycles: 0,
             internal_ticks: 0,
             external_ticks: 0,
+            external_wait_ticks: 0,
             shift_edges: 0,
             completed_bytes: 0,
         }
@@ -70,6 +72,9 @@ impl SerialTickTelemetry {
         self.active_t_cycles = self.active_t_cycles.saturating_add(other.active_t_cycles);
         self.internal_ticks = self.internal_ticks.saturating_add(other.internal_ticks);
         self.external_ticks = self.external_ticks.saturating_add(other.external_ticks);
+        self.external_wait_ticks = self
+            .external_wait_ticks
+            .saturating_add(other.external_wait_ticks);
         self.shift_edges = self.shift_edges.saturating_add(other.shift_edges);
         self.completed_bytes = self.completed_bytes.saturating_add(other.completed_bytes);
         self.external_port_ticks = self
@@ -362,6 +367,28 @@ impl Serial {
         ) || self.external_clock_pulses_pending != 0
     }
 
+    pub(crate) fn external_wait_without_pending_clock(&self) -> bool {
+        self.clock_mode == SerialClockMode::External
+            && matches!(
+                self.transfer_state,
+                SerialTransferState::TransferRequested { .. }
+            )
+            && self.external_clock_pulses_pending == 0
+    }
+
+    pub(crate) fn tick_external_wait_t_cycle(&mut self) -> SerialTickTelemetry {
+        debug_assert!(self.external_wait_without_pending_clock());
+
+        self.latest_completed_output_byte = None;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
+        SerialTickTelemetry {
+            active_t_cycles: 1,
+            external_ticks: 1,
+            external_wait_ticks: 1,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn tick_idle_t_cycle(&mut self) {
         self.latest_completed_output_byte = None;
         self.clock_counter = self.clock_counter.wrapping_add(1);
@@ -451,6 +478,8 @@ impl Serial {
                     if self.shift_one_bit(context) {
                         telemetry.completed_bytes = 1;
                     }
+                } else {
+                    telemetry.external_wait_ticks = 1;
                 }
             }
         }
