@@ -273,7 +273,8 @@ impl Ppu {
             && !self.dmg_stat_write_quirk_blocks_line153_lyc0()
             && self.ly == TOTAL_SCANLINES - 1
             && self.lyc == 0
-            && self.line_dot == LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+            && (LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT..LINE_153_LYC0_COMPARE_START_DOT)
+                .contains(&self.line_dot)
     }
 
     fn dmg_stat_write_quirk_blocks_line153_lyc0_stat_source(&self) -> bool {
