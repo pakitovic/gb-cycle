@@ -26,6 +26,14 @@ Local `DMG-07` 4-Player Adapter sessions are selected from the overlay at runtim
 
 Use `--release` for normal gameplay and timing-sensitive validation. Unoptimized `debug` builds are intended for development and may run well below real-time on commercial games.
 
+Use the workspace `release-max` profile when a slower compile/link step is acceptable for a more optimized desktop binary:
+
+```bash
+cargo run --profile release-max -p gb-desktop -- [path/to/rom.gb]
+```
+
+`release-max` enables fat LTO, a single codegen unit, symbol stripping, and abort-on-panic behavior. Keep plain `--release` as the default interactive build when shorter build times, portable diagnostics, or panic unwinding are more useful than final-binary optimization.
+
 ## Core emulation
 
 Reuses the same visible console model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`. `SYSTEM -> MODEL` selects the product model (`GAME BOY`, `POCKET`, `LIGHT`, `COLOR`), while `BOOT ROM -> ROM` selects the concrete firmware image used only by `RealBoot`; if the selected firmware is invalid for the model, the desktop configuration normalizes it back to that model's default.
