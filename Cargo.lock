@@ -328,6 +328,7 @@ version = "0.1.0"
 dependencies = [
  "gb-core",
  "png",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

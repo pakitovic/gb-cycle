@@ -33,6 +33,7 @@ struct RomSuiteCliOptions {
     case_id: Option<String>,
     failure_artifact_root: Option<PathBuf>,
     timeout_override: Option<Timeout>,
+    threads: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +49,8 @@ pub fn rom_suite_cli_help_text() -> &'static str {
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --list\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist\n",
-        "  cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite-name> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
-        "  cargo run -p gb-test-runner --bin run_rom_suite -- --manifest <path> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
+        "  cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite-name> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>] [--threads <n>]\n",
+        "  cargo run -p gb-test-runner --bin run_rom_suite -- --manifest <path> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>] [--threads <n>]\n",
     )
 }
 
@@ -91,6 +92,7 @@ where
     let mut case_id = None;
     let mut failure_artifact_root = None;
     let mut timeout_override = None;
+    let mut threads = None;
 
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
@@ -143,6 +145,18 @@ where
                 })?;
                 timeout_override = Some(Timeout::TCycles(parsed));
             }
+            "--threads" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--threads requires a value".to_string());
+                };
+                let parsed = value.as_ref().parse::<usize>().map_err(|error| {
+                    format!("invalid --threads value {:?}: {error}", value.as_ref())
+                })?;
+                if parsed == 0 {
+                    return Err("--threads value must be greater than zero".to_string());
+                }
+                threads = Some(parsed);
+            }
             "--list" => return Ok(RomSuiteCliAction::ListSuites),
             "--list-detailed" => return Ok(RomSuiteCliAction::ListSuitesDetailed),
             "--early-checklist" => return Ok(RomSuiteCliAction::ShowEarlyChecklist),
@@ -172,6 +186,7 @@ where
         case_id,
         failure_artifact_root,
         timeout_override,
+        threads,
     }))
 }
 
@@ -187,6 +202,13 @@ fn run_selected_suite<W: Write>(
         for case in &mut suite.cases {
             case.timeout = timeout_override;
         }
+    }
+
+    if let Some(threads) = options.threads {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build_global()
+            .map_err(|error| format!("failed to configure rayon thread pool: {error}"))?;
     }
 
     let mut runner = runner;
@@ -802,6 +824,7 @@ mod tests {
                 case_id: Some("phase2-fetch-immediate-order".to_string()),
                 failure_artifact_root: Some(PathBuf::from("/tmp/artifacts")),
                 timeout_override: Some(crate::Timeout::TCycles(1234)),
+                threads: None,
             })
         );
         assert_eq!(
@@ -814,6 +837,7 @@ mod tests {
                 case_id: None,
                 failure_artifact_root: None,
                 timeout_override: None,
+                threads: None,
             })
         );
     }
@@ -840,6 +864,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_arguments_accepts_explicit_threads_count() {
+        assert_eq!(
+            parse_rom_suite_arguments(["--suite", "phase-2-cpu-timing", "--threads", "4"])
+                .expect("explicit threads should parse"),
+            RomSuiteCliAction::Run(RomSuiteCliOptions {
+                target: RomSuiteCliTarget::BuiltIn {
+                    suite_name: "phase-2-cpu-timing".to_string(),
+                },
+                case_id: None,
+                failure_artifact_root: None,
+                timeout_override: None,
+                threads: Some(4),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_arguments_rejects_missing_and_invalid_threads_values() {
+        let missing_value =
+            parse_rom_suite_arguments(["--suite", "phase-2-cpu-timing", "--threads"])
+                .expect_err("missing threads value should be rejected");
+        assert!(missing_value.contains("--threads requires a value"));
+
+        let invalid_value =
+            parse_rom_suite_arguments(["--suite", "phase-2-cpu-timing", "--threads", "NaN"])
+                .expect_err("invalid threads value should be rejected");
+        assert!(invalid_value.contains("invalid --threads value"));
+
+        let zero_value =
+            parse_rom_suite_arguments(["--suite", "phase-2-cpu-timing", "--threads", "0"])
+                .expect_err("zero threads should be rejected");
+        assert!(zero_value.contains("greater than zero"));
+    }
+
+    #[test]
     fn select_suite_rejects_unknown_suites_and_unknown_cases() {
         let unknown_suite = select_suite_for_options(&RomSuiteCliOptions {
             target: RomSuiteCliTarget::BuiltIn {
@@ -848,6 +907,7 @@ mod tests {
             case_id: None,
             failure_artifact_root: None,
             timeout_override: None,
+            threads: None,
         })
         .expect_err("unknown suite should be rejected");
         assert!(unknown_suite.contains("unknown suite"));
@@ -859,6 +919,7 @@ mod tests {
             case_id: Some("missing-case".to_string()),
             failure_artifact_root: None,
             timeout_override: None,
+            threads: None,
         })
         .expect_err("unknown case should be rejected");
         assert!(unknown_case.contains("does not contain case"));
@@ -873,6 +934,7 @@ mod tests {
             case_id: Some("dmg-acid2".to_string()),
             failure_artifact_root: None,
             timeout_override: None,
+            threads: None,
         })
         .expect("known curated case should be selectable");
 
