@@ -41,6 +41,7 @@ use gb_core::{
     CpuSnapshot, ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
     MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
+use rayon::prelude::*;
 
 pub use boot_rom_verification::{
     BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
@@ -1811,10 +1812,11 @@ impl RomRunner {
     pub fn run_suite(&self, suite: &RomSuite) -> Result<RomSuiteReport, RomExecutionError> {
         suite.validate().map_err(RomExecutionError::InvalidSuite)?;
 
-        let mut case_reports = Vec::with_capacity(suite.cases.len());
-        for case in &suite.cases {
-            case_reports.push(self.run_case(case)?);
-        }
+        let case_reports: Vec<RomCaseReport> = suite
+            .cases
+            .par_iter()
+            .map(|case| self.run_case(case))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(RomSuiteReport {
             suite_name: suite.name.clone(),
