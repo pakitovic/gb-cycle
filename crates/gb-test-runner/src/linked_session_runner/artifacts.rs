@@ -5,6 +5,7 @@ use super::{
     LinkedSessionExecutionError, LinkedSessionParticipantArtifacts, LinkedSessionRunner,
     RunnerLinkedMachines,
 };
+use crate::framebuffer_oracle::{convert_pgm_to_png, encode_framebuffer_pgm};
 
 pub(super) struct LinkedSessionRunArtifacts {
     pub(super) session: LinkedSessionCapturedArtifacts,
@@ -24,12 +25,18 @@ impl LinkedSessionRunner {
         let capture_snapshot = session
             .capture_plan
             .contains(LinkedSessionCaptureKind::Snapshot);
+        let capture_framebuffer = session
+            .capture_plan
+            .contains(LinkedSessionCaptureKind::Framebuffer);
 
         let mut participants = Vec::with_capacity(session.participants.len());
         for (participant_index, bytes) in serial_bytes.iter().enumerate() {
             participants.push(LinkedSessionParticipantArtifacts {
                 serial: String::from_utf8_lossy(bytes).into_owned(),
                 serial_hex: crate::encode_bytes_as_upper_hex(bytes),
+                framebuffer_pgm: capture_framebuffer.then(|| {
+                    encode_framebuffer_pgm(linked.participant_framebuffer(participant_index))
+                }),
                 trace_text: capture_trace
                     .then(|| linked.participant_trace_text(participant_index))
                     .flatten(),
@@ -98,6 +105,46 @@ impl LinkedSessionRunner {
                             "write participant serial hex artifact",
                             &mut written_paths,
                         )?;
+                    }
+                }
+                LinkedSessionCaptureKind::Framebuffer => {
+                    for (participant_index, participant) in session.participants.iter().enumerate()
+                    {
+                        let Some(framebuffer_pgm) =
+                            &artifacts.participants[participant_index].framebuffer_pgm
+                        else {
+                            continue;
+                        };
+                        let png_path =
+                            session_dir.join(format!("{}_framebuffer.png", participant.id));
+                        let framebuffer_png =
+                            convert_pgm_to_png(framebuffer_pgm).map_err(|error| {
+                                let path = error.path.clone();
+                                LinkedSessionExecutionError::FileOperation {
+                                    path,
+                                    operation: "decode participant framebuffer artifact",
+                                    source: Box::new(error.into_invalid_data_error()),
+                                }
+                            })?;
+                        fs::write(&png_path, framebuffer_png).map_err(|source| {
+                            LinkedSessionExecutionError::FileOperation {
+                                path: png_path.clone(),
+                                operation: "write participant framebuffer artifact",
+                                source: Box::new(source),
+                            }
+                        })?;
+                        written_paths.push(png_path);
+
+                        let pgm_path =
+                            session_dir.join(format!("{}_framebuffer.pgm", participant.id));
+                        fs::write(&pgm_path, framebuffer_pgm).map_err(|source| {
+                            LinkedSessionExecutionError::FileOperation {
+                                path: pgm_path.clone(),
+                                operation: "write participant framebuffer PGM artifact",
+                                source: Box::new(source),
+                            }
+                        })?;
+                        written_paths.push(pgm_path);
                     }
                 }
                 LinkedSessionCaptureKind::Trace => {

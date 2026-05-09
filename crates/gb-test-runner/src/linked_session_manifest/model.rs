@@ -84,6 +84,7 @@ pub enum LinkedSessionCaptureKind {
     Trace,
     Snapshot,
     ParticipantSerialHex,
+    Framebuffer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +103,12 @@ pub enum LinkedSessionPassCondition {
         participant_id: String,
         fixture_path: PathBuf,
     },
+    ParticipantFramebufferFixtureUntilMatch {
+        participant_id: String,
+        fixture_path: PathBuf,
+        check_interval_tcycles: u64,
+        check_at_tcycles: Option<u64>,
+    },
     Informational(LinkedSessionCaptureKind),
 }
 
@@ -115,6 +122,9 @@ impl LinkedSessionPassCondition {
             }
             Self::ParticipantTraceFixture { .. } => LinkedSessionCaptureKind::Trace,
             Self::ParticipantSnapshotFixture { .. } => LinkedSessionCaptureKind::Snapshot,
+            Self::ParticipantFramebufferFixtureUntilMatch { .. } => {
+                LinkedSessionCaptureKind::Framebuffer
+            }
             Self::Informational(capture) => *capture,
         }
     }
@@ -258,6 +268,7 @@ pub enum LinkedSessionCaseValidationError {
     MissingRequiredFailureArtifact(LinkedSessionCaptureKind),
     ArtifactNotCaptured(LinkedSessionCaptureKind),
     MissingFailureArtifacts,
+    InvalidFramebufferCheckInterval,
     UnsupportedTopologyParticipantCount {
         topology: LinkedSessionTopology,
         count: usize,

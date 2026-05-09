@@ -80,6 +80,17 @@ fn built_in_linked_session_participants_declare_console_explicitly() {
 }
 
 #[test]
+fn built_in_linked_session_manifests_load_cleanly() {
+    let workspace_root = default_workspace_root();
+
+    for (suite_name, manifest_path) in built_in_linked_session_suite_catalog() {
+        let source_path = workspace_root.join(&manifest_path);
+        load_linked_session_suite_manifest(&source_path)
+            .unwrap_or_else(|error| panic!("failed to load built-in suite {suite_name}: {error}"));
+    }
+}
+
+#[test]
 fn linked_session_manifest_defaults_to_trace_info_and_resolves_relative_rom_paths() {
     let workspace = unique_temp_dir("defaults");
     let left_rom = workspace.join("roms").join("left.gb");
@@ -475,6 +486,72 @@ fixture = "{}"
         session
             .failure_artifacts
             .contains(LinkedSessionCaptureKind::Trace)
+    );
+    assert!(
+        session
+            .capture_plan
+            .contains(LinkedSessionCaptureKind::Snapshot)
+    );
+}
+
+#[test]
+fn linked_session_manifest_supports_participant_scoped_framebuffer_until_match_oracles() {
+    let workspace = unique_temp_dir("participant-framebuffer-fixture");
+    fs::create_dir_all(&workspace).expect("workspace should be creatable");
+    let fixture_path = workspace.join("left.pgm");
+    fs::write(&fixture_path, b"P5\n160 144\n255\n").expect("fixture should be writable");
+    let manifest_path = write_manifest(
+        &workspace,
+        "participant-framebuffer-fixture.toml",
+        &format!(
+            r#"
+version = 1
+suite_name = "participant-framebuffer-fixture"
+subsystem = "ppu"
+
+[[session]]
+id = "dmg04-framebuffer-expectation"
+topology = "dmg04"
+timeout_tcycles = 4096
+oracle = "linked-participant-framebuffer-fixture-until-match"
+target_participant = "right"
+fixture = "{}"
+check_interval_tcycles = 256
+check_at_tcycles = 1024
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+            fixture_path.display()
+        ),
+    );
+
+    let suite = load_linked_session_suite_manifest(&manifest_path)
+        .expect("participant framebuffer fixture manifest should load cleanly");
+    let session = &suite.sessions[0];
+    assert_eq!(
+        session.pass_condition,
+        LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+            participant_id: "right".to_string(),
+            fixture_path,
+            check_interval_tcycles: 256,
+            check_at_tcycles: Some(1024),
+        }
+    );
+    assert!(
+        session
+            .capture_plan
+            .contains(LinkedSessionCaptureKind::Framebuffer)
+    );
+    assert!(
+        session
+            .failure_artifacts
+            .contains(LinkedSessionCaptureKind::Framebuffer)
     );
     assert!(
         session

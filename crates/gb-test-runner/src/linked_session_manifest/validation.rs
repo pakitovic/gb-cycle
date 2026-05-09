@@ -46,6 +46,15 @@ impl LinkedSessionCase {
             return Err(LinkedSessionCaseValidationError::InvalidTimeout);
         }
 
+        if let LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+            check_interval_tcycles,
+            ..
+        } = &self.pass_condition
+            && *check_interval_tcycles == 0
+        {
+            return Err(LinkedSessionCaseValidationError::InvalidFramebufferCheckInterval);
+        }
+
         let required_capture = self.pass_condition.required_capture();
         if !self.capture_plan.contains(required_capture) {
             return Err(LinkedSessionCaseValidationError::MissingRequiredCapture(
@@ -148,10 +157,13 @@ impl LinkedSessionCase {
             LinkedSessionPassCondition::ParticipantSerialHexExact { participant_id, .. }
             | LinkedSessionPassCondition::ParticipantTraceFixture { participant_id, .. }
             | LinkedSessionPassCondition::ParticipantSnapshotFixture { participant_id, .. }
-                if !self
-                    .participants
-                    .iter()
-                    .any(|participant| participant.id == *participant_id) =>
+            | LinkedSessionPassCondition::ParticipantFramebufferFixtureUntilMatch {
+                participant_id,
+                ..
+            } if !self
+                .participants
+                .iter()
+                .any(|participant| participant.id == *participant_id) =>
             {
                 return Err(
                     LinkedSessionCaseValidationError::UnknownPassConditionParticipant(

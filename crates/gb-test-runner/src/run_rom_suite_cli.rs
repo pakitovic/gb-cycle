@@ -624,6 +624,9 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
             crate::CaptureKind::Snapshot => "info-snapshot",
         },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
+        crate::PassCondition::FramebufferFixtureUntilMatch { .. } => {
+            "framebuffer-fixture-until-match"
+        }
         crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
         crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
         crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
@@ -1069,6 +1072,7 @@ mod tests {
                         bytes: vec![CapturedMemoryByte {
                             address: 0xFF82,
                             expected: 0x01,
+                            fail_value: None,
                             actual: 0x56,
                         }],
                     }),
