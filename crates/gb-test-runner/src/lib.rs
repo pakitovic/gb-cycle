@@ -1921,7 +1921,7 @@ impl RomRunner {
                 }
             }
 
-            if executed_t_cycles.is_multiple_of(100_000)
+            if executed_t_cycles & 0x1FFF == 0
                 && memory_bytes_terminal(&case.pass_condition, &mut machine)
             {
                 break;
