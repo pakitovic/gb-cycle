@@ -433,11 +433,6 @@ impl Channel1SweepState {
         } else {
             raw_increment
         };
-        #[cfg(test)]
-        eprintln!(
-            "reload_done: step={} restart={} reload_pending={}",
-            step, self.restart_countdown_t_cycles, self.recalculation.reload_period_pending
-        );
         if self.restart_countdown_t_cycles == 0 {
             if step == 0 {
                 self.recalculation.instant = true;
@@ -446,11 +441,6 @@ impl Channel1SweepState {
                 self.recalculation.countdown = u16::from(step);
             }
         }
-        #[cfg(test)]
-        eprintln!(
-            "reload_done after: countdown={} instant={}",
-            self.recalculation.countdown, self.recalculation.instant
-        );
         self.recalculation.reload_period_reloaded = false;
         self.recalculation.reload_period_pending = false;
     }
