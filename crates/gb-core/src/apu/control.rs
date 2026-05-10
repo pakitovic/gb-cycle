@@ -112,6 +112,11 @@ impl Apu {
                         0
                     });
                 self.channels.mark_powered_on();
+                // DocBoy `Apu::turn_on` (apu.cpp:1029-1036) resets apu_clock=0
+                // when NR52 transitions 0 -> enabled. Mirror it so the canonical
+                // sub-cycle scheduler aligns with DocBoy's per-test ROM behavior.
+                self.apu_clock = 0;
+                self.t_cycle_phase = 0;
             }
             _ => {}
         }
