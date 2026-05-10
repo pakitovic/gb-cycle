@@ -466,23 +466,19 @@ impl Channel1SweepState {
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
-        let step = sweep_shift_from_nr10(nr10);
         // DocBoy `period_sweep_recalculation_done` (apu.cpp:1453) reloads the
         // shadow period from the live NR14:NR13 first, before recomputing the
-        // canonical signed increment. This is what allows NR13/NR14 writes
-        // landing during the recalc window to influence the next overflow
-        // check.
+        // canonical signed increment.
         let live_period =
             ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
         self.shadow_period = live_period;
-        let shadow = live_period;
-        // DocBoy `compute_period_sweep_signed_increment` returns
-        // `ch1.period_sweep.increment ^ (decrease ? 0x7FF : 0)`, where increment
-        // was last reloaded as `period >> step` (in reload_done or trigger). For
-        // step=0 that reload is `period`, so the candidate becomes `period +
-        // period (+ complement_bit)` -- the DMG glitch that disables
-        // 2*period >= 2048 channels.
-        let raw_increment = shadow >> step;
+        // DocBoy `compute_period_sweep_signed_increment` (apu.cpp:1501) returns
+        // `ch1.period_sweep.increment ^ (decrease ? 0x7FF : 0)`. The input is
+        // the persistent `period_increment` field (set at trigger or
+        // reload_done), NOT a fresh `shadow >> step`. This matters when NR10
+        // step changes between reload_done and recalc_done -- the latched
+        // increment uses the step that was active when it was last loaded.
+        let raw_increment = self.period_increment;
         let signed_increment = if sweep_decreases_from_nr10(nr10) {
             (!raw_increment) & PULSE_PERIOD_MAX
         } else {
@@ -498,7 +494,7 @@ impl Channel1SweepState {
             } else {
                 1
             };
-            let candidate = shadow
+            let candidate = live_period
                 .wrapping_add(signed_increment)
                 .wrapping_add(complement_bit);
             if candidate > PULSE_PERIOD_MAX {
