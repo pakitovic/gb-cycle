@@ -37,9 +37,10 @@ fn main() {
 
         if (last_nr52 & 0x01) == 0 && (nr52 & 0x01) != 0 && trigger_t.is_none() {
             trigger_t = Some(t_before);
+            let sys_counter = machine.timer().snapshot().system_counter;
             eprintln!(
-                "[t={}] ch1 enabled (trigger), div_apu={}",
-                t_before, div_apu
+                "[t={}] ch1 enabled (trigger), div_apu={}, sys_counter={:#x}",
+                t_before, div_apu, sys_counter
             );
             last_div_apu = div_apu;
         }
