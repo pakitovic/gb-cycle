@@ -2059,6 +2059,122 @@ fn dmg_ch1_sweep_glitch3_prev_step_zero_to_positive_ticks_countdown() {
 }
 
 #[test]
+fn dmg_ch1_sweep_glitch1_disables_channel_after_from_trigger_clears() {
+    // Glitch 1 disable path (DocBoy update_nr10 lines 1683-1688): once the
+    // post-trigger window has closed (`from_trigger=false`) and the canonical
+    // increment is loaded, a subsequent NR10 write with direction=increase uses
+    // complement_bit=1 to compute the overflow check candidate. If that
+    // candidate exceeds PULSE_PERIOD_MAX the channel is disabled inline.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0xFF, 0x87);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    // Force the post-trigger state out of the from_trigger window and load a
+    // canonical increment large enough that complement_bit=1 overflows
+    // (period 0x7FF; 0x7FF + 0x7FF + 1 = 0xFFF, > 0x7FF).
+    apu.channels.channel_1.sweep.shadow_period = 0x07FF;
+    apu.channels.channel_1.sweep.recalculation.from_trigger = false;
+    apu.channels.channel_1.sweep.recalculation.increment = 0x07FF;
+
+    apu.write_register(0xFF10, 0x10); // pace=1, increase, shift=0
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch3_countdown_reaching_zero_fires_recalculation_done() {
+    // Glitch 3 recalc_done path (DocBoy update_nr10 lines 1717-1723): with
+    // prev_step=0 and new_step>0, the recalculation countdown is decremented;
+    // when it reaches zero, recalculation_done fires synchronously. Stage a
+    // non-overflow shadow so glitch 1 does not pre-empt glitch 3.
+    let mut apu = prime_dmg_ch1_sweep_active(0x10, 0x00, 0x80);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    apu.channels.channel_1.sweep.shadow_period = 0x0000;
+    apu.channels.channel_1.sweep.recalculation.from_trigger = false;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .target_trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.countdown = 1;
+    apu.channels.channel_1.sweep.recalculation.increment = 0;
+    apu.channels.channel_1.sweep.period_increment = 0;
+
+    apu.write_register(0xFF10, 0x12); // prev_step=0, new_step=2 (decrease=0)
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 0);
+    // Channel stays active because the candidate fits within range.
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_nr13_write_in_reload_window_is_dropped() {
+    // DocBoy `update_nr13` lines 1744-1755: NR13 writes during the first
+    // M-cycle of the post-writeback reload window (reload_countdown==2 AND
+    // reload_period_reloaded) drop the value entirely and abort any pending
+    // second writeback.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0xAA, 0x85);
+    let period_before = apu.channels.channel_1.period_value();
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 2;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_pending = true;
+
+    apu.write_register(0xFF13, 0x55);
+    assert_eq!(apu.channels.channel_1.period_value(), period_before);
+    assert!(
+        !apu.channels
+            .channel_1
+            .sweep
+            .recalculation
+            .reload_period_pending
+    );
+}
+
+#[test]
+fn dmg_ch1_sweep_nr14_write_in_reload_window_drops_period_high_bits() {
+    // DocBoy `update_nr14` lines 1762-1768: NR14 writes during the first
+    // M-cycle of the reload window keep the existing period_high while
+    // honoring the trigger / length bits of the new value.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
+    let period_before = apu.channels.channel_1.period_value();
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 2;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+
+    // Write trigger=0, length=0, period_high=2 (would change period high to 2).
+    apu.write_register(0xFF14, 0x02);
+    // period_high bits remain unchanged thanks to the glitch mask.
+    assert_eq!(apu.channels.channel_1.period_value(), period_before);
+}
+
+#[test]
+fn dmg_ch1_sweep_nr14_non_trigger_in_reload_window_re_derives_increment() {
+    // DocBoy `update_nr14` lines 1822-1827: non-trigger NR14 writes during the
+    // reload window re-derive the canonical recalculation.increment from the
+    // freshly-written NR14:NR13 (with the decrease bit applied).
+    let mut apu = prime_dmg_ch1_sweep_active(0x12, 0x10, 0x85); // step=2, period=0x510
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 1;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+    apu.channels.channel_1.sweep.recalculation.increment = 0xFFFF; // sentinel
+
+    // Write NR14 = 0x05 (no trigger, period_high=5). live_period >> 2 = 0x144.
+    apu.write_register(0xFF14, 0x05);
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.increment, 0x144);
+}
+
+#[test]
 fn dmg_ch1_sweep_glitch4_pace_countdown_at_boundary_reticks_sweep() {
     // Glitch 4: writing NR10 while phase==SWEEP_PHASE_BOUNDARY ticks the period
     // sweep as if a DIV-APU edge had fired. We force the sweep into the
