@@ -281,7 +281,17 @@ impl Channel1SweepState {
         }
 
         if step != 0 {
-            self.recalculation.increment = self.shadow_period >> step;
+            // DocBoy stores `period >> step` in `ch1.period_sweep.increment`,
+            // NOT in `ch1.period_sweep.recalculation.increment`. The latter is
+            // populated only by `period_sweep_recalculation_done` after the
+            // countdown completes. We keep `self.recalculation.increment = 0`
+            // until recalc_done fires; gb-cycle re-derives the raw increment
+            // on demand inside recalc_done, so we don't need a separate field.
+            //
+            // Glitch 1 in `apply_dmg_nr10_glitches` reads `recalculation.increment`
+            // which (correctly per canon) is zero until the first recalc fires --
+            // this prevents spurious disables on NR10 writes that happen before
+            // the post-trigger recalc countdown expires.
 
             if prev_target > 0 && prev_trigger_counter < 2 {
                 // Within the trigger window: do not reset trigger_counter, but
