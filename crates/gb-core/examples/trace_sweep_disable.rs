@@ -57,6 +57,17 @@ fn main() {
         }
 
         if let Some(trigger) = trigger_t
+            && let Some(activity) = machine.cpu().snapshot().last_bus_activity
+            && activity.address == 0xFF26
+        {
+            let delta = t_before - trigger;
+            eprintln!(
+                "[t={} delta={}] CPU bus@FF26 kind={:?} value={:#x}",
+                t_before, delta, activity.kind, activity.value
+            );
+        }
+
+        if let Some(trigger) = trigger_t
             && (last_nr52 & 0x01) != 0
             && (nr52 & 0x01) == 0
         {
