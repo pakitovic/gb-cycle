@@ -330,12 +330,12 @@ impl Channel1SweepState {
             }
 
             self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
-        } else {
-            // Step 0: schedule an instant recalculation completion.
-            self.recalculation.countdown = 0;
-            self.recalculation.target_trigger_counter = 0;
-            self.recalculation.trigger_counter = 0;
         }
+        // Note: step==0 triggers in DocBoy `update_nr14` (apu.cpp:1792) do NOT
+        // touch target_trigger_counter, trigger_counter, or countdown -- the
+        // outer `if (nr10.step)` guards the entire reload block. Preserving
+        // those values across a step==0 retrigger is canon and matters for
+        // tests like `change_period_nr14_during_recalc_step0_*_round2`.
         // Note: `recalc_apu_clock_phase` intentionally is not reset here. DocBoy
         // aligns the recalculation countdown to a free-running global APU clock
         // (not to the trigger time), so the round1/round2 distinction in test
