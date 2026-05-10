@@ -7,7 +7,7 @@ use super::super::common::{
     CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
     CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
     CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES, ChannelRuntimeState,
-    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RECALC_TICK_T_CYCLES, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
+    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
     DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
     NR11_WRITE_ONLY_MASK, NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK,
     NRX4_WRITABLE_MASK, PERIOD_HIGH_MASK, PULSE_DUTY_MASK, PULSE_PERIOD_MAX, SWEEP_PHASE_BOUNDARY,
@@ -87,8 +87,6 @@ pub(in crate::apu) struct Channel1SweepState {
     pub(in crate::apu) recalculation: Ch1SweepRecalculation,
     #[serde(default)]
     pub(in crate::apu) restart_countdown_t_cycles: u16,
-    #[serde(default)]
-    recalc_apu_clock_phase: u8,
     // DocBoy `ch1.period_sweep.increment` (apu.h:393): the raw `period >> step`
     // value latched at trigger and re-derived at every reload_done. This is
     // distinct from `recalculation.increment` (which is the canonical 1's
@@ -196,7 +194,7 @@ impl Channel1SweepState {
         // the recalculation is aborted entirely (forever), matching DocBoy's
         // line 1697-1702 behavior.
         if self.recalculation.target_trigger_counter > 0 && self.recalculation.trigger_counter < 2 {
-            self.recalculation.countdown = u16::from(new_step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
+            self.recalculation.countdown = u16::from(new_step);
             if new_step == 0 {
                 self.recalculation.trigger_counter = 0;
                 self.recalculation.target_trigger_counter = 0;
@@ -207,10 +205,7 @@ impl Channel1SweepState {
             // the recalculation countdown is ticked once. If this brings it to zero
             // the recalculation completes immediately. DocBoy line 1717 (DMG path).
             if self.recalculation.countdown > 0 && prev_step == 0 && new_step != 0 {
-                self.recalculation.countdown = self
-                    .recalculation
-                    .countdown
-                    .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
+                self.recalculation.countdown -= 1;
                 if self.recalculation.countdown == 0 {
                     self.period_sweep_recalculation_done(new_nr10, nr13, nr14, runtime);
                 }
@@ -289,10 +284,7 @@ impl Channel1SweepState {
         let step = sweep_shift_from_nr10(nr10);
         let prev_target = self.recalculation.target_trigger_counter;
         let prev_trigger_counter = self.recalculation.trigger_counter;
-        let prev_countdown_m = self
-            .recalculation
-            .countdown
-            .div_ceil(DMG_SWEEP_RECALC_TICK_T_CYCLES);
+        let prev_countdown_m = self.recalculation.countdown;
 
         // The shadow period and increment registers are reset on every trigger.
         // `recalculation.from_trigger` distinguishes the very first DMG
@@ -329,7 +321,7 @@ impl Channel1SweepState {
                 self.recalculation.trigger_counter = 0;
             }
 
-            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
+            self.recalculation.countdown = u16::from(step);
         }
         // Note: step==0 triggers in DocBoy `update_nr14` (apu.cpp:1792) do NOT
         // touch target_trigger_counter, trigger_counter, or countdown -- the
@@ -348,6 +340,7 @@ impl Channel1SweepState {
     // t-cycles. DocBoy splits this into two functions (`tick_period_sweep_reload`
     // and `tick_period_sweep_recalculation`) that both run on `tick_odd`, so
     // their counters advance in parallel; we mirror that behavior here.
+    #[allow(clippy::too_many_arguments)]
     fn tick_recalculation(
         &mut self,
         console_model: ConsoleModel,
@@ -355,8 +348,20 @@ impl Channel1SweepState {
         nr13: &mut u8,
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
+        apu_clock: u8,
+        t_cycle_phase: u8,
     ) {
         if console_model.is_cgb_family() {
+            return;
+        }
+
+        // DocBoy structures the APU tick into four sub-phases per M-cycle:
+        // tick_t0 / tick_t2 (`tick_even`, increments apu_clock) and tick_t1 /
+        // tick_t3 (`tick_odd`, runs reload + maybe recalc). The recalculation
+        // pipeline only fires on the odd sub-phases (DocBoy `tick_odd` calls
+        // tick_period_sweep_recalculation, never `tick_even`).
+        let is_tick_odd = t_cycle_phase & 0x01 == 1;
+        if !is_tick_odd {
             return;
         }
 
@@ -366,28 +371,26 @@ impl Channel1SweepState {
             return;
         }
 
-        self.recalc_apu_clock_phase = (self.recalc_apu_clock_phase + 1) & 0x03;
-        if self.recalc_apu_clock_phase != 0 {
-            return;
-        }
-
-        // tick_period_sweep_reload analogue: advance the restart and reload
-        // countdowns, calling reload_done when the reload window expires.
+        // tick_period_sweep_reload analogue (DocBoy `tick_odd`): runs every
+        // odd sub-phase regardless of apu_clock. Decrements
+        // restart_countdown / reload_countdown by 1 per call.
         if self.restart_countdown_t_cycles > 0 {
-            self.restart_countdown_t_cycles = self
-                .restart_countdown_t_cycles
-                .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
+            self.restart_countdown_t_cycles -= 1;
         }
         if self.recalculation.reload_countdown > 0 {
             self.recalculation.reload_countdown -= 1;
             if self.recalculation.reload_countdown == 0 {
-                self.period_sweep_reload_done(nr10, *nr13, *nr14);
+                self.period_sweep_reload_done(nr10, nr13, nr14);
             }
         }
 
-        // tick_period_sweep_recalculation analogue: advance trigger_counter
-        // toward target, then decrement countdown. These advance in parallel
-        // with the reload tick above.
+        // tick_period_sweep_recalculation analogue: gated on
+        // `test_bit<0>(apu_clock)` so it fires once per M-cycle, exactly
+        // matching DocBoy apu.cpp line 1372.
+        if apu_clock & 0x01 == 0 {
+            return;
+        }
+
         if self.recalculation.trigger_counter < self.recalculation.target_trigger_counter {
             self.recalculation.trigger_counter += 1;
             return;
@@ -403,10 +406,7 @@ impl Channel1SweepState {
             return;
         }
 
-        self.recalculation.countdown = self
-            .recalculation
-            .countdown
-            .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
+        self.recalculation.countdown -= 1;
         if self.recalculation.countdown == 0 {
             self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
         }
@@ -417,29 +417,40 @@ impl Channel1SweepState {
     // re-derived from the (potentially updated) NR14:NR13, and the recalculation
     // countdown is loaded with `nr10.step` M-cycles. For step==0 the
     // recalculation completes instantly on the next tick.
-    fn period_sweep_reload_done(&mut self, nr10: u8, nr13: u8, nr14: u8) {
+    fn period_sweep_reload_done(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8) {
         let step = sweep_shift_from_nr10(nr10);
-        let live_period = ((u16::from(nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(nr13);
-        // DocBoy `period_sweep_reload_done` line 1444 always reloads
-        // `period_sweep.increment = period >> step` (raw, not signed). For
-        // step=0 that is `period` itself, which primes recalculation_done with
-        // the DMG glitch increment.
+        let decreases = sweep_decreases_from_nr10(nr10);
+
+        let live_period =
+            ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
+        // DocBoy line 1444 always reloads `period_sweep.increment = period >> step`
+        // (raw, not signed). For step=0 that is `period` itself, which primes
+        // recalculation_done with the DMG glitch increment.
         let raw_increment = live_period >> step;
         self.period_increment = raw_increment;
-        let decreases = sweep_decreases_from_nr10(nr10);
         self.recalculation.increment = if decreases {
             (!raw_increment) & PULSE_PERIOD_MAX
         } else {
             raw_increment
         };
+        #[cfg(test)]
+        eprintln!(
+            "reload_done: step={} restart={} reload_pending={}",
+            step, self.restart_countdown_t_cycles, self.recalculation.reload_period_pending
+        );
         if self.restart_countdown_t_cycles == 0 {
             if step == 0 {
                 self.recalculation.instant = true;
                 self.recalculation.countdown = 0;
             } else {
-                self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
+                self.recalculation.countdown = u16::from(step);
             }
         }
+        #[cfg(test)]
+        eprintln!(
+            "reload_done after: countdown={} instant={}",
+            self.recalculation.countdown, self.recalculation.instant
+        );
         self.recalculation.reload_period_reloaded = false;
         self.recalculation.reload_period_pending = false;
     }
@@ -777,6 +788,16 @@ pub(in crate::apu) struct Channel1State {
     nr14: u8,
     pub(in crate::apu) pulse: PulseChannelState,
     pub(in crate::apu) sweep: Channel1SweepState,
+    /// Test-only mirror of the global Apu sub-cycle scheduler. The unit tests
+    /// drive `tick_fast_timer()` directly without going through `Apu::tick_t_cycle`,
+    /// so the channel needs its own copy of `apu_clock` and `t_cycle_phase` to
+    /// keep the canonical recalc pipeline ticking with sub-M-cycle precision.
+    #[cfg(test)]
+    #[serde(default)]
+    test_apu_clock: u8,
+    #[cfg(test)]
+    #[serde(default)]
+    test_t_cycle_phase: u8,
 }
 
 impl Channel1State {
@@ -1029,21 +1050,38 @@ impl Channel1State {
 
     #[cfg(test)]
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
-        self.tick_fast_timer_with_clock_gate(ConsoleModel::GameBoy, true);
+        // Simulate the global APU sub-cycle scheduler the same way
+        // `Apu::tick_t_cycle_for_speed` would: increment t_cycle_phase per
+        // call, and increment apu_clock on the even sub-phases. The channel
+        // owns its own copy of these counters so the unit tests can drive the
+        // pipeline without wiring in the global APU.
+        let t_cycle_phase = self.test_t_cycle_phase;
+        if t_cycle_phase & 0x01 == 0 {
+            self.test_apu_clock = (self.test_apu_clock + 1) & 0x03;
+        }
+        self.test_t_cycle_phase = (t_cycle_phase + 1) & 0x03;
+        self.tick_fast_timer_with_clock_gate(
+            ConsoleModel::GameBoy,
+            true,
+            self.test_apu_clock,
+            t_cycle_phase,
+        );
     }
 
     pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
         &mut self,
         console_model: ConsoleModel,
         clock_period_timer: bool,
+        apu_clock: u8,
+        t_cycle_phase: u8,
     ) {
         self.sweep
             .tick_delayed_calculation(clock_period_timer, &mut self.pulse.runtime);
         if clock_period_timer {
-            // DMG canonical recalculation pipeline: keep the M-cycle aligned
-            // countdown moving so deferred overflow checks fire on time.
-            // CGB intentionally takes the legacy `delayed_calculation_t_cycles`
-            // path (gated inside `tick_recalculation`).
+            // DMG canonical recalculation pipeline: gated on the global APU
+            // sub-cycle scheduler so the recalc countdown ticks at the same
+            // moments DocBoy's `tick_period_sweep_recalculation` would (t1 or
+            // t3 of each M-cycle, gated by `test_bit<0>(apu_clock)`).
             let nr10 = self.nr10;
             self.sweep.tick_recalculation(
                 console_model,
@@ -1051,6 +1089,8 @@ impl Channel1State {
                 &mut self.nr13,
                 &mut self.nr14,
                 &mut self.pulse.runtime,
+                apu_clock,
+                t_cycle_phase,
             );
         }
         self.pulse

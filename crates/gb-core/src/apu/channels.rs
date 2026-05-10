@@ -48,9 +48,15 @@ impl ApuChannels {
         &mut self,
         console_model: ConsoleModel,
         clock_generation_timers: bool,
+        apu_clock: u8,
+        t_cycle_phase: u8,
     ) {
-        self.channel_1
-            .tick_fast_timer_with_clock_gate(console_model, clock_generation_timers);
+        self.channel_1.tick_fast_timer_with_clock_gate(
+            console_model,
+            clock_generation_timers,
+            apu_clock,
+            t_cycle_phase,
+        );
         self.channel_2
             .tick_fast_timer_with_clock_gate(clock_generation_timers);
         if clock_generation_timers {

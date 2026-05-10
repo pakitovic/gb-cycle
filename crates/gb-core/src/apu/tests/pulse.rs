@@ -1954,8 +1954,9 @@ fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
 
     // Drive enough t-cycles for the post-trigger recalc countdown to load
-    // shadow=0x500 from NR14:NR13.
-    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+    // shadow=0x500 from NR14:NR13. The exact tick count depends on the
+    // sub-M-cycle phase at trigger, so we just wait generously.
+    for _ in 0..32 {
         apu.channels.channel_1.tick_fast_timer();
     }
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0500);
@@ -1972,7 +1973,7 @@ fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
 
     // Reload + step M-cycles after the writeback the recalc fires with
     // complement_bit=1 -> 0x780 + 0x3C0 + 1 = 0xB41 -> overflow -> disable.
-    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+    for _ in 0..32 {
         apu.channels.channel_1.tick_fast_timer();
     }
     assert!(!apu.channels.channel_1.pulse.runtime.active);
@@ -2012,10 +2013,7 @@ fn dmg_ch1_sweep_glitch2_write_nr10_in_trigger_window_reloads_countdown() {
     // post-trigger countdown is loaded immediately (no reload window in this
     // path).
     apu.write_register(0xFF10, 0x15); // pace=1, increase, shift=5
-    assert_eq!(
-        apu.channels.channel_1.sweep.recalculation.countdown,
-        u16::from(5_u8) * DMG_SWEEP_RECALC_TICK_T_CYCLES
-    );
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 5);
 
     // Glitch 2 abort: writing step=0 within the trigger window aborts the
     // recalculation entirely.
@@ -2057,10 +2055,7 @@ fn dmg_ch1_sweep_glitch3_prev_step_zero_to_positive_ticks_countdown() {
 
     apu.write_register(0xFF10, 0x12); // prev_step=0, new_step=2
     // Glitch 3 ticks countdown by one M-cycle.
-    assert_eq!(
-        apu.channels.channel_1.sweep.recalculation.countdown,
-        8 - DMG_SWEEP_RECALC_TICK_T_CYCLES
-    );
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 7);
 }
 
 #[test]
