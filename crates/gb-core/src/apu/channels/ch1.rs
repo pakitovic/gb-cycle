@@ -365,28 +365,32 @@ impl Channel1SweepState {
             return;
         }
 
+        // DocBoy `tick_odd` (apu.cpp lines 1137-1140) calls
+        // `tick_period_sweep_recalculation` BEFORE `tick_period_sweep_reload`.
+        // Mirroring that ordering keeps the canonical pipeline shape aligned
+        // with DocBoy even though our apu_clock alignment makes the same-tick
+        // recalc-after-reload fall-through observe identical behavior on the
+        // round1/round2 boundary tests we currently fail (the recalc tick
+        // skips on its apu_clock check at reload_done's tick in either order).
+        self.tick_period_sweep_recalculation(nr10, nr13, nr14, runtime, apu_clock);
+        self.tick_period_sweep_reload(nr10, nr13, nr14);
+    }
+
+    fn tick_period_sweep_recalculation(
+        &mut self,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+        apu_clock: u8,
+    ) {
         if self.recalculation.instant {
             self.recalculation.instant = false;
             self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
             return;
         }
 
-        // tick_period_sweep_reload analogue (DocBoy `tick_odd`): runs every
-        // odd sub-phase regardless of apu_clock. Decrements
-        // restart_countdown / reload_countdown by 1 per call.
-        if self.restart_countdown_t_cycles > 0 {
-            self.restart_countdown_t_cycles -= 1;
-        }
-        if self.recalculation.reload_countdown > 0 {
-            self.recalculation.reload_countdown -= 1;
-            if self.recalculation.reload_countdown == 0 {
-                self.period_sweep_reload_done(nr10, nr13, nr14);
-            }
-        }
-
-        // tick_period_sweep_recalculation analogue: gated on
-        // `test_bit<0>(apu_clock)` so it fires once per M-cycle, exactly
-        // matching DocBoy apu.cpp line 1372.
+        // Gated on `test_bit<0>(apu_clock)` per DocBoy apu.cpp line 1372.
         if apu_clock & 0x01 == 0 {
             return;
         }
@@ -409,6 +413,20 @@ impl Channel1SweepState {
         self.recalculation.countdown -= 1;
         if self.recalculation.countdown == 0 {
             self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
+        }
+    }
+
+    fn tick_period_sweep_reload(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8) {
+        // Decrements restart_countdown / reload_countdown by 1 per call. Mirror
+        // of DocBoy `tick_period_sweep_reload` (apu.cpp:1355).
+        if self.restart_countdown_t_cycles > 0 {
+            self.restart_countdown_t_cycles -= 1;
+        }
+        if self.recalculation.reload_countdown > 0 {
+            self.recalculation.reload_countdown -= 1;
+            if self.recalculation.reload_countdown == 0 {
+                self.period_sweep_reload_done(nr10, nr13, nr14);
+            }
         }
     }
 
