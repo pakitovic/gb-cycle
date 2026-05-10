@@ -30,6 +30,16 @@ pub struct Timer {
     previous_timer_signal: bool,
     overflow_state: TimerOverflowState,
     reloaded_this_t_cycle: bool,
+    /// Cycles added to `system_counter` when computing the APU's FS edge
+    /// signal in `current_div_apu_signal_for_speed`. A CPU-driven DIV write
+    /// sets this to 2 to compensate for our model emitting MMIO writes at M3
+    /// tick_t3 instead of tick_t1 like DocBoy/SameBoy: on real hardware (and
+    /// in those emulators) the M-cycle has two more ticks after the write,
+    /// so the post-write counter ends the M-cycle at 2. The offset reproduces
+    /// that effect for FS-edge alignment without disturbing the bit-3/5/7/9
+    /// timer signal used by TIMA — that path keeps reading the literal
+    /// `system_counter`, so Mooneye reload timing stays cycle-accurate.
+    apu_fs_offset: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -43,6 +53,7 @@ pub struct TimerSaveState {
     previous_timer_signal: bool,
     overflow_state: TimerOverflowState,
     reloaded_this_t_cycle: bool,
+    apu_fs_offset: u16,
 }
 
 impl TimerSaveState {
@@ -78,6 +89,7 @@ impl Timer {
             previous_timer_signal: false,
             overflow_state: TimerOverflowState::Idle,
             reloaded_this_t_cycle: false,
+            apu_fs_offset: 0,
         }
     }
 
@@ -100,6 +112,7 @@ impl Timer {
             previous_timer_signal: self.previous_timer_signal,
             overflow_state: self.overflow_state,
             reloaded_this_t_cycle: self.reloaded_this_t_cycle,
+            apu_fs_offset: self.apu_fs_offset,
         }
     }
 
@@ -113,6 +126,7 @@ impl Timer {
         self.previous_timer_signal = state.previous_timer_signal;
         self.overflow_state = state.overflow_state;
         self.reloaded_this_t_cycle = state.reloaded_this_t_cycle;
+        self.apu_fs_offset = state.apu_fs_offset;
     }
 
     pub fn read_div(&self) -> u8 {
@@ -135,6 +149,12 @@ impl Timer {
         let previous_signal = self.current_timer_signal();
         let previous_div_apu_signal = self.current_div_apu_signal_for_speed(speed_mode);
         self.system_counter = 0;
+        // See the `apu_fs_offset` field doc on `Timer`: align the APU FS edge
+        // with the post-write state DocBoy/SameBoy reach after their tick_t1
+        // write (counter ends the M-cycle at 2). The literal `system_counter`
+        // stays at 0 so TIMA's bit-3/5/7/9 path keeps Mooneye reload timing
+        // cycle-accurate.
+        self.apu_fs_offset = 2;
         self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
         DividerResetEffects {
             apu_frame_sequencer_edge: previous_div_apu_signal
@@ -186,6 +206,7 @@ impl Timer {
         self.previous_timer_signal = self.current_timer_signal();
         self.overflow_state = TimerOverflowState::Idle;
         self.reloaded_this_t_cycle = false;
+        self.apu_fs_offset = 0;
     }
 
     pub fn snapshot(&self) -> TimerSnapshot {
@@ -314,7 +335,9 @@ impl Timer {
     }
 
     pub(crate) fn current_div_apu_signal_for_speed(&self, speed_mode: CgbSpeedMode) -> bool {
-        self.system_counter & (1 << speed_mode.div_apu_counter_bit()) != 0
+        self.system_counter.wrapping_add(self.apu_fs_offset)
+            & (1 << speed_mode.div_apu_counter_bit())
+            != 0
     }
 }
 

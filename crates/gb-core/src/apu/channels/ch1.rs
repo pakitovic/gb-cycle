@@ -561,13 +561,21 @@ impl Channel1SweepState {
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
-        if !self.enabled {
-            return;
-        }
-
+        // SameBoy's `square_sweep_countdown` advances at every FS sweep edge
+        // regardless of pace (apu.c:756-760). Mirroring that — phase tracks
+        // independent of `enabled` — keeps the post-trigger sweep window
+        // aligned for tests like `change_pace_0_to_2_step0_delayed_*`, where a
+        // pace 0 -> non-zero NR10 write must not land on phase=BOUNDARY
+        // because the FS edges between trigger and the write have already
+        // moved phase off BOUNDARY. The boundary fire below still gates on
+        // `enabled` and `pace != 0`.
         self.phase = (self.phase + 1) & SWEEP_PHASE_MASK;
         self.timer = Self::timer_from_phase(self.phase);
         if self.phase != SWEEP_PHASE_BOUNDARY {
+            return;
+        }
+
+        if !self.enabled {
             return;
         }
 
