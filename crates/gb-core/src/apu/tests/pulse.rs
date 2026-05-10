@@ -1066,10 +1066,11 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
     assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
     // The DMG canonical recalculation pipeline defers the second overflow check
-    // until the recalculation countdown expires. With shift=1, that takes one
-    // M-cycle (4 t-cycles) after the writeback.
+    // by `target_trigger_counter` (3 M-cycles) + step M-cycles after a fresh
+    // trigger. With shift=1 that means 4 M-cycles (16 t-cycles) total.
+    let total_t_cycles = 4 * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
     assert!(apu.channels.channel_1.pulse.runtime.active);
-    for _ in 0..(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES - 1) {
+    for _ in 0..(total_t_cycles - 1) {
         apu.channels.channel_1.tick_fast_timer();
         assert!(apu.channels.channel_1.pulse.runtime.active);
     }
@@ -1897,13 +1898,23 @@ fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
 
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
+    // Post-writeback the canonical pipeline first sits in the 2 M-cycle reload
+    // window. The trigger window (target_trigger_counter=3) runs in parallel,
+    // so the recalculation completes 4 M-cycles after the trigger+sweep_done
+    // pair. The recalculation countdown loaded by the trigger (step=1) decrements
+    // once trigger_counter reaches its target.
+    assert_eq!(
+        apu.channels.channel_1.sweep.recalculation.reload_countdown,
+        2
+    );
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.countdown,
         DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES
     );
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    for _ in 0..(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES - 1) {
+    let total_t_cycles = 4 * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+    for _ in 0..(total_t_cycles - 1) {
         apu.channels.channel_1.tick_fast_timer();
         assert!(apu.channels.channel_1.pulse.runtime.active);
     }
@@ -1913,29 +1924,14 @@ fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
 
 #[test]
 fn dmg_ch1_sweep_glitch1_write_nr10_increase_overflow_disables_channel() {
-    // After a write_nr10 with direction=increase (decreases bit clear), the
-    // second overflow check uses complement_bit=1 on DMG (unless still in the
-    // first post-trigger recalculation). With increment=0x780>>1=0x3C0 and
-    // shadow=0x780, the check sees 0x780+0x3C0+1 = 0xB41 → disable.
+    // After a write_nr10 with direction=increase, the synchronous overflow
+    // check uses complement_bit=1 on DMG (unless still in the first
+    // post-trigger recalculation, indicated by `from_trigger`). The pipeline
+    // primes `recalculation.increment` at trigger time to period>>step.
     let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
-    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
-    // Advance enough M-cycles for the post-trigger recalculation to clear.
-    for _ in 0..DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES {
-        apu.channels.channel_1.tick_fast_timer();
-    }
-    // Reactivate the channel via DAC (still powered) and force a fresh state
-    // where from_trigger is false to expose the glitch.
-    assert!(!apu.channels.channel_1.pulse.runtime.active);
-
-    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
-    // Bypass the sweep boundary by writing NR10 immediately with increase
-    // direction; the post-trigger recalculation has from_trigger=true so the
-    // glitch only applies after the first recalc completes.
+    // The post-trigger recalculation has from_trigger=true so the glitch
+    // does NOT apply on the first NR10 write right after the trigger.
     apu.write_register(0xFF10, 0x12); // pace=1, increase, shift=2
-    // The synchronous overflow check inside write_nr10 uses the current
-    // increment (set at trigger to period>>shift = 0x500>>1 = 0x280). With
-    // from_trigger=true the complement_bit is 0: 0x500 + 0x280 = 0x780, no
-    // overflow yet. Channel still active.
     assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
@@ -1956,7 +1952,9 @@ fn dmg_ch1_sweep_glitch2_write_nr10_in_trigger_window_reloads_countdown() {
         0
     );
 
-    // Glitch 2: writing a new step reloads the countdown to the new step.
+    // Glitch 2: writing a new step reloads the countdown to the new step. The
+    // post-trigger countdown is loaded immediately (no reload window in this
+    // path).
     apu.write_register(0xFF10, 0x15); // pace=1, increase, shift=5
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.countdown,

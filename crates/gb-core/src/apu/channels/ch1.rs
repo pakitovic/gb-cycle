@@ -49,6 +49,18 @@ pub(in crate::apu) struct Ch1SweepRecalculation {
     pub(in crate::apu) increment: u16,
     #[serde(default)]
     pub(in crate::apu) from_trigger: bool,
+    // DocBoy `period_sweep.reload` sub-state. After every sweep_done writeback,
+    // the canonical hardware waits 2 M-cycles before reloading the increment
+    // from the (potentially updated by NR13/NR14) NR14:NR13 and starting the
+    // recalculation countdown. NR13/NR14 writes during the first M-cycle of
+    // this window (countdown == 2) are ignored entirely; writes during either
+    // M-cycle re-derive the next increment from the new register values.
+    #[serde(default)]
+    pub(in crate::apu) reload_countdown: u8,
+    #[serde(default)]
+    pub(in crate::apu) reload_period_reloaded: bool,
+    #[serde(default)]
+    pub(in crate::apu) reload_period_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -293,12 +305,18 @@ impl Channel1SweepState {
             self.recalculation.target_trigger_counter = 0;
             self.recalculation.trigger_counter = 0;
         }
-        self.recalc_apu_clock_phase = 0;
+        // Note: `recalc_apu_clock_phase` intentionally is not reset here. DocBoy
+        // aligns the recalculation countdown to a free-running global APU clock
+        // (not to the trigger time), so the round1/round2 distinction in test
+        // ROMs reflects the t-cycle phase the trigger happens to land on.
     }
 
     // Decrement the recalculation countdown at M-cycle granularity. Called from
     // `tick_fast_timer_with_clock_gate` per t-cycle, this advances the M-cycle
-    // alignment phase first; the actual countdown edge fires once every 4 t-cycles.
+    // alignment phase first; the actual countdown edges fire once every 4
+    // t-cycles. DocBoy splits this into two functions (`tick_period_sweep_reload`
+    // and `tick_period_sweep_recalculation`) that both run on `tick_odd`, so
+    // their counters advance in parallel; we mirror that behavior here.
     fn tick_recalculation(
         &mut self,
         console_model: ConsoleModel,
@@ -322,12 +340,23 @@ impl Channel1SweepState {
             return;
         }
 
+        // tick_period_sweep_reload analogue: advance the restart and reload
+        // countdowns, calling reload_done when the reload window expires.
         if self.restart_countdown_t_cycles > 0 {
             self.restart_countdown_t_cycles = self
                 .restart_countdown_t_cycles
                 .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
         }
+        if self.recalculation.reload_countdown > 0 {
+            self.recalculation.reload_countdown -= 1;
+            if self.recalculation.reload_countdown == 0 {
+                self.period_sweep_reload_done(nr10, *nr13, *nr14);
+            }
+        }
 
+        // tick_period_sweep_recalculation analogue: advance trigger_counter
+        // toward target, then decrement countdown. These advance in parallel
+        // with the reload tick above.
         if self.recalculation.trigger_counter < self.recalculation.target_trigger_counter {
             self.recalculation.trigger_counter += 1;
             return;
@@ -350,6 +379,33 @@ impl Channel1SweepState {
         if self.recalculation.countdown == 0 {
             self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
         }
+    }
+
+    // Canonical DocBoy `period_sweep_reload_done` (apu.cpp line 1422). After the
+    // 2 M-cycle reload window expires, the canonical 1-complement increment is
+    // re-derived from the (potentially updated) NR14:NR13, and the recalculation
+    // countdown is loaded with `nr10.step` M-cycles. For step==0 the
+    // recalculation completes instantly on the next tick.
+    fn period_sweep_reload_done(&mut self, nr10: u8, nr13: u8, nr14: u8) {
+        let step = sweep_shift_from_nr10(nr10);
+        let live_period = ((u16::from(nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(nr13);
+        let raw_increment = if step == 0 { 0 } else { live_period >> step };
+        let decreases = sweep_decreases_from_nr10(nr10);
+        self.recalculation.increment = if decreases {
+            (!raw_increment) & PULSE_PERIOD_MAX
+        } else {
+            raw_increment
+        };
+        if self.restart_countdown_t_cycles == 0 {
+            if step == 0 {
+                self.recalculation.instant = true;
+                self.recalculation.countdown = 0;
+            } else {
+                self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+            }
+        }
+        self.recalculation.reload_period_reloaded = false;
+        self.recalculation.reload_period_pending = false;
     }
 
     // Canonical DocBoy `period_sweep_recalculation_done` (apu.cpp line 1451): the
@@ -527,29 +583,25 @@ impl Channel1SweepState {
     }
 
     fn dmg_schedule_recalculation_post_writeback(&mut self, nr10: u8) {
-        let step = sweep_shift_from_nr10(nr10);
-        let raw_increment = if step == 0 {
-            0
-        } else {
-            self.shadow_period >> step
-        };
-        let decreases = sweep_decreases_from_nr10(nr10);
-        self.recalculation.increment = if decreases {
-            (!raw_increment) & PULSE_PERIOD_MAX
-        } else {
-            raw_increment
-        };
-        self.recalculation.from_trigger = false;
-        self.recalculation.target_trigger_counter = 0;
-        self.recalculation.trigger_counter = 0;
-        self.recalc_apu_clock_phase = 0;
-        if step == 0 {
-            self.recalculation.instant = true;
-            self.recalculation.countdown = 0;
-        } else {
-            self.recalculation.instant = false;
-            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+        // Per DocBoy `period_sweep_done` (apu.cpp lines 1390-1419): if a
+        // recalculation countdown is already pending (typically from a recent
+        // trigger), the canonical "increment is reset to zero" glitch fires
+        // here. The actual recalculation countdown is left alone — it will be
+        // either reloaded by reload_done (gated on restart_countdown == 0) or
+        // continue ticking.
+        let _ = nr10;
+        if self.recalculation.countdown > 0 {
+            self.recalculation.increment = 0;
         }
+        // Canonical reload window: 2 M-cycles before the recalculation countdown
+        // is potentially reloaded with `step`. During the first M-cycle of this
+        // window, NR13/NR14 writes are ignored entirely; during either M-cycle
+        // they can re-derive the canonical increment from the new register
+        // values (handled in write_nr13 / write_nr14).
+        let step = sweep_shift_from_nr10(nr10);
+        self.recalculation.reload_countdown = 2;
+        self.recalculation.reload_period_reloaded = step != 0;
+        self.recalculation.reload_period_pending = true;
     }
 
     fn schedule_delayed_calculation(
@@ -735,7 +787,17 @@ impl Channel1State {
     }
 
     fn write_nr13(&mut self, value: u8) {
+        // Glitch (DocBoy `update_nr13`, lines 1744-1755): NR13 writes during the
+        // first M-cycle of the post-writeback reload window are dropped. The
+        // pending second writeback is also aborted regardless.
+        if self.sweep.recalculation.reload_countdown == 2
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            self.sweep.recalculation.reload_period_pending = false;
+            return;
+        }
         self.nr13 = value;
+        self.sweep.recalculation.reload_period_pending = false;
     }
 
     fn write_nr14(
@@ -745,9 +807,20 @@ impl Channel1State {
         speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
+        // Glitch (DocBoy `update_nr14`, lines 1762-1768): when NR14 is written
+        // during the first M-cycle of the post-writeback reload window, the
+        // period_high bits are dropped (the rest of the value is preserved so
+        // the trigger and length-enable bits still apply).
+        let mut effective_value = value;
+        if self.sweep.recalculation.reload_countdown == 2
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            effective_value = (value & !PERIOD_HIGH_MASK) | (self.nr14 & PERIOD_HIGH_MASK);
+        }
+
         let mut write_plan = begin_nrx4_write(
             &mut self.nr14,
-            value,
+            effective_value,
             NRX4_WRITABLE_MASK,
             next_frame_sequencer_step,
             self.pulse.length_enabled,
@@ -760,7 +833,26 @@ impl Channel1State {
                 write_plan.context.next_step_clocks_envelope,
             ));
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
+        } else if console_model.is_dmg_family()
+            && self.sweep.recalculation.reload_countdown > 0
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            // Glitch (DocBoy `update_nr14`, lines 1822-1827): non-trigger NR14
+            // writes during the reload window re-derive the canonical increment
+            // from the freshly-written NR14:NR13.
+            let step = sweep_shift_from_nr10(self.nr10);
+            let live_period = self.period_value();
+            let raw_increment = if step == 0 { 0 } else { live_period >> step };
+            let decreases = sweep_decreases_from_nr10(self.nr10);
+            self.sweep.recalculation.increment = if decreases {
+                (!raw_increment) & PULSE_PERIOD_MAX
+            } else {
+                raw_increment
+            };
         }
+
+        // Aborts any pending second period writeback (DocBoy line 1831).
+        self.sweep.recalculation.reload_period_pending = false;
 
         self.pulse.length_enabled = write_plan.context.length_enabled;
         self.pulse.apply_extra_length_clocking_on_enable(
