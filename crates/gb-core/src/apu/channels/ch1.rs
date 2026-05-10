@@ -89,6 +89,15 @@ pub(in crate::apu) struct Channel1SweepState {
     pub(in crate::apu) restart_countdown_t_cycles: u16,
     #[serde(default)]
     recalc_apu_clock_phase: u8,
+    // DocBoy `ch1.period_sweep.increment` (apu.h:393): the raw `period >> step`
+    // value latched at trigger and re-derived at every reload_done. This is
+    // distinct from `recalculation.increment` (which is the canonical 1's
+    // complement signed increment, populated only by recalc_done). The
+    // writeback at sweep_done uses THIS field, NOT shadow >> step, so an NR10
+    // step change between sweeps doesn't immediately accelerate the period
+    // growth -- the next reload_done will refresh it.
+    #[serde(default)]
+    pub(in crate::apu) period_increment: u16,
 }
 
 impl Channel1SweepState {
@@ -284,6 +293,7 @@ impl Channel1SweepState {
         self.recalculation.from_trigger = true;
         self.recalculation.increment = 0;
         self.recalculation.instant = false;
+        self.period_increment = 0;
 
         if prev_target == 0 || prev_trigger_counter == prev_target {
             self.restart_countdown_t_cycles = DMG_SWEEP_RESTART_DELAY_T_CYCLES;
@@ -291,16 +301,11 @@ impl Channel1SweepState {
 
         if step != 0 {
             // DocBoy stores `period >> step` in `ch1.period_sweep.increment`,
-            // NOT in `ch1.period_sweep.recalculation.increment`. The latter is
-            // populated only by `period_sweep_recalculation_done` after the
-            // countdown completes. We keep `self.recalculation.increment = 0`
-            // until recalc_done fires; gb-cycle re-derives the raw increment
-            // on demand inside recalc_done, so we don't need a separate field.
-            //
-            // Glitch 1 in `apply_dmg_nr10_glitches` reads `recalculation.increment`
-            // which (correctly per canon) is zero until the first recalc fires --
-            // this prevents spurious disables on NR10 writes that happen before
-            // the post-trigger recalc countdown expires.
+            // separate from `recalculation.increment`. The trigger latches the
+            // raw increment from the just-written NR14:NR13 (= shadow_period
+            // BEFORE we reset it to zero -- so capture it from the live shadow
+            // value passed in here).
+            self.period_increment = self.shadow_period >> step;
 
             if prev_target > 0 && prev_trigger_counter < 2 {
                 // Within the trigger window: do not reset trigger_counter, but
@@ -409,9 +414,11 @@ impl Channel1SweepState {
         let step = sweep_shift_from_nr10(nr10);
         let live_period = ((u16::from(nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(nr13);
         // DocBoy `period_sweep_reload_done` line 1444 always reloads
-        // `increment = period >> step`. For step=0 that is `period` itself, which
-        // primes recalculation_done with the DMG glitch increment.
+        // `period_sweep.increment = period >> step` (raw, not signed). For
+        // step=0 that is `period` itself, which primes recalculation_done with
+        // the DMG glitch increment.
         let raw_increment = live_period >> step;
+        self.period_increment = raw_increment;
         let decreases = sweep_decreases_from_nr10(nr10);
         self.recalculation.increment = if decreases {
             (!raw_increment) & PULSE_PERIOD_MAX
@@ -551,7 +558,7 @@ impl Channel1SweepState {
         nr10: u8,
         nr13: &mut u8,
         nr14: &mut u8,
-        runtime: &mut ChannelRuntimeState,
+        _runtime: &mut ChannelRuntimeState,
     ) {
         let pace = sweep_pace_from_nr10(nr10);
         if self.phase != SWEEP_PHASE_BOUNDARY || pace == 0 || !self.enabled {
@@ -569,57 +576,75 @@ impl Channel1SweepState {
         let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true) else {
             return;
         };
-        self.observe_calculation(calculation);
-
-        if !calculation.decreases
-            && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-        {
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
-            } else {
-                runtime.active = false;
-            }
-            return;
-        }
-
-        if shift == 0 {
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
-            } else {
-                // DMG canonical (DocBoy `period_sweep_done` lines 1402-1419): a
-                // step==0 sweep boundary skips the writeback but still arms the
-                // 2 M-cycle reload window. `reload_done` will then load
-                // `instant=true` and re-derive the canonical increment from the
-                // (unchanged) NR14:NR13. We deliberately leave `from_trigger`
-                // alone here: only the deferred `period_sweep_recalculation_done`
-                // is allowed to clear it, so the first-recalc-after-trigger
-                // complement_bit=0 window stays open through this boundary.
-                self.recalculation.reload_countdown = 2;
-                self.recalculation.reload_period_reloaded = false;
-                self.recalculation.reload_period_pending = true;
-            }
-            return;
-        }
-
-        let candidate = calculation.candidate_sum & super::super::common::PULSE_PERIOD_MAX;
-        self.shadow_period = candidate;
-        *nr13 = candidate as u8;
-        *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
-        self.decreasing_writeback_since_trigger |= calculation.decreases;
 
         if console_model.is_cgb_family() {
+            self.observe_calculation(calculation);
+            if !calculation.decreases
+                && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
+            {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
+                return;
+            }
+            if shift == 0 {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
+                return;
+            }
+            let candidate = calculation.candidate_sum & super::super::common::PULSE_PERIOD_MAX;
+            self.shadow_period = candidate;
+            *nr13 = candidate as u8;
+            *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
+            self.decreasing_writeback_since_trigger |= calculation.decreases;
             if let Some(next_calculation) =
                 self.calculate_candidate_sum(nr10, self.shadow_period, true)
             {
                 self.observe_calculation(next_calculation);
                 self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
             }
-        } else {
-            // DMG canonical: the second overflow check is deferred. Reload the
-            // canonical 1-complement increment from the just-written period and
-            // schedule the recalculation countdown for `step` M-cycles.
-            self.dmg_schedule_recalculation_post_writeback(nr10);
+            return;
         }
+
+        // DMG canonical (DocBoy `period_sweep_done`): no inline overflow check.
+        // The writeback uses the latched `period_increment` (set at the most
+        // recent trigger or reload_done), NOT shadow >> step -- this preserves
+        // the canonical glitch where an NR10 step change between sweeps
+        // doesn't immediately accelerate the period growth.
+        let decreases = sweep_decreases_from_nr10(nr10);
+        let dmg_addend = if decreases {
+            (!self.period_increment) & PULSE_PERIOD_MAX
+        } else {
+            self.period_increment
+        };
+        let dmg_candidate_sum = self
+            .shadow_period
+            .wrapping_add(dmg_addend)
+            .wrapping_add(u16::from(decreases));
+        let dmg_calculation = SweepCalculation {
+            candidate_sum: dmg_candidate_sum,
+            addend: dmg_addend,
+            decreases,
+        };
+        self.observe_calculation(dmg_calculation);
+
+        if shift == 0 {
+            // DocBoy `period_sweep_done` line 1402: skip writeback for step==0
+            // but still arm the reload window so reload_done eventually fires
+            // with `instant=true` (gated on restart_countdown==0).
+            self.recalculation.reload_countdown = 2;
+            self.recalculation.reload_period_reloaded = false;
+            self.recalculation.reload_period_pending = true;
+            return;
+        }
+
+        let candidate = dmg_candidate_sum & super::super::common::PULSE_PERIOD_MAX;
+        self.shadow_period = candidate;
+        *nr13 = candidate as u8;
+        *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
+        self.decreasing_writeback_since_trigger |= decreases;
+
+        // DMG canonical: the second overflow check is deferred via the
+        // recalculation countdown. The reload window will refresh
+        // period_increment from the post-writeback NR14:NR13.
+        self.dmg_schedule_recalculation_post_writeback(nr10);
     }
 
     fn dmg_schedule_recalculation_post_writeback(&mut self, nr10: u8) {
