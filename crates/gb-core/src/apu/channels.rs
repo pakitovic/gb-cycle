@@ -44,9 +44,13 @@ impl ApuChannels {
         self.channel_3.begin_t_cycle();
     }
 
-    pub(super) fn tick_fast_timers(&mut self, clock_generation_timers: bool) {
+    pub(super) fn tick_fast_timers(
+        &mut self,
+        console_model: ConsoleModel,
+        clock_generation_timers: bool,
+    ) {
         self.channel_1
-            .tick_fast_timer_with_clock_gate(clock_generation_timers);
+            .tick_fast_timer_with_clock_gate(console_model, clock_generation_timers);
         self.channel_2
             .tick_fast_timer_with_clock_gate(clock_generation_timers);
         if clock_generation_timers {

@@ -156,6 +156,12 @@ fn channel_1_sweep_overflow_clears_nr52_on_the_frame_sequencer_timeline() {
     assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x01);
 
     step_until_next_div_apu_edge(&mut machine);
+    // The DMG canonical recalculation pipeline defers the second overflow check
+    // by a few M-cycles after the frame-sequencer sweep edge. Step the CPU just
+    // far enough for the recalculation countdown (step=1 → 1 M-cycle) to expire.
+    for _ in 0..8 {
+        machine.step_t_cycle();
+    }
     assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x00);
 }
 

@@ -7,11 +7,12 @@ use super::super::common::{
     CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
     CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
     CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES, ChannelRuntimeState,
-    DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK, NR11_WRITE_ONLY_MASK,
-    NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK, NRX4_WRITABLE_MASK,
-    PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD,
-    begin_nrx4_write, pulse_period_from_registers, sweep_decreases_from_nr10, sweep_pace_from_nr10,
-    sweep_shift_from_nr10,
+    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
+    DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
+    NR11_WRITE_ONLY_MASK, NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK,
+    NRX4_WRITABLE_MASK, PERIOD_HIGH_MASK, PULSE_DUTY_MASK, PULSE_PERIOD_MAX, SWEEP_PHASE_BOUNDARY,
+    SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD, begin_nrx4_write, pulse_period_from_registers,
+    sweep_decreases_from_nr10, sweep_pace_from_nr10, sweep_shift_from_nr10,
 };
 use super::super::registers::Channel1Register;
 use super::pulse::PulseChannelState;
@@ -21,6 +22,33 @@ struct SweepCalculation {
     candidate_sum: u16,
     addend: u16,
     decreases: bool,
+}
+
+// DMG canonical recalculation state mirrored from DocBoy's `period_sweep.recalculation`
+// struct (see `Apéndice A` of the Phase 1 plan and DocBoy `apu.cpp` lines 397-412).
+//
+// `countdown` is the M-cycle (encoded in t-cycles for direct ticking from
+// `tick_fast_timer_with_clock_gate`) wait until the second overflow check fires.
+// `target_trigger_counter` and `trigger_counter` model the post-trigger window
+// during which write_nr10 has special semantics. `instant` matches DocBoy's flag
+// for step==0 reload paths. `increment` is the canonical 1-complement increment
+// that `update_nr10`/`update_nr14` reload from the live NR13/NR14. `from_trigger`
+// distinguishes the very first DMG recalculation (where complement_bit is 0)
+// from later ones (where complement_bit is forced to 1 on DMG).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub(in crate::apu) struct Ch1SweepRecalculation {
+    #[serde(default)]
+    pub(in crate::apu) countdown: u16,
+    #[serde(default)]
+    pub(in crate::apu) target_trigger_counter: u8,
+    #[serde(default)]
+    pub(in crate::apu) trigger_counter: u8,
+    #[serde(default)]
+    pub(in crate::apu) instant: bool,
+    #[serde(default)]
+    pub(in crate::apu) increment: u16,
+    #[serde(default)]
+    pub(in crate::apu) from_trigger: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -43,6 +71,12 @@ pub(in crate::apu) struct Channel1SweepState {
     decreasing_writeback_since_trigger: bool,
     #[serde(default)]
     pub(in crate::apu) restart_hold_t_cycles: u16,
+    #[serde(default)]
+    pub(in crate::apu) recalculation: Ch1SweepRecalculation,
+    #[serde(default)]
+    pub(in crate::apu) restart_countdown_t_cycles: u16,
+    #[serde(default)]
+    recalc_apu_clock_phase: u8,
 }
 
 impl Channel1SweepState {
@@ -82,7 +116,88 @@ impl Channel1SweepState {
             runtime.active = false;
         }
 
+        if console_model.is_dmg_family() && runtime.active {
+            self.apply_dmg_nr10_glitches(old_nr10, new_nr10, nr13, nr14, runtime);
+        }
+
         self.maybe_fire_sweep_boundary(console_model, new_nr10, nr13, nr14, runtime);
+    }
+
+    // Canonical DMG NR10 glitches (DocBoy `update_nr10`, lines 1651-1734; SameBoy
+    // `Core/apu.c` `square_sweep_calculate_countdown_*`). Runs only while CH1 is
+    // active and powered, mirroring the `nr52.ch1` guard in DocBoy. Each glitch is
+    // gated by the current state of the recalculation pipeline.
+    fn apply_dmg_nr10_glitches(
+        &mut self,
+        old_nr10: u8,
+        new_nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        let prev_step = sweep_shift_from_nr10(old_nr10);
+        let new_step = sweep_shift_from_nr10(new_nr10);
+        let new_decreases = sweep_decreases_from_nr10(new_nr10);
+
+        // Glitch 1: writing NR10 with direction=increase (decreases bit clear) on
+        // DMG always re-runs the second overflow check using the current canonical
+        // increment with complement_bit forced to 1. The first NR10 write after a
+        // trigger keeps the trigger-time complement bit (0), modeled via
+        // `recalculation.from_trigger`.
+        if !new_decreases {
+            let complement_bit: u16 = if self.recalculation.from_trigger {
+                0
+            } else {
+                1
+            };
+            let candidate = self
+                .shadow_period
+                .wrapping_add(self.recalculation.increment);
+            let candidate = candidate.wrapping_add(complement_bit);
+            if candidate > PULSE_PERIOD_MAX {
+                runtime.active = false;
+            }
+        }
+
+        if !runtime.active {
+            return;
+        }
+
+        // Glitch 2: NR10 written soon after the channel was triggered reloads the
+        // recalculation countdown with the new step value. If the new step is zero
+        // the recalculation is aborted entirely (forever), matching DocBoy's
+        // line 1697-1702 behavior.
+        if self.recalculation.target_trigger_counter > 0 && self.recalculation.trigger_counter < 2 {
+            self.recalculation.countdown = u16::from(new_step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+            if new_step == 0 {
+                self.recalculation.trigger_counter = 0;
+                self.recalculation.target_trigger_counter = 0;
+                self.recalculation.countdown = 0;
+            }
+        } else {
+            // Glitch 3: when the previous step was 0 and the new step is positive,
+            // the recalculation countdown is ticked once. If this brings it to zero
+            // the recalculation completes immediately. DocBoy line 1717 (DMG path).
+            if self.recalculation.countdown > 0 && prev_step == 0 && new_step != 0 {
+                self.recalculation.countdown = self
+                    .recalculation
+                    .countdown
+                    .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+                if self.recalculation.countdown == 0 {
+                    self.period_sweep_recalculation_done(new_nr10, nr13, nr14, runtime);
+                }
+            }
+        }
+
+        // Glitch 4: if the writing happens with a pace_countdown of 8 (mod-8 == 0),
+        // the period sweep is ticked as if a DIV-APU sweep edge had fired.
+        // gb-cycle models the pace via `phase` (counts down to SWEEP_PHASE_BOUNDARY),
+        // so the equivalent guard is `phase == SWEEP_PHASE_BOUNDARY` AND the sweep
+        // is enabled. The boundary is the same moment the existing `clock` would
+        // call `maybe_fire_sweep_boundary`.
+        if self.enabled && self.phase == SWEEP_PHASE_BOUNDARY {
+            self.maybe_fire_sweep_boundary(ConsoleModel::GameBoy, new_nr10, nr13, nr14, runtime);
+        }
     }
 
     fn trigger(
@@ -106,6 +221,10 @@ impl Channel1SweepState {
         };
         self.clear_delayed_calculation();
 
+        if console_model.is_dmg_family() {
+            self.dmg_apply_trigger_recalculation(nr10);
+        }
+
         if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
             self.observe_calculation(calculation);
             if console_model.is_cgb_family() {
@@ -121,6 +240,162 @@ impl Channel1SweepState {
                 runtime.active = false;
             }
         }
+    }
+
+    // Trigger-time recalculation initialization (DMG only). Mirrors DocBoy
+    // `update_nr14`'s trigger branch (lines 1772-1820): the shadow period and
+    // increment registers are reset, `from_trigger` is set, and a new
+    // recalculation countdown is staged. The `target_trigger_counter` window
+    // (2-4 M-cycles) determines whether subsequent NR10/NR14 writes can stomp
+    // on the still-pending countdown.
+    fn dmg_apply_trigger_recalculation(&mut self, nr10: u8) {
+        let step = sweep_shift_from_nr10(nr10);
+        let prev_target = self.recalculation.target_trigger_counter;
+        let prev_trigger_counter = self.recalculation.trigger_counter;
+        let prev_countdown_m = self
+            .recalculation
+            .countdown
+            .div_ceil(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+
+        // The shadow period and increment registers are reset on every trigger.
+        // `recalculation.from_trigger` distinguishes the very first DMG
+        // recalculation after a trigger from later ones for `complement_bit`.
+        self.recalculation.from_trigger = true;
+        self.recalculation.increment = 0;
+        self.recalculation.instant = false;
+
+        if prev_target == 0 || prev_trigger_counter == prev_target {
+            self.restart_countdown_t_cycles = DMG_SWEEP_RESTART_DELAY_T_CYCLES;
+        }
+
+        if step != 0 {
+            self.recalculation.increment = self.shadow_period >> step;
+
+            if prev_target > 0 && prev_trigger_counter < 2 {
+                // Within the trigger window: do not reset trigger_counter, but
+                // still load the countdown from the new step.
+            } else {
+                let mut new_target = DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE;
+                if prev_countdown_m < 2 {
+                    new_target = new_target.saturating_add(1);
+                }
+                if prev_trigger_counter == 2 && prev_countdown_m == u16::from(step) {
+                    new_target = new_target.saturating_add(1);
+                }
+                self.recalculation.target_trigger_counter = new_target;
+                self.recalculation.trigger_counter = 0;
+            }
+
+            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+        } else {
+            // Step 0: schedule an instant recalculation completion.
+            self.recalculation.countdown = 0;
+            self.recalculation.target_trigger_counter = 0;
+            self.recalculation.trigger_counter = 0;
+        }
+        self.recalc_apu_clock_phase = 0;
+    }
+
+    // Decrement the recalculation countdown at M-cycle granularity. Called from
+    // `tick_fast_timer_with_clock_gate` per t-cycle, this advances the M-cycle
+    // alignment phase first; the actual countdown edge fires once every 4 t-cycles.
+    fn tick_recalculation(
+        &mut self,
+        console_model: ConsoleModel,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        if console_model.is_cgb_family() {
+            return;
+        }
+
+        if self.recalculation.instant {
+            self.recalculation.instant = false;
+            self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
+            return;
+        }
+
+        self.recalc_apu_clock_phase = (self.recalc_apu_clock_phase + 1) & 0x03;
+        if self.recalc_apu_clock_phase != 0 {
+            return;
+        }
+
+        if self.restart_countdown_t_cycles > 0 {
+            self.restart_countdown_t_cycles = self
+                .restart_countdown_t_cycles
+                .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+        }
+
+        if self.recalculation.trigger_counter < self.recalculation.target_trigger_counter {
+            self.recalculation.trigger_counter += 1;
+            return;
+        }
+
+        if self.recalculation.countdown == 0 {
+            return;
+        }
+
+        let step = sweep_shift_from_nr10(nr10);
+        if step == 0 {
+            // Recalculation is paused while step is 0 (DocBoy line 1379-1385).
+            return;
+        }
+
+        self.recalculation.countdown = self
+            .recalculation
+            .countdown
+            .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+        if self.recalculation.countdown == 0 {
+            self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
+        }
+    }
+
+    // Canonical DocBoy `period_sweep_recalculation_done` (apu.cpp line 1451): the
+    // shadow period is reloaded from the live NR14:NR13, the canonical increment
+    // is recomputed, and (if the direction is increasing) a final overflow check
+    // is performed using the DMG-specific complement_bit selection.
+    fn period_sweep_recalculation_done(
+        &mut self,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        let _ = nr13;
+        let _ = nr14;
+        let step = sweep_shift_from_nr10(nr10);
+        // Reload shadow period from the live NR14:NR13. On gb-cycle the writeback
+        // has already mirrored the shadow into the registers; we read them back
+        // through the existing `pulse_period_from_registers` indirectly via the
+        // current shadow, which matches the value DocBoy would observe.
+        let shadow = self.shadow_period;
+        let raw_increment = if step == 0 { 0 } else { shadow >> step };
+        let signed_increment = if sweep_decreases_from_nr10(nr10) {
+            (!raw_increment) & PULSE_PERIOD_MAX
+        } else {
+            raw_increment
+        };
+        self.recalculation.increment = signed_increment;
+
+        if !sweep_decreases_from_nr10(nr10) {
+            // DMG glitch: the complement_bit is forced to 1 unless this is the
+            // very first recalculation following a trigger.
+            let complement_bit: u16 = if self.recalculation.from_trigger {
+                0
+            } else {
+                1
+            };
+            let candidate = shadow
+                .wrapping_add(signed_increment)
+                .wrapping_add(complement_bit);
+            if candidate > PULSE_PERIOD_MAX {
+                runtime.active = false;
+            }
+        }
+
+        self.recalculation.from_trigger = false;
     }
 
     fn tick_delayed_calculation(
@@ -214,6 +489,18 @@ impl Channel1SweepState {
         if shift == 0 {
             if console_model.is_cgb_family() {
                 self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
+            } else {
+                // DMG: even with shift==0 the canonical model still ticks the
+                // recalculation pipeline (DocBoy `period_sweep_reload_done` sets
+                // `instant=true` when step is 0). The glitches in NR10/NR13/NR14
+                // can flip step to non-zero mid-window, so we still need an
+                // increment loaded.
+                self.recalculation.increment = 0;
+                self.recalculation.instant = true;
+                self.recalculation.from_trigger = false;
+                self.recalculation.target_trigger_counter = 0;
+                self.recalculation.trigger_counter = 0;
+                self.recalc_apu_clock_phase = 0;
             }
             return;
         }
@@ -224,16 +511,44 @@ impl Channel1SweepState {
         *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
         self.decreasing_writeback_since_trigger |= calculation.decreases;
 
-        if let Some(next_calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true)
-        {
-            self.observe_calculation(next_calculation);
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
-            } else if next_calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                && !next_calculation.decreases
+        if console_model.is_cgb_family() {
+            if let Some(next_calculation) =
+                self.calculate_candidate_sum(nr10, self.shadow_period, true)
             {
-                runtime.active = false;
+                self.observe_calculation(next_calculation);
+                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
             }
+        } else {
+            // DMG canonical: the second overflow check is deferred. Reload the
+            // canonical 1-complement increment from the just-written period and
+            // schedule the recalculation countdown for `step` M-cycles.
+            self.dmg_schedule_recalculation_post_writeback(nr10);
+        }
+    }
+
+    fn dmg_schedule_recalculation_post_writeback(&mut self, nr10: u8) {
+        let step = sweep_shift_from_nr10(nr10);
+        let raw_increment = if step == 0 {
+            0
+        } else {
+            self.shadow_period >> step
+        };
+        let decreases = sweep_decreases_from_nr10(nr10);
+        self.recalculation.increment = if decreases {
+            (!raw_increment) & PULSE_PERIOD_MAX
+        } else {
+            raw_increment
+        };
+        self.recalculation.from_trigger = false;
+        self.recalculation.target_trigger_counter = 0;
+        self.recalculation.trigger_counter = 0;
+        self.recalc_apu_clock_phase = 0;
+        if step == 0 {
+            self.recalculation.instant = true;
+            self.recalculation.countdown = 0;
+        } else {
+            self.recalculation.instant = false;
+            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
         }
     }
 
@@ -317,6 +632,12 @@ impl Channel1SweepState {
         } else {
             0
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::apu) fn set_phase_for_test(&mut self, phase: u8) {
+        self.phase = phase & SWEEP_PHASE_MASK;
+        self.timer = Self::timer_from_phase(self.phase);
     }
 }
 
@@ -541,12 +862,30 @@ impl Channel1State {
 
     #[cfg(test)]
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
-        self.tick_fast_timer_with_clock_gate(true);
+        self.tick_fast_timer_with_clock_gate(ConsoleModel::GameBoy, true);
     }
 
-    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(&mut self, clock_period_timer: bool) {
+    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
+        &mut self,
+        console_model: ConsoleModel,
+        clock_period_timer: bool,
+    ) {
         self.sweep
             .tick_delayed_calculation(clock_period_timer, &mut self.pulse.runtime);
+        if clock_period_timer {
+            // DMG canonical recalculation pipeline: keep the M-cycle aligned
+            // countdown moving so deferred overflow checks fire on time.
+            // CGB intentionally takes the legacy `delayed_calculation_t_cycles`
+            // path (gated inside `tick_recalculation`).
+            let nr10 = self.nr10;
+            self.sweep.tick_recalculation(
+                console_model,
+                nr10,
+                &mut self.nr13,
+                &mut self.nr14,
+                &mut self.pulse.runtime,
+            );
+        }
         self.pulse
             .tick_fast_timer_with_clock_gate(self.period_value(), clock_period_timer);
     }

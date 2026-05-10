@@ -374,7 +374,8 @@ impl Apu {
             speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get());
 
         if self.master.powered {
-            self.channels.tick_fast_timers(clock_generation_timers);
+            self.channels
+                .tick_fast_timers(self.console_model, clock_generation_timers);
         } else if clock_generation_timers {
             self.channels.tick_powered_off_timebase();
         }
