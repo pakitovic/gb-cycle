@@ -235,6 +235,13 @@ impl Channel1SweepState {
 
         if console_model.is_dmg_family() {
             self.dmg_apply_trigger_recalculation(nr10);
+            // DocBoy `update_nr14` line 1778 explicitly resets the shadow
+            // period to zero on every trigger. The canonical recalculation
+            // pipeline reloads shadow from NR14:NR13 inside
+            // `period_sweep_recalculation_done`, so any sweep_done firing in
+            // the meantime computes its candidate from shadow=0 (and so does
+            // not overflow against the just-written NR14:NR13).
+            self.shadow_period = 0;
         }
 
         if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
@@ -432,14 +439,16 @@ impl Channel1SweepState {
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
-        let _ = nr13;
-        let _ = nr14;
         let step = sweep_shift_from_nr10(nr10);
-        // Reload shadow period from the live NR14:NR13. On gb-cycle the writeback
-        // has already mirrored the shadow into the registers; we read them back
-        // through the existing `pulse_period_from_registers` indirectly via the
-        // current shadow, which matches the value DocBoy would observe.
-        let shadow = self.shadow_period;
+        // DocBoy `period_sweep_recalculation_done` (apu.cpp:1453) reloads the
+        // shadow period from the live NR14:NR13 first, before recomputing the
+        // canonical signed increment. This is what allows NR13/NR14 writes
+        // landing during the recalc window to influence the next overflow
+        // check.
+        let live_period =
+            ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
+        self.shadow_period = live_period;
+        let shadow = live_period;
         // DocBoy `compute_period_sweep_signed_increment` returns
         // `ch1.period_sweep.increment ^ (decrease ? 0x7FF : 0)`, where increment
         // was last reloaded as `period >> step` (in reload_done or trigger). For

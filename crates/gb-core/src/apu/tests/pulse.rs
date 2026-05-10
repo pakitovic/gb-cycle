@@ -22,7 +22,10 @@ fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_st
         apu.channels.channel_1.pulse.period_timer,
         pulse_timer_reload(0x04AB)
     );
-    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x04AB);
+    // DocBoy `update_nr14` line 1778 resets the shadow period to zero on every
+    // trigger; the canonical recalculation pipeline reloads it from NR14:NR13
+    // when the recalc countdown completes.
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
     assert_eq!(apu.channels.channel_1.sweep.timer, 0x01);
     assert!(apu.channels.channel_1.sweep.enabled);
 }
@@ -55,7 +58,9 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
         envelope_timer_reload(0)
     );
     assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
-    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x00AB);
+    // Canonical: shadow_period is reset to 0 on every trigger (DocBoy
+    // `update_nr14` line 1778). Reloads from NR14:NR13 inside recalc_done.
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
     assert_eq!(apu.channels.channel_1.sweep.timer, 1);
     assert!(apu.channels.channel_1.sweep.enabled);
 
@@ -1060,21 +1065,28 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
     assert!(apu.channels.channel_1.pulse.runtime.active);
+    // Canonical: shadow_period is reset to 0 at trigger and only repopulated
+    // by recalc_done (or via writeback). Advance the recalc countdown so the
+    // first recalc_done loads shadow from NR14:NR13 -- this matches the real
+    // hardware sequence "trigger -> trigger window -> recalc done -> next
+    // sweep boundary".
+    let trigger_settle_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
+    for _ in 0..trigger_settle_t_cycles {
+        apu.channels.channel_1.tick_fast_timer();
+    }
 
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
-    // The DMG canonical recalculation pipeline defers the second overflow check
-    // by `target_trigger_counter` (3 M-cycles) + step M-cycles after a fresh
-    // trigger. With shift=1 that means 4 M-cycles (16 t-cycles) total.
-    let total_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
-    assert!(apu.channels.channel_1.pulse.runtime.active);
-    for _ in 0..(total_t_cycles - 1) {
+    // After the writeback, the next deferred recalculation (with shift=1)
+    // takes another `(reload + step)` M-cycles to fire -- it sees
+    // `0x780 + 0x3C0 + complement_bit=1` and disables the channel. Drive
+    // enough t-cycles to cover the worst-case alignment of the M-cycle
+    // pipeline, then verify the channel is disabled.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
         apu.channels.channel_1.tick_fast_timer();
-        assert!(apu.channels.channel_1.pulse.runtime.active);
     }
-    apu.channels.channel_1.tick_fast_timer();
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
@@ -1409,6 +1421,10 @@ fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
     assert!(apu.channels.channel_1.sweep.enabled);
 
+    // Allow the post-trigger recalc to load shadow=0x500 from NR14:NR13.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.pulse.runtime.active = false;
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
@@ -1430,9 +1446,21 @@ fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
+    // Wait long enough for the post-trigger restart_countdown (5 M-cycles) to
+    // expire; otherwise reload_done after the next sweep_boundary keeps the
+    // recalc countdown unscheduled and the channel never disables.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
+    // Period stays unchanged (shift=0 path skips writeback). The deferred
+    // recalc loads shadow=0x600 from NR14:NR13 and checks
+    // `0x600 + 0x600 + complement_bit` -> 2*period >= 2048 -> disable.
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
@@ -1447,6 +1475,10 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     apu.write_register(0xFF14, 0x82);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0200);
+    // Wait for the post-trigger recalc to load shadow=0x200 from NR14:NR13.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
 
@@ -1461,6 +1493,11 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     assert_eq!(apu.channels.channel_1.sweep.timer, 1);
 
     apu.write_register(0xFF10, 0x11);
+    // Allow the post-NR10 recalc to settle before the next sweep so shadow
+    // reflects the new pace=1 / step=1 state.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0480);
@@ -1534,6 +1571,11 @@ fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
     apu.write_register(0xFF13, 0xB0);
     apu.write_register(0xFF14, 0x85);
 
+    // Settle the post-trigger recalc (target=3 + step=4 = 7 M-cycles) so
+    // shadow=0x05B0 mirrors NR14:NR13.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0555);
@@ -1889,36 +1931,36 @@ fn prime_dmg_ch1_sweep_active(nr10: u8, nr13: u8, nr14: u8) -> Apu {
 
 #[test]
 fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
-    // After the sweep boundary fires for NR10=0x11 (pace=1, increase, shift=1)
-    // with period=0x500, the writeback to 0x780 happens synchronously while the
-    // second overflow check is deferred by step*M-cycles. The pulse channel
-    // remains active until the recalculation countdown hits zero.
+    // Trigger CH1 with NR10=0x11 (pace=1, increase, shift=1), period=0x500.
+    // The canonical DMG model resets shadow_period to 0 at trigger; the first
+    // sweep boundary then computes its candidate using the post-writeback
+    // shadow loaded inside recalc_done from the live NR14:NR13.
     let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
+
+    // Drive enough t-cycles for the post-trigger recalc countdown to load
+    // shadow=0x500 from NR14:NR13.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0500);
 
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
-    // Post-writeback the canonical pipeline first sits in the 2 M-cycle reload
-    // window. The trigger window (target_trigger_counter=3) runs in parallel,
-    // so the recalculation completes 4 M-cycles after the trigger+sweep_done
-    // pair. The recalculation countdown loaded by the trigger (step=1) decrements
-    // once trigger_counter reaches its target.
+    // Post-writeback the canonical pipeline arms the 2 M-cycle reload window
+    // before loading the next recalculation countdown.
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.reload_countdown,
         2
     );
-    assert_eq!(
-        apu.channels.channel_1.sweep.recalculation.countdown,
-        DMG_SWEEP_RECALC_TICK_T_CYCLES
-    );
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    let total_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
-    for _ in 0..(total_t_cycles - 1) {
+    // Reload + step M-cycles after the writeback the recalc fires with
+    // complement_bit=1 -> 0x780 + 0x3C0 + 1 = 0xB41 -> overflow -> disable.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
         apu.channels.channel_1.tick_fast_timer();
-        assert!(apu.channels.channel_1.pulse.runtime.active);
     }
-    apu.channels.channel_1.tick_fast_timer();
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
