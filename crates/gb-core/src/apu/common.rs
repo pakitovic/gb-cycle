@@ -89,8 +89,8 @@ pub(super) const CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES: u16 = 9;
 // countdown ticks once per M-cycle (4 t-cycles) when nr10.step != 0; we keep the
 // counter in t-cycle units so a single decrement from `tick_fast_timer_with_clock_gate`
 // is enough to advance the alignment phase.
-pub(super) const DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES: u16 = 4;
-pub(super) const DMG_SWEEP_RESTART_DELAY_T_CYCLES: u16 = 5 * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+pub(super) const DMG_SWEEP_RECALC_TICK_T_CYCLES: u16 = 4;
+pub(super) const DMG_SWEEP_RESTART_DELAY_T_CYCLES: u16 = 5 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
 pub(super) const DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE: u8 = 2;
 pub(super) const DAC_ENABLE_REGISTER_MASK: u8 = 0xF8;
 pub(super) const DAC_DIGITAL_OUTPUT_MASK: u8 = 0x0F;

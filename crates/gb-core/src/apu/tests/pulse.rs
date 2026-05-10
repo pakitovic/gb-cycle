@@ -1068,7 +1068,7 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
     // The DMG canonical recalculation pipeline defers the second overflow check
     // by `target_trigger_counter` (3 M-cycles) + step M-cycles after a fresh
     // trigger. With shift=1 that means 4 M-cycles (16 t-cycles) total.
-    let total_t_cycles = 4 * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+    let total_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
     assert!(apu.channels.channel_1.pulse.runtime.active);
     for _ in 0..(total_t_cycles - 1) {
         apu.channels.channel_1.tick_fast_timer();
@@ -1909,11 +1909,11 @@ fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
     );
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.countdown,
-        DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES
+        DMG_SWEEP_RECALC_TICK_T_CYCLES
     );
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    let total_t_cycles = 4 * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+    let total_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
     for _ in 0..(total_t_cycles - 1) {
         apu.channels.channel_1.tick_fast_timer();
         assert!(apu.channels.channel_1.pulse.runtime.active);
@@ -1958,7 +1958,7 @@ fn dmg_ch1_sweep_glitch2_write_nr10_in_trigger_window_reloads_countdown() {
     apu.write_register(0xFF10, 0x15); // pace=1, increase, shift=5
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.countdown,
-        u16::from(5_u8) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES
+        u16::from(5_u8) * DMG_SWEEP_RECALC_TICK_T_CYCLES
     );
 
     // Glitch 2 abort: writing step=0 within the trigger window aborts the
@@ -2003,7 +2003,7 @@ fn dmg_ch1_sweep_glitch3_prev_step_zero_to_positive_ticks_countdown() {
     // Glitch 3 ticks countdown by one M-cycle.
     assert_eq!(
         apu.channels.channel_1.sweep.recalculation.countdown,
-        8 - DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES
+        8 - DMG_SWEEP_RECALC_TICK_T_CYCLES
     );
 }
 

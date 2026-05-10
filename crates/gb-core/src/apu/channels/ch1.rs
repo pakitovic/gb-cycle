@@ -7,7 +7,7 @@ use super::super::common::{
     CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
     CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
     CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES, ChannelRuntimeState,
-    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
+    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RECALC_TICK_T_CYCLES, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
     DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
     NR11_WRITE_ONLY_MASK, NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK,
     NRX4_WRITABLE_MASK, PERIOD_HIGH_MASK, PULSE_DUTY_MASK, PULSE_PERIOD_MAX, SWEEP_PHASE_BOUNDARY,
@@ -180,7 +180,7 @@ impl Channel1SweepState {
         // the recalculation is aborted entirely (forever), matching DocBoy's
         // line 1697-1702 behavior.
         if self.recalculation.target_trigger_counter > 0 && self.recalculation.trigger_counter < 2 {
-            self.recalculation.countdown = u16::from(new_step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+            self.recalculation.countdown = u16::from(new_step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
             if new_step == 0 {
                 self.recalculation.trigger_counter = 0;
                 self.recalculation.target_trigger_counter = 0;
@@ -194,7 +194,7 @@ impl Channel1SweepState {
                 self.recalculation.countdown = self
                     .recalculation
                     .countdown
-                    .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+                    .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
                 if self.recalculation.countdown == 0 {
                     self.period_sweep_recalculation_done(new_nr10, nr13, nr14, runtime);
                 }
@@ -217,7 +217,7 @@ impl Channel1SweepState {
         console_model: ConsoleModel,
         nr10: u8,
         period_value: u16,
-        runtime: &mut ChannelRuntimeState,
+        _runtime: &mut ChannelRuntimeState,
     ) {
         self.shadow_period = period_value;
         self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
@@ -246,11 +246,11 @@ impl Channel1SweepState {
                     calculation,
                     CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
                 );
-            } else if calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                && !calculation.decreases
-            {
-                runtime.active = false;
             }
+            // DMG canonical: no synchronous overflow check at trigger time.
+            // The first overflow check happens via the deferred recalculation
+            // pipeline (period_sweep_recalculation_done) -- DocBoy `update_nr14`
+            // only schedules the countdown without checking overflow inline.
         }
     }
 
@@ -267,7 +267,7 @@ impl Channel1SweepState {
         let prev_countdown_m = self
             .recalculation
             .countdown
-            .div_ceil(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+            .div_ceil(DMG_SWEEP_RECALC_TICK_T_CYCLES);
 
         // The shadow period and increment registers are reset on every trigger.
         // `recalculation.from_trigger` distinguishes the very first DMG
@@ -298,7 +298,7 @@ impl Channel1SweepState {
                 self.recalculation.trigger_counter = 0;
             }
 
-            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+            self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
         } else {
             // Step 0: schedule an instant recalculation completion.
             self.recalculation.countdown = 0;
@@ -345,7 +345,7 @@ impl Channel1SweepState {
         if self.restart_countdown_t_cycles > 0 {
             self.restart_countdown_t_cycles = self
                 .restart_countdown_t_cycles
-                .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+                .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
         }
         if self.recalculation.reload_countdown > 0 {
             self.recalculation.reload_countdown -= 1;
@@ -375,7 +375,7 @@ impl Channel1SweepState {
         self.recalculation.countdown = self
             .recalculation
             .countdown
-            .saturating_sub(DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES);
+            .saturating_sub(DMG_SWEEP_RECALC_TICK_T_CYCLES);
         if self.recalculation.countdown == 0 {
             self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
         }
@@ -401,7 +401,7 @@ impl Channel1SweepState {
                 self.recalculation.instant = true;
                 self.recalculation.countdown = 0;
             } else {
-                self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_M_CYCLE_T_CYCLES;
+                self.recalculation.countdown = u16::from(step) * DMG_SWEEP_RECALC_TICK_T_CYCLES;
             }
         }
         self.recalculation.reload_period_reloaded = false;
@@ -556,7 +556,6 @@ impl Channel1SweepState {
                 self.recalculation.from_trigger = false;
                 self.recalculation.target_trigger_counter = 0;
                 self.recalculation.trigger_counter = 0;
-                self.recalc_apu_clock_phase = 0;
             }
             return;
         }
