@@ -138,6 +138,13 @@ impl Channel1SweepState {
         }
 
         if console_model.is_dmg_family() && runtime.active {
+            // DocBoy gates sweep work only by `nr52.ch1` (channel power); our
+            // model has a separate `enabled` flag set at trigger from the
+            // initial NR10 pace/shift. Keep it in sync with the live NR10 so a
+            // pace 0 -> non-zero transition (which DocBoy treats via glitch 4
+            // when pace_countdown was 8) re-arms the sweep boundary path.
+            self.enabled =
+                sweep_pace_from_nr10(new_nr10) != 0 || sweep_shift_from_nr10(new_nr10) != 0;
             self.apply_dmg_nr10_glitches(old_nr10, new_nr10, nr13, nr14, runtime);
         }
 
