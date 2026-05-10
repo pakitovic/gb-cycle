@@ -389,7 +389,10 @@ impl Channel1SweepState {
     fn period_sweep_reload_done(&mut self, nr10: u8, nr13: u8, nr14: u8) {
         let step = sweep_shift_from_nr10(nr10);
         let live_period = ((u16::from(nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(nr13);
-        let raw_increment = if step == 0 { 0 } else { live_period >> step };
+        // DocBoy `period_sweep_reload_done` line 1444 always reloads
+        // `increment = period >> step`. For step=0 that is `period` itself, which
+        // primes recalculation_done with the DMG glitch increment.
+        let raw_increment = live_period >> step;
         let decreases = sweep_decreases_from_nr10(nr10);
         self.recalculation.increment = if decreases {
             (!raw_increment) & PULSE_PERIOD_MAX
@@ -427,7 +430,13 @@ impl Channel1SweepState {
         // through the existing `pulse_period_from_registers` indirectly via the
         // current shadow, which matches the value DocBoy would observe.
         let shadow = self.shadow_period;
-        let raw_increment = if step == 0 { 0 } else { shadow >> step };
+        // DocBoy `compute_period_sweep_signed_increment` returns
+        // `ch1.period_sweep.increment ^ (decrease ? 0x7FF : 0)`, where increment
+        // was last reloaded as `period >> step` (in reload_done or trigger). For
+        // step=0 that reload is `period`, so the candidate becomes `period +
+        // period (+ complement_bit)` -- the DMG glitch that disables
+        // 2*period >= 2048 channels.
+        let raw_increment = shadow >> step;
         let signed_increment = if sweep_decreases_from_nr10(nr10) {
             (!raw_increment) & PULSE_PERIOD_MAX
         } else {
@@ -546,16 +555,17 @@ impl Channel1SweepState {
             if console_model.is_cgb_family() {
                 self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
             } else {
-                // DMG: even with shift==0 the canonical model still ticks the
-                // recalculation pipeline (DocBoy `period_sweep_reload_done` sets
-                // `instant=true` when step is 0). The glitches in NR10/NR13/NR14
-                // can flip step to non-zero mid-window, so we still need an
-                // increment loaded.
-                self.recalculation.increment = 0;
-                self.recalculation.instant = true;
-                self.recalculation.from_trigger = false;
-                self.recalculation.target_trigger_counter = 0;
-                self.recalculation.trigger_counter = 0;
+                // DMG canonical (DocBoy `period_sweep_done` lines 1402-1419): a
+                // step==0 sweep boundary skips the writeback but still arms the
+                // 2 M-cycle reload window. `reload_done` will then load
+                // `instant=true` and re-derive the canonical increment from the
+                // (unchanged) NR14:NR13. We deliberately leave `from_trigger`
+                // alone here: only the deferred `period_sweep_recalculation_done`
+                // is allowed to clear it, so the first-recalc-after-trigger
+                // complement_bit=0 window stays open through this boundary.
+                self.recalculation.reload_countdown = 2;
+                self.recalculation.reload_period_reloaded = false;
+                self.recalculation.reload_period_pending = true;
             }
             return;
         }
