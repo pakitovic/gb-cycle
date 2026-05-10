@@ -658,12 +658,15 @@ impl Channel1SweepState {
         // Per DocBoy `period_sweep_done` (apu.cpp lines 1390-1419): if a
         // recalculation countdown is already pending (typically from a recent
         // trigger), the canonical "increment is reset to zero" glitch fires
-        // here. The actual recalculation countdown is left alone — it will be
-        // either reloaded by reload_done (gated on restart_countdown == 0) or
-        // continue ticking.
+        // here -- both `period_sweep.increment` (our `period_increment`) and
+        // `recalculation.increment` are zeroed so the next reload_done /
+        // recalc_done re-derive them from the live NR14:NR13. The actual
+        // recalculation countdown is left alone; it will either be reloaded
+        // by reload_done (gated on restart_countdown == 0) or continue ticking.
         let _ = nr10;
         if self.recalculation.countdown > 0 {
             self.recalculation.increment = 0;
+            self.period_increment = 0;
         }
         // Canonical reload window: 2 M-cycles before the recalculation countdown
         // is potentially reloaded with `step`. During the first M-cycle of this
