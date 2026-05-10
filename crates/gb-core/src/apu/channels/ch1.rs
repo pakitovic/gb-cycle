@@ -244,21 +244,23 @@ impl Channel1SweepState {
             self.shadow_period = 0;
         }
 
-        if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
+        if console_model.is_cgb_family()
+            && let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false)
+        {
             self.observe_calculation(calculation);
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(
-                    nr10,
-                    self.shadow_period,
-                    calculation,
-                    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
-                );
-            }
-            // DMG canonical: no synchronous overflow check at trigger time.
-            // The first overflow check happens via the deferred recalculation
-            // pipeline (period_sweep_recalculation_done) -- DocBoy `update_nr14`
-            // only schedules the countdown without checking overflow inline.
+            self.schedule_delayed_calculation(
+                nr10,
+                self.shadow_period,
+                calculation,
+                CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
+            );
         }
+        // DMG canonical: no synchronous overflow check at trigger time, and no
+        // observe_calculation either (which would set
+        // negate_calculated_since_trigger and prematurely arm the
+        // direction-toggle disable). The first canonical calculation happens
+        // inside `period_sweep_recalculation_done` after the trigger
+        // countdown elapses; that path observes its own calculation correctly.
     }
 
     // Trigger-time recalculation initialization (DMG only). Mirrors DocBoy
@@ -477,6 +479,16 @@ impl Channel1SweepState {
             if candidate > PULSE_PERIOD_MAX {
                 runtime.active = false;
             }
+        }
+
+        // Pan Docs documents a DMG glitch where toggling NR10 from decrease to
+        // increase disables CH1, but only if a calculation has been made since
+        // the channel was triggered. Recalculation_done IS that canonical
+        // calculation, so latch the flag here when the active direction is
+        // negative -- subsequent NR10 writes that flip direction will then see
+        // a "calc happened" and disable correctly.
+        if sweep_decreases_from_nr10(nr10) {
+            self.negate_calculated_since_trigger = true;
         }
 
         self.recalculation.from_trigger = false;

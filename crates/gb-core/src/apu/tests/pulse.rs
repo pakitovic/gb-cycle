@@ -1516,6 +1516,13 @@ fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
     apu.write_register(0xFF14, 0x84);
 
     assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    // Canonical: a negate calculation must actually have been performed before
+    // the direction-toggle disable applies. Drive enough t-cycles for the
+    // post-trigger recalc to complete (target=3 + step=1 = 4 M-cycles).
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
 
     apu.write_register(0xFF10, 0x10);
@@ -1534,6 +1541,13 @@ fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1
     apu.write_register(0xFF14, 0x84);
 
     assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    // Drive the post-trigger recalc to completion (target=3 + step=1 = 4
+    // M-cycles) so the negate calculation is actually observed before the
+    // direction-toggle disable applies.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0400);
 
