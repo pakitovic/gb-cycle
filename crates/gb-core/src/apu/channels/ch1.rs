@@ -246,7 +246,6 @@ impl Channel1SweepState {
     #[allow(clippy::too_many_arguments)]
     fn tick_recalculation(
         &mut self,
-        console_model: ConsoleModel,
         nr10: u8,
         nr13: &mut u8,
         nr14: &mut u8,
@@ -254,10 +253,6 @@ impl Channel1SweepState {
         apu_clock: u8,
         t_cycle_phase: u8,
     ) {
-        if console_model.is_cgb_family() {
-            return;
-        }
-
         let is_tick_odd = t_cycle_phase & 0x01 == 1;
         if !is_tick_odd {
             return;
@@ -909,10 +904,9 @@ impl Channel1State {
     ) {
         self.sweep
             .tick_delayed_calculation(clock_period_timer, &mut self.pulse.runtime);
-        if clock_period_timer {
+        if clock_period_timer && console_model.is_dmg_family() {
             let nr10 = self.nr10;
             self.sweep.tick_recalculation(
-                console_model,
                 nr10,
                 &mut self.nr13,
                 &mut self.nr14,
