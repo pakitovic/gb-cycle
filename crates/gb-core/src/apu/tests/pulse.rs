@@ -22,7 +22,7 @@ fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_st
         apu.channels.channel_1.pulse.period_timer,
         pulse_timer_reload(0x04AB)
     );
-    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x04AB);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
     assert_eq!(apu.channels.channel_1.sweep.timer, 0x01);
     assert!(apu.channels.channel_1.sweep.enabled);
 }
@@ -55,7 +55,7 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
         envelope_timer_reload(0)
     );
     assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
-    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x00AB);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
     assert_eq!(apu.channels.channel_1.sweep.timer, 1);
     assert!(apu.channels.channel_1.sweep.enabled);
 
@@ -1060,11 +1060,23 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
     assert!(apu.channels.channel_1.pulse.runtime.active);
+    let trigger_settle_t_cycles = 4 * DMG_SWEEP_RECALC_TICK_T_CYCLES;
+    for _ in 0..trigger_settle_t_cycles {
+        apu.channels.channel_1.tick_fast_timer();
+    }
 
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
     assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
+    // After the writeback, the next deferred recalculation (with shift=1)
+    // takes another `(reload + step)` M-cycles to fire -- it sees
+    // `0x780 + 0x3C0 + complement_bit=1` and disables the channel. Drive
+    // enough t-cycles to cover the worst-case alignment of the M-cycle
+    // pipeline, then verify the channel is disabled.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
@@ -1399,6 +1411,10 @@ fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
     assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
     assert!(apu.channels.channel_1.sweep.enabled);
 
+    // Allow the post-trigger recalc to load shadow=0x500 from NR14:NR13.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.pulse.runtime.active = false;
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
@@ -1420,9 +1436,21 @@ fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
     assert!(apu.channels.channel_1.pulse.runtime.active);
 
+    // Wait long enough for the post-trigger restart_countdown (5 M-cycles) to
+    // expire; otherwise reload_done after the next sweep_boundary keeps the
+    // recalc countdown unscheduled and the channel never disables.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
+    // Period stays unchanged (shift=0 path skips writeback). The deferred
+    // recalc loads shadow=0x600 from NR14:NR13 and checks
+    // `0x600 + 0x600 + complement_bit` -> 2*period >= 2048 -> disable.
     assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
@@ -1437,6 +1465,10 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     apu.write_register(0xFF14, 0x82);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0200);
+    // Wait for the post-trigger recalc to load shadow=0x200 from NR14:NR13.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
 
@@ -1451,6 +1483,11 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     assert_eq!(apu.channels.channel_1.sweep.timer, 1);
 
     apu.write_register(0xFF10, 0x11);
+    // Allow the post-NR10 recalc to settle before the next sweep so shadow
+    // reflects the new pace=1 / step=1 state.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0480);
@@ -1469,6 +1506,10 @@ fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
     apu.write_register(0xFF14, 0x84);
 
     assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
 
     apu.write_register(0xFF10, 0x10);
@@ -1487,6 +1528,13 @@ fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1
     apu.write_register(0xFF14, 0x84);
 
     assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    // Drive the post-trigger recalc to completion (target=3 + step=1 = 4
+    // M-cycles) so the negate calculation is actually observed before the
+    // direction-toggle disable applies.
+    for _ in 0..(4 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
     assert_eq!(apu.channels.channel_1.period_value(), 0x0400);
 
@@ -1524,6 +1572,11 @@ fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
     apu.write_register(0xFF13, 0xB0);
     apu.write_register(0xFF14, 0x85);
 
+    // Settle the post-trigger recalc (target=3 + step=4 = 7 M-cycles) so
+    // shadow=0x05B0 mirrors NR14:NR13.
+    for _ in 0..(8 * DMG_SWEEP_RECALC_TICK_T_CYCLES) {
+        apu.channels.channel_1.tick_fast_timer();
+    }
     apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x0555);
@@ -1859,4 +1912,241 @@ fn live_nrx2_write_requires_retrigger_before_reprogramming_pulse_envelopes() {
     assert_eq!(apu.channels.channel_1.pulse.envelope.timer, 1);
     assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 6);
     assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 1);
+}
+
+fn prime_dmg_ch1_sweep_active(nr10: u8, nr13: u8, nr14: u8) -> Apu {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, nr10);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, nr13);
+    apu.write_register(0xFF14, nr14);
+    apu
+}
+
+#[test]
+fn dmg_ch1_sweep_recalc_countdown_advances_on_m_cycle_edges() {
+    // Trigger CH1 with NR10=0x11 (pace=1, increase, shift=1), period=0x500.
+    // The canonical DMG model resets shadow_period to 0 at trigger; the first
+    // sweep boundary then computes its candidate using the post-writeback
+    // shadow loaded inside recalc_done from the live NR14:NR13.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0);
+
+    // Drive enough t-cycles for the post-trigger recalc countdown to load
+    // shadow=0x500 from NR14:NR13. The exact tick count depends on the
+    // sub-M-cycle phase at trigger, so we just wait generously.
+    for _ in 0..32 {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0500);
+
+    apu.channels.channel_1.clock_sweep(ConsoleModel::GameBoy);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
+    // Post-writeback the canonical pipeline arms the 2 M-cycle reload window
+    // before loading the next recalculation countdown.
+    assert_eq!(
+        apu.channels.channel_1.sweep.recalculation.reload_countdown,
+        2
+    );
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+
+    // Reload + step M-cycles after the writeback the recalc fires with
+    // complement_bit=1 -> 0x780 + 0x3C0 + 1 = 0xB41 -> overflow -> disable.
+    for _ in 0..32 {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch1_write_nr10_increase_overflow_disables_channel() {
+    // After a write_nr10 with direction=increase, the synchronous overflow
+    // check uses complement_bit=1 on DMG (unless still in the first
+    // post-trigger recalculation, indicated by `from_trigger`). The pipeline
+    // primes `recalculation.increment` at trigger time to period>>step.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
+    // The post-trigger recalculation has from_trigger=true so the glitch
+    // does NOT apply on the first NR10 write right after the trigger.
+    apu.write_register(0xFF10, 0x12); // pace=1, increase, shift=2
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch2_write_nr10_in_trigger_window_reloads_countdown() {
+    // Within the trigger_counter < target window, a NR10 write reloads the
+    // recalculation countdown using the new step. Step 0 aborts the pipeline.
+    let mut apu = prime_dmg_ch1_sweep_active(0x13, 0xFF, 0x85);
+    let initial_target = apu
+        .channels
+        .channel_1
+        .sweep
+        .recalculation
+        .target_trigger_counter;
+    assert!(initial_target > 0);
+    assert_eq!(
+        apu.channels.channel_1.sweep.recalculation.trigger_counter,
+        0
+    );
+
+    // Glitch 2: writing a new step reloads the countdown to the new step. The
+    // post-trigger countdown is loaded immediately (no reload window in this
+    // path).
+    apu.write_register(0xFF10, 0x15); // pace=1, increase, shift=5
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 5);
+
+    // Glitch 2 abort: writing step=0 within the trigger window aborts the
+    // recalculation entirely.
+    let mut apu = prime_dmg_ch1_sweep_active(0x13, 0xFF, 0x85);
+    apu.write_register(0xFF10, 0x10); // pace=1, increase, shift=0
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 0);
+    assert_eq!(
+        apu.channels
+            .channel_1
+            .sweep
+            .recalculation
+            .target_trigger_counter,
+        0
+    );
+    assert_eq!(
+        apu.channels.channel_1.sweep.recalculation.trigger_counter,
+        0
+    );
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch3_prev_step_zero_to_positive_ticks_countdown() {
+    // After the trigger window closes, writing NR10 with prev_step=0 and
+    // new_step>0 ticks the recalculation countdown by one M-cycle. Set up the
+    // post-trigger state so trigger_counter has caught up to target.
+    let mut apu = prime_dmg_ch1_sweep_active(0x10, 0xFF, 0x85);
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 0);
+
+    // Trigger the sweep boundary: this loads countdown via the post-writeback
+    // schedule. Pace=1 step=0 → instant=true, but we override here for testing.
+    apu.channels.channel_1.sweep.recalculation.countdown = 8;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .target_trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.from_trigger = false;
+
+    apu.write_register(0xFF10, 0x12); // prev_step=0, new_step=2
+    // Glitch 3 ticks countdown by one M-cycle.
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 7);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch1_disables_channel_after_from_trigger_clears() {
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0xFF, 0x87);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    apu.channels.channel_1.sweep.shadow_period = 0x07FF;
+    apu.channels.channel_1.sweep.recalculation.from_trigger = false;
+    apu.channels.channel_1.sweep.recalculation.increment = 0x07FF;
+
+    apu.write_register(0xFF10, 0x10);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch3_countdown_reaching_zero_fires_recalculation_done() {
+    let mut apu = prime_dmg_ch1_sweep_active(0x10, 0x00, 0x80);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    apu.channels.channel_1.sweep.shadow_period = 0x0000;
+    apu.channels.channel_1.sweep.recalculation.from_trigger = false;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .target_trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.trigger_counter = 0;
+    apu.channels.channel_1.sweep.recalculation.countdown = 1;
+    apu.channels.channel_1.sweep.recalculation.increment = 0;
+    apu.channels.channel_1.sweep.period_increment = 0;
+
+    apu.write_register(0xFF10, 0x12);
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.countdown, 0);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+}
+
+#[test]
+fn dmg_ch1_sweep_nr13_write_in_reload_window_is_dropped() {
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0xAA, 0x85);
+    let period_before = apu.channels.channel_1.period_value();
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 2;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_pending = true;
+
+    apu.write_register(0xFF13, 0x55);
+    assert_eq!(apu.channels.channel_1.period_value(), period_before);
+    assert!(
+        !apu.channels
+            .channel_1
+            .sweep
+            .recalculation
+            .reload_period_pending
+    );
+}
+
+#[test]
+fn dmg_ch1_sweep_nr14_write_in_reload_window_drops_period_high_bits() {
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
+    let period_before = apu.channels.channel_1.period_value();
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 2;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+
+    apu.write_register(0xFF14, 0x02);
+    assert_eq!(apu.channels.channel_1.period_value(), period_before);
+}
+
+#[test]
+fn dmg_ch1_sweep_nr14_non_trigger_in_reload_window_re_derives_increment() {
+    let mut apu = prime_dmg_ch1_sweep_active(0x12, 0x10, 0x85);
+    apu.channels.channel_1.sweep.recalculation.reload_countdown = 1;
+    apu.channels
+        .channel_1
+        .sweep
+        .recalculation
+        .reload_period_reloaded = true;
+    apu.channels.channel_1.sweep.recalculation.increment = 0xFFFF; // sentinel
+
+    // Write NR14 = 0x05 (no trigger, period_high=5). live_period >> 2 = 0x144.
+    apu.write_register(0xFF14, 0x05);
+    assert_eq!(apu.channels.channel_1.sweep.recalculation.increment, 0x144);
+}
+
+#[test]
+fn dmg_ch1_sweep_glitch4_pace_countdown_at_boundary_reticks_sweep() {
+    // Glitch 4: writing NR10 while phase==SWEEP_PHASE_BOUNDARY ticks the period
+    // sweep as if a DIV-APU edge had fired. We force the sweep into the
+    // boundary phase and observe the writeback after the NR10 write.
+    let mut apu = prime_dmg_ch1_sweep_active(0x11, 0x00, 0x85);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
+    apu.channels.channel_1.sweep.timer = 1;
+    apu.channels.channel_1.sweep.shadow_period = 0x0500;
+    // Force the phase to the boundary so glitch 4 fires on the next NR10 write.
+    apu.channels
+        .channel_1
+        .sweep
+        .set_phase_for_test(SWEEP_PHASE_BOUNDARY);
+
+    apu.write_register(0xFF10, 0x21); // pace=2, increase, shift=1
+    // Glitch 4 fired: writeback shadow=0x780.
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
 }

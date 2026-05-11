@@ -167,7 +167,7 @@ impl DisplayPalette {
     }
 }
 
-const SAMEBOY_DMG_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+const DMG_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
     shades: [
         [0xC6, 0xDE, 0x8C],
         [0x84, 0xA5, 0x63],
@@ -175,7 +175,7 @@ const SAMEBOY_DMG_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
         [0x08, 0x18, 0x10],
     ],
 };
-const SAMEBOY_MGB_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+const MGB_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
     shades: [
         [0xC2, 0xCE, 0x93],
         [0x81, 0x8D, 0x66],
@@ -183,7 +183,7 @@ const SAMEBOY_MGB_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
         [0x07, 0x10, 0x0E],
     ],
 };
-const SAMEBOY_GBL_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+const GBL_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
     shades: [
         [0x7F, 0xE2, 0xC3],
         [0x56, 0xB4, 0x95],
@@ -11725,9 +11725,9 @@ fn execution_mode_name(execution_mode: ExecutionMode) -> &'static str {
 fn display_palette_for_desktop_palette(display_palette: DesktopDisplayPalette) -> DisplayPalette {
     match display_palette {
         DesktopDisplayPalette::Grey => DMG_GREY_DISPLAY_PALETTE,
-        DesktopDisplayPalette::GameBoy => SAMEBOY_DMG_DISPLAY_PALETTE,
-        DesktopDisplayPalette::Pocket => SAMEBOY_MGB_DISPLAY_PALETTE,
-        DesktopDisplayPalette::Light => SAMEBOY_GBL_DISPLAY_PALETTE,
+        DesktopDisplayPalette::GameBoy => DMG_DISPLAY_PALETTE,
+        DesktopDisplayPalette::Pocket => MGB_DISPLAY_PALETTE,
+        DesktopDisplayPalette::Light => GBL_DISPLAY_PALETTE,
     }
 }
 
@@ -17501,8 +17501,8 @@ mod tests {
             "experimental"
         );
         assert_eq!(
-            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(7),
-            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+            super::DMG_DISPLAY_PALETTE.shade_rgb(7),
+            super::DMG_DISPLAY_PALETTE.shade_rgb(3)
         );
     }
 
@@ -17530,15 +17530,15 @@ mod tests {
         );
         assert_eq!(
             super::display_palette_for_desktop_palette(DesktopDisplayPalette::GameBoy).shade_rgb(0),
-            super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0)
+            super::DMG_DISPLAY_PALETTE.shade_rgb(0)
         );
         assert_eq!(
             super::display_palette_for_desktop_palette(DesktopDisplayPalette::Pocket).shade_rgb(1),
-            super::SAMEBOY_MGB_DISPLAY_PALETTE.shade_rgb(1)
+            super::MGB_DISPLAY_PALETTE.shade_rgb(1)
         );
         assert_eq!(
             super::display_palette_for_desktop_palette(DesktopDisplayPalette::Light).shade_rgb(2),
-            super::SAMEBOY_GBL_DISPLAY_PALETTE.shade_rgb(2)
+            super::GBL_DISPLAY_PALETTE.shade_rgb(2)
         );
     }
 
@@ -17559,7 +17559,7 @@ mod tests {
         );
 
         let panel = render_input.panels[0].expect("primary panel should be populated");
-        assert_eq!(panel.display_palette, super::SAMEBOY_GBL_DISPLAY_PALETTE);
+        assert_eq!(panel.display_palette, super::GBL_DISPLAY_PALETTE);
         assert!(render_input.panels[1..].iter().all(Option::is_none));
     }
 
@@ -17589,7 +17589,7 @@ mod tests {
                 bgwin_framebuffer: &framebuffer,
                 backdrop_framebuffer: &framebuffer,
                 bgwin_framebuffer_layer_sources: &layer_sources,
-                display_palette: super::SAMEBOY_GBL_DISPLAY_PALETTE,
+                display_palette: super::GBL_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
             },
             &gb_desktop::VideoOptions {
@@ -20608,7 +20608,7 @@ mod tests {
                             .machine
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -20650,7 +20650,7 @@ mod tests {
                             .machine
                             .ppu()
                             .framebuffer_bgwin_layer_sources(),
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -20710,7 +20710,7 @@ mod tests {
                     bgwin_framebuffer: &framebuffer,
                     backdrop_framebuffer: &framebuffer,
                     bgwin_framebuffer_layer_sources: &layer_sources,
-                    display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                    display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                 }),
                 None,
@@ -21088,7 +21088,7 @@ mod tests {
                         bgwin_framebuffer: &left_framebuffer,
                         backdrop_framebuffer: &left_framebuffer,
                         bgwin_framebuffer_layer_sources: &left_sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
@@ -21097,7 +21097,7 @@ mod tests {
                         bgwin_framebuffer: &right_framebuffer,
                         backdrop_framebuffer: &right_framebuffer,
                         bgwin_framebuffer_layer_sources: &right_sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -21114,11 +21114,8 @@ mod tests {
         let left_pixel = &rgb_frame[0..3];
         let right_pixel_index = super::FRAMEBUFFER_WIDTH as usize * 3;
         let right_pixel = &rgb_frame[right_pixel_index..right_pixel_index + 3];
-        assert_eq!(left_pixel, &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
-        assert_eq!(
-            right_pixel,
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
-        );
+        assert_eq!(left_pixel, &super::DMG_DISPLAY_PALETTE.shade_rgb(0));
+        assert_eq!(right_pixel, &super::DMG_DISPLAY_PALETTE.shade_rgb(3));
         assert_eq!(rgb_frame.len(), linked_dimensions.height as usize * pitch);
     }
 
@@ -21178,7 +21175,7 @@ mod tests {
                         bgwin_framebuffer: &panel_0,
                         backdrop_framebuffer: &panel_0,
                         bgwin_framebuffer_layer_sources: &sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
@@ -21187,7 +21184,7 @@ mod tests {
                         bgwin_framebuffer: &panel_1,
                         backdrop_framebuffer: &panel_1,
                         bgwin_framebuffer_layer_sources: &sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
@@ -21196,7 +21193,7 @@ mod tests {
                         bgwin_framebuffer: &panel_2,
                         backdrop_framebuffer: &panel_2,
                         bgwin_framebuffer_layer_sources: &sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
@@ -21205,7 +21202,7 @@ mod tests {
                         bgwin_framebuffer: &panel_3,
                         backdrop_framebuffer: &panel_3,
                         bgwin_framebuffer_layer_sources: &sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                 ],
@@ -21221,18 +21218,18 @@ mod tests {
         let top_right_index = super::FRAMEBUFFER_WIDTH as usize * 3;
         let bottom_left_index = super::FRAMEBUFFER_HEIGHT as usize * pitch;
         let bottom_right_index = bottom_left_index + top_right_index;
-        assert_eq!(top_left, &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
+        assert_eq!(top_left, &super::DMG_DISPLAY_PALETTE.shade_rgb(0));
         assert_eq!(
             &rgb_frame[top_right_index..top_right_index + 3],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+            &super::DMG_DISPLAY_PALETTE.shade_rgb(1)
         );
         assert_eq!(
             &rgb_frame[bottom_left_index..bottom_left_index + 3],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
+            &super::DMG_DISPLAY_PALETTE.shade_rgb(2)
         );
         assert_eq!(
             &rgb_frame[bottom_right_index..bottom_right_index + 3],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+            &super::DMG_DISPLAY_PALETTE.shade_rgb(3)
         );
     }
 
@@ -21275,7 +21272,7 @@ mod tests {
                         bgwin_framebuffer: &bgwin_framebuffer,
                         backdrop_framebuffer: &bgwin_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -21289,10 +21286,7 @@ mod tests {
         )
         .expect("layer-masked frame should render");
 
-        assert_eq!(
-            &rgb_frame[..3],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
-        );
+        assert_eq!(&rgb_frame[..3], &super::DMG_DISPLAY_PALETTE.shade_rgb(1));
     }
 
     #[test]
@@ -21340,7 +21334,7 @@ mod tests {
                         bgwin_framebuffer: &bgwin_framebuffer,
                         backdrop_framebuffer: &backdrop_framebuffer,
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
-                        display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -21354,18 +21348,9 @@ mod tests {
         )
         .expect("OBJ-only frame should render with a dynamic backdrop");
 
-        assert_eq!(
-            &rgb_frame[..3],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
-        );
-        assert_eq!(
-            &rgb_frame[3..6],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
-        );
-        assert_eq!(
-            &rgb_frame[6..9],
-            &super::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
-        );
+        assert_eq!(&rgb_frame[..3], &super::DMG_DISPLAY_PALETTE.shade_rgb(1));
+        assert_eq!(&rgb_frame[3..6], &super::DMG_DISPLAY_PALETTE.shade_rgb(3));
+        assert_eq!(&rgb_frame[6..9], &super::DMG_DISPLAY_PALETTE.shade_rgb(2));
     }
 
     #[test]
@@ -21397,7 +21382,7 @@ mod tests {
                         .machine
                         .ppu()
                         .framebuffer_bgwin_layer_sources(),
-                    display_palette: super::SAMEBOY_DMG_DISPLAY_PALETTE,
+                    display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                 }),
                 None,
@@ -22561,10 +22546,7 @@ mod tests {
         assert_eq!(info.width, super::FRAMEBUFFER_WIDTH);
         assert_eq!(info.height, super::FRAMEBUFFER_HEIGHT);
         assert_eq!(info.color_type, png::ColorType::Rgb);
-        assert_eq!(
-            &buffer[..3],
-            &super::SAMEBOY_GBL_DISPLAY_PALETTE.shade_rgb(0)
-        );
+        assert_eq!(&buffer[..3], &super::GBL_DISPLAY_PALETTE.shade_rgb(0));
         assert!(
             harness
                 .execute_action(super::MenuAction::TogglePerformanceHud)

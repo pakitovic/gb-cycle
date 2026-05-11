@@ -106,6 +106,14 @@ impl Apu {
         }
     }
 
+    fn effective_frame_sequencer_step(&self) -> u8 {
+        if self.skip_next_frame_sequencer_edge {
+            1
+        } else {
+            self.frame_sequencer.step
+        }
+    }
+
     fn write_channel_1_register(
         &mut self,
         register: Channel1Register,
@@ -113,12 +121,13 @@ impl Apu {
         speed_mode: CgbSpeedMode,
     ) {
         if self.master.powered {
+            let step = self.effective_frame_sequencer_step();
             self.channels.channel_1.write_register(
                 register,
                 value,
                 self.console_model,
                 speed_mode,
-                self.frame_sequencer.step,
+                step,
             );
         } else {
             self.channels
@@ -134,12 +143,13 @@ impl Apu {
         speed_mode: CgbSpeedMode,
     ) {
         if self.master.powered {
+            let step = self.effective_frame_sequencer_step();
             self.channels.channel_2.write_register(
                 register,
                 value,
                 self.console_model,
                 speed_mode,
-                self.frame_sequencer.step,
+                step,
             );
         } else {
             self.channels
@@ -150,12 +160,10 @@ impl Apu {
 
     fn write_channel_3_register(&mut self, register: Channel3Register, value: u8) {
         if self.master.powered {
-            self.channels.channel_3.write_register(
-                register,
-                value,
-                self.console_model,
-                self.frame_sequencer.step,
-            );
+            let step = self.effective_frame_sequencer_step();
+            self.channels
+                .channel_3
+                .write_register(register, value, self.console_model, step);
         } else {
             self.channels
                 .channel_3
@@ -165,12 +173,10 @@ impl Apu {
 
     fn write_channel_4_register(&mut self, register: Channel4Register, value: u8) {
         if self.master.powered {
-            self.channels.channel_4.write_register(
-                register,
-                value,
-                self.console_model,
-                self.frame_sequencer.step,
-            );
+            let step = self.effective_frame_sequencer_step();
+            self.channels
+                .channel_4
+                .write_register(register, value, self.console_model, step);
         } else {
             self.channels
                 .channel_4

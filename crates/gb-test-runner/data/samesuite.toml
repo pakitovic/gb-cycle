@@ -10,7 +10,7 @@ console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png"
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger-10"
@@ -19,7 +19,7 @@ console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png"
 
 [[case]]
 id = "samesuite-dmg-ei-delay-halt"

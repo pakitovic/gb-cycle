@@ -119,7 +119,7 @@ fn powering_on_while_div_apu_signal_is_high_starts_on_the_high_half_phase() {
 }
 
 #[test]
-fn dmg_power_on_while_div_apu_signal_is_high_still_resets_to_step_zero() {
+fn dmg_power_on_while_div_apu_signal_is_high_suppresses_the_first_fs_edge() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
@@ -128,7 +128,11 @@ fn dmg_power_on_while_div_apu_signal_is_high_still_resets_to_step_zero() {
     assert_eq!(apu.snapshot().div_apu, 0x00);
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
+    assert_eq!(apu.snapshot().div_apu, 0x00);
+    assert_eq!(apu.frame_sequencer.length_clock_count, 0);
+    assert_eq!(apu.frame_sequencer.envelope_clock_count, 0);
 
+    tick_apu_with_edges(&mut apu, 1, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x01);
     assert_eq!(apu.frame_sequencer.length_clock_count, 1);
     assert_eq!(apu.frame_sequencer.envelope_clock_count, 0);

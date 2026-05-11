@@ -3739,12 +3739,12 @@ mod tests {
             (
                 "samesuite-dmg-div-write-trigger",
                 "samesuite/apu/div_write_trigger.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png",
             ),
             (
                 "samesuite-dmg-div-write-trigger-10",
                 "samesuite/apu/div_write_trigger_10.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png",
             ),
             (
                 "samesuite-dmg-ei-delay-halt",

@@ -817,6 +817,13 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
+        for rom_path in crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy") {
+            write_required_file(
+                root,
+                &format!("tests/roms/dmg/{}", rom_path.display()),
+                rom_path.to_string_lossy().as_bytes(),
+            );
+        }
         for rom in [
             "docboy/serial/serial_two_players_basic_transfer_master.gb",
             "docboy/serial/serial_two_players_basic_transfer_slave.gb",
@@ -898,6 +905,22 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
+            .chain(
+                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy")
+                    .into_iter()
+                    .map(|rom_path| {
+                        let rom = rom_path
+                            .strip_prefix("docboy")
+                            .expect("docboy disabled ROMs should stay under the docboy family")
+                            .display()
+                            .to_string();
+                        required_file(
+                            &format!("tests/roms/dmg/{}", rom_path.display()),
+                            "docboy",
+                            Some(rom.as_str()),
+                        )
+                    }),
+            )
             .chain(
                 [
                     "serial/serial_two_players_basic_transfer_master.gb",

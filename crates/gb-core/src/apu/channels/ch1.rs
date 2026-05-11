@@ -7,11 +7,12 @@ use super::super::common::{
     CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP,
     CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
     CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES, ChannelRuntimeState,
-    DAC_ENABLE_REGISTER_MASK, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK, NR11_WRITE_ONLY_MASK,
-    NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK, NRX4_WRITABLE_MASK,
-    PERIOD_HIGH_MASK, PULSE_DUTY_MASK, SWEEP_PHASE_BOUNDARY, SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD,
-    begin_nrx4_write, pulse_period_from_registers, sweep_decreases_from_nr10, sweep_pace_from_nr10,
-    sweep_shift_from_nr10,
+    DAC_ENABLE_REGISTER_MASK, DMG_SWEEP_RESTART_DELAY_T_CYCLES,
+    DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE, NR10_FORCED_HIGH_MASK, NR10_WRITABLE_MASK,
+    NR11_WRITE_ONLY_MASK, NR13_WRITE_ONLY_READ_VALUE, NR14_FORCED_HIGH_MASK, NR14_READ_MASK,
+    NRX4_WRITABLE_MASK, PERIOD_HIGH_MASK, PULSE_DUTY_MASK, PULSE_PERIOD_MAX, SWEEP_PHASE_BOUNDARY,
+    SWEEP_PHASE_MASK, SWEEP_TIMER_RELOAD, begin_nrx4_write, pulse_period_from_registers,
+    sweep_decreases_from_nr10, sweep_pace_from_nr10, sweep_shift_from_nr10,
 };
 use super::super::registers::Channel1Register;
 use super::pulse::PulseChannelState;
@@ -21,6 +22,28 @@ struct SweepCalculation {
     candidate_sum: u16,
     addend: u16,
     decreases: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub(in crate::apu) struct Ch1SweepRecalculation {
+    #[serde(default)]
+    pub(in crate::apu) countdown: u16,
+    #[serde(default)]
+    pub(in crate::apu) target_trigger_counter: u8,
+    #[serde(default)]
+    pub(in crate::apu) trigger_counter: u8,
+    #[serde(default)]
+    pub(in crate::apu) instant: bool,
+    #[serde(default)]
+    pub(in crate::apu) increment: u16,
+    #[serde(default)]
+    pub(in crate::apu) from_trigger: bool,
+    #[serde(default)]
+    pub(in crate::apu) reload_countdown: u8,
+    #[serde(default)]
+    pub(in crate::apu) reload_period_reloaded: bool,
+    #[serde(default)]
+    pub(in crate::apu) reload_period_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -43,6 +66,12 @@ pub(in crate::apu) struct Channel1SweepState {
     decreasing_writeback_since_trigger: bool,
     #[serde(default)]
     pub(in crate::apu) restart_hold_t_cycles: u16,
+    #[serde(default)]
+    pub(in crate::apu) recalculation: Ch1SweepRecalculation,
+    #[serde(default)]
+    pub(in crate::apu) restart_countdown_t_cycles: u16,
+    #[serde(default)]
+    pub(in crate::apu) period_increment: u16,
 }
 
 impl Channel1SweepState {
@@ -52,11 +81,11 @@ impl Channel1SweepState {
 
     fn apply_powered_startup(&mut self, nr10: u8, period_value: u16, active: bool) {
         self.clear();
+        let pace = sweep_pace_from_nr10(nr10);
         self.shadow_period = period_value;
-        self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
+        self.phase = Self::phase_from_pace(pace);
         self.timer = Self::timer_from_phase(self.phase);
-        self.enabled =
-            active && (sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0);
+        self.enabled = active && (pace != 0 || sweep_shift_from_nr10(nr10) != 0);
     }
 
     fn write_nr10(
@@ -82,7 +111,63 @@ impl Channel1SweepState {
             runtime.active = false;
         }
 
+        if console_model.is_dmg_family() && runtime.active {
+            self.enabled =
+                sweep_pace_from_nr10(new_nr10) != 0 || sweep_shift_from_nr10(new_nr10) != 0;
+            self.apply_dmg_nr10_glitches(old_nr10, new_nr10, nr13, nr14, runtime);
+        }
+
         self.maybe_fire_sweep_boundary(console_model, new_nr10, nr13, nr14, runtime);
+    }
+
+    fn apply_dmg_nr10_glitches(
+        &mut self,
+        old_nr10: u8,
+        new_nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        let prev_step = sweep_shift_from_nr10(old_nr10);
+        let new_step = sweep_shift_from_nr10(new_nr10);
+        let new_decreases = sweep_decreases_from_nr10(new_nr10);
+
+        if !new_decreases {
+            let complement_bit: u16 = if self.recalculation.from_trigger {
+                0
+            } else {
+                1
+            };
+            let candidate = self
+                .shadow_period
+                .wrapping_add(self.recalculation.increment);
+            let candidate = candidate.wrapping_add(complement_bit);
+            if candidate > PULSE_PERIOD_MAX {
+                runtime.active = false;
+            }
+        }
+
+        if !runtime.active {
+            return;
+        }
+
+        if self.recalculation.target_trigger_counter > 0 && self.recalculation.trigger_counter < 2 {
+            self.recalculation.countdown = u16::from(new_step);
+            if new_step == 0 {
+                self.recalculation.trigger_counter = 0;
+                self.recalculation.target_trigger_counter = 0;
+                self.recalculation.countdown = 0;
+            }
+        } else if self.recalculation.countdown > 0 && prev_step == 0 && new_step != 0 {
+            self.recalculation.countdown -= 1;
+            if self.recalculation.countdown == 0 {
+                self.period_sweep_recalculation_done(new_nr10, nr13, nr14, runtime);
+            }
+        }
+
+        if self.enabled && self.phase == SWEEP_PHASE_BOUNDARY {
+            self.maybe_fire_sweep_boundary(ConsoleModel::GameBoy, new_nr10, nr13, nr14, runtime);
+        }
     }
 
     fn trigger(
@@ -90,12 +175,13 @@ impl Channel1SweepState {
         console_model: ConsoleModel,
         nr10: u8,
         period_value: u16,
-        runtime: &mut ChannelRuntimeState,
+        _runtime: &mut ChannelRuntimeState,
     ) {
+        let pace = sweep_pace_from_nr10(nr10);
         self.shadow_period = period_value;
-        self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
+        self.phase = Self::phase_from_pace(pace);
         self.timer = Self::timer_from_phase(self.phase);
-        self.enabled = sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0;
+        self.enabled = pace != 0 || sweep_shift_from_nr10(nr10) != 0;
         self.completed_addend = 0;
         self.negate_calculated_since_trigger = false;
         self.decreasing_writeback_since_trigger = false;
@@ -106,21 +192,190 @@ impl Channel1SweepState {
         };
         self.clear_delayed_calculation();
 
-        if let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false) {
+        if console_model.is_dmg_family() {
+            self.dmg_apply_trigger_recalculation(nr10);
+            self.shadow_period = 0;
+        }
+
+        if console_model.is_cgb_family()
+            && let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, false)
+        {
             self.observe_calculation(calculation);
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(
-                    nr10,
-                    self.shadow_period,
-                    calculation,
-                    CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
-                );
-            } else if calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                && !calculation.decreases
-            {
+            self.schedule_delayed_calculation(
+                nr10,
+                self.shadow_period,
+                calculation,
+                CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES,
+            );
+        }
+    }
+
+    fn dmg_apply_trigger_recalculation(&mut self, nr10: u8) {
+        let step = sweep_shift_from_nr10(nr10);
+        let prev_target = self.recalculation.target_trigger_counter;
+        let prev_trigger_counter = self.recalculation.trigger_counter;
+        let prev_countdown_m = self.recalculation.countdown;
+
+        self.recalculation.from_trigger = true;
+        self.recalculation.increment = 0;
+        self.recalculation.instant = false;
+        self.period_increment = 0;
+
+        if prev_target == 0 || prev_trigger_counter == prev_target {
+            self.restart_countdown_t_cycles = DMG_SWEEP_RESTART_DELAY_T_CYCLES;
+        }
+
+        if step != 0 {
+            self.period_increment = self.shadow_period >> step;
+
+            if !(prev_target > 0 && prev_trigger_counter < 2) {
+                let mut new_target = DMG_SWEEP_TRIGGER_TARGET_COUNTER_BASE;
+                if prev_countdown_m < 2 {
+                    new_target = new_target.saturating_add(1);
+                }
+                if prev_trigger_counter == 2 && prev_countdown_m == u16::from(step) {
+                    new_target = new_target.saturating_add(1);
+                }
+                self.recalculation.target_trigger_counter = new_target;
+                self.recalculation.trigger_counter = 0;
+            }
+
+            self.recalculation.countdown = u16::from(step);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn tick_recalculation(
+        &mut self,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+        apu_clock: u8,
+        t_cycle_phase: u8,
+    ) {
+        let is_tick_odd = t_cycle_phase & 0x01 == 1;
+        if !is_tick_odd {
+            return;
+        }
+
+        self.tick_period_sweep_recalculation(nr10, nr13, nr14, runtime, apu_clock);
+        self.tick_period_sweep_reload(nr10, nr13, nr14);
+    }
+
+    fn tick_period_sweep_recalculation(
+        &mut self,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+        apu_clock: u8,
+    ) {
+        if self.recalculation.instant {
+            self.recalculation.instant = false;
+            self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
+            return;
+        }
+
+        if apu_clock & 0x01 == 0 {
+            return;
+        }
+
+        if self.recalculation.trigger_counter < self.recalculation.target_trigger_counter {
+            self.recalculation.trigger_counter += 1;
+            return;
+        }
+
+        if self.recalculation.countdown == 0 {
+            return;
+        }
+
+        let step = sweep_shift_from_nr10(nr10);
+        if step == 0 {
+            return;
+        }
+
+        self.recalculation.countdown -= 1;
+        if self.recalculation.countdown == 0 {
+            self.period_sweep_recalculation_done(nr10, nr13, nr14, runtime);
+        }
+    }
+
+    fn tick_period_sweep_reload(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8) {
+        if self.restart_countdown_t_cycles > 0 {
+            self.restart_countdown_t_cycles -= 1;
+        }
+        if self.recalculation.reload_countdown > 0 {
+            self.recalculation.reload_countdown -= 1;
+            if self.recalculation.reload_countdown == 0 {
+                self.period_sweep_reload_done(nr10, nr13, nr14);
+            }
+        }
+    }
+
+    fn period_sweep_reload_done(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8) {
+        let step = sweep_shift_from_nr10(nr10);
+        let decreases = sweep_decreases_from_nr10(nr10);
+
+        let live_period =
+            ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
+        let raw_increment = live_period >> step;
+        self.period_increment = raw_increment;
+        self.recalculation.increment = if decreases {
+            (!raw_increment) & PULSE_PERIOD_MAX
+        } else {
+            raw_increment
+        };
+        if self.restart_countdown_t_cycles == 0 {
+            if step == 0 {
+                self.recalculation.instant = true;
+                self.recalculation.countdown = 0;
+            } else {
+                self.recalculation.countdown = u16::from(step);
+            }
+        }
+        self.recalculation.reload_period_reloaded = false;
+        self.recalculation.reload_period_pending = false;
+    }
+
+    fn period_sweep_recalculation_done(
+        &mut self,
+        nr10: u8,
+        nr13: &mut u8,
+        nr14: &mut u8,
+        runtime: &mut ChannelRuntimeState,
+    ) {
+        let decreases = sweep_decreases_from_nr10(nr10);
+        let live_period =
+            ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
+        self.shadow_period = live_period;
+        let raw_increment = self.period_increment;
+        let signed_increment = if decreases {
+            (!raw_increment) & PULSE_PERIOD_MAX
+        } else {
+            raw_increment
+        };
+        self.recalculation.increment = signed_increment;
+
+        if !decreases {
+            let complement_bit: u16 = if self.recalculation.from_trigger {
+                0
+            } else {
+                1
+            };
+            let candidate = live_period
+                .wrapping_add(signed_increment)
+                .wrapping_add(complement_bit);
+            if candidate > PULSE_PERIOD_MAX {
                 runtime.active = false;
             }
         }
+
+        if decreases {
+            self.negate_calculated_since_trigger = true;
+        }
+
+        self.recalculation.from_trigger = false;
     }
 
     fn tick_delayed_calculation(
@@ -161,13 +416,13 @@ impl Channel1SweepState {
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
-        if !self.enabled {
-            return;
-        }
-
         self.phase = (self.phase + 1) & SWEEP_PHASE_MASK;
         self.timer = Self::timer_from_phase(self.phase);
         if self.phase != SWEEP_PHASE_BOUNDARY {
+            return;
+        }
+
+        if !self.enabled {
             return;
         }
 
@@ -180,7 +435,7 @@ impl Channel1SweepState {
         nr10: u8,
         nr13: &mut u8,
         nr14: &mut u8,
-        runtime: &mut ChannelRuntimeState,
+        _runtime: &mut ChannelRuntimeState,
     ) {
         let pace = sweep_pace_from_nr10(nr10);
         if self.phase != SWEEP_PHASE_BOUNDARY || pace == 0 || !self.enabled {
@@ -198,43 +453,80 @@ impl Channel1SweepState {
         let Some(calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true) else {
             return;
         };
-        self.observe_calculation(calculation);
 
-        if !calculation.decreases
-            && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-        {
-            if console_model.is_cgb_family() {
+        if console_model.is_cgb_family() {
+            self.observe_calculation(calculation);
+            if !calculation.decreases
+                && calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
+            {
                 self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
-            } else {
-                runtime.active = false;
+                return;
+            }
+            if shift == 0 {
+                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
+                return;
+            }
+            let candidate = calculation.candidate_sum & super::super::common::PULSE_PERIOD_MAX;
+            self.shadow_period = candidate;
+            *nr13 = candidate as u8;
+            *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
+            self.decreasing_writeback_since_trigger |= calculation.decreases;
+            if let Some(next_calculation) =
+                self.calculate_candidate_sum(nr10, self.shadow_period, true)
+            {
+                self.observe_calculation(next_calculation);
+                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
             }
             return;
         }
+
+        let decreases = sweep_decreases_from_nr10(nr10);
+        let dmg_addend = if decreases {
+            (!self.period_increment) & PULSE_PERIOD_MAX
+        } else {
+            self.period_increment
+        };
+        let dmg_candidate_sum = self
+            .shadow_period
+            .wrapping_add(dmg_addend)
+            .wrapping_add(u16::from(decreases));
+        let dmg_calculation = SweepCalculation {
+            candidate_sum: dmg_candidate_sum,
+            addend: dmg_addend,
+            decreases,
+        };
+        self.observe_calculation(dmg_calculation);
 
         if shift == 0 {
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, calculation, 0);
-            }
+            self.recalculation.reload_countdown = 2;
+            self.recalculation.reload_period_reloaded = false;
+            self.recalculation.reload_period_pending = true;
             return;
         }
 
-        let candidate = calculation.candidate_sum & super::super::common::PULSE_PERIOD_MAX;
+        let candidate = dmg_candidate_sum & super::super::common::PULSE_PERIOD_MAX;
         self.shadow_period = candidate;
         *nr13 = candidate as u8;
         *nr14 = (*nr14 & !PERIOD_HIGH_MASK) | (((candidate >> 8) as u8) & PERIOD_HIGH_MASK);
-        self.decreasing_writeback_since_trigger |= calculation.decreases;
+        self.decreasing_writeback_since_trigger |= decreases;
 
-        if let Some(next_calculation) = self.calculate_candidate_sum(nr10, self.shadow_period, true)
-        {
-            self.observe_calculation(next_calculation);
-            if console_model.is_cgb_family() {
-                self.schedule_delayed_calculation(nr10, self.shadow_period, next_calculation, 0);
-            } else if next_calculation.candidate_sum > super::super::common::PULSE_PERIOD_MAX
-                && !next_calculation.decreases
-            {
-                runtime.active = false;
-            }
+        self.dmg_schedule_recalculation_post_writeback(nr10);
+    }
+
+    fn dmg_schedule_recalculation_post_writeback(&mut self, nr10: u8) {
+        if self.recalculation.countdown > 0 {
+            self.recalculation.increment = 0;
+            self.period_increment = 0;
         }
+        // Canonical reload window: 2 M-cycles before the recalculation countdown
+        // is potentially reloaded with `step`. During the first M-cycle of this
+        // window, NR13/NR14 writes are ignored entirely; during either M-cycle
+        // they can re-derive the canonical increment from the new register
+        // values (handled in write_nr13 / write_nr14).
+        let step = sweep_shift_from_nr10(nr10);
+        self.recalculation.reload_countdown = 2;
+        self.recalculation.reload_period_reloaded = step != 0;
+        self.recalculation.reload_period_pending = true;
     }
 
     fn schedule_delayed_calculation(
@@ -318,6 +610,12 @@ impl Channel1SweepState {
             0
         }
     }
+
+    #[cfg(test)]
+    pub(in crate::apu) fn set_phase_for_test(&mut self, phase: u8) {
+        self.phase = phase & SWEEP_PHASE_MASK;
+        self.timer = Self::timer_from_phase(self.phase);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -329,6 +627,16 @@ pub(in crate::apu) struct Channel1State {
     nr14: u8,
     pub(in crate::apu) pulse: PulseChannelState,
     pub(in crate::apu) sweep: Channel1SweepState,
+    /// Test-only mirror of the global Apu sub-cycle scheduler. The unit tests
+    /// drive `tick_fast_timer()` directly without going through `Apu::tick_t_cycle`,
+    /// so the channel needs its own copy of `apu_clock` and `t_cycle_phase` to
+    /// keep the canonical recalc pipeline ticking with sub-M-cycle precision.
+    #[cfg(test)]
+    #[serde(default)]
+    test_apu_clock: u8,
+    #[cfg(test)]
+    #[serde(default)]
+    test_t_cycle_phase: u8,
 }
 
 impl Channel1State {
@@ -414,7 +722,14 @@ impl Channel1State {
     }
 
     fn write_nr13(&mut self, value: u8) {
+        if self.sweep.recalculation.reload_countdown == 2
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            self.sweep.recalculation.reload_period_pending = false;
+            return;
+        }
         self.nr13 = value;
+        self.sweep.recalculation.reload_period_pending = false;
     }
 
     fn write_nr14(
@@ -424,9 +739,16 @@ impl Channel1State {
         speed_mode: CgbSpeedMode,
         next_frame_sequencer_step: u8,
     ) {
+        let mut effective_value = value;
+        if self.sweep.recalculation.reload_countdown == 2
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            effective_value = (value & !PERIOD_HIGH_MASK) | (self.nr14 & PERIOD_HIGH_MASK);
+        }
+
         let mut write_plan = begin_nrx4_write(
             &mut self.nr14,
-            value,
+            effective_value,
             NRX4_WRITABLE_MASK,
             next_frame_sequencer_step,
             self.pulse.length_enabled,
@@ -439,7 +761,22 @@ impl Channel1State {
                 write_plan.context.next_step_clocks_envelope,
             ));
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
+        } else if console_model.is_dmg_family()
+            && self.sweep.recalculation.reload_countdown > 0
+            && self.sweep.recalculation.reload_period_reloaded
+        {
+            let step = sweep_shift_from_nr10(self.nr10);
+            let live_period = self.period_value();
+            let raw_increment = if step == 0 { 0 } else { live_period >> step };
+            let decreases = sweep_decreases_from_nr10(self.nr10);
+            self.sweep.recalculation.increment = if decreases {
+                (!raw_increment) & PULSE_PERIOD_MAX
+            } else {
+                raw_increment
+            };
         }
+
+        self.sweep.recalculation.reload_period_pending = false;
 
         self.pulse.length_enabled = write_plan.context.length_enabled;
         self.pulse.apply_extra_length_clocking_on_enable(
@@ -541,12 +878,44 @@ impl Channel1State {
 
     #[cfg(test)]
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
-        self.tick_fast_timer_with_clock_gate(true);
+        // Simulate the global APU sub-cycle scheduler the same way
+        // `Apu::tick_t_cycle_for_speed` would: increment t_cycle_phase per
+        // call, and increment apu_clock on the even sub-phases. The channel
+        // owns its own copy of these counters so the unit tests can drive the
+        // pipeline without wiring in the global APU.
+        let t_cycle_phase = self.test_t_cycle_phase;
+        if t_cycle_phase & 0x01 == 0 {
+            self.test_apu_clock = (self.test_apu_clock + 1) & 0x03;
+        }
+        self.test_t_cycle_phase = (t_cycle_phase + 1) & 0x03;
+        self.tick_fast_timer_with_clock_gate(
+            ConsoleModel::GameBoy,
+            true,
+            self.test_apu_clock,
+            t_cycle_phase,
+        );
     }
 
-    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(&mut self, clock_period_timer: bool) {
+    pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
+        &mut self,
+        console_model: ConsoleModel,
+        clock_period_timer: bool,
+        apu_clock: u8,
+        t_cycle_phase: u8,
+    ) {
         self.sweep
             .tick_delayed_calculation(clock_period_timer, &mut self.pulse.runtime);
+        if clock_period_timer && console_model.is_dmg_family() {
+            let nr10 = self.nr10;
+            self.sweep.tick_recalculation(
+                nr10,
+                &mut self.nr13,
+                &mut self.nr14,
+                &mut self.pulse.runtime,
+                apu_clock,
+                t_cycle_phase,
+            );
+        }
         self.pulse
             .tick_fast_timer_with_clock_gate(self.period_value(), clock_period_timer);
     }
