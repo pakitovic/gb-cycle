@@ -10,7 +10,7 @@ console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png"
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger-10"
@@ -19,9 +19,7 @@ console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png"
-disabled = true
-comment = "Framebuffer fixture was calibrated to our model BEFORE the NR52 power-on SKIP glitch fix (commit 0b220f13). The ROM does ~128 NR52 power cycles with system_counter bit 12 high, so post-fix every cycle triggers the SameBoy GB_apu_init SKIP glitch (apu.c:1087-1092), which shifts the rendered hex dump by a few pixels. SameBoy's actual framebuffer output for this ROM cannot be captured easily (the test relies on skip-boot LCD state). Disable until the fixture is regenerated against a reference-accurate SameBoy DMG run."
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png"
 
 [[case]]
 id = "samesuite-dmg-ei-delay-halt"
