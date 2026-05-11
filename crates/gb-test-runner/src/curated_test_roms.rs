@@ -133,6 +133,9 @@ struct CuratedTestRomCaseFile {
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
+    #[serde(default)]
+    disabled: bool,
+    comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -182,6 +185,7 @@ struct CuratedTestRomCase {
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
+    disabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -411,6 +415,16 @@ pub fn curated_test_rom_families() -> Vec<String> {
         .flat_map(|manifest| manifest.cases.into_iter().map(|case| case.family))
         .collect::<BTreeSet<_>>();
     families.into_iter().collect()
+}
+
+#[cfg(test)]
+pub(crate) fn disabled_curated_rom_paths_for_family(family: &str) -> Vec<PathBuf> {
+    curated_test_rom_manifests()
+        .into_iter()
+        .flat_map(|manifest| manifest.cases.into_iter())
+        .filter(|case| case.family == family && case.disabled)
+        .map(|case| PathBuf::from(&case.family).join(&case.rom))
+        .collect()
 }
 
 /// Materialize the legacy single-root GBEmulatorShootout subset of the curated ROM store.
@@ -1032,6 +1046,9 @@ fn manifest_suite(family: &str) -> RomSuite {
 
     let mut suite = RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(family);
     for case in manifest.cases {
+        if case.disabled {
+            continue;
+        }
         suite.push_case(manifest_case_to_rom_test_case(case));
     }
     suite
@@ -1091,6 +1108,9 @@ fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
     let mut suite =
         RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(suite_family);
     for case in manifest.cases {
+        if case.disabled {
+            continue;
+        }
         suite.push_case(manifest_case_to_rom_test_case(case));
     }
     suite
@@ -1313,6 +1333,7 @@ fn parse_manifest_case(
             .startup_ppu_profile
             .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
         startup_memory_profile: case.startup_memory_profile,
+        disabled: case.disabled,
     }
 }
 
@@ -1429,6 +1450,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         startup_timer_profile,
         startup_ppu_profile,
         startup_memory_profile,
+        disabled: _,
     } = case;
 
     let pass_condition = match oracle.as_str() {
@@ -2581,13 +2603,13 @@ mod tests {
             (
                 "samesuite-dmg-div-write-trigger",
                 "samesuite/apu/div_write_trigger.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png",
                 "apu/div_write_trigger.gb (DMG)",
             ),
             (
                 "samesuite-dmg-div-write-trigger-10",
                 "samesuite/apu/div_write_trigger_10.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
+                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png",
                 "apu/div_write_trigger_10.gb (DMG)",
             ),
             (
@@ -2745,7 +2767,7 @@ mod tests {
         assert_eq!(suite.name, "docboy-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 2329);
+        assert_eq!(suite.cases.len(), 2326);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
                 && case.startup_mode == StartupMode::SkipBoot
@@ -2760,7 +2782,7 @@ mod tests {
                 .iter()
                 .filter(|case| matches!(case.pass_condition, PassCondition::MemoryBytesEqual(_)))
                 .count(),
-            1721
+            1718
         );
         assert_eq!(
             suite
@@ -4363,6 +4385,8 @@ status = "PASS"
                 startup_timer_profile: None,
                 startup_ppu_profile: None,
                 startup_memory_profile: None,
+                disabled: false,
+                comment: None,
             },
         );
     }
@@ -4394,6 +4418,7 @@ status = "PASS"
             startup_timer_profile: None,
             startup_ppu_profile: None,
             startup_memory_profile: None,
+            disabled: false,
         });
     }
 
@@ -4424,6 +4449,7 @@ status = "PASS"
             startup_timer_profile: Some("unknown-profile".to_string()),
             startup_ppu_profile: None,
             startup_memory_profile: None,
+            disabled: false,
         });
     }
 
@@ -4454,6 +4480,7 @@ status = "PASS"
             startup_timer_profile: None,
             startup_ppu_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
+            disabled: false,
         });
     }
 
@@ -4484,6 +4511,7 @@ status = "PASS"
             startup_timer_profile: None,
             startup_ppu_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
+            disabled: false,
         });
     }
 

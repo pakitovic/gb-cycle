@@ -42,7 +42,7 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   source family: `samesuite`
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
-  fixture ownership: committed DMG fixtures for `div_write_trigger*.dmg.png` and DocBoy `interrupt/ei_delay_halt.png`, separate from the upstream SameSuite CGB PNG references used by `cgb-audio-samesuite`
+  fixture ownership: shares the upstream SameSuite `div_write_trigger*.png` PNG references with `cgb-audio-samesuite`; DocBoy `interrupt/ei_delay_halt.png` is committed locally
 - `little-things-gb-dmg-extra`
   source family: `little-things-gb`
   current status: extra/internal local-only

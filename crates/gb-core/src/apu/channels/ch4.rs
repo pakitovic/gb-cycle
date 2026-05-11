@@ -268,11 +268,6 @@ impl Channel4State {
     }
 
     pub(in crate::apu) fn mark_powered_on(&mut self) {
-        /*
-         SameBoy's GB_apu_init() clears the APU struct on NR52 power-on. For CH4 this means the
-         hidden startup phase observed by the first real trigger restarts from alignment 0 even if
-         the powered-off timebase kept moving while NR52 was low.
-        */
         self.nr43_live_write.alignment = 0;
         self.nr43_live_write.alignment_subphase = false;
         self.dmg_delayed_start = 0;

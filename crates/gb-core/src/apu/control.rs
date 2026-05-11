@@ -111,7 +111,11 @@ impl Apu {
                     } else {
                         0
                     });
+                self.skip_next_frame_sequencer_edge =
+                    div_apu_signal_high && !self.console_model.is_cgb_family();
                 self.channels.mark_powered_on();
+                self.apu_clock = 0;
+                self.t_cycle_phase = 0;
             }
             _ => {}
         }

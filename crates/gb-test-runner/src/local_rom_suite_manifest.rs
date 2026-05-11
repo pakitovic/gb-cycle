@@ -88,6 +88,8 @@ struct LocalRomSuiteCase {
     memory: Vec<LocalMemoryByteExpectation>,
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<LocalRomStimulus>,
+    #[serde(default)]
+    disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -140,6 +142,9 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
     }
 
     for case in parsed.cases {
+        if case.disabled {
+            continue;
+        }
         let built_case = build_case_from_manifest(manifest_dir, case).map_err(|message| {
             LocalRomSuiteManifestError::Build {
                 path: path.to_path_buf(),

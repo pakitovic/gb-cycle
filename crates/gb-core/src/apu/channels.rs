@@ -44,9 +44,19 @@ impl ApuChannels {
         self.channel_3.begin_t_cycle();
     }
 
-    pub(super) fn tick_fast_timers(&mut self, clock_generation_timers: bool) {
-        self.channel_1
-            .tick_fast_timer_with_clock_gate(clock_generation_timers);
+    pub(super) fn tick_fast_timers(
+        &mut self,
+        console_model: ConsoleModel,
+        clock_generation_timers: bool,
+        apu_clock: u8,
+        t_cycle_phase: u8,
+    ) {
+        self.channel_1.tick_fast_timer_with_clock_gate(
+            console_model,
+            clock_generation_timers,
+            apu_clock,
+            t_cycle_phase,
+        );
         self.channel_2
             .tick_fast_timer_with_clock_gate(clock_generation_timers);
         if clock_generation_timers {
@@ -56,13 +66,6 @@ impl ApuChannels {
     }
 
     pub(super) fn tick_powered_off_timebase(&mut self) {
-        /*
-         SameBoy keeps CH4's alignment phase advancing even while NR52 is powered off. The noise
-         hidden counter itself still stays idle because the start path and active/background flags
-         remain off; only the timebase that future DMG delayed starts observe keeps moving. The
-         caller owns the CGB speed-domain gate so powered-off and powered-on fast APU timebases
-         stay in the same wall-clock domain.
-        */
         self.channel_4.tick_alignment_phase_only();
     }
 

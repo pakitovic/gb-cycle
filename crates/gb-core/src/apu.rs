@@ -252,6 +252,12 @@ pub struct Apu {
     channels: ApuChannels,
     last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
+    #[serde(default)]
+    apu_clock: u8,
+    #[serde(default)]
+    t_cycle_phase: u8,
+    #[serde(default)]
+    skip_next_frame_sequencer_edge: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -264,6 +270,12 @@ pub struct ApuSaveState {
     channels: ApuChannels,
     last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
+    #[serde(default)]
+    apu_clock: u8,
+    #[serde(default)]
+    t_cycle_phase: u8,
+    #[serde(default)]
+    skip_next_frame_sequencer_edge: bool,
 }
 
 impl ApuSaveState {
@@ -312,6 +324,9 @@ impl Apu {
             channels: ApuChannels::default(),
             last_register_write: None,
             wave_ram_startup_policy,
+            apu_clock: 0,
+            t_cycle_phase: 0,
+            skip_next_frame_sequencer_edge: false,
         }
     }
 
@@ -325,6 +340,9 @@ impl Apu {
             channels: self.channels.clone(),
             last_register_write: self.last_register_write.clone(),
             wave_ram_startup_policy: self.wave_ram_startup_policy,
+            apu_clock: self.apu_clock,
+            t_cycle_phase: self.t_cycle_phase,
+            skip_next_frame_sequencer_edge: self.skip_next_frame_sequencer_edge,
         }
     }
 
@@ -337,6 +355,9 @@ impl Apu {
         self.channels = state.channels.clone();
         self.last_register_write = state.last_register_write.clone();
         self.wave_ram_startup_policy = state.wave_ram_startup_policy;
+        self.apu_clock = state.apu_clock;
+        self.t_cycle_phase = state.t_cycle_phase;
+        self.skip_next_frame_sequencer_edge = state.skip_next_frame_sequencer_edge;
     }
 
     pub fn console_model(&self) -> ConsoleModel {
@@ -373,10 +394,27 @@ impl Apu {
         let clock_generation_timers =
             speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get());
 
+        let apu_clock = self.apu_clock;
+        let t_cycle_phase = self.t_cycle_phase;
+        let is_tick_even_phase = t_cycle_phase & 0x01 == 0;
+
         if self.master.powered {
-            self.channels.tick_fast_timers(clock_generation_timers);
+            if is_tick_even_phase && clock_generation_timers {
+                self.apu_clock = (self.apu_clock + 1) & 0x03;
+            }
+            self.channels.tick_fast_timers(
+                self.console_model,
+                clock_generation_timers,
+                self.apu_clock,
+                t_cycle_phase,
+            );
         } else if clock_generation_timers {
             self.channels.tick_powered_off_timebase();
+        }
+        let _ = apu_clock;
+
+        if clock_generation_timers {
+            self.t_cycle_phase = (t_cycle_phase + 1) & 0x03;
         }
 
         for edge in context.derived_edges() {
@@ -547,6 +585,12 @@ impl Apu {
     }
 
     fn advance_frame_sequencer(&mut self) {
+        if self.skip_next_frame_sequencer_edge {
+            self.skip_next_frame_sequencer_edge = false;
+            self.preview_output_path();
+            return;
+        }
+
         let clocks = self.frame_sequencer.advance();
         if !self.master.powered {
             self.preview_output_path();

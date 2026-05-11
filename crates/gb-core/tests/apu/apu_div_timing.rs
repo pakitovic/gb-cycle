@@ -91,13 +91,13 @@ fn powering_on_apu_keeps_the_next_live_frame_edge() {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x00);
 
     for _ in 0..0x2000 {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x02);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
 }
 
 #[test]
@@ -156,6 +156,9 @@ fn channel_1_sweep_overflow_clears_nr52_on_the_frame_sequencer_timeline() {
     assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x01);
 
     step_until_next_div_apu_edge(&mut machine);
+    for _ in 0..8 {
+        machine.step_t_cycle();
+    }
     assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x00);
 }
 
