@@ -139,10 +139,6 @@ pub const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ: u32 = 4_194_304;
 pub(super) const MAX_ROUTED_CHANNELS_PER_OUTPUT_BUS: i32 = CHANNEL_COUNT as i32;
 pub(super) const APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE: i32 =
     ANALOG_ONE * MAX_ROUTED_CHANNELS_PER_OUTPUT_BUS * NR50_MAX_VOLUME_FACTOR;
-// Host PCM export is a representation choice rather than a hardware semantic. We intentionally
-// keep roughly 6 dB of headroom instead of mapping the theoretical raw post-HPF peak directly to
-// full-scale PCM, which matches SameBoy's direct WAV convention more closely and makes
-// cross-emulator captures easier to compare without changing the internal analog model.
 const APU_HOST_PCM_REFERENCE_MAX_ABS_I16: i32 = 16_320;
 pub const APU_HOST_MAX_ABS_SAMPLE: i32 = ((APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE as i64
     * i16::MAX as i64)

@@ -190,7 +190,7 @@ mod tests {
                 bgwin_framebuffer: &primary,
                 backdrop_framebuffer: &primary,
                 bgwin_framebuffer_layer_sources: &primary_sources,
-                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                display_palette: crate::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
             }),
             &crate::VideoOptions::default(),
@@ -220,7 +220,7 @@ mod tests {
                 bgwin_framebuffer: &primary,
                 backdrop_framebuffer: &primary,
                 bgwin_framebuffer_layer_sources: &primary_sources,
-                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                display_palette: crate::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
             }),
             &crate::VideoOptions {
@@ -259,7 +259,7 @@ mod tests {
                         bgwin_framebuffer: &primary,
                         backdrop_framebuffer: &primary,
                         bgwin_framebuffer_layer_sources: &primary_sources,
-                        display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: crate::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     Some(crate::FramebufferPanelInput {
@@ -268,7 +268,7 @@ mod tests {
                         bgwin_framebuffer: &secondary,
                         backdrop_framebuffer: &secondary,
                         bgwin_framebuffer_layer_sources: &secondary_sources,
-                        display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                        display_palette: crate::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
                     }),
                     None,
@@ -283,11 +283,8 @@ mod tests {
 
         assert_eq!(rendered.width, crate::FRAMEBUFFER_WIDTH * 2);
         assert_eq!(rendered.height, crate::FRAMEBUFFER_HEIGHT);
-        assert_eq!(left_pixel, &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(0));
-        assert_eq!(
-            right_pixel,
-            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
-        );
+        assert_eq!(left_pixel, &crate::DMG_DISPLAY_PALETTE.shade_rgb(0));
+        assert_eq!(right_pixel, &crate::DMG_DISPLAY_PALETTE.shade_rgb(3));
         assert_eq!(rendered.rgb_pixels.len(), rendered.height as usize * pitch);
     }
 
@@ -444,7 +441,7 @@ mod tests {
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_bgwin,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
-                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                display_palette: crate::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
             }),
             &video_options,
@@ -452,7 +449,7 @@ mod tests {
 
         assert_eq!(
             &rendered.rgb_pixels[..3],
-            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+            &crate::DMG_DISPLAY_PALETTE.shade_rgb(1)
         );
     }
 
@@ -480,7 +477,7 @@ mod tests {
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_backdrop,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
-                display_palette: crate::SAMEBOY_DMG_DISPLAY_PALETTE,
+                display_palette: crate::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
             }),
             &video_options,
@@ -488,15 +485,15 @@ mod tests {
 
         assert_eq!(
             &rendered.rgb_pixels[..3],
-            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(1)
+            &crate::DMG_DISPLAY_PALETTE.shade_rgb(1)
         );
         assert_eq!(
             &rendered.rgb_pixels[3..6],
-            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(3)
+            &crate::DMG_DISPLAY_PALETTE.shade_rgb(3)
         );
         assert_eq!(
             &rendered.rgb_pixels[6..9],
-            &crate::SAMEBOY_DMG_DISPLAY_PALETTE.shade_rgb(2)
+            &crate::DMG_DISPLAY_PALETTE.shade_rgb(2)
         );
     }
 }

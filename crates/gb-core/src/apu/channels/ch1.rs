@@ -81,11 +81,11 @@ impl Channel1SweepState {
 
     fn apply_powered_startup(&mut self, nr10: u8, period_value: u16, active: bool) {
         self.clear();
+        let pace = sweep_pace_from_nr10(nr10);
         self.shadow_period = period_value;
-        self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
+        self.phase = Self::phase_from_pace(pace);
         self.timer = Self::timer_from_phase(self.phase);
-        self.enabled =
-            active && (sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0);
+        self.enabled = active && (pace != 0 || sweep_shift_from_nr10(nr10) != 0);
     }
 
     fn write_nr10(
@@ -177,10 +177,11 @@ impl Channel1SweepState {
         period_value: u16,
         _runtime: &mut ChannelRuntimeState,
     ) {
+        let pace = sweep_pace_from_nr10(nr10);
         self.shadow_period = period_value;
-        self.phase = Self::phase_from_pace(sweep_pace_from_nr10(nr10));
+        self.phase = Self::phase_from_pace(pace);
         self.timer = Self::timer_from_phase(self.phase);
-        self.enabled = sweep_pace_from_nr10(nr10) != 0 || sweep_shift_from_nr10(nr10) != 0;
+        self.enabled = pace != 0 || sweep_shift_from_nr10(nr10) != 0;
         self.completed_addend = 0;
         self.negate_calculated_since_trigger = false;
         self.decreasing_writeback_since_trigger = false;
@@ -344,18 +345,19 @@ impl Channel1SweepState {
         nr14: &mut u8,
         runtime: &mut ChannelRuntimeState,
     ) {
+        let decreases = sweep_decreases_from_nr10(nr10);
         let live_period =
             ((u16::from(*nr14) & u16::from(PERIOD_HIGH_MASK)) << 8) | u16::from(*nr13);
         self.shadow_period = live_period;
         let raw_increment = self.period_increment;
-        let signed_increment = if sweep_decreases_from_nr10(nr10) {
+        let signed_increment = if decreases {
             (!raw_increment) & PULSE_PERIOD_MAX
         } else {
             raw_increment
         };
         self.recalculation.increment = signed_increment;
 
-        if !sweep_decreases_from_nr10(nr10) {
+        if !decreases {
             let complement_bit: u16 = if self.recalculation.from_trigger {
                 0
             } else {
@@ -369,7 +371,7 @@ impl Channel1SweepState {
             }
         }
 
-        if sweep_decreases_from_nr10(nr10) {
+        if decreases {
             self.negate_calculated_since_trigger = true;
         }
 
@@ -512,7 +514,6 @@ impl Channel1SweepState {
     }
 
     fn dmg_schedule_recalculation_post_writeback(&mut self, nr10: u8) {
-        let _ = nr10;
         if self.recalculation.countdown > 0 {
             self.recalculation.increment = 0;
             self.period_increment = 0;

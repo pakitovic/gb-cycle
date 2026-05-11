@@ -66,13 +66,6 @@ impl ApuChannels {
     }
 
     pub(super) fn tick_powered_off_timebase(&mut self) {
-        /*
-         SameBoy keeps CH4's alignment phase advancing even while NR52 is powered off. The noise
-         hidden counter itself still stays idle because the start path and active/background flags
-         remain off; only the timebase that future DMG delayed starts observe keeps moving. The
-         caller owns the CGB speed-domain gate so powered-off and powered-on fast APU timebases
-         stay in the same wall-clock domain.
-        */
         self.channel_4.tick_alignment_phase_only();
     }
 
