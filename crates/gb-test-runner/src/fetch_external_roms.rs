@@ -822,12 +822,12 @@ mod tests {
         // and are still listed in sources.toml, so the fetch flow expects to
         // copy them. The test fixture mirrors that by materializing them
         // here. See `CuratedTestRomCaseFile::disabled` for rationale.
-        for rom in [
-            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14279.gb",
-            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14284.gb",
-            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14285_round2.gb",
-        ] {
-            write_required_file(root, &format!("tests/roms/dmg/{rom}"), rom.as_bytes());
+        for rom_path in crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy") {
+            write_required_file(
+                root,
+                &format!("tests/roms/dmg/{}", rom_path.display()),
+                rom_path.to_string_lossy().as_bytes(),
+            );
         }
         for rom in [
             "docboy/serial/serial_two_players_basic_transfer_master.gb",
@@ -914,15 +914,20 @@ mod tests {
             // the suite but still must be in the source manifest so fetch
             // mirrors them locally — see `CuratedTestRomCaseFile::disabled`.
             .chain(
-                [
-                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14279.gb",
-                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14284.gb",
-                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14285_round2.gb",
-                ]
-                .into_iter()
-                .map(|rom| {
-                    required_file(&format!("tests/roms/dmg/docboy/{rom}"), "docboy", Some(rom))
-                }),
+                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy")
+                    .into_iter()
+                    .map(|rom_path| {
+                        let rom = rom_path
+                            .strip_prefix("docboy")
+                            .expect("docboy disabled ROMs should stay under the docboy family")
+                            .display()
+                            .to_string();
+                        required_file(
+                            &format!("tests/roms/dmg/{}", rom_path.display()),
+                            "docboy",
+                            Some(rom.as_str()),
+                        )
+                    }),
             )
             .chain(
                 [

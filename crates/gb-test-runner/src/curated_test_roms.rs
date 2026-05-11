@@ -136,11 +136,13 @@ struct CuratedTestRomCaseFile {
     /// When `true`, this case is skipped at manifest load and never reaches
     /// the runner. Use sparingly — only for ROMs whose pass criteria are
     /// tied to a different emulator's specific timing model (i.e. the ROM
-    /// also fails on SameBoy / real hardware references), so neither we nor
-    /// any other accurate emulator can reasonably pass them. The TOML entry
-    /// should carry a TOML comment explaining the rationale.
+    /// also fails on SameBoy / real hardware references), or ROMs that are
+    /// too slow to run in CI. Pair with a `comment` explaining the rationale.
     #[serde(default)]
     disabled: bool,
+    /// Free-form documentation for the case — typically used to explain why
+    /// `disabled = true`. Parsed but not propagated to the runner.
+    comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -424,6 +426,20 @@ pub fn curated_test_rom_families() -> Vec<String> {
         .flat_map(|manifest| manifest.cases.into_iter().map(|case| case.family))
         .collect::<BTreeSet<_>>();
     families.into_iter().collect()
+}
+
+/// ROM paths for cases flagged `disabled = true` in the curated manifest for
+/// a given family. The runner skips disabled cases when building suites, but
+/// fetch + sources.toml still see them — the test fixtures use this helper to
+/// materialize the matching files so the fetch flow can copy them.
+#[cfg(test)]
+pub(crate) fn disabled_curated_rom_paths_for_family(family: &str) -> Vec<PathBuf> {
+    curated_test_rom_manifests()
+        .into_iter()
+        .flat_map(|manifest| manifest.cases.into_iter())
+        .filter(|case| case.family == family && case.disabled)
+        .map(|case| PathBuf::from(&case.family).join(&case.rom))
+        .collect()
 }
 
 /// Materialize the legacy single-root GBEmulatorShootout subset of the curated ROM store.
@@ -4389,6 +4405,7 @@ status = "PASS"
                 startup_ppu_profile: None,
                 startup_memory_profile: None,
                 disabled: false,
+                comment: None,
             },
         );
     }

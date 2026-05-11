@@ -7600,6 +7600,12 @@ rom = "mbc/huc3/huc3_scratchpad.gb"
 sha256 = "d7bbf71171570712fa8034db99d5a20fa1be64e3f0fa10ac050a965e6001e879"
 
 [[source.required_file]]
+path = "tests/roms/dmg/docboy/mbc/huc3/huc3_tick.gb"
+family = "docboy"
+rom = "mbc/huc3/huc3_tick.gb"
+sha256 = "e73fd88d8d646a6a12df5d4beb9b179cc29d7bc4fdc948f2a581f4e46074d375"
+
+[[source.required_file]]
 path = "tests/roms/dmg/docboy/mbc/mbc3/mbc3_rtc_initial_values.gb"
 family = "docboy"
 rom = "mbc/mbc3/mbc3_rtc_initial_values.gb"
