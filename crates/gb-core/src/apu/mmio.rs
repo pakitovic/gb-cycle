@@ -106,15 +106,6 @@ impl Apu {
         }
     }
 
-    /// Step value channels see when computing the NRx4 length-enable / trigger
-    /// glitches. While the post-power-on SKIP glitch is pending (see
-    /// `Apu::skip_next_frame_sequencer_edge`), the next FS edge will be
-    /// suppressed and the one after it fires `div_divider=1` (length only) —
-    /// so the channels' `next_step_clocks_length` lookup should return false
-    /// and `next_step_clocks_envelope` should also be false. Returning step=1
-    /// satisfies both, and is the smallest change that lets
-    /// `should_apply_extra_length_clocking_on_enable` mirror SameBoy's
-    /// `div_divider & 1 == 1` gating in this window.
     fn effective_frame_sequencer_step(&self) -> u8 {
         if self.skip_next_frame_sequencer_edge {
             1

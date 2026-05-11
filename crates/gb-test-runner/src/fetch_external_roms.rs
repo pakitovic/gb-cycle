@@ -817,11 +817,6 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
-        // ROMs flagged `disabled = true` in docboy.toml are excluded from the
-        // suite (the runner skips them) but still live in the upstream repo
-        // and are still listed in sources.toml, so the fetch flow expects to
-        // copy them. The test fixture mirrors that by materializing them
-        // here. See `CuratedTestRomCaseFile::disabled` for rationale.
         for rom_path in crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy") {
             write_required_file(
                 root,
@@ -910,9 +905,6 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
-            // ROMs flagged `disabled = true` in docboy.toml are excluded from
-            // the suite but still must be in the source manifest so fetch
-            // mirrors them locally — see `CuratedTestRomCaseFile::disabled`.
             .chain(
                 crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy")
                     .into_iter()

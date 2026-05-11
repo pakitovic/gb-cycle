@@ -87,10 +87,6 @@ fn powering_on_apu_keeps_the_next_live_frame_edge() {
     machine.write_bus(0xFF26, 0x80);
     assert_eq!(machine.apu().snapshot().div_apu, 0x00);
 
-    // SameBoy `GB_apu_init` glitch (apu.c:1087-1092): power-on while the
-    // DIV-APU bit is high (bit 12 here) makes the first FS edge SKIPPED — no
-    // step advance, no clocks. div_apu therefore stays at 0 across that first
-    // edge and only ticks to 1 on the FS edge AFTER it.
     for _ in 0..remaining_until_next_edge {
         machine.step_t_cycle();
     }
@@ -160,9 +156,6 @@ fn channel_1_sweep_overflow_clears_nr52_on_the_frame_sequencer_timeline() {
     assert_eq!(machine.read_bus(0xFF26) & 0x01, 0x01);
 
     step_until_next_div_apu_edge(&mut machine);
-    // The DMG canonical recalculation pipeline defers the second overflow check
-    // by a few M-cycles after the frame-sequencer sweep edge. Step the CPU just
-    // far enough for the recalculation countdown (step=1 → 1 M-cycle) to expire.
     for _ in 0..8 {
         machine.step_t_cycle();
     }

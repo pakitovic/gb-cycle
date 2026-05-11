@@ -88,12 +88,6 @@ struct LocalRomSuiteCase {
     memory: Vec<LocalMemoryByteExpectation>,
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<LocalRomStimulus>,
-    /// When `true`, this case is skipped at manifest load and never reaches
-    /// the runner. Use sparingly — only for ROMs whose pass criteria are
-    /// tied to a different emulator's specific timing model (i.e. the ROM
-    /// also fails on SameBoy / real hardware references), so neither we nor
-    /// any other accurate emulator can reasonably pass them. The TOML entry
-    /// should carry a comment explaining the rationale.
     #[serde(default)]
     disabled: bool,
 }

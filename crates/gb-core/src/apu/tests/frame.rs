@@ -120,12 +120,6 @@ fn powering_on_while_div_apu_signal_is_high_starts_on_the_high_half_phase() {
 
 #[test]
 fn dmg_power_on_while_div_apu_signal_is_high_suppresses_the_first_fs_edge() {
-    // SameBoy `GB_apu_init` glitch (apu.c:1087-1092 + 667-682): when NR52
-    // turns on while the DIV-APU bit is high on DMG, the first post-power-on
-    // FS edge fires no clocks and does not advance the step. The edge AFTER
-    // that one then fires only the length clock (SameBoy's div_divider=1
-    // post-SKIPPED state). Closes `ch1_turn_on_div_10` and the
-    // `ch1_length_timer_while_off_delay*` ROMs.
     let mut apu = Apu::new(ConsoleModel::GameBoy);
 
     apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
@@ -133,13 +127,11 @@ fn dmg_power_on_while_div_apu_signal_is_high_suppresses_the_first_fs_edge() {
     assert!(apu.snapshot().powered);
     assert_eq!(apu.snapshot().div_apu, 0x00);
 
-    // First FS edge after power-on: SKIPPED — step stays 0, no clocks.
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x00);
     assert_eq!(apu.frame_sequencer.length_clock_count, 0);
     assert_eq!(apu.frame_sequencer.envelope_clock_count, 0);
 
-    // Second FS edge: fires step=0 normally (length only).
     tick_apu_with_edges(&mut apu, 1, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x01);
     assert_eq!(apu.frame_sequencer.length_clock_count, 1);

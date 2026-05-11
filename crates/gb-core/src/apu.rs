@@ -252,25 +252,10 @@ pub struct Apu {
     channels: ApuChannels,
     last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
-    /// Global APU sub-cycle scheduler state (DocBoy `apu_clock` and t-cycle
-    /// phase). Used by the canonical CH1 sweep recalculation pipeline to
-    /// distinguish `tick_t0`/`tick_t1`/`tick_t2`/`tick_t3` per M-cycle and to
-    /// gate the recalc tick on `test_bit<0>(apu_clock)`.
     #[serde(default)]
     apu_clock: u8,
     #[serde(default)]
     t_cycle_phase: u8,
-    /// SameBoy `GB_apu_init` glitch (apu.c:1087-1092): when NR52 transitions
-    /// off→on while the DIV-APU bit is high (system_counter bit 12 for
-    /// single-speed, bit 13 for CGB double-speed), the FIRST post-power-on
-    /// FS edge is suppressed (no step advance, no length/sweep/envelope
-    /// clocks). This also affects the NR14/NR24/NR34/NR44 length-enable
-    /// glitch: SameBoy gates it on `div_divider & 1 == 1`, which is true
-    /// during the SKIP window. We translate that by returning step=1 from
-    /// `effective_frame_sequencer_step()` while the flag is set, since
-    /// `frame_sequencer_step_clocks_length(1)` is false — driving
-    /// `should_apply_extra_length_clocking_on_enable` to fire the glitch
-    /// like SameBoy does at that moment.
     #[serde(default)]
     skip_next_frame_sequencer_edge: bool,
 }
@@ -409,13 +394,6 @@ impl Apu {
         let clock_generation_timers =
             speed_mode.apu_tick_due_at_scheduler_t_cycle(context.t_cycle().get());
 
-        // DocBoy `Core::cycle` runs four sub-ticks per M-cycle in order:
-        // tick_t0 (apu.tick_even -> apu_clock++), tick_t1 (apu.tick_odd ->
-        // reload+recalc), tick_t2 (apu.tick_even), tick_t3 (apu.tick_odd).
-        // We mirror that by tracking `t_cycle_phase` (0..3) here and
-        // incrementing `apu_clock` on the even sub-phases. Both stay in sync
-        // with the CPU-driven t-cycle and only advance while the APU is
-        // powered, matching DocBoy's `if (nr52.enable)` gating.
         let apu_clock = self.apu_clock;
         let t_cycle_phase = self.t_cycle_phase;
         let is_tick_even_phase = t_cycle_phase & 0x01 == 0;
@@ -607,11 +585,6 @@ impl Apu {
     }
 
     fn advance_frame_sequencer(&mut self) {
-        // SameBoy `GB_apu_init` glitch (apu.c:1087-1092 + 667-682): on the
-        // first FS edge after NR52 transitions off→on while the DIV-APU bit
-        // is high, the edge is suppressed entirely — no step advance, no
-        // clocks. The edge AFTER that fires as if `div_divider=1`, which in
-        // our model is the natural step=0 (length) firing.
         if self.skip_next_frame_sequencer_edge {
             self.skip_next_frame_sequencer_edge = false;
             self.preview_output_path();

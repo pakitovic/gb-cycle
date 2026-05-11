@@ -1,18 +1,8 @@
-//! Diagnostic: load a CH1 length-timer ROM, step the machine, and report each
-//! NR52 / FS-step transition between the post-power-on NR52 write and the
-//! eventual CH1 disable. Used to compare length-tick alignment against SameBoy
-//! / DocBoy on the residual `ch1_length_timer_while_off_delay*` ROMs that we
-//! cannot pass yet (SameBoy passes them — see commit log for analysis).
+//! Trace NR52 / FS-step transitions and the eventual CH1 disable t-cycle.
 //!
 //! Usage:
 //!   cargo run --release -p gb-core --example trace_length_disable \
 //!     -- <path-to-rom>
-//!
-//! Test ROMs flow: power-on -> APU off -> wait `delay` t-cycles -> APU on ->
-//! trigger CH1 with length=63 -> spin until CH1 disables, counting iterations.
-//! The trace prints the NR52 off/on transitions, the CH1 trigger, every
-//! `div_apu` transition, and the final disable t-cycle so the alignment can be
-//! diffed against an equivalent SameBoy trace.
 
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 use std::path::PathBuf;

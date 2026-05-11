@@ -133,15 +133,8 @@ struct CuratedTestRomCaseFile {
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
-    /// When `true`, this case is skipped at manifest load and never reaches
-    /// the runner. Use sparingly — only for ROMs whose pass criteria are
-    /// tied to a different emulator's specific timing model (i.e. the ROM
-    /// also fails on SameBoy / real hardware references), or ROMs that are
-    /// too slow to run in CI. Pair with a `comment` explaining the rationale.
     #[serde(default)]
     disabled: bool,
-    /// Free-form documentation for the case — typically used to explain why
-    /// `disabled = true`. Parsed but not propagated to the runner.
     comment: Option<String>,
 }
 
@@ -192,10 +185,6 @@ struct CuratedTestRomCase {
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
-    /// `true` for cases flagged `disabled = true` in the TOML manifest.
-    /// These cases stay in the parsed manifest (so fetch / sources.toml /
-    /// reporting still see them) but are excluded when suites are built for
-    /// the runner. See `CuratedTestRomCaseFile::disabled` for rationale.
     disabled: bool,
 }
 
@@ -428,10 +417,6 @@ pub fn curated_test_rom_families() -> Vec<String> {
     families.into_iter().collect()
 }
 
-/// ROM paths for cases flagged `disabled = true` in the curated manifest for
-/// a given family. The runner skips disabled cases when building suites, but
-/// fetch + sources.toml still see them — the test fixtures use this helper to
-/// materialize the matching files so the fetch flow can copy them.
 #[cfg(test)]
 pub(crate) fn disabled_curated_rom_paths_for_family(family: &str) -> Vec<PathBuf> {
     curated_test_rom_manifests()
@@ -2782,10 +2767,6 @@ mod tests {
         assert_eq!(suite.name, "docboy-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        // 2326 = 2329 originally curated minus 3 cases flagged `disabled = true`
-        // in docboy.toml (DocBoy-overfit `change_period_nr14_during_recalc`
-        // boundary cases that SameBoy also fails). Update both this length and
-        // the MemoryBytesEqual count below if the disabled set changes.
         assert_eq!(suite.cases.len(), 2326);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy

@@ -85,14 +85,6 @@ pub(super) const CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP: u16 = 4;
 pub(super) const CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES: u16 = 4;
 pub(super) const CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES: u16 = 4;
 pub(super) const CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES: u16 = 9;
-// DMG sweep canonical (DocBoy/SameBoy) recalculation model. The recalculation
-// countdown ticks once per M-cycle (4 t-cycles) when nr10.step != 0; we keep the
-// counter in t-cycle units so a single decrement from `tick_fast_timer_with_clock_gate`
-// is enough to advance the alignment phase.
-// DocBoy `update_nr14` line 1788: `restart_countdown = 5`. The countdown ticks
-// once per `tick_period_sweep_reload` call (every odd t-cycle, so once every
-// 2 t-cycles in absolute time), matching DocBoy. Stored directly in tick
-// units rather than t-cycles so a single decrement per tick suffices.
 pub(super) const DMG_SWEEP_RESTART_DELAY_T_CYCLES: u16 = 5;
 #[cfg(test)]
 pub(super) const DMG_SWEEP_RECALC_TICK_T_CYCLES: u16 = 4;

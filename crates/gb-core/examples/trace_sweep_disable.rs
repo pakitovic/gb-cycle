@@ -1,7 +1,4 @@
-//! Diagnostic: load a CH1 sweep ROM, step the machine, and report the t-cycle
-//! when CH1 transitions enabled -> disabled, plus every DIV-APU step transition
-//! between trigger and disable. Used to pinpoint timing divergences from
-//! DocBoy on round1/round2 boundary tests.
+//! Trace CH1 sweep enable/disable transitions and DIV-APU step changes.
 //!
 //! Usage:
 //!   cargo run --release -p gb-core --example trace_sweep_disable \
