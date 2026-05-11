@@ -88,6 +88,14 @@ struct LocalRomSuiteCase {
     memory: Vec<LocalMemoryByteExpectation>,
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<LocalRomStimulus>,
+    /// When `true`, this case is skipped at manifest load and never reaches
+    /// the runner. Use sparingly — only for ROMs whose pass criteria are
+    /// tied to a different emulator's specific timing model (i.e. the ROM
+    /// also fails on SameBoy / real hardware references), so neither we nor
+    /// any other accurate emulator can reasonably pass them. The TOML entry
+    /// should carry a comment explaining the rationale.
+    #[serde(default)]
+    disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -140,6 +148,9 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
     }
 
     for case in parsed.cases {
+        if case.disabled {
+            continue;
+        }
         let built_case = build_case_from_manifest(manifest_dir, case).map_err(|message| {
             LocalRomSuiteManifestError::Build {
                 path: path.to_path_buf(),

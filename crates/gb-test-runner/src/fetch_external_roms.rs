@@ -817,6 +817,18 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
+        // ROMs flagged `disabled = true` in docboy.toml are excluded from the
+        // suite (the runner skips them) but still live in the upstream repo
+        // and are still listed in sources.toml, so the fetch flow expects to
+        // copy them. The test fixture mirrors that by materializing them
+        // here. See `CuratedTestRomCaseFile::disabled` for rationale.
+        for rom in [
+            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14279.gb",
+            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14284.gb",
+            "docboy/apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14285_round2.gb",
+        ] {
+            write_required_file(root, &format!("tests/roms/dmg/{rom}"), rom.as_bytes());
+        }
         for rom in [
             "docboy/serial/serial_two_players_basic_transfer_master.gb",
             "docboy/serial/serial_two_players_basic_transfer_slave.gb",
@@ -898,6 +910,20 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
+            // ROMs flagged `disabled = true` in docboy.toml are excluded from
+            // the suite but still must be in the source manifest so fetch
+            // mirrors them locally — see `CuratedTestRomCaseFile::disabled`.
+            .chain(
+                [
+                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14279.gb",
+                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14284.gb",
+                    "apu/ch1_period_sweep_change_period_nr14_during_recalc_delay14285_round2.gb",
+                ]
+                .into_iter()
+                .map(|rom| {
+                    required_file(&format!("tests/roms/dmg/docboy/{rom}"), "docboy", Some(rom))
+                }),
+            )
             .chain(
                 [
                     "serial/serial_two_players_basic_transfer_master.gb",
