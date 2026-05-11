@@ -3733,18 +3733,16 @@ mod tests {
         assert_eq!(suite.name, "samesuite-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 3);
+        // 2 active cases + 1 case flagged `disabled = true` (div_write_trigger_10,
+        // see samesuite.toml). Disabled cases stay in the manifest but are
+        // excluded from runner suites.
+        assert_eq!(suite.cases.len(), 2);
 
         let expected = [
             (
                 "samesuite-dmg-div-write-trigger",
                 "samesuite/apu/div_write_trigger.gb",
                 "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.dmg.png",
-            ),
-            (
-                "samesuite-dmg-div-write-trigger-10",
-                "samesuite/apu/div_write_trigger_10.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.dmg.png",
             ),
             (
                 "samesuite-dmg-ei-delay-halt",
