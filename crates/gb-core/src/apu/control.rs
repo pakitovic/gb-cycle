@@ -111,6 +111,20 @@ impl Apu {
                     } else {
                         0
                     });
+                // SameBoy `GB_apu_init` glitch (apu.c:1087-1092): on DMG, when
+                // power-on lands with the DIV-APU bit high (bit 12 of the
+                // system counter), the first FS edge is suppressed and the
+                // next NRx4 length-enable write fires the extra-length-clock
+                // glitch (`div_divider & 1 == 1` in SameBoy's terms). See
+                // `Apu::skip_next_frame_sequencer_edge` for the full model
+                // and `effective_frame_sequencer_step` for how this couples
+                // with `should_apply_extra_length_clocking_on_enable`.
+                // Closes `ch1_turn_on_div_10` and the
+                // `ch1_length_timer_while_off_delay*` ROMs whose `delay`
+                // value leaves bit 12 high at the re-power-on. CGB still uses
+                // the existing `POWER_ON_DIV_APU_SIGNAL_HIGH_PHASE` step.
+                self.skip_next_frame_sequencer_edge =
+                    div_apu_signal_high && !self.console_model.is_cgb_family();
                 self.channels.mark_powered_on();
                 // DocBoy `Apu::turn_on` (apu.cpp:1029-1036) resets apu_clock=0
                 // when NR52 transitions 0 -> enabled. Mirror it so the canonical

@@ -87,17 +87,21 @@ fn powering_on_apu_keeps_the_next_live_frame_edge() {
     machine.write_bus(0xFF26, 0x80);
     assert_eq!(machine.apu().snapshot().div_apu, 0x00);
 
+    // SameBoy `GB_apu_init` glitch (apu.c:1087-1092): power-on while the
+    // DIV-APU bit is high (bit 12 here) makes the first FS edge SKIPPED — no
+    // step advance, no clocks. div_apu therefore stays at 0 across that first
+    // edge and only ticks to 1 on the FS edge AFTER it.
     for _ in 0..remaining_until_next_edge {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x00);
 
     for _ in 0..0x2000 {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x02);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
 }
 
 #[test]

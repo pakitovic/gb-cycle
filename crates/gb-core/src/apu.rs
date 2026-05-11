@@ -260,6 +260,19 @@ pub struct Apu {
     apu_clock: u8,
     #[serde(default)]
     t_cycle_phase: u8,
+    /// SameBoy `GB_apu_init` glitch (apu.c:1087-1092): when NR52 transitions
+    /// off→on while the DIV-APU bit is high (system_counter bit 12 for
+    /// single-speed, bit 13 for CGB double-speed), the FIRST post-power-on
+    /// FS edge is suppressed (no step advance, no length/sweep/envelope
+    /// clocks). This also affects the NR14/NR24/NR34/NR44 length-enable
+    /// glitch: SameBoy gates it on `div_divider & 1 == 1`, which is true
+    /// during the SKIP window. We translate that by returning step=1 from
+    /// `effective_frame_sequencer_step()` while the flag is set, since
+    /// `frame_sequencer_step_clocks_length(1)` is false — driving
+    /// `should_apply_extra_length_clocking_on_enable` to fire the glitch
+    /// like SameBoy does at that moment.
+    #[serde(default)]
+    skip_next_frame_sequencer_edge: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -276,6 +289,8 @@ pub struct ApuSaveState {
     apu_clock: u8,
     #[serde(default)]
     t_cycle_phase: u8,
+    #[serde(default)]
+    skip_next_frame_sequencer_edge: bool,
 }
 
 impl ApuSaveState {
@@ -326,6 +341,7 @@ impl Apu {
             wave_ram_startup_policy,
             apu_clock: 0,
             t_cycle_phase: 0,
+            skip_next_frame_sequencer_edge: false,
         }
     }
 
@@ -341,6 +357,7 @@ impl Apu {
             wave_ram_startup_policy: self.wave_ram_startup_policy,
             apu_clock: self.apu_clock,
             t_cycle_phase: self.t_cycle_phase,
+            skip_next_frame_sequencer_edge: self.skip_next_frame_sequencer_edge,
         }
     }
 
@@ -355,6 +372,7 @@ impl Apu {
         self.wave_ram_startup_policy = state.wave_ram_startup_policy;
         self.apu_clock = state.apu_clock;
         self.t_cycle_phase = state.t_cycle_phase;
+        self.skip_next_frame_sequencer_edge = state.skip_next_frame_sequencer_edge;
     }
 
     pub fn console_model(&self) -> ConsoleModel {
@@ -589,6 +607,17 @@ impl Apu {
     }
 
     fn advance_frame_sequencer(&mut self) {
+        // SameBoy `GB_apu_init` glitch (apu.c:1087-1092 + 667-682): on the
+        // first FS edge after NR52 transitions off→on while the DIV-APU bit
+        // is high, the edge is suppressed entirely — no step advance, no
+        // clocks. The edge AFTER that fires as if `div_divider=1`, which in
+        // our model is the natural step=0 (length) firing.
+        if self.skip_next_frame_sequencer_edge {
+            self.skip_next_frame_sequencer_edge = false;
+            self.preview_output_path();
+            return;
+        }
+
         let clocks = self.frame_sequencer.advance();
         if !self.master.powered {
             self.preview_output_path();

@@ -106,6 +106,23 @@ impl Apu {
         }
     }
 
+    /// Step value channels see when computing the NRx4 length-enable / trigger
+    /// glitches. While the post-power-on SKIP glitch is pending (see
+    /// `Apu::skip_next_frame_sequencer_edge`), the next FS edge will be
+    /// suppressed and the one after it fires `div_divider=1` (length only) —
+    /// so the channels' `next_step_clocks_length` lookup should return false
+    /// and `next_step_clocks_envelope` should also be false. Returning step=1
+    /// satisfies both, and is the smallest change that lets
+    /// `should_apply_extra_length_clocking_on_enable` mirror SameBoy's
+    /// `div_divider & 1 == 1` gating in this window.
+    fn effective_frame_sequencer_step(&self) -> u8 {
+        if self.skip_next_frame_sequencer_edge {
+            1
+        } else {
+            self.frame_sequencer.step
+        }
+    }
+
     fn write_channel_1_register(
         &mut self,
         register: Channel1Register,
@@ -113,12 +130,13 @@ impl Apu {
         speed_mode: CgbSpeedMode,
     ) {
         if self.master.powered {
+            let step = self.effective_frame_sequencer_step();
             self.channels.channel_1.write_register(
                 register,
                 value,
                 self.console_model,
                 speed_mode,
-                self.frame_sequencer.step,
+                step,
             );
         } else {
             self.channels
@@ -134,12 +152,13 @@ impl Apu {
         speed_mode: CgbSpeedMode,
     ) {
         if self.master.powered {
+            let step = self.effective_frame_sequencer_step();
             self.channels.channel_2.write_register(
                 register,
                 value,
                 self.console_model,
                 speed_mode,
-                self.frame_sequencer.step,
+                step,
             );
         } else {
             self.channels
@@ -150,12 +169,10 @@ impl Apu {
 
     fn write_channel_3_register(&mut self, register: Channel3Register, value: u8) {
         if self.master.powered {
-            self.channels.channel_3.write_register(
-                register,
-                value,
-                self.console_model,
-                self.frame_sequencer.step,
-            );
+            let step = self.effective_frame_sequencer_step();
+            self.channels
+                .channel_3
+                .write_register(register, value, self.console_model, step);
         } else {
             self.channels
                 .channel_3
@@ -165,12 +182,10 @@ impl Apu {
 
     fn write_channel_4_register(&mut self, register: Channel4Register, value: u8) {
         if self.master.powered {
-            self.channels.channel_4.write_register(
-                register,
-                value,
-                self.console_model,
-                self.frame_sequencer.step,
-            );
+            let step = self.effective_frame_sequencer_step();
+            self.channels
+                .channel_4
+                .write_register(register, value, self.console_model, step);
         } else {
             self.channels
                 .channel_4
