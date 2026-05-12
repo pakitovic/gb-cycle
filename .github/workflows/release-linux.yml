@@ -72,7 +72,13 @@ jobs:
           cp target/release-max/gb-desktop "${package_dir}/"
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
-          sdl_libs=(target/release-max/libSDL3*.so*)
+          sdl_libs=()
+          while IFS= read -r sdl_lib; do
+            sdl_libs+=("${sdl_lib}")
+          done < <(
+            find target/release-max \( -type f -o -type l \) -name 'libSDL3*.so*' -print |
+              sort -u
+          )
           if ((${#sdl_libs[@]} > 0)); then
             cp "${sdl_libs[@]}" "${package_dir}/"
             patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"

@@ -48,7 +48,13 @@ jobs:
           printf 'APPL????' > "${app_root}/Contents/PkgInfo"
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
-          sdl_libs=(target/release-max/libSDL3*.dylib)
+          sdl_libs=()
+          while IFS= read -r sdl_lib; do
+            sdl_libs+=("${sdl_lib}")
+          done < <(
+            find target/release-max \( -type f -o -type l \) -name 'libSDL3*.dylib' -print |
+              sort -u
+          )
           if ((${#sdl_libs[@]} > 0)); then
             for dylib in "${sdl_libs[@]}"; do
               dylib_name="$(basename "${dylib}")"
