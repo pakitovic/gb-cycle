@@ -49,8 +49,20 @@ jobs:
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
           sdl_libs=()
+          sdl_lib_names=()
           while IFS= read -r sdl_lib; do
-            sdl_libs+=("${sdl_lib}")
+            sdl_name="$(basename "${sdl_lib}")"
+            sdl_seen=false
+            for existing_name in "${sdl_lib_names[@]}"; do
+              if [[ "${existing_name}" == "${sdl_name}" ]]; then
+                sdl_seen=true
+                break
+              fi
+            done
+            if [[ "${sdl_seen}" == false ]]; then
+              sdl_lib_names+=("${sdl_name}")
+              sdl_libs+=("${sdl_lib}")
+            fi
           done < <(
             find target/release-max \( -type f -o -type l \) -name 'libSDL3*.dylib' -print |
               sort -u
