@@ -11,19 +11,10 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS Apple Silicon
-            runner: macos-latest
-            package: gb-cycle-macos-aarch64
-          - name: macOS Intel
-            runner: macos-15-intel
-            package: gb-cycle-macos-x86_64
+    runs-on: macos-latest
+    env:
+      MACOS_DESKTOP_FEATURES: gb-desktop/sdl3-build-from-source
+      MACOS_PACKAGE_NAME: gb-cycle-macos-aarch64
 
     steps:
       - name: Checkout
@@ -36,14 +27,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build desktop release
-        run: cargo build --profile release-max -p gb-desktop --features gb-desktop/sdl3-build-from-source
+        run: cargo build --profile release-max -p gb-desktop --features "${MACOS_DESKTOP_FEATURES}"
 
       - name: Package macOS app bundle
         run: |
           set -euo pipefail
           shopt -s nullglob
 
-          package_name="${{ matrix.package }}"
+          package_name="${MACOS_PACKAGE_NAME}"
           package_dir="dist/${package_name}"
           app_root="${package_dir}/GB Cycle.app"
           macos_dir="${app_root}/Contents/MacOS"
@@ -87,11 +78,11 @@ jobs:
       - name: Upload macOS package artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.package }}
-          path: dist/${{ matrix.package }}.zip
+          name: ${{ env.MACOS_PACKAGE_NAME }}
+          path: dist/${{ env.MACOS_PACKAGE_NAME }}.zip
 
       - name: Upload macOS package release asset
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.package }}.zip
+          files: dist/${{ env.MACOS_PACKAGE_NAME }}.zip
