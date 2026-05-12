@@ -26,9 +26,6 @@ jobs:
       - name: Build desktop release
         run: cargo build --profile release-max -p gb-desktop --features gb-desktop/sdl3-build-from-source
 
-      - name: Smoke test desktop CLI
-        run: target\release-max\gb-desktop.exe --help
-
       - name: Package Windows binary
         shell: pwsh
         run: |
@@ -42,9 +39,15 @@ jobs:
           Copy-Item -Path "target\release-max\gb-desktop.exe" -Destination $packageDir -Force
           Copy-Item -Path "README.md", "LICENSE-MIT", "LICENSE-APACHE" -Destination $packageDir -Force
 
-          Get-ChildItem -Path "target\release-max" -Recurse -Filter "*.dll" -File |
-            Sort-Object -Property FullName -Unique |
-            Copy-Item -Destination $packageDir -Force
+          $packageDlls = @(
+            Get-ChildItem -Path "target\release-max" -Recurse -Filter "*.dll" -File |
+            Sort-Object -Property FullName -Unique
+          )
+          if ($packageDlls.Count -gt 0) {
+            $packageDlls | Copy-Item -Destination $packageDir -Force
+          }
+
+          & (Join-Path $packageDir "gb-desktop.exe") --help
 
           Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $zipPath -Force
 

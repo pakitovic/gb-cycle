@@ -73,14 +73,12 @@ jobs:
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
           sdl_libs=(target/release-max/libSDL3*.so*)
-          if ((${#sdl_libs[@]} == 0)); then
-            echo "expected SDL3 shared libraries under target/release-max" >&2
-            exit 1
+          if ((${#sdl_libs[@]} > 0)); then
+            cp "${sdl_libs[@]}" "${package_dir}/"
+            patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
           fi
-          cp "${sdl_libs[@]}" "${package_dir}/"
 
           chmod +x "${package_dir}/gb-desktop"
-          patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
           "${package_dir}/gb-desktop" --help
 
           tar -C dist -czf "${tar_path}" "${package_name}"

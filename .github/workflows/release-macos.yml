@@ -49,25 +49,23 @@ jobs:
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
           sdl_libs=(target/release-max/libSDL3*.dylib)
-          if ((${#sdl_libs[@]} == 0)); then
-            echo "expected SDL3 dylibs under target/release-max" >&2
-            exit 1
-          fi
-          for dylib in "${sdl_libs[@]}"; do
-            dylib_name="$(basename "${dylib}")"
-            cp "${dylib}" "${macos_dir}/${dylib_name}"
-            chmod +w "${macos_dir}/${dylib_name}"
-            install_name_tool -id "@executable_path/${dylib_name}" "${macos_dir}/${dylib_name}"
-          done
+          if ((${#sdl_libs[@]} > 0)); then
+            for dylib in "${sdl_libs[@]}"; do
+              dylib_name="$(basename "${dylib}")"
+              cp "${dylib}" "${macos_dir}/${dylib_name}"
+              chmod +w "${macos_dir}/${dylib_name}"
+              install_name_tool -id "@executable_path/${dylib_name}" "${macos_dir}/${dylib_name}"
+            done
 
-          bundled_sdl="$(basename "${sdl_libs[0]}")"
-          while IFS= read -r dependency; do
-            case "${dependency}" in
-              *libSDL3*.dylib*)
-                install_name_tool -change "${dependency}" "@executable_path/${bundled_sdl}" "${macos_dir}/gb-desktop"
-                ;;
-            esac
-          done < <(otool -L "${macos_dir}/gb-desktop" | tail -n +2 | awk '{print $1}')
+            bundled_sdl="$(basename "${sdl_libs[0]}")"
+            while IFS= read -r dependency; do
+              case "${dependency}" in
+                *libSDL3*.dylib*)
+                  install_name_tool -change "${dependency}" "@executable_path/${bundled_sdl}" "${macos_dir}/gb-desktop"
+                  ;;
+              esac
+            done < <(otool -L "${macos_dir}/gb-desktop" | tail -n +2 | awk '{print $1}')
+          fi
 
           chmod +x "${macos_dir}/gb-desktop"
           codesign --force --deep --sign - "${app_root}"

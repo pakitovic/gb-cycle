@@ -36,13 +36,13 @@ cargo run --profile release-max -p gb-desktop -- [path/to/rom.gb]
 
 ## Release packages
 
-The GitHub release workflows package only the SDL3 desktop frontend. They all build `gb-desktop` with `cargo build --profile release-max -p gb-desktop --features gb-desktop/sdl3-build-from-source`, then run `gb-desktop --help` from the packaged runtime layout so the artifact proves that the executable can find its bundled SDL3 runtime before upload.
+The GitHub release workflows package only the SDL3 desktop frontend. They all build `gb-desktop` with `cargo build --profile release-max -p gb-desktop --features gb-desktop/sdl3-build-from-source`, then run `gb-desktop --help` from the packaged runtime layout so the artifact proves that the executable can start with whatever SDL3 runtime form the source-build path emitted before upload.
 
 The workflows live under `.github/workflows/`:
 
-- `release-windows.yml` creates `gb-cycle-windows-x86_64.zip` on `windows-latest`, containing `gb-desktop.exe`, `README.md`, both license files, and every SDL3 `.dll` copied by the source-build path under `target/release-max`.
-- `release-linux.yml` creates `gb-cycle-linux-x86_64.tar.gz` on `ubuntu-latest`, containing `gb-desktop`, `README.md`, both license files, and `libSDL3*.so*` from `target/release-max`; the binary is patched with an `$ORIGIN` rpath so it loads the bundled SDL3 shared object from the unpacked artifact directory without requiring `LD_LIBRARY_PATH`.
-- `release-macos.yml` creates only the Apple Silicon `gb-cycle-macos-aarch64.zip` package on `macos-latest`, containing `GB Cycle.app`, `README.md`, both license files, and `libSDL3*.dylib` inside `Contents/MacOS`; the dylib install names are rewritten to `@executable_path`, the app is ad-hoc signed after that rewrite, and the bundle reuses `crates/gb-desktop/macos/Info.plist` so the release artifact carries the same Pocket Camera usage string as the local macOS launcher.
+- `release-windows.yml` creates `gb-cycle-windows-x86_64.zip` on `windows-latest`, containing `gb-desktop.exe`, `README.md`, both license files, and every `.dll` emitted by the source-build path under `target/release-max`.
+- `release-linux.yml` creates `gb-cycle-linux-x86_64.tar.gz` on `ubuntu-latest`, containing `gb-desktop`, `README.md`, both license files, and any `libSDL3*.so*` emitted under `target/release-max`; when a shared object is present, the binary is patched with an `$ORIGIN` rpath so it loads the bundled SDL3 shared object from the unpacked artifact directory without requiring `LD_LIBRARY_PATH`.
+- `release-macos.yml` creates only the Apple Silicon `gb-cycle-macos-aarch64.zip` package on `macos-latest`, containing `GB Cycle.app`, `README.md`, both license files, and any `libSDL3*.dylib` emitted under `target/release-max` inside `Contents/MacOS`; when a dylib is present, the dylib install names are rewritten to `@executable_path` before ad-hoc signing, and the bundle reuses `crates/gb-desktop/macos/Info.plist` so the release artifact carries the same Pocket Camera usage string as the local macOS launcher.
 
 Manual `workflow_dispatch` runs are for artifact validation and upload the package through `actions/upload-artifact`. Tag pushes matching `v*` additionally attach the same package to the GitHub Release via `softprops/action-gh-release`; do not use a non-release branch tag unless you intentionally want to test the release-asset path and then clean up the temporary release/tag afterward.
 
