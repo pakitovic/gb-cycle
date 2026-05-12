@@ -76,6 +76,13 @@ jobs:
           if ((${#sdl_libs[@]} > 0)); then
             cp "${sdl_libs[@]}" "${package_dir}/"
             patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
+          else
+            ldd_output="$(ldd "${package_dir}/gb-desktop" 2>&1 || true)"
+            if grep -q 'libSDL3' <<<"${ldd_output}"; then
+              printf '%s\n' "${ldd_output}"
+              echo "gb-desktop dynamically links SDL3 but no bundled libSDL3 shared object was emitted" >&2
+              exit 1
+            fi
           fi
 
           chmod +x "${package_dir}/gb-desktop"

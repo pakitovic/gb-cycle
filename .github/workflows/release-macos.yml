@@ -65,6 +65,10 @@ jobs:
                   ;;
               esac
             done < <(otool -L "${macos_dir}/gb-desktop" | tail -n +2 | awk '{print $1}')
+          elif otool -L "${macos_dir}/gb-desktop" | grep -q 'libSDL3'; then
+            otool -L "${macos_dir}/gb-desktop"
+            echo "gb-desktop dynamically links SDL3 but no bundled libSDL3 dylib was emitted" >&2
+            exit 1
           fi
 
           chmod +x "${macos_dir}/gb-desktop"
