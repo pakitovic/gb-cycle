@@ -58,6 +58,8 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - A write to `DIV` can therefore matter to both subsystems:
   - timer glitch behavior through the effective TIMA signal
   - APU frame-sequencer advancement if the reset produces the documented falling edge seen by `DIV-APU`
+- CPU-driven `DIV` MMIO writes currently seed a narrow `2` T-cycle offset used only by the APU frame-sequencer source signal after the reset; this does not change the visible `DIV` register, the literal `system_counter` snapshot, or TIMA's selected-counter-bit path.
+- `STOP` divider resets reuse the timer-owned edge reporting and TIMA glitch path, but they must not inherit that CPU-`DIV`-write-only APU frame-sequencer offset unless a stronger STOP-specific hardware oracle requires it.
 - Keep the ownership split explicit: timer owns `DIV` and the shared counter; APU owns `div_apu`, frame-sequencer phase, and the downstream sound clocks.
 - The timer-owned divider path should expose enough explicit edge information that autonomous ticks can publish `DIV`-derived events to the scheduler and `DIV` reset writes can synchronously report whether an immediate `DIV-APU` edge occurred on that write.
 
@@ -66,7 +68,7 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - Phase 10 Slice 2 keeps the timer-owned `system_counter` as the source of truth across speed changes instead of introducing a second double-speed accumulator.
 - In the current CPU-visible timing baseline, both normal speed and native CGB double speed advance the timer-owned internal counter by `1` per CPU-visible scheduler T-cycle. This preserves the `DIV` cadence observed by Daid `speed_switch_timing_div.gbc`; later scheduler work may refine CPU-vs-LCD wall-clock domains without changing the CPU-visible `DIV` read sequence.
 - `DIV` remains a derived view of the internal counter, and TIMA still increments from falling-edge detection on `timer_enable && selected_counter_bit`; speed mode changes domain selection for downstream consumers, not the edge rule.
-- `DIV` writes and `STOP` divider resets use the same speed-aware edge path as autonomous ticks, including immediate TIMA glitch effects and the synchronous report of whether an APU frame-sequencer edge occurred.
+- `DIV` writes and `STOP` divider resets use the same speed-aware edge path as autonomous ticks, including immediate TIMA glitch effects and the synchronous report of whether an APU frame-sequencer edge occurred; only CPU `DIV` writes apply the repo-local APU frame-sequencer offset described above.
 - To keep the APU frame sequencer in its documented undoubled timing domain relative to the CGB speed switch, the shared `DIV-APU` source is counter bit `12` in normal speed and counter bit `13` in double speed.
 - The serial controller consumes the same speed-domain contract for its baseline internal-clock edge selection, but full CGB serial high-speed `SC.1` behavior belongs to the later serial-owned CGB slice.
 - LCD/PPU LY/STAT timing must not derive from this counter cadence directly; CGB speed state is a published scheduler-domain input, not a generic multiplier for every subsystem.
@@ -77,10 +79,10 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - Do not reduce the model to "increment every X instructions" if finer timing matters.
 - Preserve the interaction with interrupt timing and writes to timer registers.
 - Express timer behavior on the shared T-cycle timeline of the core.
-- The internal timer system counter must advance through the shared speed-domain contract: `1` step per scheduler T-cycle in normal speed and `2` steps per scheduler T-cycle in native CGB double speed.
+- The internal timer system counter must advance through the shared CPU-visible speed-domain contract: `1` step per scheduler T-cycle in both normal speed and native CGB double speed, with downstream consumers selecting the appropriate divider bit or cadence instead of mutating visible `DIV` progression.
 - Keep `DIV`, `TIMA`, and `TAC` coupled through the internal counter and edge logic; do not split them into desynchronized derived counters.
 - A write to `DIV` can cause an immediate TIMA increment when it changes the effective timer signal through the relevant falling edge.
-- The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle.
+- The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle, while keeping the CPU-`DIV`-write offset separate from STOP resets.
 - A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
 - If a `DIV` or `TAC` write-triggered glitch is itself the event that overflows `TIMA`, the reload / IRQ window still has to stay aligned to the shared T-cycle timeline instead of silently slipping by one extra cycle just because the timer's autonomous tick for that same cycle already ran earlier in the scheduler.
 - TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.

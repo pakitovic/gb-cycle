@@ -1,5 +1,6 @@
 use super::*;
 use crate::scheduler::TCycle;
+use crate::speed::CgbSpeedMode;
 
 #[test]
 fn div_is_derived_from_the_internal_counter_and_reset_by_any_write() {
@@ -114,6 +115,45 @@ fn div_write_reports_when_the_apu_frame_sequencer_edge_occurs() {
 
     assert!(effects.apu_frame_sequencer_edge);
     assert_eq!(timer.snapshot().system_counter, 0x0000);
+}
+
+#[test]
+fn div_write_seeds_only_the_cpu_mmio_apu_frame_sequencer_offset() {
+    let mut timer = Timer::new(ConsoleModel::GameBoy);
+    timer.apply_startup_state(TimerStartupState {
+        system_counter: 0x1000,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0x00,
+    });
+
+    let effects = timer.write_div_with_effects(0x00);
+
+    assert!(effects.apu_frame_sequencer_edge);
+    assert_eq!(timer.snapshot().system_counter, 0x0000);
+    assert_eq!(timer.apu_fs_offset, 2);
+}
+
+#[test]
+fn stop_divider_reset_does_not_seed_the_cpu_div_write_apu_offset() {
+    for (speed_mode, edge_counter) in [
+        (CgbSpeedMode::Normal, 0x1000),
+        (CgbSpeedMode::Double, 0x2000),
+    ] {
+        let mut timer = Timer::new(ConsoleModel::GameBoyColor);
+        timer.apply_startup_state(TimerStartupState {
+            system_counter: edge_counter,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0x00,
+        });
+
+        let effects = timer.stop_reset_divider_with_effects_for_speed(speed_mode);
+
+        assert!(effects.apu_frame_sequencer_edge);
+        assert_eq!(timer.snapshot().system_counter, 0x0000);
+        assert_eq!(timer.apu_fs_offset, 0);
+    }
 }
 
 #[test]

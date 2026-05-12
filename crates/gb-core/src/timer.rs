@@ -68,6 +68,12 @@ pub(crate) struct DividerResetEffects {
     pub apu_frame_sequencer_edge: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DividerResetSource {
+    CpuDivWrite,
+    StopInstruction,
+}
+
 impl Timer {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
@@ -137,10 +143,28 @@ impl Timer {
         _value: u8,
         speed_mode: CgbSpeedMode,
     ) -> DividerResetEffects {
+        self.reset_divider_with_effects_for_speed(speed_mode, DividerResetSource::CpuDivWrite)
+    }
+
+    pub(crate) fn stop_reset_divider_with_effects_for_speed(
+        &mut self,
+        speed_mode: CgbSpeedMode,
+    ) -> DividerResetEffects {
+        self.reset_divider_with_effects_for_speed(speed_mode, DividerResetSource::StopInstruction)
+    }
+
+    fn reset_divider_with_effects_for_speed(
+        &mut self,
+        speed_mode: CgbSpeedMode,
+        source: DividerResetSource,
+    ) -> DividerResetEffects {
         let previous_signal = self.current_timer_signal();
         let previous_div_apu_signal = self.current_div_apu_signal_for_speed(speed_mode);
         self.system_counter = 0;
-        self.apu_fs_offset = 2;
+        self.apu_fs_offset = match source {
+            DividerResetSource::CpuDivWrite => 2,
+            DividerResetSource::StopInstruction => 0,
+        };
         self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
         DividerResetEffects {
             apu_frame_sequencer_edge: previous_div_apu_signal
