@@ -72,15 +72,38 @@ jobs:
           cp target/release-max/gb-desktop "${package_dir}/"
           cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
 
-          sdl_libs=(target/release-max/libSDL3*.so*)
-          if ((${#sdl_libs[@]} == 0)); then
-            echo "expected SDL3 shared libraries under target/release-max" >&2
-            exit 1
+          sdl_libs=()
+          sdl_lib_names=()
+          while IFS= read -r sdl_lib; do
+            sdl_name="$(basename "${sdl_lib}")"
+            sdl_seen=false
+            for existing_name in "${sdl_lib_names[@]}"; do
+              if [[ "${existing_name}" == "${sdl_name}" ]]; then
+                sdl_seen=true
+                break
+              fi
+            done
+            if [[ "${sdl_seen}" == false ]]; then
+              sdl_lib_names+=("${sdl_name}")
+              sdl_libs+=("${sdl_lib}")
+            fi
+          done < <(
+            find target/release-max \( -type f -o -type l \) -name 'libSDL3*.so*' -print |
+              sort -u
+          )
+          if ((${#sdl_libs[@]} > 0)); then
+            cp "${sdl_libs[@]}" "${package_dir}/"
+            patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
+          else
+            ldd_output="$(ldd "${package_dir}/gb-desktop" 2>&1 || true)"
+            if grep -q 'libSDL3' <<<"${ldd_output}"; then
+              printf '%s\n' "${ldd_output}"
+              echo "gb-desktop dynamically links SDL3 but no bundled libSDL3 shared object was emitted" >&2
+              exit 1
+            fi
           fi
-          cp "${sdl_libs[@]}" "${package_dir}/"
 
           chmod +x "${package_dir}/gb-desktop"
-          patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
           "${package_dir}/gb-desktop" --help
 
           tar -C dist -czf "${tar_path}" "${package_name}"
