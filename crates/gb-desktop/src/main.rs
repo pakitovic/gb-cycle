@@ -22553,7 +22553,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert!(!harness.runtime.video_options.show_performance_hud);
+        assert!(harness.runtime.video_options.show_performance_hud);
         assert!(
             harness
                 .execute_action(super::MenuAction::ToggleMute)
