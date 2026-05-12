@@ -2818,6 +2818,31 @@ mod tests {
                 0xFFF0, 0x01, 0x02,
             )])
         );
+        let exact_check_cases = suite
+            .cases
+            .iter()
+            .filter_map(|case| {
+                if let PassCondition::FramebufferFixtureUntilMatch {
+                    check_at_tcycles: Some(check_at_tcycles),
+                    ..
+                } = &case.pass_condition
+                {
+                    Some((case.id.as_str(), *check_at_tcycles, case.timeout))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(exact_check_cases.len(), 6);
+        for (case_id, check_at_tcycles, timeout) in exact_check_cases {
+            let Timeout::TCycles(timeout_tcycles) = timeout else {
+                panic!("{case_id} exact check_at case must use a T-cycle timeout");
+            };
+            assert!(
+                timeout_tcycles >= check_at_tcycles,
+                "{case_id} timeout {timeout_tcycles} must reach check_at_tcycles {check_at_tcycles}"
+            );
+        }
         assert!(suite_uses_extra_test_report("docboy-dmg-extra"));
     }
 

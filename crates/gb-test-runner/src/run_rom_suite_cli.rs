@@ -204,21 +204,21 @@ fn run_selected_suite<W: Write>(
         }
     }
 
-    if let Some(threads) = options.threads {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build_global()
-            .map_err(|error| format!("failed to configure rayon thread pool: {error}"))?;
-    }
-
     let mut runner = runner;
     if let Some(root) = options.failure_artifact_root {
         runner = runner.with_failure_artifact_root(root);
     }
 
-    let report = runner
-        .run_suite(&suite)
-        .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
+    let report = if let Some(threads) = options.threads {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .map_err(|error| format!("failed to configure rayon thread pool: {error}"))?;
+        pool.install(|| runner.run_suite(&suite))
+    } else {
+        runner.run_suite(&suite)
+    }
+    .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
     write_suite_report(output, &report)?;
     match &options.target {
         RomSuiteCliTarget::BuiltIn { .. } => {
@@ -1220,6 +1220,63 @@ mod tests {
         let output = String::from_utf8(output).expect("command output should be utf-8");
         assert!(output.contains("suite=phase-2-cpu-timing"));
         assert!(output.contains("case=phase2-fetch-immediate-order outcome=Passed"));
+    }
+
+    #[test]
+    fn run_command_can_reconfigure_explicit_threads_per_invocation() {
+        let workspace_root = default_workspace_root();
+        let temp_root = unique_temp_dir("manifest-threads");
+        let rom_path = temp_root
+            .join("fixtures")
+            .join("phase2_fetch_immediate_order.gb");
+        fs::create_dir_all(
+            rom_path
+                .parent()
+                .expect("temporary ROM path should have a parent"),
+        )
+        .expect("temporary ROM parent should be creatable");
+        fs::copy(
+            workspace_root
+                .join("crates/gb-core/tests/fixtures/roms/phase2/phase2_fetch_immediate_order.gb"),
+            &rom_path,
+        )
+        .expect("fixture ROM should copy into the temporary manifest workspace");
+
+        let manifest_path = write_manifest(
+            &temp_root,
+            "local-case.toml",
+            &format!(
+                r#"
+version = 1
+
+[[case]]
+id = "phase2-threaded"
+rom = "{}"
+timeout_tcycles = 32
+oracle = "info-framebuffer"
+"#,
+                rom_path.display()
+            ),
+        );
+        let manifest = manifest_path
+            .to_str()
+            .expect("manifest path should be utf-8");
+
+        for threads in ["2", "1"] {
+            let mut output = Vec::new();
+            run_rom_suite_command_with_runner(
+                ["--manifest", manifest, "--threads", threads],
+                RomRunner::new().with_workspace_root(workspace_root.clone()),
+                &mut output,
+            )
+            .expect("explicit thread count should apply to this invocation only");
+
+            let rendered = String::from_utf8(output).expect("manifest output should be utf-8");
+            assert!(rendered.contains("suite=local-case subsystem=CrossSubsystem"));
+            assert!(rendered.contains("case=phase2-threaded outcome=Informational"));
+        }
+
+        fs::remove_dir_all(temp_root).expect("temporary manifest workspace should be removable");
     }
 
     #[test]
