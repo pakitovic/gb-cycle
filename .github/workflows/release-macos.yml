@@ -1,0 +1,97 @@
+name: release-macos
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            runner: macos-latest
+            package: gb-cycle-macos-aarch64
+          - name: macOS Intel
+            runner: macos-15-intel
+            package: gb-cycle-macos-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build desktop release
+        run: cargo build --profile release-max -p gb-desktop --features gb-desktop/sdl3-build-from-source
+
+      - name: Package macOS app bundle
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          package_name="${{ matrix.package }}"
+          package_dir="dist/${package_name}"
+          app_root="${package_dir}/GB Cycle.app"
+          macos_dir="${app_root}/Contents/MacOS"
+          resources_dir="${app_root}/Contents/Resources"
+          zip_path="dist/${package_name}.zip"
+
+          rm -rf "${package_dir}" "${zip_path}"
+          mkdir -p "${macos_dir}" "${resources_dir}"
+          cp target/release-max/gb-desktop "${macos_dir}/gb-desktop"
+          cp crates/gb-desktop/macos/Info.plist "${app_root}/Contents/Info.plist"
+          printf 'APPL????' > "${app_root}/Contents/PkgInfo"
+          cp README.md LICENSE-MIT LICENSE-APACHE "${package_dir}/"
+
+          sdl_libs=(target/release-max/libSDL3*.dylib)
+          if ((${#sdl_libs[@]} == 0)); then
+            echo "expected SDL3 dylibs under target/release-max" >&2
+            exit 1
+          fi
+          for dylib in "${sdl_libs[@]}"; do
+            dylib_name="$(basename "${dylib}")"
+            cp "${dylib}" "${macos_dir}/${dylib_name}"
+            chmod +w "${macos_dir}/${dylib_name}"
+            install_name_tool -id "@executable_path/${dylib_name}" "${macos_dir}/${dylib_name}"
+          done
+
+          bundled_sdl="$(basename "${sdl_libs[0]}")"
+          while IFS= read -r dependency; do
+            case "${dependency}" in
+              *libSDL3*.dylib*)
+                install_name_tool -change "${dependency}" "@executable_path/${bundled_sdl}" "${macos_dir}/gb-desktop"
+                ;;
+            esac
+          done < <(otool -L "${macos_dir}/gb-desktop" | tail -n +2 | awk '{print $1}')
+
+          chmod +x "${macos_dir}/gb-desktop"
+          codesign --force --deep --sign - "${app_root}"
+          "${macos_dir}/gb-desktop" --help
+
+          ditto -c -k --sequesterRsrc --keepParent "${package_dir}" "${zip_path}"
+
+      - name: Upload macOS package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.package }}
+          path: dist/${{ matrix.package }}.zip
+
+      - name: Upload macOS package release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.package }}.zip
