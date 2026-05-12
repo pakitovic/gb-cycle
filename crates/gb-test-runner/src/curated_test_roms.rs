@@ -186,6 +186,7 @@ struct CuratedTestRomCase {
     startup_ppu_profile: Option<String>,
     startup_memory_profile: Option<String>,
     disabled: bool,
+    comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1259,6 +1260,7 @@ fn parse_manifest_case(
     manifest_startup_ppu_profile: Option<&str>,
     case: CuratedTestRomCaseFile,
 ) -> CuratedTestRomCase {
+    let manifest_path = source_path;
     let family = case
         .family
         .or_else(|| manifest_family.map(str::to_string))
@@ -1288,6 +1290,12 @@ fn parse_manifest_case(
     });
     let timeout = parse_manifest_timeout(&source_path, case.timeout_frames, case.timeout_tcycles);
     let case_id = case.id;
+    let comment = normalize_manifest_case_comment(
+        Path::new(manifest_path),
+        &case_id,
+        case.disabled,
+        case.comment,
+    );
 
     CuratedTestRomCase {
         family,
@@ -1334,7 +1342,28 @@ fn parse_manifest_case(
             .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
         startup_memory_profile: case.startup_memory_profile,
         disabled: case.disabled,
+        comment,
     }
+}
+
+fn normalize_manifest_case_comment(
+    source_path: &Path,
+    case_id: &str,
+    disabled: bool,
+    comment: Option<String>,
+) -> Option<String> {
+    let comment = comment
+        .map(|comment| comment.trim().to_string())
+        .filter(|comment| !comment.is_empty());
+
+    if disabled && comment.is_none() {
+        panic!(
+            "disabled curated case {case_id} in {} must include a non-empty comment",
+            source_path.display()
+        );
+    }
+
+    comment
 }
 
 fn parse_manifest_timeout(
@@ -1451,6 +1480,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         startup_ppu_profile,
         startup_memory_profile,
         disabled: _,
+        comment: _,
     } = case;
 
     let pass_condition = match oracle.as_str() {
@@ -4417,6 +4447,87 @@ status = "PASS"
     }
 
     #[test]
+    fn parse_manifest_case_preserves_disabled_case_comment() {
+        let case = parse_manifest_case(
+            "test-manifest.toml",
+            Some("docboy"),
+            None,
+            CuratedTestRomCaseFile {
+                family: None,
+                id: "disabled-with-comment".to_string(),
+                rom: PathBuf::from("disabled.gb"),
+                source_id: None,
+                source_path: None,
+                report_model_suffix: None,
+                report_label: None,
+                timeout_frames: Some(1),
+                timeout_tcycles: None,
+                oracle: "info-framebuffer".to_string(),
+                expected: None,
+                fixture: None,
+                fixtures: None,
+                check_interval_tcycles: None,
+                check_at_tcycles: None,
+                memory: Vec::new(),
+                stimuli: Vec::new(),
+                console: Some("dmg".to_string()),
+                startup: None,
+                execution_mode: None,
+                stop_condition: None,
+                startup_timer_profile: None,
+                startup_ppu_profile: None,
+                startup_memory_profile: None,
+                disabled: true,
+                comment: Some("  hardware-incompatible oracle  ".to_string()),
+            },
+        );
+
+        assert!(case.disabled);
+        assert_eq!(
+            case.comment.as_deref(),
+            Some("hardware-incompatible oracle")
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "disabled curated case")]
+    fn parse_manifest_case_rejects_disabled_case_without_comment() {
+        let _ = parse_manifest_case(
+            "test-manifest.toml",
+            Some("docboy"),
+            None,
+            CuratedTestRomCaseFile {
+                family: None,
+                id: "disabled-without-comment".to_string(),
+                rom: PathBuf::from("disabled.gb"),
+                source_id: None,
+                source_path: None,
+                report_model_suffix: None,
+                report_label: None,
+                timeout_frames: Some(1),
+                timeout_tcycles: None,
+                oracle: "info-framebuffer".to_string(),
+                expected: None,
+                fixture: None,
+                fixtures: None,
+                check_interval_tcycles: None,
+                check_at_tcycles: None,
+                memory: Vec::new(),
+                stimuli: Vec::new(),
+                console: Some("dmg".to_string()),
+                startup: None,
+                execution_mode: None,
+                stop_condition: None,
+                startup_timer_profile: None,
+                startup_ppu_profile: None,
+                startup_memory_profile: None,
+                disabled: true,
+                comment: Some("   ".to_string()),
+            },
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "unsupported oracle")]
     fn manifest_case_to_rom_test_case_rejects_unknown_oracles() {
         let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
@@ -4444,6 +4555,7 @@ status = "PASS"
             startup_ppu_profile: None,
             startup_memory_profile: None,
             disabled: false,
+            comment: None,
         });
     }
 
@@ -4475,6 +4587,7 @@ status = "PASS"
             startup_ppu_profile: None,
             startup_memory_profile: None,
             disabled: false,
+            comment: None,
         });
     }
 
@@ -4506,6 +4619,7 @@ status = "PASS"
             startup_ppu_profile: Some("unknown-profile".to_string()),
             startup_memory_profile: None,
             disabled: false,
+            comment: None,
         });
     }
 
@@ -4537,6 +4651,7 @@ status = "PASS"
             startup_ppu_profile: None,
             startup_memory_profile: Some("unknown-profile".to_string()),
             disabled: false,
+            comment: None,
         });
     }
 

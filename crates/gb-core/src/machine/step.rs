@@ -208,7 +208,7 @@ pub(super) fn commit_pending_ppu_mmio_write(
 }
 
 fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer, speed_mode: CgbSpeedMode) {
-    let effects = timer.write_div_with_effects_for_speed(0, speed_mode);
+    let effects = timer.stop_reset_divider_with_effects_for_speed(speed_mode);
     if effects.apu_frame_sequencer_edge {
         apu.on_div_apu_edge();
     }

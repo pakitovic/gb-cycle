@@ -90,6 +90,7 @@ struct LocalRomSuiteCase {
     stimuli: Vec<LocalRomStimulus>,
     #[serde(default)]
     disabled: bool,
+    comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -143,6 +144,12 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
 
     for case in parsed.cases {
         if case.disabled {
+            validate_disabled_case_comment(&case).map_err(|message| {
+                LocalRomSuiteManifestError::Build {
+                    path: path.to_path_buf(),
+                    message,
+                }
+            })?;
             continue;
         }
         let built_case = build_case_from_manifest(manifest_dir, case).map_err(|message| {
@@ -162,6 +169,27 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
         })?;
 
     Ok(suite)
+}
+
+fn validate_disabled_case_comment(case: &LocalRomSuiteCase) -> Result<(), String> {
+    if case
+        .comment
+        .as_deref()
+        .is_some_and(|comment| !comment.trim().is_empty())
+    {
+        return Ok(());
+    }
+
+    let case_id = case
+        .id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_case_id_for_rom_path(&case.rom));
+    Err(format!(
+        "disabled local case {case_id} must include a non-empty comment"
+    ))
 }
 
 fn build_case_from_manifest(
@@ -600,6 +628,62 @@ pressed = false
                 pressed: true,
             }
         );
+    }
+
+    #[test]
+    fn local_manifest_skips_disabled_cases_only_with_a_comment() {
+        let workspace = unique_temp_dir("disabled");
+        let manifest_path = write_manifest(
+            &workspace,
+            "disabled.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "kept"
+rom = "kept.gb"
+timeout_frames = 1
+oracle = "info-framebuffer"
+
+[[case]]
+id = "skipped"
+rom = "skipped.gb"
+disabled = true
+comment = "local reproduction is superseded by the curated oracle"
+"#,
+        );
+
+        let suite =
+            load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases[0].id, "kept");
+    }
+
+    #[test]
+    fn local_manifest_rejects_disabled_cases_without_a_comment() {
+        let workspace = unique_temp_dir("disabled-missing-comment");
+        let manifest_path = write_manifest(
+            &workspace,
+            "disabled.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "skipped"
+rom = "skipped.gb"
+disabled = true
+"#,
+        );
+
+        let error = load_local_rom_suite_manifest(&manifest_path)
+            .expect_err("disabled case without comment should fail");
+        match error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("disabled local case skipped"));
+                assert!(message.contains("non-empty comment"));
+            }
+            other => panic!("unexpected manifest error: {other:?}"),
+        }
     }
 
     #[test]

@@ -71,6 +71,9 @@ impl Apu {
 
         self.frame_sequencer
             .apply_startup_phase(startup_state.div_apu);
+        self.apu_clock = 0;
+        self.t_cycle_phase = 0;
+        self.skip_next_frame_sequencer_edge = false;
         self.preview_output_path();
     }
 

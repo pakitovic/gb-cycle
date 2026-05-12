@@ -139,6 +139,54 @@ fn dmg_power_on_while_div_apu_signal_is_high_suppresses_the_first_fs_edge() {
 }
 
 #[test]
+fn startup_state_clears_runtime_power_on_edge_skip_and_subcycle_phase() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+
+    apu.write_register_for_speed_with_div_apu_signal(0xFF26, 0x80, CgbSpeedMode::Normal, true);
+    assert!(apu.skip_next_frame_sequencer_edge);
+
+    tick_apu_with_edges(&mut apu, 0, &[]);
+    tick_apu_with_edges(&mut apu, 1, &[]);
+    assert_ne!(apu.t_cycle_phase, 0);
+    assert_ne!(apu.apu_clock, 0);
+
+    apu.apply_startup_state(ApuStartupState {
+        powered: true,
+        nr10: 0x00,
+        nr11: 0x00,
+        nr12: 0x00,
+        nr13: 0x00,
+        nr14: 0x00,
+        nr21: 0x00,
+        nr22: 0x00,
+        nr23: 0x00,
+        nr24: 0x00,
+        nr30: 0x00,
+        nr31: 0x00,
+        nr32: 0x00,
+        nr33: 0x00,
+        nr34: 0x00,
+        nr41: 0x00,
+        nr42: 0x00,
+        nr43: 0x00,
+        nr44: 0x00,
+        nr50: 0x00,
+        nr51: 0x00,
+        channel_active_mask: 0x00,
+        div_apu: 0x00,
+        wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+    });
+
+    assert_eq!(apu.t_cycle_phase, 0);
+    assert_eq!(apu.apu_clock, 0);
+    assert!(!apu.skip_next_frame_sequencer_edge);
+
+    tick_apu_with_edges(&mut apu, 2, &[DerivedEdge::ApuFrameSequencerEdge]);
+    assert_eq!(apu.snapshot().div_apu, 0x01);
+    assert_eq!(apu.frame_sequencer.length_clock_count, 1);
+}
+
+#[test]
 fn powered_off_ch4_alignment_uses_the_same_cgb_speed_gate_as_live_fast_timers() {
     let mut normal = Apu::new(ConsoleModel::GameBoyColor);
     let mut double = Apu::new(ConsoleModel::GameBoyColor);
