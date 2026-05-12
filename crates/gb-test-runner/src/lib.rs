@@ -493,6 +493,10 @@ pub enum RomCaseValidationError {
     ArtifactNotCaptured(CaptureKind),
     MissingFailureArtifacts,
     InvalidFramebufferCheckInterval,
+    FramebufferCheckAtExceedsTimeout {
+        check_at_tcycles: u64,
+        timeout_tcycles: u64,
+    },
     DuplicateExternalStimulus(ExternalStimulus),
 }
 
@@ -642,11 +646,23 @@ impl RomTestCase {
 
         if let PassCondition::FramebufferFixtureUntilMatch {
             check_interval_tcycles,
+            check_at_tcycles,
             ..
         } = &self.pass_condition
-            && *check_interval_tcycles == 0
         {
-            return Err(RomCaseValidationError::InvalidFramebufferCheckInterval);
+            if *check_interval_tcycles == 0 {
+                return Err(RomCaseValidationError::InvalidFramebufferCheckInterval);
+            }
+
+            if let Some(check_at_tcycles) = *check_at_tcycles
+                && let Timeout::TCycles(timeout_tcycles) = self.timeout
+                && timeout_tcycles < check_at_tcycles
+            {
+                return Err(RomCaseValidationError::FramebufferCheckAtExceedsTimeout {
+                    check_at_tcycles,
+                    timeout_tcycles,
+                });
+            }
         }
 
         let required_capture = self.pass_condition.required_capture();
@@ -3197,18 +3213,18 @@ mod tests {
         DMG_FAMILY_FRAME_T_CYCLES, DeterministicMbc3RtcClock, ExecutionStopCondition,
         FailureArtifactPolicy, INITIAL_CGB_ROM_SUITE_NAMES, MOONEYE_FAIL_SIGNATURE,
         MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
-        RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
-        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name, ax6_dmg_extra_suite,
-        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
-        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite, detect_mooneye_result,
-        early_phase_9_partial_checklist, external_rom_source_manifest_path,
-        external_rom_store_root, hacktix_dmg_curated_suite, little_things_gb_dmg_extra_suite,
-        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output, samesuite_dmg_extra_suite,
+        RomCaseFailure, RomCaseOutcome, RomCaseValidationError, RomExecutionError, RomRunner,
+        RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout,
+        artifact_file_name, ax6_dmg_extra_suite, blargg_console_text_complete,
+        blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite, budget_exhausted,
+        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
+        cgb_audio_blargg_suite, cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
+        cgb_dma_suite, cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite,
+        cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
+        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
+        little_things_gb_dmg_extra_suite, memory_text_output_completion_reached,
+        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output, samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -5278,6 +5294,28 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_framebuffer_check_at_after_tcycle_timeout() {
+        let case = RomTestCase::new(
+            "framebuffer-check-at-after-timeout",
+            "unused.gb",
+            Timeout::TCycles(8),
+            PassCondition::FramebufferFixtureUntilMatch {
+                fixture_path: PathBuf::from("unused.pgm"),
+                check_interval_tcycles: 1,
+                check_at_tcycles: Some(16),
+            },
+        );
+
+        assert_eq!(
+            case.validate(),
+            Err(RomCaseValidationError::FramebufferCheckAtExceedsTimeout {
+                check_at_tcycles: 16,
+                timeout_tcycles: 8,
+            })
+        );
+    }
+
+    #[test]
     fn run_case_supports_framebuffer_until_match_check_at_tcycle() {
         let workspace = unique_temp_dir("framebuffer-until-match-check-at-pass");
         fs::create_dir_all(&workspace).expect("workspace should be creatable");
@@ -5315,7 +5353,7 @@ mod tests {
         fs::create_dir_all(&workspace).expect("workspace should be creatable");
         let rom_path = workspace.join("idle.gb");
         let fixture_path = workspace.join("white.pgm");
-        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+        fs::write(&rom_path, build_test_rom(&[0x40, 0x18, 0xFE]))
             .expect("test ROM should be writable");
         fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
             .expect("framebuffer fixture should be writable");
@@ -5323,25 +5361,32 @@ mod tests {
         let case = RomTestCase::new(
             "framebuffer-until-match-check-at-missed",
             &rom_path,
-            Timeout::TCycles(8),
+            Timeout::TCycles(32),
             PassCondition::FramebufferFixtureUntilMatch {
                 fixture_path,
                 check_interval_tcycles: 1,
                 check_at_tcycles: Some(16),
             },
-        );
+        )
+        .with_stop_condition(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 });
 
         let report = RomRunner::new()
             .run_case(&case)
             .expect("framebuffer until-match ROM should run");
-        assert_eq!(
-            report.outcome,
-            RomCaseOutcome::Failed(RomCaseFailure::FramebufferCheckAtNotReached {
-                check_at_tcycles: 16,
-                executed_t_cycles: 8,
-            })
+        let RomCaseOutcome::Failed(RomCaseFailure::FramebufferCheckAtNotReached {
+            check_at_tcycles,
+            executed_t_cycles,
+        }) = report.outcome
+        else {
+            panic!("unreached check_at should fail, got {:?}", report.outcome);
+        };
+        assert_eq!(check_at_tcycles, 16);
+        assert_eq!(executed_t_cycles, report.executed_t_cycles);
+        assert!(
+            report.executed_t_cycles < 16,
+            "stop condition should end before the exact framebuffer probe, got {} T-cycles",
+            report.executed_t_cycles
         );
-        assert_eq!(report.executed_t_cycles, 8);
         assert!(report.artifacts.framebuffer_pgm.is_some());
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");
