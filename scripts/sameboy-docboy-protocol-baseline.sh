@@ -36,13 +36,16 @@ fi
 
 SAMEBOY_ROOT="$GB_CYCLE_SAMEBOY_ROOT"
 HELPER_SRC="$REPO_ROOT/crates/gb-test-runner/c_support/sameboy_case_bundle_runner.c"
+SAMEBOY_LIB="$SAMEBOY_ROOT/build/lib/libsameboy.o"
 
 build_runner_if_missing() {
-    if [ -x "$RUNNER" ] && [ "$RUNNER" -nt "$HELPER_SRC" ]; then
+    if [ -x "$RUNNER" ] \
+        && [ "$RUNNER" -nt "$HELPER_SRC" ] \
+        && { [ ! -f "$SAMEBOY_LIB" ] || [ "$RUNNER" -nt "$SAMEBOY_LIB" ]; }; then
         return 0
     fi
-    if [ ! -f "$SAMEBOY_ROOT/build/lib/libsameboy.o" ]; then
-        echo "Missing $SAMEBOY_ROOT/build/lib/libsameboy.o (run 'make lib' in SameBoy)." >&2
+    if [ ! -f "$SAMEBOY_LIB" ]; then
+        echo "Missing $SAMEBOY_LIB (run 'make lib' in SameBoy)." >&2
         return 1
     fi
     mkdir -p "$(dirname "$RUNNER")"
@@ -50,7 +53,7 @@ build_runner_if_missing() {
         -I "$SAMEBOY_ROOT/Core" \
         -o "$RUNNER" \
         "$HELPER_SRC" \
-        "$SAMEBOY_ROOT/build/lib/libsameboy.o" \
+        "$SAMEBOY_LIB" \
         -lm
 }
 
