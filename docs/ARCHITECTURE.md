@@ -3,7 +3,7 @@
 ## Goals
 
 - Prioritize hardware-accurate behavior.
-- Keep the core modular enough to evolve from DMG-first to CGB and later SGB support.
+- Keep the core modular enough to support DMG and CGB while leaving room for later SGB support.
 - Keep portability high so the core remains platform-agnostic.
 - Preserve determinism, debuggability, and testability across all implementation phases.
 
@@ -99,9 +99,9 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 ## Console model policy
 
 - The core must expose an explicit console model concept.
-- The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, but the current functional target remains the DMG-family core.
-- Design the DMG-family core with future CGB integration in mind, but do not introduce CGB implementation complexity before it is needed.
-- The goal is to avoid major later refactors, not to prematurely model every CGB-only path.
+- The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, and the current functional target includes both the closed DMG-family path and the promoted base CGB-family path.
+- Keep the shared DMG/CGB core extensible for later CGB revision, AGB-family compatibility, and SGB host-shell work without duplicating subsystem implementations.
+- The goal is to avoid major later refactors while keeping each implemented CGB-only path owned by an explicit subsystem.
 - Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
 - `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
 - CGB must enter as an extension of the shared architecture, not as a second emulator with duplicated subsystems.
@@ -114,14 +114,14 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
 - Future `SGB1` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
-## DMG-first, CGB-ready policy
+## DMG-stable, CGB-integrated policy
 
-- The base core should implement DMG-family behavior only until DMG timing and correctness are stable.
-- "Prepared for CGB" means leaving explicit extension seams, not implementing partial CGB logic ahead of time.
-- Shared subsystems should be designed so later support for banked VRAM, banked WRAM, extra CGB I/O registers, HDMA, palette state, and double speed can be added without re-architecting the whole core.
+- The base core must preserve DMG-family closure while CGB behavior extends the same scheduler, bus, CPU, PPU, DMA, APU, timer, serial, cartridge, and persistence contracts.
+- Implemented CGB behavior should still live behind explicit owners and capability gates rather than ad hoc product-model checks.
+- Shared subsystems should keep banked VRAM, banked WRAM, extra CGB I/O registers, HDMA, palette state, and double speed explicit without re-architecting the whole core.
 - Avoid rigid fixed-size assumptions in subsystem interfaces when the hardware family naturally extends them later.
-- Keep the common GB model solid first; do not dilute DMG timing work by mixing in unfinished CGB behavior.
-- When CGB arrives, prefer one standard CGB model before attempting fine-grained CGB hardware revision support.
+- Keep the common GB model solid; CGB work must not regress the DMG `167/167` closure gate.
+- For CGB, prefer one standard CGB model before attempting fine-grained CGB hardware revision support.
 - Architecture should allow the same core to run in DMG-family mode or CGB mode without duplicating subsystem implementations.
 
 ## Compatibility-policy architecture
@@ -203,9 +203,9 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 - routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
-- if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so future CGB banking remains visible in the architecture
-- The current DMG-first bus split is `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs`.
-- In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so later CGB bankability does not get buried inside an internal bus.
+- if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so CGB banking remains visible in the architecture
+- The current bus split is `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs`.
+- In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so CGB bankability does not get buried inside an internal bus.
 - Video-domain acquisition or release is scheduler-visible state, not router behavior; ownership changes for `VRAM` and `OAM` should stay synchronized to the shared T-cycle timeline around PPU and DMA ticks rather than being invented inside the router.
 - DMG-family OAM-corruption trigger classification is a good fit for a dedicated bus child module such as `bus/corruption.rs`: the bus still routes address-space and IDU-originated triggers, while the PPU remains the owner of the corruption formulas and live Mode `2` row behavior.
 - Shared requester, blocked-access, and arbitration-state types are a good fit for `bus/state.rs` so the bus facade can stay focused on orchestration while the public T-cycle-visible bus contract remains explicit and reusable across CPU, DMA, boot, and tests.

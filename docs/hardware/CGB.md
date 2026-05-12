@@ -27,7 +27,7 @@ The desktop presentation palettes for `GameBoy`, `GameBoyPocket`, and `GameBoyLi
 
 ## Implementation priority
 
-When CGB work starts, prioritize these functional areas before worrying about hardware revision variants:
+The base CGB path is implemented in this functional order before worrying about hardware revision variants:
 
 - CPU double speed
 - two VRAM banks
@@ -56,11 +56,11 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 ## DMG fallback policy for CGB-only MMIO
 
 - The shared MMIO map should record, per register, both nominal availability and current implementation state.
-- In the current DMG-only but CGB-ready baseline, nominal availability should at least distinguish shared, DMG-compatible, and CGB-only registers.
-- In that same baseline, current implementation state should distinguish implemented, stubbed, and unavailable registers without forcing the bus to fake full CGB support.
+- Nominal availability should distinguish shared, DMG-compatible, and CGB-only registers.
+- Current implementation state should distinguish implemented, stubbed, and unavailable registers without forcing the bus to fake unsupported CGB behavior.
 - In DMG mode, CGB-only registers that are not functionally implemented should return the documented non-CGB fallback value, typically `0xFF`, rather than behaving as RAM.
 - Writes to those registers in DMG mode should follow an explicit ignored-or-DMG-semantics policy and must not mutate nonexistent state accidentally.
-- Bringing CGB support online later should extend the same routed MMIO contract rather than replacing a temporary DMG-only shortcut.
+- New CGB registers and features should extend the same routed MMIO contract rather than replacing a temporary DMG-only shortcut.
 
 ## Timing / accuracy requirements
 
@@ -99,7 +99,7 @@ Priority order:
 - cgb-acid2
 - CGB Mooneye tests
 - palette/banking/HDMA focused tests
-- when CGB work starts, negative tests that DMG-family OAM corruption behavior does not appear on CGB-family hardware even while running monochrome software
+- negative tests that DMG-family OAM corruption behavior does not appear on CGB-family hardware even while running monochrome software
 
 ## Implementation notes for this repo
 
@@ -108,19 +108,19 @@ Priority order:
 - Shared subsystems should expose clean extension points for CGB-only behavior.
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
-- CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
+- CGB support should keep architecture seams explicit for banked memory, palette state, extra I/O, HDMA, and speed switching, rather than hiding those behaviors behind generic DMG fallbacks.
 - Do not claim functional closure for CGB-only special cartridges before they have dedicated validation and runtime. `MBC30` is now implemented after the base CGB gate as an explicit `MBC3`-family variant, `MBC6` is now implemented through a dedicated cartridge-local runtime and persistence model, and `MBC7` now has a dedicated sensor / EEPROM runtime path with focused validation and an explicit no-runtime-rumble policy.
-- The shared CPU execution model should already be based on in-flight fetch/read/write/internal steps so future double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
-- CPU `STOP` should already be represented separately from `HALT`, because future CGB speed-switch behavior should attach to an existing explicit control state rather than force a later CPU-state redesign.
+- The shared CPU execution model is based on in-flight fetch/read/write/internal steps so double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
+- CPU `STOP` is represented separately from `HALT`, so CGB speed-switch behavior attaches to an explicit control state rather than a separate CPU-state redesign.
 - The boot subsystem and bus treat boot-ROM mapping as model-aware routing state: CGB real boot overlays only `0000-00FF` and `0200-08FF`, while cartridge/header bytes remain visible through the `0100-01FF` gap while boot is still mapped.
-- The DMG OAM DMA implementation should already live inside a reusable DMA subsystem contract so future CGB OAM DMA timing differences, GDMA, and HDMA can extend the same infrastructure.
+- The OAM DMA implementation lives inside a reusable DMA subsystem contract so CGB OAM DMA timing differences, GDMA, and HDMA extend the same infrastructure.
 - Phase 10 row promotion for `hacktix/bully.gb (GBC)` starts consuming the CGB-family OAM-DMA CPU-bus policy: external-source OAM DMA conflicts with cartridge ROM/RAM fetches and OAM destination access, but it must not block internal WRAM, HRAM, or MMIO accesses the way the DMG-family external-source policy does.
-- When CGB DMA work starts, model GDMA as a full-burst transfer and HDMA as a windowed block transfer inside that shared DMA controller, with CPU-impact and advance-condition policy published to the scheduler and bus rather than re-encoded in CGB-only bus branches.
-- The DMG timer implementation should already be expressed in terms of an internal counter plus derived edge logic so future CGB clocking changes can extend the same model rather than replace it.
-- The DMG APU implementation should already derive `DIV-APU` / frame-sequencer timing from the shared divider timeline so future CGB double-speed audio timing can extend the same ownership split rather than introducing a second audio clock model.
-- The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
-- In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
-- In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
+- GDMA is modeled as a full-burst transfer and HDMA as a windowed block transfer inside the shared DMA controller, with CPU-impact and advance-condition policy published to the scheduler and bus rather than re-encoded in CGB-only bus branches.
+- The timer implementation is expressed in terms of an internal counter plus derived edge logic so CGB clocking changes extend the same model rather than replace it.
+- The APU derives `DIV-APU` / frame-sequencer timing from the shared divider timeline so CGB double-speed audio timing extends the same ownership split rather than introducing a second audio clock model.
+- The DMG-family OAM corruption bug should stay behind an explicit model gate so CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
+- In DMG-family modes, CGB-only MMIO reads should return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
+- In DMG-family modes, CGB-only MMIO writes should be handled explicitly rather than falling through to fake storage.
 - Slice 3 routes `KEY0` / `FF4C`, `VBK` / `FF4F`, `SVBK` / `FF70`, and `FF72-FF75` as implemented CGB-only MMIO through the shared bus contract rather than as generic `FFxx` storage; PPU palettes, `HDMA*`, `OPRI`, `RP`, and `PCM12`/`PCM34` are owned by their later slices rather than by generic CGB storage.
 - Slice 3 keeps `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. `FF72-FF74` are native-CGB read/write bytes initialized to `$00`, while `FF75` exposes only bits `4-6` as writable and reads back those bits over forced `$8F`.
 - The public model surface may already expose an explicit `OperatingMode`, but routed MMIO and subsystem behavior may still stage runtime consultation incrementally; until a specific register path consumes that mode directly, descriptors such as `BGP` / `OBP*` may continue to publish nominal `DMG-compatible` availability without claiming full runtime mode routing.
