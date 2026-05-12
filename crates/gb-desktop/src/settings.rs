@@ -894,7 +894,7 @@ fn resolve_desktop_settings_path() -> Option<PathBuf> {
 
 fn resolve_desktop_settings_path_from_locations(
     explicit_override: Option<OsString>,
-    home: Option<OsString>,
+    _home: Option<OsString>,
     _xdg_config_home: Option<OsString>,
     _app_data: Option<OsString>,
 ) -> Option<PathBuf> {
@@ -904,7 +904,7 @@ fn resolve_desktop_settings_path_from_locations(
 
     #[cfg(target_os = "macos")]
     {
-        home.map(PathBuf::from).map(|home| {
+        _home.map(PathBuf::from).map(|home| {
             home.join("Library")
                 .join("Application Support")
                 .join(DESKTOP_SETTINGS_DIRECTORY_NAME)
@@ -925,7 +925,7 @@ fn resolve_desktop_settings_path_from_locations(
     {
         _xdg_config_home
             .map(PathBuf::from)
-            .or_else(|| home.map(PathBuf::from).map(|home| home.join(".config")))
+            .or_else(|| _home.map(PathBuf::from).map(|home| home.join(".config")))
             .map(|config_root| {
                 config_root
                     .join(DESKTOP_SETTINGS_DIRECTORY_NAME)
