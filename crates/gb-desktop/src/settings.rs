@@ -1487,7 +1487,7 @@ max_memory_mib = 128
             .set_show_objects(false)
             .expect("object layer visibility should persist");
         store
-            .set_show_performance_hud(false)
+            .set_show_performance_hud(true)
             .expect("performance HUD visibility should persist");
         store.set_vsync(false).expect("vsync toggle should persist");
         store
@@ -1558,7 +1558,7 @@ max_memory_mib = 128
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
-        assert!(!reloaded.video.show_performance_hud);
+        assert!(reloaded.video.show_performance_hud);
         assert!(!reloaded.video.vsync);
         assert_eq!(
             reloaded.rewind,
@@ -1623,7 +1623,7 @@ max_memory_mib = 128
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
         store
-            .set_show_performance_hud(false)
+            .set_show_performance_hud(true)
             .expect("HUD visibility should persist");
         store.set_vsync(false).expect("vsync should persist");
         store

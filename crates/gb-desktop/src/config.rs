@@ -461,7 +461,7 @@ impl Default for VideoOptions {
             show_objects: true,
             vsync: true,
             fullscreen: false,
-            show_performance_hud: true,
+            show_performance_hud: false,
         }
     }
 }
@@ -886,7 +886,7 @@ mod tests {
         assert!(config.video.show_window);
         assert!(config.video.show_objects);
         assert!(config.video.vsync);
-        assert!(config.video.show_performance_hud);
+        assert!(!config.video.show_performance_hud);
         assert!(config.audio.enabled);
         assert_eq!(
             config.audio.output_sample_rate_hz,
