@@ -2,8 +2,9 @@
 
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
+GB_CYCLE_SAMEBOY_ROOT ?= ../SameBoy
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-little-things-gb run-gbmicrotest run-docboy run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-little-things-gb run-gbmicrotest run-docboy run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix phase9-sameboy-docboy-protocol-baseline phase9-sameboy-docboy-protocol-baseline-real-boot
 
 help:
 	@echo "Available targets:"
@@ -63,6 +64,8 @@ help:
 	@echo "  make phase9-diff-hacktix      Compare Hacktix framebuffer cases against LibSameBoy case-bundle artifacts"
 	@echo "  make phase9-sameboy-hacktix-oracles Materialize LibSameBoy case-bundle artifacts for Hacktix"
 	@echo "  make phase9-first-divergence-hacktix Capture Hacktix local/LibSameBoy first-divergence probe windows"
+	@echo "  make phase9-sameboy-docboy-protocol-baseline Run docboy memory-protocol ROMs through SameBoy and emit baseline (FILTER, ROM_LIST, OUT vars)"
+	@echo "  make phase9-sameboy-docboy-protocol-baseline-real-boot Same as above but boots SameBoy via the real DMG boot ROM (requires GB_CYCLE_BOOT_ROM_ROOT)"
 
 setup: hooks tools
 
@@ -327,3 +330,11 @@ phase9-diff-hacktix:
 phase9-first-divergence-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
 	cargo run --release -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite hacktix-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence
+
+phase9-sameboy-docboy-protocol-baseline:
+	$(MAKE) fetch-test-roms FAMILIES=docboy
+	GB_CYCLE_SAMEBOY_ROOT=$(GB_CYCLE_SAMEBOY_ROOT) bash scripts/sameboy-docboy-protocol-baseline.sh $(if $(FILTER),--filter "$(FILTER)") $(if $(ROM_LIST),--rom-list "$(ROM_LIST)") $(if $(OUT),--out "$(OUT)")
+
+phase9-sameboy-docboy-protocol-baseline-real-boot: require-boot-rom-root
+	$(MAKE) fetch-test-roms FAMILIES=docboy
+	GB_CYCLE_SAMEBOY_ROOT=$(GB_CYCLE_SAMEBOY_ROOT) bash scripts/sameboy-docboy-protocol-baseline.sh --boot-rom-root "$$GB_CYCLE_BOOT_ROM_ROOT" $(if $(FILTER),--filter "$(FILTER)") $(if $(ROM_LIST),--rom-list "$(ROM_LIST)") $(if $(OUT),--out "$(OUT)")

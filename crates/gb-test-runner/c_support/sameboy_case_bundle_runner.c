@@ -26,6 +26,7 @@ typedef struct {
 typedef struct {
     const char *model;
     const char *rom_path;
+    const char *boot_rom_path;
     const char *serial_hex_out_path;
     const char *framebuffer_pgm_out_path;
     const char *probe_json_out_path;
@@ -38,6 +39,9 @@ typedef struct {
     uint32_t timeout_frames;
     memory_write_t startup_writes[4096];
     size_t startup_write_count;
+    uint16_t check_hram_address;
+    uint8_t check_hram_pass_value;
+    bool has_check_hram;
 } options_t;
 
 static serial_capture_t serial_capture;
@@ -47,7 +51,8 @@ static void usage(const char *argv0)
 {
     fprintf(stderr,
             "Usage: %s --model <dmg|mgb|cgb> --rom <path> "
-            "(--serial-hex-out <path> | --framebuffer-pgm-out <path> | --probe-json-out <path>) "
+            "(--serial-hex-out <path> | --framebuffer-pgm-out <path> | --probe-json-out <path> | --check-hram <address> <pass-value>) "
+            "[--boot-rom <path>] "
             "[--write-memory <address> <value>]... "
             "[--probe-interval-tcycles <n>] "
             "[--timeout-tcycles <n> | --timeout-frames <n>] "
@@ -146,6 +151,9 @@ static bool parse_arguments(int argc, char **argv, options_t *options)
         else if (strcmp(argv[i], "--rom") == 0 && i + 1 < argc) {
             options->rom_path = argv[++i];
         }
+        else if (strcmp(argv[i], "--boot-rom") == 0 && i + 1 < argc) {
+            options->boot_rom_path = argv[++i];
+        }
         else if (strcmp(argv[i], "--serial-hex-out") == 0 && i + 1 < argc) {
             options->serial_hex_out_path = argv[++i];
         }
@@ -188,13 +196,21 @@ static bool parse_arguments(int argc, char **argv, options_t *options)
             }
             options->startup_write_count++;
         }
+        else if (strcmp(argv[i], "--check-hram") == 0 && i + 2 < argc) {
+            if (!parse_u16(argv[++i], &options->check_hram_address) ||
+                !parse_u8(argv[++i], &options->check_hram_pass_value)) {
+                return false;
+            }
+            options->has_check_hram = true;
+        }
         else {
             return false;
         }
     }
 
     if (!options->model || !options->rom_path ||
-        (!options->serial_hex_out_path && !options->framebuffer_pgm_out_path && !options->probe_json_out_path)) {
+        (!options->serial_hex_out_path && !options->framebuffer_pgm_out_path &&
+         !options->probe_json_out_path && !options->has_check_hram)) {
         return false;
     }
 
@@ -258,13 +274,32 @@ static void apply_skip_boot_startup(GB_gameboy_t *gb)
     gb->io_registers[GB_IO_SB] = 0x00;
     gb->io_registers[GB_IO_SC] = 0x7E;
     gb->io_registers[GB_IO_DIV] = 0xAB;
-    /* Mirror gb-cycle's synthetic SkipBoot divider phase; DIV reads come from
-       SameBoy's internal counter, not io_registers[GB_IO_DIV]. */
     gb->div_counter = 0xABC8;
     gb->io_registers[GB_IO_TIMA] = 0x00;
     gb->io_registers[GB_IO_TMA] = 0x00;
     gb->io_registers[GB_IO_TAC] = 0xF8;
     gb->io_registers[GB_IO_IF] = 0xE1;
+    gb->io_registers[GB_IO_NR10] = 0x80;
+    gb->io_registers[GB_IO_NR11] = 0xBF;
+    gb->io_registers[GB_IO_NR12] = 0xF3;
+    gb->io_registers[GB_IO_NR13] = 0xFF;
+    gb->io_registers[GB_IO_NR14] = 0xBF;
+    gb->io_registers[GB_IO_NR21] = 0x3F;
+    gb->io_registers[GB_IO_NR22] = 0x00;
+    gb->io_registers[GB_IO_NR23] = 0xFF;
+    gb->io_registers[GB_IO_NR24] = 0xBF;
+    gb->io_registers[GB_IO_NR30] = 0x7F;
+    gb->io_registers[GB_IO_NR31] = 0xFF;
+    gb->io_registers[GB_IO_NR32] = 0x9F;
+    gb->io_registers[GB_IO_NR33] = 0xFF;
+    gb->io_registers[GB_IO_NR34] = 0xBF;
+    gb->io_registers[GB_IO_NR41] = 0xFF;
+    gb->io_registers[GB_IO_NR42] = 0x00;
+    gb->io_registers[GB_IO_NR43] = 0x00;
+    gb->io_registers[GB_IO_NR44] = 0xBF;
+    gb->io_registers[GB_IO_NR50] = 0x77;
+    gb->io_registers[GB_IO_NR51] = 0xF3;
+    gb->io_registers[GB_IO_NR52] = 0xF1;
     gb->io_registers[GB_IO_LCDC] = 0x91;
     gb->io_registers[GB_IO_STAT] = 0x85;
     gb->io_registers[GB_IO_SCY] = 0x00;
@@ -282,6 +317,14 @@ static void apply_skip_boot_startup(GB_gameboy_t *gb)
     gb->position_in_line = 0;
     gb->stat_interrupt_line = false;
     gb->cgb_double_speed = false;
+    memset(&gb->apu, 0, sizeof(gb->apu));
+    gb->apu.apu_cycles_in_2mhz = true;
+    gb->apu.lf_div = 1;
+    gb->apu.wave_channel.shift = 4;
+    gb->apu.square_channels[GB_SQUARE_1].sample_countdown = (uint16_t) -1;
+    gb->apu.square_channels[GB_SQUARE_2].sample_countdown = (uint16_t) -1;
+    gb->apu.global_enable = true;
+    gb->apu.div_divider = (gb->div_counter >> 13) & 0x07;
 }
 
 static void apply_startup_rtc(GB_gameboy_t *gb, uint64_t seconds)
@@ -532,7 +575,16 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    apply_skip_boot_startup(&gb);
+    if (options.boot_rom_path) {
+        if (GB_load_boot_rom(&gb, options.boot_rom_path)) {
+            fprintf(stderr, "failed to load boot ROM %s\n", options.boot_rom_path);
+            GB_free(&gb);
+            return 2;
+        }
+    }
+    else {
+        apply_skip_boot_startup(&gb);
+    }
     apply_startup_rtc(&gb, options.startup_cartridge_rtc_seconds);
     apply_startup_memory_writes(&gb, &options);
 
@@ -615,6 +667,19 @@ int main(int argc, char **argv)
         fprintf(stderr, "failed to write %s\n", options.framebuffer_pgm_out_path);
         GB_free(&gb);
         return 2;
+    }
+
+    if (options.has_check_hram) {
+        uint8_t observed = GB_safe_read_memory(&gb, options.check_hram_address);
+        if (observed == options.check_hram_pass_value) {
+            printf("RESULT pass address=0x%04X value=%u\n",
+                   options.check_hram_address, (unsigned) observed);
+        }
+        else {
+            printf("RESULT fail address=0x%04X value=%u expected=%u\n",
+                   options.check_hram_address, (unsigned) observed,
+                   (unsigned) options.check_hram_pass_value);
+        }
     }
 
     GB_free(&gb);
