@@ -130,7 +130,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - In `Strict`, only `Supported` cartridges should load by default; relevant header inconsistencies are fatal; heuristics are disabled; and manual mapper/model overrides should be disabled by default or require an explicit debug path with visible trace output.
 - `Permissive` is the tolerant normal-use mode for cartridges that still map unambiguously to already supported hardware.
 - In `Permissive`, all `Supported` cartridges should load with identical runtime semantics to `Strict`; only unambiguous header inconsistencies may degrade from error to warning; automatic heuristic mapper detection stays off; and manual overrides may be allowed, but never silently.
-- Current repo decision: for already supported `NoMbc` cartridges, legacy or inconsistent RAM-size declarations that still map unambiguously to the fixed `8 KiB` `ROM+RAM` baseline should degrade to warnings under `Permissive` / `Warn` instead of remaining fatal, while `Strict` still rejects them.
+- Current repo decision: for already supported `NoMbc` cartridges, legacy or inconsistent RAM-size declarations that still map unambiguously to the fixed `8 KiB` always-enabled `ROM+RAM` baseline should degrade to warnings under `Permissive` / `Warn` instead of remaining fatal, while `Strict` still rejects them.
 - `Experimental` is the research and bring-up mode.
 - In `Experimental`, `Supported` cartridges still keep the same runtime semantics as the other modes, but explicit heuristic paths, partial planned-variant implementations, and clearly marked stub or placeholder paths for special hardware may be enabled behind explicit policy gates.
 - `Experimental` results must be marked as non-oracle in diagnostics, tooling, and project claims.
@@ -342,6 +342,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - If the header declares No MBC while `0x0148` or the real file size imply something other than `32 KiB`, emit an explicit diagnostic under the project's validation policy instead of silently coercing the image into another mapper.
 - For `0x0147 = 0x00`, the expected `0x0149` value is `0x00`.
 - For `0x0147 = 0x08` or `0x09`, the supported No MBC RAM case is `0x0149 = 0x02`, meaning one linear `8 KiB` external RAM window.
+- If `Permissive` admits a legacy `ROM+RAM` header that declares `0x0149 = 0x01`, keep runtime behavior on the same fixed `8 KiB` always-enabled linear RAM window and surface the header mismatch as diagnostics instead of shrinking the device to a speculative `2 KiB` profile.
 - If a No MBC header declares more than `8 KiB` of RAM or any banked-RAM expectation, report it as inconsistent or unsupported explicitly.
 - At runtime, `0x0000-0x7FFF` reads should be linear ROM reads with no active bank state, subject only to boot-ROM overlay in the bus.
 - The header bytes at `0x0100-0x014F` and the entry point at `0x0100` must come from that same cartridge device through ordinary reads after boot-ROM handoff.
