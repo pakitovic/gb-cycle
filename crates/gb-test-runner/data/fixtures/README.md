@@ -47,7 +47,7 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   source family: `little-things-gb`
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
-  fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses the narrow `dmg-boot-logo-vram` SkipBoot startup memory profile so its boot-logo/map checks match DocBoy without requiring private boot ROM assets
+  fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses `startup = "custom-boot"` so its boot-logo/map checks see the core DMG boot-logo VRAM seed without requiring private boot ROM assets
 - `daid-dmg-curated`
   source family: `daid`
   current status: exploratory local-only

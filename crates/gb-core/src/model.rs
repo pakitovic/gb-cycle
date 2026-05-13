@@ -204,12 +204,17 @@ impl CapabilitySet {
 pub enum StartupMode {
     #[default]
     SkipBoot,
+    CustomBoot,
     RealBoot,
 }
 
 impl StartupMode {
-    pub fn requires_boot_rom(self) -> bool {
+    pub const fn requires_boot_rom(self) -> bool {
         matches!(self, Self::RealBoot)
+    }
+
+    pub const fn uses_direct_boot_state(self) -> bool {
+        matches!(self, Self::SkipBoot | Self::CustomBoot)
     }
 }
 
@@ -394,7 +399,7 @@ impl MachineConfig {
     }
 
     pub fn apply_direct_boot_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
-        if self.startup_mode != StartupMode::SkipBoot {
+        if !self.startup_mode.uses_direct_boot_state() {
             return;
         }
 

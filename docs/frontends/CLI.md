@@ -37,7 +37,8 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Startup and compatibility
 
-- `run` supports `skip-boot` and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
+- `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
+- `custom-boot` is a direct-start path for boot-logo-inspecting ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot` and overlays the DMG boot-logo VRAM/map seed without loading a boot ROM asset.
 - `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir` and can verify the expected boot ROM SHA-256 hashes.
 
 ## Output options
@@ -56,5 +57,5 @@ Both commands load the ROM first, then validate the save payload against the car
 
 If neither `--frames` nor `--tcycles` is provided:
 
-- `skip-boot` stops after `120` completed frames by default.
+- `skip-boot` and `custom-boot` stop after `120` completed frames by default.
 - `real-boot` stops after boot-ROM handoff plus `120` completed post-handoff frames with a `480`-frame safety cap.

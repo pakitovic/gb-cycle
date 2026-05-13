@@ -40,6 +40,7 @@ struct RomSuiteCliOptions {
 enum ConfiguredRomSuiteStartup {
     Manifest,
     SkipBoot,
+    CustomBoot,
     RealBoot,
 }
 
@@ -288,14 +289,15 @@ fn configured_rom_suite_startup_from_env_value(
     match value {
         Ok(value) => match value.as_str() {
             "skip-boot" => Ok(ConfiguredRomSuiteStartup::SkipBoot),
+            "custom-boot" => Ok(ConfiguredRomSuiteStartup::CustomBoot),
             "real-boot" => Ok(ConfiguredRomSuiteStartup::RealBoot),
             other => Err(format!(
-                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
             )),
         },
         Err(env::VarError::NotPresent) => Ok(ConfiguredRomSuiteStartup::Manifest),
         Err(env::VarError::NotUnicode(_)) => Err(format!(
-            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
         )),
     }
 }
@@ -313,6 +315,11 @@ fn apply_configured_startup_override_for(
         ConfiguredRomSuiteStartup::SkipBoot => {
             for case in &mut suite.cases {
                 case.startup_mode = gb_core::StartupMode::SkipBoot;
+            }
+        }
+        ConfiguredRomSuiteStartup::CustomBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = gb_core::StartupMode::CustomBoot;
             }
         }
         ConfiguredRomSuiteStartup::RealBoot => {
@@ -719,6 +726,7 @@ fn console_model_name(console_model: gb_core::ConsoleModel) -> &'static str {
 fn startup_mode_name(startup_mode: gb_core::StartupMode) -> &'static str {
     match startup_mode {
         gb_core::StartupMode::SkipBoot => "skip-boot",
+        gb_core::StartupMode::CustomBoot => "custom-boot",
         gb_core::StartupMode::RealBoot => "real-boot",
     }
 }
@@ -969,7 +977,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_env_skip_boot_overrides_real_boot_cases_without_requiring_assets() {
+    fn startup_env_skip_boot_overrides_real_and_custom_boot_cases_without_requiring_assets() {
         let mut suite = RomSuite::new("real-boot-fixture", TestSubsystem::CrossSubsystem)
             .with_case(
                 RomTestCase::new(
@@ -979,14 +987,16 @@ mod tests {
                     PassCondition::MooneyeResult,
                 )
                 .with_startup_mode(gb_core::StartupMode::RealBoot),
+            )
+            .with_case(
+                RomTestCase::new(
+                    "custom-boot-case",
+                    "fixture.gb",
+                    Timeout::Frames(1),
+                    PassCondition::MooneyeResult,
+                )
+                .with_startup_mode(gb_core::StartupMode::CustomBoot),
             );
-        assert!(
-            suite
-                .cases
-                .iter()
-                .all(|case| case.startup_mode == gb_core::StartupMode::RealBoot),
-            "fixture should cover a manifest-declared RealBoot suite"
-        );
 
         apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::SkipBoot)
             .expect("skip-boot startup override should parse");
@@ -996,6 +1006,21 @@ mod tests {
                 .cases
                 .iter()
                 .all(|case| case.startup_mode == gb_core::StartupMode::SkipBoot)
+        );
+    }
+
+    #[test]
+    fn startup_env_custom_boot_overrides_suite_without_requiring_assets() {
+        let mut suite = crate::cgb_ppu_basic_suite();
+
+        apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::CustomBoot)
+            .expect("custom-boot startup override should parse");
+
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.startup_mode == gb_core::StartupMode::CustomBoot)
         );
     }
 
@@ -1013,8 +1038,8 @@ mod tests {
             suite
                 .cases
                 .iter()
-                .any(|case| !case.startup_memory_writes.is_empty()),
-            "fixture should cover a synthetic startup memory profile"
+                .any(|case| case.startup_mode == gb_core::StartupMode::CustomBoot),
+            "fixture should cover a custom-boot manifest case"
         );
 
         apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::RealBoot)
@@ -1047,6 +1072,7 @@ mod tests {
 
         assert!(error.contains(TEST_ROM_STARTUP_ENV_VAR));
         assert!(error.contains("skip-boot"));
+        assert!(error.contains("custom-boot"));
         assert!(error.contains("real-boot"));
     }
 

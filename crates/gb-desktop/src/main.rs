@@ -9808,7 +9808,8 @@ fn next_boot_rom_kind(
 
 fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
     match startup_mode {
-        StartupMode::SkipBoot => StartupMode::RealBoot,
+        StartupMode::SkipBoot => StartupMode::CustomBoot,
+        StartupMode::CustomBoot => StartupMode::RealBoot,
         StartupMode::RealBoot => StartupMode::SkipBoot,
     }
 }
@@ -11710,6 +11711,7 @@ fn key_event_matches(
 fn startup_mode_name(startup_mode: StartupMode) -> &'static str {
     match startup_mode {
         StartupMode::SkipBoot => "skip-boot",
+        StartupMode::CustomBoot => "custom-boot",
         StartupMode::RealBoot => "real-boot",
     }
 }
@@ -16352,6 +16354,10 @@ mod tests {
         );
         assert_eq!(
             next_startup_mode(StartupMode::SkipBoot),
+            StartupMode::CustomBoot
+        );
+        assert_eq!(
+            next_startup_mode(StartupMode::CustomBoot),
             StartupMode::RealBoot
         );
         assert_eq!(
@@ -17616,6 +17622,10 @@ mod tests {
             "linked-dmg07"
         );
         assert_eq!(super::startup_mode_name(StartupMode::SkipBoot), "skip-boot");
+        assert_eq!(
+            super::startup_mode_name(StartupMode::CustomBoot),
+            "custom-boot"
+        );
         assert_eq!(super::startup_mode_name(StartupMode::RealBoot), "real-boot");
         assert_eq!(super::execution_mode_name(ExecutionMode::Strict), "strict");
         assert_eq!(
@@ -20050,6 +20060,10 @@ mod tests {
             "context: error"
         );
         assert_eq!(super::startup_mode_name(StartupMode::SkipBoot), "skip-boot");
+        assert_eq!(
+            super::startup_mode_name(StartupMode::CustomBoot),
+            "custom-boot"
+        );
         assert_eq!(super::startup_mode_name(StartupMode::RealBoot), "real-boot");
         assert_eq!(super::execution_mode_name(ExecutionMode::Strict), "strict");
         assert_eq!(
@@ -22282,6 +22296,16 @@ mod tests {
             DesktopDisplayPalette::Pocket
         );
         harness.session.config.boot_rom.search_path = Some(harness.root.join("bootroms"));
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStartupMode)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.launch.startup_mode,
+            StartupMode::CustomBoot
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleStartupMode)

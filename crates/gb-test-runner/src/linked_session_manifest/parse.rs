@@ -455,6 +455,7 @@ fn parse_console_model(console: &str, participant_id: &str) -> Result<ConsoleMod
 fn parse_startup_mode(startup: &str, participant_id: &str) -> Result<StartupMode, String> {
     match startup {
         "skip-boot" => Ok(StartupMode::SkipBoot),
+        "custom-boot" => Ok(StartupMode::CustomBoot),
         "real-boot" => Ok(StartupMode::RealBoot),
         other => Err(format!(
             "participant {participant_id} uses unsupported startup {other:?}"

@@ -186,7 +186,7 @@ impl Bus {
         self.wram.reset_bank_select();
         self.iohram.reset_cgb_misc_io();
 
-        if startup_mode == StartupMode::SkipBoot {
+        if startup_mode.uses_direct_boot_state() {
             let cgb_flag = header.map_or(CgbFlag::Supported, |header| header.cgb_flag);
             self.iohram
                 .apply_direct_boot_key0(self.console_model, self.operating_mode, cgb_flag);

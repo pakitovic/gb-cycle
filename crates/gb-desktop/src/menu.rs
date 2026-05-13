@@ -832,6 +832,7 @@ impl MenuPresentation {
             },
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
+                StartupMode::CustomBoot => "START CUSTOM".to_string(),
                 StartupMode::RealBoot => "START REAL".to_string(),
             },
             MenuItem::ExecutionMode => match self.execution_mode {
@@ -4523,6 +4524,11 @@ mod tests {
 
         presentation.startup_mode = StartupMode::RealBoot;
         assert_eq!(presentation.item_label(MenuItem::StartupMode), "START REAL");
+        presentation.startup_mode = StartupMode::CustomBoot;
+        assert_eq!(
+            presentation.item_label(MenuItem::StartupMode),
+            "START CUSTOM"
+        );
         presentation.execution_mode = ExecutionMode::Permissive;
         assert_eq!(
             presentation.item_label(MenuItem::ExecutionMode),

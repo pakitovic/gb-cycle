@@ -2202,7 +2202,7 @@ impl RomRunner {
     }
 
     fn apply_startup_ppu_profile(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
-        if case.startup_mode != StartupMode::SkipBoot {
+        if !case.startup_mode.uses_direct_boot_state() {
             return;
         }
 
@@ -3543,7 +3543,8 @@ mod tests {
                 tac: 0xF8,
             })
         );
-        assert_eq!(case.startup_memory_writes.len(), 244);
+        assert_eq!(case.startup_mode, StartupMode::CustomBoot);
+        assert!(case.startup_memory_writes.is_empty());
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));

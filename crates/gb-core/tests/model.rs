@@ -137,7 +137,11 @@ fn experimental_policy_keeps_future_cgb_extension_seams_explicit() {
 #[test]
 fn startup_mode_and_execution_mode_expose_their_public_contracts() {
     assert!(!StartupMode::SkipBoot.requires_boot_rom());
+    assert!(!StartupMode::CustomBoot.requires_boot_rom());
     assert!(StartupMode::RealBoot.requires_boot_rom());
+    assert!(StartupMode::SkipBoot.uses_direct_boot_state());
+    assert!(StartupMode::CustomBoot.uses_direct_boot_state());
+    assert!(!StartupMode::RealBoot.uses_direct_boot_state());
 
     assert!(ExecutionMode::Strict.is_oracle());
     assert!(!ExecutionMode::Permissive.is_oracle());

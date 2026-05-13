@@ -568,6 +568,12 @@ fn cgb_key0_direct_boot_state_tracks_header_policy_without_runtime_mutability() 
     cgb_compat.apply_cgb_startup_state(crate::model::StartupMode::SkipBoot, None);
     assert_eq!(cgb_compat.iohram.key0_state().value(), 0x04);
     assert!(cgb_compat.iohram.key0_state().is_locked());
+
+    let mut custom_boot =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    custom_boot.apply_cgb_startup_state(crate::model::StartupMode::CustomBoot, None);
+    assert_eq!(custom_boot.iohram.key0_state().value(), 0x80);
+    assert!(custom_boot.iohram.key0_state().is_locked());
 }
 
 #[test]

@@ -687,7 +687,7 @@ impl Ppu {
         host_joypad_pressed_mask: u8,
     ) -> Option<CgbCompatibilityPaletteSeed> {
         let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
-        if startup_mode != StartupMode::SkipBoot
+        if !startup_mode.uses_direct_boot_state()
             || !self.console_model.is_cgb_family()
             || operating_mode != OperatingMode::GbCompatible
         {
@@ -708,7 +708,7 @@ impl Ppu {
         operating_mode: OperatingMode,
     ) -> bool {
         let operating_mode = normalize_ppu_operating_mode(self.console_model, operating_mode);
-        if startup_mode != StartupMode::SkipBoot
+        if !startup_mode.uses_direct_boot_state()
             || !self.console_model.is_cgb_family()
             || operating_mode != OperatingMode::Cgb
         {

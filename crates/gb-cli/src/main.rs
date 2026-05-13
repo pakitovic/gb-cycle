@@ -35,13 +35,13 @@ const RUN_HELP_TEXT: &str = concat!(
     "\n",
     "Options:\n",
     "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy; legacy: dmg0,dmg,mgb,cgb)\n",
-    "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
+    "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
     "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
     "  --tcycles <n>                          Stop after <n> T-cycles\n",
-    "                                         If neither limit is provided, skip-boot stops after 120 completed frames\n",
+    "                                         If neither limit is provided, direct boot stops after 120 completed frames\n",
     "                                         and real-boot stops after boot-ROM handoff plus 120 completed frames\n",
     "                                         with a 480-frame safety cap if handoff never arrives\n",
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
@@ -175,7 +175,7 @@ enum DefaultRunBudget {
 impl DefaultRunBudget {
     fn for_startup_mode(startup_mode: StartupMode) -> Self {
         match startup_mode {
-            StartupMode::SkipBoot => Self::SkipBootFrames {
+            StartupMode::SkipBoot | StartupMode::CustomBoot => Self::SkipBootFrames {
                 frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
             },
             StartupMode::RealBoot => Self::RealBootPostHandoff {
@@ -1556,9 +1556,10 @@ fn parse_run_model(value: &str) -> Result<RunModel, String> {
 fn parse_startup_mode(value: &str) -> Result<StartupMode, String> {
     match value {
         "skip-boot" => Ok(StartupMode::SkipBoot),
+        "custom-boot" => Ok(StartupMode::CustomBoot),
         "real-boot" => Ok(StartupMode::RealBoot),
         _ => Err(format!(
-            "unsupported --startup value {value:?}; expected skip-boot or real-boot"
+            "unsupported --startup value {value:?}; expected skip-boot, custom-boot, or real-boot"
         )),
     }
 }
@@ -1905,6 +1906,7 @@ fn format_header_parse_error(error: CartridgeHeaderParseError) -> String {
 fn startup_mode_name(startup_mode: StartupMode) -> &'static str {
     match startup_mode {
         StartupMode::SkipBoot => "skip-boot",
+        StartupMode::CustomBoot => "custom-boot",
         StartupMode::RealBoot => "real-boot",
     }
 }

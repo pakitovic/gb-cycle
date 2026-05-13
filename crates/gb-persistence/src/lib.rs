@@ -1836,6 +1836,7 @@ fn encode_startup_mode(value: StartupMode) -> u8 {
     match value {
         StartupMode::SkipBoot => 0,
         StartupMode::RealBoot => 1,
+        StartupMode::CustomBoot => 2,
     }
 }
 
@@ -1846,6 +1847,7 @@ fn decode_startup_mode(
     match tag {
         0 => Ok(StartupMode::SkipBoot),
         1 => Ok(StartupMode::RealBoot),
+        2 => Ok(StartupMode::CustomBoot),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2564,7 +2566,11 @@ mod tests {
             Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
         ));
 
-        for value in [StartupMode::SkipBoot, StartupMode::RealBoot] {
+        for value in [
+            StartupMode::SkipBoot,
+            StartupMode::CustomBoot,
+            StartupMode::RealBoot,
+        ] {
             assert_eq!(
                 decode_startup_mode(encode_startup_mode(value), "startup_mode")
                     .expect("startup mode tag should decode"),

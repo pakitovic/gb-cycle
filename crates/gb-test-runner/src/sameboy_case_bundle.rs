@@ -168,7 +168,7 @@ impl SameBoyCaseBundleRunner {
             });
         }
 
-        if case.startup_mode != StartupMode::SkipBoot {
+        if !case.startup_mode.uses_direct_boot_state() {
             return Err(SameBoyCaseBundleExecutionError::UnsupportedStartupMode {
                 case_id: case.id.clone(),
                 actual: case.startup_mode,
@@ -233,9 +233,7 @@ impl SameBoyCaseBundleRunner {
                 .arg("--startup-cartridge-rtc-seconds")
                 .arg(seconds.to_string());
         }
-        for write in &case.startup_memory_writes {
-            append_startup_memory_write_args(&mut command, *write);
-        }
+        append_case_startup_memory_write_args(&mut command, case);
 
         let output =
             command
@@ -285,7 +283,7 @@ impl SameBoyCaseBundleRunner {
             });
         }
 
-        if case.startup_mode != StartupMode::SkipBoot {
+        if !case.startup_mode.uses_direct_boot_state() {
             return Err(SameBoyCaseBundleExecutionError::UnsupportedStartupMode {
                 case_id: case.id.clone(),
                 actual: case.startup_mode,
@@ -346,9 +344,7 @@ impl SameBoyCaseBundleRunner {
                 .arg("--startup-cartridge-rtc-seconds")
                 .arg(seconds.to_string());
         }
-        for write in &case.startup_memory_writes {
-            append_startup_memory_write_args(&mut command, *write);
-        }
+        append_case_startup_memory_write_args(&mut command, case);
 
         let output =
             command
@@ -429,6 +425,44 @@ fn append_startup_memory_write_args(command: &mut Command, write: StartupMemoryW
         .arg("--write-memory")
         .arg(write.address.to_string())
         .arg(write.value.to_string());
+}
+
+fn append_case_startup_memory_write_args(command: &mut Command, case: &crate::RomTestCase) {
+    if case.startup_mode == StartupMode::CustomBoot {
+        append_dmg_boot_logo_vram_startup_write_args(command);
+    }
+    for write in &case.startup_memory_writes {
+        append_startup_memory_write_args(command, *write);
+    }
+}
+
+fn append_dmg_boot_logo_vram_startup_write_args(command: &mut Command) {
+    for (index, byte) in gb_core::boot::DMG_BOOT_LOGO_TILE_BYTES
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        append_startup_memory_write_args(
+            command,
+            StartupMemoryWrite::new(
+                gb_core::boot::DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2),
+                byte,
+            ),
+        );
+    }
+    for (index, byte) in gb_core::boot::DMG_BOOT_LOGO_MAP_BYTES
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        append_startup_memory_write_args(
+            command,
+            StartupMemoryWrite::new(
+                gb_core::boot::DMG_BOOT_LOGO_MAP_VRAM_START + index as u16,
+                byte,
+            ),
+        );
+    }
 }
 
 fn default_sameboy_case_bundle_runner_path(sameboy_root: &Path) -> PathBuf {

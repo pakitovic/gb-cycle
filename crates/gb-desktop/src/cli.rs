@@ -276,7 +276,7 @@ pub fn help_text() -> &'static str {
         "\n",
         "Options:\n",
         "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy; legacy: dmg0,dmg,mgb,cgb)\n",
-        "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
+        "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
@@ -373,9 +373,10 @@ fn parse_console_model(value: &str) -> Result<ParsedConsoleModel, String> {
 fn parse_startup_mode(value: &str) -> Result<StartupMode, String> {
     match value {
         "skip-boot" => Ok(StartupMode::SkipBoot),
+        "custom-boot" => Ok(StartupMode::CustomBoot),
         "real-boot" => Ok(StartupMode::RealBoot),
         _ => Err(format!(
-            "unsupported --startup value {value:?}; expected skip-boot or real-boot"
+            "unsupported --startup value {value:?}; expected skip-boot, custom-boot, or real-boot"
         )),
     }
 }
@@ -1059,6 +1060,10 @@ mod tests {
         assert!(parse_console_model("sgb").is_err());
 
         assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));
+        assert_eq!(
+            parse_startup_mode("custom-boot"),
+            Ok(StartupMode::CustomBoot)
+        );
         assert_eq!(parse_startup_mode("real-boot"), Ok(StartupMode::RealBoot));
         assert!(parse_startup_mode("warm-boot").is_err());
 

@@ -257,44 +257,103 @@ fn read_cgb_boot_rom_byte(bytes: &[u8], address: u16) -> Option<u8> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum StartupMemoryPolicy {
     DeterministicPatterned,
+    DmgBootLogoVram,
     CgbRealBootEntry,
+    CgbRealBootEntryWithDmgBootLogoVram,
 }
 
 impl StartupMemoryPolicy {
     pub(crate) fn initialize_vram(self, bytes: &mut [u8]) {
         match self {
             Self::DeterministicPatterned => {}
-            Self::CgbRealBootEntry => {
-                bytes.fill(0);
-                let copy_len = CGB_REAL_BOOT_VRAM_PREFIX.len().min(bytes.len());
-                bytes[..copy_len].copy_from_slice(&CGB_REAL_BOOT_VRAM_PREFIX[..copy_len]);
+            Self::DmgBootLogoVram => apply_dmg_boot_logo_vram(bytes),
+            Self::CgbRealBootEntry => initialize_cgb_real_boot_entry_vram(bytes),
+            Self::CgbRealBootEntryWithDmgBootLogoVram => {
+                initialize_cgb_real_boot_entry_vram(bytes);
+                apply_dmg_boot_logo_vram(bytes);
             }
         }
     }
 
     pub(crate) fn initialize_wram(self, bytes: &mut [u8]) {
         match self {
-            Self::DeterministicPatterned => self.fill_bytes(bytes, 0xC000),
-            Self::CgbRealBootEntry => bytes.fill(0),
+            Self::DeterministicPatterned | Self::DmgBootLogoVram => self.fill_bytes(bytes, 0xC000),
+            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => bytes.fill(0),
         }
     }
 
     pub(crate) fn initialize_hram(self, bytes: &mut [u8]) {
         match self {
-            Self::DeterministicPatterned => self.fill_bytes(bytes, 0xFF80),
-            Self::CgbRealBootEntry => {
-                bytes.fill(0);
-                let copy_len = CGB_BOOT_LOGO_HRAM_PREFIX.len().min(bytes.len());
-                bytes[..copy_len].copy_from_slice(&CGB_BOOT_LOGO_HRAM_PREFIX[..copy_len]);
+            Self::DeterministicPatterned | Self::DmgBootLogoVram => self.fill_bytes(bytes, 0xFF80),
+            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => {
+                initialize_cgb_real_boot_entry_hram(bytes);
             }
         }
     }
 
     fn fill_bytes(self, bytes: &mut [u8], base_address: u16) {
         match self {
-            Self::DeterministicPatterned => fill_deterministic_startup_pattern(bytes, base_address),
-            Self::CgbRealBootEntry => {}
+            Self::DeterministicPatterned | Self::DmgBootLogoVram => {
+                fill_deterministic_startup_pattern(bytes, base_address)
+            }
+            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => {}
         }
+    }
+}
+
+pub const DMG_BOOT_LOGO_TILE_VRAM_START: u16 = 0x8010;
+pub const DMG_BOOT_LOGO_MAP_VRAM_START: u16 = 0x9904;
+pub const DMG_BOOT_LOGO_TILE_BYTES: [u8; 200] = [
+    0xF0, 0xF0, 0xFC, 0xFC, 0xFC, 0xFC, 0xF3, 0xF3, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C,
+    0xF0, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0xF3, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCF, 0xCF,
+    0x00, 0x00, 0x0F, 0x0F, 0x3F, 0x3F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x0F, 0x0F,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF3, 0xF3,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF,
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xC3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFC, 0xFC,
+    0xF3, 0xF3, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x3C, 0x3C, 0xFC, 0xFC, 0xFC, 0xFC, 0x3C, 0x3C,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0x3C, 0x3C, 0x3F, 0x3F, 0x3C, 0x3C, 0x0F, 0x0F,
+    0x3C, 0x3C, 0xFC, 0xFC, 0x00, 0x00, 0xFC, 0xFC, 0xFC, 0xFC, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF0, 0xF0, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xC3, 0xC3, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0xFC, 0xFC,
+    0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C,
+];
+pub const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x19, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+];
+
+fn initialize_cgb_real_boot_entry_vram(bytes: &mut [u8]) {
+    bytes.fill(0);
+    let copy_len = CGB_REAL_BOOT_VRAM_PREFIX.len().min(bytes.len());
+    bytes[..copy_len].copy_from_slice(&CGB_REAL_BOOT_VRAM_PREFIX[..copy_len]);
+}
+
+fn initialize_cgb_real_boot_entry_hram(bytes: &mut [u8]) {
+    bytes.fill(0);
+    let copy_len = CGB_BOOT_LOGO_HRAM_PREFIX.len().min(bytes.len());
+    bytes[..copy_len].copy_from_slice(&CGB_BOOT_LOGO_HRAM_PREFIX[..copy_len]);
+}
+
+fn apply_dmg_boot_logo_vram(bytes: &mut [u8]) {
+    for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
+        write_vram_backing_byte(
+            bytes,
+            DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2),
+            byte,
+        );
+    }
+    for (index, byte) in DMG_BOOT_LOGO_MAP_BYTES.iter().copied().enumerate() {
+        write_vram_backing_byte(bytes, DMG_BOOT_LOGO_MAP_VRAM_START + index as u16, byte);
+    }
+}
+
+fn write_vram_backing_byte(bytes: &mut [u8], address: u16, value: u8) {
+    if let Some(offset) = address.checked_sub(0x8000).map(usize::from)
+        && let Some(byte) = bytes.get_mut(offset)
+    {
+        *byte = value;
     }
 }
 
@@ -519,10 +578,13 @@ impl BootController {
     }
 
     pub fn startup_memory_policy(&self) -> StartupMemoryPolicy {
-        if self.startup_mode == StartupMode::SkipBoot && self.console_model.is_cgb_family() {
-            StartupMemoryPolicy::CgbRealBootEntry
-        } else {
-            StartupMemoryPolicy::DeterministicPatterned
+        match (self.startup_mode, self.console_model.is_cgb_family()) {
+            (StartupMode::CustomBoot, true) => {
+                StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram
+            }
+            (StartupMode::CustomBoot, false) => StartupMemoryPolicy::DmgBootLogoVram,
+            (StartupMode::SkipBoot, true) => StartupMemoryPolicy::CgbRealBootEntry,
+            _ => StartupMemoryPolicy::DeterministicPatterned,
         }
     }
 
@@ -581,7 +643,7 @@ impl BootController {
         &self,
         cartridge: Option<&CartridgeSlot>,
     ) -> Option<BootDirectBootState> {
-        if self.startup_mode != StartupMode::SkipBoot {
+        if !self.startup_mode.uses_direct_boot_state() {
             return None;
         }
 

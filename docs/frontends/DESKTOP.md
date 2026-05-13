@@ -212,7 +212,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 
 ## Error handling
 
-User-facing desktop failures such as ROM open/load errors surface through native SDL3 message boxes instead of only writing to `stderr`; technical diagnostics remain in terminal output. When `SYSTEM -> START REAL` is selected but the configured Boot ROM file, Boot ROM directory, or active model-specific dump no longer exists, `gb-desktop` falls back to `skip-boot` for that session instead of aborting startup.
+User-facing desktop failures such as ROM open/load errors surface through native SDL3 message boxes instead of only writing to `stderr`; technical diagnostics remain in terminal output. `SYSTEM -> START SKIP`, `SYSTEM -> START CUSTOM`, and `SYSTEM -> START REAL` select the same startup modes as the CLI: custom boot is a direct-start path with the DMG boot-logo VRAM/map seed and no boot ROM asset requirement. When `SYSTEM -> START REAL` is selected but the configured Boot ROM file, Boot ROM directory, or active model-specific dump no longer exists, `gb-desktop` falls back to `skip-boot` for that session instead of aborting startup.
 
 ## Settings persistence
 
