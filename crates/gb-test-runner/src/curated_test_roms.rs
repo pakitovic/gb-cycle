@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
     ExternalStimulusAction, FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec,
-    PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupMemoryWrite, StartupPpuProfile,
-    TestSubsystem, Timeout,
+    PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupPpuProfile, TestSubsystem,
+    Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
@@ -55,32 +55,6 @@ const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 6] = [
 ];
 const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
     ["mooneye-acceptance-dmg-curated"];
-const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
-const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
-    0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
-];
-const DMG_BOOT_LOGO_TILE_VRAM_START: u16 = 0x8010;
-const DMG_BOOT_LOGO_MAP_VRAM_START: u16 = 0x9904;
-const DMG_BOOT_LOGO_TILE_BYTES: [u8; 200] = [
-    0xF0, 0xF0, 0xFC, 0xFC, 0xFC, 0xFC, 0xF3, 0xF3, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C,
-    0xF0, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0xF3, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCF, 0xCF,
-    0x00, 0x00, 0x0F, 0x0F, 0x3F, 0x3F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x0F, 0x0F,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF3, 0xF3,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF,
-    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xC3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFC, 0xFC,
-    0xF3, 0xF3, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x3C, 0x3C, 0xFC, 0xFC, 0xFC, 0xFC, 0x3C, 0x3C,
-    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3,
-    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0x3C, 0x3C, 0x3F, 0x3F, 0x3C, 0x3C, 0x0F, 0x0F,
-    0x3C, 0x3C, 0xFC, 0xFC, 0x00, 0x00, 0xFC, 0xFC, 0xFC, 0xFC, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
-    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF0, 0xF0, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
-    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xC3, 0xC3, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0xFC, 0xFC,
-    0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C,
-];
-const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x19, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-];
 /// Mealybug DMG rows where GBEmulatorShootout marks SameBoy as non-PASS in the 2026-03-22 table.
 pub const MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS: &[&str] = &[
     "mealybug-m3-lcdc-bg-en-change",
@@ -132,7 +106,6 @@ struct CuratedTestRomCaseFile {
     stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
-    startup_memory_profile: Option<String>,
     #[serde(default)]
     disabled: bool,
     comment: Option<String>,
@@ -184,7 +157,6 @@ struct CuratedTestRomCase {
     stop_condition: Option<String>,
     startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
-    startup_memory_profile: Option<String>,
     disabled: bool,
     comment: Option<String>,
 }
@@ -1340,7 +1312,6 @@ fn parse_manifest_case(
         startup_ppu_profile: case
             .startup_ppu_profile
             .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
-        startup_memory_profile: case.startup_memory_profile,
         disabled: case.disabled,
         comment,
     }
@@ -1415,6 +1386,7 @@ fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str)
 fn parse_manifest_startup_mode(source_path: &str, case_id: &str, startup: &str) -> StartupMode {
     match startup {
         "skip-boot" => StartupMode::SkipBoot,
+        "custom-boot" => StartupMode::CustomBoot,
         "real-boot" => StartupMode::RealBoot,
         other => {
             panic!("unsupported startup mode {other:?} for curated case {case_id} in {source_path}")
@@ -1478,7 +1450,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         stop_condition,
         startup_timer_profile,
         startup_ppu_profile,
-        startup_memory_profile,
         disabled: _,
         comment: _,
     } = case;
@@ -1586,21 +1557,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
             "dmg-power-on" => rom_case.with_startup_ppu_profile(StartupPpuProfile::DmgPowerOn),
             other => panic!(
                 "unsupported startup PPU profile {other:?} for curated case {}",
-                rom_case.id
-            ),
-        };
-    }
-
-    if let Some(profile) = startup_memory_profile.as_deref() {
-        rom_case = match profile {
-            "dmg-boot-trademark-tile" => {
-                rom_case.with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes())
-            }
-            "dmg-boot-logo-vram" => {
-                rom_case.with_startup_memory_writes(dmg_boot_logo_vram_startup_writes())
-            }
-            other => panic!(
-                "unsupported startup memory profile {other:?} for curated case {}",
                 rom_case.id
             ),
         };
@@ -1721,37 +1677,6 @@ fn blargg_memory_text_output_spec() -> MemoryTextOutputSpec {
         0xA004,
         4_096,
     )
-}
-
-fn dmg_boot_trademark_tile_startup_writes() -> [StartupMemoryWrite; 16] {
-    std::array::from_fn(|index| {
-        StartupMemoryWrite::new(
-            DMG_BOOT_TRADEMARK_TILE_VRAM_START + index as u16,
-            DMG_BOOT_TRADEMARK_TILE_BYTES[index],
-        )
-    })
-}
-
-fn dmg_boot_logo_vram_startup_writes() -> Vec<StartupMemoryWrite> {
-    let mut writes =
-        Vec::with_capacity(DMG_BOOT_LOGO_TILE_BYTES.len() + DMG_BOOT_LOGO_MAP_BYTES.len());
-
-    // Seed the post-boot DMG logo tile bytes plus the logo tilemap rows that
-    // BullyGB checks under SkipBoot.
-    for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
-        writes.push(StartupMemoryWrite::new(
-            DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2),
-            byte,
-        ));
-    }
-    for (index, byte) in DMG_BOOT_LOGO_MAP_BYTES.iter().copied().enumerate() {
-        writes.push(StartupMemoryWrite::new(
-            DMG_BOOT_LOGO_MAP_VRAM_START + index as u16,
-            byte,
-        ));
-    }
-
-    writes
 }
 
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
@@ -2050,8 +1975,7 @@ mod tests {
         cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
         cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
-        curated_test_rom_manifests, discover_test_rom_store_root,
-        dmg_boot_trademark_tile_startup_writes, docboy_dmg_extra_suite,
+        curated_test_rom_manifests, discover_test_rom_store_root, docboy_dmg_extra_suite,
         failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
         little_things_gb_dmg_extra_suite, load_persisted_suite_status,
         manifest_case_report_rom_display, manifest_case_to_rom_test_case,
@@ -2434,7 +2358,8 @@ mod tests {
                 tac: 0xF8,
             })
         );
-        assert_eq!(case.startup_memory_writes.len(), 244);
+        assert_eq!(case.startup_mode, StartupMode::CustomBoot);
+        assert!(case.startup_memory_writes.is_empty());
     }
 
     #[test]
@@ -2692,14 +2617,14 @@ mod tests {
                 "little-things-gb/double-halt-cancel.gb",
                 "crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png",
                 "double-halt-cancel.gb",
-                None,
+                StartupMode::SkipBoot,
             ),
             (
                 "little-things-gb-dmg-whichboot",
                 "little-things-gb/whichboot.gb",
                 "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png",
                 "whichboot.gb",
-                Some("dmg-boot-logo-vram"),
+                StartupMode::CustomBoot,
             ),
         ];
         let manifest = curated_test_rom_manifests()
@@ -2707,7 +2632,7 @@ mod tests {
             .find(|manifest| manifest.suite_name == "little-things-gb-dmg-extra")
             .expect("little-things-gb DMG extra manifest should exist");
 
-        for ((case, manifest_case), (id, rom_path, fixture_path, report_rom, startup_memory)) in
+        for ((case, manifest_case), (id, rom_path, fixture_path, report_rom, startup_mode)) in
             suite.cases.iter().zip(&manifest.cases).zip(expected)
         {
             assert_eq!(case.id, id);
@@ -2726,10 +2651,8 @@ mod tests {
             assert!(case.capture_plan.contains(CaptureKind::Snapshot));
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
-            assert_eq!(
-                manifest_case.startup_memory_profile.as_deref(),
-                startup_memory
-            );
+            assert_eq!(case.startup_mode, startup_mode);
+            assert!(case.startup_memory_writes.is_empty());
             assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
         }
     }
@@ -3219,18 +3142,17 @@ mod tests {
                     .iter()
                     .find(|case| case.id == "mealybug-m3-bgp-change-sprites")
             })
-            .expect("mealybug startup-memory case should exist");
-        assert_eq!(
-            mealybug_case.startup_memory_writes,
-            dmg_boot_trademark_tile_startup_writes().to_vec()
-        );
+            .expect("mealybug custom-boot case should exist");
+        assert_eq!(mealybug_case.startup_mode, StartupMode::CustomBoot);
+        assert!(mealybug_case.startup_memory_writes.is_empty());
 
         let hacktix_case = suites
             .iter()
             .find(|suite| suite.family.as_deref() == Some("hacktix"))
             .and_then(|suite| suite.cases.iter().find(|case| case.id == "hacktix-bully"))
-            .expect("hacktix startup-memory case should exist");
-        assert_eq!(hacktix_case.startup_memory_writes.len(), 244);
+            .expect("hacktix custom-boot case should exist");
+        assert_eq!(hacktix_case.startup_mode, StartupMode::CustomBoot);
+        assert!(hacktix_case.startup_memory_writes.is_empty());
 
         let strikethrough_case = suites
             .iter()
@@ -4439,7 +4361,6 @@ status = "PASS"
                 stop_condition: None,
                 startup_timer_profile: None,
                 startup_ppu_profile: None,
-                startup_memory_profile: None,
                 disabled: false,
                 comment: None,
             },
@@ -4476,7 +4397,6 @@ status = "PASS"
                 stop_condition: None,
                 startup_timer_profile: None,
                 startup_ppu_profile: None,
-                startup_memory_profile: None,
                 disabled: true,
                 comment: Some("  hardware-incompatible oracle  ".to_string()),
             },
@@ -4520,7 +4440,6 @@ status = "PASS"
                 stop_condition: None,
                 startup_timer_profile: None,
                 startup_ppu_profile: None,
-                startup_memory_profile: None,
                 disabled: true,
                 comment: Some("   ".to_string()),
             },
@@ -4553,7 +4472,6 @@ status = "PASS"
             stop_condition: None,
             startup_timer_profile: None,
             startup_ppu_profile: None,
-            startup_memory_profile: None,
             disabled: false,
             comment: None,
         });
@@ -4585,7 +4503,6 @@ status = "PASS"
             stop_condition: None,
             startup_timer_profile: Some("unknown-profile".to_string()),
             startup_ppu_profile: None,
-            startup_memory_profile: None,
             disabled: false,
             comment: None,
         });
@@ -4617,39 +4534,6 @@ status = "PASS"
             stop_condition: None,
             startup_timer_profile: None,
             startup_ppu_profile: Some("unknown-profile".to_string()),
-            startup_memory_profile: None,
-            disabled: false,
-            comment: None,
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "unsupported startup memory profile")]
-    fn manifest_case_to_rom_test_case_rejects_unknown_startup_profiles() {
-        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
-            family: "mealybug-tearoom-tests".to_string(),
-            id: "bad-profile".to_string(),
-            rom: PathBuf::from("ppu/bad.gb"),
-            source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
-            source_path: PathBuf::from("testroms/mealybug-tearoom-tests/ppu/bad.gb"),
-            report_model_suffix: false,
-            report_label: None,
-            timeout: Timeout::Frames(1),
-            oracle: "framebuffer-fixture".to_string(),
-            expected: None,
-            fixture: Some(PathBuf::from("fixture.png")),
-            fixtures: None,
-            check_interval_tcycles: None,
-            check_at_tcycles: None,
-            memory: Vec::new(),
-            stimuli: Vec::new(),
-            console_model: ConsoleModel::GameBoy,
-            startup_mode: StartupMode::SkipBoot,
-            execution_mode: None,
-            stop_condition: None,
-            startup_timer_profile: None,
-            startup_ppu_profile: None,
-            startup_memory_profile: Some("unknown-profile".to_string()),
             disabled: false,
             comment: None,
         });

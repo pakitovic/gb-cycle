@@ -22,4 +22,4 @@ console = "dmg"
 timeout_frames = 180
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png"
-startup_memory_profile = "dmg-boot-logo-vram"
+startup = "custom-boot"

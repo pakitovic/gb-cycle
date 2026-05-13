@@ -770,23 +770,27 @@ impl PersistedBootRomKind {
 enum PersistedStartupMode {
     #[default]
     #[serde(rename = "skip-boot")]
-    SkipBoot,
+    Skip,
+    #[serde(rename = "custom-boot")]
+    Custom,
     #[serde(rename = "real-boot")]
-    RealBoot,
+    Real,
 }
 
 impl PersistedStartupMode {
     fn from_external(value: StartupMode) -> Self {
         match value {
-            StartupMode::SkipBoot => Self::SkipBoot,
-            StartupMode::RealBoot => Self::RealBoot,
+            StartupMode::SkipBoot => Self::Skip,
+            StartupMode::CustomBoot => Self::Custom,
+            StartupMode::RealBoot => Self::Real,
         }
     }
 
     fn to_external(self) -> StartupMode {
         match self {
-            Self::SkipBoot => StartupMode::SkipBoot,
-            Self::RealBoot => StartupMode::RealBoot,
+            Self::Skip => StartupMode::SkipBoot,
+            Self::Custom => StartupMode::CustomBoot,
+            Self::Real => StartupMode::RealBoot,
         }
     }
 }
@@ -1184,7 +1188,7 @@ max_memory_mib = 128
         let path = unique_test_path("applies-settings");
         let mut settings = PersistedDesktopSettings::default();
         settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
-        settings.launch.startup_mode = PersistedStartupMode::RealBoot;
+        settings.launch.startup_mode = PersistedStartupMode::Real;
         settings.launch.execution_mode = PersistedExecutionMode::Permissive;
         settings.boot_rom.kind = Some(PersistedBootRomKind::Mgb);
         settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
@@ -1432,7 +1436,7 @@ max_memory_mib = 128
             reloaded.launch.console_model,
             PersistedDesktopConsoleModel::GameBoy
         );
-        assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::RealBoot);
+        assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::Real);
         assert_eq!(
             reloaded.launch.execution_mode,
             PersistedExecutionMode::Experimental
@@ -1821,6 +1825,10 @@ max_memory_mib = 128
         assert_eq!(
             PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),
             StartupMode::RealBoot
+        );
+        assert_eq!(
+            PersistedStartupMode::from_external(StartupMode::CustomBoot).to_external(),
+            StartupMode::CustomBoot
         );
         assert_eq!(
             PersistedExecutionMode::from_external(ExecutionMode::Experimental).to_external(),

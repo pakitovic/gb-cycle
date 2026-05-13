@@ -36,6 +36,7 @@ struct LinkedSessionCliOptions {
 enum ConfiguredLinkedSessionStartup {
     Manifest,
     SkipBoot,
+    CustomBoot,
     RealBoot,
 }
 
@@ -228,14 +229,15 @@ fn configured_linked_session_startup_from_env_value(
     match value {
         Ok(value) => match value.as_str() {
             "skip-boot" => Ok(ConfiguredLinkedSessionStartup::SkipBoot),
+            "custom-boot" => Ok(ConfiguredLinkedSessionStartup::CustomBoot),
             "real-boot" => Ok(ConfiguredLinkedSessionStartup::RealBoot),
             other => Err(format!(
-                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
             )),
         },
         Err(env::VarError::NotPresent) => Ok(ConfiguredLinkedSessionStartup::Manifest),
         Err(env::VarError::NotUnicode(_)) => Err(format!(
-            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
         )),
     }
 }
@@ -254,6 +256,13 @@ fn apply_configured_startup_override_for(
             for session in &mut suite.sessions {
                 for participant in &mut session.participants {
                     participant.startup_mode = StartupMode::SkipBoot;
+                }
+            }
+        }
+        ConfiguredLinkedSessionStartup::CustomBoot => {
+            for session in &mut suite.sessions {
+                for participant in &mut session.participants {
+                    participant.startup_mode = StartupMode::CustomBoot;
                 }
             }
         }
@@ -462,6 +471,11 @@ mod tests {
             configured_linked_session_startup_from_env_value(Ok("skip-boot".to_string()))
                 .expect("skip boot should parse"),
             ConfiguredLinkedSessionStartup::SkipBoot
+        );
+        assert_eq!(
+            configured_linked_session_startup_from_env_value(Ok("custom-boot".to_string()))
+                .expect("custom boot should parse"),
+            ConfiguredLinkedSessionStartup::CustomBoot
         );
         assert_eq!(
             configured_linked_session_startup_from_env_value(Ok("real-boot".to_string()))

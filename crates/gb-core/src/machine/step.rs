@@ -71,7 +71,7 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
     }
 }
 
-#[inline(always)]
+#[inline]
 fn address_hits_cpu_oam_window(address: u16) -> bool {
     (CPU_OAM_ADDRESS_START..=CPU_OAM_ADDRESS_END).contains(&address)
 }
@@ -98,7 +98,7 @@ fn current_cycle_scheduler_interrupt_request_mask(context: &CycleContext) -> u8 
     mask
 }
 
-#[inline(always)]
+#[inline]
 fn cpu_interrupt_mask_for_if_read(
     address: u16,
     context: &CycleContext,
@@ -127,7 +127,7 @@ fn cpu_read_arbitration_state(
     }
 }
 
-#[inline(always)]
+#[inline]
 fn cpu_write_arbitration_state(
     address: u16,
     arbitration_states: CpuBusArbitrationStates,
@@ -142,7 +142,7 @@ fn cpu_write_arbitration_state(
     }
 }
 
-#[inline(always)]
+#[inline]
 fn finalize_cpu_micro_operation(
     cpu: &mut CpuCore,
     bus: &mut Bus,

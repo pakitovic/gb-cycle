@@ -40,9 +40,15 @@ fn unique_temp_dir() -> PathBuf {
 fn startup_mode_controls_initial_boot_mapping_state() {
     let real_boot = boot(ConsoleModel::GameBoy, StartupMode::RealBoot, empty_assets());
     let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
+    let custom_boot = boot(
+        ConsoleModel::GameBoy,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
 
     assert!(real_boot.is_boot_rom_mapped());
     assert!(!skip_boot.is_boot_rom_mapped());
+    assert!(!custom_boot.is_boot_rom_mapped());
 }
 
 #[test]
@@ -280,6 +286,12 @@ fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
 
     let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     assert!(skip_boot.real_boot_power_on_state().is_none());
+    let custom_boot = boot(
+        ConsoleModel::GameBoy,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+    assert!(custom_boot.real_boot_power_on_state().is_none());
 }
 
 #[test]
@@ -391,6 +403,57 @@ fn cgb_real_boot_entry_memory_policy_uses_boot_visible_prefixes() {
 }
 
 #[test]
+fn custom_boot_memory_policy_seeds_the_dmg_boot_logo_vram_contract() {
+    let mut vram = [0xAA; 0x2000];
+    let mut wram = [0; 8];
+    let mut hram = [0; 8];
+
+    StartupMemoryPolicy::DmgBootLogoVram.initialize_vram(&mut vram);
+    StartupMemoryPolicy::DmgBootLogoVram.initialize_wram(&mut wram);
+    StartupMemoryPolicy::DmgBootLogoVram.initialize_hram(&mut hram);
+
+    assert_eq!(
+        vram[vram_offset(DMG_BOOT_LOGO_TILE_VRAM_START)],
+        DMG_BOOT_LOGO_TILE_BYTES[0]
+    );
+    assert_eq!(
+        vram[vram_offset(0x8190)],
+        DMG_BOOT_LOGO_TILE_BYTES[DMG_BOOT_LOGO_TILE_BYTES.len() - 8]
+    );
+    assert_eq!(
+        vram[vram_offset(DMG_BOOT_LOGO_MAP_VRAM_START)],
+        DMG_BOOT_LOGO_MAP_BYTES[0]
+    );
+    assert_eq!(vram[vram_offset(0x9924)], DMG_BOOT_LOGO_MAP_BYTES[32]);
+    assert_eq!(vram[vram_offset(0x992F)], DMG_BOOT_LOGO_MAP_BYTES[43]);
+    assert_ne!(wram, [0; 8]);
+    assert_ne!(hram, [0; 8]);
+}
+
+#[test]
+fn cgb_custom_boot_memory_policy_preserves_cgb_base_and_overlays_the_dmg_boot_logo() {
+    let mut vram = [0xAA; 0x4000];
+    let mut wram = [0xAA; 8];
+    let mut hram = [0xAA; 56];
+
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_vram(&mut vram);
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_wram(&mut wram);
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_hram(&mut hram);
+
+    assert_eq!(&vram[..16], &CGB_REAL_BOOT_VRAM_PREFIX[..16]);
+    assert_eq!(
+        vram[vram_offset(DMG_BOOT_LOGO_TILE_VRAM_START)],
+        DMG_BOOT_LOGO_TILE_BYTES[0]
+    );
+    assert_eq!(vram[vram_offset(0x9924)], DMG_BOOT_LOGO_MAP_BYTES[32]);
+    assert_eq!(wram, [0x00; 8]);
+    assert_eq!(
+        &hram[..CGB_BOOT_LOGO_HRAM_PREFIX.len()],
+        CGB_BOOT_LOGO_HRAM_PREFIX
+    );
+}
+
+#[test]
 fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
     let boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let mut rom = vec![0x00; 0x150];
@@ -412,6 +475,10 @@ fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
         build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(&header)).f,
         0xB0
     );
+}
+
+fn vram_offset(address: u16) -> usize {
+    usize::from(address - 0x8000)
 }
 
 #[test]

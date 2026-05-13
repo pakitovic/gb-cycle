@@ -1772,6 +1772,12 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         }
     );
     assert_eq!(
+        DefaultRunBudget::for_startup_mode(StartupMode::CustomBoot),
+        DefaultRunBudget::SkipBootFrames {
+            frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+        }
+    );
+    assert_eq!(
         DefaultRunBudget::for_startup_mode(StartupMode::RealBoot),
         DefaultRunBudget::RealBootPostHandoff {
             post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
@@ -1807,6 +1813,10 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     );
 
     assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));
+    assert_eq!(
+        parse_startup_mode("custom-boot"),
+        Ok(StartupMode::CustomBoot)
+    );
     assert_eq!(parse_startup_mode("real-boot"), Ok(StartupMode::RealBoot));
     assert!(
         parse_startup_mode("boot")
@@ -1882,6 +1892,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert!(run_limit_reached(None, Some(3), 0, 3));
     assert!(!run_limit_reached(None, None, 0, 0));
 
+    assert_eq!(startup_mode_name(StartupMode::CustomBoot), "custom-boot");
     assert_eq!(startup_mode_name(StartupMode::RealBoot), "real-boot");
     assert_eq!(execution_mode_name(ExecutionMode::Strict), "strict");
     assert_eq!(execution_mode_name(ExecutionMode::Permissive), "permissive");

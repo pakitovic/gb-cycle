@@ -75,7 +75,9 @@ enum ValidationRomProfile {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConfiguredTestRomStartup {
+    Manifest,
     SkipBoot,
+    CustomBoot,
     RealBoot,
 }
 
@@ -109,14 +111,15 @@ fn configured_test_rom_startup() -> Result<ConfiguredTestRomStartup, String> {
     match env::var(TEST_ROM_STARTUP_ENV_VAR) {
         Ok(value) => match value.as_str() {
             "skip-boot" => Ok(ConfiguredTestRomStartup::SkipBoot),
+            "custom-boot" => Ok(ConfiguredTestRomStartup::CustomBoot),
             "real-boot" => Ok(ConfiguredTestRomStartup::RealBoot),
             other => Err(format!(
-                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\" or \"real-boot\""
+                "unsupported {TEST_ROM_STARTUP_ENV_VAR} value {other:?}; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
             )),
         },
-        Err(env::VarError::NotPresent) => Ok(ConfiguredTestRomStartup::SkipBoot),
+        Err(env::VarError::NotPresent) => Ok(ConfiguredTestRomStartup::Manifest),
         Err(env::VarError::NotUnicode(_)) => Err(format!(
-            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\" or \"real-boot\""
+            "{TEST_ROM_STARTUP_ENV_VAR} must be valid UTF-8; expected \"skip-boot\", \"custom-boot\", or \"real-boot\""
         )),
     }
 }
@@ -124,10 +127,21 @@ fn configured_test_rom_startup() -> Result<ConfiguredTestRomStartup, String> {
 fn suite_for_configured_startup(suite: &RomSuite) -> Result<RomSuite, String> {
     let mut suite = suite.clone();
     match configured_test_rom_startup()? {
-        ConfiguredTestRomStartup::SkipBoot => {}
+        ConfiguredTestRomStartup::Manifest => {}
+        ConfiguredTestRomStartup::SkipBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = StartupMode::SkipBoot;
+            }
+        }
+        ConfiguredTestRomStartup::CustomBoot => {
+            for case in &mut suite.cases {
+                case.startup_mode = StartupMode::CustomBoot;
+            }
+        }
         ConfiguredTestRomStartup::RealBoot => {
             for case in &mut suite.cases {
                 case.startup_mode = StartupMode::RealBoot;
+                case.startup_timer_state = None;
                 case.startup_memory_writes.clear();
             }
         }
@@ -136,7 +150,7 @@ fn suite_for_configured_startup(suite: &RomSuite) -> Result<RomSuite, String> {
 }
 
 #[test]
-fn test_rom_startup_defaults_to_skip_boot_and_preserves_startup_writes() {
+fn test_rom_startup_defaults_to_manifest_startup_modes() {
     let _guard = lock_env();
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     remove_env_var(TEST_ROM_STARTUP_ENV_VAR);
@@ -146,8 +160,8 @@ fn test_rom_startup_defaults_to_skip_boot_and_preserves_startup_writes() {
         suite
             .cases
             .iter()
-            .any(|case| !case.startup_memory_writes.is_empty()),
-        "fixture should cover a SkipBoot startup-memory profile"
+            .any(|case| case.startup_mode == StartupMode::CustomBoot),
+        "fixture should cover a custom-boot manifest case"
     );
 
     let configured =
@@ -162,7 +176,7 @@ fn test_rom_startup_defaults_to_skip_boot_and_preserves_startup_writes() {
 }
 
 #[test]
-fn test_rom_startup_real_boot_overrides_cases_and_clears_startup_writes() {
+fn test_rom_startup_real_boot_overrides_custom_boot_cases() {
     let _guard = lock_env();
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     set_env_var(TEST_ROM_STARTUP_ENV_VAR, "real-boot");
@@ -172,8 +186,8 @@ fn test_rom_startup_real_boot_overrides_cases_and_clears_startup_writes() {
         suite
             .cases
             .iter()
-            .any(|case| !case.startup_memory_writes.is_empty()),
-        "fixture should cover a SkipBoot startup-memory profile"
+            .any(|case| case.startup_mode == StartupMode::CustomBoot),
+        "fixture should cover a custom-boot manifest case"
     );
 
     let configured =
@@ -208,6 +222,7 @@ fn test_rom_startup_rejects_unknown_values() {
 
     assert!(error.contains(TEST_ROM_STARTUP_ENV_VAR));
     assert!(error.contains("skip-boot"));
+    assert!(error.contains("custom-boot"));
     assert!(error.contains("real-boot"));
 
     match previous_startup {

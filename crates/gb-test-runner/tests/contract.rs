@@ -769,22 +769,22 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         .iter()
         .find(|case| case.id == "mealybug-m3-obp0-change")
         .expect("curated mealybug suite should include m3_obp0_change");
-    assert_eq!(obp0_change.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(obp0_change.startup_memory_writes.len(), 16);
+    assert_eq!(obp0_change.startup_mode, StartupMode::CustomBoot);
+    assert!(obp0_change.startup_memory_writes.is_empty());
     let bgp_change_sprites = suite
         .cases
         .iter()
         .find(|case| case.id == "mealybug-m3-bgp-change-sprites")
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
-    assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
+    assert_eq!(bgp_change_sprites.startup_mode, StartupMode::CustomBoot);
+    assert!(bgp_change_sprites.startup_memory_writes.is_empty());
     let scx_low_3_bits = suite
         .cases
         .iter()
         .find(|case| case.id == "mealybug-m3-scx-low-3-bits")
         .expect("curated mealybug suite should include m3_scx_low_3_bits");
-    assert_eq!(scx_low_3_bits.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(scx_low_3_bits.startup_memory_writes.len(), 16);
+    assert_eq!(scx_low_3_bits.startup_mode, StartupMode::CustomBoot);
+    assert!(scx_low_3_bits.startup_memory_writes.is_empty());
 }
 
 #[test]
@@ -810,8 +810,8 @@ fn curated_hacktix_suite_tracks_the_active_dmg_framebuffer_cases() {
         .expect("hacktix suite should include bully.gb");
     assert_eq!(bully.rom_path, PathBuf::from("hacktix/bully.gb"));
     assert_eq!(bully.console_model, ConsoleModel::GameBoy);
-    assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(bully.startup_memory_writes.len(), 244);
+    assert_eq!(bully.startup_mode, StartupMode::CustomBoot);
+    assert!(bully.startup_memory_writes.is_empty());
 
     let strikethrough = suite
         .cases
