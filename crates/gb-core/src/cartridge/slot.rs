@@ -927,6 +927,12 @@ impl CartridgeSlot {
         }
     }
 
+    pub(crate) fn advance_huc3_rtc_seconds(&mut self, seconds: u64) {
+        if let Some(device) = &mut self.device {
+            device.advance_huc3_rtc_seconds(seconds);
+        }
+    }
+
     pub fn trace_summary(&self) -> String {
         let detail = self
             .device

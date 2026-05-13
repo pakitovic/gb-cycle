@@ -96,7 +96,7 @@ use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
@@ -2824,47 +2824,127 @@ struct FramePacingSample {
     oversleep_duration: Duration,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+const HOST_RTC_NANOS_PER_SECOND: u128 = 1_000_000_000;
+const MBC3_RTC_CLOCK_TICKS_PER_SECOND: u128 = 32_768;
+const MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES: u16 = 256;
+
+#[derive(Debug, Clone)]
 struct HostRtcSync {
-    last_host_unix_seconds: u64,
+    // Cartridge RTCs track real wall time, including host suspend intervals.
+    // Keep this separate from Instant-based frame pacing/profiling clocks.
+    last_host_wall_time: SystemTime,
+    // HuC-3 persists a seconds/minutes RTC shape, so desktop feeds it only
+    // after host elapsed time crosses a whole-second boundary.
+    huc3_second_nanos_remainder: u128,
+    // MBC3 exposes subsecond writes and halt/resume phase, so desktop converts
+    // host elapsed nanoseconds into the cartridge's 32.768 kHz clock domain.
+    mbc3_clock_tick_nanos_remainder: u128,
+    // Host elapsed time grants MBC3 RTC ticks, but active emulation releases
+    // them on the cartridge clock cadence instead of batching them at host
+    // event/frame boundaries where CPU-visible RTC writes can observe them.
+    pending_mbc3_clock_ticks: u64,
+    mbc3_half_normal_t_cycle_remainder: u16,
 }
 
 impl HostRtcSync {
-    fn new(last_host_unix_seconds: u64) -> Self {
+    fn new(last_host_wall_time: SystemTime) -> Self {
         Self {
-            last_host_unix_seconds,
+            last_host_wall_time,
+            huc3_second_nanos_remainder: 0,
+            mbc3_clock_tick_nanos_remainder: 0,
+            pending_mbc3_clock_ticks: 0,
+            mbc3_half_normal_t_cycle_remainder: 0,
         }
     }
 
     fn from_host_clock() -> Self {
-        Self::new(Self::current_unix_seconds())
+        Self::new(SystemTime::now())
     }
 
     fn resync_to_host_clock(&mut self) {
-        self.last_host_unix_seconds = Self::current_unix_seconds();
+        *self = Self::from_host_clock();
     }
 
     fn apply_to_machine(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
-        self.apply_with_now(machine, Self::current_unix_seconds());
+        self.sync_host_elapsed_to_machine(machine);
+        self.flush_pending_mbc3_clock_ticks(machine);
     }
 
-    fn apply_with_now(
+    fn sync_host_elapsed_to_machine(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        self.sync_host_elapsed_to_machine_at(machine, SystemTime::now());
+    }
+
+    fn sync_host_elapsed_to_machine_at(
         &mut self,
         machine: &mut Machine<TraceSummaryBuffer>,
-        current_host_unix_seconds: u64,
+        now: SystemTime,
     ) {
-        if current_host_unix_seconds <= self.last_host_unix_seconds {
+        let elapsed = now
+            .duration_since(self.last_host_wall_time)
+            .unwrap_or(Duration::ZERO);
+        self.apply_elapsed_to_machine(machine, elapsed);
+        self.last_host_wall_time = now;
+    }
+
+    fn apply_elapsed_to_machine(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        elapsed: Duration,
+    ) {
+        if elapsed.is_zero() {
             return;
         }
 
-        machine
-            .advance_cartridge_rtc_seconds(current_host_unix_seconds - self.last_host_unix_seconds);
-        self.last_host_unix_seconds = current_host_unix_seconds;
+        let elapsed_nanos = elapsed.as_nanos();
+        let huc3_total_nanos = self
+            .huc3_second_nanos_remainder
+            .saturating_add(elapsed_nanos);
+        let huc3_seconds = huc3_total_nanos / HOST_RTC_NANOS_PER_SECOND;
+        self.huc3_second_nanos_remainder = huc3_total_nanos % HOST_RTC_NANOS_PER_SECOND;
+        if huc3_seconds != 0 {
+            machine.advance_huc3_cartridge_rtc_seconds(u128_to_u64_saturating(huc3_seconds));
+        }
+
+        let mbc3_total_clock_ticks = self
+            .mbc3_clock_tick_nanos_remainder
+            .saturating_add(elapsed_nanos.saturating_mul(MBC3_RTC_CLOCK_TICKS_PER_SECOND));
+        let mbc3_clock_ticks = mbc3_total_clock_ticks / HOST_RTC_NANOS_PER_SECOND;
+        self.mbc3_clock_tick_nanos_remainder = mbc3_total_clock_ticks % HOST_RTC_NANOS_PER_SECOND;
+        if mbc3_clock_ticks != 0 {
+            self.pending_mbc3_clock_ticks = self
+                .pending_mbc3_clock_ticks
+                .saturating_add(u128_to_u64_saturating(mbc3_clock_ticks));
+        }
     }
 
-    fn current_unix_seconds() -> u64 {
-        SystemCartridgeSaveTimeSource.now_unix_seconds()
+    fn tick_mbc3_for_emulated_t_cycle(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        self.mbc3_half_normal_t_cycle_remainder += match machine.speed().current_speed() {
+            CgbSpeedMode::Normal => 2,
+            CgbSpeedMode::Double => 1,
+        };
+
+        if self.mbc3_half_normal_t_cycle_remainder >= MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES {
+            self.mbc3_half_normal_t_cycle_remainder -= MBC3_RTC_CLOCK_HALF_NORMAL_T_CYCLES;
+            if self.pending_mbc3_clock_ticks != 0 {
+                self.pending_mbc3_clock_ticks -= 1;
+                machine.advance_mbc3_cartridge_rtc_clock_ticks(1);
+            }
+        }
     }
+
+    fn flush_pending_mbc3_clock_ticks(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        if self.pending_mbc3_clock_ticks == 0 {
+            return;
+        }
+
+        let ticks = self.pending_mbc3_clock_ticks;
+        self.pending_mbc3_clock_ticks = 0;
+        machine.advance_mbc3_cartridge_rtc_clock_ticks(ticks);
+    }
+}
+
+fn u128_to_u64_saturating(value: u128) -> u64 {
+    value.min(u128::from(u64::MAX)) as u64
 }
 
 impl FramePacer {
@@ -4983,7 +5063,7 @@ fn run_desktop_with_startup_fallback_persistence(
             process_pending_external_save_import_dialog(&mut canvas, &mut context)?;
         }
 
-        runtime.rtc_sync.apply_to_machine(&mut machine);
+        runtime.rtc_sync.sync_host_elapsed_to_machine(&mut machine);
 
         match {
             let mut context = FrontendActionContext {
@@ -5001,6 +5081,7 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         if emulation_paused(&machine, &runtime) {
+            runtime.rtc_sync.apply_to_machine(&mut machine);
             if runtime.menu_state.is_open() {
                 let menu_presentation = Some((
                     &runtime.menu_state,
@@ -5126,6 +5207,7 @@ fn run_desktop_with_startup_fallback_persistence(
             .flatten();
 
         if emulation_paused(&machine, &runtime) {
+            runtime.rtc_sync.apply_to_machine(&mut machine);
             if runtime.menu_state.is_open() {
                 let menu_presentation = Some((
                     &runtime.menu_state,
@@ -6651,9 +6733,17 @@ fn step_until_next_frame(
             pending_event_poll_duration = Duration::ZERO;
         }
 
+        context
+            .runtime
+            .rtc_sync
+            .sync_host_elapsed_to_machine(context.machine);
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             let scheduler_t_cycle = context.machine.next_t_cycle().get();
             context.machine.step_t_cycle();
+            context
+                .runtime
+                .rtc_sync
+                .tick_mbc3_for_emulated_t_cycle(context.machine);
             stepped_t_cycles += 1;
             drain_printed_pages_into_printer_output(
                 canvas.window(),
@@ -11811,7 +11901,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
     const ENTRY_POINT_START: usize = 0x0100;
@@ -14461,6 +14551,41 @@ mod tests {
     }
 
     #[test]
+    fn step_until_next_frame_releases_pending_mbc3_ticks_during_emulation() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-mbc3-rtc", true, false, false);
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
+            .expect("MBC3 RTC cartridge should load");
+        machine.advance_mbc3_cartridge_rtc_clock_ticks(32_767);
+        harness.machine = super::DesktopEmulationSession::new_single(machine);
+        harness.runtime.rtc_sync = super::HostRtcSync::new(SystemTime::now());
+        harness.runtime.rtc_sync.pending_mbc3_clock_ticks = 1;
+
+        let result = harness
+            .step_until_next_frame()
+            .expect("desktop stepping should succeed");
+
+        assert_eq!(result, super::LoopSignal::Continue);
+        assert_eq!(
+            harness.machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 1,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+    }
+
+    #[test]
     fn step_until_next_frame_skips_detailed_frame_telemetry_when_emulation_profiling_is_disabled() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("step-no-telemetry", true, true, false);
@@ -16164,7 +16289,7 @@ mod tests {
     }
 
     #[test]
-    fn host_rtc_sync_advances_live_mbc3_sessions_from_wall_clock_elapsed_seconds() {
+    fn host_rtc_sync_flushes_pending_mbc3_clock_ticks_for_lifecycle_sync() {
         let mut machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
@@ -16172,8 +16297,24 @@ mod tests {
             .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
             .expect("MBC3 RTC cartridge should load");
 
-        let mut rtc_sync = HostRtcSync::new(1_000);
-        rtc_sync.apply_with_now(&mut machine, 1_005);
+        let mut rtc_sync = HostRtcSync::new(SystemTime::now());
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_secs(5));
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 0,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+
+        rtc_sync.flush_pending_mbc3_clock_ticks(&mut machine);
 
         assert_eq!(
             machine.cartridge().persistent_state(),
@@ -16191,7 +16332,7 @@ mod tests {
     }
 
     #[test]
-    fn host_rtc_sync_ignores_backward_host_clock_steps() {
+    fn host_rtc_sync_uses_wall_clock_elapsed_for_live_rtc_budget() {
         let mut machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         );
@@ -16199,15 +16340,19 @@ mod tests {
             .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
             .expect("MBC3 RTC cartridge should load");
 
-        let mut rtc_sync = HostRtcSync::new(1_000);
-        rtc_sync.apply_with_now(&mut machine, 1_010);
-        rtc_sync.apply_with_now(&mut machine, 1_005);
+        let mut rtc_sync = HostRtcSync::new(UNIX_EPOCH + Duration::from_secs(10));
+        rtc_sync
+            .sync_host_elapsed_to_machine_at(&mut machine, UNIX_EPOCH + Duration::from_secs(12));
+
+        assert_eq!(rtc_sync.pending_mbc3_clock_ticks, 2 * 32_768);
+
+        rtc_sync.flush_pending_mbc3_clock_ticks(&mut machine);
 
         assert_eq!(
             machine.cartridge().persistent_state(),
             PersistentCartState::Mbc3Rtc {
                 rtc: gb_core::Mbc3RtcPersistentState {
-                    seconds: 10,
+                    seconds: 2,
                     minutes: 0,
                     hours: 0,
                     day_counter: 0,
@@ -16216,6 +16361,129 @@ mod tests {
                 },
             },
         );
+    }
+
+    #[test]
+    fn host_rtc_sync_releases_mbc3_clock_ticks_on_emulated_t_cycle_cadence() {
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
+            .expect("MBC3 RTC cartridge should load");
+        machine.advance_mbc3_cartridge_rtc_clock_ticks(32_767);
+
+        let mut rtc_sync = HostRtcSync::new(SystemTime::now());
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_nanos(30_518));
+        assert_eq!(rtc_sync.pending_mbc3_clock_ticks, 1);
+
+        for _ in 0..127 {
+            rtc_sync.tick_mbc3_for_emulated_t_cycle(&mut machine);
+        }
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 0,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+
+        rtc_sync.tick_mbc3_for_emulated_t_cycle(&mut machine);
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 1,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+        assert_eq!(rtc_sync.pending_mbc3_clock_ticks, 0);
+    }
+
+    #[test]
+    fn host_rtc_sync_accumulates_fractional_mbc3_clock_ticks() {
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
+            .expect("MBC3 RTC cartridge should load");
+
+        let mut rtc_sync = HostRtcSync::new(SystemTime::now());
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_nanos(999_999_999));
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 0,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_nanos(1));
+        rtc_sync.flush_pending_mbc3_clock_ticks(&mut machine);
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 1,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn host_rtc_sync_keeps_huc3_on_elapsed_whole_seconds() {
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(256 * 1024, 0xFE, 0x03, 0x03))
+            .expect("HuC-3 cartridge should load");
+
+        let mut rtc_sync = HostRtcSync::new(SystemTime::now());
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_millis(1_500));
+
+        let PersistentCartState::Huc3 { rtc, .. } = machine.cartridge().persistent_state() else {
+            panic!("expected HuC-3 persistence state");
+        };
+        assert_eq!(rtc.current_minutes_of_day, 0);
+        assert_eq!(rtc.current_days, 0);
+        assert_eq!(rtc.current_subminute_seconds, 1);
+
+        rtc_sync.apply_elapsed_to_machine(&mut machine, Duration::from_millis(500));
+
+        let PersistentCartState::Huc3 { rtc, .. } = machine.cartridge().persistent_state() else {
+            panic!("expected HuC-3 persistence state");
+        };
+        assert_eq!(rtc.current_minutes_of_day, 0);
+        assert_eq!(rtc.current_days, 0);
+        assert_eq!(rtc.current_subminute_seconds, 2);
     }
 
     #[test]
