@@ -224,6 +224,12 @@ impl CartridgeDevice {
         }
     }
 
+    pub(in crate::cartridge) fn advance_huc3_rtc_seconds(&mut self, seconds: u64) {
+        if let Self::Huc3(cartridge) = self {
+            cartridge.advance_rtc_seconds(seconds);
+        }
+    }
+
     pub(in crate::cartridge) fn rumble_on(&self) -> bool {
         match self {
             Self::Mbc5(cartridge) => cartridge.rumble_on(),
