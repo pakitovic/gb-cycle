@@ -431,25 +431,50 @@ fn custom_boot_memory_policy_seeds_the_dmg_boot_logo_vram_contract() {
 }
 
 #[test]
-fn cgb_custom_boot_memory_policy_preserves_cgb_base_and_overlays_the_dmg_boot_logo() {
+fn cgb_custom_boot_memory_policy_preserves_cgb_base_and_overlays_only_the_dmg_boot_logo_tiles() {
     let mut vram = [0xAA; 0x4000];
     let mut wram = [0xAA; 8];
     let mut hram = [0xAA; 56];
 
-    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_vram(&mut vram);
-    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_wram(&mut wram);
-    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram.initialize_hram(&mut hram);
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles.initialize_vram(&mut vram);
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles.initialize_wram(&mut wram);
+    StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles.initialize_hram(&mut hram);
 
     assert_eq!(&vram[..16], &CGB_REAL_BOOT_VRAM_PREFIX[..16]);
     assert_eq!(
         vram[vram_offset(DMG_BOOT_LOGO_TILE_VRAM_START)],
         DMG_BOOT_LOGO_TILE_BYTES[0]
     );
-    assert_eq!(vram[vram_offset(0x9924)], DMG_BOOT_LOGO_MAP_BYTES[32]);
+    assert_eq!(vram[vram_offset(DMG_BOOT_LOGO_MAP_VRAM_START)], 0x00);
+    assert_eq!(vram[vram_offset(0x9924)], 0x00);
+    assert_eq!(vram[vram_offset(0x992F)], 0x00);
     assert_eq!(wram, [0x00; 8]);
     assert_eq!(
         &hram[..CGB_BOOT_LOGO_HRAM_PREFIX.len()],
         CGB_BOOT_LOGO_HRAM_PREFIX
+    );
+}
+
+#[test]
+fn custom_boot_policy_is_model_specific_for_dmg_tilemap_residue() {
+    let dmg_custom_boot = boot(
+        ConsoleModel::GameBoy,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+    let cgb_custom_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+
+    assert_eq!(
+        dmg_custom_boot.startup_memory_policy(),
+        StartupMemoryPolicy::DmgBootLogoVram
+    );
+    assert_eq!(
+        cgb_custom_boot.startup_memory_policy(),
+        StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
     );
 }
 

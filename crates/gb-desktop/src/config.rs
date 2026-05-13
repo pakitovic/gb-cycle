@@ -120,10 +120,10 @@ impl DesktopConsoleModel {
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::GameBoy => "game-boy",
-            Self::GameBoyPocket => "pocket",
-            Self::GameBoyLight => "light",
-            Self::GameBoyColor => "color",
+            Self::GameBoy => "DMG",
+            Self::GameBoyPocket => "MGB",
+            Self::GameBoyLight => "LGB",
+            Self::GameBoyColor => "CGB",
         }
     }
 }
@@ -1139,10 +1139,10 @@ mod tests {
             DesktopConsoleModel::GameBoyColor.default_boot_rom_kind(),
             BootRomKind::Cgb
         );
-        assert_eq!(DesktopConsoleModel::GameBoy.name(), "game-boy");
-        assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "pocket");
-        assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "light");
-        assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "color");
+        assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
+        assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "MGB");
+        assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "LGB");
+        assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "CGB");
         assert_eq!(
             DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoy),
             DesktopDisplayPalette::GameBoy

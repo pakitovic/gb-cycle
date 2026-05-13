@@ -55,7 +55,7 @@ cargo run -p gb-cli -- inspect-rom path/to/rom.gb
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
 
 # CLI: force the Game Boy Color model and export the final RGB555 framebuffer as PNG
-cargo run -p gb-cli -- run path/to/rom.gbc --model color --frames 120 --framebuffer-out .artifacts/frame.png
+cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
 
 # CLI: save and restore a whole-machine .gbstate
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --state-out .artifacts/run.gbstate
@@ -65,7 +65,7 @@ cargo run -p gb-cli -- run path/to/rom.gb --state-in .artifacts/run.gbstate --tc
 cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 # Desktop: launch a CGB ROM with direct RGB555 presentation
-cargo run --release -p gb-desktop -- path/to/rom.gbc --model color
+cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
 
 # Desktop: launch a local DMG-04 two-player Game Link session
 cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb

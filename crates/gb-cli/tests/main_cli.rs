@@ -224,7 +224,7 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             "run",
             rom_path.to_str().expect("path should be valid UTF-8"),
             "--model",
-            "mgb",
+            "MGB",
             "--startup",
             "skip-boot",
             "--mode",
@@ -239,6 +239,8 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             framebuffer_path
                 .to_str()
                 .expect("path should be valid UTF-8"),
+            "--palette",
+            "grey",
             "--trace-out",
             trace_path.to_str().expect("path should be valid UTF-8"),
             "--save-dir",
@@ -265,7 +267,7 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             .contains("t_cycle=")
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("model=mgb"));
+    assert!(stderr.contains("model=MGB"));
     assert!(stderr.contains("startup=skip-boot"));
     assert!(stderr.contains("mode=experimental"));
     assert!(stderr.contains("save_loaded path="));
@@ -381,14 +383,12 @@ fn binary_real_boot_warns_for_mismatched_boot_rom_assets() {
     let rom_path = temp_dir.join("serial.gb");
     let boot_dir = temp_dir.join("bootroms");
     fs::write(&rom_path, build_single_byte_serial_rom(b'B')).expect("plain ROM should be writable");
-    write_fake_boot_rom(&boot_dir, BootRomKind::Dmg0, 0x00);
+    write_fake_boot_rom(&boot_dir, BootRomKind::Dmg, 0x00);
 
     let output = Command::new(env!("CARGO_BIN_EXE_gb-cli"))
         .args([
             "run",
             rom_path.to_str().expect("path should be valid UTF-8"),
-            "--model",
-            "dmg0",
             "--startup",
             "real-boot",
             "--boot-rom-dir",
@@ -405,7 +405,7 @@ fn binary_real_boot_warns_for_mismatched_boot_rom_assets() {
     assert!(
         String::from_utf8(output.stderr)
             .expect("stderr should be UTF-8")
-            .contains("warning: boot ROM asset Dmg0")
+            .contains("warning: boot ROM asset Dmg")
     );
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
