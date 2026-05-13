@@ -11012,16 +11012,24 @@ fn composite_framebuffer_panel_shade(
     backdrop_shade: u8,
     video_options: &VideoOptions,
 ) -> u8 {
-    let bgwin_panel_shade = if bgwin_layer_source_visible(video_options, bgwin_source) {
+    if video_options.show_objects && final_source == PpuFramebufferLayerSource::Object {
+        return final_shade;
+    }
+
+    if matches!(
+        final_source,
+        PpuFramebufferLayerSource::Background | PpuFramebufferLayerSource::Window
+    ) {
+        if bgwin_layer_source_visible(video_options, final_source) {
+            return final_shade;
+        }
+        return backdrop_shade;
+    }
+
+    if bgwin_layer_source_visible(video_options, bgwin_source) {
         bgwin_shade
     } else {
         backdrop_shade
-    };
-
-    if video_options.show_objects && final_source == PpuFramebufferLayerSource::Object {
-        final_shade
-    } else {
-        bgwin_panel_shade
     }
 }
 
@@ -21301,6 +21309,34 @@ mod tests {
         .expect("layer-masked frame should render");
 
         assert_eq!(&rgb_frame[..3], &super::DMG_DISPLAY_PALETTE.shade_rgb(1));
+    }
+
+    #[test]
+    fn composite_uses_final_bgwin_shade_when_visible_layers_are_enabled() {
+        let video_options = super::VideoOptions::default();
+
+        assert_eq!(
+            super::composite_framebuffer_panel_shade(
+                3,
+                PpuFramebufferLayerSource::Background,
+                1,
+                PpuFramebufferLayerSource::Background,
+                2,
+                &video_options,
+            ),
+            3
+        );
+        assert_eq!(
+            super::composite_framebuffer_panel_shade(
+                3,
+                PpuFramebufferLayerSource::Window,
+                1,
+                PpuFramebufferLayerSource::Window,
+                2,
+                &video_options,
+            ),
+            3
+        );
     }
 
     #[test]
