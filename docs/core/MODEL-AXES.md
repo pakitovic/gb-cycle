@@ -85,7 +85,7 @@ Do not use `ConsoleModel` just because it is nearby in the API. If the real ques
 
 ### Use `BootRomKind` when the question is about firmware
 
-Reach for `BootRomKind` when the code needs to load, verify, route, or execute a concrete boot ROM image. `BootRomKind` is selected explicitly for `RealBoot`; `SkipBoot` does not require an asset and instead uses the synthetic startup profile for the selected `ConsoleModel`.
+Reach for `BootRomKind` when the code needs to load, verify, route, or execute a concrete boot ROM image. `BootRomKind` is selected explicitly for `RealBoot`; `SkipBoot` does not require an asset and instead uses the synthetic startup profile for the selected `ConsoleModel`, with cartridge-header-derived refinements where the boot handoff contract is validated.
 
 The authoritative default/allowed firmware matrix and the matching `SkipBoot` profiles live in [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles). Keep this file focused on which axis production code should consult, not on duplicating boot-profile data.
 

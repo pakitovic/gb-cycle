@@ -630,9 +630,11 @@ impl BootController {
             return None;
         }
 
-        let io = verified_boot_entry_io_snapshot(self.console_model);
-        let system_counter = verified_boot_entry_system_counter(self.console_model);
-        let apu = build_verified_boot_entry_apu_state(self.console_model, io);
+        let header = cartridge.and_then(CartridgeSlot::header);
+        let system_counter = direct_start_system_counter(self.console_model, header);
+        let mut io = verified_boot_entry_io_snapshot(self.console_model);
+        io.div = div_from_system_counter(system_counter);
+        let apu = build_verified_boot_entry_apu_state(self.console_model, system_counter, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
@@ -666,8 +668,10 @@ impl BootController {
             return None;
         }
 
-        let io = synthetic_skip_boot_io_snapshot(self.console_model);
-        let system_counter = synthetic_skip_boot_system_counter(self.console_model);
+        let header = cartridge.and_then(CartridgeSlot::header);
+        let system_counter = direct_start_system_counter(self.console_model, header);
+        let mut io = synthetic_skip_boot_io_snapshot(self.console_model);
+        io.div = div_from_system_counter(system_counter);
         let apu = build_skip_boot_apu_state(self.console_model, system_counter, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
@@ -945,14 +949,11 @@ fn build_skip_boot_apu_state(
 
 fn build_verified_boot_entry_apu_state(
     console_model: ConsoleModel,
+    system_counter: u16,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
-    let mut startup_state = build_skip_boot_apu_state(
-        console_model,
-        verified_boot_entry_system_counter(console_model),
-        io,
-    );
-    startup_state.div_apu = verified_boot_entry_div_apu(console_model);
+    let mut startup_state = build_skip_boot_apu_state(console_model, system_counter, io);
+    startup_state.div_apu = verified_boot_entry_div_apu(console_model, system_counter);
     startup_state
 }
 
@@ -998,21 +999,58 @@ const fn minimum_boot_rom_len(kind: BootRomKind) -> usize {
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
-const CGB_SKIP_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
+// Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
+const CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
+// Hacktix `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
+const CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E84;
+const OLD_LICENSEE_NINTENDO: u8 = 0x01;
+const OLD_LICENSEE_USE_NEW_LICENSEE_CODE: u8 = 0x33;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0064;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER: u16 = 0x0068;
 const CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0xFFFB;
-const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xABC8;
 const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
     ((dmg_family_synthetic_skip_boot_io_snapshot().div as u16) << 8)
         | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
 
-const fn synthetic_skip_boot_system_counter(console_model: ConsoleModel) -> u16 {
+fn direct_start_system_counter(
+    console_model: ConsoleModel,
+    header: Option<&CartridgeHeader>,
+) -> u16 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor => CGB_SKIP_BOOT_SYSTEM_COUNTER,
+        ConsoleModel::GameBoyColor => cgb_direct_start_system_counter(header),
+    }
+}
+
+fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
+    let Some(header) = header else {
+        return CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER;
+    };
+
+    if !header.cgb_flag.enables_cgb_native_mode() {
+        return CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER;
+    }
+
+    if matches!(
+        header.old_licensee_code,
+        OLD_LICENSEE_NINTENDO | OLD_LICENSEE_USE_NEW_LICENSEE_CODE
+    ) {
+        return CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER;
+    }
+
+    CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER
+}
+
+const fn div_from_system_counter(system_counter: u16) -> u8 {
+    (system_counter >> 8) as u8
+}
+
+const fn verified_boot_entry_div_apu(console_model: ConsoleModel, system_counter: u16) -> u8 {
+    match console_model {
+        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
+        ConsoleModel::GameBoyColor => div_apu_phase_from_system_counter(system_counter),
     }
 }
 
@@ -1046,24 +1084,6 @@ const fn real_boot_power_on_joypad_state(console_model: ConsoleModel) -> JoypadS
             selection_bits: 0x30,
             pressed_mask: 0x00,
         },
-    }
-}
-
-const fn verified_boot_entry_system_counter(console_model: ConsoleModel) -> u16 {
-    match console_model {
-        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
-            VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER
-        }
-        ConsoleModel::GameBoyColor => synthetic_skip_boot_system_counter(console_model),
-    }
-}
-
-const fn verified_boot_entry_div_apu(console_model: ConsoleModel) -> u8 {
-    match console_model {
-        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
-        ConsoleModel::GameBoyColor => {
-            div_apu_phase_from_system_counter(synthetic_skip_boot_system_counter(console_model))
-        }
     }
 }
 

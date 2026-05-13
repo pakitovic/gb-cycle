@@ -39,5 +39,4 @@ report_model_suffix = true
 timeout_frames = 30
 oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
-startup_timer_profile = "hacktix-cgb-bully-div"
 startup = "custom-boot"

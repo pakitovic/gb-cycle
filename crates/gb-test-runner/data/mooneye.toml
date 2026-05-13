@@ -499,7 +499,6 @@ rom = "emulator-only/mbc1/multicart_rom_8Mb.gb"
 console = "dmg"
 timeout_frames = 120
 oracle = "mooneye-result"
-execution_mode = "experimental"
 
 [[case]]
 id = "mooneye-emulator-only-mbc1-ram-256kb"

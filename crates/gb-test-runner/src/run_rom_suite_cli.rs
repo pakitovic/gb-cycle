@@ -963,7 +963,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_env_default_preserves_manifest_startup_modes_and_synthetic_profiles() {
+    fn startup_env_default_preserves_manifest_startup_modes_and_synthetic_state() {
         let original_suite = crate::cgb_ppu_basic_suite();
         let mut configured_suite = original_suite.clone();
 
@@ -1025,14 +1025,29 @@ mod tests {
     }
 
     #[test]
-    fn startup_env_real_boot_overrides_suite_and_clears_synthetic_profiles() {
-        let mut suite = crate::cgb_ppu_basic_suite();
+    fn startup_env_real_boot_overrides_suite_and_clears_direct_start_state() {
+        let mut suite = RomSuite::new("startup-state-fixture", TestSubsystem::CrossSubsystem)
+            .with_case(
+                RomTestCase::new(
+                    "custom-boot-state-case",
+                    "fixture.gb",
+                    Timeout::Frames(1),
+                    PassCondition::MooneyeResult,
+                )
+                .with_startup_mode(gb_core::StartupMode::CustomBoot)
+                .with_startup_timer_state(gb_core::TimerStartupState {
+                    system_counter: 0x1234,
+                    tima: 0x00,
+                    tma: 0x00,
+                    tac: 0x00,
+                }),
+            );
         assert!(
             suite
                 .cases
                 .iter()
                 .any(|case| case.startup_timer_state.is_some()),
-            "fixture should cover a synthetic startup timer profile"
+            "fixture should cover synthetic startup timer state"
         );
         assert!(
             suite

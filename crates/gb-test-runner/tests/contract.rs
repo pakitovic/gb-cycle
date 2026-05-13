@@ -980,7 +980,7 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
         .iter()
         .find(|case| case.id == "mooneye-emulator-only-mbc1-multicart-rom-8mb")
         .expect("mooneye suite should include emulator-only mbc1 multicart_rom_8Mb");
-    assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Experimental);
+    assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Strict);
     let sprite_priority = suite
         .cases
         .iter()
