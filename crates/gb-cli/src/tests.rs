@@ -428,7 +428,7 @@ fn run_command_rejects_incompatible_machine_save_states() {
             "run",
             rom_path.to_str().expect("path should be valid UTF-8"),
             "--model",
-            "mgb",
+            "pocket",
             "--tcycles",
             "1",
             "--state-in",
@@ -917,7 +917,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
     let action = parse_run_arguments([
         "demo.gb",
         "--model",
-        "dmg0",
+        "color",
         "--startup",
         "real-boot",
         "--mode",
@@ -953,7 +953,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
     match action {
         CliAction::Run(options) => {
             assert_eq!(options.rom_path, PathBuf::from("demo.gb"));
-            assert_eq!(options.model, RunModel::Dmg0);
+            assert_eq!(options.model, RunModel::Color);
             assert_eq!(options.startup_mode, StartupMode::RealBoot);
             assert_eq!(options.execution_mode, ExecutionMode::Permissive);
             assert_eq!(options.boot_rom_dir, Some(PathBuf::from("boot-assets")));
@@ -1027,7 +1027,7 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     }
 
     assert_eq!(
-        parse_run_arguments(["--model", "dmg"]).expect_err("ROM path must come first"),
+        parse_run_arguments(["--model", "game-boy"]).expect_err("ROM path must come first"),
         "the ROM path must be the first positional argument to `gb-cli run`"
     );
     assert_eq!(
@@ -1756,12 +1756,11 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
 fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::GameBoy.console_model(), ConsoleModel::GameBoy);
     assert_eq!(RunModel::GameBoy.name(), "game-boy");
-    assert_eq!(RunModel::Dmg0.console_model(), ConsoleModel::GameBoy);
-    assert_eq!(RunModel::Dmg.boot_rom_kind(), BootRomKind::Dmg);
-    assert_eq!(RunModel::Mgb.boot_rom_kind(), BootRomKind::Mgb);
-    assert_eq!(RunModel::Mgb.name(), "mgb");
-    assert_eq!(RunModel::GameBoyLight.boot_rom_kind(), BootRomKind::Mgb);
-    assert_eq!(RunModel::GameBoyColor.boot_rom_kind(), BootRomKind::Cgb);
+    assert_eq!(RunModel::GameBoy.boot_rom_kind(), BootRomKind::Dmg);
+    assert_eq!(RunModel::Pocket.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(RunModel::Pocket.name(), "pocket");
+    assert_eq!(RunModel::Light.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(RunModel::Color.boot_rom_kind(), BootRomKind::Cgb);
     assert_eq!(SavePolicy::Manual.name(), "manual");
     assert_eq!(SavePolicy::OnClose.name(), "on-close");
     assert_eq!(SavePolicy::OnWrite.name(), "on-write");
@@ -1799,13 +1798,15 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     );
 
     assert_eq!(parse_run_model("game-boy"), Ok(RunModel::GameBoy));
-    assert_eq!(parse_run_model("pocket"), Ok(RunModel::GameBoyPocket));
-    assert_eq!(parse_run_model("light"), Ok(RunModel::GameBoyLight));
-    assert_eq!(parse_run_model("color"), Ok(RunModel::GameBoyColor));
-    assert_eq!(parse_run_model("dmg0"), Ok(RunModel::Dmg0));
-    assert_eq!(parse_run_model("dmg"), Ok(RunModel::Dmg));
-    assert_eq!(parse_run_model("mgb"), Ok(RunModel::Mgb));
-    assert_eq!(parse_run_model("cgb"), Ok(RunModel::Cgb));
+    assert_eq!(parse_run_model("pocket"), Ok(RunModel::Pocket));
+    assert_eq!(parse_run_model("light"), Ok(RunModel::Light));
+    assert_eq!(parse_run_model("color"), Ok(RunModel::Color));
+    for legacy in ["dmg0", "dmg", "mgb", "cgb"] {
+        let error = parse_run_model(legacy).expect_err("legacy models should fail");
+        assert!(error.contains("unsupported --model value"));
+        assert!(error.contains("game-boy, pocket, light, color"));
+        assert!(!error.contains("dmg0, dmg, mgb, cgb"));
+    }
     assert!(
         parse_run_model("sgb")
             .expect_err("unsupported models should fail")

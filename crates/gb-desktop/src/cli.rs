@@ -1,7 +1,7 @@
 use crate::audio_recording::{
     DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecordingOptions,
 };
-use gb_core::{ApuRecordedChannel, BootRomKind, ExecutionMode, StartupMode};
+use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
     DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
@@ -58,15 +58,10 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--model requires a value".to_string());
                 };
-                let parsed = parse_console_model(value.as_ref())?;
-                config.launch.console_model = parsed.model;
-                if let Some(kind) = parsed.legacy_boot_rom_kind {
-                    config.boot_rom.kind = kind;
-                } else {
-                    config
-                        .boot_rom
-                        .normalize_kind_for_model(config.launch.console_model);
-                }
+                config.launch.console_model = parse_console_model(value.as_ref())?;
+                config
+                    .boot_rom
+                    .normalize_kind_for_model(config.launch.console_model);
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -275,7 +270,7 @@ pub fn help_text() -> &'static str {
         "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
-        "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy; legacy: dmg0,dmg,mgb,cgb)\n",
+        "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy)\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -324,48 +319,14 @@ pub fn help_text() -> &'static str {
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ParsedConsoleModel {
-    model: DesktopConsoleModel,
-    legacy_boot_rom_kind: Option<BootRomKind>,
-}
-
-fn parse_console_model(value: &str) -> Result<ParsedConsoleModel, String> {
+fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
     match value {
-        "game-boy" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoy,
-            legacy_boot_rom_kind: None,
-        }),
-        "pocket" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoyPocket,
-            legacy_boot_rom_kind: None,
-        }),
-        "light" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoyLight,
-            legacy_boot_rom_kind: None,
-        }),
-        "color" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoyColor,
-            legacy_boot_rom_kind: None,
-        }),
-        "dmg0" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoy,
-            legacy_boot_rom_kind: Some(BootRomKind::Dmg0),
-        }),
-        "dmg" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoy,
-            legacy_boot_rom_kind: Some(BootRomKind::Dmg),
-        }),
-        "mgb" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoyPocket,
-            legacy_boot_rom_kind: Some(BootRomKind::Mgb),
-        }),
-        "cgb" => Ok(ParsedConsoleModel {
-            model: DesktopConsoleModel::GameBoyColor,
-            legacy_boot_rom_kind: Some(BootRomKind::Cgb),
-        }),
+        "game-boy" => Ok(DesktopConsoleModel::GameBoy),
+        "pocket" => Ok(DesktopConsoleModel::GameBoyPocket),
+        "light" => Ok(DesktopConsoleModel::GameBoyLight),
+        "color" => Ok(DesktopConsoleModel::GameBoyColor),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color, dmg0, dmg, mgb, cgb"
+            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color"
         )),
     }
 }
@@ -578,6 +539,7 @@ fn parse_audio_recording_stems(value: &str) -> Result<Vec<ApuRecordedChannel>, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gb_core::BootRomKind;
     use gb_desktop::PreferredGamepadIdentity;
 
     #[test]
@@ -881,7 +843,7 @@ mod tests {
         let action = parse_cli_arguments([
             "demo.gb",
             "--model",
-            "dmg0",
+            "pocket",
             "--mode",
             "experimental",
             "--boot-rom-dir",
@@ -916,9 +878,9 @@ mod tests {
         assert_eq!(options.audio_recording, None);
         assert_eq!(
             options.config.launch.console_model,
-            DesktopConsoleModel::GameBoy
+            DesktopConsoleModel::GameBoyPocket
         );
-        assert_eq!(options.config.boot_rom.kind, BootRomKind::Dmg0);
+        assert_eq!(options.config.boot_rom.kind, BootRomKind::Mgb);
         assert_eq!(
             options.config.launch.execution_mode,
             ExecutionMode::Experimental
@@ -1003,60 +965,26 @@ mod tests {
     fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
         assert_eq!(
             parse_console_model("game-boy"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoy,
-                legacy_boot_rom_kind: None,
-            })
+            Ok(DesktopConsoleModel::GameBoy)
         );
         assert_eq!(
             parse_console_model("pocket"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoyPocket,
-                legacy_boot_rom_kind: None,
-            })
+            Ok(DesktopConsoleModel::GameBoyPocket)
         );
         assert_eq!(
             parse_console_model("light"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoyLight,
-                legacy_boot_rom_kind: None,
-            })
+            Ok(DesktopConsoleModel::GameBoyLight)
         );
         assert_eq!(
             parse_console_model("color"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoyColor,
-                legacy_boot_rom_kind: None,
-            })
+            Ok(DesktopConsoleModel::GameBoyColor)
         );
-        assert_eq!(
-            parse_console_model("dmg0"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoy,
-                legacy_boot_rom_kind: Some(BootRomKind::Dmg0),
-            })
-        );
-        assert_eq!(
-            parse_console_model("dmg"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoy,
-                legacy_boot_rom_kind: Some(BootRomKind::Dmg),
-            })
-        );
-        assert_eq!(
-            parse_console_model("mgb"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoyPocket,
-                legacy_boot_rom_kind: Some(BootRomKind::Mgb),
-            })
-        );
-        assert_eq!(
-            parse_console_model("cgb"),
-            Ok(ParsedConsoleModel {
-                model: DesktopConsoleModel::GameBoyColor,
-                legacy_boot_rom_kind: Some(BootRomKind::Cgb),
-            })
-        );
+        for legacy in ["dmg0", "dmg", "mgb", "cgb"] {
+            let error = parse_console_model(legacy).expect_err("legacy models should fail");
+            assert!(error.contains("unsupported --model value"));
+            assert!(error.contains("game-boy, pocket, light, color"));
+            assert!(!error.contains("dmg0, dmg, mgb, cgb"));
+        }
         assert!(parse_console_model("sgb").is_err());
 
         assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));

@@ -48,7 +48,7 @@ Manual `workflow_dispatch` runs are for artifact validation and upload the packa
 
 ## Core emulation
 
-Reuses the same visible console model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`. `SYSTEM -> MODEL` selects the product model (`GAME BOY`, `POCKET`, `LIGHT`, `COLOR`), while `BOOT ROM -> ROM` selects the concrete firmware image used only by `RealBoot`; if the selected firmware is invalid for the model, the desktop configuration normalizes it back to that model's default.
+Reuses the same visible console model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`. The desktop `--model` flag accepts only the canonical product names `game-boy`, `pocket`, `light`, and `color`; the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb` are not accepted. `SYSTEM -> MODEL` selects the product model (`GAME BOY`, `POCKET`, `LIGHT`, `COLOR`), while `BOOT ROM -> ROM` selects the concrete firmware image used only by `RealBoot`; if the selected firmware is invalid for the model, the desktop configuration normalizes it back to that model's default.
 
 `--mode` and `SYSTEM -> MODE` apply the complete `Strict`, `Permissive`, or `Experimental` compatibility preset, including validation, heuristic, override, and diagnostic policy, so desktop ROM loading follows the same cartridge-admission behavior as the automated runner for matching execution modes.
 

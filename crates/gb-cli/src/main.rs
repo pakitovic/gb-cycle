@@ -34,7 +34,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  gb-cli run <rom> [options]\n",
     "\n",
     "Options:\n",
-    "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy; legacy: dmg0,dmg,mgb,cgb)\n",
+    "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy)\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -95,44 +95,35 @@ enum BootRomVerificationMode {
 enum RunModel {
     #[default]
     GameBoy,
-    GameBoyPocket,
-    GameBoyLight,
-    GameBoyColor,
-    Dmg0,
-    Dmg,
-    Mgb,
-    Cgb,
+    Pocket,
+    Light,
+    Color,
 }
 
 impl RunModel {
     fn console_model(self) -> ConsoleModel {
         match self {
-            Self::GameBoy | Self::Dmg0 | Self::Dmg => ConsoleModel::GameBoy,
-            Self::GameBoyPocket | Self::Mgb => ConsoleModel::GameBoyPocket,
-            Self::GameBoyLight => ConsoleModel::GameBoyLight,
-            Self::GameBoyColor | Self::Cgb => ConsoleModel::GameBoyColor,
+            Self::GameBoy => ConsoleModel::GameBoy,
+            Self::Pocket => ConsoleModel::GameBoyPocket,
+            Self::Light => ConsoleModel::GameBoyLight,
+            Self::Color => ConsoleModel::GameBoyColor,
         }
     }
 
     fn boot_rom_kind(self) -> BootRomKind {
         match self {
-            Self::GameBoy | Self::Dmg => BootRomKind::Dmg,
-            Self::Dmg0 => BootRomKind::Dmg0,
-            Self::GameBoyPocket | Self::GameBoyLight | Self::Mgb => BootRomKind::Mgb,
-            Self::GameBoyColor | Self::Cgb => BootRomKind::Cgb,
+            Self::GameBoy => BootRomKind::Dmg,
+            Self::Pocket | Self::Light => BootRomKind::Mgb,
+            Self::Color => BootRomKind::Cgb,
         }
     }
 
     fn name(self) -> &'static str {
         match self {
             Self::GameBoy => "game-boy",
-            Self::GameBoyPocket => "pocket",
-            Self::GameBoyLight => "light",
-            Self::GameBoyColor => "color",
-            Self::Dmg0 => "dmg0",
-            Self::Dmg => "dmg",
-            Self::Mgb => "mgb",
-            Self::Cgb => "cgb",
+            Self::Pocket => "pocket",
+            Self::Light => "light",
+            Self::Color => "color",
         }
     }
 }
@@ -1540,15 +1531,11 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
 fn parse_run_model(value: &str) -> Result<RunModel, String> {
     match value {
         "game-boy" => Ok(RunModel::GameBoy),
-        "pocket" => Ok(RunModel::GameBoyPocket),
-        "light" => Ok(RunModel::GameBoyLight),
-        "color" => Ok(RunModel::GameBoyColor),
-        "dmg0" => Ok(RunModel::Dmg0),
-        "dmg" => Ok(RunModel::Dmg),
-        "mgb" => Ok(RunModel::Mgb),
-        "cgb" => Ok(RunModel::Cgb),
+        "pocket" => Ok(RunModel::Pocket),
+        "light" => Ok(RunModel::Light),
+        "color" => Ok(RunModel::Color),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color, dmg0, dmg, mgb, cgb"
+            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color"
         )),
     }
 }

@@ -260,6 +260,7 @@ pub enum StartupMemoryPolicy {
     DmgBootLogoVram,
     CgbRealBootEntry,
     CgbRealBootEntryWithDmgBootLogoVram,
+    CgbRealBootEntryWithDmgBootLogoTiles,
 }
 
 impl StartupMemoryPolicy {
@@ -268,6 +269,10 @@ impl StartupMemoryPolicy {
             Self::DeterministicPatterned => {}
             Self::DmgBootLogoVram => apply_dmg_boot_logo_vram(bytes),
             Self::CgbRealBootEntry => initialize_cgb_real_boot_entry_vram(bytes),
+            Self::CgbRealBootEntryWithDmgBootLogoTiles => {
+                initialize_cgb_real_boot_entry_vram(bytes);
+                apply_dmg_boot_logo_tile_vram(bytes);
+            }
             Self::CgbRealBootEntryWithDmgBootLogoVram => {
                 initialize_cgb_real_boot_entry_vram(bytes);
                 apply_dmg_boot_logo_vram(bytes);
@@ -278,14 +283,18 @@ impl StartupMemoryPolicy {
     pub(crate) fn initialize_wram(self, bytes: &mut [u8]) {
         match self {
             Self::DeterministicPatterned | Self::DmgBootLogoVram => self.fill_bytes(bytes, 0xC000),
-            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => bytes.fill(0),
+            Self::CgbRealBootEntry
+            | Self::CgbRealBootEntryWithDmgBootLogoVram
+            | Self::CgbRealBootEntryWithDmgBootLogoTiles => bytes.fill(0),
         }
     }
 
     pub(crate) fn initialize_hram(self, bytes: &mut [u8]) {
         match self {
             Self::DeterministicPatterned | Self::DmgBootLogoVram => self.fill_bytes(bytes, 0xFF80),
-            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => {
+            Self::CgbRealBootEntry
+            | Self::CgbRealBootEntryWithDmgBootLogoVram
+            | Self::CgbRealBootEntryWithDmgBootLogoTiles => {
                 initialize_cgb_real_boot_entry_hram(bytes);
             }
         }
@@ -296,7 +305,9 @@ impl StartupMemoryPolicy {
             Self::DeterministicPatterned | Self::DmgBootLogoVram => {
                 fill_deterministic_startup_pattern(bytes, base_address)
             }
-            Self::CgbRealBootEntry | Self::CgbRealBootEntryWithDmgBootLogoVram => {}
+            Self::CgbRealBootEntry
+            | Self::CgbRealBootEntryWithDmgBootLogoVram
+            | Self::CgbRealBootEntryWithDmgBootLogoTiles => {}
         }
     }
 }
@@ -337,6 +348,11 @@ fn initialize_cgb_real_boot_entry_hram(bytes: &mut [u8]) {
 }
 
 fn apply_dmg_boot_logo_vram(bytes: &mut [u8]) {
+    apply_dmg_boot_logo_tile_vram(bytes);
+    apply_dmg_boot_logo_tilemap_vram(bytes);
+}
+
+fn apply_dmg_boot_logo_tile_vram(bytes: &mut [u8]) {
     for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
         write_vram_backing_byte(
             bytes,
@@ -344,6 +360,9 @@ fn apply_dmg_boot_logo_vram(bytes: &mut [u8]) {
             byte,
         );
     }
+}
+
+fn apply_dmg_boot_logo_tilemap_vram(bytes: &mut [u8]) {
     for (index, byte) in DMG_BOOT_LOGO_MAP_BYTES.iter().copied().enumerate() {
         write_vram_backing_byte(bytes, DMG_BOOT_LOGO_MAP_VRAM_START + index as u16, byte);
     }
@@ -580,7 +599,7 @@ impl BootController {
     pub fn startup_memory_policy(&self) -> StartupMemoryPolicy {
         match (self.startup_mode, self.console_model.is_cgb_family()) {
             (StartupMode::CustomBoot, true) => {
-                StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoVram
+                StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
             }
             (StartupMode::CustomBoot, false) => StartupMemoryPolicy::DmgBootLogoVram,
             (StartupMode::SkipBoot, true) => StartupMemoryPolicy::CgbRealBootEntry,

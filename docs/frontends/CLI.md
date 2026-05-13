@@ -1,6 +1,6 @@
 # gb-cli
 
-Headless CLI runner for the DMG family.
+Headless CLI runner for Game Boy and Game Boy Color product models.
 
 ## Subcommands
 
@@ -33,7 +33,7 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Console models
 
-`run` currently exposes the DMG-family models `dmg0`, `dmg`, and `mgb`.
+`run` exposes the canonical product-model names `game-boy`, `pocket`, `light`, and `color` through `--model`; the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb` are not accepted. The selected model chooses the default `RealBoot` firmware kind for that product (`dmg_boot.bin`, `mgb_boot.bin`, or `cgb_boot.bin`), while concrete boot-ROM image handling remains owned by the boot-ROM search path and verification options.
 
 ## Startup and compatibility
 

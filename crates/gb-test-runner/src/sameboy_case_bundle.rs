@@ -429,14 +429,21 @@ fn append_startup_memory_write_args(command: &mut Command, write: StartupMemoryW
 
 fn append_case_startup_memory_write_args(command: &mut Command, case: &crate::RomTestCase) {
     if case.startup_mode == StartupMode::CustomBoot {
-        append_dmg_boot_logo_vram_startup_write_args(command);
+        append_custom_boot_vram_startup_write_args(command, case.console_model);
     }
     for write in &case.startup_memory_writes {
         append_startup_memory_write_args(command, *write);
     }
 }
 
-fn append_dmg_boot_logo_vram_startup_write_args(command: &mut Command) {
+fn append_custom_boot_vram_startup_write_args(command: &mut Command, console_model: ConsoleModel) {
+    append_dmg_boot_logo_tile_startup_write_args(command);
+    if !console_model.is_cgb_family() {
+        append_dmg_boot_logo_tilemap_startup_write_args(command);
+    }
+}
+
+fn append_dmg_boot_logo_tile_startup_write_args(command: &mut Command) {
     for (index, byte) in gb_core::boot::DMG_BOOT_LOGO_TILE_BYTES
         .iter()
         .copied()
@@ -450,6 +457,9 @@ fn append_dmg_boot_logo_vram_startup_write_args(command: &mut Command) {
             ),
         );
     }
+}
+
+fn append_dmg_boot_logo_tilemap_startup_write_args(command: &mut Command) {
     for (index, byte) in gb_core::boot::DMG_BOOT_LOGO_MAP_BYTES
         .iter()
         .copied()
@@ -577,9 +587,10 @@ fn build_sameboy_case_bundle_runner(
 
 fn model_arg(case: &crate::RomTestCase) -> &'static str {
     match case.console_model {
-        ConsoleModel::GameBoy => "dmg",
-        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => "mgb",
-        ConsoleModel::GameBoyColor => "cgb",
+        ConsoleModel::GameBoy => "game-boy",
+        ConsoleModel::GameBoyPocket => "pocket",
+        ConsoleModel::GameBoyLight => "light",
+        ConsoleModel::GameBoyColor => "color",
     }
 }
 
@@ -591,7 +602,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use gb_core::StartupMode;
+    use gb_core::{ConsoleModel, StartupMode};
 
     use crate::{
         CaptureKind, RomRunner, TEST_ROM_ROOT_ENV_VAR, Timeout, phase_6_cartridge_oracle_suite,
@@ -599,7 +610,7 @@ mod tests {
 
     use super::{
         SAMEBOY_CASE_BUNDLE_BIN_ENV_VAR, SameBoyCaseBundleExecutionError, SameBoyCaseBundleRunner,
-        default_sameboy_case_bundle_runner_path,
+        append_custom_boot_vram_startup_write_args, default_sameboy_case_bundle_runner_path,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -664,6 +675,52 @@ mod tests {
             .permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).expect("fake runner should be executable");
+    }
+
+    fn custom_boot_startup_write_args(console_model: ConsoleModel) -> Vec<String> {
+        let mut command = std::process::Command::new("runner");
+        append_custom_boot_vram_startup_write_args(&mut command, console_model);
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn startup_write_exists(args: &[String], address: u16) -> bool {
+        let address = address.to_string();
+        args.windows(3)
+            .any(|window| window[0] == "--write-memory" && window[1] == address)
+    }
+
+    #[test]
+    fn custom_boot_startup_writes_keep_cgb_tilemap_clear_for_sameboy_case_bundles() {
+        let dmg_args = custom_boot_startup_write_args(ConsoleModel::GameBoy);
+        let cgb_args = custom_boot_startup_write_args(ConsoleModel::GameBoyColor);
+
+        assert!(startup_write_exists(
+            &dmg_args,
+            gb_core::boot::DMG_BOOT_LOGO_TILE_VRAM_START
+        ));
+        assert!(startup_write_exists(
+            &dmg_args,
+            gb_core::boot::DMG_BOOT_LOGO_MAP_VRAM_START
+        ));
+        assert!(startup_write_exists(
+            &dmg_args,
+            gb_core::boot::DMG_BOOT_LOGO_MAP_VRAM_START + 0x20
+        ));
+        assert!(startup_write_exists(
+            &cgb_args,
+            gb_core::boot::DMG_BOOT_LOGO_TILE_VRAM_START
+        ));
+        assert!(!startup_write_exists(
+            &cgb_args,
+            gb_core::boot::DMG_BOOT_LOGO_MAP_VRAM_START
+        ));
+        assert!(!startup_write_exists(
+            &cgb_args,
+            gb_core::boot::DMG_BOOT_LOGO_MAP_VRAM_START + 0x20
+        ));
     }
 
     fn write_executable(path: &Path, body: &str) {
@@ -755,7 +812,7 @@ mod tests {
         );
 
         let args = fs::read_to_string(args_output).expect("runner args should be readable");
-        assert!(args.contains("--model\ndmg\n"));
+        assert!(args.contains("--model\ngame-boy\n"));
         assert!(args.contains("--timeout-tcycles\n200000\n"));
         assert!(args.contains("--startup-cartridge-rtc-seconds\n93784\n"));
         assert!(
