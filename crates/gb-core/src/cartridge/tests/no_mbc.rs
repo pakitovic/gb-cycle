@@ -84,10 +84,21 @@ fn warn_validation_can_admit_unambiguous_no_mbc_ram_header_mismatches_with_diagn
             .iter()
             .any(|diagnostic| diagnostic.message.contains("expects RAM size code 0x02"))
     );
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("unsupported RAM configuration"))
-    );
+    assert!(report.diagnostics().iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("No MBC baseline with 8 KiB linear external RAM")
+    }));
+
+    let (mut cartridge, _) = report.into_parts();
+    cartridge.write_rom(0x0000, 0x00);
+    cartridge.write_ram(0xA000, 0x11);
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_ram(0xA800, 0x22);
+    cartridge.write_rom(0x0000, 0x00);
+    cartridge.write_ram(0xBFFF, 0x33);
+
+    assert_eq!(cartridge.read_ram(0xA000), 0x11);
+    assert_eq!(cartridge.read_ram(0xA800), 0x22);
+    assert_eq!(cartridge.read_ram(0xBFFF), 0x33);
 }

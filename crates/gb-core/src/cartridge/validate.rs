@@ -62,9 +62,14 @@ pub(in crate::cartridge) fn validate_no_mbc(
     }
 
     if header.ram_size.decoded_bytes != Some(expected_ram_code_decompressed(expected_ram_code)) {
+        let resolved_ram_len = header.ram_size.decoded_bytes.map_or_else(
+            || "an unsupported length".to_string(),
+            |bytes| format!("{bytes} bytes"),
+        );
         ctx.check_degradable(format!(
-            "{} resolved to an unsupported RAM configuration from code {:#04X}",
+            "{} uses the fixed {}, but header RAM size code {:#04X} resolved to {resolved_ram_len}",
             ctx.name(),
+            no_mbc_ram_baseline_description(expected_ram_code),
             header.ram_size.raw_code
         ))?;
     }
@@ -838,5 +843,13 @@ pub(in crate::cartridge) const fn expected_ram_code_decompressed(code: u8) -> us
         0x00 => 0,
         0x02 => NO_MBC_SUPPORTED_RAM_BYTES,
         _ => 0,
+    }
+}
+
+const fn no_mbc_ram_baseline_description(expected_ram_code: u8) -> &'static str {
+    match expected_ram_code {
+        0x00 => "No MBC baseline with no external RAM",
+        0x02 => "No MBC baseline with 8 KiB linear external RAM",
+        _ => "unknown No MBC RAM baseline",
     }
 }

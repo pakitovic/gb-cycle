@@ -50,7 +50,7 @@ fn private_validation_helpers_cover_remaining_strict_rejection_blocks() {
     assert!(matches!(
         no_mbc_ram_decode_error,
         CartridgeLoadError::Rejected { reason, .. }
-            if reason.contains("resolved to an unsupported RAM configuration")
+            if reason.contains("No MBC baseline with no external RAM")
     ));
 
     diagnostics.clear();
