@@ -33,7 +33,7 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Console models
 
-`run` exposes the canonical product-model names `game-boy`, `pocket`, `light`, and `color` through `--model`; the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb` are not accepted. The selected model chooses the default `RealBoot` firmware kind for that product (`dmg_boot.bin`, `mgb_boot.bin`, or `cgb_boot.bin`), while concrete boot-ROM image handling remains owned by the boot-ROM search path and verification options.
+`run` exposes the hardware-profile model names `DMG`, `MGB`, `LGB`, and `CGB` through `--model`; the previous product names `game-boy`, `pocket`, `light`, and `color`, plus the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb`, are not accepted. The selected model chooses the default `RealBoot` firmware kind for that product (`dmg_boot.bin`, `mgb_boot.bin`, or `cgb_boot.bin`), while concrete boot-ROM image handling remains owned by the boot-ROM search path and verification options.
 
 ## Startup and compatibility
 
@@ -44,6 +44,7 @@ Both commands load the ROM first, then validate the save payload against the car
 ## Output options
 
 - `--framebuffer-out` writes the final `160x144` framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`.
+- `--palette grey` maps DMG-family framebuffer shade indices through the same `DMG_GREY_DISPLAY_PALETTE` grey RGB values used by `gb-desktop`, but only when the final effective `--model` is `DMG`; the option is parsed and ignored for `MGB`, `LGB`, and `CGB`. For PGM artifacts the override writes an 8-bit grey PGM (`maxval 255`) instead of the default raw shade-index PGM (`maxval 3`), while CGB PNG output continues to use the core RGB555 framebuffer directly.
 - `--serial-out` writes captured serial output to a file.
 - `--trace-out` writes the in-memory scheduler trace text for the run.
 

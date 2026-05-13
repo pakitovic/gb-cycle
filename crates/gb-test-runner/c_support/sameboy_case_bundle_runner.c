@@ -46,7 +46,7 @@ static uint32_t framebuffer[160 * 144];
 static void usage(const char *argv0)
 {
     fprintf(stderr,
-            "Usage: %s --model <game-boy|pocket|light|color> --rom <path> "
+            "Usage: %s --model <DMG|MGB|LGB|CGB> --rom <path> "
             "(--serial-hex-out <path> | --framebuffer-pgm-out <path> | --probe-json-out <path>) "
             "[--write-memory <address> <value>]... "
             "[--probe-interval-tcycles <n>] "
@@ -211,17 +211,17 @@ static bool parse_arguments(int argc, char **argv, options_t *options)
 
 static GB_model_t parse_model(const char *model)
 {
-    if (strcmp(model, "game-boy") == 0) {
+    if (strcmp(model, "DMG") == 0) {
         return GB_MODEL_DMG_B;
     }
-    if (strcmp(model, "pocket") == 0 || strcmp(model, "light") == 0) {
+    if (strcmp(model, "MGB") == 0 || strcmp(model, "LGB") == 0) {
         return GB_MODEL_MGB;
     }
-    if (strcmp(model, "color") == 0) {
+    if (strcmp(model, "CGB") == 0) {
         return GB_MODEL_CGB_E;
     }
 
-    fprintf(stderr, "unsupported model %s; expected one of: game-boy, pocket, light, color\n", model);
+    fprintf(stderr, "unsupported model %s; expected one of: DMG, MGB, LGB, CGB\n", model);
     exit(2);
 }
 

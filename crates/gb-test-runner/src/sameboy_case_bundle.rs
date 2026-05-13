@@ -587,10 +587,10 @@ fn build_sameboy_case_bundle_runner(
 
 fn model_arg(case: &crate::RomTestCase) -> &'static str {
     match case.console_model {
-        ConsoleModel::GameBoy => "game-boy",
-        ConsoleModel::GameBoyPocket => "pocket",
-        ConsoleModel::GameBoyLight => "light",
-        ConsoleModel::GameBoyColor => "color",
+        ConsoleModel::GameBoy => "DMG",
+        ConsoleModel::GameBoyPocket => "MGB",
+        ConsoleModel::GameBoyLight => "LGB",
+        ConsoleModel::GameBoyColor => "CGB",
     }
 }
 
@@ -812,7 +812,7 @@ mod tests {
         );
 
         let args = fs::read_to_string(args_output).expect("runner args should be readable");
-        assert!(args.contains("--model\ngame-boy\n"));
+        assert!(args.contains("--model\nDMG\n"));
         assert!(args.contains("--timeout-tcycles\n200000\n"));
         assert!(args.contains("--startup-cartridge-rtc-seconds\n93784\n"));
         assert!(

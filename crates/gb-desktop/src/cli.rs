@@ -4,8 +4,8 @@ use crate::audio_recording::{
 use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
-    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadFaceLayout, SaveDirectoryPolicy, SaveKeyPolicy,
+    DesktopDisplayPalette, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadFaceLayout, SaveDirectoryPolicy, SaveKeyPolicy,
 };
 use gb_persistence::CartridgeSaveKey;
 use std::path::PathBuf;
@@ -50,6 +50,7 @@ where
     let mut audio_recording_sample_rate_hz = DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ;
     let mut audio_recording_sample_rate_overridden = false;
     let mut audio_recording_stem_channels = Vec::new();
+    let mut requested_display_palette = None;
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -117,6 +118,12 @@ where
             }
             "--no-vsync" => {
                 config.video.vsync = false;
+            }
+            "--palette" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--palette requires a value".to_string());
+                };
+                requested_display_palette = Some(parse_display_palette(value.as_ref())?);
             }
             "--scale" => {
                 let Some(value) = arguments.next() else {
@@ -232,6 +239,12 @@ where
         return Err("--link-rom requires a primary ROM positional argument".to_string());
     }
 
+    if config.launch.console_model == DesktopConsoleModel::GameBoy
+        && let Some(display_palette) = requested_display_palette
+    {
+        config.video.display_palette = display_palette;
+    }
+
     let audio_recording = match audio_recording_path {
         Some(output_path) => Some(DesktopAudioRecordingOptions {
             output_path,
@@ -270,7 +283,7 @@ pub fn help_text() -> &'static str {
         "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
-        "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy)\n",
+        "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -284,6 +297,7 @@ pub fn help_text() -> &'static str {
         "  --scale <n>                            Set the initial window scale (default: 4)\n",
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
+        "  --palette <grey>                       Use the DMG grey display palette when --model DMG is active\n",
         "  --mute                                 Start with audio disabled\n",
         "  --audio-record <path.wav|path.aifc>    Record direct stereo APU output to WAV/AIFC (pre-mute/pre-volume)\n",
         "  --audio-record-rate <hz>               Override the recording sample rate (default: 96000)\n",
@@ -321,12 +335,12 @@ pub fn help_text() -> &'static str {
 
 fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
     match value {
-        "game-boy" => Ok(DesktopConsoleModel::GameBoy),
-        "pocket" => Ok(DesktopConsoleModel::GameBoyPocket),
-        "light" => Ok(DesktopConsoleModel::GameBoyLight),
-        "color" => Ok(DesktopConsoleModel::GameBoyColor),
+        "DMG" => Ok(DesktopConsoleModel::GameBoy),
+        "MGB" => Ok(DesktopConsoleModel::GameBoyPocket),
+        "LGB" => Ok(DesktopConsoleModel::GameBoyLight),
+        "CGB" => Ok(DesktopConsoleModel::GameBoyColor),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB"
         )),
     }
 }
@@ -360,6 +374,15 @@ fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMo
         "strict" => Ok(BootRomVerificationMode::Strict),
         _ => Err(format!(
             "unsupported --boot-rom-verify value {value:?}; expected off, warn, or strict"
+        )),
+    }
+}
+
+fn parse_display_palette(value: &str) -> Result<DesktopDisplayPalette, String> {
+    match value {
+        "grey" => Ok(DesktopDisplayPalette::Grey),
+        _ => Err(format!(
+            "unsupported --palette value {value:?}; expected grey"
         )),
     }
 }
@@ -822,6 +845,7 @@ mod tests {
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--no-rewind"));
+        assert!(text.contains("--palette <grey>"));
         assert!(text.contains("--mute"));
         assert!(text.contains("--audio-record <path.wav|path.aifc>"));
         assert!(text.contains("--audio-record-rate <hz>"));
@@ -843,7 +867,7 @@ mod tests {
         let action = parse_cli_arguments([
             "demo.gb",
             "--model",
-            "pocket",
+            "MGB",
             "--mode",
             "experimental",
             "--boot-rom-dir",
@@ -914,6 +938,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_applies_grey_palette_only_for_the_final_dmg_model() {
+        let action = parse_cli_arguments(["demo.gb", "--model", "DMG", "--palette", "grey"])
+            .expect("DMG grey palette override should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopDisplayPalette::Grey
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--palette", "grey", "--model", "DMG"])
+            .expect("palette override should be order-independent");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopDisplayPalette::Grey
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--model", "MGB", "--palette", "grey"])
+            .expect("non-DMG palette override should be ignored");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopConfig::default().video.display_palette
+        );
+    }
+
+    #[test]
     fn parse_supports_help_and_remaining_directional_gamepad_bindings() {
         assert_eq!(parse_cli_arguments(["--help"]), Ok(CliAction::ShowHelp));
         assert_eq!(parse_cli_arguments(["-h"]), Ok(CliAction::ShowHelp));
@@ -963,27 +1020,26 @@ mod tests {
 
     #[test]
     fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
+        assert_eq!(parse_console_model("DMG"), Ok(DesktopConsoleModel::GameBoy));
         assert_eq!(
-            parse_console_model("game-boy"),
-            Ok(DesktopConsoleModel::GameBoy)
-        );
-        assert_eq!(
-            parse_console_model("pocket"),
+            parse_console_model("MGB"),
             Ok(DesktopConsoleModel::GameBoyPocket)
         );
         assert_eq!(
-            parse_console_model("light"),
+            parse_console_model("LGB"),
             Ok(DesktopConsoleModel::GameBoyLight)
         );
         assert_eq!(
-            parse_console_model("color"),
+            parse_console_model("CGB"),
             Ok(DesktopConsoleModel::GameBoyColor)
         );
-        for legacy in ["dmg0", "dmg", "mgb", "cgb"] {
-            let error = parse_console_model(legacy).expect_err("legacy models should fail");
+        for previous in [
+            "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
+        ] {
+            let error = parse_console_model(previous).expect_err("previous models should fail");
             assert!(error.contains("unsupported --model value"));
-            assert!(error.contains("game-boy, pocket, light, color"));
-            assert!(!error.contains("dmg0, dmg, mgb, cgb"));
+            assert!(error.contains("DMG, MGB, LGB, CGB"));
+            assert!(!error.contains("game-boy, pocket, light, color"));
         }
         assert!(parse_console_model("sgb").is_err());
 
@@ -1237,6 +1293,10 @@ mod tests {
             "--scale requires a value"
         );
         assert_eq!(
+            parse_cli_arguments(["--palette"]).expect_err("missing palette values should fail"),
+            "--palette requires a value"
+        );
+        assert_eq!(
             parse_cli_arguments(["--audio-record"])
                 .expect_err("missing audio-record values should fail"),
             "--audio-record requires a value"
@@ -1293,6 +1353,7 @@ mod tests {
         assert!(parse_cli_arguments(["--boot-rom-verify", "lenient"]).is_err());
         assert!(parse_cli_arguments(["--save-key", "bad/key"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
+        assert!(parse_cli_arguments(["--palette", "green"]).is_err());
         assert!(parse_cli_arguments(["--scale", "0"]).is_err());
         assert!(parse_cli_arguments(["--audio-record-rate", "0"]).is_err());
         assert!(parse_cli_arguments(["--audio-record-rate", "wide"]).is_err());

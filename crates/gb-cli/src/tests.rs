@@ -428,7 +428,7 @@ fn run_command_rejects_incompatible_machine_save_states() {
             "run",
             rom_path.to_str().expect("path should be valid UTF-8"),
             "--model",
-            "pocket",
+            "MGB",
             "--tcycles",
             "1",
             "--state-in",
@@ -860,8 +860,9 @@ fn saves_commands_surface_output_writer_failures() {
 
 #[test]
 fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
-    let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3], None)
-        .expect("PGM encoding should succeed");
+    let encoded =
+        encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3], None, None)
+            .expect("PGM encoding should succeed");
 
     assert!(encoded.starts_with(b"P5\n160 144\n3\n"));
 }
@@ -917,7 +918,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
     let action = parse_run_arguments([
         "demo.gb",
         "--model",
-        "color",
+        "CGB",
         "--startup",
         "real-boot",
         "--mode",
@@ -935,6 +936,8 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         "serial.bin",
         "--framebuffer-out",
         "framebuffer.png",
+        "--palette",
+        "grey",
         "--trace-out",
         "trace.txt",
         "--state-in",
@@ -966,6 +969,8 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
                 options.framebuffer_out,
                 Some(PathBuf::from("framebuffer.png"))
             );
+            assert_eq!(options.display_palette, None);
+            assert_eq!(options.effective_display_palette(), None);
             assert_eq!(options.trace_out, Some(PathBuf::from("trace.txt")));
             assert_eq!(options.state_in, Some(PathBuf::from("input.gbstate")));
             assert_eq!(options.state_out, Some(PathBuf::from("output.gbstate")));
@@ -976,6 +981,39 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         }
         other => panic!("expected run action, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_run_arguments_applies_grey_palette_only_for_the_final_dmg_model() {
+    let action = parse_run_arguments(["demo.gb", "--model", "DMG", "--palette", "grey"])
+        .expect("DMG grey palette override should parse");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.display_palette, Some(RunDisplayPalette::Grey));
+    assert_eq!(
+        options.effective_display_palette(),
+        Some(DMG_GREY_DISPLAY_PALETTE)
+    );
+
+    let action = parse_run_arguments(["demo.gb", "--palette", "grey", "--model", "DMG"])
+        .expect("palette override should be order-independent");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.display_palette, Some(RunDisplayPalette::Grey));
+    assert_eq!(
+        options.effective_display_palette(),
+        Some(DMG_GREY_DISPLAY_PALETTE)
+    );
+
+    let action = parse_run_arguments(["demo.gb", "--model", "MGB", "--palette", "grey"])
+        .expect("non-DMG palette override should be ignored");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.display_palette, None);
+    assert_eq!(options.effective_display_palette(), None);
 }
 
 #[test]
@@ -1002,6 +1040,7 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
             vec!["demo.gb", "--framebuffer-out"],
             "--framebuffer-out requires a value",
         ),
+        (vec!["demo.gb", "--palette"], "--palette requires a value"),
         (
             vec!["demo.gb", "--trace-out"],
             "--trace-out requires a value",
@@ -1027,7 +1066,7 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     }
 
     assert_eq!(
-        parse_run_arguments(["--model", "game-boy"]).expect_err("ROM path must come first"),
+        parse_run_arguments(["--model", "DMG"]).expect_err("ROM path must come first"),
         "the ROM path must be the first positional argument to `gb-cli run`"
     );
     assert_eq!(
@@ -1047,6 +1086,11 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     assert_eq!(
         parse_run_arguments(["demo.gb", "--mystery"]).expect_err("unknown run options should fail"),
         "unknown run option \"--mystery\"; run `gb-cli run --help`"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--palette", "green"])
+            .expect_err("unsupported palettes should fail"),
+        "unsupported --palette value \"green\"; expected grey"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "other.gb"])
@@ -1382,6 +1426,7 @@ fn run_command_streams_serial_stdout_in_summary_mode_and_reports_missing_roms() 
     let mut options = RunOptions::default_with_rom(rom_path.clone());
     options.serial_stdout = true;
     options.framebuffer_out = Some(framebuffer_path.clone());
+    options.display_palette = Some(RunDisplayPalette::Grey);
     options.tcycle_limit = Some(10_000);
     run_command(options, &mut stdout, &mut stderr).expect("run command should succeed");
 
@@ -1389,7 +1434,7 @@ fn run_command_streams_serial_stdout_in_summary_mode_and_reports_missing_roms() 
     assert!(
         fs::read(&framebuffer_path)
             .expect("framebuffer should exist")
-            .starts_with(b"P5\n160 144\n3\n")
+            .starts_with(b"P5\n160 144\n255\n")
     );
     assert!(
         String::from_utf8(stderr)
@@ -1755,10 +1800,10 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
 #[test]
 fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::GameBoy.console_model(), ConsoleModel::GameBoy);
-    assert_eq!(RunModel::GameBoy.name(), "game-boy");
+    assert_eq!(RunModel::GameBoy.name(), "DMG");
     assert_eq!(RunModel::GameBoy.boot_rom_kind(), BootRomKind::Dmg);
     assert_eq!(RunModel::Pocket.boot_rom_kind(), BootRomKind::Mgb);
-    assert_eq!(RunModel::Pocket.name(), "pocket");
+    assert_eq!(RunModel::Pocket.name(), "MGB");
     assert_eq!(RunModel::Light.boot_rom_kind(), BootRomKind::Mgb);
     assert_eq!(RunModel::Color.boot_rom_kind(), BootRomKind::Cgb);
     assert_eq!(SavePolicy::Manual.name(), "manual");
@@ -1797,21 +1842,37 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         CompatibilityPolicy::experimental()
     );
 
-    assert_eq!(parse_run_model("game-boy"), Ok(RunModel::GameBoy));
-    assert_eq!(parse_run_model("pocket"), Ok(RunModel::Pocket));
-    assert_eq!(parse_run_model("light"), Ok(RunModel::Light));
-    assert_eq!(parse_run_model("color"), Ok(RunModel::Color));
-    for legacy in ["dmg0", "dmg", "mgb", "cgb"] {
-        let error = parse_run_model(legacy).expect_err("legacy models should fail");
+    assert_eq!(parse_run_model("DMG"), Ok(RunModel::GameBoy));
+    assert_eq!(parse_run_model("MGB"), Ok(RunModel::Pocket));
+    assert_eq!(parse_run_model("LGB"), Ok(RunModel::Light));
+    assert_eq!(parse_run_model("CGB"), Ok(RunModel::Color));
+    for previous in [
+        "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
+    ] {
+        let error = parse_run_model(previous).expect_err("previous models should fail");
         assert!(error.contains("unsupported --model value"));
-        assert!(error.contains("game-boy, pocket, light, color"));
-        assert!(!error.contains("dmg0, dmg, mgb, cgb"));
+        assert!(error.contains("DMG, MGB, LGB, CGB"));
+        assert!(!error.contains("game-boy, pocket, light, color"));
     }
     assert!(
         parse_run_model("sgb")
             .expect_err("unsupported models should fail")
             .contains("unsupported --model value")
     );
+    assert_eq!(parse_display_palette("grey"), Ok(RunDisplayPalette::Grey));
+    assert_eq!(
+        parse_display_palette("green").expect_err("unsupported palettes should fail"),
+        "unsupported --palette value \"green\"; expected grey"
+    );
+    assert_eq!(
+        RunDisplayPalette::Grey.display_palette().shade_rgb(0),
+        [255; 3]
+    );
+    assert_eq!(
+        RunDisplayPalette::Grey.display_palette().shade_rgb(9),
+        [0; 3]
+    );
+    assert_eq!(RunDisplayPalette::Grey.display_palette().shade_luma(2), 85);
 
     assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));
     assert_eq!(
@@ -2111,19 +2172,46 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         Path::new("framebuffer.png"),
         &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
         None,
+        None,
     )
     .expect("PNG encoding should succeed");
     assert!(png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let palette_pgm_artifact = encode_framebuffer_artifact(
+        Path::new("framebuffer.pgm"),
+        &[0, 1, 2, 3, 9],
+        None,
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("palette PGM encoding should succeed");
+    assert_eq!(
+        palette_pgm_artifact,
+        b"P5\n160 144\n255\n\xff\xaa\x55\x00\x00".to_vec()
+    );
+    let palette_png_artifact = encode_framebuffer_artifact(
+        Path::new("framebuffer.png"),
+        &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("palette PNG encoding should succeed");
+    assert!(palette_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
     let rgb555_png_artifact = encode_framebuffer_artifact(
         Path::new("framebuffer.png"),
         &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
         Some(&vec![0x7FFF; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
+        Some(DMG_GREY_DISPLAY_PALETTE),
     )
     .expect("CGB RGB555 PNG encoding should succeed");
     assert!(rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let direct_palette_png = encode_framebuffer_palette_png(
+        &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        DMG_GREY_DISPLAY_PALETTE,
+    )
+    .expect("direct palette PNG encoding should succeed");
+    assert!(direct_palette_png.starts_with(b"\x89PNG\r\n\x1A\n"));
     let direct_rgb_png =
         encode_rgb555_framebuffer_png(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
             .expect("direct CGB RGB555 PNG encoding should succeed");

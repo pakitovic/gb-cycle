@@ -826,9 +826,9 @@ impl MenuPresentation {
             MenuItem::FastForwardMenu => "F-FORWARD".to_string(),
             MenuItem::ConsoleModel => match self.console_model {
                 DesktopConsoleModel::GameBoy => "MODEL GAME BOY".to_string(),
-                DesktopConsoleModel::GameBoyPocket => "MODEL POCKET".to_string(),
-                DesktopConsoleModel::GameBoyLight => "MODEL LIGHT".to_string(),
-                DesktopConsoleModel::GameBoyColor => "MODEL COLOR".to_string(),
+                DesktopConsoleModel::GameBoyPocket => "MODEL GB POCKET".to_string(),
+                DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
+                DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
             },
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
@@ -4509,17 +4509,17 @@ mod tests {
         presentation.console_model = DesktopConsoleModel::GameBoyPocket;
         assert_eq!(
             presentation.item_label(MenuItem::ConsoleModel),
-            "MODEL POCKET"
+            "MODEL GB POCKET"
         );
         presentation.console_model = DesktopConsoleModel::GameBoyLight;
         assert_eq!(
             presentation.item_label(MenuItem::ConsoleModel),
-            "MODEL LIGHT"
+            "MODEL GB LIGHT"
         );
         presentation.console_model = DesktopConsoleModel::GameBoyColor;
         assert_eq!(
             presentation.item_label(MenuItem::ConsoleModel),
-            "MODEL COLOR"
+            "MODEL GB COLOR"
         );
 
         presentation.startup_mode = StartupMode::RealBoot;

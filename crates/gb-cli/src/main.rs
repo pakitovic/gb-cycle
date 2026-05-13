@@ -29,12 +29,20 @@ const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+const DMG_GREY_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
+    shades: [
+        [DMG_GRAYSCALE_SHADES[0]; 3],
+        [DMG_GRAYSCALE_SHADES[1]; 3],
+        [DMG_GRAYSCALE_SHADES[2]; 3],
+        [DMG_GRAYSCALE_SHADES[3]; 3],
+    ],
+};
 const RUN_HELP_TEXT: &str = concat!(
     "Usage:\n",
     "  gb-cli run <rom> [options]\n",
     "\n",
     "Options:\n",
-    "  --model <game-boy|pocket|light|color>  Select the console model (default: game-boy)\n",
+    "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -47,6 +55,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
     "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png (CGB PNG uses RGB555)\n",
+    "  --palette <grey>                       Use the DMG grey framebuffer palette when --model DMG is active\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
     "  --state-out <path>                     Save a full-machine .gbstate at the end of the run\n",
@@ -120,10 +129,10 @@ impl RunModel {
 
     fn name(self) -> &'static str {
         match self {
-            Self::GameBoy => "game-boy",
-            Self::Pocket => "pocket",
-            Self::Light => "light",
-            Self::Color => "color",
+            Self::GameBoy => "DMG",
+            Self::Pocket => "MGB",
+            Self::Light => "LGB",
+            Self::Color => "CGB",
         }
     }
 }
@@ -150,6 +159,37 @@ impl SavePolicy {
 enum FramebufferOutputFormat {
     Pgm,
     Png,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunDisplayPalette {
+    Grey,
+}
+
+impl RunDisplayPalette {
+    const fn display_palette(self) -> DisplayPalette {
+        match self {
+            Self::Grey => DMG_GREY_DISPLAY_PALETTE,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DisplayPalette {
+    shades: [[u8; 3]; 4],
+}
+
+impl DisplayPalette {
+    const fn shade_rgb(self, shade: u8) -> [u8; 3] {
+        match shade {
+            0..=3 => self.shades[shade as usize],
+            _ => self.shades[3],
+        }
+    }
+
+    fn shade_luma(self, shade: u8) -> u8 {
+        self.shade_rgb(shade)[0]
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +231,7 @@ struct RunOptions {
     serial_stdout: bool,
     serial_out: Option<PathBuf>,
     framebuffer_out: Option<PathBuf>,
+    display_palette: Option<RunDisplayPalette>,
     trace_out: Option<PathBuf>,
     state_in: Option<PathBuf>,
     state_out: Option<PathBuf>,
@@ -214,12 +255,21 @@ impl RunOptions {
             serial_stdout: false,
             serial_out: None,
             framebuffer_out: None,
+            display_palette: None,
             trace_out: None,
             state_in: None,
             state_out: None,
             save_dir: None,
             save_key: None,
             save_policy: SavePolicy::default(),
+        }
+    }
+
+    fn effective_display_palette(&self) -> Option<DisplayPalette> {
+        if self.model == RunModel::GameBoy {
+            self.display_palette.map(RunDisplayPalette::display_palette)
+        } else {
+            None
         }
     }
 }
@@ -524,6 +574,14 @@ where
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().framebuffer_out = Some(PathBuf::from(value.as_ref()));
             }
+            "--palette" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--palette requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().display_palette =
+                    Some(parse_display_palette(value.as_ref())?);
+            }
             "--trace-out" => {
                 let Some(value) = arguments.next() else {
                     return Err("--trace-out requires a value".to_string());
@@ -599,6 +657,9 @@ where
     }
     if options.frame_limit.is_none() && options.tcycle_limit.is_none() {
         options.default_run_budget = Some(DefaultRunBudget::for_startup_mode(options.startup_mode));
+    }
+    if options.model != RunModel::GameBoy {
+        options.display_palette = None;
     }
 
     Ok(CliAction::Run(options))
@@ -852,6 +913,7 @@ fn run_command(
             framebuffer_out,
             machine.framebuffer(),
             machine.cgb_framebuffer_rgb555(),
+            options.effective_display_palette(),
         )
         .map_err(|error| format_framebuffer_artifact_error(framebuffer_out, error))?;
         write_bytes_with_parent(framebuffer_out, &framebuffer_image)?;
@@ -1530,12 +1592,21 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
 
 fn parse_run_model(value: &str) -> Result<RunModel, String> {
     match value {
-        "game-boy" => Ok(RunModel::GameBoy),
-        "pocket" => Ok(RunModel::Pocket),
-        "light" => Ok(RunModel::Light),
-        "color" => Ok(RunModel::Color),
+        "DMG" => Ok(RunModel::GameBoy),
+        "MGB" => Ok(RunModel::Pocket),
+        "LGB" => Ok(RunModel::Light),
+        "CGB" => Ok(RunModel::Color),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: game-boy, pocket, light, color"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB"
+        )),
+    }
+}
+
+fn parse_display_palette(value: &str) -> Result<RunDisplayPalette, String> {
+    match value {
+        "grey" => Ok(RunDisplayPalette::Grey),
+        _ => Err(format!(
+            "unsupported --palette value {value:?}; expected grey"
         )),
     }
 }
@@ -1668,12 +1739,21 @@ fn encode_framebuffer_artifact(
     path: &Path,
     framebuffer: &[u8],
     cgb_framebuffer_rgb555: Option<&[u16]>,
+    display_palette: Option<DisplayPalette>,
 ) -> io::Result<Vec<u8>> {
     match framebuffer_output_format(path) {
-        FramebufferOutputFormat::Pgm => Ok(encode_framebuffer_pgm(framebuffer)),
+        FramebufferOutputFormat::Pgm => {
+            if let Some(display_palette) = display_palette {
+                Ok(encode_framebuffer_palette_pgm(framebuffer, display_palette))
+            } else {
+                Ok(encode_framebuffer_pgm(framebuffer))
+            }
+        }
         FramebufferOutputFormat::Png => {
             if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
                 encode_rgb555_framebuffer_png(cgb_framebuffer_rgb555)
+            } else if let Some(display_palette) = display_palette {
+                encode_framebuffer_palette_png(framebuffer, display_palette)
             } else {
                 encode_framebuffer_png(framebuffer)
             }
@@ -1687,12 +1767,33 @@ fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
     encoded
 }
 
+fn encode_framebuffer_palette_pgm(framebuffer: &[u8], display_palette: DisplayPalette) -> Vec<u8> {
+    let mut encoded = format!("P5\n{FRAMEBUFFER_WIDTH} {FRAMEBUFFER_HEIGHT}\n255\n").into_bytes();
+    encoded.extend(
+        framebuffer
+            .iter()
+            .map(|pixel| display_palette.shade_luma(*pixel)),
+    );
+    encoded
+}
+
 fn encode_framebuffer_png(framebuffer: &[u8]) -> io::Result<Vec<u8>> {
     let pixels = framebuffer
         .iter()
         .map(|pixel| framebuffer_pixel_to_grayscale(*pixel))
         .collect::<Vec<_>>();
     encode_grayscale_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
+}
+
+fn encode_framebuffer_palette_png(
+    framebuffer: &[u8],
+    display_palette: DisplayPalette,
+) -> io::Result<Vec<u8>> {
+    let pixels = framebuffer
+        .iter()
+        .map(|pixel| display_palette.shade_rgb(*pixel))
+        .collect::<Vec<_>>();
+    encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
 }
 
 fn encode_rgb555_framebuffer_png(framebuffer: &[u16]) -> io::Result<Vec<u8>> {

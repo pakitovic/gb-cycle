@@ -224,7 +224,7 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             "run",
             rom_path.to_str().expect("path should be valid UTF-8"),
             "--model",
-            "pocket",
+            "MGB",
             "--startup",
             "skip-boot",
             "--mode",
@@ -239,6 +239,8 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             framebuffer_path
                 .to_str()
                 .expect("path should be valid UTF-8"),
+            "--palette",
+            "grey",
             "--trace-out",
             trace_path.to_str().expect("path should be valid UTF-8"),
             "--save-dir",
@@ -265,7 +267,7 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
             .contains("t_cycle=")
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("model=pocket"));
+    assert!(stderr.contains("model=MGB"));
     assert!(stderr.contains("startup=skip-boot"));
     assert!(stderr.contains("mode=experimental"));
     assert!(stderr.contains("save_loaded path="));
