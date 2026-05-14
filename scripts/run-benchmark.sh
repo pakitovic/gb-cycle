@@ -337,6 +337,16 @@ def fmt_number(value, digits=2):
 def rel(path: pathlib.Path) -> str:
     return path.relative_to(benchmark_dir).as_posix()
 
+
+def rom_name(value) -> str:
+    if value is None:
+        return "—"
+    text = str(value)
+    if not text:
+        return "—"
+    return pathlib.PureWindowsPath(text).name or pathlib.PurePosixPath(text).name or text
+
+
 cases = []
 for case_path in sorted((benchmark_dir / 'test').glob('*.toml')):
     data = load_toml(case_path)
@@ -365,8 +375,7 @@ for case_id, case_path, data in cases:
     for run in expanded_runs(case_id, data):
         artifact_id = run['artifact_id']
         cells = [
-            html.escape(str(case_id)),
-            html.escape(str(run['run'])),
+            html.escape(rom_name(data.get('rom'))),
             html.escape(case_path.relative_to(benchmark_dir).as_posix()),
             html.escape(str(data.get('model', '—'))),
             html.escape(str(run['seconds'])),
@@ -388,7 +397,7 @@ for case_id, case_path, data in cases:
         rows.append('<tr>' + ''.join(f'<td>{cell}</td>' for cell in cells) + '</tr>')
 
 if not rows:
-    rows.append('<tr><td colspan="9">No benchmark cases found in test/*.toml.</td></tr>')
+    rows.append('<tr><td colspan="8">No benchmark cases found in test/*.toml.</td></tr>')
 
 index = f'''<!doctype html>
 <html lang="en">
@@ -411,7 +420,7 @@ code {{ background: #f4f4f4; padding: .1rem .25rem; }}
 <p class="meta">Generated {html.escape(datetime.now().isoformat(timespec='seconds'))}. Commands: <code>gb-cli run --test-runner --benchmark &lt;case&gt;</code> and <code>gb-desktop --test-runner --benchmark &lt;case&gt;</code>.</p>
 <table>
 <thead>
-<tr><th>id</th><th>run</th><th>case</th><th>model</th><th>seconds</th><th>gb-cli</th><th>gb-cli screenshot</th><th>gb-desktop</th><th>gb-desktop screenshot</th></tr>
+<tr><th>rom</th><th>case</th><th>model</th><th>seconds</th><th>gb-cli</th><th>gb-cli screenshot</th><th>gb-desktop</th><th>gb-desktop screenshot</th></tr>
 </thead>
 <tbody>
 {''.join(rows)}
