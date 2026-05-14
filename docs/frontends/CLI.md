@@ -20,6 +20,8 @@ Execute a ROM headlessly:
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
 ```
 
+`--test-runner` marks the run as host-light automation without changing console model, startup mode, execution mode, T-cycle stepping, frame limits, or RTC behavior. The headless CLI already has no SDL menu, window title, audio playback, gamepad, rewind, or settings persistence, so the flag is primarily a shared frontend contract and still allows explicit artifacts such as `--serial-out`, `--framebuffer-out`, `--trace-out`, `--state-out`, and explicit `--save-dir` persistence.
+
 ### `saves`
 
 Convert between GB Cycle's internal `.gbsav` envelope and the raw `.sav` layout used by SameBoy and mGBA:
