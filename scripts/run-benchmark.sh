@@ -347,6 +347,11 @@ def rom_name(value) -> str:
     return pathlib.PureWindowsPath(text).name or pathlib.PurePosixPath(text).name or text
 
 
+def table_cell(content: str, rowspan: int = 1) -> str:
+    span = f' rowspan="{rowspan}"' if rowspan > 1 else ""
+    return f"<td{span}>{content}</td>"
+
+
 cases = []
 for case_path in sorted((benchmark_dir / 'test').glob('*.toml')):
     data = load_toml(case_path)
@@ -372,14 +377,19 @@ def expanded_runs(case_id, data):
 
 rows = []
 for case_id, case_path, data in cases:
-    for run in expanded_runs(case_id, data):
+    runs = list(expanded_runs(case_id, data))
+    case_rowspan = len(runs)
+    case_cells = [
+        html.escape(rom_name(data.get('rom'))),
+        html.escape(case_path.relative_to(benchmark_dir).as_posix()),
+        html.escape(str(data.get('model', '—'))),
+    ]
+    for run_index, run in enumerate(runs):
         artifact_id = run['artifact_id']
-        cells = [
-            html.escape(rom_name(data.get('rom'))),
-            html.escape(case_path.relative_to(benchmark_dir).as_posix()),
-            html.escape(str(data.get('model', '—'))),
-            html.escape(str(run['seconds'])),
-        ]
+        cells = []
+        if run_index == 0:
+            cells.extend(table_cell(cell, case_rowspan) for cell in case_cells)
+        cells.append(table_cell(html.escape(str(run['seconds']))))
         for frontend in ('gb-cli', 'gb-desktop'):
             stats_path = benchmark_dir / frontend / f'{artifact_id}-stats.toml'
             stats = load_toml(stats_path)
@@ -392,9 +402,9 @@ for case_id, case_path, data in cases:
                 image = f'<a href="{html.escape(rel(image_path))}"><img src="{html.escape(rel(image_path))}" alt="{html.escape(frontend)} {html.escape(str(artifact_id))}" loading="lazy"></a>'
             else:
                 image = '—'
-            cells.append(metrics)
-            cells.append(image)
-        rows.append('<tr>' + ''.join(f'<td>{cell}</td>' for cell in cells) + '</tr>')
+            cells.append(table_cell(metrics))
+            cells.append(table_cell(image))
+        rows.append('<tr>' + ''.join(cells) + '</tr>')
 
 if not rows:
     rows.append('<tr><td colspan="8">No benchmark cases found in test/*.toml.</td></tr>')
@@ -409,6 +419,7 @@ index = f'''<!doctype html>
 body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; }}
 table {{ border-collapse: collapse; width: 100%; }}
 th, td {{ border: 1px solid #ccc; padding: .5rem; vertical-align: top; }}
+td[rowspan] {{ vertical-align: middle; }}
 th {{ background: #f4f4f4; position: sticky; top: 0; }}
 img {{ width: 160px; height: 144px; image-rendering: pixelated; background: #ddd; }}
 code {{ background: #f4f4f4; padding: .1rem .25rem; }}
