@@ -11351,6 +11351,12 @@ fn write_benchmark_artifacts_for_session(
         return Ok(());
     };
 
+    let elapsed_seconds = benchmark.started_at.elapsed().as_secs_f64();
+    let executed_tcycles = machine
+        .primary_machine()
+        .next_t_cycle()
+        .get()
+        .saturating_sub(benchmark.started_t_cycle);
     let screenshot_path = benchmark
         .case
         .screenshot
@@ -11366,14 +11372,8 @@ fn write_benchmark_artifacts_for_session(
             &benchmark.case,
             session.test_runner,
             performance_counter.presented_frames_total,
-            benchmark.started_at.elapsed().as_secs_f64(),
-            Some(
-                machine
-                    .primary_machine()
-                    .next_t_cycle()
-                    .get()
-                    .saturating_sub(benchmark.started_t_cycle),
-            ),
+            elapsed_seconds,
+            Some(executed_tcycles),
             screenshot_path.as_deref(),
         );
         let encoded_stats = encode_stats_toml(&stats)

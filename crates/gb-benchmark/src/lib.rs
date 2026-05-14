@@ -258,11 +258,7 @@ impl BenchmarkStats {
     ) -> Self {
         let elapsed_seconds = elapsed_seconds.max(f64::EPSILON);
         let fps = completed_frames as f64 / elapsed_seconds;
-        let speed_percent = executed_tcycles
-            .map(|executed_tcycles| {
-                executed_tcycles as f64 / DMG_T_CYCLES_PER_SECOND as f64 / elapsed_seconds * 100.0
-            })
-            .unwrap_or_else(|| fps / target_frame_rate_hz() * 100.0);
+        let speed_percent = fps / target_frame_rate_hz() * 100.0;
         Self {
             version: 1,
             frontend: frontend.to_string(),
@@ -1357,5 +1353,38 @@ repeat_every_frames = 8
                 (JoypadButton::A, false),
             ]
         );
+    }
+
+    #[test]
+    fn stats_speed_percent_matches_presented_frame_stats() {
+        let case = BenchmarkCase {
+            source_path: PathBuf::from("case.toml"),
+            id: "bench".to_string(),
+            run_id: Some("run".to_string()),
+            run_label: None,
+            artifact_id: "bench-run".to_string(),
+            rom: PathBuf::from("bench.gb"),
+            model: BenchmarkModel::Dmg,
+            startup: BenchmarkStartup::CustomBoot,
+            mode: BenchmarkMode::Permissive,
+            palette: Some(BenchmarkPalette::Grey),
+            duration_seconds: 1,
+            screenshot: true,
+            stats: true,
+            stimuli: Vec::new(),
+        };
+        let stats = BenchmarkStats::new(
+            GB_DESKTOP_FRONTEND,
+            &case,
+            true,
+            120,
+            2.0,
+            Some(DMG_T_CYCLES_PER_SECOND * 8),
+            Some(Path::new("gb-desktop/bench-run.png")),
+        );
+        let expected = stats.fps / target_frame_rate_hz() * 100.0;
+
+        assert!((stats.speed_percent - expected).abs() < f64::EPSILON);
+        assert_eq!(stats.executed_tcycles, Some(DMG_T_CYCLES_PER_SECOND * 8));
     }
 }
