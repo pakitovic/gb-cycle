@@ -83,7 +83,6 @@ model = "DMG"
 startup = "custom-boot"
 mode = "permissive"
 palette = "grey"
-duration_seconds = 8
 screenshot = true
 stats = true
 
@@ -352,13 +351,13 @@ def expanded_runs(case_id, data):
             yield {
                 'artifact_id': f'{case_id}-{run_id}',
                 'run': run.get('label') or run_id,
-                'seconds': run.get('duration_seconds', data.get('duration_seconds', '—')),
+                'seconds': run.get('duration_seconds', '—'),
             }
     else:
         yield {
             'artifact_id': str(case_id),
-            'run': 'default',
-            'seconds': data.get('duration_seconds', '—'),
+            'run': 'missing [[run]]',
+            'seconds': '—',
         }
 
 rows = []

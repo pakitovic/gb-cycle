@@ -246,6 +246,14 @@ pub enum BenchmarkConfigError {
         id: String,
         index: usize,
     },
+    MissingRuns {
+        path: PathBuf,
+        id: String,
+    },
+    DeprecatedLegacyFormat {
+        path: PathBuf,
+        id: String,
+    },
     ZeroDuration {
         path: PathBuf,
         id: String,
@@ -255,17 +263,6 @@ pub enum BenchmarkConfigError {
         path: PathBuf,
         id: String,
         count: usize,
-    },
-    InvalidStimulusTime {
-        path: PathBuf,
-        id: String,
-        index: usize,
-    },
-    InvalidJoypadButton {
-        path: PathBuf,
-        id: String,
-        index: usize,
-        button: String,
     },
     InvalidInput {
         path: PathBuf,
@@ -310,6 +307,16 @@ impl fmt::Display for BenchmarkConfigError {
                 "benchmark case {id:?} in {} run #{index} must define a non-empty id",
                 path.display()
             ),
+            Self::MissingRuns { path, id } => write!(
+                f,
+                "benchmark case {id:?} in {} must define at least one [[run]]",
+                path.display()
+            ),
+            Self::DeprecatedLegacyFormat { path, id } => write!(
+                f,
+                "benchmark case {id:?} in {} uses the removed legacy duration_seconds + [[stimulus]] format; define one or more [[run]] entries with duration_seconds and [[run.input]] instead",
+                path.display()
+            ),
             Self::ZeroDuration { path, id, run_id } => {
                 if let Some(run_id) = run_id {
                     write!(
@@ -330,21 +337,6 @@ impl fmt::Display for BenchmarkConfigError {
                 "benchmark case {id:?} in {} expands to {count} runs; use load_benchmark_cases for multi-run suites",
                 path.display()
             ),
-            Self::InvalidStimulusTime { path, id, index } => write!(
-                f,
-                "benchmark case {id:?} in {} stimulus #{index} must define exactly one of frame or tcycle",
-                path.display()
-            ),
-            Self::InvalidJoypadButton {
-                path,
-                id,
-                index,
-                button,
-            } => write!(
-                f,
-                "benchmark case {id:?} in {} stimulus #{index} uses unsupported joypad button {button:?}",
-                path.display()
-            ),
             Self::InvalidInput {
                 path,
                 id,
@@ -362,7 +354,8 @@ impl fmt::Display for BenchmarkConfigError {
 
 impl std::error::Error for BenchmarkConfigError {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BenchmarkCaseFile {
     version: u32,
     id: String,
@@ -371,18 +364,20 @@ struct BenchmarkCaseFile {
     startup: BenchmarkStartup,
     mode: BenchmarkMode,
     palette: Option<BenchmarkPalette>,
+    #[serde(default)]
     duration_seconds: Option<u32>,
     #[serde(default = "default_true")]
     screenshot: bool,
     #[serde(default = "default_true")]
     stats: bool,
     #[serde(rename = "stimulus", default)]
-    stimuli: Vec<BenchmarkStimulusFile>,
+    legacy_stimuli: Vec<toml::Value>,
     #[serde(rename = "run", default)]
     runs: Vec<BenchmarkRunFile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BenchmarkRunFile {
     id: Option<String>,
     label: Option<String>,
@@ -390,20 +385,13 @@ struct BenchmarkRunFile {
     screenshot: Option<bool>,
     stats: Option<bool>,
     #[serde(rename = "stimulus", default)]
-    stimuli: Vec<BenchmarkStimulusFile>,
+    legacy_stimuli: Vec<toml::Value>,
     #[serde(rename = "input", default)]
     inputs: Vec<BenchmarkInputFile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct BenchmarkStimulusFile {
-    frame: Option<u32>,
-    tcycle: Option<u64>,
-    button: String,
-    pressed: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BenchmarkInputFile {
     frame: Option<u32>,
     second: Option<u32>,
@@ -463,18 +451,26 @@ pub fn parse_benchmark_suite(
             path: path.to_path_buf(),
         });
     }
+    if parsed.duration_seconds.is_some() || !parsed.legacy_stimuli.is_empty() {
+        return Err(BenchmarkConfigError::DeprecatedLegacyFormat {
+            path: path.to_path_buf(),
+            id,
+        });
+    }
+    if parsed.runs.is_empty() {
+        return Err(BenchmarkConfigError::MissingRuns {
+            path: path.to_path_buf(),
+            id,
+        });
+    }
 
-    let cases = if parsed.runs.is_empty() {
-        vec![build_legacy_case(path, &id, &parsed)?]
-    } else {
-        parsed
-            .runs
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(index, run)| build_run_case(path, &id, &parsed, index, run))
-            .collect::<Result<Vec<_>, _>>()?
-    };
+    let cases = parsed
+        .runs
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(index, run)| build_run_case(path, &id, &parsed, index, run))
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(BenchmarkSuite {
         source_path: path.to_path_buf(),
@@ -516,38 +512,6 @@ fn single_case_from_suite(suite: BenchmarkSuite) -> Result<BenchmarkCase, Benchm
     }
 }
 
-fn build_legacy_case(
-    path: &Path,
-    id: &str,
-    parsed: &BenchmarkCaseFile,
-) -> Result<BenchmarkCase, BenchmarkConfigError> {
-    let duration_seconds = resolve_duration(path, id, None, parsed.duration_seconds)?;
-    let stimuli = parsed
-        .stimuli
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(index, stimulus)| parse_stimulus(path, id, index, stimulus))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(BenchmarkCase {
-        source_path: path.to_path_buf(),
-        id: id.to_string(),
-        run_id: None,
-        run_label: None,
-        artifact_id: id.to_string(),
-        rom: parsed.rom.clone(),
-        model: parsed.model,
-        startup: parsed.startup,
-        mode: parsed.mode,
-        palette: parsed.palette,
-        duration_seconds,
-        screenshot: parsed.screenshot,
-        stats: parsed.stats,
-        stimuli,
-    })
-}
-
 fn build_run_case(
     path: &Path,
     id: &str,
@@ -568,18 +532,14 @@ fn build_run_case(
             index: run_index,
         });
     }
-    let duration_seconds = resolve_duration(
-        path,
-        id,
-        Some(&run_id),
-        run.duration_seconds.or(parsed.duration_seconds),
-    )?;
-    let mut stimuli = run
-        .stimuli
-        .into_iter()
-        .enumerate()
-        .map(|(index, stimulus)| parse_stimulus(path, id, index, stimulus))
-        .collect::<Result<Vec<_>, _>>()?;
+    if !run.legacy_stimuli.is_empty() {
+        return Err(BenchmarkConfigError::DeprecatedLegacyFormat {
+            path: path.to_path_buf(),
+            id: id.to_string(),
+        });
+    }
+    let duration_seconds = resolve_duration(path, id, Some(&run_id), run.duration_seconds)?;
+    let mut stimuli = Vec::new();
     for (index, input) in run.inputs.into_iter().enumerate() {
         expand_input(
             path,
@@ -624,38 +584,6 @@ fn resolve_duration(
             run_id: run_id.map(ToString::to_string),
         }),
     }
-}
-
-fn parse_stimulus(
-    path: &Path,
-    id: &str,
-    index: usize,
-    stimulus: BenchmarkStimulusFile,
-) -> Result<BenchmarkStimulus, BenchmarkConfigError> {
-    let when = match (stimulus.frame, stimulus.tcycle) {
-        (Some(frame), None) => BenchmarkStimulusTime::Frame(frame),
-        (None, Some(t_cycle)) => BenchmarkStimulusTime::TCycle(t_cycle),
-        _ => {
-            return Err(BenchmarkConfigError::InvalidStimulusTime {
-                path: path.to_path_buf(),
-                id: id.to_string(),
-                index,
-            });
-        }
-    };
-    let button = parse_joypad_button(&stimulus.button).ok_or_else(|| {
-        BenchmarkConfigError::InvalidJoypadButton {
-            path: path.to_path_buf(),
-            id: id.to_string(),
-            index,
-            button: stimulus.button.clone(),
-        }
-    })?;
-    Ok(BenchmarkStimulus {
-        when,
-        button,
-        pressed: stimulus.pressed,
-    })
 }
 
 fn expand_input(
@@ -877,7 +805,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_case_supports_frame_and_tcycle_stimuli() {
+    fn parse_case_supports_single_run_inputs() {
         let case = parse_benchmark_case(
             "case.toml",
             r#"
@@ -888,30 +816,49 @@ model = "DMG"
 startup = "custom-boot"
 mode = "permissive"
 palette = "grey"
+
+[[run]]
+id = "inputs"
 duration_seconds = 8
 
-[[stimulus]]
+[[run.input]]
 frame = 30
 button = "start"
-pressed = true
+hold_frames = 8
 
-[[stimulus]]
+[[run.input]]
+second = 2
+buttons = ["a", "b"]
+hold_frames = 4
+
+[[run.input]]
 tcycle = 70224
-button = "a"
-pressed = false
+button = "select"
 "#,
         )
         .expect("benchmark case should parse");
 
         assert_eq!(case.id, "dr-mario");
-        assert_eq!(case.artifact_id, "dr-mario");
-        assert_eq!(case.run_id, None);
+        assert_eq!(case.artifact_id, "dr-mario-inputs");
+        assert_eq!(case.run_id.as_deref(), Some("inputs"));
         assert_eq!(case.model, BenchmarkModel::Dmg);
-        assert_eq!(case.stimuli.len(), 2);
+        assert_eq!(case.stimuli.len(), 8);
         assert_eq!(case.stimuli[0].when, BenchmarkStimulusTime::Frame(30));
         assert_eq!(case.stimuli[0].button, JoypadButton::Start);
-        assert_eq!(case.stimuli[1].when, BenchmarkStimulusTime::TCycle(70224));
-        assert_eq!(case.stimuli[1].button, JoypadButton::A);
+        assert!(case.stimuli[0].pressed);
+        assert_eq!(case.stimuli[1].when, BenchmarkStimulusTime::Frame(38));
+        assert_eq!(case.stimuli[1].button, JoypadButton::Start);
+        assert!(!case.stimuli[1].pressed);
+        assert!(case.stimuli.iter().any(|stimulus| {
+            stimulus.when == BenchmarkStimulusTime::Frame(target_frames_for_duration(2))
+                && stimulus.button == JoypadButton::A
+                && stimulus.pressed
+        }));
+        assert!(case.stimuli.iter().any(|stimulus| {
+            stimulus.when == BenchmarkStimulusTime::TCycle(70224)
+                && stimulus.button == JoypadButton::Select
+                && stimulus.pressed
+        }));
     }
 
     #[test]
@@ -1010,8 +957,8 @@ repeat_every_frames = 10
     }
 
     #[test]
-    fn parse_case_rejects_ambiguous_stimulus_timing() {
-        let error = parse_benchmark_case(
+    fn parse_suite_rejects_removed_legacy_format_and_missing_runs() {
+        let legacy = parse_benchmark_cases(
             "case.toml",
             r#"
 version = 1
@@ -1024,16 +971,60 @@ duration_seconds = 8
 
 [[stimulus]]
 frame = 1
-tcycle = 2
 button = "a"
 pressed = true
 "#,
         )
-        .expect_err("ambiguous stimulus should fail");
+        .expect_err("legacy format should fail");
 
         assert!(matches!(
-            error,
-            BenchmarkConfigError::InvalidStimulusTime { .. }
+            legacy,
+            BenchmarkConfigError::DeprecatedLegacyFormat { .. }
+        ));
+
+        let missing_runs = parse_benchmark_cases(
+            "case.toml",
+            r#"
+version = 1
+id = "bad"
+rom = "bad.gb"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+"#,
+        )
+        .expect_err("suite without runs should fail");
+
+        assert!(matches!(
+            missing_runs,
+            BenchmarkConfigError::MissingRuns { .. }
+        ));
+
+        let run_stimulus = parse_benchmark_cases(
+            "case.toml",
+            r#"
+version = 1
+id = "bad"
+rom = "bad.gb"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+
+[[run]]
+id = "raw"
+duration_seconds = 1
+
+[[run.stimulus]]
+frame = 1
+button = "a"
+pressed = true
+"#,
+        )
+        .expect_err("run stimulus format should fail");
+
+        assert!(matches!(
+            run_stimulus,
+            BenchmarkConfigError::DeprecatedLegacyFormat { .. }
         ));
     }
 
