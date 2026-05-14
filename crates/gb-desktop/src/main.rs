@@ -23,7 +23,7 @@ use gb_benchmark::{
     BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
     BenchmarkStats, BenchmarkStimulusRuntime, GB_DESKTOP_FRONTEND, encode_stats_toml,
     frontend_screenshot_path, frontend_stats_path, load_benchmark_cases,
-    target_frames_for_duration,
+    target_frames_for_duration, target_tcycles_for_duration,
 };
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
@@ -440,6 +440,7 @@ struct DesktopBenchmarkRun {
     case: BenchmarkCase,
     stimuli: BenchmarkStimulusRuntime,
     started_at: Instant,
+    started_t_cycle: u64,
 }
 
 #[derive(Clone)]
@@ -4853,6 +4854,20 @@ fn should_exit_after_presented_frames(
     exit_after_frames.is_some_and(|limit| presented_frames_total >= limit)
 }
 
+fn should_exit_after_benchmark_tcycles(
+    benchmark: Option<&DesktopBenchmarkRun>,
+    machine: &DesktopEmulationSession,
+) -> bool {
+    benchmark.is_some_and(|benchmark| {
+        machine
+            .primary_machine()
+            .next_t_cycle()
+            .get()
+            .saturating_sub(benchmark.started_t_cycle)
+            >= target_tcycles_for_duration(benchmark.case.duration_seconds)
+    })
+}
+
 fn sync_gamepad_rumble(
     runtime: &mut FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
@@ -5025,6 +5040,7 @@ fn run_desktop_prepared(
             stimuli: BenchmarkStimulusRuntime::new(case.stimuli.clone()),
             case,
             started_at: Instant::now(),
+            started_t_cycle: 0,
         }),
         current_dir,
         loaded_rom,
@@ -5226,6 +5242,7 @@ fn run_desktop_prepared(
 
     if let Some(benchmark) = &mut session.benchmark {
         benchmark.started_at = Instant::now();
+        benchmark.started_t_cycle = machine.primary_machine().next_t_cycle().get();
     }
 
     'running: loop {
@@ -5604,7 +5621,8 @@ fn run_desktop_prepared(
         if should_exit_after_presented_frames(
             exit_after_frames,
             performance_counter.presented_frames_total,
-        ) {
+        ) || should_exit_after_benchmark_tcycles(session.benchmark.as_ref(), &machine)
+        {
             break 'running;
         }
     }
@@ -7320,10 +7338,17 @@ fn step_until_next_frame(
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             let frame_boundary_reached = now_at_frame_origin && !at_frame_origin;
+            let benchmark_tcycle_limit_reached = should_exit_after_benchmark_tcycles(
+                context.session.benchmark.as_ref(),
+                context.machine,
+            );
             // STOP forces the core framebuffer into the visible blank state and can
             // also freeze PPU frame-origin progress. Return once for presentation
             // so the SDL texture does not keep showing the last diagnostic frame.
-            if frame_boundary_reached || stop_forced_blank_present_requested {
+            if frame_boundary_reached
+                || stop_forced_blank_present_requested
+                || benchmark_tcycle_limit_reached
+            {
                 if collect_frame_telemetry && frame_boundary_reached {
                     frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 }
@@ -11342,7 +11367,13 @@ fn write_benchmark_artifacts_for_session(
             session.test_runner,
             performance_counter.presented_frames_total,
             benchmark.started_at.elapsed().as_secs_f64(),
-            None,
+            Some(
+                machine
+                    .primary_machine()
+                    .next_t_cycle()
+                    .get()
+                    .saturating_sub(benchmark.started_t_cycle),
+            ),
             screenshot_path.as_deref(),
         );
         let encoded_stats = encode_stats_toml(&stats)
@@ -18622,6 +18653,7 @@ mod tests {
                 case: dmg_case.clone(),
                 stimuli: BenchmarkStimulusRuntime::new(Vec::new()),
                 started_at: Instant::now(),
+                started_t_cycle: 0,
             }),
             current_dir: root.clone(),
             loaded_rom: Some(super::LoadedRom {

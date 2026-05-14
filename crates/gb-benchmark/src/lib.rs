@@ -200,6 +200,11 @@ impl BenchmarkStats {
     ) -> Self {
         let elapsed_seconds = elapsed_seconds.max(f64::EPSILON);
         let fps = completed_frames as f64 / elapsed_seconds;
+        let speed_percent = executed_tcycles
+            .map(|executed_tcycles| {
+                executed_tcycles as f64 / DMG_T_CYCLES_PER_SECOND as f64 / elapsed_seconds * 100.0
+            })
+            .unwrap_or_else(|| fps / target_frame_rate_hz() * 100.0);
         Self {
             version: 1,
             frontend: frontend.to_string(),
@@ -217,7 +222,7 @@ impl BenchmarkStats {
             completed_frames,
             elapsed_seconds,
             fps,
-            speed_percent: fps / target_frame_rate_hz() * 100.0,
+            speed_percent,
             executed_tcycles,
             screenshot: screenshot.map(|path| path.display().to_string()),
         }
@@ -845,6 +850,10 @@ pub fn target_frame_rate_hz() -> f64 {
 
 pub fn target_frames_for_duration(duration_seconds: u32) -> u32 {
     (f64::from(duration_seconds) * target_frame_rate_hz()).ceil() as u32
+}
+
+pub fn target_tcycles_for_duration(duration_seconds: u32) -> u64 {
+    u64::from(target_frames_for_duration(duration_seconds)) * DMG_T_CYCLES_PER_FRAME
 }
 
 pub fn frontend_stats_path(frontend: &str, artifact_id: &str) -> PathBuf {

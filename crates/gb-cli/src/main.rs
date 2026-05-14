@@ -2,7 +2,7 @@ use gb_benchmark::{
     BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
     BenchmarkStats, BenchmarkStimulusRuntime, GB_CLI_FRONTEND, encode_stats_toml,
     frontend_screenshot_path, frontend_stats_path, load_benchmark_cases,
-    target_frames_for_duration,
+    target_frames_for_duration, target_tcycles_for_duration,
 };
 use gb_core::{
     BootRomAssetError, BootRomAssets, BootRomKind, CartridgeDiagnostic,
@@ -894,7 +894,7 @@ fn run_benchmark_case(
         boot_rom_dir: None,
         boot_rom_verify: BootRomVerificationMode::Strict,
         frame_limit: Some(target_frames_for_duration(benchmark_case.duration_seconds)),
-        tcycle_limit: None,
+        tcycle_limit: Some(target_tcycles_for_duration(benchmark_case.duration_seconds)),
         default_run_budget: None,
         serial_stdout: false,
         serial_out: None,

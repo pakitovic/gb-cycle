@@ -68,6 +68,19 @@ fn build_nop_loop_rom() -> Vec<u8> {
     )
 }
 
+fn build_lcd_off_loop_rom() -> Vec<u8> {
+    build_test_rom_with_header(
+        &[
+            0x3E, 0x00, // LD A,$00
+            0xE0, 0x40, // LDH (LCDC),A
+            0xC3, 0x04, 0x01, // JP $0104
+        ],
+        0x00,
+        0x00,
+        0x00,
+    )
+}
+
 fn build_battery_backed_serial_and_ram_rom(byte: u8, ram_value: u8) -> Vec<u8> {
     build_test_rom_with_header(
         &[
@@ -1113,6 +1126,64 @@ hold_frames = 3
             .expect("stderr should be UTF-8")
             .contains("benchmark_stats_out=gb-cli/bench-tap-stats.toml")
     );
+
+    drop(_cwd);
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn run_benchmark_command_stops_at_tcycle_budget_when_frames_freeze() {
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let temp_dir = unique_temp_dir("benchmark-lcd-off");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let _cwd = CurrentDirGuard::enter(&temp_dir);
+
+    let rom_path = temp_dir.join("lcd-off.gb");
+    fs::write(&rom_path, build_lcd_off_loop_rom()).expect("test ROM should be writable");
+    let case_path = temp_dir.join("test/lcd-off.toml");
+    fs::create_dir_all(case_path.parent().expect("case path should have a parent"))
+        .expect("case directory should be creatable");
+    fs::write(
+        &case_path,
+        format!(
+            r#"
+version = 1
+id = "lcd-off"
+rom = "{}"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+screenshot = false
+stats = true
+
+[[run]]
+id = "budget"
+duration_seconds = 1
+"#,
+            rom_path.display()
+        ),
+    )
+    .expect("benchmark case should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        vec![
+            "run".to_string(),
+            "--test-runner".to_string(),
+            "--benchmark".to_string(),
+            case_path.display().to_string(),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("LCD-off benchmark should stop at the tcycle duration budget");
+
+    assert!(stdout.is_empty());
+    let stats = fs::read_to_string(temp_dir.join("gb-cli/lcd-off-budget-stats.toml"))
+        .expect("stats should exist");
+    assert!(stats.contains("artifact_id = \"lcd-off-budget\""));
+    assert!(stats.contains("executed_tcycles = 4213440"));
 
     drop(_cwd);
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
