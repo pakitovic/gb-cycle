@@ -416,6 +416,7 @@ enum DesktopAudioRecordingMode {
 #[derive(Clone)]
 struct DesktopSession {
     config: DesktopConfig,
+    test_runner: bool,
     current_dir: PathBuf,
     loaded_rom: Option<LoadedRom>,
     linked_secondary_rom: Option<LoadedRom>,
@@ -544,6 +545,26 @@ struct DesktopCpuWindowTraceCapture {
     records: Vec<DesktopCpuWindowTraceRecord>,
     active: bool,
     finished: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DesktopTraceServiceFlags {
+    trace_capture: bool,
+    watch_trace: bool,
+    pc_watch_trace: bool,
+    edge_trace: bool,
+    ch4_nr43_trace: bool,
+    ch4_startup_trace: bool,
+    cpu_window_trace: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DesktopTcycleHostServices {
+    capture_audio: bool,
+    sync_gamepad_rumble: bool,
+    record_rewind: bool,
+    drain_printer: bool,
+    traces: DesktopTraceServiceFlags,
 }
 
 #[derive(Debug, Clone)]
@@ -1577,8 +1598,12 @@ impl DesktopWatchTraceCapture {
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() {
+        if !self.is_enabled() {
             return;
         }
 
@@ -1671,8 +1696,12 @@ impl DesktopPcWatchTraceCapture {
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() {
+        if !self.is_enabled() {
             return;
         }
 
@@ -1763,8 +1792,12 @@ impl DesktopEdgeTraceCapture {
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() {
+        if !self.is_enabled() {
             return;
         }
 
@@ -1846,8 +1879,12 @@ impl DesktopCh4Nr43TraceCapture {
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() {
+        if !self.is_enabled() {
             return;
         }
 
@@ -1903,8 +1940,12 @@ impl DesktopCh4StartupTraceCapture {
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() {
+        if !self.is_enabled() {
             return;
         }
 
@@ -1977,8 +2018,12 @@ impl DesktopCpuWindowTraceCapture {
         }
     }
 
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some() && !self.finished
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() || self.finished {
+        if !self.is_enabled() {
             return;
         }
 
@@ -2032,6 +2077,46 @@ impl DesktopCpuWindowTraceCapture {
         }
         fs::write(path, rendered)
             .map_err(|error| format!("failed to write CPU window trace artifact {path:?}: {error}"))
+    }
+}
+
+impl DesktopTraceServiceFlags {
+    fn from_runtime(runtime: &FrontendRuntime) -> Self {
+        Self {
+            trace_capture: runtime.trace_capture.is_enabled(),
+            watch_trace: runtime.watch_trace.is_enabled(),
+            pc_watch_trace: runtime.pc_watch_trace.is_enabled(),
+            edge_trace: runtime.edge_trace.is_enabled(),
+            ch4_nr43_trace: runtime.ch4_nr43_trace.is_enabled(),
+            ch4_startup_trace: runtime.ch4_startup_trace.is_enabled(),
+            cpu_window_trace: runtime.cpu_window_trace.is_enabled(),
+        }
+    }
+
+    const fn any(self) -> bool {
+        self.trace_capture
+            || self.watch_trace
+            || self.pc_watch_trace
+            || self.edge_trace
+            || self.ch4_nr43_trace
+            || self.ch4_startup_trace
+            || self.cpu_window_trace
+    }
+}
+
+impl DesktopTcycleHostServices {
+    fn from_runtime_state(
+        session: &DesktopSession,
+        machine: &DesktopEmulationSession,
+        runtime: &FrontendRuntime,
+    ) -> Self {
+        Self {
+            capture_audio: runtime.audio_output.is_some() || runtime.audio_recorder.is_some(),
+            sync_gamepad_rumble: gamepad_rumble_sync_needed(runtime, machine),
+            record_rewind: desktop_rewind_recording_active(session, machine, runtime),
+            drain_printer: session.external_port_selection == DesktopExternalPortSelection::Printer,
+            traces: DesktopTraceServiceFlags::from_runtime(runtime),
+        }
     }
 }
 
@@ -4781,6 +4866,21 @@ fn sync_gamepad_rumble(
     Ok(())
 }
 
+fn gamepad_rumble_sync_needed(
+    runtime: &FrontendRuntime,
+    machine: &Machine<TraceSummaryBuffer>,
+) -> bool {
+    let Some(gamepad_manager) = runtime.gamepad_manager.as_ref() else {
+        return false;
+    };
+
+    if machine.cartridge().has_rumble() {
+        return gamepad_manager.can_deliver_rumble() || gamepad_manager.has_active_rumble_effect();
+    }
+
+    gamepad_manager.has_active_rumble_effect()
+}
+
 fn main() -> ExitCode {
     match run_from_cli(env::args().skip(1)) {
         Ok(()) => ExitCode::SUCCESS,
@@ -4820,7 +4920,7 @@ where
             Ok(())
         }
         CliAction::Run(options) => {
-            let persist_startup_fallback = options.config == base_config;
+            let persist_startup_fallback = !options.test_runner && options.config == base_config;
             if persist_startup_fallback {
                 run_desktop_with_startup_fallback_persistence(*options, settings_store, true)
             } else {
@@ -4844,6 +4944,7 @@ fn run_desktop_with_startup_fallback_persistence(
 ) -> Result<(), String> {
     let original_config = options.config.clone();
     let exit_after_frames = options.exit_after_frames;
+    let test_runner = options.test_runner;
     let startup_links_peer = options.linked_peer_rom_path.is_some();
     let current_dir =
         map_display_result(env::current_dir(), "failed to determine current directory")?;
@@ -4855,6 +4956,7 @@ fn run_desktop_with_startup_fallback_persistence(
     };
     let mut session = DesktopSession {
         config: options.config,
+        test_runner,
         current_dir,
         loaded_rom,
         linked_secondary_rom,
@@ -4870,11 +4972,13 @@ fn run_desktop_with_startup_fallback_persistence(
     };
 
     let (mut machine, diagnostics) = load_initial_emulation_session(&mut session)?;
-    if persist_startup_fallback && session.config != original_config {
+    if persist_startup_fallback && !session.test_runner && session.config != original_config {
         settings_store.persist_machine_preferences(&session.config)?;
     }
     write_cartridge_diagnostics(&diagnostics);
-    if let Some(rom_path) = session.rom_path() {
+    if !session.test_runner
+        && let Some(rom_path) = session.rom_path()
+    {
         settings_store.remember_loaded_rom(rom_path)?;
         session.recent_roms = settings_store.recent_roms().to_vec();
     }
@@ -4938,7 +5042,14 @@ fn run_desktop_with_startup_fallback_persistence(
 
     let base_window_title = window_title(&session, &session.config);
     let mut frame_pacer = FramePacer::new(session.config.video.vsync);
-    let mut performance_counter = PerformanceCounter::new(base_window_title.clone());
+    let mut performance_counter = if session.test_runner {
+        PerformanceCounter::new_with_emulation_profile_mode(
+            base_window_title.clone(),
+            EmulationProfileMode::Disabled,
+        )
+    } else {
+        PerformanceCounter::new(base_window_title.clone())
+    };
     let mut window_builder = video.window(&base_window_title, window_width, window_height);
     window_builder.position_centered();
     if session.config.video.fullscreen {
@@ -5044,7 +5155,7 @@ fn run_desktop_with_startup_fallback_persistence(
     )?;
 
     'running: loop {
-        {
+        if !session.test_runner {
             let mut context = FrontendActionContext {
                 session: &mut session,
                 machine: &mut machine,
@@ -5074,7 +5185,11 @@ fn run_desktop_with_startup_fallback_persistence(
                 frame_pacer: &mut frame_pacer,
                 settings_store: &mut settings_store,
             };
-            process_events(&mut event_pump, &mut canvas, &mut context)
+            if context.session.test_runner {
+                process_test_runner_events(&mut event_pump, &mut context)
+            } else {
+                process_events(&mut event_pump, &mut canvas, &mut context)
+            }
         }? {
             LoopSignal::Continue => {}
             LoopSignal::Quit => break 'running,
@@ -5241,6 +5356,27 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let render_started_at = Instant::now();
+        let render_hud = if session.test_runner {
+            RenderHudInput::default()
+        } else {
+            let rewind_indicator =
+                rewind_indicator_visible(&runtime, &session, &machine, rewound_this_frame);
+            RenderHudInput {
+                performance: current_performance_hud_snapshot(
+                    performance_counter.hud_snapshot(),
+                    &runtime,
+                    &session,
+                    &machine,
+                ),
+                rewind_indicator,
+                fast_forward_indicator: fast_forward_indicator_visible(
+                    &runtime,
+                    &session,
+                    &machine,
+                    fast_forwarded_this_frame,
+                ) && !rewind_indicator,
+            }
+        };
         sync_framebuffer_presentation_resources(
             &mut canvas,
             &texture_creator,
@@ -5261,31 +5397,7 @@ fn run_desktop_with_startup_fallback_persistence(
             ),
             &runtime.video_options,
             None,
-            RenderHudInput {
-                performance: current_performance_hud_snapshot(
-                    performance_counter.hud_snapshot(),
-                    &runtime,
-                    &session,
-                    &machine,
-                ),
-                rewind_indicator: rewind_indicator_visible(
-                    &runtime,
-                    &session,
-                    &machine,
-                    rewound_this_frame,
-                ),
-                fast_forward_indicator: fast_forward_indicator_visible(
-                    &runtime,
-                    &session,
-                    &machine,
-                    fast_forwarded_this_frame,
-                ) && !rewind_indicator_visible(
-                    &runtime,
-                    &session,
-                    &machine,
-                    rewound_this_frame,
-                ),
-            },
+            render_hud,
         )?;
         let render_duration = render_started_at.elapsed();
         let audio_queue_ms_before_pacing = runtime
@@ -5305,86 +5417,101 @@ fn run_desktop_with_startup_fallback_persistence(
             queued_ms_after: audio_submit_queue_after_ms,
         } = audio_submit_telemetry.unwrap_or_default();
         let frame_loop_telemetry = step_result.frame_loop_telemetry;
-        performance_counter.record_presented_frame(
-            canvas.window_mut(),
-            FramePerformanceSample {
-                session_kind: emulation_profile_session_kind(&machine),
-                emulation_duration,
-                emulation_profile_request: step_result.emulation_profile_request,
-                render_duration,
-                present_duration,
-                pacing_duration: pacing.pacing_duration,
-                pacing_sleep_target_duration: pacing.sleep_target_duration,
-                pacing_audio_correction_duration: pacing.audio_correction_duration,
-                pacing_late_duration: pacing.late_duration,
-                pacing_oversleep_duration: pacing.oversleep_duration,
-                audio_submit_sample_count: Some(audio_submit_sample_count),
-                audio_submit_t_cycles: Some(audio_submit_t_cycles),
-                audio_submit_queue_before_ms,
-                audio_submit_enqueued_ms,
-                audio_submit_queue_after_ms,
-                audio_queue_before_pacing_ms: audio_queue_ms_before_pacing,
-                audio_queue_after_pacing_ms: audio_queue_ms_after_pacing,
-                speed_mode: frame_loop_telemetry.speed_mode,
-                frame_step_t_cycles: Some(frame_loop_telemetry.stepped_t_cycles),
-                frame_video_dots: Some(frame_loop_telemetry.video_dots),
-                frame_start_ly: Some(frame_loop_telemetry.start_ly),
-                frame_start_dot: Some(frame_loop_telemetry.start_dot),
-                frame_end_ly: Some(frame_loop_telemetry.end_ly),
-                frame_end_dot: Some(frame_loop_telemetry.end_dot),
-                frame_origin_crossings: Some(frame_loop_telemetry.frame_origin_crossings),
-                scanline_transitions: Some(frame_loop_telemetry.scanline_transitions),
-                scanlines_over_456: Some(frame_loop_telemetry.scanlines_over_456),
-                max_scanline_t_cycles: Some(frame_loop_telemetry.max_scanline_t_cycles),
-                max_scanline_ly: Some(frame_loop_telemetry.max_scanline_ly),
-                max_mode0_start_dot: Some(frame_loop_telemetry.max_mode0_start_dot),
-                max_mode0_start_dot_ly: Some(frame_loop_telemetry.max_mode0_start_dot_ly),
-                ly_153_to_0_transitions: Some(frame_loop_telemetry.ly_153_to_0_transitions),
-                ly_153_to_0_startup_mode0: Some(frame_loop_telemetry.ly_153_to_0_startup_mode0),
-                ly_153_to_0_blank_frame: Some(frame_loop_telemetry.ly_153_to_0_blank_frame),
-                ly_0_self_wraps: Some(frame_loop_telemetry.ly_0_self_wraps),
-                ly_0_self_wrap_startup_mode0: Some(
-                    frame_loop_telemetry.ly_0_self_wrap_startup_mode0,
-                ),
-                ly_0_self_wrap_blank_frame: Some(frame_loop_telemetry.ly_0_self_wrap_blank_frame),
-                ly_0_to_1_transitions: Some(frame_loop_telemetry.ly_0_to_1_transitions),
-                ly_0_scanline_t_cycles: Some(frame_loop_telemetry.ly_0_scanline_t_cycles),
-                ly_0_max_mode0_start_dot: Some(frame_loop_telemetry.ly_0_max_mode0_start_dot),
-                ly_0_stall_t_cycles: Some(frame_loop_telemetry.ly_0_stall_t_cycles),
-                ly_0_stall_hblank_t_cycles: Some(frame_loop_telemetry.ly_0_stall_hblank_t_cycles),
-                ly_0_stall_oam_t_cycles: Some(frame_loop_telemetry.ly_0_stall_oam_t_cycles),
-                ly_0_stall_drawing_t_cycles: Some(frame_loop_telemetry.ly_0_stall_drawing_t_cycles),
-                ly_0_stall_startup_mode0_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_stall_startup_mode0_t_cycles,
-                ),
-                ly_0_stall_blank_frame_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_stall_blank_frame_t_cycles,
-                ),
-                ly_0_stall_runs: Some(frame_loop_telemetry.ly_0_stall_runs),
-                ly_0_max_stall_run_t_cycles: Some(frame_loop_telemetry.ly_0_max_stall_run_t_cycles),
-                ly_0_max_stall_dot: Some(frame_loop_telemetry.ly_0_max_stall_dot),
-                ly_0_max_stall_mode_dot: Some(frame_loop_telemetry.ly_0_max_stall_mode_dot),
-                cpu_stop_t_cycles: Some(frame_loop_telemetry.cpu_stop_t_cycles),
-                cpu_zombie_stop_t_cycles: Some(frame_loop_telemetry.cpu_zombie_stop_t_cycles),
-                ly_0_cpu_stop_t_cycles: Some(frame_loop_telemetry.ly_0_cpu_stop_t_cycles),
-                ly_0_cpu_zombie_stop_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_cpu_zombie_stop_t_cycles,
-                ),
-                ly_0_stall_cpu_stop_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_stall_cpu_stop_t_cycles,
-                ),
-                ly_0_stall_cpu_zombie_stop_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_stall_cpu_zombie_stop_t_cycles,
-                ),
-                lcd_disabled_t_cycles: Some(frame_loop_telemetry.lcd_disabled_t_cycles),
-                lcd_disable_transitions: Some(frame_loop_telemetry.lcd_disable_transitions),
-                lcd_enable_transitions: Some(frame_loop_telemetry.lcd_enable_transitions),
-                ly_0_lcd_disabled_t_cycles: Some(frame_loop_telemetry.ly_0_lcd_disabled_t_cycles),
-                ly_0_stall_lcd_disabled_t_cycles: Some(
-                    frame_loop_telemetry.ly_0_stall_lcd_disabled_t_cycles,
-                ),
-            },
-        )?;
+        if session.test_runner {
+            performance_counter.presented_frames_total =
+                performance_counter.presented_frames_total.saturating_add(1);
+        } else {
+            performance_counter.record_presented_frame(
+                canvas.window_mut(),
+                FramePerformanceSample {
+                    session_kind: emulation_profile_session_kind(&machine),
+                    emulation_duration,
+                    emulation_profile_request: step_result.emulation_profile_request,
+                    render_duration,
+                    present_duration,
+                    pacing_duration: pacing.pacing_duration,
+                    pacing_sleep_target_duration: pacing.sleep_target_duration,
+                    pacing_audio_correction_duration: pacing.audio_correction_duration,
+                    pacing_late_duration: pacing.late_duration,
+                    pacing_oversleep_duration: pacing.oversleep_duration,
+                    audio_submit_sample_count: Some(audio_submit_sample_count),
+                    audio_submit_t_cycles: Some(audio_submit_t_cycles),
+                    audio_submit_queue_before_ms,
+                    audio_submit_enqueued_ms,
+                    audio_submit_queue_after_ms,
+                    audio_queue_before_pacing_ms: audio_queue_ms_before_pacing,
+                    audio_queue_after_pacing_ms: audio_queue_ms_after_pacing,
+                    speed_mode: frame_loop_telemetry.speed_mode,
+                    frame_step_t_cycles: Some(frame_loop_telemetry.stepped_t_cycles),
+                    frame_video_dots: Some(frame_loop_telemetry.video_dots),
+                    frame_start_ly: Some(frame_loop_telemetry.start_ly),
+                    frame_start_dot: Some(frame_loop_telemetry.start_dot),
+                    frame_end_ly: Some(frame_loop_telemetry.end_ly),
+                    frame_end_dot: Some(frame_loop_telemetry.end_dot),
+                    frame_origin_crossings: Some(frame_loop_telemetry.frame_origin_crossings),
+                    scanline_transitions: Some(frame_loop_telemetry.scanline_transitions),
+                    scanlines_over_456: Some(frame_loop_telemetry.scanlines_over_456),
+                    max_scanline_t_cycles: Some(frame_loop_telemetry.max_scanline_t_cycles),
+                    max_scanline_ly: Some(frame_loop_telemetry.max_scanline_ly),
+                    max_mode0_start_dot: Some(frame_loop_telemetry.max_mode0_start_dot),
+                    max_mode0_start_dot_ly: Some(frame_loop_telemetry.max_mode0_start_dot_ly),
+                    ly_153_to_0_transitions: Some(frame_loop_telemetry.ly_153_to_0_transitions),
+                    ly_153_to_0_startup_mode0: Some(frame_loop_telemetry.ly_153_to_0_startup_mode0),
+                    ly_153_to_0_blank_frame: Some(frame_loop_telemetry.ly_153_to_0_blank_frame),
+                    ly_0_self_wraps: Some(frame_loop_telemetry.ly_0_self_wraps),
+                    ly_0_self_wrap_startup_mode0: Some(
+                        frame_loop_telemetry.ly_0_self_wrap_startup_mode0,
+                    ),
+                    ly_0_self_wrap_blank_frame: Some(
+                        frame_loop_telemetry.ly_0_self_wrap_blank_frame,
+                    ),
+                    ly_0_to_1_transitions: Some(frame_loop_telemetry.ly_0_to_1_transitions),
+                    ly_0_scanline_t_cycles: Some(frame_loop_telemetry.ly_0_scanline_t_cycles),
+                    ly_0_max_mode0_start_dot: Some(frame_loop_telemetry.ly_0_max_mode0_start_dot),
+                    ly_0_stall_t_cycles: Some(frame_loop_telemetry.ly_0_stall_t_cycles),
+                    ly_0_stall_hblank_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_hblank_t_cycles,
+                    ),
+                    ly_0_stall_oam_t_cycles: Some(frame_loop_telemetry.ly_0_stall_oam_t_cycles),
+                    ly_0_stall_drawing_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_drawing_t_cycles,
+                    ),
+                    ly_0_stall_startup_mode0_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_startup_mode0_t_cycles,
+                    ),
+                    ly_0_stall_blank_frame_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_blank_frame_t_cycles,
+                    ),
+                    ly_0_stall_runs: Some(frame_loop_telemetry.ly_0_stall_runs),
+                    ly_0_max_stall_run_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_max_stall_run_t_cycles,
+                    ),
+                    ly_0_max_stall_dot: Some(frame_loop_telemetry.ly_0_max_stall_dot),
+                    ly_0_max_stall_mode_dot: Some(frame_loop_telemetry.ly_0_max_stall_mode_dot),
+                    cpu_stop_t_cycles: Some(frame_loop_telemetry.cpu_stop_t_cycles),
+                    cpu_zombie_stop_t_cycles: Some(frame_loop_telemetry.cpu_zombie_stop_t_cycles),
+                    ly_0_cpu_stop_t_cycles: Some(frame_loop_telemetry.ly_0_cpu_stop_t_cycles),
+                    ly_0_cpu_zombie_stop_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_cpu_zombie_stop_t_cycles,
+                    ),
+                    ly_0_stall_cpu_stop_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_cpu_stop_t_cycles,
+                    ),
+                    ly_0_stall_cpu_zombie_stop_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_cpu_zombie_stop_t_cycles,
+                    ),
+                    lcd_disabled_t_cycles: Some(frame_loop_telemetry.lcd_disabled_t_cycles),
+                    lcd_disable_transitions: Some(frame_loop_telemetry.lcd_disable_transitions),
+                    lcd_enable_transitions: Some(frame_loop_telemetry.lcd_enable_transitions),
+                    ly_0_lcd_disabled_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_lcd_disabled_t_cycles,
+                    ),
+                    ly_0_stall_lcd_disabled_t_cycles: Some(
+                        frame_loop_telemetry.ly_0_stall_lcd_disabled_t_cycles,
+                    ),
+                },
+            )?;
+        }
         if should_exit_after_presented_frames(
             exit_after_frames,
             performance_counter.presented_frames_total,
@@ -5393,14 +5520,18 @@ fn run_desktop_with_startup_fallback_persistence(
         }
     }
 
-    settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
+    if !session.test_runner {
+        settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
+    }
     flush_pending_printer_output(canvas.window(), &session, &mut runtime);
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.update_rumble(false, Instant::now())?;
     }
 
     close_runtime_save_sessions(&mut runtime, &machine)?;
-    if let Some(rom_path) = session.rom_path() {
+    if !session.test_runner
+        && let Some(rom_path) = session.rom_path()
+    {
         settings_store.remember_loaded_rom(rom_path)?;
     }
     if let Some(audio_output) = &runtime.audio_output {
@@ -6085,51 +6216,7 @@ fn process_events(
     let settings_store = &mut *context.settings_store;
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
-        let mut clear_gamepad_hold_latches_after_event = false;
-        if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-            let active_gamepad_before_event = gamepad_manager.active_gamepad_joystick_id();
-            gamepad_manager.handle_event(
-                &event,
-                runtime.player_inputs.input_mut(PlayerSlot::P1),
-                machine
-                    .machine_for_player_slot_mut(PlayerSlot::P1)
-                    .expect("P1 should always map to an active desktop machine"),
-            )?;
-            if active_gamepad_before_event != gamepad_manager.active_gamepad_joystick_id() {
-                clear_gamepad_hold_latches_after_event = true;
-            }
-            let should_activate_from_input = match &event {
-                Event::ControllerButtonDown { .. } => true,
-                Event::ControllerAxisMotion { axis, value, .. } => {
-                    gamepad_button_binding_from_sdl_axis(*axis).is_some()
-                        && gamepad_trigger_axis_is_pressed(*value)
-                }
-                _ => false,
-            };
-            if should_activate_from_input {
-                let input_joystick_id = match &event {
-                    Event::ControllerButtonDown { which, .. }
-                    | Event::ControllerAxisMotion { which, .. } => {
-                        Some(gamepad_event_joystick_id(*which))
-                    }
-                    _ => None,
-                };
-                if let Some(input_joystick_id) = input_joystick_id
-                    && gamepad_manager.activate_gamepad_from_input(
-                        input_joystick_id,
-                        runtime.player_inputs.input_mut(PlayerSlot::P1),
-                        machine
-                            .machine_for_player_slot_mut(PlayerSlot::P1)
-                            .expect("P1 should always map to an active desktop machine"),
-                    )
-                {
-                    clear_gamepad_hold_latches_after_event = true;
-                }
-            }
-        }
-        if clear_gamepad_hold_latches_after_event {
-            clear_gamepad_hold_latches(runtime);
-        }
+        process_gamepad_manager_event(runtime, machine, &event)?;
 
         if runtime.printer_output.handle_event(&event)? {
             continue;
@@ -6440,14 +6527,18 @@ fn process_events(
                             toggle_fullscreen(canvas.window_mut())?;
                             runtime.video_options.fullscreen =
                                 canvas.window().fullscreen_state() != FullscreenType::Off;
-                            settings_store.set_fullscreen(runtime.video_options.fullscreen)?;
+                            if !session.test_runner {
+                                settings_store.set_fullscreen(runtime.video_options.fullscreen)?;
+                            }
                         }
                         HotkeyAction::TogglePerformanceHud => {
                             runtime.video_options.show_performance_hud =
                                 !runtime.video_options.show_performance_hud;
-                            settings_store.set_show_performance_hud(
-                                runtime.video_options.show_performance_hud,
-                            )?;
+                            if !session.test_runner {
+                                settings_store.set_show_performance_hud(
+                                    runtime.video_options.show_performance_hud,
+                                )?;
+                            }
                         }
                     }
 
@@ -6596,6 +6687,85 @@ fn process_events(
     Ok(LoopSignal::Continue)
 }
 
+fn process_gamepad_manager_event(
+    runtime: &mut FrontendRuntime,
+    machine: &mut DesktopEmulationSession,
+    event: &Event,
+) -> Result<(), String> {
+    let mut clear_gamepad_hold_latches_after_event = false;
+    if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
+        let active_gamepad_before_event = gamepad_manager.active_gamepad_joystick_id();
+        gamepad_manager.handle_event(
+            event,
+            runtime.player_inputs.input_mut(PlayerSlot::P1),
+            machine
+                .machine_for_player_slot_mut(PlayerSlot::P1)
+                .expect("P1 should always map to an active desktop machine"),
+        )?;
+        if active_gamepad_before_event != gamepad_manager.active_gamepad_joystick_id() {
+            clear_gamepad_hold_latches_after_event = true;
+        }
+        let should_activate_from_input = match event {
+            Event::ControllerButtonDown { .. } => true,
+            Event::ControllerAxisMotion { axis, value, .. } => {
+                gamepad_button_binding_from_sdl_axis(*axis).is_some()
+                    && gamepad_trigger_axis_is_pressed(*value)
+            }
+            _ => false,
+        };
+        if should_activate_from_input {
+            let input_joystick_id = match event {
+                Event::ControllerButtonDown { which, .. }
+                | Event::ControllerAxisMotion { which, .. } => {
+                    Some(gamepad_event_joystick_id(*which))
+                }
+                _ => None,
+            };
+            if let Some(input_joystick_id) = input_joystick_id
+                && gamepad_manager.activate_gamepad_from_input(
+                    input_joystick_id,
+                    runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to an active desktop machine"),
+                )
+            {
+                clear_gamepad_hold_latches_after_event = true;
+            }
+        }
+    }
+    if clear_gamepad_hold_latches_after_event {
+        clear_gamepad_hold_latches(runtime);
+    }
+
+    Ok(())
+}
+
+fn process_test_runner_events(
+    event_pump: &mut sdl3::EventPump,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<LoopSignal, String> {
+    let events = event_pump.poll_iter().collect::<Vec<_>>();
+    for event in events {
+        if matches!(event, Event::Quit { .. }) {
+            return Ok(LoopSignal::Quit);
+        }
+        process_gamepad_manager_event(context.runtime, context.machine, &event)?;
+    }
+
+    if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
+        gamepad_manager.poll_active_gamepad_state(
+            context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+            context
+                .machine
+                .machine_for_player_slot_mut(PlayerSlot::P1)
+                .expect("P1 should always map to an active desktop machine"),
+        );
+    }
+
+    Ok(LoopSignal::Continue)
+}
+
 fn step_fast_forward_frames(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -6634,7 +6804,8 @@ fn step_until_next_frame(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<StepUntilNextFrameResult, String> {
-    let collect_frame_telemetry = context.performance_counter.emulation_profile_enabled();
+    let collect_frame_telemetry =
+        !context.session.test_runner && context.performance_counter.emulation_profile_enabled();
     let frame_start_ly = context.machine.ppu().ly();
     let frame_start_dot = context.machine.ppu().line_dot();
     let mut current_scanline_ly = frame_start_ly;
@@ -6643,7 +6814,8 @@ fn step_until_next_frame(
     let mut previous_ly = frame_start_ly;
     let mut previous_dot = frame_start_dot;
     let mut previous_cpu_execution_state = context.machine.cpu().execution_state();
-    let profile_this_frame = context.performance_counter.should_profile_next_frame();
+    let profile_this_frame =
+        !context.session.test_runner && context.performance_counter.should_profile_next_frame();
     let mut profile_request = None::<EmulationProfileRequest>;
     let mut pending_event_poll_duration = Duration::ZERO;
     let mut stepped_t_cycles = 0usize;
@@ -6693,24 +6865,26 @@ fn step_until_next_frame(
     let mut previous_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
 
     loop {
-        let process_events_started_at = profile_this_frame.then(Instant::now);
-        let loop_signal = process_events(event_pump, canvas, context)?;
-        if let Some(process_events_started_at) = process_events_started_at {
-            let duration = process_events_started_at.elapsed();
-            if let Some(profile_request) = &mut profile_request {
-                profile_request.record_host_event_poll_duration(duration);
-            } else {
-                pending_event_poll_duration += duration;
+        if !context.session.test_runner {
+            let process_events_started_at = profile_this_frame.then(Instant::now);
+            let loop_signal = process_events(event_pump, canvas, context)?;
+            if let Some(process_events_started_at) = process_events_started_at {
+                let duration = process_events_started_at.elapsed();
+                if let Some(profile_request) = &mut profile_request {
+                    profile_request.record_host_event_poll_duration(duration);
+                } else {
+                    pending_event_poll_duration += duration;
+                }
             }
-        }
-        match loop_signal {
-            LoopSignal::Continue => {}
-            LoopSignal::Quit => {
-                return Ok(StepUntilNextFrameResult {
-                    signal: LoopSignal::Quit,
-                    emulation_profile_request: None,
-                    frame_loop_telemetry: FrameLoopTelemetry::default(),
-                });
+            match loop_signal {
+                LoopSignal::Continue => {}
+                LoopSignal::Quit => {
+                    return Ok(StepUntilNextFrameResult {
+                        signal: LoopSignal::Quit,
+                        emulation_profile_request: None,
+                        frame_loop_telemetry: FrameLoopTelemetry::default(),
+                    });
+                }
             }
         }
         if emulation_paused(context.machine, context.runtime) {
@@ -6737,56 +6911,65 @@ fn step_until_next_frame(
             .runtime
             .rtc_sync
             .sync_host_elapsed_to_machine(context.machine);
+        let tcycle_host_services = DesktopTcycleHostServices::from_runtime_state(
+            context.session,
+            context.machine,
+            context.runtime,
+        );
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
-            let scheduler_t_cycle = context.machine.next_t_cycle().get();
+            let scheduler_t_cycle = tcycle_host_services
+                .capture_audio
+                .then(|| context.machine.next_t_cycle().get());
             context.machine.step_t_cycle();
             context
                 .runtime
                 .rtc_sync
                 .tick_mbc3_for_emulated_t_cycle(context.machine);
             stepped_t_cycles += 1;
-            drain_printed_pages_into_printer_output(
-                canvas.window(),
-                context.session,
-                context.runtime,
-                context.machine,
-            );
-            context.runtime.trace_capture.is_enabled().then(|| {
-                context
-                    .runtime
-                    .trace_capture
-                    .record_t_cycle(audio_source_machine(context.machine))
-            });
-            context
-                .runtime
-                .watch_trace
-                .record_t_cycle(audio_source_machine(context.machine));
-            context
-                .runtime
-                .pc_watch_trace
-                .record_t_cycle(audio_source_machine(context.machine));
-            context
-                .runtime
-                .edge_trace
-                .record_t_cycle(audio_source_machine(context.machine));
-            context
-                .runtime
-                .ch4_nr43_trace
-                .record_t_cycle(audio_source_machine(context.machine));
-            context
-                .runtime
-                .ch4_startup_trace
-                .record_t_cycle(audio_source_machine(context.machine));
-            context
-                .runtime
-                .cpu_window_trace
-                .record_t_cycle(audio_source_machine(context.machine));
+            if tcycle_host_services.drain_printer {
+                drain_printed_pages_into_printer_output(
+                    canvas.window(),
+                    context.session,
+                    context.runtime,
+                    context.machine,
+                );
+            }
+            if tcycle_host_services.traces.any() {
+                let trace_machine = audio_source_machine(context.machine);
+                if tcycle_host_services.traces.trace_capture {
+                    context.runtime.trace_capture.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.watch_trace {
+                    context.runtime.watch_trace.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.pc_watch_trace {
+                    context.runtime.pc_watch_trace.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.edge_trace {
+                    context.runtime.edge_trace.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.ch4_nr43_trace {
+                    context.runtime.ch4_nr43_trace.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.ch4_startup_trace {
+                    context
+                        .runtime
+                        .ch4_startup_trace
+                        .record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.cpu_window_trace {
+                    context
+                        .runtime
+                        .cpu_window_trace
+                        .record_t_cycle(trace_machine);
+                }
+            }
 
-            let host_audio_capture_due = {
+            let host_audio_capture_due = tcycle_host_services.capture_audio && {
                 let audio_machine = audio_source_machine(context.machine);
                 host_audio_capture_due_for_t_cycle(
                     audio_machine.speed().current_speed(),
-                    scheduler_t_cycle,
+                    scheduler_t_cycle.expect("audio capture should record the scheduler T-cycle"),
                     audio_machine.cpu().execution_state(),
                 )
             };
@@ -6799,9 +6982,9 @@ fn step_until_next_frame(
                 }
             }
 
-            let rumble_result =
-                sync_gamepad_rumble(context.runtime, context.machine, Instant::now());
-            rumble_result?;
+            if tcycle_host_services.sync_gamepad_rumble {
+                sync_gamepad_rumble(context.runtime, context.machine, Instant::now())?;
+            }
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
@@ -6813,7 +6996,9 @@ fn step_until_next_frame(
                 current_cpu_execution_state,
                 CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
             );
-            record_desktop_rewind_point(context.session, context.machine, context.runtime);
+            if tcycle_host_services.record_rewind {
+                record_desktop_rewind_point_active(context.machine, context.runtime);
+            }
             if collect_frame_telemetry {
                 let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
                 let current_access_mode = context.machine.ppu().access_mode();
@@ -7392,9 +7577,11 @@ fn apply_machine_settings_change(
     };
 
     context.session.config = effective_config;
-    context
-        .settings_store
-        .persist_machine_preferences(&context.session.config)?;
+    if !context.session.test_runner {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
     Ok(())
 }
 
@@ -7527,6 +7714,7 @@ fn rebuild_machine_for_config(
 
         let next_session = DesktopSession {
             config: next_config.clone(),
+            test_runner: context.session.test_runner,
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
             linked_secondary_rom: context.session.linked_secondary_rom.clone(),
@@ -8151,6 +8339,7 @@ fn open_selected_rom(
     );
     let next_session = DesktopSession {
         config: effective_config.clone(),
+        test_runner: context.session.test_runner,
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
         linked_secondary_rom: None,
@@ -8176,12 +8365,14 @@ fn open_selected_rom(
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
     context.session.external_port_selection = next_external_port_selection;
-    if config_fell_back {
+    if config_fell_back && !context.session.test_runner {
         context
             .settings_store
             .persist_machine_preferences(&context.session.config)?;
     }
-    if let Some(rom_path) = context.session.rom_path() {
+    if !context.session.test_runner
+        && let Some(rom_path) = context.session.rom_path()
+    {
         context.settings_store.remember_loaded_rom(rom_path)?;
         context.session.recent_roms = context.settings_store.recent_roms().to_vec();
     }
@@ -8314,6 +8505,7 @@ fn open_selected_linked_secondary_rom(
 
     let next_session = DesktopSession {
         config: effective_config.clone(),
+        test_runner: context.session.test_runner,
         current_dir: context.session.current_dir.clone(),
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: Some(next_secondary_rom),
@@ -8338,7 +8530,7 @@ fn open_selected_linked_secondary_rom(
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
     context.session.external_port_selection = DesktopExternalPortSelection::GameLink;
-    if config_fell_back {
+    if config_fell_back && !context.session.test_runner {
         context
             .settings_store
             .persist_machine_preferences(&context.session.config)?;
@@ -8412,6 +8604,7 @@ fn activate_dmg07_adapter(
 
     let next_session = DesktopSession {
         config: effective_config.clone(),
+        test_runner: context.session.test_runner,
         current_dir: context.session.current_dir.clone(),
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: None,
@@ -8431,7 +8624,7 @@ fn activate_dmg07_adapter(
     context.session.linked_secondary_rom = None;
     context.session.dmg07_player_count = Some(player_count);
     context.session.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
-    if config_fell_back {
+    if config_fell_back && !context.session.test_runner {
         context
             .settings_store
             .persist_machine_preferences(&context.session.config)?;
@@ -8684,18 +8877,33 @@ fn reset_host_state_after_machine_restore(
     Ok(())
 }
 
+#[cfg(test)]
 fn record_desktop_rewind_point(
     session: &DesktopSession,
     machine: &DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) {
-    if !rewind_actions_available(session, machine)
-        || rewind_hold_active(runtime)
-        || fast_forward_active(runtime, session, machine)
-    {
+    if !desktop_rewind_recording_active(session, machine, runtime) {
         return;
     }
 
+    record_desktop_rewind_point_active(machine, runtime);
+}
+
+fn desktop_rewind_recording_active(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    runtime: &FrontendRuntime,
+) -> bool {
+    rewind_actions_available(session, machine)
+        && !rewind_hold_active(runtime)
+        && !fast_forward_active(runtime, session, machine)
+}
+
+fn record_desktop_rewind_point_active(
+    machine: &DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+) {
     let primary = machine.primary_machine();
     if runtime.rewind_frame_tracker.observe(primary) {
         runtime.rewind_buffer.record_frame_boundary(primary);
@@ -10874,7 +11082,7 @@ fn reset_machine(
     }
     let config_fell_back = effective_config != session.config;
     session.config = effective_config;
-    if config_fell_back {
+    if config_fell_back && !session.test_runner {
         settings_store.persist_machine_preferences(&session.config)?;
     }
     let reset_console_model = reset_machine.primary_machine().apu().console_model();
@@ -12924,6 +13132,14 @@ mod tests {
                 _name: name,
             }
         }
+
+        fn set_button(&self, button: Button, down: bool) {
+            let success = unsafe {
+                sdl3::sys::joystick::SDL_SetJoystickVirtualButton(self.raw, button as i32, down)
+            };
+            assert!(success, "failed to update virtual SDL gamepad button");
+            unsafe { sdl3::sys::joystick::SDL_UpdateJoysticks() };
+        }
     }
 
     impl Drop for VirtualGamepad {
@@ -12994,6 +13210,7 @@ mod tests {
 
             let session = super::DesktopSession {
                 config: config.clone(),
+                test_runner: false,
                 current_dir,
                 loaded_rom,
                 linked_secondary_rom: None,
@@ -13190,6 +13407,18 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::process_events(&mut self.event_pump, &mut self.canvas, &mut context)
+        }
+
+        fn process_test_runner_events(&mut self) -> Result<super::LoopSignal, String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_test_runner_events(&mut self.event_pump, &mut context)
         }
 
         fn step_until_next_frame(&mut self) -> Result<super::LoopSignal, String> {
@@ -14513,6 +14742,113 @@ mod tests {
         assert_eq!(
             result.frame_loop_telemetry,
             super::FrameLoopTelemetry::default()
+        );
+    }
+
+    #[test]
+    fn test_runner_events_ignore_input_and_step_polls_only_at_frame_boundary() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("test-runner-events", true, false, false);
+        harness.session.test_runner = true;
+
+        harness.push_key(Keycode::Z, true);
+        assert_eq!(
+            harness
+                .process_test_runner_events()
+                .expect("test-runner events should process"),
+            super::LoopSignal::Continue
+        );
+
+        harness
+            .sdl
+            .event()
+            .expect("test-runner event subsystem")
+            .push_event(Event::Quit { timestamp: 0 })
+            .expect("quit event should be pushable");
+        assert_eq!(
+            harness
+                .step_until_next_frame()
+                .expect("test-runner stepping should ignore queued SDL events"),
+            super::LoopSignal::Continue
+        );
+        assert_eq!(
+            harness
+                .process_test_runner_events()
+                .expect("test-runner quit event should process"),
+            super::LoopSignal::Quit
+        );
+    }
+
+    #[test]
+    fn test_runner_events_preserve_explicit_gamepad_input_only() {
+        let _guard = crate::lock_sdl_test();
+        let virtual_gamepad = VirtualGamepad::attach("Test Runner Pad");
+        let mut harness = FrontendHarness::new("test-runner-gamepad", true, false, true);
+        harness.session.test_runner = true;
+        harness
+            ._gamepad_subsystem
+            .as_ref()
+            .expect("gamepad subsystem")
+            .update();
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_preferred_device(
+                gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Test Runner Pad".to_string()),
+                },
+                harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to an active desktop machine"),
+            );
+
+        harness.push_key(Keycode::Return, true);
+        virtual_gamepad.set_button(Button::South, true);
+        assert_eq!(
+            harness
+                .process_test_runner_events()
+                .expect("test-runner gamepad events should process"),
+            super::LoopSignal::Continue
+        );
+        harness.machine.step_t_cycle();
+        assert_eq!(
+            harness
+                .machine
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should always map to an active desktop machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0x20,
+            "test-runner should poll explicitly enabled gamepad input but keep keyboard ignored"
+        );
+        assert!(!harness.runtime.menu_state.is_open());
+
+        virtual_gamepad.set_button(Button::South, false);
+        assert_eq!(
+            harness
+                .process_test_runner_events()
+                .expect("test-runner gamepad release should process"),
+            super::LoopSignal::Continue
+        );
+        harness.machine.step_t_cycle();
+        assert_eq!(
+            harness
+                .machine
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should always map to an active desktop machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
         );
     }
 
@@ -16534,6 +16870,7 @@ mod tests {
         let linked_path = root.join("linked").join("secondary.gb");
         let mut session = super::DesktopSession {
             config: DesktopConfig::default(),
+            test_runner: false,
             current_dir: current_dir.clone(),
             loaded_rom: None,
             linked_secondary_rom: None,
@@ -17940,6 +18277,7 @@ mod tests {
                 exit_after_frames: None,
                 config: launcher_config,
                 audio_recording: None,
+                test_runner: false,
             },
             launcher_store,
         )
@@ -17962,6 +18300,7 @@ mod tests {
                 exit_after_frames: None,
                 config: rom_config,
                 audio_recording: None,
+                test_runner: false,
             },
             rom_store,
         )
@@ -17969,6 +18308,41 @@ mod tests {
         rom_quit
             .join()
             .expect("ROM quit-event helper should finish");
+    }
+
+    #[test]
+    fn run_desktop_test_runner_exits_after_frames_without_settings_writes() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let root = temp_test_root("headless-test-runner");
+        let rom_path = root.join("test-runner.gb");
+        let mut rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        rom[ENTRY_POINT_START..ENTRY_POINT_START + 2].copy_from_slice(&[0x18, 0xFE]);
+        fs::write(&rom_path, rom).expect("test-runner ROM should be writable");
+        let settings_path = root.join("desktop-settings.toml");
+        let mut config = DesktopConfig::default();
+        config.input.gamepad.enabled = false;
+        config.audio.enabled = false;
+        config.video.vsync = false;
+
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: Some(rom_path),
+                linked_peer_rom_path: None,
+                exit_after_frames: Some(2),
+                config,
+                audio_recording: None,
+                test_runner: true,
+            },
+            DesktopSettingsStore::new_for_tests(settings_path.clone()),
+        )
+        .expect("test-runner mode should exit through presented-frame counting");
+
+        assert!(
+            !settings_path.exists(),
+            "test-runner mode should not persist settings or recent ROMs"
+        );
     }
 
     #[test]
@@ -17999,6 +18373,7 @@ mod tests {
                     sample_rate_hz: 96_000,
                     stem_channels: vec![ApuRecordedChannel::Ch1, ApuRecordedChannel::Ch4],
                 }),
+                test_runner: false,
             },
             DesktopSettingsStore::new_for_tests(root.join("desktop-settings.toml")),
         )
@@ -18029,6 +18404,7 @@ mod tests {
         let secondary_bytes = fs::read(&secondary_rom_path).expect("secondary ROM should exist");
         let mut session = super::DesktopSession {
             config: DesktopConfig::default(),
+            test_runner: false,
             current_dir: root.clone(),
             loaded_rom: Some(super::LoadedRom {
                 path: primary_rom_path,
@@ -18144,6 +18520,7 @@ mod tests {
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
+                test_runner: false,
             },
             settings_store,
             true,
@@ -18196,6 +18573,7 @@ mod tests {
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
+                test_runner: false,
             },
             settings_store,
         )
@@ -18260,6 +18638,7 @@ mod tests {
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
+                test_runner: false,
             },
             settings_store,
         )
@@ -20698,6 +21077,7 @@ mod tests {
                 exit_after_frames: None,
                 config: DesktopConfig::default(),
                 audio_recording: None,
+                test_runner: false,
             },
             &harness.root,
         )
@@ -20712,6 +21092,7 @@ mod tests {
                     exit_after_frames: None,
                     config: DesktopConfig::default(),
                     audio_recording: None,
+                    test_runner: false,
                 },
                 &harness.root,
             )
@@ -20725,6 +21106,7 @@ mod tests {
                 exit_after_frames: Some(8),
                 config: DesktopConfig::default(),
                 audio_recording: None,
+                test_runner: false,
             },
             &harness.root,
         )
@@ -22548,6 +22930,7 @@ mod tests {
 
         let launcher_session = super::DesktopSession {
             config: config.clone(),
+            test_runner: false,
             current_dir: root.clone(),
             loaded_rom: None,
             linked_secondary_rom: None,

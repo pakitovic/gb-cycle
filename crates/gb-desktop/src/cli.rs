@@ -23,6 +23,19 @@ pub struct DesktopRunOptions {
     pub exit_after_frames: Option<u64>,
     pub config: DesktopConfig,
     pub audio_recording: Option<DesktopAudioRecordingOptions>,
+    pub test_runner: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TestRunnerExplicitOverrides {
+    saves: bool,
+    saves_disabled: bool,
+    rewind: bool,
+    fullscreen: bool,
+    vsync: bool,
+    scale: bool,
+    audio: bool,
+    gamepad: bool,
 }
 
 #[cfg(test)]
@@ -51,10 +64,15 @@ where
     let mut audio_recording_sample_rate_overridden = false;
     let mut audio_recording_stem_channels = Vec::new();
     let mut requested_display_palette = None;
+    let mut test_runner = false;
+    let mut test_runner_overrides = TestRunnerExplicitOverrides::default();
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
             "--help" | "-h" => return Ok(CliAction::ShowHelp),
+            "--test-runner" => {
+                test_runner = true;
+            }
             "--model" => {
                 let Some(value) = arguments.next() else {
                     return Err("--model requires a value".to_string());
@@ -92,6 +110,7 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--save-dir requires a value".to_string());
                 };
+                test_runner_overrides.saves = true;
                 config.saves.directory_policy =
                     SaveDirectoryPolicy::Custom(PathBuf::from(value.as_ref()));
             }
@@ -99,24 +118,31 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--save-key requires a value".to_string());
                 };
+                test_runner_overrides.saves = true;
                 config.saves.key_policy = SaveKeyPolicy::Explicit(parse_save_key(value.as_ref())?);
             }
             "--save-policy" => {
                 let Some(value) = arguments.next() else {
                     return Err("--save-policy requires a value".to_string());
                 };
+                test_runner_overrides.saves = true;
                 config.saves.flush_policy = parse_save_policy(value.as_ref())?;
             }
             "--no-saves" => {
+                test_runner_overrides.saves = true;
+                test_runner_overrides.saves_disabled = true;
                 config.saves.enabled = false;
             }
             "--no-rewind" => {
+                test_runner_overrides.rewind = true;
                 config.rewind.enabled = false;
             }
             "--fullscreen" => {
+                test_runner_overrides.fullscreen = true;
                 config.video.fullscreen = true;
             }
             "--no-vsync" => {
+                test_runner_overrides.vsync = true;
                 config.video.vsync = false;
             }
             "--palette" => {
@@ -129,9 +155,11 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--scale requires a value".to_string());
                 };
+                test_runner_overrides.scale = true;
                 config.video.window_scale = parse_positive_u8("--scale", value.as_ref())?;
             }
             "--mute" => {
+                test_runner_overrides.audio = true;
                 config.audio = AudioOptions {
                     enabled: false,
                     ..config.audio
@@ -171,12 +199,14 @@ where
                     Some(parse_positive_u64("--exit-after-frames", value.as_ref())?);
             }
             "--no-gamepad" => {
+                test_runner_overrides.gamepad = true;
                 config.input.gamepad.enabled = false;
             }
             "--gamepad-direction" => {
                 let Some(value) = arguments.next() else {
                     return Err("--gamepad-direction requires a value".to_string());
                 };
+                test_runner_overrides.gamepad = true;
                 config.input.gamepad.directional_source =
                     parse_gamepad_directional_source(value.as_ref())?;
             }
@@ -184,6 +214,7 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--gamepad-face-layout requires a value".to_string());
                 };
+                test_runner_overrides.gamepad = true;
                 config
                     .input
                     .gamepad
@@ -194,6 +225,7 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--gamepad-preferred-name requires a value".to_string());
                 };
+                test_runner_overrides.gamepad = true;
                 config.input.gamepad.preferred_device.name = Some(parse_non_empty_text(
                     "--gamepad-preferred-name",
                     value.as_ref(),
@@ -203,6 +235,7 @@ where
                 let Some(value) = arguments.next() else {
                     return Err("--gamepad-preferred-path requires a value".to_string());
                 };
+                test_runner_overrides.gamepad = true;
                 config.input.gamepad.preferred_device.path = Some(parse_non_empty_text(
                     "--gamepad-preferred-path",
                     value.as_ref(),
@@ -215,6 +248,7 @@ where
                 let Some(binding_value) = arguments.next() else {
                     return Err(format!("{value} requires a value"));
                 };
+                test_runner_overrides.gamepad = true;
                 apply_gamepad_binding_override(
                     &mut config.input.gamepad.bindings,
                     binding_slot,
@@ -243,6 +277,9 @@ where
         && let Some(display_palette) = requested_display_palette
     {
         config.video.display_palette = display_palette;
+    }
+    if test_runner {
+        apply_test_runner_defaults(&mut config, test_runner_overrides);
     }
 
     let audio_recording = match audio_recording_path {
@@ -274,7 +311,38 @@ where
         exit_after_frames,
         config,
         audio_recording,
+        test_runner,
     })))
+}
+
+fn apply_test_runner_defaults(config: &mut DesktopConfig, explicit: TestRunnerExplicitOverrides) {
+    if !explicit.saves {
+        config.saves.enabled = false;
+    } else if !explicit.saves_disabled {
+        config.saves.enabled = true;
+    }
+    if !explicit.rewind {
+        config.rewind.enabled = false;
+    }
+    if !explicit.fullscreen {
+        config.video.fullscreen = false;
+    }
+    if !explicit.vsync {
+        config.video.vsync = false;
+    }
+    if !explicit.scale {
+        config.video.window_scale = 1;
+    }
+    if !explicit.audio {
+        config.audio = AudioOptions {
+            enabled: false,
+            ..config.audio
+        };
+    }
+    if !explicit.gamepad {
+        config.input.gamepad.enabled = false;
+    }
+    config.video.show_performance_hud = false;
 }
 
 pub fn help_text() -> &'static str {
@@ -288,6 +356,7 @@ pub fn help_text() -> &'static str {
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+        "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
         "  --save-policy <manual|on-close|on-write|debounced>\n",
@@ -576,6 +645,7 @@ mod tests {
         assert_eq!(options.linked_peer_rom_path, None);
         assert_eq!(options.exit_after_frames, None);
         assert_eq!(options.audio_recording, None);
+        assert!(!options.test_runner);
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::GameBoy
@@ -837,11 +907,92 @@ mod tests {
     }
 
     #[test]
+    fn parse_test_runner_applies_host_light_defaults_without_changing_hardware_axes() {
+        let mut base_config = DesktopConfig::default();
+        base_config.video.window_scale = 6;
+        base_config.video.vsync = true;
+        base_config.video.fullscreen = true;
+        base_config.video.show_performance_hud = true;
+        base_config.audio.enabled = true;
+        base_config.input.gamepad.enabled = true;
+        base_config.launch.startup_mode = StartupMode::RealBoot;
+        base_config.launch.execution_mode = ExecutionMode::Experimental;
+
+        let action =
+            parse_cli_arguments_with_base_config(["demo.gb", "--test-runner"], base_config)
+                .expect("test-runner CLI should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert!(options.test_runner);
+        assert!(!options.config.saves.enabled);
+        assert!(!options.config.rewind.enabled);
+        assert!(!options.config.audio.enabled);
+        assert!(!options.config.input.gamepad.enabled);
+        assert!(!options.config.video.vsync);
+        assert!(!options.config.video.fullscreen);
+        assert!(!options.config.video.show_performance_hud);
+        assert_eq!(options.config.video.window_scale, 1);
+        assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
+        assert_eq!(
+            options.config.launch.execution_mode,
+            ExecutionMode::Experimental
+        );
+    }
+
+    #[test]
+    fn parse_test_runner_keeps_explicit_host_overrides_order_independent() {
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--scale",
+            "3",
+            "--fullscreen",
+            "--save-dir",
+            "saves",
+            "--gamepad-direction",
+            "left-stick",
+            "--test-runner",
+        ])
+        .expect("test-runner CLI overrides should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert!(options.test_runner);
+        assert!(options.config.saves.enabled);
+        assert_eq!(
+            options.config.saves.directory_policy,
+            SaveDirectoryPolicy::Custom(PathBuf::from("saves"))
+        );
+        assert_eq!(options.config.video.window_scale, 3);
+        assert!(options.config.video.fullscreen);
+        assert_eq!(
+            options.config.input.gamepad.directional_source,
+            GamepadDirectionalSource::LeftStickOnly
+        );
+        assert!(options.config.input.gamepad.enabled);
+        assert!(!options.config.audio.enabled);
+        assert!(!options.config.rewind.enabled);
+        assert!(!options.config.video.vsync);
+
+        let action = parse_cli_arguments(["demo.gb", "--test-runner", "--scale", "2"])
+            .expect("test-runner after scale should keep explicit scale");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(options.config.video.window_scale, 2);
+    }
+
+    #[test]
     fn help_text_lists_host_boot_audio_and_input_overrides() {
         let text = help_text();
 
         assert!(text.contains("Usage:"));
         assert!(text.contains("--boot-rom-dir <dir>"));
+        assert!(text.contains("--test-runner"));
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--no-rewind"));

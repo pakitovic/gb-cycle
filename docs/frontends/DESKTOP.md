@@ -21,6 +21,7 @@ For direct local `DMG-04` startup and reproducible profiling runs, the desktop C
 - `--link-rom <path>` to start immediately with a linked secondary cartridge
 - `--exit-after-frames <n>` to exit automatically after presenting `n` emulated frames
 - `--no-rewind` to disable rewind capture for a profiling run without changing persisted menu settings
+- `--test-runner` to use a host-light automation path without changing emulated timing; it implies muted playback, disabled battery saves, disabled rewind, disabled gamepad input, no vsync, `--scale 1`, non-fullscreen presentation, no stats HUD, no title/stat updates, no settings/recent-ROM writes, and one SDL event poll per presented frame unless the corresponding host option is explicitly overridden on the command line
 
 Local `DMG-07` 4-Player Adapter sessions are selected from the overlay at runtime through `EXT. PORT -> 4P ADAPTER`; this frontend cut intentionally does not add a separate CLI shortcut for 3P/4P startup.
 
@@ -119,6 +120,8 @@ In CGB double-speed, desktop playback and recording capture that host-facing bou
 - Summary lines also tag the active session shape as `session=single`, `session=linked-dmg04-2p`, or `session=linked-dmg07`, so single-console and linked runs can be compared mechanically from the same profiler output stream.
 - The detailed frame-boundary, scanline, `LY=0` stall counters, machine-step region callbacks, and PPU sub-region classification are only collected while an observer/profiler requests them, so normal desktop gameplay does not pay that extra per-`T-cycle` bookkeeping cost.
 - Linked-session profile replays now also use the linked observer stepping path, so sampled `CPU`, `PPU`, and `core_other` buckets remain populated for local `DMG-04` runs instead of collapsing to zero during the background replay.
+- When audio playback/recording, rewind capture, printer output, gamepad rumble, and desktop trace captures are inactive, the desktop loop skips those frontend-only per-`T-cycle` hooks entirely while leaving core stepping, host RTC synchronization, and frame pacing unchanged.
+- `--test-runner` additionally skips menu/hotkey/keyboard processing, pending native-dialog work, title/stat updates, and in-frame SDL event polling; only a lightweight quit-event drain runs once per presented frame, plus once-per-frame joypad polling when gamepad support is explicitly re-enabled, so automated screenshot runners avoid desktop host work while `Machine::step_t_cycle()`, `HostRtcSync`, and `FramePacer` stay on the normal path.
 - Normal gameplay also skips repeated rumble synchronization work for cartridges without rumble support unless the frontend still has an applied host rumble effect to clear.
 - Override the sampling stride with `GB_CYCLE_DESKTOP_EMU_PROFILE=summary:<frames>`, `summary-lite:<frames>`, or `summary-overhead:<frames>` when you need denser or lighter sampling during an investigation.
 - That profiler is investigative timing only: it does not alter emulation semantics, it is disabled by default, and it is designed to minimize main-thread intrusion while still separating likely core cost from host overhead when a commercial ROM path drops below full speed.

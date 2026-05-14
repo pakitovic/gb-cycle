@@ -143,6 +143,7 @@ fn parse_run_arguments_keep_the_default_game_boy_model() {
             );
             assert_eq!(options.frame_limit, None);
             assert_eq!(options.tcycle_limit, None);
+            assert!(!options.test_runner);
         }
         other => panic!("expected run action, got {other:?}"),
     }
@@ -950,6 +951,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         "demo_save",
         "--save-policy",
         "manual",
+        "--test-runner",
     ])
     .expect("run arguments should parse");
 
@@ -978,9 +980,31 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
             assert_eq!(options.save_key.as_deref(), Some("demo_save"));
             assert_eq!(options.save_policy, SavePolicy::Manual);
             assert_eq!(options.default_run_budget, None);
+            assert!(options.test_runner);
         }
         other => panic!("expected run action, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_run_arguments_accepts_test_runner_without_changing_emulated_limits() {
+    let action =
+        parse_run_arguments(["demo.gb", "--test-runner"]).expect("test-runner should parse");
+
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+
+    assert!(options.test_runner);
+    assert_eq!(options.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(options.execution_mode, ExecutionMode::Strict);
+    assert_eq!(options.save_dir, None);
+    assert_eq!(
+        options.default_run_budget,
+        Some(DefaultRunBudget::SkipBootFrames {
+            frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+        })
+    );
 }
 
 #[test]

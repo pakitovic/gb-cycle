@@ -47,6 +47,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
     "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+    "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
     "  --tcycles <n>                          Stop after <n> T-cycles\n",
     "                                         If neither limit is provided, direct boot stops after 120 completed frames\n",
@@ -238,6 +239,7 @@ struct RunOptions {
     save_dir: Option<PathBuf>,
     save_key: Option<String>,
     save_policy: SavePolicy,
+    test_runner: bool,
 }
 
 impl RunOptions {
@@ -262,6 +264,7 @@ impl RunOptions {
             save_dir: None,
             save_key: None,
             save_policy: SavePolicy::default(),
+            test_runner: false,
         }
     }
 
@@ -539,6 +542,10 @@ where
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().boot_rom_verify =
                     parse_boot_rom_verification_mode(value.as_ref())?;
+            }
+            "--test-runner" => {
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().test_runner = true;
             }
             "--frames" => {
                 let Some(value) = arguments.next() else {
