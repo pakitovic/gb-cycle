@@ -1,5 +1,6 @@
 use gb_core::{DMG_T_CYCLES_PER_FRAME, DMG_T_CYCLES_PER_SECOND, JoypadButton};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -131,34 +132,91 @@ pub struct BenchmarkStimulus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BenchmarkStimulusRuntime {
-    stimuli: Vec<BenchmarkStimulus>,
-    applied: Vec<bool>,
+    frame_stimuli: Vec<ScheduledBenchmarkStimulus>,
+    tcycle_stimuli: Vec<ScheduledBenchmarkStimulus>,
+    next_frame_stimulus: usize,
+    next_tcycle_stimulus: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScheduledBenchmarkStimulus {
+    stimulus: BenchmarkStimulus,
+    order: usize,
 }
 
 impl BenchmarkStimulusRuntime {
     pub fn new(stimuli: Vec<BenchmarkStimulus>) -> Self {
-        let applied = vec![false; stimuli.len()];
-        Self { stimuli, applied }
+        let mut frame_stimuli = Vec::new();
+        let mut tcycle_stimuli = Vec::new();
+        for (order, stimulus) in stimuli.into_iter().enumerate() {
+            let scheduled = ScheduledBenchmarkStimulus { stimulus, order };
+            match stimulus.when {
+                BenchmarkStimulusTime::Frame(_) => frame_stimuli.push(scheduled),
+                BenchmarkStimulusTime::TCycle(_) => tcycle_stimuli.push(scheduled),
+            }
+        }
+        frame_stimuli.sort_by(|left, right| {
+            scheduled_frame(left)
+                .cmp(&scheduled_frame(right))
+                .then(left.order.cmp(&right.order))
+        });
+        tcycle_stimuli.sort_by(|left, right| {
+            scheduled_t_cycle(left)
+                .cmp(&scheduled_t_cycle(right))
+                .then(left.order.cmp(&right.order))
+        });
+        Self {
+            frame_stimuli,
+            tcycle_stimuli,
+            next_frame_stimulus: 0,
+            next_tcycle_stimulus: 0,
+        }
     }
 
     pub fn apply_due<F>(&mut self, t_cycle: u64, completed_frames: u64, mut apply: F)
     where
         F: FnMut(JoypadButton, bool),
     {
-        for (index, stimulus) in self.stimuli.iter().copied().enumerate() {
-            if self.applied[index] {
-                continue;
-            }
-            let due = match stimulus.when {
-                BenchmarkStimulusTime::TCycle(stimulus_t_cycle) => stimulus_t_cycle == t_cycle,
-                BenchmarkStimulusTime::Frame(frame) => u64::from(frame) == completed_frames,
-            };
-            if due {
-                apply(stimulus.button, stimulus.pressed);
-                self.applied[index] = true;
+        let mut due = Vec::new();
+        while let Some(stimulus) = self.tcycle_stimuli.get(self.next_tcycle_stimulus) {
+            match scheduled_t_cycle(stimulus).cmp(&t_cycle) {
+                Ordering::Less => self.next_tcycle_stimulus += 1,
+                Ordering::Equal => {
+                    due.push(*stimulus);
+                    self.next_tcycle_stimulus += 1;
+                }
+                Ordering::Greater => break,
             }
         }
+        while let Some(stimulus) = self.frame_stimuli.get(self.next_frame_stimulus) {
+            match u64::from(scheduled_frame(stimulus)).cmp(&completed_frames) {
+                Ordering::Less => self.next_frame_stimulus += 1,
+                Ordering::Equal => {
+                    due.push(*stimulus);
+                    self.next_frame_stimulus += 1;
+                }
+                Ordering::Greater => break,
+            }
+        }
+        due.sort_by_key(|stimulus| stimulus.order);
+        for scheduled in due {
+            apply(scheduled.stimulus.button, scheduled.stimulus.pressed);
+        }
     }
+}
+
+fn scheduled_frame(stimulus: &ScheduledBenchmarkStimulus) -> u32 {
+    let BenchmarkStimulusTime::Frame(frame) = stimulus.stimulus.when else {
+        unreachable!("frame stimuli are stored separately from T-cycle stimuli");
+    };
+    frame
+}
+
+fn scheduled_t_cycle(stimulus: &ScheduledBenchmarkStimulus) -> u64 {
+    let BenchmarkStimulusTime::TCycle(t_cycle) = stimulus.stimulus.when else {
+        unreachable!("T-cycle stimuli are stored separately from frame stimuli");
+    };
+    t_cycle
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1259,5 +1317,45 @@ repeat_every_frames = 8
         runtime.apply_due(1, 2, |button, pressed| applied.push((button, pressed)));
 
         assert_eq!(applied, vec![(JoypadButton::A, true)]);
+    }
+
+    #[test]
+    fn stimulus_runtime_applies_due_events_in_source_order() {
+        let mut runtime = BenchmarkStimulusRuntime::new(vec![
+            BenchmarkStimulus {
+                when: BenchmarkStimulusTime::Frame(2),
+                button: JoypadButton::Start,
+                pressed: true,
+            },
+            BenchmarkStimulus {
+                when: BenchmarkStimulusTime::TCycle(8),
+                button: JoypadButton::A,
+                pressed: true,
+            },
+            BenchmarkStimulus {
+                when: BenchmarkStimulusTime::Frame(2),
+                button: JoypadButton::Start,
+                pressed: false,
+            },
+            BenchmarkStimulus {
+                when: BenchmarkStimulusTime::TCycle(8),
+                button: JoypadButton::A,
+                pressed: false,
+            },
+        ]);
+        let mut applied = Vec::new();
+        runtime.apply_due(7, 1, |button, pressed| applied.push((button, pressed)));
+        runtime.apply_due(8, 2, |button, pressed| applied.push((button, pressed)));
+        runtime.apply_due(9, 2, |button, pressed| applied.push((button, pressed)));
+
+        assert_eq!(
+            applied,
+            vec![
+                (JoypadButton::Start, true),
+                (JoypadButton::A, true),
+                (JoypadButton::Start, false),
+                (JoypadButton::A, false),
+            ]
+        );
     }
 }
