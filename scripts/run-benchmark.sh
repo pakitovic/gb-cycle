@@ -87,12 +87,12 @@ screenshot = true
 stats = true
 
 [[run]]
-id = "idle-8"
-duration_seconds = 8
+id = "idle-40"
+duration_seconds = 40
 
 [[run]]
-id = "start-a-8"
-duration_seconds = 8
+id = "start-a-120"
+duration_seconds = 120
 
 [[run.input]]
 frame = 30
