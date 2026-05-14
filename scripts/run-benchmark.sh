@@ -350,6 +350,9 @@ def table_cell(content: str, rowspan: int = 1) -> str:
     return f"<td{span}>{content}</td>"
 
 
+FRONTENDS = ('gb-cli', 'gb-desktop')
+
+
 cases = []
 for case_path in sorted((benchmark_dir / 'test').glob('*.toml')):
     data = load_toml(case_path)
@@ -371,9 +374,33 @@ def expanded_runs(case_id, data):
             'seconds': '—',
         }
 
+
+def frontend_artifacts(artifact_id):
+    artifacts = {}
+    for frontend in FRONTENDS:
+        stats_path = benchmark_dir / frontend / f'{artifact_id}-stats.toml'
+        image_path = benchmark_dir / frontend / f'{artifact_id}.png'
+        stats = load_toml(stats_path)
+        has_complete_artifacts = bool(stats) and image_path.exists()
+        artifacts[frontend] = {
+            'stats': stats if has_complete_artifacts else {},
+            'image_path': image_path if has_complete_artifacts else None,
+            'has_complete_artifacts': has_complete_artifacts,
+        }
+    return artifacts
+
+
 rows = []
 for case_id, case_path, data in cases:
-    runs = list(expanded_runs(case_id, data))
+    runs = []
+    for run in expanded_runs(case_id, data):
+        artifacts = frontend_artifacts(run['artifact_id'])
+        if not any(artifact['has_complete_artifacts'] for artifact in artifacts.values()):
+            continue
+        run['artifacts'] = artifacts
+        runs.append(run)
+    if not runs:
+        continue
     case_rowspan = len(runs)
     case_cells = [
         html.escape(rom_name(data.get('rom'))),
@@ -386,15 +413,15 @@ for case_id, case_path, data in cases:
         if run_index == 0:
             cells.extend(table_cell(cell, case_rowspan) for cell in case_cells)
         cells.append(table_cell(html.escape(str(run['seconds']))))
-        for frontend in ('gb-cli', 'gb-desktop'):
-            stats_path = benchmark_dir / frontend / f'{artifact_id}-stats.toml'
-            stats = load_toml(stats_path)
-            image_path = benchmark_dir / frontend / f'{artifact_id}.png'
+        for frontend in FRONTENDS:
+            artifact = run['artifacts'][frontend]
+            stats = artifact['stats']
+            image_path = artifact['image_path']
             if stats:
                 metrics = f"{fmt_number(stats.get('fps'))} FPS<br>{fmt_number(stats.get('speed_percent'), 1)}%"
             else:
                 metrics = '—'
-            if image_path.exists():
+            if image_path is not None:
                 image = f'<a href="{html.escape(rel(image_path))}"><img src="{html.escape(rel(image_path))}" alt="{html.escape(frontend)} {html.escape(str(artifact_id))}" loading="lazy"></a>'
             else:
                 image = '—'
@@ -403,7 +430,7 @@ for case_id, case_path, data in cases:
         rows.append('<tr>' + ''.join(cells) + '</tr>')
 
 if not rows:
-    rows.append('<tr><td colspan="8">No benchmark cases found in test/*.toml.</td></tr>')
+    rows.append('<tr><td colspan="8">No executed benchmark artifacts found. Run scripts/run-benchmark.sh first.</td></tr>')
 
 index = f'''<!doctype html>
 <html lang="en">
