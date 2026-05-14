@@ -282,9 +282,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gb-benchmark"
+version = "0.1.5"
+dependencies = [
+ "gb-core",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "gb-cli"
 version = "0.1.5"
 dependencies = [
+ "gb-benchmark",
  "gb-core",
  "gb-persistence",
  "png",
@@ -305,6 +315,7 @@ dependencies = [
 name = "gb-desktop"
 version = "0.1.5"
 dependencies = [
+ "gb-benchmark",
  "gb-core",
  "gb-persistence",
  "png",

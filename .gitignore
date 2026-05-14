@@ -12,6 +12,7 @@
 # Logs
 *.log
 /.artifacts/
+/scripts/benchmark/
 /.oracles/
 
 # Local ROM stores

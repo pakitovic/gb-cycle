@@ -10,6 +10,7 @@ default = []
 sdl3-build-from-source = ["sdl3/build-from-source"]
 
 [dependencies]
+gb-benchmark = { version = "0.1.5", path = "../gb-benchmark" }
 gb-core = { version = "0.1.5", path = "../gb-core" }
 gb-persistence = { version = "0.1.5", path = "../gb-persistence" }
 sdl3 = { version = "0.17.3", features = ["use-pkg-config", "hidapi"] }

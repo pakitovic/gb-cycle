@@ -6,6 +6,7 @@ rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+gb-benchmark = { version = "0.1.5", path = "../gb-benchmark" }
 gb-core = { version = "0.1.5", path = "../gb-core" }
 gb-persistence = { version = "0.1.5", path = "../gb-persistence" }
 png = "0.18"

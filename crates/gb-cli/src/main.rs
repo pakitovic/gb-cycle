@@ -1,8 +1,14 @@
+use gb_benchmark::{
+    BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
+    BenchmarkStats, BenchmarkStimulusRuntime, GB_CLI_FRONTEND, encode_stats_toml,
+    frontend_screenshot_path, frontend_stats_path, load_benchmark_cases,
+    target_frames_for_duration,
+};
 use gb_core::{
     BootRomAssetError, BootRomAssets, BootRomKind, CartridgeDiagnostic,
     CartridgeDiagnosticSeverity, CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError,
     CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
-    ConsoleModel, ExecutionMode, Machine, MachineConfig, MachineSaveState,
+    ConsoleModel, ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
     MachineSaveStateRestoreError, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
     TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
@@ -21,6 +27,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 const DEFAULT_SKIP_BOOT_FRAME_LIMIT: u32 = 120;
 const DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT: u32 = 120;
@@ -48,6 +55,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
     "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
     "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+    "  --benchmark <path>                     Run one portable benchmark case TOML\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
     "  --tcycles <n>                          Stop after <n> T-cycles\n",
     "                                         If neither limit is provided, direct boot stops after 120 completed frames\n",
@@ -88,7 +96,8 @@ enum CliAction {
     ShowRunHelp,
     ShowInspectHelp,
     ShowSavesHelp,
-    Run(RunOptions),
+    Run(Box<RunOptions>),
+    RunBenchmark(BenchmarkRunOptions),
     InspectRom(InspectRomOptions),
     Saves(SavesOptions),
 }
@@ -240,6 +249,7 @@ struct RunOptions {
     save_key: Option<String>,
     save_policy: SavePolicy,
     test_runner: bool,
+    benchmark_case: Option<BenchmarkCase>,
 }
 
 impl RunOptions {
@@ -265,6 +275,7 @@ impl RunOptions {
             save_key: None,
             save_policy: SavePolicy::default(),
             test_runner: false,
+            benchmark_case: None,
         }
     }
 
@@ -275,6 +286,12 @@ impl RunOptions {
             None
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BenchmarkRunOptions {
+    benchmark_path: PathBuf,
+    test_runner: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -329,6 +346,17 @@ impl CliMachine {
             }
             Self::Summary(machine) => {
                 machine.step_t_cycle();
+            }
+        }
+    }
+
+    fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
+        match self {
+            Self::Buffered(machine) => {
+                machine.set_joypad_button_pressed(button, pressed);
+            }
+            Self::Summary(machine) => {
+                machine.set_joypad_button_pressed(button, pressed);
             }
         }
     }
@@ -467,7 +495,8 @@ where
         CliAction::ShowRunHelp => write_text(stdout, RUN_HELP_TEXT),
         CliAction::ShowInspectHelp => write_text(stdout, INSPECT_HELP_TEXT),
         CliAction::ShowSavesHelp => write_text(stdout, SAVES_HELP_TEXT),
-        CliAction::Run(options) => run_command(options, stdout, stderr),
+        CliAction::Run(options) => run_command(*options, stdout, stderr),
+        CliAction::RunBenchmark(options) => run_benchmark_command(options, stdout, stderr),
         CliAction::InspectRom(options) => inspect_rom_command(options, stdout),
         CliAction::Saves(options) => saves_command(options, stdout, stderr),
     }
@@ -502,6 +531,8 @@ where
     let mut arguments = arguments.into_iter();
     let mut rom_path = None;
     let mut options = None;
+    let mut benchmark_path = None;
+    let mut test_runner_requested = false;
     let mut save_policy_explicit = false;
 
     while let Some(argument) = arguments.next() {
@@ -544,8 +575,19 @@ where
                     parse_boot_rom_verification_mode(value.as_ref())?;
             }
             "--test-runner" => {
-                ensure_run_options_initialized(&mut options, &rom_path)?;
-                options.as_mut().unwrap().test_runner = true;
+                test_runner_requested = true;
+                if let Some(options) = &mut options {
+                    options.test_runner = true;
+                }
+            }
+            "--benchmark" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--benchmark requires a value".to_string());
+                };
+                if benchmark_path.is_some() {
+                    return Err("--benchmark can only be provided once".to_string());
+                }
+                benchmark_path = Some(PathBuf::from(value.as_ref()));
             }
             "--frames" => {
                 let Some(value) = arguments.next() else {
@@ -644,16 +686,32 @@ where
                     ));
                 }
                 rom_path = Some(PathBuf::from(value));
-                options = Some(RunOptions::default_with_rom(
+                let mut next_options = RunOptions::default_with_rom(
                     rom_path.clone().expect("rom_path was just assigned"),
-                ));
+                );
+                next_options.test_runner = test_runner_requested;
+                options = Some(next_options);
             }
         }
+    }
+
+    if let Some(benchmark_path) = benchmark_path {
+        if rom_path.is_some() {
+            return Err("--benchmark supplies the ROM path from the case TOML; omit the positional ROM path".to_string());
+        }
+        if options.is_some() {
+            return Err("--benchmark cannot be combined with normal run options; put benchmark parameters in the case TOML".to_string());
+        }
+        return Ok(CliAction::RunBenchmark(BenchmarkRunOptions {
+            benchmark_path,
+            test_runner: test_runner_requested,
+        }));
     }
 
     let mut options = options.ok_or_else(|| {
         "missing required ROM path; run `gb-cli run --help` for usage".to_string()
     })?;
+    options.test_runner |= test_runner_requested;
     if options.save_dir.is_none() {
         if options.save_key.is_some() {
             return Err("--save-key requires --save-dir".to_string());
@@ -669,7 +727,7 @@ where
         options.display_palette = None;
     }
 
-    Ok(CliAction::Run(options))
+    Ok(CliAction::Run(Box::new(options)))
 }
 
 fn parse_inspect_rom_arguments<I, S>(arguments: I) -> Result<CliAction, String>
@@ -801,6 +859,60 @@ fn ensure_run_options_initialized(
     Ok(())
 }
 
+fn run_benchmark_command(
+    options: BenchmarkRunOptions,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), String> {
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let benchmark_path = resolve_path(&current_dir, &options.benchmark_path);
+    let benchmark_cases =
+        load_benchmark_cases(&benchmark_path).map_err(|error| error.to_string())?;
+
+    for benchmark_case in benchmark_cases {
+        run_benchmark_case(benchmark_case, options.test_runner, stdout, stderr)?;
+    }
+
+    Ok(())
+}
+
+fn run_benchmark_case(
+    benchmark_case: BenchmarkCase,
+    test_runner: bool,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), String> {
+    let framebuffer_out = benchmark_case
+        .screenshot
+        .then(|| frontend_screenshot_path(GB_CLI_FRONTEND, &benchmark_case.artifact_id));
+    let run_options = RunOptions {
+        rom_path: benchmark_case.rom.clone(),
+        model: run_model_from_benchmark(benchmark_case.model),
+        startup_mode: startup_mode_from_benchmark(benchmark_case.startup),
+        execution_mode: execution_mode_from_benchmark(benchmark_case.mode),
+        boot_rom_dir: None,
+        boot_rom_verify: BootRomVerificationMode::Strict,
+        frame_limit: Some(target_frames_for_duration(benchmark_case.duration_seconds)),
+        tcycle_limit: None,
+        default_run_budget: None,
+        serial_stdout: false,
+        serial_out: None,
+        framebuffer_out,
+        display_palette: benchmark_case.palette.map(display_palette_from_benchmark),
+        trace_out: None,
+        state_in: None,
+        state_out: None,
+        save_dir: None,
+        save_key: None,
+        save_policy: SavePolicy::Manual,
+        test_runner,
+        benchmark_case: Some(benchmark_case),
+    };
+
+    run_command(run_options, stdout, stderr)
+}
+
 fn run_command(
     options: RunOptions,
     stdout: &mut dyn Write,
@@ -862,6 +974,11 @@ fn run_command(
     let mut completed_frames_at_boot_handoff = None;
     let mut serial_byte_count = 0_usize;
     let mut serial_capture = options.serial_out.as_ref().map(|_| Vec::new());
+    let mut benchmark_stimuli = options
+        .benchmark_case
+        .as_ref()
+        .map(|case| BenchmarkStimulusRuntime::new(case.stimuli.clone()));
+    let benchmark_started_at = options.benchmark_case.as_ref().map(|_| Instant::now());
 
     while !run_limit_reached(
         frame_limit,
@@ -873,6 +990,15 @@ fn run_command(
         completed_frames,
         completed_frames_at_boot_handoff,
     ) {
+        if let Some(benchmark_stimuli) = &mut benchmark_stimuli {
+            benchmark_stimuli.apply_due(
+                executed_tcycles,
+                u64::from(completed_frames),
+                |button, pressed| {
+                    machine.set_joypad_button_pressed(button, pressed);
+                },
+            );
+        }
         machine.step_t_cycle();
         executed_tcycles += 1;
 
@@ -910,6 +1036,7 @@ fn run_command(
         }
         at_frame_origin = now_at_frame_origin;
     }
+    let benchmark_elapsed = benchmark_started_at.map(|started_at| started_at.elapsed());
 
     if let Some(serial_out) = &options.serial_out {
         let serial_bytes = serial_capture.as_deref().unwrap_or_default();
@@ -933,6 +1060,30 @@ fn run_command(
     }
     if let Some(state_out_path) = &state_out_path {
         write_machine_save_state_to_path(&machine, state_out_path)?;
+    }
+    if let Some(benchmark_case) = options.benchmark_case.as_ref()
+        && benchmark_case.stats
+    {
+        let stats_path = frontend_stats_path(GB_CLI_FRONTEND, &benchmark_case.artifact_id);
+        let screenshot_path = benchmark_case
+            .screenshot
+            .then(|| frontend_screenshot_path(GB_CLI_FRONTEND, &benchmark_case.artifact_id));
+        let stats = BenchmarkStats::new(
+            GB_CLI_FRONTEND,
+            benchmark_case,
+            options.test_runner,
+            u64::from(completed_frames),
+            benchmark_elapsed.unwrap_or_default().as_secs_f64(),
+            Some(executed_tcycles),
+            screenshot_path.as_deref(),
+        );
+        let encoded_stats = encode_stats_toml(&stats)
+            .map_err(|error| format!("failed to encode benchmark stats TOML: {error}"))?;
+        write_text_file_with_parent(&stats_path, &encoded_stats)?;
+        writeln_checked(
+            stderr,
+            &format!("benchmark_stats_out={}", stats_path.display()),
+        )?;
     }
 
     if let Some(save_session) = &mut save_session {
@@ -1594,6 +1745,37 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
         ExecutionMode::Strict => CompatibilityPolicy::strict(),
         ExecutionMode::Permissive => CompatibilityPolicy::permissive(),
         ExecutionMode::Experimental => CompatibilityPolicy::experimental(),
+    }
+}
+
+fn run_model_from_benchmark(model: BenchmarkModel) -> RunModel {
+    match model {
+        BenchmarkModel::Dmg => RunModel::GameBoy,
+        BenchmarkModel::Mgb => RunModel::Pocket,
+        BenchmarkModel::Lgb => RunModel::Light,
+        BenchmarkModel::Cgb => RunModel::Color,
+    }
+}
+
+fn startup_mode_from_benchmark(startup: BenchmarkStartup) -> StartupMode {
+    match startup {
+        BenchmarkStartup::SkipBoot => StartupMode::SkipBoot,
+        BenchmarkStartup::CustomBoot => StartupMode::CustomBoot,
+        BenchmarkStartup::RealBoot => StartupMode::RealBoot,
+    }
+}
+
+fn execution_mode_from_benchmark(mode: BenchmarkMode) -> ExecutionMode {
+    match mode {
+        BenchmarkMode::Strict => ExecutionMode::Strict,
+        BenchmarkMode::Permissive => ExecutionMode::Permissive,
+        BenchmarkMode::Experimental => ExecutionMode::Experimental,
+    }
+}
+
+fn display_palette_from_benchmark(palette: BenchmarkPalette) -> RunDisplayPalette {
+    match palette {
+        BenchmarkPalette::Grey => RunDisplayPalette::Grey,
     }
 }
 

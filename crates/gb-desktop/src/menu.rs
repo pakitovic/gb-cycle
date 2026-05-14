@@ -874,7 +874,7 @@ impl MenuPresentation {
             MenuItem::FastForwardSpeed => {
                 format!(
                     "SPEED {}X",
-                    self.fast_forward_options.speed_multiplier.max(1)
+                    self.fast_forward_options.display_speed_multiplier()
                 )
             }
             MenuItem::FastForwardDefaults => "DEFAULTS".to_string(),
@@ -4622,7 +4622,7 @@ mod tests {
             "MEMORY 128M"
         );
         presentation.fast_forward_options.enabled = false;
-        presentation.fast_forward_options.speed_multiplier = 4;
+        presentation.fast_forward_options.speed_multiplier = 8;
         assert_eq!(
             presentation.item_label(MenuItem::FastForwardEnabled),
             "F-FORWARD OFF"

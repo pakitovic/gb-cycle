@@ -17,7 +17,8 @@ pub const DEFAULT_REWIND_HISTORY_SECONDS: u16 = 10;
 pub const DEFAULT_REWIND_SUBFRAMES_PER_FRAME: u8 = 1;
 pub const DEFAULT_REWIND_MAX_MEMORY_MIB: u16 = 256;
 pub const DEFAULT_REWIND_SPEED_MULTIPLIER: u8 = 2;
-pub const DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER: u8 = 2;
+pub const DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER: u8 = 4;
+pub const FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [4, 8, 16];
 const DEFAULT_SAVE_SUBDIRECTORY: &str = "saves";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -367,6 +368,12 @@ pub struct FastForwardOptions {
     pub speed_multiplier: u8,
 }
 
+impl FastForwardOptions {
+    pub fn display_speed_multiplier(self) -> u8 {
+        fast_forward_display_speed_multiplier(self.speed_multiplier)
+    }
+}
+
 impl Default for FastForwardOptions {
     fn default() -> Self {
         Self {
@@ -374,6 +381,10 @@ impl Default for FastForwardOptions {
             speed_multiplier: DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER,
         }
     }
+}
+
+pub fn fast_forward_display_speed_multiplier(speed_multiplier: u8) -> u8 {
+    (speed_multiplier / 2).max(1)
 }
 
 impl DesktopSaveFlushPolicy {
@@ -935,6 +946,15 @@ mod tests {
             config.fast_forward.speed_multiplier,
             DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER
         );
+        assert_eq!(config.fast_forward.display_speed_multiplier(), 2);
+    }
+
+    #[test]
+    fn fast_forward_options_map_retuned_display_and_runtime_presets() {
+        assert_eq!(FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS, [4, 8, 16]);
+        assert_eq!(fast_forward_display_speed_multiplier(4), 2);
+        assert_eq!(fast_forward_display_speed_multiplier(8), 4);
+        assert_eq!(fast_forward_display_speed_multiplier(16), 8);
     }
 
     #[test]
