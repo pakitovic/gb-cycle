@@ -88,12 +88,10 @@ stats = true
 
 [[run]]
 id = "idle-8"
-label = "8s idle"
 duration_seconds = 8
 
 [[run]]
 id = "start-a-8"
-label = "8s Start/A"
 duration_seconds = 8
 
 [[run.input]]
@@ -365,13 +363,11 @@ def expanded_runs(case_id, data):
             run_id = str(run.get('id') or f'run{index}')
             yield {
                 'artifact_id': f'{case_id}-{run_id}',
-                'run': run.get('label') or run_id,
                 'seconds': run.get('duration_seconds', '—'),
             }
     else:
         yield {
             'artifact_id': str(case_id),
-            'run': 'missing [[run]]',
             'seconds': '—',
         }
 
