@@ -304,12 +304,27 @@ def load_toml(path: pathlib.Path) -> dict:
         except Exception:
             return {}
     data = {}
+    target = data
     for raw_line in path.read_text().splitlines():
         line = raw_line.split('#', 1)[0].strip()
-        if not line or line.startswith('[') or '=' not in line:
+        if not line:
+            continue
+        if line.startswith('[[') and line.endswith(']]'):
+            table = line[2:-2].strip()
+            if table == 'run':
+                run = {}
+                data.setdefault('run', []).append(run)
+                target = run
+            else:
+                target = None
+            continue
+        if line.startswith('['):
+            target = None
+            continue
+        if target is None or '=' not in line:
             continue
         key, value = line.split('=', 1)
-        data[key.strip()] = parse_scalar(value)
+        target[key.strip()] = parse_scalar(value)
     return data
 
 
