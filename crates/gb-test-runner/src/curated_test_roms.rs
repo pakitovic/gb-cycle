@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use gb_core::{ConsoleModel, JoypadButton, StartupMode, TimerStartupState};
+use gb_core::{ConsoleModel, JoypadButton, StartupMode};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -104,7 +104,6 @@ struct CuratedTestRomCaseFile {
     startup: Option<String>,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
-    startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     #[serde(default)]
     disabled: bool,
@@ -155,7 +154,6 @@ struct CuratedTestRomCase {
     startup_mode: StartupMode,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
-    startup_timer_profile: Option<String>,
     startup_ppu_profile: Option<String>,
     disabled: bool,
     comment: Option<String>,
@@ -1308,7 +1306,6 @@ fn parse_manifest_case(
         startup_mode,
         execution_mode: case.execution_mode,
         stop_condition: case.stop_condition,
-        startup_timer_profile: case.startup_timer_profile,
         startup_ppu_profile: case
             .startup_ppu_profile
             .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
@@ -1448,7 +1445,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         startup_mode,
         execution_mode,
         stop_condition,
-        startup_timer_profile,
         startup_ppu_profile,
         disabled: _,
         comment: _,
@@ -1535,21 +1531,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
 
     for stimulus in stimuli {
         rom_case = rom_case.with_external_stimulus(stimulus);
-    }
-
-    if let Some(profile) = startup_timer_profile.as_deref() {
-        rom_case = match profile {
-            "hacktix-cgb-bully-div" => rom_case.with_startup_timer_state(TimerStartupState {
-                system_counter: 0x1E74,
-                tima: 0x00,
-                tma: 0x00,
-                tac: 0xF8,
-            }),
-            other => panic!(
-                "unsupported startup timer profile {other:?} for curated case {}",
-                rom_case.id
-            ),
-        };
     }
 
     if let Some(profile) = startup_ppu_profile.as_deref() {
@@ -2349,15 +2330,7 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
             ))
         );
-        assert_eq!(
-            case.startup_timer_state,
-            Some(gb_core::TimerStartupState {
-                system_counter: 0x1E74,
-                tima: 0x00,
-                tma: 0x00,
-                tac: 0xF8,
-            })
-        );
+        assert_eq!(case.startup_timer_state, None);
         assert_eq!(case.startup_mode, StartupMode::CustomBoot);
         assert!(case.startup_memory_writes.is_empty());
     }
@@ -4359,7 +4332,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_timer_profile: None,
                 startup_ppu_profile: None,
                 disabled: false,
                 comment: None,
@@ -4395,7 +4367,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_timer_profile: None,
                 startup_ppu_profile: None,
                 disabled: true,
                 comment: Some("  hardware-incompatible oracle  ".to_string()),
@@ -4438,7 +4409,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_timer_profile: None,
                 startup_ppu_profile: None,
                 disabled: true,
                 comment: Some("   ".to_string()),
@@ -4470,38 +4440,6 @@ status = "PASS"
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
-            startup_timer_profile: None,
-            startup_ppu_profile: None,
-            disabled: false,
-            comment: None,
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "unsupported startup timer profile")]
-    fn manifest_case_to_rom_test_case_rejects_unknown_startup_timer_profiles() {
-        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
-            family: "hacktix".to_string(),
-            id: "bad-timer-profile".to_string(),
-            rom: PathBuf::from("bad.gb"),
-            source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
-            source_path: PathBuf::from("testroms/hacktix/bad.gb"),
-            report_model_suffix: false,
-            report_label: None,
-            timeout: Timeout::Frames(1),
-            oracle: "framebuffer-rgb555-fixture".to_string(),
-            expected: None,
-            fixture: Some(PathBuf::from("fixture.png")),
-            fixtures: None,
-            check_interval_tcycles: None,
-            check_at_tcycles: None,
-            memory: Vec::new(),
-            stimuli: Vec::new(),
-            console_model: ConsoleModel::GameBoyColor,
-            startup_mode: StartupMode::SkipBoot,
-            execution_mode: None,
-            stop_condition: None,
-            startup_timer_profile: Some("unknown-profile".to_string()),
             startup_ppu_profile: None,
             disabled: false,
             comment: None,
@@ -4532,7 +4470,6 @@ status = "PASS"
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
-            startup_timer_profile: None,
             startup_ppu_profile: Some("unknown-profile".to_string()),
             disabled: false,
             comment: None,

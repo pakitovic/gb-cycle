@@ -3231,7 +3231,7 @@ mod tests {
     };
     use gb_core::{
         CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState,
-        CpuStatus, ExecutionMode, StartupMode, TimerStartupState,
+        CpuStatus, ExecutionMode, StartupMode,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -3534,15 +3534,7 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
             ))
         );
-        assert_eq!(
-            case.startup_timer_state,
-            Some(TimerStartupState {
-                system_counter: 0x1E74,
-                tima: 0x00,
-                tma: 0x00,
-                tac: 0xF8,
-            })
-        );
+        assert_eq!(case.startup_timer_state, None);
         assert_eq!(case.startup_mode, StartupMode::CustomBoot);
         assert!(case.startup_memory_writes.is_empty());
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
@@ -4359,7 +4351,7 @@ mod tests {
     }
 
     #[test]
-    fn hacktix_bully_startup_profile_seeds_the_expected_boot_logo_vram_bytes() {
+    fn hacktix_bully_dmg_startup_writes_seed_the_expected_boot_logo_vram_bytes() {
         let suite = hacktix_dmg_curated_suite();
         let case = suite
             .cases
@@ -4502,8 +4494,8 @@ mod tests {
             .cases
             .iter()
             .find(|case| case.id == "mooneye-emulator-only-mbc1-multicart-rom-8mb")
-            .expect("known suite should include the experimental multicart case");
-        assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Experimental);
+            .expect("known suite should include the MBC1M multicart case");
+        assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Strict);
         let sprite_priority = suite
             .cases
             .iter()

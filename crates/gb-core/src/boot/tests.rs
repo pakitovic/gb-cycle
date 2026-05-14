@@ -1,5 +1,6 @@
 use super::*;
 use crate::cartridge::CartridgeHeader;
+use crate::model::CompatibilityPolicy;
 use std::env;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,6 +21,48 @@ fn boot(
         console_model.default_boot_rom_kind(),
         assets,
     )
+}
+
+fn test_rom_with_cgb_header(
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> Vec<u8> {
+    let mut rom = vec![0x00; 32 * 1024];
+    rom[0x0134..0x013B].copy_from_slice(b"BULLYGB");
+    rom[0x0143] = cgb_flag;
+    rom[0x0144..0x0146].copy_from_slice(&new_licensee_code);
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom[0x014B] = old_licensee_code;
+    rom
+}
+
+fn test_header_with_cgb_header(
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> CartridgeHeader {
+    CartridgeHeader::parse(&test_rom_with_cgb_header(
+        cgb_flag,
+        old_licensee_code,
+        new_licensee_code,
+    ))
+    .expect("test ROM header should parse")
+}
+
+fn loaded_test_cartridge_with_cgb_header(
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> CartridgeSlot {
+    let report = CartridgeSlot::load(
+        test_rom_with_cgb_header(cgb_flag, old_licensee_code, new_licensee_code),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("test ROM should load as a NoMBC cartridge");
+    report.into_parts().0
 }
 
 fn unique_temp_dir() -> PathBuf {
@@ -241,6 +284,7 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     assert_eq!(direct_boot.ppu.lcdc, 0x91);
     assert_eq!(direct_boot.ppu.stat, 0x81);
     assert_eq!(direct_boot.ppu.ly, 153);
+    assert_eq!(direct_boot.apu.div_apu, 0x01);
     assert_eq!(direct_boot.io.dma, 0xFF);
     assert_eq!(direct_boot.io.interrupt_flag, 0xE1);
     assert_eq!(
@@ -323,6 +367,79 @@ fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
         assert_eq!(startup_state.io.div, 0x26);
         assert_eq!(startup_state.timer.system_counter, 0x2674);
     }
+}
+
+#[test]
+fn cgb_direct_start_system_counter_uses_native_non_nintendo_header_bucket() {
+    let header = test_header_with_cgb_header(0x80, 0x00, *b"00");
+
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&header)),
+        0x1E84
+    );
+}
+
+#[test]
+fn cgb_direct_start_system_counter_keeps_mooneye_baseline_for_missing_or_dmg_headers() {
+    let dmg_compatible_header = test_header_with_cgb_header(0x00, 0x33, *b"ZZ");
+    let cgb_new_licensee_header = test_header_with_cgb_header(0x80, 0x33, *b"00");
+    let cgb_nintendo_header = test_header_with_cgb_header(0x80, 0x01, *b"00");
+
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, None),
+        0x2674
+    );
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&dmg_compatible_header)),
+        0x2674
+    );
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&cgb_new_licensee_header)),
+        0x2674
+    );
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&cgb_nintendo_header)),
+        0x2674
+    );
+}
+
+#[test]
+fn cgb_skip_and_custom_boot_share_header_derived_timer_for_native_non_nintendo_roms() {
+    let cartridge = loaded_test_cartridge_with_cgb_header(0x80, 0x00, *b"00");
+    let skip_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    );
+    let custom_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+
+    let direct_boot = skip_boot
+        .direct_boot_state(Some(&cartridge))
+        .expect("SkipBoot should expose a direct-boot state");
+    let machine_skip_boot = skip_boot
+        .machine_skip_boot_state(Some(&cartridge))
+        .expect("SkipBoot should expose the machine skip-boot state");
+    let machine_custom_boot = custom_boot
+        .machine_skip_boot_state(Some(&cartridge))
+        .expect("CustomBoot should expose the direct machine startup state");
+
+    for startup_state in [&direct_boot, &machine_skip_boot, &machine_custom_boot] {
+        assert_eq!(startup_state.timer.system_counter, 0x1E84);
+        assert_eq!(startup_state.io.div, 0x1E);
+        assert_eq!(startup_state.apu.div_apu, 0x00);
+    }
+    assert_eq!(
+        machine_skip_boot.startup_memory_policy,
+        StartupMemoryPolicy::CgbRealBootEntry
+    );
+    assert_eq!(
+        machine_custom_boot.startup_memory_policy,
+        StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
+    );
 }
 
 #[test]
