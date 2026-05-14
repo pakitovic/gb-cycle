@@ -241,6 +241,12 @@ pub enum BenchmarkConfigError {
     EmptyId {
         path: PathBuf,
     },
+    InvalidArtifactId {
+        path: PathBuf,
+        id: String,
+        run_id: Option<String>,
+        value: String,
+    },
     EmptyRunId {
         path: PathBuf,
         id: String,
@@ -301,6 +307,26 @@ impl fmt::Display for BenchmarkConfigError {
                     "benchmark case {} must define a non-empty id",
                     path.display()
                 )
+            }
+            Self::InvalidArtifactId {
+                path,
+                id,
+                run_id,
+                value,
+            } => {
+                if let Some(run_id) = run_id {
+                    write!(
+                        f,
+                        "benchmark case {id:?} run {run_id:?} in {} uses unsafe artifact id component {value:?}; use only ASCII letters, digits, '-' and '_'",
+                        path.display()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "benchmark case {id:?} in {} uses unsafe artifact id component {value:?}; use only ASCII letters, digits, '-' and '_'",
+                        path.display()
+                    )
+                }
             }
             Self::EmptyRunId { path, id, index } => write!(
                 f,
@@ -433,7 +459,7 @@ pub fn parse_benchmark_suite(
     text: &str,
 ) -> Result<BenchmarkSuite, BenchmarkConfigError> {
     let path = path.as_ref();
-    let parsed = toml::from_str::<BenchmarkCaseFile>(text).map_err(|source| {
+    let mut parsed = toml::from_str::<BenchmarkCaseFile>(text).map_err(|source| {
         BenchmarkConfigError::Parse {
             path: path.to_path_buf(),
             source,
@@ -451,6 +477,7 @@ pub fn parse_benchmark_suite(
             path: path.to_path_buf(),
         });
     }
+    validate_artifact_id_component(path, &id, None, &id)?;
     if parsed.duration_seconds.is_some() || !parsed.legacy_stimuli.is_empty() {
         return Err(BenchmarkConfigError::DeprecatedLegacyFormat {
             path: path.to_path_buf(),
@@ -463,6 +490,8 @@ pub fn parse_benchmark_suite(
             id,
         });
     }
+
+    parsed.rom = resolve_rom_path(path, &parsed.rom);
 
     let cases = parsed
         .runs
@@ -532,6 +561,7 @@ fn build_run_case(
             index: run_index,
         });
     }
+    validate_artifact_id_component(path, id, Some(&run_id), &run_id)?;
     if !run.legacy_stimuli.is_empty() {
         return Err(BenchmarkConfigError::DeprecatedLegacyFormat {
             path: path.to_path_buf(),
@@ -766,6 +796,35 @@ fn invalid_input(
     }
 }
 
+fn resolve_rom_path(path: &Path, rom: &Path) -> PathBuf {
+    if rom.is_absolute() {
+        rom.to_path_buf()
+    } else {
+        path.parent().unwrap_or_else(|| Path::new("")).join(rom)
+    }
+}
+
+fn validate_artifact_id_component(
+    path: &Path,
+    id: &str,
+    run_id: Option<&str>,
+    value: &str,
+) -> Result<(), BenchmarkConfigError> {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        Ok(())
+    } else {
+        Err(BenchmarkConfigError::InvalidArtifactId {
+            path: path.to_path_buf(),
+            id: id.to_string(),
+            run_id: run_id.map(ToString::to_string),
+            value: value.to_string(),
+        })
+    }
+}
+
 fn parse_joypad_button(button: &str) -> Option<JoypadButton> {
     match button.trim().to_ascii_lowercase().as_str() {
         "right" => Some(JoypadButton::Right),
@@ -840,6 +899,7 @@ button = "select"
 
         assert_eq!(case.id, "dr-mario");
         assert_eq!(case.artifact_id, "dr-mario-inputs");
+        assert_eq!(case.rom, PathBuf::from("Dr. Mario.gb"));
         assert_eq!(case.run_id.as_deref(), Some("inputs"));
         assert_eq!(case.model, BenchmarkModel::Dmg);
         assert_eq!(case.stimuli.len(), 8);
@@ -864,11 +924,11 @@ button = "select"
     #[test]
     fn parse_suite_expands_multiple_fresh_runs() {
         let suite = parse_benchmark_suite(
-            "case.toml",
+            "benchmark/test/case.toml",
             r#"
 version = 1
 id = "alone-in-the-dark"
-rom = "alone.gbc"
+rom = "roms/alone.gbc"
 model = "CGB"
 startup = "custom-boot"
 mode = "permissive"
@@ -900,8 +960,13 @@ hold_frames = 4
         .expect("benchmark suite should parse");
 
         assert_eq!(suite.cases.len(), 2);
+        assert_eq!(suite.rom, PathBuf::from("benchmark/test/roms/alone.gbc"));
         assert_eq!(suite.cases[0].id, "alone-in-the-dark");
         assert_eq!(suite.cases[0].artifact_id, "alone-in-the-dark-idle-40");
+        assert_eq!(
+            suite.cases[0].rom,
+            PathBuf::from("benchmark/test/roms/alone.gbc")
+        );
         assert_eq!(suite.cases[0].duration_seconds, 40);
         assert_eq!(suite.cases[0].stimuli, Vec::new());
 
@@ -1030,6 +1095,48 @@ pressed = true
 
     #[test]
     fn parse_suite_rejects_invalid_run_duration_and_inputs() {
+        let invalid_case_id = parse_benchmark_cases(
+            "case.toml",
+            r#"
+version = 1
+id = "../bad"
+rom = "bad.gb"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+
+[[run]]
+id = "safe"
+duration_seconds = 1
+"#,
+        )
+        .expect_err("unsafe case id should fail");
+        assert!(matches!(
+            invalid_case_id,
+            BenchmarkConfigError::InvalidArtifactId { .. }
+        ));
+
+        let invalid_run_id = parse_benchmark_cases(
+            "case.toml",
+            r#"
+version = 1
+id = "safe"
+rom = "bad.gb"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+
+[[run]]
+id = "bad/run"
+duration_seconds = 1
+"#,
+        )
+        .expect_err("unsafe run id should fail");
+        assert!(matches!(
+            invalid_run_id,
+            BenchmarkConfigError::InvalidArtifactId { .. }
+        ));
+
         let zero_duration = parse_benchmark_cases(
             "case.toml",
             r#"
