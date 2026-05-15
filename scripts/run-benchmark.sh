@@ -246,7 +246,6 @@ normalize_cases() {
   local target_case_dir="$1"
   python3 - "$target_case_dir" <<'PY'
 import json
-import os
 import pathlib
 import re
 import sys
@@ -576,6 +575,129 @@ collect_cases() {
   fi
 }
 
+filter_valid_cases() {
+  python3 - "$@" <<'PY'
+import json
+import os
+import pathlib
+import re
+import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
+
+assignment = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(.*?)(\s*(?:#.*)?)$')
+
+
+def parse_toml_string(value):
+    value = value.strip()
+    if value.startswith('"'):
+        try:
+            return json.loads(value)
+        except Exception:
+            return value.strip('"')
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+    return value.split('#', 1)[0].strip()
+
+
+def fallback_top_level_rom(path):
+    in_table = False
+    for raw_line in path.read_text().splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if stripped.startswith('['):
+            in_table = True
+            continue
+        if in_table:
+            continue
+        match = assignment.match(raw_line)
+        if match and match.group(2) == 'rom':
+            return parse_toml_string(match.group(4))
+    return None
+
+
+def case_rom(path):
+    if tomllib is not None:
+        try:
+            with path.open('rb') as file:
+                data = tomllib.load(file)
+        except Exception as error:
+            return None, f"invalid TOML: {error}"
+        rom = data.get('rom')
+        if not isinstance(rom, str) or not rom:
+            return None, "missing top-level string rom"
+        return rom, None
+    try:
+        rom = fallback_top_level_rom(path)
+    except Exception as error:
+        return None, f"failed to read TOML: {error}"
+    if not rom:
+        return None, "missing top-level string rom"
+    return rom, None
+
+
+def resolve_rom(case_path, rom):
+    try:
+        rom_path = pathlib.Path(rom).expanduser()
+    except RuntimeError as error:
+        return None, f"cannot expand ROM path {rom!r}: {error}"
+    if not rom_path.is_absolute():
+        rom_path = case_path.parent / rom_path
+    return rom_path, None
+
+
+def validate_rom(case_path):
+    rom, error = case_rom(case_path)
+    if error is not None:
+        return None, error
+    rom_path, error = resolve_rom(case_path, rom)
+    if error is not None:
+        return None, error
+    if not rom_path.is_file():
+        return rom_path, "ROM does not exist or is not a file"
+    try:
+        size = rom_path.stat().st_size
+    except OSError as error:
+        return rom_path, f"cannot stat ROM: {error}"
+    if size <= 0:
+        return rom_path, "ROM is empty"
+    try:
+        with rom_path.open('rb') as file:
+            file.read(1)
+    except OSError as error:
+        return rom_path, f"cannot read ROM: {error}"
+    return rom_path.resolve(), None
+
+
+total = 0
+valid = 0
+skipped = 0
+for raw_case in sys.argv[1:]:
+    total += 1
+    case_path = pathlib.Path(raw_case).expanduser()
+    if not case_path.is_absolute():
+        case_path = pathlib.Path.cwd() / case_path
+    try:
+        case_path = case_path.resolve()
+    except OSError:
+        case_path = case_path.absolute()
+    rom_path, error = validate_rom(case_path)
+    if error is not None:
+        rom_display = f" ({rom_path})" if rom_path is not None else ""
+        print(f"warning: skipping {case_path.name}{rom_display}: {error}", file=sys.stderr)
+        skipped += 1
+        continue
+    print(case_path)
+    valid += 1
+
+print(f"validated {valid}/{total} benchmark case ROM(s); skipped {skipped}", file=sys.stderr)
+PY
+}
+
 case_label() {
   python3 - "$case_dir" "$1" <<'PY'
 import pathlib
@@ -894,6 +1016,21 @@ cases=()
 while IFS= read -r case_path; do
   cases+=("$case_path")
 done < <(collect_cases)
+
+valid_cases=()
+while IFS= read -r case_path; do
+  valid_cases+=("$case_path")
+done < <(filter_valid_cases "${cases[@]}")
+cases=()
+if [[ "${#valid_cases[@]}" -gt 0 ]]; then
+  cases=("${valid_cases[@]}")
+fi
+
+if [[ "${#cases[@]}" -eq 0 ]]; then
+  echo "warning: no benchmark cases with readable ROMs found; nothing to run" >&2
+  generate_index
+  exit 0
+fi
 
 repo_root="$(find_repo_root || true)"
 if [[ -z "$repo_root" ]]; then
