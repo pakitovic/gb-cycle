@@ -659,6 +659,39 @@ oracle = "info-linked-trace"
         other => panic!("unexpected linked manifest error: {other:?}"),
     }
 
+    let cgb_ir_unexpected_port = write_manifest(
+        &workspace,
+        "cgb-ir-unexpected-port.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "cgb-ir"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gbc"
+  console = "cgb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gbc"
+  console = "cgb"
+"#,
+    );
+    let cgb_ir_unexpected_port_error = load_linked_session_suite_manifest(&cgb_ir_unexpected_port)
+        .expect_err("cgb-ir should reject adapter ports");
+    match cgb_ir_unexpected_port_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("UnexpectedCgbIrParticipantPort"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
     let dmg07_missing_port = write_manifest(
         &workspace,
         "dmg07-missing-port.toml",
@@ -1219,9 +1252,14 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
         LinkedSessionTopology::from_manifest_name("dmg07"),
         Some(LinkedSessionTopology::Dmg07)
     );
+    assert_eq!(
+        LinkedSessionTopology::from_manifest_name("cgb-ir"),
+        Some(LinkedSessionTopology::CgbIr)
+    );
     assert_eq!(LinkedSessionTopology::from_manifest_name("bogus"), None);
     assert_eq!(LinkedSessionTopology::Dmg04.manifest_name(), "dmg04");
     assert_eq!(LinkedSessionTopology::Dmg07.manifest_name(), "dmg07");
+    assert_eq!(LinkedSessionTopology::CgbIr.manifest_name(), "cgb-ir");
 
     assert_eq!(
         trace_fixture.required_capture(),

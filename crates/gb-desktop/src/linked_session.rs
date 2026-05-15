@@ -318,6 +318,9 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         LinkedMachinesError::UnsupportedMachineCountForDmg07 { count } => {
             format!("DMG-07 linked sessions require two to four machines, found {count}")
         }
+        LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count } => {
+            format!("CGB infrared linked sessions require exactly two machines, found {count}")
+        }
         LinkedMachinesError::MissingDmg07PlayerOne => {
             "DMG-07 linked sessions require adapter port P1".to_string()
         }
@@ -588,6 +591,12 @@ mod tests {
                 count: 3
             }),
             "DMG-04 desktop sessions currently require exactly two machines, found 3"
+        );
+        assert_eq!(
+            format_linked_machines_error(
+                LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count: 3 }
+            ),
+            "CGB infrared linked sessions require exactly two machines, found 3"
         );
     }
 }

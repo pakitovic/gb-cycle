@@ -57,16 +57,19 @@ impl std::error::Error for LinkedSessionSuiteManifestError {}
 pub enum LinkedSessionTopology {
     Dmg04,
     Dmg07,
+    CgbIr,
 }
 
 impl LinkedSessionTopology {
     pub(crate) const DMG04_MANIFEST_NAME: &str = "dmg04";
     pub(crate) const DMG07_MANIFEST_NAME: &str = "dmg07";
+    pub(crate) const CGB_IR_MANIFEST_NAME: &str = "cgb-ir";
 
     pub(crate) fn manifest_name(self) -> &'static str {
         match self {
             Self::Dmg04 => Self::DMG04_MANIFEST_NAME,
             Self::Dmg07 => Self::DMG07_MANIFEST_NAME,
+            Self::CgbIr => Self::CGB_IR_MANIFEST_NAME,
         }
     }
 
@@ -74,6 +77,7 @@ impl LinkedSessionTopology {
         match name {
             Self::DMG04_MANIFEST_NAME => Some(Self::Dmg04),
             Self::DMG07_MANIFEST_NAME => Some(Self::Dmg07),
+            Self::CGB_IR_MANIFEST_NAME => Some(Self::CgbIr),
             _ => None,
         }
     }
@@ -277,6 +281,10 @@ pub enum LinkedSessionCaseValidationError {
         participant_id: String,
     },
     UnexpectedDmg04ParticipantPort {
+        participant_id: String,
+        port: Dmg07Port,
+    },
+    UnexpectedCgbIrParticipantPort {
         participant_id: String,
         port: Dmg07Port,
     },

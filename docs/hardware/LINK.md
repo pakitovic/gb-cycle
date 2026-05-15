@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable and the active `DMG-07` 4-Player Adapter. Own shared T-cycle coordination when a link topology must route clocks or data between multiple `Machine` instances. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, printer command parsing, or frontend session UX.
+Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable, the active `DMG-07` 4-Player Adapter, and the native-CGB IR optical pair. Own shared T-cycle coordination when a link topology must route clocks, data, or optical emitter state between multiple `Machine` instances. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, `RP` / `FF56` sensor state, printer command parsing, or frontend session UX.
 
 ## Responsibilities
 
@@ -11,6 +11,7 @@ Own passive and active external-port topologies that span more than one console,
 - open-line / disconnected behavior at the cable level
 - shared linked-session stepping across multiple `Machine` instances
 - active `DMG-07` adapter clocking, ping, and packet broadcast rules
+- native-CGB IR optical routing between exactly two CGB machines
 
 ## `DMG-04` baseline
 
@@ -46,11 +47,21 @@ Own passive and active external-port topologies that span more than one console,
 - Restart compatibility should handle at least the documented aligned consecutive-`0xFF` sequence and should treat shorter observed variants as compatibility research until tests prove the exact hardware threshold.
 - Adapter clock periods and packet delays belong to the `link` topology and must be expressed on the shared T-cycle timeline. Do not use frontend timers, wall-clock sleeps, or serial-local fixed-cadence assumptions for the adapter.
 
+## CGB infrared pair model
+
+- Treat CGB IR as an optical topology, not as a serial/link-cable attachment and not as an `external_port` endpoint.
+- The first implemented topology is exactly two machines in native CGB mode. Non-CGB models and CGB-family compatibility mode keep `RP` unavailable through the CGB MMIO gate, so attaching the topology must not make them participate electrically.
+- At the linked-session boundary, sample each machine's `RP` emitter latch during `ExternalEventIngress` and apply that sampled optical input to the opposite machine before per-machine phase execution begins.
+- The optical input presented to each CGB sensor is the peer emitter state routed by the linked topology; the CGB bus-owned sensor also ORs that input with the machine's own emitter latch to model local self-visibility.
+- Do not route CGB IR through `DMG-04`, `DMG-07`, serial `SB` / `SC`, or frontend transport abstractions. Future netplay or UI light-injection work must attach to an explicit IR seam rather than repurposing link-cable state.
+- The current scope is CGB-to-CGB only. Pokémon Pikachu 2, Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and title-specific external protocols require separate device/protocol ownership before they can share this topology.
+
 ## Ownership boundary
 
 - `serial` owns `SB`, `SC`, transfer progress, bit shifting, and serial IRQ timing.
 - `external_port` owns the per-console attachment identity and the immediate endpoint state presented to `serial`.
-- `link` owns topology, cable routing, and shared multi-console timing.
+- `bus` / CGB infrared state owns `RP`, the emitter latch, read-enable latches, sensor counter, and effective-signal readback.
+- `link` owns topology, cable routing, CGB IR peer optical routing, and shared multi-console timing.
 - Linked sessions expose public attach / detach operations for session-owned topologies such as `DMG-04` or `DMG-07`; callers should not need to mutate individual member machines' `external_port` attachments just to disconnect or reconnect a session-owned cable or adapter.
 - Frontends and harnesses own player-slot UX, windows, audio muting, and host transport.
 
@@ -65,7 +76,9 @@ Own passive and active external-port topologies that span more than one console,
 
 - Pan Docs — Serial Data Transfer (Link Cable)
 - Pan Docs — External Connectors
+- Pan Docs — CGB Infrared Communications Port
 - Pan Docs — 4-Player Adapter
+- Dan Docs — CGB IR port
 - Dan Docs — DMG-07 4-Player Adapter
 - Shonumi, "Edge of Emulation: Game Boy 4-Player Adapter"
 
@@ -76,4 +89,5 @@ Concrete cases live in link unit/integration tests plus the `gb-test-runner` lin
 - `DMG-04` topology validation, attach/detach behavior, bidirectional byte exchange, open-line/disconnected input, stale outgoing-byte reuse, simultaneous-internal-clock fallback policy, and at least one retained deterministic chronology fixture
 - `DMG-07` physical port identity, `P1` anchor behavior, sparse occupancy, ping acknowledgement / status-byte sampling, `RATE` / `SIZE` capture, transition-marker handling, restart handling, and protocol phase transitions
 - `DMG-07` transmission timing, packet length, high-/low-nibble `RATE` effects, one-packet delayed double-buffer behavior, first stale packet, zero-filled absent-port slots, and deterministic 2-, 3-, and 4-console linked sessions
+- `CGB IR` pair validation, exact two-participant attach behavior, native-CGB-only `RP` participation, peer emitter sampling, self-emitter visibility, sensor warmup/fade/recovery, and one retained internal linked-session smoke suite using synthetic CGB ROMs
 - shared linked-session stepping on one T-cycle timeline, with frontend or harness tests limited to topology construction, input routing, artifacts, and presentation rather than redefining serial or adapter hardware rules

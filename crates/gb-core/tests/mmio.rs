@@ -523,6 +523,8 @@ fn non_cgb_modes_ignore_slice3_cgb_banking_and_misc_writes() {
     assert_eq!(cgb_compat.read_bus(0x8000), 0x32);
     cgb_compat.write_bus(0xFF70, 0x03);
     assert_eq!(cgb_compat.read_bus(0xFF70), 0xFF);
+    cgb_compat.write_bus(0xFF56, 0xC1);
+    assert_eq!(cgb_compat.read_bus(0xFF56), 0xFF);
     cgb_compat.write_bus(0xFF75, 0x70);
     assert_eq!(cgb_compat.read_bus(0xFF75), 0xFF);
 }
@@ -533,7 +535,7 @@ fn dmg_family_reads_ff_and_ignores_writes_for_unavailable_cgb_registers() {
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    for address in [0xFF4C, 0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {
+    for address in [0xFF4C, 0xFF4D, 0xFF4F, 0xFF56, 0xFF70, 0xFF76] {
         machine.write_bus(address, 0xA5);
         assert_eq!(machine.read_bus(address), 0xFF);
     }

@@ -10,6 +10,7 @@ use crate::serial::Serial;
 use crate::speed::{CgbSpeedMode, SpeedController};
 use crate::timer::Timer;
 
+use super::infrared::CgbInfraredState;
 use super::{
     AddressRouter, BLOCKED_READ_VALUE, BusAddressInfo, BusRegion, HRAM_LEN, IoRegisterAvailability,
     IoRegisterImplementation, IoRegisterKind, IoRegisterOwner,
@@ -126,6 +127,23 @@ impl IoHramDomain {
 
     pub(crate) fn write_rp(&mut self, value: u8) {
         self.infrared.write_rp(value);
+    }
+
+    pub(crate) fn tick_cgb_infrared_t_cycle(&mut self) {
+        self.infrared.tick_t_cycle();
+    }
+
+    pub(crate) fn set_cgb_infrared_external_input(&mut self, active: bool) {
+        self.infrared.set_external_optical_input(active);
+    }
+
+    pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
+        self.infrared.emitter_on()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cgb_infrared_effective_signal_detected(&self) -> bool {
+        self.infrared.effective_signal_detected()
     }
 
     pub(crate) fn read(
@@ -517,29 +535,6 @@ impl CgbKey0State {
         } else {
             OperatingMode::Cgb
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct CgbInfraredState {
-    rp_latch: u8,
-}
-
-impl CgbInfraredState {
-    const RP_WRITABLE_MASK: u8 = 0xC1;
-    const RP_UNUSED_READ_MASK: u8 = 0x3C;
-    const RP_NO_SIGNAL_BIT: u8 = 0x02;
-
-    const fn new() -> Self {
-        Self { rp_latch: 0 }
-    }
-
-    const fn read_rp(self) -> u8 {
-        Self::RP_UNUSED_READ_MASK | Self::RP_NO_SIGNAL_BIT | self.rp_latch
-    }
-
-    fn write_rp(&mut self, value: u8) {
-        self.rp_latch = value & Self::RP_WRITABLE_MASK;
     }
 }
 

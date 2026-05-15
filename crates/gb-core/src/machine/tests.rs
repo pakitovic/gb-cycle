@@ -21,6 +21,7 @@ use crate::speed::CgbSpeedMode;
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const PPU_DOTS_PER_LINE: u32 = 456;
 const PPU_LINES_PER_FRAME: u32 = 154;
+const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 20_140;
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
@@ -1911,6 +1912,58 @@ fn save_state_hardening_preserves_cgb_fast_serial_and_rp_latches() {
     assert_eq!(rp.read_bus(0xFF56), 0xFF);
     step_t_cycles(&mut rp, 32);
     assert_eq!(rp.capture_save_state(), uninterrupted.capture_save_state());
+}
+
+#[test]
+fn cgb_infrared_sensor_observes_own_emitter_after_warmup() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0xC3, 0x00, 0x01]))
+        .expect("CGB NoMBC test ROM should load");
+
+    machine.write_bus(0xFF56, 0xC1);
+    step_t_cycles(&mut machine, CGB_IR_SIGNAL_VISIBLE_T_CYCLES - 1);
+
+    assert_eq!(machine.read_bus(0xFF56) & 0x02, 0x02);
+    assert!(!machine.cgb_infrared_effective_signal_detected());
+
+    machine.step_t_cycle();
+
+    assert!(machine.cgb_infrared_effective_signal_detected());
+    assert_eq!(machine.read_bus(0xFF56) & 0x02, 0x00);
+}
+
+#[test]
+fn save_state_hardening_preserves_cgb_infrared_sensor_state() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0xC3, 0x00, 0x01]))
+        .expect("CGB NoMBC test ROM should load");
+
+    machine.write_bus(0xFF56, 0xC1);
+    step_t_cycles(&mut machine, CGB_IR_SIGNAL_VISIBLE_T_CYCLES);
+    assert_eq!(machine.read_bus(0xFF56) & 0x02, 0x00);
+
+    let saved = machine.capture_save_state();
+    let mut uninterrupted = machine.clone();
+    step_t_cycles(&mut uninterrupted, 512);
+
+    machine.write_bus(0xFF56, 0x00);
+    step_t_cycles(&mut machine, 32);
+    machine
+        .restore_save_state(&saved)
+        .expect("matching CGB IR save-state should restore");
+
+    assert_eq!(machine.read_bus(0xFF56) & 0x02, 0x00);
+    step_t_cycles(&mut machine, 512);
+    assert_eq!(
+        machine.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
 }
 
 #[test]

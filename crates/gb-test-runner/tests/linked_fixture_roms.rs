@@ -18,6 +18,12 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn build_cgb_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0143] = 0x80;
+    rom
+}
+
 fn assert_fixture_rom_matches_program(relative_path: &str, program: &[u8]) {
     let rom_path = data_path(relative_path);
     let actual = fs::read(&rom_path).unwrap_or_else(|error| {
@@ -29,6 +35,21 @@ fn assert_fixture_rom_matches_program(relative_path: &str, program: &[u8]) {
         actual,
         expected,
         "fixture ROM {} no longer matches its documented synthetic program",
+        rom_path.display()
+    );
+}
+
+fn assert_cgb_fixture_rom_matches_program(relative_path: &str, program: &[u8]) {
+    let rom_path = data_path(relative_path);
+    let actual = fs::read(&rom_path).unwrap_or_else(|error| {
+        panic!("failed to read fixture ROM {}: {error}", rom_path.display())
+    });
+    let expected = build_cgb_test_rom(program);
+
+    assert_eq!(
+        actual,
+        expected,
+        "fixture ROM {} no longer matches its documented synthetic CGB program",
         rom_path.display()
     );
 }
@@ -169,6 +190,35 @@ fn dmg07_p4_fixture_matches_its_documented_program() {
 #[test]
 fn dmg07_fixture_readme_exists_next_to_the_binary_fixtures() {
     let readme_path = data_path("data/fixtures/linked/dmg07/README.md");
+    assert!(
+        Path::new(&readme_path).is_file(),
+        "expected {} to document the synthetic linked-session ROM fixtures",
+        readme_path.display()
+    );
+}
+
+#[test]
+fn cgb_ir_emitter_fixture_matches_its_documented_program() {
+    assert_cgb_fixture_rom_matches_program(
+        "data/fixtures/linked/cgb-ir/emitter.gb",
+        &[0x3E, 0xC1, 0xE0, 0x56, 0xC3, 0x04, 0x01],
+    );
+}
+
+#[test]
+fn cgb_ir_receiver_fixture_matches_its_documented_program() {
+    assert_cgb_fixture_rom_matches_program(
+        "data/fixtures/linked/cgb-ir/receiver.gb",
+        &[
+            0x3E, 0xC0, 0xE0, 0x56, 0xF0, 0x56, 0xCB, 0x4F, 0x20, 0xFA, 0x3E, 0xB2, 0xE0, 0x01,
+            0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x12, 0x01,
+        ],
+    );
+}
+
+#[test]
+fn cgb_ir_fixture_readme_exists_next_to_the_binary_fixtures() {
+    let readme_path = data_path("data/fixtures/linked/cgb-ir/README.md");
     assert!(
         Path::new(&readme_path).is_file(),
         "expected {} to document the synthetic linked-session ROM fixtures",
