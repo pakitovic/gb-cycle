@@ -35,12 +35,15 @@ crates/
       lib.rs
   gb-persistence/
   gb-test-runner/
+  gb-benchmark/
   gb-cli/
   gb-desktop/
 docs/
 ```
 
 Future frontends such as WebAssembly should reuse the same core-facing contracts rather than adding platform-specific APIs inside `gb-core`.
+
+`gb-benchmark` owns portable benchmark TOML parsing, fresh per-run expansion, deterministic joypad stimulus scheduling, shared frontend artifact path conventions, and benchmark stats serialization so `gb-cli` and `gb-desktop` consume the same one-file-per-game contract without duplicating that tooling logic in either frontend.
 
 ## Rust module layout policy
 
@@ -402,8 +405,8 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 - Debugger or tooling snapshots should layer on top of the same core-owned save-state contracts instead of creating a second incompatible serialization path.
 - `MachineSaveState` is the core-owned whole-machine boundary. It is distinct from `MachineSnapshot` (debug/inspection only) and `.gbsav` cartridge persistence.
 - Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
-- The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `2`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
-- The Phase 8.2 durability layer intentionally rejects `.gbstate` version `1` and stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
+- The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `1`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
+- The Phase 8 durability layer stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
 - Rewind is layered over repeated in-memory `MachineSaveState` capture/restore. Phase 8.4 defines the core-only frame/subframe `MachineRewindBuffer` ring buffer and memory telemetry; Phase 8.7 accounts `MachineSaveState` payload bytes by deterministic deep-size of owned snapshot storage while still excluding allocator/RSS overhead. `gb-desktop` owns the single-machine host integration by recording frame/subframe snapshots during normal runtime, exposing a remappable hold hotkey (`Left Shift` by default), persistent rewind capture/capacity/playback-speed options under `SYSTEM -> REWIND`, compact HUD telemetry plus a top-right active-rewind indicator, and host input/audio/pacing/RTC/save-baseline cleanup after restore. Multi-machine coordination, compression, deltas, and debugger-grade reverse T-cycle stepping remain outside the core contract.
 - Host-facing `.gbstate` I/O is a frontend/tooling policy on top of the core contract. `gb-cli run --state-in/--state-out` restores after ROM load and saves after the normal run budget, while `gb-desktop` stores single-machine slots under `<rom-dir>/states/<state-key>.slot<N>.gbstate` and keeps `LOAD STATE` visible but disabled until the selected ROM-related slot exists. Loading a `.gbstate` must not apply elapsed RTC off-session time or replay cartridge `.gbsav`; any cartridge save session uses the restored cartridge state as its new baseline, and the desktop rewind buffer is cleared because the host timeline has jumped to an externally loaded state.
 

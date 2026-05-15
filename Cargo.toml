@@ -2,6 +2,7 @@
 members = [
     "crates/gb-core",
     "crates/gb-test-runner",
+    "crates/gb-benchmark",
     "crates/gb-cli",
     "crates/gb-persistence",
     "crates/gb-desktop",

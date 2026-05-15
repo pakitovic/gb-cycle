@@ -20,6 +20,7 @@ pub enum CliAction {
 pub struct DesktopRunOptions {
     pub rom_path: Option<PathBuf>,
     pub linked_peer_rom_path: Option<PathBuf>,
+    pub benchmark_path: Option<PathBuf>,
     pub exit_after_frames: Option<u64>,
     pub config: DesktopConfig,
     pub audio_recording: Option<DesktopAudioRecordingOptions>,
@@ -58,6 +59,7 @@ where
     let mut arguments = arguments.into_iter();
     let mut rom_path = None;
     let mut linked_peer_rom_path = None;
+    let mut benchmark_path = None;
     let mut exit_after_frames = None;
     let mut audio_recording_path = None;
     let mut audio_recording_sample_rate_hz = DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ;
@@ -72,6 +74,15 @@ where
             "--help" | "-h" => return Ok(CliAction::ShowHelp),
             "--test-runner" => {
                 test_runner = true;
+            }
+            "--benchmark" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--benchmark requires a value".to_string());
+                };
+                if benchmark_path.is_some() {
+                    return Err("--benchmark can only be provided once".to_string());
+                }
+                benchmark_path = Some(PathBuf::from(value.as_ref()));
             }
             "--model" => {
                 let Some(value) = arguments.next() else {
@@ -272,6 +283,12 @@ where
     if linked_peer_rom_path.is_some() && rom_path.is_none() {
         return Err("--link-rom requires a primary ROM positional argument".to_string());
     }
+    if benchmark_path.is_some() && rom_path.is_some() {
+        return Err(
+            "--benchmark supplies the ROM path from the case TOML; omit the positional ROM path"
+                .to_string(),
+        );
+    }
 
     if config.launch.console_model == DesktopConsoleModel::GameBoy
         && let Some(display_palette) = requested_display_palette
@@ -308,6 +325,7 @@ where
     Ok(CliAction::Run(Box::new(DesktopRunOptions {
         rom_path,
         linked_peer_rom_path,
+        benchmark_path,
         exit_after_frames,
         config,
         audio_recording,
@@ -357,6 +375,7 @@ pub fn help_text() -> &'static str {
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
         "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+        "  --benchmark <path>                     Run one portable benchmark case TOML\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
         "  --save-policy <manual|on-close|on-write|debounced>\n",
@@ -943,6 +962,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_supports_benchmark_case_without_positional_rom() {
+        let action = parse_cli_arguments(["--test-runner", "--benchmark", "test/dr-mario.toml"])
+            .expect("benchmark CLI should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(options.rom_path, None);
+        assert_eq!(
+            options.benchmark_path,
+            Some(PathBuf::from("test/dr-mario.toml"))
+        );
+        assert!(options.test_runner);
+    }
+
+    #[test]
+    fn parse_rejects_invalid_benchmark_argument_combinations() {
+        assert_eq!(
+            parse_cli_arguments(["--benchmark"]).expect_err("missing benchmark path should fail"),
+            "--benchmark requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--benchmark", "one.toml", "--benchmark", "two.toml"])
+                .expect_err("duplicate benchmark paths should fail"),
+            "--benchmark can only be provided once"
+        );
+        assert_eq!(
+            parse_cli_arguments(["demo.gb", "--benchmark", "case.toml"])
+                .expect_err("benchmark cases supply their own ROM path"),
+            "--benchmark supplies the ROM path from the case TOML; omit the positional ROM path"
+        );
+    }
+
+    #[test]
     fn parse_test_runner_keeps_explicit_host_overrides_order_independent() {
         let action = parse_cli_arguments([
             "demo.gb",
@@ -993,6 +1047,7 @@ mod tests {
         assert!(text.contains("Usage:"));
         assert!(text.contains("--boot-rom-dir <dir>"));
         assert!(text.contains("--test-runner"));
+        assert!(text.contains("--benchmark <path>"));
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--no-rewind"));

@@ -19,6 +19,12 @@ use audio_recording::{
 };
 use bootrom::{BOOT_ROM_ROOT_ENV_VAR, load_boot_rom_assets, missing_boot_rom_asset, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
+use gb_benchmark::{
+    BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
+    BenchmarkStats, BenchmarkStimulusRuntime, GB_DESKTOP_FRONTEND, encode_stats_toml,
+    frontend_screenshot_path, frontend_stats_path, load_benchmark_cases,
+    target_frames_for_duration, target_tcycles_for_duration,
+};
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
@@ -32,11 +38,12 @@ use gb_core::{
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
-    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-    JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
-    RewindOptions, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy,
+    FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS, FastForwardOptions, GamepadActionBindings,
+    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
@@ -120,7 +127,6 @@ const REWIND_HISTORY_SECONDS_OPTIONS: [u16; 5] = [5, 10, 20, 30, 60];
 const REWIND_SUBFRAMES_PER_FRAME_OPTIONS: [u8; 4] = [0, 1, 2, 4];
 const REWIND_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [1, 2, 4];
 const REWIND_MAX_MEMORY_MIB_OPTIONS: [u16; 4] = [64, 128, 256, 512];
-const FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS: [u8; 3] = [1, 2, 4];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
     width: u32,
@@ -386,6 +392,7 @@ struct FrontendRuntime {
     fast_forward_gamepad_active: bool,
     gamepad_trigger_state: GamepadTriggerState,
     fast_forward_audio_suppressed: bool,
+    fast_forward_vsync_suppressed: bool,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
@@ -417,6 +424,7 @@ enum DesktopAudioRecordingMode {
 struct DesktopSession {
     config: DesktopConfig,
     test_runner: bool,
+    benchmark: Option<DesktopBenchmarkRun>,
     current_dir: PathBuf,
     loaded_rom: Option<LoadedRom>,
     linked_secondary_rom: Option<LoadedRom>,
@@ -425,6 +433,14 @@ struct DesktopSession {
     recent_roms: Vec<PathBuf>,
     pocket_camera_frame: Option<PocketCameraFrame>,
     external_port_selection: DesktopExternalPortSelection,
+}
+
+#[derive(Clone)]
+struct DesktopBenchmarkRun {
+    case: BenchmarkCase,
+    stimuli: BenchmarkStimulusRuntime,
+    started_at: Instant,
+    started_t_cycle: u64,
 }
 
 #[derive(Clone)]
@@ -4838,6 +4854,20 @@ fn should_exit_after_presented_frames(
     exit_after_frames.is_some_and(|limit| presented_frames_total >= limit)
 }
 
+fn should_exit_after_benchmark_tcycles(
+    benchmark: Option<&DesktopBenchmarkRun>,
+    machine: &DesktopEmulationSession,
+) -> bool {
+    benchmark.is_some_and(|benchmark| {
+        machine
+            .primary_machine()
+            .next_t_cycle()
+            .get()
+            .saturating_sub(benchmark.started_t_cycle)
+            >= target_tcycles_for_duration(benchmark.case.duration_seconds)
+    })
+}
+
 fn sync_gamepad_rumble(
     runtime: &mut FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
@@ -4939,15 +4969,64 @@ fn run_desktop(
 
 fn run_desktop_with_startup_fallback_persistence(
     options: DesktopRunOptions,
+    settings_store: DesktopSettingsStore,
+    persist_startup_fallback: bool,
+) -> Result<(), String> {
+    let current_dir =
+        map_display_result(env::current_dir(), "failed to determine current directory")?;
+    if options.benchmark_path.is_some() {
+        return run_desktop_benchmark_suite(options, settings_store, current_dir);
+    }
+
+    run_desktop_prepared(
+        options,
+        settings_store,
+        persist_startup_fallback,
+        None,
+        current_dir,
+    )
+}
+
+fn run_desktop_benchmark_suite(
+    options: DesktopRunOptions,
+    settings_store: DesktopSettingsStore,
+    current_dir: PathBuf,
+) -> Result<(), String> {
+    let benchmark_path = options
+        .benchmark_path
+        .as_ref()
+        .expect("benchmark suite runner requires a benchmark path");
+    let benchmark_path = resolve_path(&current_dir, benchmark_path);
+    let benchmark_cases =
+        load_benchmark_cases(&benchmark_path).map_err(|error| error.to_string())?;
+
+    for benchmark_case in benchmark_cases {
+        let mut run_options = options.clone();
+        run_options.benchmark_path = None;
+        apply_benchmark_case_to_desktop_options(&mut run_options, &benchmark_case);
+        run_desktop_prepared(
+            run_options,
+            settings_store.clone(),
+            false,
+            Some(benchmark_case),
+            current_dir.clone(),
+        )?;
+    }
+
+    Ok(())
+}
+
+fn run_desktop_prepared(
+    options: DesktopRunOptions,
     mut settings_store: DesktopSettingsStore,
     persist_startup_fallback: bool,
+    benchmark_case: Option<BenchmarkCase>,
+    current_dir: PathBuf,
 ) -> Result<(), String> {
     let original_config = options.config.clone();
     let exit_after_frames = options.exit_after_frames;
     let test_runner = options.test_runner;
     let startup_links_peer = options.linked_peer_rom_path.is_some();
-    let current_dir =
-        map_display_result(env::current_dir(), "failed to determine current directory")?;
     let loaded_rom = load_initial_rom(&options, &current_dir)?;
     let linked_secondary_rom = load_initial_linked_secondary_rom(&options, &current_dir)?;
     let last_open_directory = match loaded_rom.as_ref() {
@@ -4957,6 +5036,12 @@ fn run_desktop_with_startup_fallback_persistence(
     let mut session = DesktopSession {
         config: options.config,
         test_runner,
+        benchmark: benchmark_case.map(|case| DesktopBenchmarkRun {
+            stimuli: BenchmarkStimulusRuntime::new(case.stimuli.clone()),
+            case,
+            started_at: Instant::now(),
+            started_t_cycle: 0,
+        }),
         current_dir,
         loaded_rom,
         linked_secondary_rom,
@@ -5089,6 +5174,7 @@ fn run_desktop_with_startup_fallback_persistence(
         fast_forward_gamepad_active: false,
         gamepad_trigger_state: GamepadTriggerState::default(),
         fast_forward_audio_suppressed: false,
+        fast_forward_vsync_suppressed: false,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
@@ -5153,6 +5239,11 @@ fn run_desktop_with_startup_fallback_persistence(
         initial_menu_presentation,
         RenderHudInput::default(),
     )?;
+
+    if let Some(benchmark) = &mut session.benchmark {
+        benchmark.started_at = Instant::now();
+        benchmark.started_t_cycle = machine.primary_machine().next_t_cycle().get();
+    }
 
     'running: loop {
         if !session.test_runner {
@@ -5312,6 +5403,12 @@ fn run_desktop_with_startup_fallback_persistence(
         let emulation_duration = emulation_started_at.elapsed();
         let fast_forward_still_active = fast_forward_active(&runtime, &session, &machine);
         sync_fast_forward_audio_state(&mut runtime, fast_forward_still_active)?;
+        sync_fast_forward_host_pacing_state(
+            &mut canvas,
+            &mut frame_pacer,
+            &mut runtime,
+            fast_forward_still_active,
+        )?;
         let audio_submit_telemetry = (!rewound_this_frame && !fast_forwarded_this_frame)
             .then(|| {
                 runtime
@@ -5404,7 +5501,16 @@ fn run_desktop_with_startup_fallback_persistence(
             .audio_output
             .as_ref()
             .and_then(DesktopAudioOutput::queued_duration_ms);
-        let pacing = frame_pacer.wait_until_next_frame(audio_queue_ms_before_pacing);
+        let pacing = if should_skip_host_frame_pacing(
+            session.test_runner,
+            fast_forward_still_active,
+            fast_forwarded_this_frame,
+        ) {
+            frame_pacer.reset_host_pacing();
+            FramePacingSample::default()
+        } else {
+            frame_pacer.wait_until_next_frame(audio_queue_ms_before_pacing)
+        };
         let audio_queue_ms_after_pacing = runtime
             .audio_output
             .as_ref()
@@ -5515,7 +5621,8 @@ fn run_desktop_with_startup_fallback_persistence(
         if should_exit_after_presented_frames(
             exit_after_frames,
             performance_counter.presented_frames_total,
-        ) {
+        ) || should_exit_after_benchmark_tcycles(session.benchmark.as_ref(), &machine)
+        {
             break 'running;
         }
     }
@@ -5527,6 +5634,12 @@ fn run_desktop_with_startup_fallback_persistence(
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.update_rumble(false, Instant::now())?;
     }
+    write_benchmark_artifacts_for_session(
+        &session,
+        &machine,
+        &runtime.video_options,
+        &performance_counter,
+    )?;
 
     close_runtime_save_sessions(&mut runtime, &machine)?;
     if !session.test_runner
@@ -5898,6 +6011,28 @@ fn load_initial_rom(
     load_rom_from_cli_path(current_dir, rom_path, "failed to read ROM").map(Some)
 }
 
+fn apply_benchmark_case_to_desktop_options(
+    options: &mut DesktopRunOptions,
+    benchmark_case: &BenchmarkCase,
+) {
+    options.rom_path = Some(benchmark_case.rom.clone());
+    options.exit_after_frames = Some(u64::from(target_frames_for_duration(
+        benchmark_case.duration_seconds,
+    )));
+    options.config.launch.console_model = desktop_model_from_benchmark(benchmark_case.model);
+    options
+        .config
+        .boot_rom
+        .normalize_kind_for_model(options.config.launch.console_model);
+    options.config.launch.startup_mode = startup_mode_from_benchmark(benchmark_case.startup);
+    options.config.launch.execution_mode = execution_mode_from_benchmark(benchmark_case.mode);
+    if options.config.launch.console_model == DesktopConsoleModel::GameBoy
+        && let Some(palette) = benchmark_case.palette
+    {
+        options.config.video.display_palette = desktop_display_palette_from_benchmark(palette);
+    }
+}
+
 fn load_initial_linked_secondary_rom(
     options: &DesktopRunOptions,
     current_dir: &Path,
@@ -5928,6 +6063,37 @@ fn load_rom_from_cli_path(
         path: rom_path,
         bytes: rom_bytes,
     })
+}
+
+fn desktop_model_from_benchmark(model: BenchmarkModel) -> DesktopConsoleModel {
+    match model {
+        BenchmarkModel::Dmg => DesktopConsoleModel::GameBoy,
+        BenchmarkModel::Mgb => DesktopConsoleModel::GameBoyPocket,
+        BenchmarkModel::Lgb => DesktopConsoleModel::GameBoyLight,
+        BenchmarkModel::Cgb => DesktopConsoleModel::GameBoyColor,
+    }
+}
+
+fn startup_mode_from_benchmark(startup: BenchmarkStartup) -> StartupMode {
+    match startup {
+        BenchmarkStartup::SkipBoot => StartupMode::SkipBoot,
+        BenchmarkStartup::CustomBoot => StartupMode::CustomBoot,
+        BenchmarkStartup::RealBoot => StartupMode::RealBoot,
+    }
+}
+
+fn execution_mode_from_benchmark(mode: BenchmarkMode) -> ExecutionMode {
+    match mode {
+        BenchmarkMode::Strict => ExecutionMode::Strict,
+        BenchmarkMode::Permissive => ExecutionMode::Permissive,
+        BenchmarkMode::Experimental => ExecutionMode::Experimental,
+    }
+}
+
+fn desktop_display_palette_from_benchmark(palette: BenchmarkPalette) -> DesktopDisplayPalette {
+    match palette {
+        BenchmarkPalette::Grey => DesktopDisplayPalette::Grey,
+    }
 }
 
 #[cfg(test)]
@@ -6799,6 +6965,14 @@ fn fast_forward_frame_budget(speed_multiplier: u8) -> usize {
     usize::from(speed_multiplier.max(1))
 }
 
+fn should_skip_host_frame_pacing(
+    test_runner: bool,
+    fast_forward_active: bool,
+    fast_forwarded_this_frame: bool,
+) -> bool {
+    test_runner || fast_forward_active || fast_forwarded_this_frame
+}
+
 fn step_until_next_frame(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -6920,6 +7094,20 @@ fn step_until_next_frame(
             let scheduler_t_cycle = tcycle_host_services
                 .capture_audio
                 .then(|| context.machine.next_t_cycle().get());
+            if let Some(benchmark) = &mut context.session.benchmark {
+                let benchmark_t_cycle = context.machine.next_t_cycle().get();
+                let completed_frames = context.performance_counter.presented_frames_total;
+                benchmark.stimuli.apply_due(
+                    benchmark_t_cycle,
+                    completed_frames,
+                    |button, pressed| {
+                        context
+                            .machine
+                            .primary_machine_mut()
+                            .set_joypad_button_pressed(button, pressed);
+                    },
+                );
+            }
             context.machine.step_t_cycle();
             context
                 .runtime
@@ -7150,10 +7338,17 @@ fn step_until_next_frame(
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             let frame_boundary_reached = now_at_frame_origin && !at_frame_origin;
+            let benchmark_tcycle_limit_reached = should_exit_after_benchmark_tcycles(
+                context.session.benchmark.as_ref(),
+                context.machine,
+            );
             // STOP forces the core framebuffer into the visible blank state and can
             // also freeze PPU frame-origin progress. Return once for presentation
             // so the SDL texture does not keep showing the last diagnostic frame.
-            if frame_boundary_reached || stop_forced_blank_present_requested {
+            if frame_boundary_reached
+                || stop_forced_blank_present_requested
+                || benchmark_tcycle_limit_reached
+            {
                 if collect_frame_telemetry && frame_boundary_reached {
                     frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 }
@@ -7715,6 +7910,7 @@ fn rebuild_machine_for_config(
         let next_session = DesktopSession {
             config: next_config.clone(),
             test_runner: context.session.test_runner,
+            benchmark: context.session.benchmark.clone(),
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
             linked_secondary_rom: context.session.linked_secondary_rom.clone(),
@@ -8340,6 +8536,7 @@ fn open_selected_rom(
     let next_session = DesktopSession {
         config: effective_config.clone(),
         test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
         linked_secondary_rom: None,
@@ -8506,6 +8703,7 @@ fn open_selected_linked_secondary_rom(
     let next_session = DesktopSession {
         config: effective_config.clone(),
         test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: Some(next_secondary_rom),
@@ -8605,6 +8803,7 @@ fn activate_dmg07_adapter(
     let next_session = DesktopSession {
         config: effective_config.clone(),
         test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: None,
@@ -11119,6 +11318,89 @@ fn save_screenshot_for_session(
     Ok(output_path)
 }
 
+fn save_screenshot_for_session_to_path(
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+    output_path: &Path,
+) -> Result<(), String> {
+    let dimensions = framebuffer_dimensions_for_session(machine);
+    let rendered = screenshot_output::render_screenshot(
+        framebuffer_render_input_for_session(machine, dimensions, video_options),
+        video_options,
+    );
+    if let Some(parent) = output_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create benchmark screenshot directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    screenshot_output::save_rendered_screenshot_png(&rendered, output_path)
+}
+
+fn write_benchmark_artifacts_for_session(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+    performance_counter: &PerformanceCounter,
+) -> Result<(), String> {
+    let Some(benchmark) = session.benchmark.as_ref() else {
+        return Ok(());
+    };
+
+    let elapsed_seconds = benchmark.started_at.elapsed().as_secs_f64();
+    let executed_tcycles = machine
+        .primary_machine()
+        .next_t_cycle()
+        .get()
+        .saturating_sub(benchmark.started_t_cycle);
+    let screenshot_path = benchmark
+        .case
+        .screenshot
+        .then(|| frontend_screenshot_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id));
+    if let Some(screenshot_path) = &screenshot_path {
+        let output_path = resolve_path(session.current_dir.as_path(), screenshot_path);
+        save_screenshot_for_session_to_path(machine, video_options, &output_path)?;
+    }
+    if benchmark.case.stats {
+        let stats_path = frontend_stats_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id);
+        let stats = BenchmarkStats::new(
+            GB_DESKTOP_FRONTEND,
+            &benchmark.case,
+            session.test_runner,
+            performance_counter.presented_frames_total,
+            elapsed_seconds,
+            Some(executed_tcycles),
+            screenshot_path.as_deref(),
+        );
+        let encoded_stats = encode_stats_toml(&stats)
+            .map_err(|error| format!("failed to encode benchmark stats TOML: {error}"))?;
+        write_text_file_with_parent(
+            &resolve_path(session.current_dir.as_path(), &stats_path),
+            &encoded_stats,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn write_text_file_with_parent(path: &Path, text: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create artifact directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(path, text).map_err(|error| format!("failed to write {}: {error}", path.display()))
+}
+
 fn toggle_fullscreen(window: &mut Window) -> Result<(), String> {
     let target_state = window.fullscreen_state() == FullscreenType::Off;
     map_display_result(
@@ -11240,6 +11522,23 @@ fn sync_fast_forward_audio_state(
             audio_output.clear_buffer()?;
         }
         runtime.fast_forward_audio_suppressed = false;
+    }
+    Ok(())
+}
+
+fn sync_fast_forward_host_pacing_state(
+    canvas: &mut Canvas<Window>,
+    frame_pacer: &mut FramePacer,
+    runtime: &mut FrontendRuntime,
+    fast_forward_active: bool,
+) -> Result<(), String> {
+    if fast_forward_active && runtime.video_options.vsync && !runtime.fast_forward_vsync_suppressed
+    {
+        apply_renderer_vsync(canvas, frame_pacer, false)?;
+        runtime.fast_forward_vsync_suppressed = true;
+    } else if !fast_forward_active && runtime.fast_forward_vsync_suppressed {
+        apply_renderer_vsync(canvas, frame_pacer, runtime.video_options.vsync)?;
+        runtime.fast_forward_vsync_suppressed = false;
     }
     Ok(())
 }
@@ -12071,6 +12370,10 @@ mod tests {
         watched_bus_value_change, watched_cpu_addresses, watched_pc_ranges,
     };
     use crate::audio_recording::DesktopAudioRecordingOptions;
+    use gb_benchmark::{
+        BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
+        BenchmarkStimulusRuntime,
+    };
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
@@ -13211,6 +13514,7 @@ mod tests {
             let session = super::DesktopSession {
                 config: config.clone(),
                 test_runner: false,
+                benchmark: None,
                 current_dir,
                 loaded_rom,
                 linked_secondary_rom: None,
@@ -13293,6 +13597,7 @@ mod tests {
                 fast_forward_gamepad_active: false,
                 gamepad_trigger_state: super::GamepadTriggerState::default(),
                 fast_forward_audio_suppressed: false,
+                fast_forward_vsync_suppressed: false,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
@@ -16871,6 +17176,7 @@ mod tests {
         let mut session = super::DesktopSession {
             config: DesktopConfig::default(),
             test_runner: false,
+            benchmark: None,
             current_dir: current_dir.clone(),
             loaded_rom: None,
             linked_secondary_rom: None,
@@ -17041,10 +17347,9 @@ mod tests {
             next_gamepad_gyro_mode(GamepadGyroMode::PadInput),
             GamepadGyroMode::Off
         );
-        assert_eq!(next_fast_forward_speed_multiplier(1), 2);
-        assert_eq!(next_fast_forward_speed_multiplier(2), 4);
-        assert_eq!(next_fast_forward_speed_multiplier(4), 1);
-        assert_eq!(next_fast_forward_speed_multiplier(9), 1);
+        assert_eq!(next_fast_forward_speed_multiplier(4), 8);
+        assert_eq!(next_fast_forward_speed_multiplier(8), 16);
+        assert_eq!(next_fast_forward_speed_multiplier(16), 4);
     }
 
     #[test]
@@ -18224,6 +18529,194 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_helpers_apply_cases_and_write_artifacts() {
+        let root = temp_test_root("benchmark-artifact-helpers");
+        let rom_path = root.join("bench.gb");
+        let rom_bytes = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+        fs::write(&rom_path, &rom_bytes).expect("benchmark ROM should be writable");
+
+        let mut options = DesktopRunOptions {
+            rom_path: None,
+            linked_peer_rom_path: None,
+            benchmark_path: None,
+            exit_after_frames: None,
+            config: DesktopConfig::default(),
+            audio_recording: None,
+            test_runner: true,
+        };
+        options.config.video.display_palette = DesktopDisplayPalette::Light;
+        let dmg_case = BenchmarkCase {
+            source_path: root.join("test/bench.toml"),
+            id: "bench".to_string(),
+            run_id: Some("dmg".to_string()),
+            run_label: Some("DMG run".to_string()),
+            artifact_id: "bench-dmg".to_string(),
+            rom: rom_path.clone(),
+            model: BenchmarkModel::Dmg,
+            startup: BenchmarkStartup::CustomBoot,
+            mode: BenchmarkMode::Permissive,
+            palette: Some(BenchmarkPalette::Grey),
+            duration_seconds: 2,
+            screenshot: true,
+            stats: true,
+            stimuli: Vec::new(),
+        };
+        super::apply_benchmark_case_to_desktop_options(&mut options, &dmg_case);
+        assert_eq!(options.rom_path, Some(rom_path.clone()));
+        assert_eq!(options.exit_after_frames, Some(120));
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::GameBoy
+        );
+        assert_eq!(options.config.boot_rom.kind, BootRomKind::Dmg);
+        assert_eq!(options.config.launch.startup_mode, StartupMode::CustomBoot);
+        assert_eq!(
+            options.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopDisplayPalette::Grey
+        );
+
+        assert_eq!(
+            super::desktop_model_from_benchmark(BenchmarkModel::Dmg),
+            DesktopConsoleModel::GameBoy
+        );
+        assert_eq!(
+            super::desktop_model_from_benchmark(BenchmarkModel::Mgb),
+            DesktopConsoleModel::GameBoyPocket
+        );
+        assert_eq!(
+            super::desktop_model_from_benchmark(BenchmarkModel::Lgb),
+            DesktopConsoleModel::GameBoyLight
+        );
+        assert_eq!(
+            super::desktop_model_from_benchmark(BenchmarkModel::Cgb),
+            DesktopConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            super::startup_mode_from_benchmark(BenchmarkStartup::SkipBoot),
+            StartupMode::SkipBoot
+        );
+        assert_eq!(
+            super::startup_mode_from_benchmark(BenchmarkStartup::CustomBoot),
+            StartupMode::CustomBoot
+        );
+        assert_eq!(
+            super::startup_mode_from_benchmark(BenchmarkStartup::RealBoot),
+            StartupMode::RealBoot
+        );
+        assert_eq!(
+            super::execution_mode_from_benchmark(BenchmarkMode::Strict),
+            ExecutionMode::Strict
+        );
+        assert_eq!(
+            super::execution_mode_from_benchmark(BenchmarkMode::Permissive),
+            ExecutionMode::Permissive
+        );
+        assert_eq!(
+            super::execution_mode_from_benchmark(BenchmarkMode::Experimental),
+            ExecutionMode::Experimental
+        );
+        assert_eq!(
+            super::desktop_display_palette_from_benchmark(BenchmarkPalette::Grey),
+            DesktopDisplayPalette::Grey
+        );
+
+        let mut cgb_options = options.clone();
+        cgb_options.config.video.display_palette = DesktopDisplayPalette::Light;
+        let mut cgb_case = dmg_case.clone();
+        cgb_case.model = BenchmarkModel::Cgb;
+        cgb_case.startup = BenchmarkStartup::RealBoot;
+        cgb_case.mode = BenchmarkMode::Experimental;
+        super::apply_benchmark_case_to_desktop_options(&mut cgb_options, &cgb_case);
+        assert_eq!(
+            cgb_options.config.launch.console_model,
+            DesktopConsoleModel::GameBoyColor
+        );
+        assert_eq!(cgb_options.config.boot_rom.kind, BootRomKind::Cgb);
+        assert_eq!(
+            cgb_options.config.video.display_palette,
+            DesktopDisplayPalette::Light
+        );
+
+        let machine = super::DesktopEmulationSession::new_single(
+            super::load_machine_for_rom(&options.config, &root, &rom_bytes)
+                .expect("benchmark machine should load")
+                .machine,
+        );
+        let session = super::DesktopSession {
+            config: options.config.clone(),
+            test_runner: true,
+            benchmark: Some(super::DesktopBenchmarkRun {
+                case: dmg_case.clone(),
+                stimuli: BenchmarkStimulusRuntime::new(Vec::new()),
+                started_at: Instant::now(),
+                started_t_cycle: 0,
+            }),
+            current_dir: root.clone(),
+            loaded_rom: Some(super::LoadedRom {
+                path: rom_path,
+                bytes: rom_bytes,
+            }),
+            linked_secondary_rom: None,
+            dmg07_player_count: None,
+            last_open_directory: Some(root.clone()),
+            recent_roms: Vec::new(),
+            pocket_camera_frame: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+        };
+        let performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "benchmark".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
+        super::write_benchmark_artifacts_for_session(
+            &session,
+            &machine,
+            &session.config.video,
+            &performance_counter,
+        )
+        .expect("benchmark artifacts should be written");
+        assert!(root.join("gb-desktop/bench-dmg.png").exists());
+        let stats = fs::read_to_string(root.join("gb-desktop/bench-dmg-stats.toml"))
+            .expect("benchmark stats should be written");
+        assert!(stats.contains("artifact_id = \"bench-dmg\""));
+        assert!(stats.contains("run_label = \"DMG run\""));
+
+        let no_benchmark_session = super::DesktopSession {
+            benchmark: None,
+            ..session
+        };
+        super::write_benchmark_artifacts_for_session(
+            &no_benchmark_session,
+            &machine,
+            &no_benchmark_session.config.video,
+            &performance_counter,
+        )
+        .expect("missing benchmark context should be a no-op");
+
+        let nested_text_path = root.join("nested/artifact.txt");
+        super::write_text_file_with_parent(&nested_text_path, "ok")
+            .expect("text artifacts should create parent directories");
+        assert_eq!(
+            fs::read_to_string(nested_text_path).expect("text artifact should be readable"),
+            "ok"
+        );
+
+        let suite_error = super::run_desktop_with_startup_fallback_persistence(
+            DesktopRunOptions {
+                benchmark_path: Some(root.join("missing-benchmark.toml")),
+                ..options
+            },
+            DesktopSettingsStore::new_for_tests(root.join("missing-settings.toml")),
+            false,
+        )
+        .expect_err("missing benchmark suites should fail before SDL startup");
+        assert!(suite_error.contains("missing-benchmark.toml"));
+    }
+
+    #[test]
     fn desktop_mode_labels_cover_all_public_variants() {
         assert_eq!(super::EmulationProfileSessionKind::Single.label(), "single");
         assert_eq!(
@@ -18274,6 +18767,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: None,
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config: launcher_config,
                 audio_recording: None,
@@ -18297,6 +18791,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: Some(rom_path),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config: rom_config,
                 audio_recording: None,
@@ -18330,6 +18825,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: Some(rom_path),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: Some(2),
                 config,
                 audio_recording: None,
@@ -18366,6 +18862,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: Some(rom_path),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config,
                 audio_recording: Some(DesktopAudioRecordingOptions {
@@ -18405,6 +18902,7 @@ mod tests {
         let mut session = super::DesktopSession {
             config: DesktopConfig::default(),
             test_runner: false,
+            benchmark: None,
             current_dir: root.clone(),
             loaded_rom: Some(super::LoadedRom {
                 path: primary_rom_path,
@@ -18517,6 +19015,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: None,
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
@@ -18570,6 +19069,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
@@ -18635,6 +19135,7 @@ mod tests {
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config,
                 audio_recording: None,
@@ -19791,7 +20292,7 @@ mod tests {
                 .expect("fast-forward speed should cycle")
                 .is_none()
         );
-        assert_eq!(harness.session.config.fast_forward.speed_multiplier, 4);
+        assert_eq!(harness.session.config.fast_forward.speed_multiplier, 8);
     }
 
     #[test]
@@ -19891,11 +20392,68 @@ mod tests {
     }
 
     #[test]
+    fn fast_forward_host_pacing_temporarily_suppresses_renderer_vsync() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fast-forward-host-pacing", true, false, false);
+
+        assert!(harness.runtime.video_options.vsync);
+        assert!(!harness.runtime.fast_forward_vsync_suppressed);
+        super::sync_fast_forward_host_pacing_state(
+            &mut harness.canvas,
+            &mut harness.frame_pacer,
+            &mut harness.runtime,
+            true,
+        )
+        .expect("entering Fast Forward should disable renderer vsync");
+        assert!(harness.runtime.video_options.vsync);
+        assert!(harness.runtime.fast_forward_vsync_suppressed);
+
+        super::sync_fast_forward_host_pacing_state(
+            &mut harness.canvas,
+            &mut harness.frame_pacer,
+            &mut harness.runtime,
+            true,
+        )
+        .expect("already-suppressed Fast Forward host pacing should be idempotent");
+        assert!(harness.runtime.fast_forward_vsync_suppressed);
+
+        super::sync_fast_forward_host_pacing_state(
+            &mut harness.canvas,
+            &mut harness.frame_pacer,
+            &mut harness.runtime,
+            false,
+        )
+        .expect("leaving Fast Forward should restore configured renderer vsync");
+        assert!(harness.runtime.video_options.vsync);
+        assert!(!harness.runtime.fast_forward_vsync_suppressed);
+
+        harness.runtime.video_options.vsync = false;
+        super::apply_renderer_vsync(&mut harness.canvas, &mut harness.frame_pacer, false)
+            .expect("test should disable configured renderer vsync");
+        super::sync_fast_forward_host_pacing_state(
+            &mut harness.canvas,
+            &mut harness.frame_pacer,
+            &mut harness.runtime,
+            true,
+        )
+        .expect("Fast Forward should not mark vsync suppressed when vsync is already off");
+        assert!(!harness.runtime.fast_forward_vsync_suppressed);
+    }
+
+    #[test]
     fn fast_forward_frame_budget_uses_speed_multiplier() {
         assert_eq!(super::fast_forward_frame_budget(0), 1);
-        assert_eq!(super::fast_forward_frame_budget(1), 1);
-        assert_eq!(super::fast_forward_frame_budget(2), 2);
         assert_eq!(super::fast_forward_frame_budget(4), 4);
+        assert_eq!(super::fast_forward_frame_budget(8), 8);
+        assert_eq!(super::fast_forward_frame_budget(16), 16);
+    }
+
+    #[test]
+    fn host_frame_pacing_is_skipped_for_test_runner_and_fast_forward() {
+        assert!(!super::should_skip_host_frame_pacing(false, false, false));
+        assert!(super::should_skip_host_frame_pacing(true, false, false));
+        assert!(super::should_skip_host_frame_pacing(false, true, false));
+        assert!(super::should_skip_host_frame_pacing(false, false, true));
     }
 
     #[test]
@@ -19949,7 +20507,7 @@ mod tests {
         assert_eq!(fast_forwarded_frames, 4);
         assert!(
             advanced_t_cycles >= gb_core::DMG_T_CYCLES_PER_FRAME.saturating_mul(4),
-            "4x Fast Forward advanced only {advanced_t_cycles} T-cycles"
+            "retuned 2x Fast Forward advanced only {advanced_t_cycles} T-cycles"
         );
         assert!(
             harness.runtime.rewind_buffer.is_empty(),
@@ -21074,6 +21632,7 @@ mod tests {
             &DesktopRunOptions {
                 rom_path: Some(relative_rom.clone()),
                 linked_peer_rom_path: None,
+                benchmark_path: None,
                 exit_after_frames: None,
                 config: DesktopConfig::default(),
                 audio_recording: None,
@@ -21089,6 +21648,7 @@ mod tests {
                 &DesktopRunOptions {
                     rom_path: None,
                     linked_peer_rom_path: None,
+                    benchmark_path: None,
                     exit_after_frames: None,
                     config: DesktopConfig::default(),
                     audio_recording: None,
@@ -21103,6 +21663,7 @@ mod tests {
             &DesktopRunOptions {
                 rom_path: Some(relative_rom.clone()),
                 linked_peer_rom_path: Some(relative_rom.clone()),
+                benchmark_path: None,
                 exit_after_frames: Some(8),
                 config: DesktopConfig::default(),
                 audio_recording: None,
@@ -22931,6 +23492,7 @@ mod tests {
         let launcher_session = super::DesktopSession {
             config: config.clone(),
             test_runner: false,
+            benchmark: None,
             current_dir: root.clone(),
             loaded_rom: None,
             linked_secondary_rom: None,

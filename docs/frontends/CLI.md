@@ -22,6 +22,8 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 
 `--test-runner` marks the run as host-light automation without changing console model, startup mode, execution mode, T-cycle stepping, frame limits, or RTC behavior. The headless CLI already has no SDL menu, window title, audio playback, gamepad, rewind, or settings persistence, so the flag is primarily a shared frontend contract and still allows explicit artifacts such as `--serial-out`, `--framebuffer-out`, `--trace-out`, `--state-out`, and explicit `--save-dir` persistence.
 
+`--benchmark <path>` loads one portable benchmark TOML through `gb-benchmark` instead of taking a positional ROM path. The TOML owns the ROM path, console model, startup mode, compatibility mode, optional DMG grey palette, screenshot/stat toggles, and one or more fresh `[[run]]` entries. Each run starts from a new machine, applies expanded input pulses through `Machine::set_joypad_button_pressed`, uses its own duration as the final screenshot time, is bounded by the matching T-cycle duration even if frame-origin progress freezes, and writes `gb-cli/<artifact-id>.png` plus `gb-cli/<artifact-id>-stats.toml` when enabled. Concise run inputs use `[[run.input]]` with `button` or `buttons`, exactly one of `frame` / `second` / `tcycle`, optional `hold_frames`, and optional `repeat_every_frames`; relative `rom` paths resolve against the TOML file directory, and `id` / `run.id` must use only ASCII letters, digits, `-`, and `_` because they form artifact filenames; the old top-level `duration_seconds` plus `[[stimulus]]` format is not accepted.
+
 ### `saves`
 
 Convert between GB Cycle's internal `.gbsav` envelope and the raw `.sav` layout used by SameBoy and mGBA:

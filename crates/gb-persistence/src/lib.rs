@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
 const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
-pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 3;
+pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 1;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
 pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
 pub const MACHINE_SAVE_STATE_FILE_EXTENSION: &str = "gbstate";
@@ -2758,22 +2758,6 @@ mod tests {
         assert!(matches!(
             decode_machine_save_state_envelope(&invalid_magic),
             Err(CartridgeSaveBackendError::InvalidMagic { .. })
-        ));
-
-        let mut legacy_version = encoded.clone();
-        legacy_version[MACHINE_SAVE_STATE_MAGIC.len()..MACHINE_SAVE_STATE_MAGIC.len() + 2]
-            .copy_from_slice(&1u16.to_le_bytes());
-        assert!(matches!(
-            decode_machine_save_state_envelope(&legacy_version),
-            Err(CartridgeSaveBackendError::UnsupportedFormatVersion { version: 1 })
-        ));
-
-        let mut v2_version = encoded.clone();
-        v2_version[MACHINE_SAVE_STATE_MAGIC.len()..MACHINE_SAVE_STATE_MAGIC.len() + 2]
-            .copy_from_slice(&2u16.to_le_bytes());
-        assert!(matches!(
-            decode_machine_save_state_envelope(&v2_version),
-            Err(CartridgeSaveBackendError::UnsupportedFormatVersion { version: 2 })
         ));
 
         let mut future_version = encoded.clone();

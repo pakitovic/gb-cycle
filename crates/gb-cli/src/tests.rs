@@ -68,6 +68,19 @@ fn build_nop_loop_rom() -> Vec<u8> {
     )
 }
 
+fn build_lcd_off_loop_rom() -> Vec<u8> {
+    build_test_rom_with_header(
+        &[
+            0x3E, 0x00, // LD A,$00
+            0xE0, 0x40, // LDH (LCDC),A
+            0xC3, 0x04, 0x01, // JP $0104
+        ],
+        0x00,
+        0x00,
+        0x00,
+    )
+}
+
 fn build_battery_backed_serial_and_ram_rom(byte: u8, ram_value: u8) -> Vec<u8> {
     build_test_rom_with_header(
         &[
@@ -105,6 +118,24 @@ struct FailOnWrite {
     fail_on_write: Option<usize>,
     fail_on_flush: bool,
     writes: usize,
+}
+
+struct CurrentDirGuard {
+    original: PathBuf,
+}
+
+impl CurrentDirGuard {
+    fn enter(path: &Path) -> Self {
+        let original = env::current_dir().expect("current directory should be readable");
+        env::set_current_dir(path).expect("test current directory should be selectable");
+        Self { original }
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        env::set_current_dir(&self.original).expect("original current directory should restore");
+    }
 }
 
 impl Write for FailOnWrite {
@@ -1008,6 +1039,157 @@ fn parse_run_arguments_accepts_test_runner_without_changing_emulated_limits() {
 }
 
 #[test]
+fn parse_run_arguments_accepts_benchmark_case_without_positional_rom() {
+    let action = parse_run_arguments(["--test-runner", "--benchmark", "test/dr-mario.toml"])
+        .expect("benchmark case should parse");
+
+    let CliAction::RunBenchmark(options) = action else {
+        panic!("expected benchmark run action");
+    };
+
+    assert_eq!(options.benchmark_path, PathBuf::from("test/dr-mario.toml"));
+    assert!(options.test_runner);
+}
+
+#[test]
+fn run_benchmark_command_expands_multi_run_case_artifacts() {
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let temp_dir = unique_temp_dir("benchmark-multirun");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let _cwd = CurrentDirGuard::enter(&temp_dir);
+
+    let rom_path = temp_dir.join("bench.gb");
+    fs::write(&rom_path, build_nop_loop_rom()).expect("test ROM should be writable");
+    let case_path = temp_dir.join("test/bench.toml");
+    fs::create_dir_all(case_path.parent().expect("case path should have a parent"))
+        .expect("case directory should be creatable");
+    fs::write(
+        &case_path,
+        format!(
+            r#"
+version = 1
+id = "bench"
+rom = "{}"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+screenshot = true
+stats = true
+
+[[run]]
+id = "idle"
+label = "Idle"
+duration_seconds = 1
+
+[[run]]
+id = "tap"
+label = "Tap A"
+duration_seconds = 1
+
+[[run.input]]
+frame = 2
+button = "a"
+hold_frames = 3
+"#,
+            rom_path.display()
+        ),
+    )
+    .expect("benchmark case should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        vec![
+            "run".to_string(),
+            "--test-runner".to_string(),
+            "--benchmark".to_string(),
+            case_path.display().to_string(),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("multi-run benchmark command should succeed through the CLI router");
+
+    assert!(stdout.is_empty());
+    assert!(temp_dir.join("gb-cli/bench-idle.png").exists());
+    assert!(temp_dir.join("gb-cli/bench-tap.png").exists());
+    let idle_stats = fs::read_to_string(temp_dir.join("gb-cli/bench-idle-stats.toml"))
+        .expect("idle stats should exist");
+    let tap_stats = fs::read_to_string(temp_dir.join("gb-cli/bench-tap-stats.toml"))
+        .expect("tap stats should exist");
+    assert!(idle_stats.contains("artifact_id = \"bench-idle\""));
+    assert!(idle_stats.contains("run_id = \"idle\""));
+    assert!(tap_stats.contains("artifact_id = \"bench-tap\""));
+    assert!(tap_stats.contains("run_label = \"Tap A\""));
+    assert!(
+        String::from_utf8(stderr)
+            .expect("stderr should be UTF-8")
+            .contains("benchmark_stats_out=gb-cli/bench-tap-stats.toml")
+    );
+
+    drop(_cwd);
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn run_benchmark_command_stops_at_tcycle_budget_when_frames_freeze() {
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let temp_dir = unique_temp_dir("benchmark-lcd-off");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let _cwd = CurrentDirGuard::enter(&temp_dir);
+
+    let rom_path = temp_dir.join("lcd-off.gb");
+    fs::write(&rom_path, build_lcd_off_loop_rom()).expect("test ROM should be writable");
+    let case_path = temp_dir.join("test/lcd-off.toml");
+    fs::create_dir_all(case_path.parent().expect("case path should have a parent"))
+        .expect("case directory should be creatable");
+    fs::write(
+        &case_path,
+        format!(
+            r#"
+version = 1
+id = "lcd-off"
+rom = "{}"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+screenshot = false
+stats = true
+
+[[run]]
+id = "budget"
+duration_seconds = 1
+"#,
+            rom_path.display()
+        ),
+    )
+    .expect("benchmark case should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        vec![
+            "run".to_string(),
+            "--test-runner".to_string(),
+            "--benchmark".to_string(),
+            case_path.display().to_string(),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("LCD-off benchmark should stop at the tcycle duration budget");
+
+    assert!(stdout.is_empty());
+    let stats = fs::read_to_string(temp_dir.join("gb-cli/lcd-off-budget-stats.toml"))
+        .expect("stats should exist");
+    assert!(stats.contains("artifact_id = \"lcd-off-budget\""));
+    assert!(stats.contains("executed_tcycles = 4213440"));
+
+    drop(_cwd);
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn parse_run_arguments_applies_grey_palette_only_for_the_final_dmg_model() {
     let action = parse_run_arguments(["demo.gb", "--model", "DMG", "--palette", "grey"])
         .expect("DMG grey palette override should parse");
@@ -1080,6 +1262,7 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
             vec!["demo.gb", "--save-policy"],
             "--save-policy requires a value",
         ),
+        (vec!["--benchmark"], "--benchmark requires a value"),
     ];
 
     for (arguments, expected) in missing_value_cases {
@@ -1106,6 +1289,16 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
         parse_run_arguments(["demo.gb", "--save-policy", "manual"])
             .expect_err("save policy requires save dir"),
         "--save-policy requires --save-dir"
+    );
+    assert_eq!(
+        parse_run_arguments(["--benchmark", "one.toml", "--benchmark", "two.toml"])
+            .expect_err("duplicate benchmark paths should fail"),
+        "--benchmark can only be provided once"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--benchmark", "case.toml"])
+            .expect_err("benchmark cases supply their own ROM path"),
+        "--benchmark supplies the ROM path from the case TOML; omit the positional ROM path"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "--mystery"]).expect_err("unknown run options should fail"),
@@ -1265,11 +1458,18 @@ fn cli_machine_exposes_summary_and_buffered_views() {
             .is_ok()
     );
     assert!(summary.trace_text().is_none());
+    summary.set_joypad_button_pressed(JoypadButton::A, true);
+    summary.set_joypad_button_pressed(JoypadButton::A, false);
     summary.step_t_cycle();
     let _ = summary.take_serial_output_bytes();
 
     let mut buffered = build_loaded_machine(build_single_byte_serial_rom(b'B'), true);
+    buffered.set_joypad_button_pressed(JoypadButton::Start, true);
     buffered.step_t_cycle();
+    let snapshot = buffered.capture_save_state();
+    buffered
+        .restore_save_state(&snapshot)
+        .expect("buffered machines should restore their own snapshots");
     let trace_text = buffered
         .trace_text()
         .expect("buffered machines should expose trace text");
@@ -1824,12 +2024,20 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
 #[test]
 fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::GameBoy.console_model(), ConsoleModel::GameBoy);
+    assert_eq!(
+        RunModel::Pocket.console_model(),
+        ConsoleModel::GameBoyPocket
+    );
+    assert_eq!(RunModel::Light.console_model(), ConsoleModel::GameBoyLight);
+    assert_eq!(RunModel::Color.console_model(), ConsoleModel::GameBoyColor);
     assert_eq!(RunModel::GameBoy.name(), "DMG");
     assert_eq!(RunModel::GameBoy.boot_rom_kind(), BootRomKind::Dmg);
     assert_eq!(RunModel::Pocket.boot_rom_kind(), BootRomKind::Mgb);
     assert_eq!(RunModel::Pocket.name(), "MGB");
     assert_eq!(RunModel::Light.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(RunModel::Light.name(), "LGB");
     assert_eq!(RunModel::Color.boot_rom_kind(), BootRomKind::Cgb);
+    assert_eq!(RunModel::Color.name(), "CGB");
     assert_eq!(SavePolicy::Manual.name(), "manual");
     assert_eq!(SavePolicy::OnClose.name(), "on-close");
     assert_eq!(SavePolicy::OnWrite.name(), "on-write");
@@ -1864,6 +2072,51 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(
         compatibility_for_execution_mode(ExecutionMode::Experimental),
         CompatibilityPolicy::experimental()
+    );
+
+    assert_eq!(
+        run_model_from_benchmark(BenchmarkModel::Dmg),
+        RunModel::GameBoy
+    );
+    assert_eq!(
+        run_model_from_benchmark(BenchmarkModel::Mgb),
+        RunModel::Pocket
+    );
+    assert_eq!(
+        run_model_from_benchmark(BenchmarkModel::Lgb),
+        RunModel::Light
+    );
+    assert_eq!(
+        run_model_from_benchmark(BenchmarkModel::Cgb),
+        RunModel::Color
+    );
+    assert_eq!(
+        startup_mode_from_benchmark(BenchmarkStartup::SkipBoot),
+        StartupMode::SkipBoot
+    );
+    assert_eq!(
+        startup_mode_from_benchmark(BenchmarkStartup::CustomBoot),
+        StartupMode::CustomBoot
+    );
+    assert_eq!(
+        startup_mode_from_benchmark(BenchmarkStartup::RealBoot),
+        StartupMode::RealBoot
+    );
+    assert_eq!(
+        execution_mode_from_benchmark(BenchmarkMode::Strict),
+        ExecutionMode::Strict
+    );
+    assert_eq!(
+        execution_mode_from_benchmark(BenchmarkMode::Permissive),
+        ExecutionMode::Permissive
+    );
+    assert_eq!(
+        execution_mode_from_benchmark(BenchmarkMode::Experimental),
+        ExecutionMode::Experimental
+    );
+    assert_eq!(
+        display_palette_from_benchmark(BenchmarkPalette::Grey),
+        RunDisplayPalette::Grey
     );
 
     assert_eq!(parse_run_model("DMG"), Ok(RunModel::GameBoy));
