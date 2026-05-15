@@ -23,11 +23,15 @@ fn serial_transfer_byte(machine: &mut Machine, outgoing_byte: u8) -> u8 {
 }
 
 fn printer_packet(command: PrinterCommand, data: &[u8]) -> Vec<u8> {
+    printer_packet_with_flag(command, 0x00, data)
+}
+
+fn printer_packet_with_flag(command: PrinterCommand, compression_flag: u8, data: &[u8]) -> Vec<u8> {
     let mut packet = vec![
         0x88,
         0x33,
         command as u8,
-        0x00,
+        compression_flag,
         (data.len() & 0xFF) as u8,
         ((data.len() >> 8) & 0xFF) as u8,
     ];
@@ -42,6 +46,18 @@ fn printer_packet(command: PrinterCommand, data: &[u8]) -> Vec<u8> {
 
 fn send_printer_packet(machine: &mut Machine, command: PrinterCommand, data: &[u8]) -> Vec<u8> {
     printer_packet(command, data)
+        .into_iter()
+        .map(|byte| serial_transfer_byte(machine, byte))
+        .collect()
+}
+
+fn send_printer_packet_with_flag(
+    machine: &mut Machine,
+    command: PrinterCommand,
+    compression_flag: u8,
+    data: &[u8],
+) -> Vec<u8> {
+    printer_packet_with_flag(command, compression_flag, data)
         .into_iter()
         .map(|byte| serial_transfer_byte(machine, byte))
         .collect()
@@ -105,6 +121,47 @@ fn render_printed_page_fixture(page: &PrintedPage) -> String {
     }
 
     rendered
+}
+
+#[test]
+fn printer_serial_path_accepts_compressed_data_packet() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
+    let compressed_tile = vec![0x01, 0x80, 0x40, 0x82, 0x00, 0x88, 0xFF];
+
+    send_printer_packet_with_flag(&mut machine, PrinterCommand::Data, 0x01, &compressed_tile);
+    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x81);
+    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x08);
+
+    send_printer_packet(&mut machine, PrinterCommand::Data, &[]);
+    serial_transfer_byte(&mut machine, 0x00);
+    serial_transfer_byte(&mut machine, 0x00);
+
+    send_printer_packet(
+        &mut machine,
+        PrinterCommand::Print,
+        &[0x01, 0x13, 0xE4, 0x40],
+    );
+    serial_transfer_byte(&mut machine, 0x00);
+    serial_transfer_byte(&mut machine, 0x00);
+
+    send_printer_packet(&mut machine, PrinterCommand::Status, &[]);
+    serial_transfer_byte(&mut machine, 0x00);
+    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x06);
+    send_printer_packet(&mut machine, PrinterCommand::Status, &[]);
+    serial_transfer_byte(&mut machine, 0x00);
+    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x04);
+
+    let mut pages = machine.take_printed_pages();
+    assert_eq!(pages.len(), 1);
+    let page = pages.remove(0);
+    assert_eq!(page.width, 160);
+    assert_eq!(page.height, 8);
+    assert_eq!(page.pixels[0], 1);
+    assert_eq!(page.pixels[1], 2);
+    assert_eq!(page.pixels[2], 0);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::{
-    PRINTER_MAGIC_0, PRINTER_MAGIC_1, PrinterCommand, PrinterDevice, PrinterMargins,
-    PrinterParserState, PrinterStatusBits,
+    PRINTER_MAGIC_0, PRINTER_MAGIC_1, PRINTER_MAX_DATA_PACKET_BYTES, PrinterCommand, PrinterDevice,
+    PrinterMargins, PrinterParserState, PrinterStatusBits,
 };
 
 impl PrinterCommand {
@@ -165,36 +165,96 @@ impl PrinterDevice {
     ) {
         self.parser_state = PrinterParserState::AwaitMagic0;
         let command_data = self.packet_data.get(4..).unwrap_or_default().to_vec();
+        debug_assert_eq!(command_data.len(), expected_data_len as usize);
 
         if checksum != self.packet_checksum_sum {
             self.status.checksum_error = true;
             self.queue_response(0x81, self.status.to_byte());
-            self.packet_data.clear();
-            self.packet_checksum_sum = 0;
+            self.clear_current_packet();
             return;
         }
 
         self.status.checksum_error = false;
-        if compression_flag != 0 {
-            self.status.packet_error = true;
-            self.queue_response(0x81, self.status.to_byte());
-            self.packet_data.clear();
-            self.packet_checksum_sum = 0;
-            return;
-        }
-
         let Some(command) = PrinterCommand::from_byte(command) else {
-            self.status.packet_error = true;
-            self.queue_response(0x81, self.status.to_byte());
-            self.packet_data.clear();
-            self.packet_checksum_sum = 0;
+            self.reject_current_packet();
             return;
         };
 
+        let decoded_command_data;
+        let command_data = match (command, compression_flag) {
+            (PrinterCommand::Data, 0x00) => command_data.as_slice(),
+            (PrinterCommand::Data, 0x01) => {
+                let Some(decoded_data) = decode_compressed_data_packet(&command_data) else {
+                    self.reject_current_packet();
+                    return;
+                };
+                decoded_command_data = decoded_data;
+                decoded_command_data.as_slice()
+            }
+            (_, 0x00) => command_data.as_slice(),
+            _ => {
+                self.reject_current_packet();
+                return;
+            }
+        };
+
+        if !command_payload_len_is_valid(command, command_data.len()) {
+            self.reject_current_packet();
+            return;
+        }
+
         self.status.packet_error = false;
-        self.execute_command(command, expected_data_len, &command_data);
+        self.execute_command(command, command_data);
         self.queue_response(0x81, self.status.to_byte());
+        self.clear_current_packet();
+    }
+
+    fn reject_current_packet(&mut self) {
+        self.status.packet_error = true;
+        self.queue_response(0x81, self.status.to_byte());
+        self.clear_current_packet();
+    }
+
+    fn clear_current_packet(&mut self) {
         self.packet_data.clear();
         self.packet_checksum_sum = 0;
     }
+}
+
+fn command_payload_len_is_valid(command: PrinterCommand, len: usize) -> bool {
+    match command {
+        PrinterCommand::Initialize | PrinterCommand::Status => len == 0,
+        PrinterCommand::Print => len == 4,
+        PrinterCommand::Data => len <= PRINTER_MAX_DATA_PACKET_BYTES,
+    }
+}
+
+fn decode_compressed_data_packet(data: &[u8]) -> Option<Vec<u8>> {
+    let mut decoded = Vec::new();
+    let mut index = 0;
+
+    while index < data.len() {
+        let control = data[index];
+        index += 1;
+
+        if control & 0x80 == 0 {
+            let len = usize::from(control & 0x7F) + 1;
+            let end = index.checked_add(len)?;
+            if end > data.len() || decoded.len().checked_add(len)? > PRINTER_MAX_DATA_PACKET_BYTES {
+                return None;
+            }
+            decoded.extend_from_slice(&data[index..end]);
+            index = end;
+        } else {
+            let len = usize::from(control & 0x7F) + 2;
+            let &byte = data.get(index)?;
+            if decoded.len().checked_add(len)? > PRINTER_MAX_DATA_PACKET_BYTES {
+                return None;
+            }
+            decoded.extend(std::iter::repeat_n(byte, len));
+            index += 1;
+        }
+    }
+
+    Some(decoded)
 }

@@ -9,6 +9,7 @@ use std::{collections::VecDeque, mem};
 const PRINTER_MAGIC_0: u8 = 0x88;
 const PRINTER_MAGIC_1: u8 = 0x33;
 const PRINTER_PACKET_TIMEOUT_T_CYCLES: u32 = 419_430;
+const PRINTER_MAX_DATA_PACKET_BYTES: usize = 0x280;
 const PRINTER_IMAGE_BUFFER_CAPACITY_BYTES: usize = 8_000;
 const PRINTER_TILE_WIDTH: usize = 20;
 const PRINTER_PAGE_WIDTH_PIXELS: u16 = 160;
