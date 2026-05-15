@@ -1,6 +1,6 @@
 # gb-cycle
 
-A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust.
+A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, developed with support from AI-assisted tooling such as Codex and Claude.
 
 ## Current implementation highlights
 
@@ -17,6 +17,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust.
 | Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, flash / EEPROM / accelerometer paths, rumble-capable metadata, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family and CGB-family models, including CGB boot-window routing, header-driven native/compatibility mode selection, and coherent first post-boot timer, PPU, and APU state. |
 | Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, link, audio/video diagnostics, save states, rewind, and Fast Forward. |
+| Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
 | Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
 | Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix. |
@@ -31,12 +32,14 @@ The current workspace uses the `crates/`-based layout below.
 crates/
   gb-core/         Pure DMG/CGB emulation core, hardware state, debugger snapshots, and save-state / rewind DTOs
   gb-test-runner/  Typed ROM harness, DMG/CGB executable suites, differential tooling, determinism checks, and linked-session validation
+  gb-benchmark/    Portable benchmark TOML parsing, deterministic joypad stimuli, shared artifact paths, and frontend-neutral stats
   gb-cli/          Headless CLI frontend, ROM inspection, save conversion, and `.gbstate` run tooling
   gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link sessions, printer, Pocket Camera, audio/video diagnostics, save states, rewind, and Fast Forward
   gb-persistence/  Host-side `.gbsav`, external `.sav`, and `.gbstate` envelope formats
 
-docs/              Architecture, roadmap, testing, frontend, and technical documentation
-Makefile           Local verification pipeline, ROM-suite helpers, and Phase 9 differential/determinism utilities
+docs/              Architecture, roadmap, testing, frontend, hardware, and reference documentation
+Makefile           Local verification pipeline, ROM-suite helpers, CGB gates, and Phase 9 differential/determinism utilities
+scripts/           Benchmark and desktop development launch helpers
 ```
 
 Future extensions that are intentionally not separate crates yet:
@@ -69,6 +72,10 @@ cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
 
 # Desktop: launch a local DMG-04 two-player Game Link session
 cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
+
+# Benchmarks: create a sample portable case and run a case directory through desktop
+scripts/run-benchmark.sh --sample
+scripts/run-benchmark.sh path/to/benchmark-cases
 ```
 
 See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.md](docs/frontends/DESKTOP.md) for full usage details.
@@ -133,9 +140,23 @@ make coverage
 
 See [docs/testing/ROM-SUITES.md](docs/testing/ROM-SUITES.md) for the full external ROM suite workflow: fetching, running, promoted DMG and CGB gates, extra/internal CGB lanes, RealBoot reruns, differential oracles, determinism lanes, and private manifest-based commercial ROM smoke workflows.
 
+### Benchmark helper
+
+`scripts/run-benchmark.sh` runs portable benchmark TOML cases through `gb-desktop` by default and can add matching `gb-cli` artifacts with `--gb-cli`. It can also create a sample case, normalize case filenames, generate cases from a ROM directory, rewrite ROM roots, run a single `--test` case, and skip missing/empty/unreadable ROM paths before launching either frontend.
+
 ## Documentation
 
 See [docs/index.md](docs/index.md) for the full reading order, document authority boundaries, and handbook index.
+
+## Acknowledgements
+
+gb-cycle is an independent emulator, but its hardware-fidelity work benefits heavily from the Game Boy emulation community. Special thanks to:
+
+- [SameBoy](https://github.com/LIJI32/SameBoy), for its high-accuracy DMG/CGB implementation, mature tester/oracle paths, and readable hardware behavior cross-checks.
+- [DocBoy](https://github.com/Docheinstein/docboy) and the [docboy-test-suite](https://github.com/Docheinstein/docboy-test-suite/), for precision-focused emulator architecture ideas and high-value timing, PPU, APU, bus, and linked-session tests.
+- [GBE+](https://github.com/shonumi/gbe-plus), for its broad accessory/peripheral coverage and practical examples around less common Game Boy hardware.
+
+These projects are used as references, examples, and inspiration; primary documentation, hardware research, and explicit tests remain the source of truth for gb-cycle behavior. See [docs/REFERENCES.md](docs/REFERENCES.md) for the project consultation policy.
 
 ## License
 

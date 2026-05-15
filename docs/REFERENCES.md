@@ -67,6 +67,7 @@ Use this order when implementation examples or behavioral cross-checks are neede
 6. Mooneye GB — https://github.com/Gekkio/mooneye-gb
 7. Danger Boy — https://github.com/austinthresher/dangerboy
 8. Gambatte — https://github.com/gb-archive/gambatte
+9. GBE+ — https://github.com/shonumi/gbe-plus
 
 ## How to use the consultation tier
 
@@ -86,6 +87,7 @@ Use this order when implementation examples or behavioral cross-checks are neede
 - Mooneye GB: strong documentary and edge-case reasoning reference.
 - Danger Boy: useful smaller codebase for DMG timing study.
 - Gambatte: historical high-accuracy reference and a useful corroborating implementation perspective for practical accuracy and corner cases, but not a repo-supported automated differential oracle path in the current project.
+- GBE+: valuable implementation and UX inspiration for obscure peripherals, accessories, and link-adjacent hardware such as printer/camera/adapter-style flows; use it as a specialized cross-check after primary documentation, Dan Docs, and subsystem-specific evidence rather than as a broad accuracy oracle.
 
 ## Retained source-level cross-check notes
 

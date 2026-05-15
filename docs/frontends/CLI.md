@@ -12,6 +12,8 @@ Print cartridge header information:
 cargo run -p gb-cli -- inspect-rom path/to/rom.gb
 ```
 
+Use `--mode <strict|permissive|experimental>` when the inspection should evaluate cartridge-loader compatibility under a specific policy preset; the default is `strict`.
+
 ### `run`
 
 Execute a ROM headlessly:
@@ -35,7 +37,7 @@ cargo run -p gb-cli -- saves export path/to/rom.gb path/to/out.sav --save-dir pa
 cargo run -p gb-cli -- saves import path/to/rom.gb path/to/in.sav --save-dir path/to/saves
 ```
 
-Both commands load the ROM first, then validate the save payload against the cartridge mapper and persistence profile instead of inferring compatibility from the filename. `saves import` reads the selected external path exactly as provided, so extensionless files are valid when the caller supplies one. Use `--save-key <key>` when the internal `.gbsav` key differs from the ROM stem. By default the derived key preserves the ROM's exact filename stem, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`.
+Both commands load the ROM first, then validate the save payload against the cartridge mapper and persistence profile instead of inferring compatibility from the filename. `saves import` reads the selected external path exactly as provided, so extensionless files are valid when the caller supplies one. Use `--save-key <key>` when the internal `.gbsav` key differs from the ROM stem.
 
 ## Console models
 
@@ -45,18 +47,21 @@ Both commands load the ROM first, then validate the save payload against the car
 
 - `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
 - `custom-boot` is a direct-start path for boot-logo-inspecting ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot` and overlays the DMG boot-logo VRAM/map seed without loading a boot ROM asset.
-- `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir` and can verify the expected boot ROM SHA-256 hashes.
+- `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`.
 
 ## Output options
 
 - `--framebuffer-out` writes the final `160x144` framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`.
 - `--palette grey` maps DMG-family framebuffer shade indices through the same `DMG_GREY_DISPLAY_PALETTE` grey RGB values used by `gb-desktop`, but only when the final effective `--model` is `DMG`; the option is parsed and ignored for `MGB`, `LGB`, and `CGB`. For PGM artifacts the override writes an 8-bit grey PGM (`maxval 255`) instead of the default raw shade-index PGM (`maxval 3`), while CGB PNG output continues to use the core RGB555 framebuffer directly.
 - `--serial-out` writes captured serial output to a file.
+- `--serial-stdout` streams completed serial bytes to stdout as they arrive.
 - `--trace-out` writes the in-memory scheduler trace text for the run.
 
 ## Battery saves
 
-`--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`. Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav` extension; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. When a derived exact-stem save is missing, load/export paths still probe the previous sanitized underscore-style key so existing saves migrate naturally on the next write.
+`--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`. Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav` extension, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. When a derived exact-stem save is missing, load/export paths still probe the previous sanitized underscore-style key so existing saves migrate naturally on the next write.
+
+`--save-policy <manual|on-close|on-write>` selects automatic flush behavior when `--save-dir` is present and defaults to `on-close`; `manual` loads any existing save without automatic writes, `on-close` writes changed persistence at run completion, and `on-write` also flushes changed persistence at frame boundaries after cartridge writes.
 
 `gb-cli saves export` writes emulator-compatible `.sav` files at the host boundary without changing the internal `.gbsav` format. Linear cartridge RAM is exported as raw bytes; `MBC3` RTC saves append the shared `48`-byte little-endian RTC suffix used by SameBoy/mGBA; `MBC2` export defaults to mGBA's `256`-byte packed format while import accepts both mGBA packed saves and SameBoy's `512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a safe external mapping fail explicitly instead of producing partial saves.
 
