@@ -88,6 +88,120 @@ fn non_empty_data_then_empty_data_then_print_produces_a_page() {
 }
 
 #[test]
+fn compressed_data_packet_decodes_mixed_rle_and_literal_runs() {
+    let mut printer = PrinterDevice::new();
+    let compressed_tile = vec![0x01, 0x80, 0x40, 0x82, 0x00, 0x88, 0xFF];
+
+    send_packet(
+        &mut printer,
+        &printer_packet_with_flag(PrinterCommand::Data, 0x01, &compressed_tile),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+    assert_eq!(printer.snapshot().image_buffer_len, 16);
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Data, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(
+        &mut printer,
+        &printer_packet(PrinterCommand::Print, &[0x01, 0x13, 0xE4, 0x40]),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x06));
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x04));
+
+    let pages = printer.take_printed_pages();
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].pixels[0], 1);
+    assert_eq!(pages[0].pixels[1], 2);
+    assert_eq!(pages[0].pixels[2], 0);
+}
+
+#[test]
+fn compressed_empty_data_packet_arms_printing() {
+    let mut printer = PrinterDevice::new();
+    let tile = vec![0xAA; 16];
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Data, &tile));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(
+        &mut printer,
+        &printer_packet_with_flag(PrinterCommand::Data, 0x01, &[]),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+    assert!(printer.snapshot().print_armed);
+
+    send_packet(
+        &mut printer,
+        &printer_packet(PrinterCommand::Print, &[0x01, 0x13, 0xE4, 0x40]),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x06));
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x04));
+
+    assert_eq!(printer.take_printed_pages().len(), 1);
+}
+
+#[test]
+fn malformed_or_overlong_compressed_data_sets_packet_error_without_buffer_mutation() {
+    let mut printer = PrinterDevice::new();
+    let tile = vec![0xAA; 16];
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Data, &tile));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+    let image_buffer_len = printer.snapshot().image_buffer_len;
+
+    send_packet(
+        &mut printer,
+        &printer_packet_with_flag(PrinterCommand::Data, 0x01, &[0x02, 0x55]),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x18));
+    assert_eq!(printer.snapshot().image_buffer_len, image_buffer_len);
+
+    let mut overlong = Vec::new();
+    for _ in 0..=PRINTER_MAX_DATA_PACKET_BYTES / 129 {
+        overlong.extend_from_slice(&[0xFF, 0x00]);
+    }
+    send_packet(
+        &mut printer,
+        &printer_packet_with_flag(PrinterCommand::Data, 0x01, &overlong),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x18));
+    assert_eq!(printer.snapshot().image_buffer_len, image_buffer_len);
+}
+
+#[test]
+fn print_with_zero_sheets_line_feeds_without_emitting_a_page() {
+    let mut printer = PrinterDevice::new();
+    let tile = vec![0xAA; 16];
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Data, &tile));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Data, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(
+        &mut printer,
+        &printer_packet(PrinterCommand::Print, &[0x00, 0x13, 0xE4, 0x40]),
+    );
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x08));
+
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x06));
+    send_packet(&mut printer, &printer_packet(PrinterCommand::Status, &[]));
+    assert_eq!(consume_reply(&mut printer), (0x81, 0x04));
+
+    assert!(printer.take_printed_pages().is_empty());
+}
+
+#[test]
 fn print_command_is_ignored_until_an_empty_data_packet_arms_printing() {
     let mut printer = PrinterDevice::new();
     let tile_row = vec![0xAA; 320];
@@ -103,6 +217,31 @@ fn print_command_is_ignored_until_an_empty_data_packet_arms_printing() {
 
     assert!(printer.take_printed_pages().is_empty());
     assert_eq!(printer.snapshot().status.to_byte(), 0x08);
+}
+
+#[test]
+fn invalid_command_payload_lengths_are_rejected_with_packet_error_status() {
+    let cases = [
+        (PrinterCommand::Initialize, vec![0x00]),
+        (PrinterCommand::Status, vec![0x00]),
+        (PrinterCommand::Print, vec![0x01, 0x13, 0xE4]),
+        (
+            PrinterCommand::Data,
+            vec![0x00; PRINTER_MAX_DATA_PACKET_BYTES + 1],
+        ),
+    ];
+
+    for (command, data) in cases {
+        let mut printer = PrinterDevice::new();
+
+        send_packet(&mut printer, &printer_packet(command, &data));
+        let (alive, status) = consume_reply(&mut printer);
+
+        assert_eq!(alive, 0x81);
+        assert_eq!(status, 0x10);
+        assert_eq!(printer.snapshot().image_buffer_len, 0);
+        assert!(printer.take_printed_pages().is_empty());
+    }
 }
 
 #[test]
@@ -141,9 +280,9 @@ fn checksum_mismatch_sets_the_checksum_error_bit_and_drops_the_packet() {
 }
 
 #[test]
-fn compressed_packets_are_rejected_with_packet_error_status() {
+fn non_data_packets_reject_compression_flag_with_packet_error_status() {
     let mut printer = PrinterDevice::new();
-    let packet = printer_packet_with_flag(PrinterCommand::Data, 0x01, &[0xAA, 0x55]);
+    let packet = printer_packet_with_flag(PrinterCommand::Status, 0x01, &[]);
 
     send_packet(&mut printer, &packet);
     let (alive, status) = consume_reply(&mut printer);

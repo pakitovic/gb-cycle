@@ -23,6 +23,7 @@ Own the Game Boy Printer protocol state that lives on the far side of the handhe
 
 ## Current v1 baseline
 
+- Commercial compatibility is considered closed for the v1 printer protocol after manual validation with representative printer-enabled software including GB Camera, Pokémon TCG, Pokémon Yellow / Gold / Silver / Crystal, Link's Awakening DX, Super Mario Bros. Deluxe, and long multi-segment Super Mario Bros. Deluxe banner output.
 - command support:
   - `0x01` initialize
   - `0x02` print
@@ -30,13 +31,19 @@ Own the Game Boy Printer protocol state that lives on the far side of the handhe
   - `0x0F` status
 - packet checksum validation is implemented
 - an empty `DATA` packet must be observed before `PRINT` is accepted
-- packet timeout resets the printer back to its initialized state
-- compression flag `1` is currently rejected as packet error; compressed data is not implemented yet
+- packet timeout resets an in-progress packet back to the initialized state
+- compression flag `0` stores raw `DATA`; compression flag `1` decodes printer RLE for `DATA` packets only
+- `DATA` packets are limited to `$280` decoded bytes per segment
+- `PRINT` with sheet count `0` is treated as line feed only and does not emit a typed printed page
 - printed output is exposed as typed page data, not frontend image files
 - current status progression is explicit and deterministic:
   - buffered-but-unprinted data reports `0x08`
   - accepted print work reports `0x06` on the first later status poll
   - completed print work reports `0x04` on the next later status poll
+
+## RLE compression
+
+Compressed `DATA` packet payloads use the Game Boy Printer command stream rather than Game Boy tile encoding. A control byte with bit `7` clear copies the next `(control & $7F) + 1` literal bytes. A control byte with bit `7` set repeats the next byte `(control & $7F) + 2` times. Malformed streams and streams whose decoded segment exceeds `$280` bytes are packet errors and must not mutate the image buffer.
 
 ## Typed output contract
 
@@ -51,11 +58,14 @@ The core should expose printed output as typed page/raster data suitable for des
 ## Primary references
 
 - Pan Docs Game Boy Printer section
+- Shonumi, "Game Boy Printer" article
 
 ## Tests
 
 - packet framing and checksum tests
 - detection-sequence tests
+- RLE compressed data packet tests
+- command payload validation tests
 - empty-data-before-print acceptance tests
 - packet-timeout reset tests
 - typed printed-page raster tests
@@ -63,6 +73,9 @@ The core should expose printed output as typed page/raster data suitable for des
 
 ## Known deferred work
 
-- compressed data packets
+The remaining items are hardware-fidelity research topics, not blockers for the closed v1 commercial-compatibility baseline:
+
 - more detailed printer-busy timing than the current deterministic status-poll progression
 - printer-specific hardware error bits beyond packet/checksum handling
+- hardware-verified behavior for broad no-packet idle reset after already-buffered data
+- hardware-verified behavior for image-buffer overflow beyond the current deterministic capacity/status model

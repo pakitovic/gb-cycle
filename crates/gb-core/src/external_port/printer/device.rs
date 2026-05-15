@@ -66,16 +66,11 @@ impl PrinterDevice {
         std::mem::take(&mut self.printed_pages)
     }
 
-    pub(super) fn execute_command(
-        &mut self,
-        command: PrinterCommand,
-        expected_data_len: u16,
-        command_data: &[u8],
-    ) {
+    pub(super) fn execute_command(&mut self, command: PrinterCommand, command_data: &[u8]) {
         match command {
             PrinterCommand::Initialize => self.handle_initialize(),
             PrinterCommand::Print => self.handle_print(command_data),
-            PrinterCommand::Data => self.handle_data(expected_data_len, command_data),
+            PrinterCommand::Data => self.handle_data(command_data),
             PrinterCommand::Status => self.handle_status_command(),
         }
     }
@@ -105,17 +100,14 @@ impl PrinterDevice {
 
         self.processing_state = PrinterProcessingState::PrintingPendingStatus;
         self.print_armed = false;
-        self.printed_pages
-            .push(render_printed_page(&self.image_buffer, print_args));
+        if print_args.sheets != 0 {
+            self.printed_pages
+                .push(render_printed_page(&self.image_buffer, print_args));
+        }
         self.recompute_status();
     }
 
-    fn handle_data(&mut self, expected_data_len: u16, command_data: &[u8]) {
-        if command_data.len() != expected_data_len as usize {
-            self.status.packet_error = true;
-            return;
-        }
-
+    fn handle_data(&mut self, command_data: &[u8]) {
         if command_data.is_empty() {
             if !self.image_buffer.is_empty() {
                 self.print_armed = true;
