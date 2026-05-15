@@ -9,12 +9,17 @@ rom_dir=""
 run_cli=false
 single_test=""
 case_dir=""
+normalize_case=false
+generate_cases=false
+template_path=""
 
 usage() {
   cat <<'USAGE'
 Usage:
   scripts/run-benchmark.sh --sample
   scripts/run-benchmark.sh <case-dir> [--rom-dir <rom-dir>]
+  scripts/run-benchmark.sh <case-dir> --normalize-case
+  scripts/run-benchmark.sh <case-dir> --rom-dir <rom-dir> --generate-cases [--template <case.toml>]
   scripts/run-benchmark.sh [<case-dir>] [--gb-cli] --test <case.toml>
 
 Arguments:
@@ -23,6 +28,9 @@ Arguments:
 Options:
   --sample          Create game.toml sample next to run-benchmark.sh if missing.
   --rom-dir <dir>   Rewrite rom = "..." in <case-dir>/*.toml preserving each ROM basename.
+  --normalize-case  Rename <case-dir>/*.toml from each case's ROM filename stem.
+  --generate-cases  Generate normalized cases for every *.gb and *.gbc ROM under --rom-dir.
+  --template <path>  Use a benchmark case TOML template with --generate-cases.
   --gb-cli          Run gb-cli in addition to the default gb-desktop benchmark.
   --test <path>     Run one benchmark case; without <case-dir>, infer it from this file.
   -h, --help        Show this help.
@@ -43,6 +51,22 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       rom_dir="$2"
+      shift 2
+      ;;
+    --normalize-case)
+      normalize_case=true
+      shift
+      ;;
+    --generate-cases)
+      generate_cases=true
+      shift
+      ;;
+    --template)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --template requires a value" >&2
+        exit 2
+      fi
+      template_path="$2"
       shift 2
       ;;
     --gb-cli)
@@ -132,6 +156,25 @@ print(path.resolve())
 PY
 }
 
+resolve_or_create_dir() {
+  python3 - "$1" "$2" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1]).expanduser()
+label = sys.argv[2]
+try:
+    path.mkdir(parents=True, exist_ok=True)
+except OSError as error:
+    print(f"error: failed to create {label} {path}: {error}", file=sys.stderr)
+    sys.exit(1)
+if not path.is_dir():
+    print(f"error: {label} is not a directory: {path}", file=sys.stderr)
+    sys.exit(1)
+print(path.resolve())
+PY
+}
+
 resolve_existing_test_path() {
   python3 - "$1" <<'PY'
 import pathlib
@@ -196,6 +239,276 @@ for case_path in cases:
     else:
         print(f"warning: no rom = entry found in {case_path.relative_to(case_dir)}", file=sys.stderr)
 print(f"updated {updated} benchmark case(s)")
+PY
+}
+
+normalize_cases() {
+  local target_case_dir="$1"
+  python3 - "$target_case_dir" <<'PY'
+import json
+import os
+import pathlib
+import re
+import sys
+
+case_dir = pathlib.Path(sys.argv[1]).resolve()
+cases = sorted(case_dir.glob("*.toml"), key=lambda path: path.name.casefold())
+if not cases:
+    print(f"error: no benchmark cases found in {case_dir}", file=sys.stderr)
+    sys.exit(1)
+
+assignment = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(.*?)(\s*(?:#.*)?)$')
+
+
+def parse_toml_string(value: str) -> str:
+    value = value.strip()
+    if value.startswith('"'):
+        try:
+            return json.loads(value)
+        except Exception:
+            return value.strip('"')
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+    return value.split('#', 1)[0].strip()
+
+
+def top_level_value(path: pathlib.Path, key: str):
+    in_table = False
+    for raw_line in path.read_text().splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if stripped.startswith('['):
+            in_table = True
+            continue
+        if in_table:
+            continue
+        match = assignment.match(raw_line)
+        if match and match.group(2) == key:
+            return parse_toml_string(match.group(4))
+    return None
+
+
+def portable_name(value: str) -> str:
+    windows = pathlib.PureWindowsPath(value).name
+    posix = pathlib.PurePosixPath(value).name
+    if '\\' in value and windows:
+        return windows
+    return posix or windows or pathlib.Path(value).name
+
+
+def normalized_case_name(rom: str) -> str:
+    basename = portable_name(rom)
+    stem = pathlib.PurePosixPath(basename).stem
+    return f"{stem}.toml"
+
+
+renamed = 0
+unchanged = 0
+skipped = 0
+errors = 0
+for case_path in cases:
+    rom = top_level_value(case_path, 'rom')
+    if not rom:
+        print(f"warning: no top-level rom = entry found in {case_path.name}; skipped", file=sys.stderr)
+        skipped += 1
+        continue
+    target_path = case_dir / normalized_case_name(rom)
+    if case_path.name == target_path.name:
+        unchanged += 1
+        print(f"unchanged {case_path.name}")
+        continue
+    if target_path.exists():
+        try:
+            same_file = case_path.samefile(target_path)
+        except OSError:
+            same_file = False
+        if same_file:
+            temp_path = case_dir / f".{case_path.name}.normalize-{os.getpid()}.tmp"
+            case_path.rename(temp_path)
+            temp_path.rename(target_path)
+            renamed += 1
+            print(f"renamed {case_path.name} -> {target_path.name}")
+            continue
+        print(f"error: cannot rename {case_path.name} to {target_path.name}; target already exists", file=sys.stderr)
+        errors += 1
+        continue
+    case_path.rename(target_path)
+    renamed += 1
+    print(f"renamed {case_path.name} -> {target_path.name}")
+if errors:
+    sys.exit(1)
+print(f"renamed {renamed}, unchanged {unchanged}, skipped {skipped} benchmark case(s)")
+PY
+}
+
+generate_benchmark_cases() {
+  local target_case_dir="$1"
+  local target_rom_dir="$2"
+  local target_template_path="$3"
+  if [[ -z "$target_rom_dir" ]]; then
+    echo "error: --generate-cases requires --rom-dir" >&2
+    exit 2
+  fi
+  python3 - "$target_case_dir" "$target_rom_dir" "$target_template_path" <<'PY'
+import json
+import pathlib
+import re
+import sys
+import unicodedata
+
+case_dir = pathlib.Path(sys.argv[1]).resolve()
+rom_dir = pathlib.Path(sys.argv[2]).expanduser()
+template_arg = sys.argv[3]
+
+DEFAULT_TEMPLATE = """version = 1
+id = "game"
+rom = "/roms/game.gb"
+model = "DMG"
+startup = "custom-boot"
+mode = "permissive"
+palette = "grey"
+screenshot = true
+stats = true
+
+[[run]]
+id = "idle-40"
+duration_seconds = 40
+
+[[run]]
+id = "start-a-120"
+duration_seconds = 120
+
+[[run.input]]
+frame = 30
+button = "start"
+hold_frames = 8
+repeat_every_frames = 60
+
+[[run.input]]
+frame = 60
+button = "a"
+hold_frames = 8
+repeat_every_frames = 60
+"""
+
+if not rom_dir.is_dir():
+    print(f"error: --rom-dir is not a directory: {rom_dir}", file=sys.stderr)
+    sys.exit(1)
+
+if template_arg:
+    template_path = pathlib.Path(template_arg).expanduser()
+    if not template_path.is_file():
+        print(f"error: --template is not a file: {template_path}", file=sys.stderr)
+        sys.exit(1)
+    template_text = template_path.read_text()
+else:
+    template_text = DEFAULT_TEMPLATE
+
+roms = sorted(
+    (
+        path
+        for path in rom_dir.rglob('*')
+        if path.is_file() and path.suffix.lower() in {'.gb', '.gbc'}
+    ),
+    key=lambda path: str(path).casefold(),
+)
+if not roms:
+    print(f"error: no .gb or .gbc ROMs found in {rom_dir}", file=sys.stderr)
+    sys.exit(1)
+
+assignment = re.compile(r'^(\s*)(id|rom|model)(\s*=\s*)(.*?)(\s*(?:#.*)?)$')
+
+
+def model_for_rom(path: pathlib.Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == '.gb':
+        return 'DMG'
+    if suffix == '.gbc':
+        return 'CGB'
+    raise AssertionError(f"unsupported ROM suffix {path.suffix}")
+
+
+def safe_id(stem: str) -> str:
+    ascii_stem = unicodedata.normalize('NFKD', stem).encode('ascii', 'ignore').decode('ascii')
+    slug = re.sub(r'[^A-Za-z0-9_-]+', '-', ascii_stem).strip('-_').lower()
+    return slug or 'game'
+
+
+def json_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def render_case(template: str, rom_path: pathlib.Path) -> str:
+    replacements = {
+        'id': safe_id(rom_path.stem),
+        'rom': str(rom_path.resolve()),
+        'model': model_for_rom(rom_path),
+    }
+    found = set()
+    lines = template.splitlines(keepends=True)
+    output = []
+    in_table = False
+    first_table_index = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('['):
+            in_table = True
+            if first_table_index is None:
+                first_table_index = len(output)
+        if not in_table:
+            newline = '\n' if line.endswith('\n') else ''
+            body = line[:-1] if newline else line
+            match = assignment.match(body)
+            if match:
+                key = match.group(2)
+                found.add(key)
+                output.append(f"{match.group(1)}{key} = {json_string(replacements[key])}{match.group(5)}{newline}")
+                continue
+        output.append(line)
+    missing = [key for key in ('id', 'rom', 'model') if key not in found]
+    if missing:
+        insert_at = first_table_index if first_table_index is not None else len(output)
+        if insert_at > 0 and output and not output[insert_at - 1].endswith('\n'):
+            output[insert_at - 1] += '\n'
+        insert_lines = [f"{key} = {json_string(replacements[key])}\n" for key in missing]
+        output[insert_at:insert_at] = insert_lines
+    text = ''.join(output)
+    if text and not text.endswith('\n'):
+        text += '\n'
+    return text
+
+
+targets = {}
+errors = 0
+for rom_path in roms:
+    target_path = case_dir / f"{rom_path.stem}.toml"
+    previous = targets.get(target_path)
+    if previous is not None:
+        print(f"error: ROMs {previous} and {rom_path} both normalize to {target_path.name}", file=sys.stderr)
+        errors += 1
+    targets[target_path] = rom_path
+if errors:
+    sys.exit(1)
+
+created = 0
+updated = 0
+unchanged = 0
+for target_path, rom_path in sorted(targets.items(), key=lambda item: item[0].name.casefold()):
+    rendered = render_case(template_text, rom_path)
+    if target_path.exists():
+        if target_path.read_text() == rendered:
+            unchanged += 1
+            print(f"unchanged {target_path.name}")
+            continue
+        target_path.write_text(rendered)
+        updated += 1
+        print(f"updated {target_path.name}")
+    else:
+        target_path.write_text(rendered)
+        created += 1
+        print(f"wrote {target_path.name}")
+print(f"created {created}, updated {updated}, unchanged {unchanged} benchmark case(s)")
 PY
 }
 
@@ -512,12 +825,32 @@ PY
 }
 
 if [[ "$action_sample" == true ]]; then
-  if [[ -n "$case_dir" || -n "$rom_dir" || -n "$single_test" || "$run_cli" == true ]]; then
+  if [[ -n "$case_dir" || -n "$rom_dir" || -n "$single_test" || "$run_cli" == true || "$normalize_case" == true || "$generate_cases" == true || -n "$template_path" ]]; then
     echo "error: --sample cannot be combined with benchmark run options" >&2
     exit 2
   fi
   write_sample_case
   exit 0
+fi
+
+if [[ "$normalize_case" == true && ( -n "$rom_dir" || -n "$single_test" || "$run_cli" == true || "$generate_cases" == true || -n "$template_path" ) ]]; then
+  echo "error: --normalize-case cannot be combined with other benchmark actions" >&2
+  exit 2
+fi
+
+if [[ -n "$template_path" && "$generate_cases" != true ]]; then
+  echo "error: --template requires --generate-cases" >&2
+  exit 2
+fi
+
+if [[ "$generate_cases" == true && -z "$rom_dir" ]]; then
+  echo "error: --generate-cases requires --rom-dir" >&2
+  exit 2
+fi
+
+if [[ "$generate_cases" == true && ( -n "$single_test" || "$run_cli" == true ) ]]; then
+  echo "error: --generate-cases cannot be combined with benchmark run options" >&2
+  exit 2
 fi
 
 if [[ -n "$rom_dir" && ( -n "$single_test" || "$run_cli" == true ) ]]; then
@@ -535,7 +868,21 @@ if [[ -z "$case_dir" ]]; then
     exit 2
   fi
 else
-  case_dir="$(resolve_existing_dir "$case_dir" "<case-dir>")"
+  if [[ "$generate_cases" == true ]]; then
+    case_dir="$(resolve_or_create_dir "$case_dir" "<case-dir>")"
+  else
+    case_dir="$(resolve_existing_dir "$case_dir" "<case-dir>")"
+  fi
+fi
+
+if [[ "$normalize_case" == true ]]; then
+  normalize_cases "$case_dir"
+  exit 0
+fi
+
+if [[ "$generate_cases" == true ]]; then
+  generate_benchmark_cases "$case_dir" "$rom_dir" "$template_path"
+  exit 0
 fi
 
 if [[ -n "$rom_dir" ]]; then
