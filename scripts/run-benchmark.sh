@@ -15,16 +15,16 @@ usage() {
 Usage:
   scripts/run-benchmark.sh --sample
   scripts/run-benchmark.sh <case-dir> [--rom-dir <rom-dir>]
-  scripts/run-benchmark.sh <case-dir> [--gb-cli] [--test <case.toml>]
+  scripts/run-benchmark.sh [<case-dir>] [--gb-cli] --test <case.toml>
 
 Arguments:
-  <case-dir>        Directory containing benchmark case *.toml files.
+  <case-dir>        Directory containing benchmark case *.toml files; optional with --test.
 
 Options:
   --sample          Create game.toml sample next to run-benchmark.sh if missing.
   --rom-dir <dir>   Rewrite rom = "..." in <case-dir>/*.toml preserving each ROM basename.
   --gb-cli          Run gb-cli in addition to the default gb-desktop benchmark.
-  --test <path>     Run one benchmark case; relative paths resolve against <case-dir>, then $PWD.
+  --test <path>     Run one benchmark case; without <case-dir>, infer it from this file.
   -h, --help        Show this help.
 
 Outputs are written to benchmark/ next to run-benchmark.sh. By default only gb-desktop runs.
@@ -127,6 +127,21 @@ path = pathlib.Path(sys.argv[1]).expanduser()
 label = sys.argv[2]
 if not path.is_dir():
     print(f"error: {label} is not a directory: {path}", file=sys.stderr)
+    sys.exit(1)
+print(path.resolve())
+PY
+}
+
+resolve_existing_test_path() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1]).expanduser()
+if not path.is_absolute():
+    path = pathlib.Path.cwd() / path
+if not path.is_file():
+    print(f"error: benchmark test not found: {sys.argv[1]}", file=sys.stderr)
     sys.exit(1)
 print(path.resolve())
 PY
@@ -505,19 +520,25 @@ if [[ "$action_sample" == true ]]; then
   exit 0
 fi
 
-if [[ -z "$case_dir" ]]; then
-  echo "error: <case-dir> is required" >&2
-  usage >&2
+if [[ -n "$rom_dir" && ( -n "$single_test" || "$run_cli" == true ) ]]; then
+  echo "error: --rom-dir cannot be combined with benchmark run options" >&2
   exit 2
 fi
 
-case_dir="$(resolve_existing_dir "$case_dir" "<case-dir>")"
-
-if [[ -n "$rom_dir" ]]; then
-  if [[ -n "$single_test" || "$run_cli" == true ]]; then
-    echo "error: --rom-dir cannot be combined with benchmark run options" >&2
+if [[ -z "$case_dir" ]]; then
+  if [[ -n "$single_test" ]]; then
+    single_test="$(resolve_existing_test_path "$single_test")"
+    case_dir="$(dirname "$single_test")"
+  else
+    echo "error: <case-dir> is required" >&2
+    usage >&2
     exit 2
   fi
+else
+  case_dir="$(resolve_existing_dir "$case_dir" "<case-dir>")"
+fi
+
+if [[ -n "$rom_dir" ]]; then
   rewrite_rom_dir "$case_dir" "$rom_dir"
   exit 0
 fi
