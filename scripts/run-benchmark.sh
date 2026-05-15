@@ -4,35 +4,37 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 benchmark_dir="$script_dir/benchmark"
 
-action_init=false
+action_sample=false
 rom_dir=""
-run_cli=true
-run_desktop=true
+run_cli=false
 single_test=""
+case_dir=""
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
-  scripts/run-benchmark.sh --init
-  scripts/run-benchmark.sh --rom-dir <dir>
-  scripts/run-benchmark.sh [--no-cli] [--no-desktop] [--test test/game.toml]
+  scripts/run-benchmark.sh --sample
+  scripts/run-benchmark.sh <case-dir> [--rom-dir <rom-dir>]
+  scripts/run-benchmark.sh <case-dir> [--gb-cli] [--test <case.toml>]
+
+Arguments:
+  <case-dir>        Directory containing benchmark case *.toml files.
 
 Options:
-  --init              Create only scripts/benchmark/test/ and test/game.toml placeholder if missing.
-  --rom-dir <dir>     Rewrite rom = "..." in scripts/benchmark/test/*.toml preserving each ROM basename.
-  --no-cli            Run only gb-desktop.
-  --no-desktop        Run only gb-cli.
-  --test <path>       Run one benchmark case and regenerate scripts/benchmark/index.html.
-  -h, --help          Show this help.
+  --sample          Create game.toml sample next to run-benchmark.sh if missing.
+  --rom-dir <dir>   Rewrite rom = "..." in <case-dir>/*.toml preserving each ROM basename.
+  --gb-cli          Run gb-cli in addition to the default gb-desktop benchmark.
+  --test <path>     Run one benchmark case; relative paths resolve against <case-dir>, then $PWD.
+  -h, --help        Show this help.
 
-Benchmark cases and outputs live under scripts/benchmark/. Set GB_CYCLE_REPO_ROOT to override repo discovery.
-EOF
+Outputs are written to benchmark/ next to run-benchmark.sh. By default only gb-desktop runs.
+USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --init)
-      action_init=true
+    --sample)
+      action_sample=true
       shift
       ;;
     --rom-dir)
@@ -43,12 +45,8 @@ while [[ $# -gt 0 ]]; do
       rom_dir="$2"
       shift 2
       ;;
-    --no-cli)
-      run_cli=false
-      shift
-      ;;
-    --no-desktop)
-      run_desktop=false
+    --gb-cli)
+      run_cli=true
       shift
       ;;
     --test)
@@ -63,19 +61,27 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    *)
+    --*)
       echo "error: unknown option $1" >&2
       usage >&2
       exit 2
       ;;
+    *)
+      if [[ -n "$case_dir" ]]; then
+        echo "error: unexpected argument $1" >&2
+        usage >&2
+        exit 2
+      fi
+      case_dir="$1"
+      shift
+      ;;
   esac
 done
 
-init_benchmark_tree() {
-  mkdir -p "$benchmark_dir/test"
-  local placeholder="$benchmark_dir/test/game.toml"
-  if [[ ! -e "$placeholder" ]]; then
-    cat > "$placeholder" <<'EOF'
+write_sample_case() {
+  local sample="$script_dir/game.toml"
+  if [[ ! -e "$sample" ]]; then
+    cat > "$sample" <<'SAMPLE'
 version = 1
 id = "game"
 rom = "/roms/game.gb"
@@ -105,33 +111,45 @@ frame = 60
 button = "a"
 hold_frames = 8
 repeat_every_frames = 60
-EOF
+SAMPLE
+    echo "wrote $sample"
+  else
+    echo "sample already exists: $sample"
   fi
-  echo "initialized $benchmark_dir/test"
+}
+
+resolve_existing_dir() {
+  python3 - "$1" "$2" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1]).expanduser()
+label = sys.argv[2]
+if not path.is_dir():
+    print(f"error: {label} is not a directory: {path}", file=sys.stderr)
+    sys.exit(1)
+print(path.resolve())
+PY
 }
 
 rewrite_rom_dir() {
-  local target_dir="$1"
-  if [[ -z "$target_dir" ]]; then
+  local target_case_dir="$1"
+  local target_rom_dir="$2"
+  if [[ -z "$target_rom_dir" ]]; then
     echo "error: --rom-dir requires a directory" >&2
     exit 2
   fi
-  if [[ ! -d "$benchmark_dir/test" ]]; then
-    echo "error: $benchmark_dir/test does not exist; run --init first" >&2
-    exit 1
-  fi
-  python3 - "$benchmark_dir" "$target_dir" <<'PY'
+  python3 - "$target_case_dir" "$target_rom_dir" <<'PY'
 import json
 import pathlib
 import re
 import sys
 
-benchmark_dir = pathlib.Path(sys.argv[1])
+case_dir = pathlib.Path(sys.argv[1]).resolve()
 rom_dir = pathlib.Path(sys.argv[2]).expanduser()
-test_dir = benchmark_dir / "test"
-cases = sorted(test_dir.glob("*.toml"))
+cases = sorted(case_dir.glob("*.toml"))
 if not cases:
-    print(f"error: no benchmark cases found in {test_dir}", file=sys.stderr)
+    print(f"error: no benchmark cases found in {case_dir}", file=sys.stderr)
     sys.exit(1)
 pattern = re.compile(r'^(\s*rom\s*=\s*)(["\'])(.*?)(\2)(\s*(?:#.*)?)$')
 updated = 0
@@ -146,7 +164,7 @@ for case_path in cases:
         match = pattern.match(line_body)
         if match and not changed:
             current_rom = match.group(3)
-            basename = pathlib.PurePosixPath(current_rom).name or pathlib.Path(current_rom).name
+            basename = pathlib.PureWindowsPath(current_rom).name or pathlib.PurePosixPath(current_rom).name or pathlib.Path(current_rom).name
             if not basename:
                 print(f"warning: {case_path} has an empty ROM basename; skipped", file=sys.stderr)
                 next_lines.append(line)
@@ -159,19 +177,15 @@ for case_path in cases:
             next_lines.append(line)
     if changed:
         case_path.write_text(''.join(next_lines))
-        print(f"updated {case_path.relative_to(benchmark_dir)}")
+        print(f"updated {case_path.relative_to(case_dir)}")
     else:
-        print(f"warning: no rom = entry found in {case_path.relative_to(benchmark_dir)}", file=sys.stderr)
+        print(f"warning: no rom = entry found in {case_path.relative_to(case_dir)}", file=sys.stderr)
 print(f"updated {updated} benchmark case(s)")
 PY
 }
 
 find_repo_root() {
-  local candidates=()
-  if [[ -n "${GB_CYCLE_REPO_ROOT:-}" ]]; then
-    candidates+=("$GB_CYCLE_REPO_ROOT")
-  fi
-  candidates+=("$script_dir" "$PWD")
+  local candidates=("$script_dir" "$PWD")
   for candidate in "${candidates[@]}"; do
     local dir
     dir="$(cd "$candidate" 2>/dev/null && pwd || true)"
@@ -193,9 +207,9 @@ resolve_single_test() {
     return 0
   fi
 
-  local benchmark_relative="$benchmark_dir/$requested"
-  if [[ -f "$benchmark_relative" ]]; then
-    printf '%s\n' "$benchmark_relative"
+  local case_relative="$case_dir/$requested"
+  if [[ -f "$case_relative" ]]; then
+    printf '%s\n' "$case_relative"
     return 0
   fi
 
@@ -205,7 +219,7 @@ resolve_single_test() {
     return 0
   fi
 
-  printf '%s\n' "$benchmark_relative"
+  printf '%s\n' "$case_relative"
 }
 
 collect_cases() {
@@ -220,26 +234,22 @@ collect_cases() {
     return 0
   fi
 
-  if [[ ! -d "$benchmark_dir/test" ]]; then
-    echo "error: no benchmark cases found; $benchmark_dir/test does not exist (run --init first)" >&2
-    exit 1
-  fi
   local found=false
   shopt -s nullglob
   local case_path
-  for case_path in "$benchmark_dir"/test/*.toml; do
+  for case_path in "$case_dir"/*.toml; do
     found=true
     printf '%s\n' "$case_path"
   done
   shopt -u nullglob
   if [[ "$found" == false ]]; then
-    echo "error: no benchmark cases found in $benchmark_dir/test" >&2
+    echo "error: no benchmark cases found in $case_dir" >&2
     exit 1
   fi
 }
 
 case_label() {
-  python3 - "$benchmark_dir" "$1" <<'PY'
+  python3 - "$case_dir" "$1" <<'PY'
 import pathlib
 import sys
 root = pathlib.Path(sys.argv[1]).resolve()
@@ -252,7 +262,7 @@ PY
 }
 
 generate_index() {
-  python3 - "$benchmark_dir" <<'PY'
+  python3 - "$benchmark_dir" "$case_dir" "$run_cli" <<'PY'
 from __future__ import annotations
 
 import html
@@ -260,7 +270,9 @@ import pathlib
 import sys
 from datetime import datetime
 
-benchmark_dir = pathlib.Path(sys.argv[1])
+benchmark_dir = pathlib.Path(sys.argv[1]).resolve()
+case_dir = pathlib.Path(sys.argv[2]).resolve()
+include_cli = sys.argv[3] == 'true'
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -336,6 +348,13 @@ def rel(path: pathlib.Path) -> str:
     return path.relative_to(benchmark_dir).as_posix()
 
 
+def case_rel(path: pathlib.Path) -> str:
+    try:
+        return path.relative_to(case_dir).as_posix()
+    except ValueError:
+        return path.name
+
+
 def rom_name(value) -> str:
     if value is None:
         return "—"
@@ -350,11 +369,11 @@ def table_cell(content: str, rowspan: int = 1) -> str:
     return f"<td{span}>{content}</td>"
 
 
-FRONTENDS = ('gb-cli', 'gb-desktop')
+FRONTENDS = ('gb-cli', 'gb-desktop') if include_cli else ('gb-desktop',)
 
 
 cases = []
-for case_path in sorted((benchmark_dir / 'test').glob('*.toml')):
+for case_path in sorted(case_dir.glob('*.toml')):
     data = load_toml(case_path)
     case_id = data.get('id') or case_path.stem
     cases.append((case_id, case_path, data))
@@ -404,7 +423,7 @@ for case_id, case_path, data in cases:
     case_rowspan = len(runs)
     case_cells = [
         html.escape(rom_name(data.get('rom'))),
-        html.escape(case_path.relative_to(benchmark_dir).as_posix()),
+        html.escape(case_rel(case_path)),
         html.escape(str(data.get('model', '—'))),
     ]
     for run_index, run in enumerate(runs):
@@ -429,8 +448,16 @@ for case_id, case_path, data in cases:
             cells.append(table_cell(image))
         rows.append('<tr>' + ''.join(cells) + '</tr>')
 
+column_count = 4 + (len(FRONTENDS) * 2)
 if not rows:
-    rows.append('<tr><td colspan="8">No executed benchmark artifacts found. Run scripts/run-benchmark.sh first.</td></tr>')
+    rows.append(f'<tr><td colspan="{column_count}">No executed benchmark artifacts found. Run scripts/run-benchmark.sh &lt;case-dir&gt; first.</td></tr>')
+
+frontend_headers = ''.join(f'<th>{html.escape(frontend)}</th><th>{html.escape(frontend)} screenshot</th>' for frontend in FRONTENDS)
+commands = []
+if include_cli:
+    commands.append('<code>gb-cli run --test-runner --benchmark &lt;case&gt;</code>')
+commands.append('<code>gb-desktop --test-runner --benchmark &lt;case&gt;</code>')
+command_text = ' and '.join(commands) if len(commands) == 2 else commands[0]
 
 index = f'''<!doctype html>
 <html lang="en">
@@ -451,10 +478,10 @@ code {{ background: #f4f4f4; padding: .1rem .25rem; }}
 </head>
 <body>
 <h1>gb-cycle benchmark</h1>
-<p class="meta">Generated {html.escape(datetime.now().isoformat(timespec='seconds'))}. Commands: <code>gb-cli run --test-runner --benchmark &lt;case&gt;</code> and <code>gb-desktop --test-runner --benchmark &lt;case&gt;</code>.</p>
+<p class="meta">Generated {html.escape(datetime.now().isoformat(timespec='seconds'))}. Case directory: <code>{html.escape(str(case_dir))}</code>. Command: {command_text}.</p>
 <table>
 <thead>
-<tr><th>rom</th><th>case</th><th>model</th><th>seconds</th><th>gb-cli</th><th>gb-cli screenshot</th><th>gb-desktop</th><th>gb-desktop screenshot</th></tr>
+<tr><th>rom</th><th>case</th><th>model</th><th>seconds</th>{frontend_headers}</tr>
 </thead>
 <tbody>
 {''.join(rows)}
@@ -463,24 +490,36 @@ code {{ background: #f4f4f4; padding: .1rem .25rem; }}
 </body>
 </html>
 '''
+benchmark_dir.mkdir(parents=True, exist_ok=True)
 (benchmark_dir / 'index.html').write_text(index)
 print(f"wrote {benchmark_dir / 'index.html'}")
 PY
 }
 
-if [[ "$action_init" == true ]]; then
-  init_benchmark_tree
+if [[ "$action_sample" == true ]]; then
+  if [[ -n "$case_dir" || -n "$rom_dir" || -n "$single_test" || "$run_cli" == true ]]; then
+    echo "error: --sample cannot be combined with benchmark run options" >&2
+    exit 2
+  fi
+  write_sample_case
   exit 0
 fi
+
+if [[ -z "$case_dir" ]]; then
+  echo "error: <case-dir> is required" >&2
+  usage >&2
+  exit 2
+fi
+
+case_dir="$(resolve_existing_dir "$case_dir" "<case-dir>")"
 
 if [[ -n "$rom_dir" ]]; then
-  rewrite_rom_dir "$rom_dir"
+  if [[ -n "$single_test" || "$run_cli" == true ]]; then
+    echo "error: --rom-dir cannot be combined with benchmark run options" >&2
+    exit 2
+  fi
+  rewrite_rom_dir "$case_dir" "$rom_dir"
   exit 0
-fi
-
-if [[ "$run_cli" == false && "$run_desktop" == false ]]; then
-  echo "error: --no-cli and --no-desktop disable all frontends" >&2
-  exit 2
 fi
 
 cases=()
@@ -490,20 +529,23 @@ done < <(collect_cases)
 
 repo_root="$(find_repo_root || true)"
 if [[ -z "$repo_root" ]]; then
-  echo "error: could not find gb-cycle repo root; set GB_CYCLE_REPO_ROOT" >&2
+  echo "error: could not find gb-cycle repo root from the script directory or current directory" >&2
   exit 1
+fi
+
+cargo_packages=(-p gb-desktop)
+if [[ "$run_cli" == true ]]; then
+  cargo_packages=(-p gb-cli -p gb-desktop)
 fi
 
 (
   cd "$repo_root"
-  cargo build --profile release-max -p gb-cli -p gb-desktop
+  cargo build --profile release-max "${cargo_packages[@]}"
 )
 
+mkdir -p "$benchmark_dir/gb-desktop"
 if [[ "$run_cli" == true ]]; then
   mkdir -p "$benchmark_dir/gb-cli"
-fi
-if [[ "$run_desktop" == true ]]; then
-  mkdir -p "$benchmark_dir/gb-desktop"
 fi
 
 gb_cli_bin="${GB_CLI_BIN:-$repo_root/target/release-max/gb-cli}"
@@ -515,10 +557,8 @@ for case_path in "${cases[@]}"; do
     echo "--> gb-cli"
     (cd "$benchmark_dir" && "$gb_cli_bin" run --test-runner --benchmark "$case_path")
   fi
-  if [[ "$run_desktop" == true ]]; then
-    echo "--> gb-desktop"
-    (cd "$benchmark_dir" && "$gb_desktop_bin" --test-runner --benchmark "$case_path")
-  fi
+  echo "--> gb-desktop"
+  (cd "$benchmark_dir" && "$gb_desktop_bin" --test-runner --benchmark "$case_path")
 done
 
 generate_index
