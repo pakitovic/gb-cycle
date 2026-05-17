@@ -21,7 +21,7 @@ use crate::speed::CgbSpeedMode;
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const PPU_DOTS_PER_LINE: u32 = 456;
 const PPU_LINES_PER_FRAME: u32 = 154;
-const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 20_140;
+const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 19_900;
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];

@@ -295,7 +295,8 @@ mod tests {
     use crate::model::{ConsoleModel, MachineConfig, StartupMode};
 
     const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
-    const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 20_140;
+    const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 19_900;
+    const CGB_IR_POKEMON_GSC_SHORT_PULSE_SAMPLE_T_CYCLES: u64 = 128;
 
     fn build_cgb_test_rom(cgb_header: u8) -> Vec<u8> {
         let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
@@ -741,6 +742,43 @@ mod tests {
                 .read_bus(0xFF56)
                 & 0x02,
             0x02
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_routes_short_pulse_to_readied_peer_sensor() {
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair()
+            .expect("two-machine CGB IR pair should attach");
+
+        linked
+            .machine_mut(1)
+            .expect("right machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC1);
+
+        for _ in 0..CGB_IR_POKEMON_GSC_SHORT_PULSE_SAMPLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
         );
     }
 

@@ -13,7 +13,10 @@ impl CgbInfraredState {
     const RP_READ_ENABLE_MASK: u8 = 0xC0;
     const RP_UNUSED_READ_MASK: u8 = 0x3C;
     const IR_WARMUP_T_CYCLES: u32 = 19_900;
-    const IR_THRESHOLD_T_CYCLES: u32 = 240;
+    // Shonumi's hardware notes describe a delay after re-enabling RP reads, but not when read
+    // enable stays asserted; a warmed sensor must therefore report short CGB-to-CGB pulses without
+    // an additional post-ready threshold.
+    const IR_THRESHOLD_T_CYCLES: u32 = 0;
     const IR_DECAY_T_CYCLES: u32 = 31_500;
     const IR_MAX_T_CYCLES: u32 =
         Self::IR_WARMUP_T_CYCLES + Self::IR_THRESHOLD_T_CYCLES * 2 + Self::IR_DECAY_T_CYCLES + 268;
@@ -141,14 +144,24 @@ mod tests {
     fn enabled_sensor_has_warmup_before_signal_is_visible() {
         let mut state = CgbInfraredState::new();
         state.write_rp(0xC0);
-        tick(&mut state, CgbInfraredState::IR_WARMUP_T_CYCLES);
-
         state.set_external_optical_input(true);
-        tick(&mut state, CgbInfraredState::IR_THRESHOLD_T_CYCLES - 1);
+        tick(&mut state, CgbInfraredState::IR_WARMUP_T_CYCLES - 1);
 
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x02);
 
         state.tick_t_cycle();
+
+        assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x00);
+    }
+
+    #[test]
+    fn readied_sensor_reports_short_pulses_without_extra_threshold() {
+        let mut state = CgbInfraredState::new();
+        state.write_rp(0xC0);
+        tick(&mut state, CgbInfraredState::IR_WARMUP_T_CYCLES);
+
+        state.set_external_optical_input(true);
+        tick(&mut state, 128);
 
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x00);
     }
@@ -188,13 +201,10 @@ mod tests {
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x02);
 
         state.set_external_optical_input(false);
-        tick(
-            &mut state,
-            CgbInfraredState::IR_THRESHOLD_T_CYCLES + CgbInfraredState::IR_DECAY_T_CYCLES + 1,
-        );
+        tick(&mut state, CgbInfraredState::IR_DECAY_T_CYCLES + 1);
 
         state.set_external_optical_input(true);
-        tick(&mut state, CgbInfraredState::IR_THRESHOLD_T_CYCLES);
+        state.tick_t_cycle();
 
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x00);
     }
