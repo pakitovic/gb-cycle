@@ -63,7 +63,7 @@ Both commands load the ROM first, then validate the save payload against the car
 
 `--save-policy <manual|on-close|on-write>` selects automatic flush behavior when `--save-dir` is present and defaults to `on-close`; `manual` loads any existing save without automatic writes, `on-close` writes changed persistence at run completion, and `on-write` also flushes changed persistence at frame boundaries after cartridge writes.
 
-`gb-cli saves export` writes emulator-compatible `.sav` files at the host boundary without changing the internal `.gbsav` format. Linear cartridge RAM is exported as raw bytes; `MBC3` RTC saves append the shared `48`-byte little-endian RTC suffix used by SameBoy/mGBA; `MBC2` export defaults to mGBA's `256`-byte packed format while import accepts both mGBA packed saves and SameBoy's `512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a safe external mapping fail explicitly instead of producing partial saves.
+`gb-cli saves export` writes emulator-compatible `.sav` files at the host boundary without changing the internal `.gbsav` format. Linear cartridge RAM is exported as raw bytes; `MBC3` RTC saves export the shared `48`-byte little-endian RTC suffix used by SameBoy/mGBA and import both the older `44`-byte timestamp form and the `48`-byte form; `MBC2` export defaults to mGBA's `256`-byte packed format while import accepts both mGBA packed saves and SameBoy's `512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a safe external mapping fail explicitly instead of producing partial saves.
 
 ## Default stop conditions
 

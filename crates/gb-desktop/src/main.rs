@@ -262,7 +262,7 @@ const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
 const EXTERNAL_SAVE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "Game Boy saves",
-        pattern: "sav",
+        pattern: "sav;sa1;sa2;sa3;sa4",
     },
     DialogFileFilter {
         name: "All files",
@@ -19867,6 +19867,10 @@ mod tests {
         assert_eq!(harness.session.rom_directory_hint(), harness.root.as_path());
         assert!(harness.session.recent_roms().is_empty());
         assert!(!harness.runtime.any_dialog_pending());
+        assert_eq!(
+            super::EXTERNAL_SAVE_FILE_DIALOG_FILTERS[0].pattern,
+            "sav;sa1;sa2;sa3;sa4"
+        );
         harness.runtime.external_save_export_dialog.pending = true;
         assert!(harness.runtime.any_dialog_pending());
         harness.runtime.external_save_export_dialog.pending = false;

@@ -29,6 +29,7 @@ pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
 pub const MACHINE_SAVE_STATE_FILE_EXTENSION: &str = "gbstate";
 const MBC2_RAM_NIBBLE_COUNT: usize = 512;
 const MBC2_MGBA_PACKED_BYTE_COUNT: usize = MBC2_RAM_NIBBLE_COUNT / 2;
+const MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP: usize = 44;
 const MBC3_EXTERNAL_RTC_SUFFIX_LEN: usize = 48;
 const RAM_KIND_LINEAR_TAG: u8 = 0;
 const RAM_KIND_MBC2_TAG: u8 = 1;
@@ -632,10 +633,10 @@ pub fn import_external_cartridge_save(
         ) => decode_external_mbc2_ram(bytes, cell_count)
             .map(|ram_nibbles| PersistentCartState::Mbc2Ram { ram_nibbles }),
         (CartridgePersistenceProfile::PersistentRtc, PersistentCartState::Mbc3Rtc { .. }) => {
-            if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+            if !is_external_mbc3_rtc_suffix_len(bytes.len()) {
                 return Err(ExternalSaveError::InvalidLength {
                     context: "MBC3 RTC",
-                    expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+                    expected: mbc3_external_rtc_suffix_length_expectation(),
                     actual: bytes.len(),
                 });
             }
@@ -648,11 +649,16 @@ pub fn import_external_cartridge_save(
             },
             PersistentCartState::Mbc3RamRtc { .. },
         ) => {
+            let expected_len_32bit_timestamp =
+                byte_len + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP;
             let expected_len = byte_len + MBC3_EXTERNAL_RTC_SUFFIX_LEN;
-            if bytes.len() != expected_len {
+            if bytes.len() != expected_len_32bit_timestamp && bytes.len() != expected_len {
                 return Err(ExternalSaveError::InvalidLength {
                     context: "MBC3 RAM+RTC",
-                    expected: ExternalSaveLengthExpectation::Exact(expected_len),
+                    expected: ExternalSaveLengthExpectation::Either {
+                        first: expected_len_32bit_timestamp,
+                        second: expected_len,
+                    },
                     actual: bytes.len(),
                 });
             }
@@ -1590,10 +1596,10 @@ fn decode_external_mbc3_rtc_suffix(
     bytes: &[u8],
     current_unix_seconds: u64,
 ) -> Result<Mbc3RtcPersistentState, ExternalSaveError> {
-    if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+    if !is_external_mbc3_rtc_suffix_len(bytes.len()) {
         return Err(ExternalSaveError::InvalidLength {
             context: "MBC3 RTC",
-            expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+            expected: mbc3_external_rtc_suffix_length_expectation(),
             actual: bytes.len(),
         });
     }
@@ -1603,9 +1609,15 @@ fn decode_external_mbc3_rtc_suffix(
     let hours = read_external_u32_low_u8(bytes, 8) & 0x1F;
     let day_low = read_external_u32_low_u8(bytes, 12);
     let day_high = read_external_u32_low_u8(bytes, 16);
-    let saved_unix_seconds = u64::from_le_bytes([
-        bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
-    ]);
+    let saved_unix_seconds = match bytes.len() {
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP => {
+            u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]) as u64
+        }
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN => u64::from_le_bytes([
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
+        ]),
+        _ => unreachable!("MBC3 RTC suffix length should be validated before timestamp decode"),
+    };
 
     let mut rtc = Mbc3RtcPersistentState {
         seconds,
@@ -1617,6 +1629,20 @@ fn decode_external_mbc3_rtc_suffix(
     };
     rtc.apply_elapsed_seconds(current_unix_seconds.saturating_sub(saved_unix_seconds));
     Ok(rtc)
+}
+
+fn is_external_mbc3_rtc_suffix_len(len: usize) -> bool {
+    matches!(
+        len,
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP | MBC3_EXTERNAL_RTC_SUFFIX_LEN
+    )
+}
+
+fn mbc3_external_rtc_suffix_length_expectation() -> ExternalSaveLengthExpectation {
+    ExternalSaveLengthExpectation::Either {
+        first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+        second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+    }
 }
 
 fn read_external_u32_low_u8(bytes: &[u8], offset: usize) -> u8 {
@@ -4056,6 +4082,104 @@ mod tests {
     }
 
     #[test]
+    fn external_save_imports_mbc3_rtc_suffixes_with_32_bit_timestamps() {
+        let rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRtc,
+        };
+        let rtc_state = PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 1,
+                minutes: 2,
+                hours: 3,
+                day_counter: 4,
+                halt: false,
+                carry: false,
+            },
+        };
+        let mut rtc_external = encode_external_cartridge_save(
+            rtc_metadata,
+            &rtc_state,
+            1_700_000_010,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC3 RTC-only state should export");
+        assert_eq!(rtc_external.len(), MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+        rtc_external.truncate(MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP);
+
+        let rtc_imported =
+            import_external_cartridge_save(rtc_metadata, &rtc_state, &rtc_external, 1_700_000_012)
+                .expect("MBC3 RTC-only 32-bit timestamp suffix should import");
+        assert_eq!(
+            rtc_imported,
+            PersistentCartState::Mbc3Rtc {
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 2,
+                    hours: 3,
+                    day_counter: 4,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+
+        let ram_rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let ram_rtc_state = PersistentCartState::Mbc3RamRtc {
+            ram: vec![0xAB, 0xCD],
+            rtc: Mbc3RtcPersistentState {
+                seconds: 58,
+                minutes: 59,
+                hours: 23,
+                day_counter: 7,
+                halt: false,
+                carry: false,
+            },
+        };
+        let envelope = CartridgeSaveEnvelope {
+            backend_metadata: CartridgeSaveBackendMetadata {
+                format_version: CURRENT_SAVE_FORMAT_VERSION,
+                saved_at_unix_seconds: 100,
+            },
+            cartridge_metadata: ram_rtc_metadata,
+            persistent_state: ram_rtc_state.clone(),
+        };
+        let mut ram_rtc_external =
+            export_external_cartridge_save(&envelope, 103).expect("MBC3 RAM+RTC should export");
+        assert_eq!(ram_rtc_external.len(), 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+        ram_rtc_external.truncate(2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP);
+
+        let ram_rtc_imported = import_external_cartridge_save(
+            ram_rtc_metadata,
+            &ram_rtc_state,
+            &ram_rtc_external,
+            105,
+        )
+        .expect("MBC3 RAM+RTC 32-bit timestamp suffix should import");
+        assert_eq!(
+            ram_rtc_imported,
+            PersistentCartState::Mbc3RamRtc {
+                ram: vec![0xAB, 0xCD],
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 8,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+    }
+
+    #[test]
     fn external_save_round_trips_mbc30_sized_ram_plus_mbc3_rtc_suffix() {
         let metadata = CartridgePersistenceMetadata {
             has_battery: true,
@@ -4232,15 +4356,53 @@ mod tests {
             ),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(
+                mbc3_rtc_metadata,
+                &mbc3_rtc_state,
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1],
+                0,
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1
+        ));
+        assert!(matches!(
+            decode_external_mbc3_rtc_suffix(
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1],
+                0
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1
         ));
         assert!(matches!(
             decode_external_mbc3_rtc_suffix(&[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1], 0),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1
         ));
 
         let ram_rtc_metadata = CartridgePersistenceMetadata {
@@ -4270,8 +4432,14 @@ mod tests {
             ),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RAM+RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first,
+                    second,
+                },
+                actual,
+            }) if first == 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP
+                && second == 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN
+                && actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN + 1
         ));
 
         let unsupported_profile = CartridgePersistenceMetadata {
