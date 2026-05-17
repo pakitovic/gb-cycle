@@ -43,14 +43,32 @@ pub fn boot_rom_image_path(root: &Path, kind: BootRomKind) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
     use std::path::Path;
 
     use gb_core::{BootRomKind, ConsoleModel};
 
     use super::{
-        ORACLE_STORE_DIR, boot_rom_image_path, boot_rom_kind_for_console_model, oracle_layout_root,
+        BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
+        boot_rom_kind_for_console_model, discover_boot_rom_root, oracle_layout_root,
         sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
     };
+
+    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+        // SAFETY: this test serializes environment mutation through `env_lock()`
+        // and restores the touched variable before dropping the guard.
+        unsafe {
+            env::set_var(key, value);
+        }
+    }
+
+    fn remove_env_var(key: &str) {
+        // SAFETY: this test serializes environment mutation through `env_lock()`
+        // and restores the touched variable before dropping the guard.
+        unsafe {
+            env::remove_var(key);
+        }
+    }
 
     #[test]
     fn workspace_paths_follow_repo_local_oracle_layout() {
@@ -68,6 +86,22 @@ mod tests {
             sameboy_case_bundle_oracle_root(workspace_root),
             workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/case-bundle"))
         );
+    }
+
+    #[test]
+    fn boot_rom_root_discovery_prefers_environment_override() {
+        let _guard = crate::test_support::lock_env();
+        let previous = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
+        let root = Path::new("/tmp/gb-cycle/bootroms");
+
+        set_env_var(BOOT_ROM_ROOT_ENV_VAR, root);
+
+        assert_eq!(discover_boot_rom_root(), Some(root.to_path_buf()));
+
+        match previous {
+            Some(value) => set_env_var(BOOT_ROM_ROOT_ENV_VAR, value),
+            None => remove_env_var(BOOT_ROM_ROOT_ENV_VAR),
+        }
     }
 
     #[test]

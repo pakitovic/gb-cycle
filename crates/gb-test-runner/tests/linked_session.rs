@@ -214,6 +214,24 @@ fn linked_session_contract_manifest_is_deterministic_across_reruns() {
 }
 
 #[test]
+fn linked_session_cgb_ir_smoke_manifest_passes() {
+    let manifest_path = data_path("data/linked-cgb-ir-smoke.toml");
+    let suite = load_linked_session_suite_manifest(&manifest_path)
+        .expect("repo CGB IR linked-session manifest should load");
+
+    let report = LinkedSessionRunner::new()
+        .run_suite(&suite)
+        .expect("CGB IR linked-session suite should execute");
+
+    assert!(report.all_passed());
+    assert_eq!(report.sessions.len(), 1);
+    assert_eq!(
+        report.sessions[0].participants[1].artifacts.serial_hex,
+        "B2"
+    );
+}
+
+#[test]
 fn linked_session_contract_suite_persists_failure_artifacts_for_real_dmg04_cases() {
     let temp_dir = unique_temp_dir("failure-artifacts");
     let artifact_root = temp_dir.join("artifacts");

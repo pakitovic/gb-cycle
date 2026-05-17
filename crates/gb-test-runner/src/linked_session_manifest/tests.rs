@@ -692,6 +692,34 @@ oracle = "info-linked-trace"
         other => panic!("unexpected linked manifest error: {other:?}"),
     }
 
+    let cgb_ir_bad_participant_count = write_manifest(
+        &workspace,
+        "cgb-ir-bad-participant-count.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "cgb-ir"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "solo"
+  rom = "solo.gbc"
+  console = "cgb"
+"#,
+    );
+    let cgb_ir_bad_participant_count_error =
+        load_linked_session_suite_manifest(&cgb_ir_bad_participant_count)
+            .expect_err("cgb-ir should require exactly two participants");
+    match cgb_ir_bad_participant_count_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("UnsupportedTopologyParticipantCount"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
     let dmg07_missing_port = write_manifest(
         &workspace,
         "dmg07-missing-port.toml",
