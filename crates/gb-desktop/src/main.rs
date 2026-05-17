@@ -8899,6 +8899,43 @@ fn open_selected_linked_secondary_rom(
     Ok(())
 }
 
+fn deactivate_cgb_infrared_pair(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+
+    if context.machine.is_linked_cgb_infrared_two_player() {
+        close_runtime_save_sessions(context.runtime, context.machine)?;
+        context.machine.detach_to_single_primary();
+    }
+
+    context.session.linked_secondary_rom = None;
+    context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = false;
+    context.session.external_port_selection = DesktopExternalPortSelection::None;
+    apply_external_port_selection_to_machine(
+        context.machine.primary_machine_mut(),
+        DesktopExternalPortSelection::None,
+    );
+    context.runtime.save_sessions =
+        open_save_sessions_for_session(context.session, context.machine)?;
+    reset_rewind_state(context.runtime);
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+    context.runtime.rtc_sync.resync_to_host_clock();
+
+    Ok(())
+}
+
 fn open_selected_cgb_infrared_secondary_rom(
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -10129,6 +10166,12 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::OpenCgbInfrared => {
+            if context.session.cgb_infrared_link_active
+                || context.machine.is_linked_cgb_infrared_two_player()
+            {
+                deactivate_cgb_infrared_pair(canvas, context)?;
+                return Ok(None);
+            }
             if !context.session.has_loaded_rom()
                 || context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor
             {
@@ -13455,6 +13498,52 @@ mod tests {
             &harness.session,
             &harness.machine
         ));
+    }
+
+    #[test]
+    fn cgb_ir_menu_action_turns_active_session_off_without_opening_picker() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-toggle-off", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+
+        assert!(harness.session.cgb_infrared_link_active());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .expect("active CGB IR action should turn the pair off")
+                .is_none()
+        );
+
+        assert!(!harness.runtime.open_rom_dialog.is_pending());
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
     }
 
     #[test]
