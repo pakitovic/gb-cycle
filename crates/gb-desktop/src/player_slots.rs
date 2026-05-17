@@ -87,6 +87,7 @@ impl DesktopDmg07PlayerCount {
 pub enum DesktopPlayerSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
+    LinkedCgbInfraredTwoPlayer,
     LinkedDmg07 {
         player_count: DesktopDmg07PlayerCount,
     },
@@ -165,6 +166,24 @@ pub const fn host_policy_for_slot(
             audio: PlayerAudioPolicy::Muted,
             view: PlayerViewPolicy::RightPanel,
         },
+        (DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer, PlayerSlot::P1) => {
+            PlayerHostPolicy {
+                slot,
+                machine_index: Some(0),
+                keyboard_profile: PlayerKeyboardProfile::ConfiguredJoypad,
+                audio: PlayerAudioPolicy::Audible,
+                view: PlayerViewPolicy::LeftPanel,
+            }
+        }
+        (DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer, PlayerSlot::P2) => {
+            PlayerHostPolicy {
+                slot,
+                machine_index: Some(1),
+                keyboard_profile: PlayerKeyboardProfile::LinkedDmg04P2,
+                audio: PlayerAudioPolicy::Muted,
+                view: PlayerViewPolicy::RightPanel,
+            }
+        }
         (DesktopPlayerSessionKind::LinkedDmg07 { .. }, PlayerSlot::P1) => PlayerHostPolicy {
             slot,
             machine_index: Some(0),
@@ -230,6 +249,10 @@ pub const fn view_slots_for_session(session_kind: DesktopPlayerSessionKind) -> P
             left: PlayerSlot::P1,
             right: Some(PlayerSlot::P2),
         },
+        DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer => PlayerViewSlots {
+            left: PlayerSlot::P1,
+            right: Some(PlayerSlot::P2),
+        },
         DesktopPlayerSessionKind::LinkedDmg07 { .. } => PlayerViewSlots {
             left: PlayerSlot::P1,
             right: Some(PlayerSlot::P2),
@@ -245,6 +268,11 @@ pub const fn view_layout_for_session(session_kind: DesktopPlayerSessionKind) -> 
             slots: [Some(PlayerSlot::P1), None, None, None],
         },
         DesktopPlayerSessionKind::LinkedDmg04TwoPlayer => PlayerViewLayout {
+            columns: 2,
+            rows: 1,
+            slots: [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None],
+        },
+        DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer => PlayerViewLayout {
             columns: 2,
             rows: 1,
             slots: [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None],
@@ -412,6 +440,35 @@ mod tests {
     }
 
     #[test]
+    fn host_policy_maps_cgb_ir_like_a_two_panel_two_player_session() {
+        let p1 = host_policy_for_slot(
+            DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer,
+            PlayerSlot::P1,
+        );
+        let p2 = host_policy_for_slot(
+            DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer,
+            PlayerSlot::P2,
+        );
+        let p3 = host_policy_for_slot(
+            DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer,
+            PlayerSlot::P3,
+        );
+
+        assert_eq!(p1.machine_index, Some(0));
+        assert_eq!(p1.keyboard_profile, PlayerKeyboardProfile::ConfiguredJoypad);
+        assert_eq!(p1.audio, PlayerAudioPolicy::Audible);
+        assert_eq!(p1.view, PlayerViewPolicy::LeftPanel);
+
+        assert_eq!(p2.machine_index, Some(1));
+        assert_eq!(p2.keyboard_profile, PlayerKeyboardProfile::LinkedDmg04P2);
+        assert_eq!(p2.audio, PlayerAudioPolicy::Muted);
+        assert_eq!(p2.view, PlayerViewPolicy::RightPanel);
+
+        assert_eq!(p3.machine_index, None);
+        assert_eq!(p3.view, PlayerViewPolicy::Hidden);
+    }
+
+    #[test]
     fn host_policy_maps_dmg07_slots_without_enabling_inactive_players() {
         let session = DesktopPlayerSessionKind::LinkedDmg07 {
             player_count: DesktopDmg07PlayerCount::Three,
@@ -459,6 +516,18 @@ mod tests {
         assert_eq!(
             view_slots_for_session(DesktopPlayerSessionKind::LinkedDmg04TwoPlayer).right,
             Some(PlayerSlot::P2)
+        );
+        assert_eq!(
+            view_slots_for_session(DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer).right,
+            Some(PlayerSlot::P2)
+        );
+        let cgb_ir_layout =
+            view_layout_for_session(DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer);
+        assert_eq!(cgb_ir_layout.columns, 2);
+        assert_eq!(cgb_ir_layout.rows, 1);
+        assert_eq!(
+            cgb_ir_layout.slots,
+            [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None]
         );
 
         let four_player_layout = view_layout_for_session(DesktopPlayerSessionKind::LinkedDmg07 {

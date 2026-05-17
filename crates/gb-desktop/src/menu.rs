@@ -65,7 +65,7 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 15] = [
+const ROOT_MENU_ITEMS: [MenuItem; 16] = [
     MenuItem::CameraLive,
     MenuItem::CameraImage,
     MenuItem::CameraReset,
@@ -79,6 +79,7 @@ const ROOT_MENU_ITEMS: [MenuItem; 15] = [
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
     MenuItem::ExtPortMenu,
+    MenuItem::CgbInfrared,
     MenuItem::SystemMenu,
     MenuItem::Quit,
 ];
@@ -320,6 +321,7 @@ pub enum MenuAction {
     ResetAudioDefaults,
     SetExternalPort(DesktopExternalPortSelection),
     SetFourPlayerAdapter(DesktopDmg07PlayerCount),
+    OpenCgbInfrared,
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
@@ -526,6 +528,7 @@ pub struct MenuPresentation {
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
+    pub cgb_infrared_link_active: bool,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_kind: BootRomKind,
     pub boot_rom_verification: BootRomVerificationMode,
@@ -609,6 +612,7 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => self.recent_rom_count >= 11,
             MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
+            MenuItem::CgbInfrared => self.console_model == DesktopConsoleModel::GameBoyColor,
             _ => true,
         }
     }
@@ -652,6 +656,11 @@ impl MenuPresentation {
             MenuItem::ExportSave => self.external_save_available && !self.any_dialog_pending,
             MenuItem::ImportSave => self.external_save_import_available && !self.any_dialog_pending,
             MenuItem::AudioMenu => self.audio_available || self.rom_loaded,
+            MenuItem::CgbInfrared => {
+                self.rom_loaded
+                    && self.console_model == DesktopConsoleModel::GameBoyColor
+                    && !self.any_dialog_pending
+            }
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
             MenuItem::AudioRecord => self.rom_loaded,
             MenuItem::AudioChannel1
@@ -815,6 +824,13 @@ impl MenuPresentation {
                 DesktopExternalPortSelection::GameLink => "EXT LINK".to_string(),
                 DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P".to_string(),
             },
+            MenuItem::CgbInfrared => {
+                if self.cgb_infrared_link_active {
+                    "CGB IR ON".to_string()
+                } else {
+                    "CGB IR".to_string()
+                }
+            }
             MenuItem::KeyboardMenu => "KEYBOARD".to_string(),
             MenuItem::KeyboardMenuControls => "KB MENU".to_string(),
             MenuItem::HotkeysMenu => "HOTKEYS".to_string(),
@@ -1382,6 +1398,7 @@ enum MenuItem {
     AudioMenu,
     InputMenu,
     ExtPortMenu,
+    CgbInfrared,
     KeyboardMenu,
     KeyboardMenuControls,
     HotkeysMenu,
@@ -2068,6 +2085,7 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::ExtPort, presentation);
                 None
             }
+            MenuItem::CgbInfrared => Some(MenuAction::OpenCgbInfrared),
             MenuItem::ExternalPortFourPlayerAdapter => {
                 self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
                 None
@@ -3215,6 +3233,7 @@ mod tests {
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
+            cgb_infrared_link_active: false,
             boot_rom_uses_default_path: true,
             boot_rom_kind: BootRomKind::Dmg,
             boot_rom_verification: BootRomVerificationMode::Strict,
@@ -4335,6 +4354,8 @@ mod tests {
         assert_eq!(ROOT_MENU_ITEMS[7], MenuItem::StateSlot);
         assert_eq!(ROOT_MENU_ITEMS[8], MenuItem::StateAutoloadSlot);
         assert_eq!(ROOT_MENU_ITEMS[9], MenuItem::VideoMenu);
+        assert_eq!(ROOT_MENU_ITEMS[12], MenuItem::ExtPortMenu);
+        assert_eq!(ROOT_MENU_ITEMS[13], MenuItem::CgbInfrared);
         assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
@@ -4759,6 +4780,18 @@ mod tests {
         assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT LINK");
         presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
         assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT 4P");
+
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR");
+        assert!(!presentation.item_visible(MenuItem::CgbInfrared));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        assert!(presentation.item_visible(MenuItem::CgbInfrared));
+        assert!(presentation.item_enabled(MenuItem::CgbInfrared));
+        presentation.any_dialog_pending = true;
+        assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
+        presentation.any_dialog_pending = false;
+        presentation.cgb_infrared_link_active = true;
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR ON");
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(

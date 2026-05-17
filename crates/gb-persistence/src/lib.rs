@@ -22,6 +22,9 @@ const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
 pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 1;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
+pub const SAVE_FILE_EXTENSION_P2: &str = "gbsa2";
+pub const SAVE_FILE_EXTENSION_P3: &str = "gbsa3";
+pub const SAVE_FILE_EXTENSION_P4: &str = "gbsa4";
 pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
 pub const MACHINE_SAVE_STATE_FILE_EXTENSION: &str = "gbstate";
 const MBC2_RAM_NIBBLE_COUNT: usize = 512;
@@ -50,6 +53,26 @@ const STATE_HUC3_TAG: u8 = 10;
 const STATE_POCKET_CAMERA_RAM_TAG: u8 = 11;
 const STATE_MBC6_TAG: u8 = 12;
 const STATE_MBC7_EEPROM_TAG: u8 = 13;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum CartridgeSaveFileExtension {
+    #[default]
+    P1,
+    P2,
+    P3,
+    P4,
+}
+
+impl CartridgeSaveFileExtension {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::P1 => SAVE_FILE_EXTENSION,
+            Self::P2 => SAVE_FILE_EXTENSION_P2,
+            Self::P3 => SAVE_FILE_EXTENSION_P3,
+            Self::P4 => SAVE_FILE_EXTENSION_P4,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -81,25 +104,6 @@ fn is_portable_save_key_character(character: char) -> bool {
             character,
             '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
         )
-}
-
-pub fn legacy_sanitized_save_key(raw_key_material: &str) -> Option<CartridgeSaveKey> {
-    let mut sanitized = String::new();
-    let mut inserted_separator = false;
-    for character in raw_key_material.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
-            sanitized.push(character);
-            inserted_separator = false;
-        } else if !inserted_separator {
-            sanitized.push('_');
-            inserted_separator = true;
-        }
-    }
-    let sanitized = sanitized.trim_matches('_').to_string();
-    if sanitized.is_empty() {
-        return None;
-    }
-    CartridgeSaveKey::new(sanitized).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1062,19 +1066,44 @@ impl<C: CartridgeSaveTimeSource> CartridgeSaveBackend for InMemoryCartridgeSaveB
 pub struct FilesystemCartridgeSaveBackend<C = SystemCartridgeSaveTimeSource> {
     root: PathBuf,
     clock: C,
+    file_extension: CartridgeSaveFileExtension,
 }
 
 impl FilesystemCartridgeSaveBackend<SystemCartridgeSaveTimeSource> {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self::with_time_source(root, SystemCartridgeSaveTimeSource)
     }
+
+    pub fn with_file_extension(
+        root: impl Into<PathBuf>,
+        file_extension: CartridgeSaveFileExtension,
+    ) -> Self {
+        Self::with_time_source_and_file_extension(
+            root,
+            SystemCartridgeSaveTimeSource,
+            file_extension,
+        )
+    }
 }
 
 impl<C> FilesystemCartridgeSaveBackend<C> {
     pub fn with_time_source(root: impl Into<PathBuf>, clock: C) -> Self {
+        Self::with_time_source_and_file_extension(
+            root,
+            clock,
+            CartridgeSaveFileExtension::default(),
+        )
+    }
+
+    pub fn with_time_source_and_file_extension(
+        root: impl Into<PathBuf>,
+        clock: C,
+        file_extension: CartridgeSaveFileExtension,
+    ) -> Self {
         Self {
             root: root.into(),
             clock,
+            file_extension,
         }
     }
 
@@ -1082,9 +1111,13 @@ impl<C> FilesystemCartridgeSaveBackend<C> {
         &self.root
     }
 
+    pub fn file_extension(&self) -> CartridgeSaveFileExtension {
+        self.file_extension
+    }
+
     pub fn path_for_key(&self, key: &CartridgeSaveKey) -> PathBuf {
         self.root
-            .join(format!("{}.{}", key.as_str(), SAVE_FILE_EXTENSION))
+            .join(format!("{}.{}", key.as_str(), self.file_extension.as_str()))
     }
 }
 
@@ -2836,23 +2869,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_save_key_sanitizer_matches_previous_filename_policy() {
-        let legacy_key = legacy_sanitized_save_key(
-            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)",
-        )
-        .expect("legacy key should be derived");
-        assert_eq!(
-            legacy_key.as_str(),
-            "Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2"
-        );
-        assert_eq!(
-            legacy_sanitized_save_key(":::"),
-            None,
-            "all-separator stems used to collapse to an empty save key"
-        );
-    }
-
-    #[test]
     fn encode_and_decode_round_trip_the_versioned_envelope() {
         let envelope = CartridgeSaveEnvelope {
             backend_metadata: CartridgeSaveBackendMetadata {
@@ -3400,6 +3416,23 @@ mod tests {
                 "saves/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"
             )
         );
+        let slot_extensions = [
+            (CartridgeSaveFileExtension::P1, SAVE_FILE_EXTENSION),
+            (CartridgeSaveFileExtension::P2, SAVE_FILE_EXTENSION_P2),
+            (CartridgeSaveFileExtension::P3, SAVE_FILE_EXTENSION_P3),
+            (CartridgeSaveFileExtension::P4, SAVE_FILE_EXTENSION_P4),
+        ];
+        for (file_extension, expected_suffix) in slot_extensions {
+            let backend =
+                FilesystemCartridgeSaveBackend::with_file_extension("saves", file_extension);
+            assert_eq!(backend.file_extension(), file_extension);
+            assert_eq!(
+                backend.path_for_key(&exact_rom_stem_key),
+                PathBuf::from(format!(
+                    "saves/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).{expected_suffix}"
+                ))
+            );
+        }
         assert_eq!(
             CartridgeSaveKeyError::InvalidCharacter {
                 index: 3,

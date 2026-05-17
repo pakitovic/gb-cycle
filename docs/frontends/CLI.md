@@ -59,7 +59,7 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Battery saves
 
-`--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`. Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav` extension, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. When a derived exact-stem save is missing, load/export paths still probe the previous sanitized underscore-style key so existing saves migrate naturally on the next write.
+`--save-dir` loads and stores battery-backed cartridge persistence using the host-side P1 `.gbsav` extension from `gb-persistence`. Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav` extension, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. The CLI does not probe older sanitized save names; rename old files manually when needed.
 
 `--save-policy <manual|on-close|on-write>` selects automatic flush behavior when `--save-dir` is present and defaults to `on-close`; `manual` loads any existing save without automatic writes, `on-close` writes changed persistence at run completion, and `on-write` also flushes changed persistence at frame boundaries after cartridge writes.
 

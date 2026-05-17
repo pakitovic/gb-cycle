@@ -160,7 +160,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
 - Joypad and serial: hardware-visible registers and signaling
 - External port: attachment identity, attachment reset/startup policy, printer protocol state, and per-console attachment snapshots, but not `SB` / `SC` transfer semantics
-- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, and shared multi-console T-cycle coordination, but not frontend player-slot UX
+- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, CGB infrared optical-pair routing, and shared multi-console T-cycle coordination, but not frontend player-slot UX
 - Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
@@ -327,10 +327,11 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 
 ### `link/`
 
-- `DMG-04` cable routing and `DMG-07` adapter topology
+- `DMG-04` cable routing, `DMG-07` adapter topology, and native CGB-to-CGB infrared optical-pair topology
 - shared multi-console session orchestration on one T-cycle timeline
 - linked stepping over two or more `Machine` instances without moving per-console `SB` / `SC` semantics out of `serial/`
 - `DMG-07` participant/port identity, adapter packet routing, and adapter timing state
+- CGB IR peer-emitter sampling and optical input routing without treating infrared as an external-port cable attachment
 - separation between attachment/topology ownership and the per-console serial controller that consumes only a narrow signal boundary
 - separation between core attachment/session ownership and frontend-owned player-slot UX, mute policy, and window/layout policy
 
