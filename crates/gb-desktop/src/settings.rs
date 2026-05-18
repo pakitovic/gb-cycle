@@ -1,11 +1,11 @@
 use gb_core::{BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
-    DesktopSaveFlushPolicy, FastForwardOptions, GamepadActionBindings, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
-    HotkeyBindings, InputOptions, JoypadKeyboardBindings, MachineStateOptions,
-    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
-    VideoOptions,
+    AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
+    DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
+    GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
+    MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
+    SaveDirectoryPolicy, VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -108,6 +108,18 @@ impl DesktopSettingsStore {
         }
 
         self.settings.video.presentation_filter = presentation_filter;
+        self.save()
+    }
+
+    pub fn set_frame_blending(
+        &mut self,
+        frame_blending: DesktopFrameBlendingMode,
+    ) -> Result<(), String> {
+        if self.settings.video.frame_blending == frame_blending {
+            return Ok(());
+        }
+
+        self.settings.video.frame_blending = frame_blending;
         self.save()
     }
 
@@ -949,9 +961,9 @@ mod tests {
     };
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
-        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource, GamepadGyroMode,
-        GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
+        DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopFrameBlendingMode,
+        DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
         JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
         SaveDirectoryPolicy, VideoOptions,
     };
@@ -1122,6 +1134,7 @@ show_performance_hud = true
             settings.video.display_palette,
             DesktopDisplayPalette::GameBoy
         );
+        assert_eq!(settings.video.frame_blending, DesktopFrameBlendingMode::Off);
     }
 
     #[test]
@@ -1145,6 +1158,51 @@ show_performance_hud = true
             let reloaded =
                 PersistedDesktopSettings::load(&path).expect("display palette should reload");
             assert_eq!(reloaded.video.display_palette, display_palette);
+        }
+    }
+
+    #[test]
+    fn frame_blending_settings_round_trip_each_mode() {
+        for (index, frame_blending) in [DesktopFrameBlendingMode::Off, DesktopFrameBlendingMode::On]
+            .into_iter()
+            .enumerate()
+        {
+            let path = unique_test_path(&format!("frame-blending-{index}"));
+            let mut settings = PersistedDesktopSettings::default();
+            settings.video.frame_blending = frame_blending;
+            settings
+                .save(&path)
+                .expect("frame blending setting should be writable");
+
+            let reloaded =
+                PersistedDesktopSettings::load(&path).expect("frame blending should reload");
+            assert_eq!(reloaded.video.frame_blending, frame_blending);
+        }
+    }
+
+    #[test]
+    fn frame_blending_settings_reject_removed_simple_and_lcd_modes() {
+        for removed_mode in ["simple", "lcd"] {
+            let path = unique_test_path(&format!("frame-blending-removed-{removed_mode}"));
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("settings parent should be creatable");
+            }
+            fs::write(
+                &path,
+                format!(
+                    "\
+version = 1
+
+[video]
+frame_blending = \"{removed_mode}\"
+"
+                ),
+            )
+            .expect("removed frame blending setting should be writable");
+
+            let parse_error = PersistedDesktopSettings::load(&path)
+                .expect_err("removed frame blending values should fail");
+            assert!(parse_error.contains("failed to parse desktop settings"));
         }
     }
 
@@ -1208,6 +1266,7 @@ max_memory_mib = 128
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.presentation_filter = true;
+        settings.video.frame_blending = DesktopFrameBlendingMode::On;
         settings.video.display_palette = DesktopDisplayPalette::Pocket;
         settings.video.show_background = false;
         settings.video.show_window = false;
@@ -1276,6 +1335,7 @@ max_memory_mib = 128
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.presentation_filter);
+        assert_eq!(config.video.frame_blending, DesktopFrameBlendingMode::On);
         assert_eq!(config.video.display_palette, DesktopDisplayPalette::Pocket);
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
@@ -1479,6 +1539,9 @@ max_memory_mib = 128
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
         store
+            .set_frame_blending(DesktopFrameBlendingMode::On)
+            .expect("frame blending should persist");
+        store
             .set_display_palette(DesktopDisplayPalette::Light)
             .expect("display palette should persist");
         store
@@ -1558,6 +1621,7 @@ max_memory_mib = 128
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
         assert!(reloaded.video.presentation_filter);
+        assert_eq!(reloaded.video.frame_blending, DesktopFrameBlendingMode::On);
         assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Light);
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
@@ -1626,6 +1690,9 @@ max_memory_mib = 128
         store
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
+        store
+            .set_frame_blending(DesktopFrameBlendingMode::On)
+            .expect("frame blending should persist");
         store
             .set_show_performance_hud(true)
             .expect("HUD visibility should persist");

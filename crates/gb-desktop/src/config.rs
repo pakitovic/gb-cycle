@@ -159,6 +159,23 @@ impl DesktopDisplayPalette {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesktopFrameBlendingMode {
+    #[default]
+    Off,
+    On,
+}
+
+impl DesktopFrameBlendingMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::On,
+            Self::On => Self::Off,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchOptions {
     pub console_model: DesktopConsoleModel,
@@ -442,6 +459,7 @@ pub struct VideoOptions {
     pub window_scale: u8,
     pub integer_scale: bool,
     pub presentation_filter: bool,
+    pub frame_blending: DesktopFrameBlendingMode,
     pub display_palette: DesktopDisplayPalette,
     pub show_background: bool,
     pub show_window: bool,
@@ -466,6 +484,7 @@ impl Default for VideoOptions {
             window_scale: DEFAULT_WINDOW_SCALE,
             integer_scale: true,
             presentation_filter: false,
+            frame_blending: DesktopFrameBlendingMode::Off,
             display_palette: DesktopDisplayPalette::default(),
             show_background: true,
             show_window: true,
@@ -892,6 +911,7 @@ mod tests {
         assert_eq!(config.video.window_scale, DEFAULT_WINDOW_SCALE);
         assert!(config.video.integer_scale);
         assert!(!config.video.presentation_filter);
+        assert_eq!(config.video.frame_blending, DesktopFrameBlendingMode::Off);
         assert_eq!(config.video.display_palette, DesktopDisplayPalette::GameBoy);
         assert!(config.video.show_background);
         assert!(config.video.show_window);
@@ -1194,6 +1214,14 @@ mod tests {
         assert_eq!(
             DesktopDisplayPalette::Light.next(),
             DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            DesktopFrameBlendingMode::Off.next(),
+            DesktopFrameBlendingMode::On
+        );
+        assert_eq!(
+            DesktopFrameBlendingMode::On.next(),
+            DesktopFrameBlendingMode::Off
         );
         assert_eq!(
             VideoOptions::default_for_console_model(DesktopConsoleModel::GameBoyColor)

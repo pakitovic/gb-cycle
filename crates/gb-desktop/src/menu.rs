@@ -2,10 +2,10 @@ use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{ApuRecordedChannel, BootRomKind, ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
-    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
-    JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+    DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
+    FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
+    HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
 };
 use std::time::{Duration, Instant};
 
@@ -99,9 +99,10 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::ClearRecentList,
     MenuItem::Return,
 ];
-const VIDEO_MENU_ITEMS: [MenuItem; 13] = [
+const VIDEO_MENU_ITEMS: [MenuItem; 14] = [
     MenuItem::PerformanceHud,
     MenuItem::PresentationFilter,
+    MenuItem::FrameBlending,
     MenuItem::DisplayPalette,
     MenuItem::Fullscreen,
     MenuItem::Vsync,
@@ -304,6 +305,7 @@ pub enum MenuAction {
     CycleWindowScale,
     ToggleIntegerScale,
     TogglePresentationFilter,
+    CycleFrameBlending,
     CycleDisplayPalette,
     ToggleBackgroundLayer,
     ToggleWindowLayer,
@@ -540,6 +542,7 @@ pub struct MenuPresentation {
     pub window_scale: u8,
     pub integer_scale: bool,
     pub presentation_filter: bool,
+    pub frame_blending: DesktopFrameBlendingMode,
     pub display_palette: DesktopDisplayPalette,
     pub show_background: bool,
     pub show_window: bool,
@@ -760,6 +763,7 @@ impl MenuPresentation {
             | MenuItem::WindowScale
             | MenuItem::IntegerScale
             | MenuItem::PresentationFilter
+            | MenuItem::FrameBlending
             | MenuItem::ShowBackground
             | MenuItem::ShowWindow
             | MenuItem::ShowObjects
@@ -966,6 +970,10 @@ impl MenuPresentation {
                     "FILTER OFF".to_string()
                 }
             }
+            MenuItem::FrameBlending => match self.frame_blending {
+                DesktopFrameBlendingMode::Off => "BLEND OFF".to_string(),
+                DesktopFrameBlendingMode::On => "BLEND ON".to_string(),
+            },
             MenuItem::DisplayPalette => {
                 if self.console_model == DesktopConsoleModel::GameBoyColor {
                     "PALETTE RGB555".to_string()
@@ -1437,6 +1445,7 @@ enum MenuItem {
     WindowScale,
     IntegerScale,
     PresentationFilter,
+    FrameBlending,
     DisplayPalette,
     ShowBackground,
     ShowWindow,
@@ -2158,6 +2167,7 @@ impl OverlayMenuState {
             MenuItem::WindowScale => Some(MenuAction::CycleWindowScale),
             MenuItem::IntegerScale => Some(MenuAction::ToggleIntegerScale),
             MenuItem::PresentationFilter => Some(MenuAction::TogglePresentationFilter),
+            MenuItem::FrameBlending => Some(MenuAction::CycleFrameBlending),
             MenuItem::DisplayPalette => Some(MenuAction::CycleDisplayPalette),
             MenuItem::ShowBackground => Some(MenuAction::ToggleBackgroundLayer),
             MenuItem::ShowWindow => Some(MenuAction::ToggleWindowLayer),
@@ -3217,8 +3227,8 @@ mod tests {
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
-        DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
-        GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
+        DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
+        FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
         GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
         HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
     };
@@ -3245,6 +3255,7 @@ mod tests {
             window_scale: 4,
             integer_scale: true,
             presentation_filter: false,
+            frame_blending: DesktopFrameBlendingMode::Off,
             display_palette: DesktopDisplayPalette::GameBoy,
             show_background: true,
             show_window: true,
@@ -3458,6 +3469,19 @@ mod tests {
     }
 
     #[test]
+    fn video_submenu_cycles_frame_blending_after_filter() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        open_video_menu(&mut menu, presentation);
+
+        select_visible_item(&mut menu, presentation, MenuItem::FrameBlending);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleFrameBlending)
+        );
+    }
+
+    #[test]
     fn video_submenu_cycles_the_display_palette_after_filter() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
@@ -3483,7 +3507,7 @@ mod tests {
         );
         assert_eq!(
             super::next_enabled_index(MenuScreen::Video, 1, presentation),
-            3
+            2
         );
     }
 
@@ -4367,9 +4391,10 @@ mod tests {
 
         assert_eq!(VIDEO_MENU_ITEMS[0], MenuItem::PerformanceHud);
         assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
-        assert_eq!(VIDEO_MENU_ITEMS[2], MenuItem::DisplayPalette);
-        assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::Screenshot);
-        assert_eq!(VIDEO_MENU_ITEMS[8], MenuItem::ShowBackground);
+        assert_eq!(VIDEO_MENU_ITEMS[2], MenuItem::FrameBlending);
+        assert_eq!(VIDEO_MENU_ITEMS[3], MenuItem::DisplayPalette);
+        assert_eq!(VIDEO_MENU_ITEMS[8], MenuItem::Screenshot);
+        assert_eq!(VIDEO_MENU_ITEMS[9], MenuItem::ShowBackground);
 
         assert_eq!(AUDIO_MENU_ITEMS[0], MenuItem::ToggleMute);
         assert_eq!(AUDIO_MENU_ITEMS[1], MenuItem::AudioVolume);
@@ -4695,6 +4720,16 @@ mod tests {
             presentation.item_label(MenuItem::PresentationFilter),
             "FILTER ON"
         );
+        for (frame_blending, expected_label) in [
+            (DesktopFrameBlendingMode::Off, "BLEND OFF"),
+            (DesktopFrameBlendingMode::On, "BLEND ON"),
+        ] {
+            presentation.frame_blending = frame_blending;
+            assert_eq!(
+                presentation.item_label(MenuItem::FrameBlending),
+                expected_label
+            );
+        }
         presentation.console_model = DesktopConsoleModel::GameBoyColor;
         assert_eq!(
             presentation.item_label(MenuItem::DisplayPalette),

@@ -6,14 +6,14 @@ pub use config::{
     DEFAULT_AUDIO_SAMPLE_RATE_HZ, DEFAULT_FAST_FORWARD_SPEED_MULTIPLIER,
     DEFAULT_REWIND_HISTORY_SECONDS, DEFAULT_REWIND_MAX_MEMORY_MIB, DEFAULT_REWIND_SPEED_MULTIPLIER,
     DEFAULT_REWIND_SUBFRAMES_PER_FRAME, DEFAULT_SAVE_FLUSH_DEBOUNCE, DEFAULT_WINDOW_SCALE,
-    DesktopConfig, DesktopConfigError, DesktopConsoleModel, DesktopDisplayPalette, DesktopKey,
-    DesktopSaveFlushPolicy, FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS, FastForwardOptions,
-    GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadFaceLayout, GamepadGyroMode, GamepadMenuBindings, GamepadOptions, GamepadRumbleMode,
-    HotkeyBindings, InputOptions, JoypadKeyboardBindings, KeyboardBindings, LaunchOptions,
-    MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, SaveKeyPolicy, SaveOptions, VideoOptions,
-    fast_forward_display_speed_multiplier,
+    DesktopConfig, DesktopConfigError, DesktopConsoleModel, DesktopDisplayPalette,
+    DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
+    FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS, FastForwardOptions, GamepadActionBindings,
+    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout,
+    GamepadGyroMode, GamepadMenuBindings, GamepadOptions, GamepadRumbleMode, HotkeyBindings,
+    InputOptions, JoypadKeyboardBindings, KeyboardBindings, LaunchOptions, MachineStateOptions,
+    MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
+    SaveKeyPolicy, SaveOptions, VideoOptions, fast_forward_display_speed_multiplier,
 };
 
 pub use external_port::DesktopExternalPortSelection;

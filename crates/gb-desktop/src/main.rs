@@ -38,7 +38,7 @@ use gb_core::{
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
-    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy,
+    DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
     FAST_FORWARD_SPEED_MULTIPLIER_OPTIONS, FastForwardOptions, GamepadActionBindings,
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
     GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
@@ -99,9 +99,10 @@ use std::fs;
 use std::io::{BufReader, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 #[cfg(test)]
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -156,6 +157,79 @@ struct RenderHudInput {
     rewind_indicator: bool,
     fast_forward_indicator: bool,
 }
+
+#[derive(Default)]
+struct RenderPresentationInput<'a> {
+    frame_blending_state: Option<&'a mut FrameBlendingState>,
+    menu_state: Option<(&'a OverlayMenuState, MenuPresentation)>,
+    hud: RenderHudInput,
+}
+
+#[derive(Debug, Default)]
+struct FrameBlendingState {
+    mode: DesktopFrameBlendingMode,
+    dimensions: Option<FramebufferDimensions>,
+    previous_rgb_frame: Vec<u8>,
+    current_rgb_frame: Vec<u8>,
+    has_previous_frame: bool,
+}
+
+impl FrameBlendingState {
+    fn reset(&mut self) {
+        self.mode = DesktopFrameBlendingMode::Off;
+        self.dimensions = None;
+        self.previous_rgb_frame.clear();
+        self.current_rgb_frame.clear();
+        self.has_previous_frame = false;
+    }
+
+    fn apply(
+        &mut self,
+        rgb_frame: &mut [u8],
+        dimensions: FramebufferDimensions,
+        mode: DesktopFrameBlendingMode,
+    ) {
+        if mode == DesktopFrameBlendingMode::Off {
+            if self.mode != DesktopFrameBlendingMode::Off
+                || self.dimensions.is_some()
+                || self.has_previous_frame
+            {
+                self.reset();
+            }
+            return;
+        }
+
+        if self.mode != mode
+            || self.dimensions != Some(dimensions)
+            || self.previous_rgb_frame.len() != rgb_frame.len()
+        {
+            self.mode = mode;
+            self.dimensions = Some(dimensions);
+            self.previous_rgb_frame.resize(rgb_frame.len(), 0);
+            self.current_rgb_frame.clear();
+            self.has_previous_frame = false;
+        }
+
+        if !self.has_previous_frame {
+            self.previous_rgb_frame.copy_from_slice(rgb_frame);
+            self.has_previous_frame = true;
+            return;
+        }
+
+        self.current_rgb_frame.clear();
+        self.current_rgb_frame.extend_from_slice(rgb_frame);
+        blend_rgb24_frames(
+            rgb_frame,
+            &self.current_rgb_frame,
+            &self.previous_rgb_frame,
+            dimensions,
+            mode,
+        );
+        self.previous_rgb_frame
+            .copy_from_slice(&self.current_rgb_frame);
+    }
+}
+
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 
@@ -378,6 +452,7 @@ struct FrontendRuntime {
     player_inputs: PlayerInputStates,
     keyboard_bindings: KeyboardBindings,
     video_options: VideoOptions,
+    frame_blending_state: FrameBlendingState,
     audio_volume_percent: u8,
     audio_channel_mask: ApuRecordedChannelMask,
     audio_output: Option<DesktopAudioOutput>,
@@ -5172,6 +5247,7 @@ fn run_desktop_prepared(
         player_inputs,
         keyboard_bindings: session.config.input.keyboard,
         video_options: session.config.video.clone(),
+        frame_blending_state: FrameBlendingState::default(),
         audio_volume_percent: session.config.audio.volume_percent,
         audio_channel_mask,
         audio_output,
@@ -5250,8 +5326,11 @@ fn run_desktop_prepared(
             &runtime.video_options,
         ),
         &runtime.video_options,
-        initial_menu_presentation,
-        RenderHudInput::default(),
+        RenderPresentationInput {
+            frame_blending_state: Some(&mut runtime.frame_blending_state),
+            menu_state: initial_menu_presentation,
+            hud: RenderHudInput::default(),
+        },
     )?;
 
     if let Some(benchmark) = &mut session.benchmark {
@@ -5326,8 +5405,11 @@ fn run_desktop_prepared(
                         &runtime.video_options,
                     ),
                     &runtime.video_options,
-                    menu_presentation,
-                    RenderHudInput::default(),
+                    RenderPresentationInput {
+                        frame_blending_state: Some(&mut runtime.frame_blending_state),
+                        menu_state: menu_presentation,
+                        hud: RenderHudInput::default(),
+                    },
                 )?;
             }
             thread::sleep(Duration::from_millis(8));
@@ -5458,8 +5540,11 @@ fn run_desktop_prepared(
                         &runtime.video_options,
                     ),
                     &runtime.video_options,
-                    menu_presentation,
-                    RenderHudInput::default(),
+                    RenderPresentationInput {
+                        frame_blending_state: Some(&mut runtime.frame_blending_state),
+                        menu_state: menu_presentation,
+                        hud: RenderHudInput::default(),
+                    },
                 )?;
             }
             thread::sleep(Duration::from_millis(8));
@@ -5507,8 +5592,11 @@ fn run_desktop_prepared(
                 &runtime.video_options,
             ),
             &runtime.video_options,
-            None,
-            render_hud,
+            RenderPresentationInput {
+                frame_blending_state: Some(&mut runtime.frame_blending_state),
+                menu_state: None,
+                hud: render_hud,
+            },
         )?;
         let render_duration = render_started_at.elapsed();
         let audio_queue_ms_before_pacing = runtime
@@ -8250,7 +8338,7 @@ fn rebuild_machine_for_config(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     context.runtime.save_sessions = next_save_sessions;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
@@ -8716,7 +8804,7 @@ fn open_selected_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -8878,7 +8966,7 @@ fn open_selected_linked_secondary_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -8926,7 +9014,7 @@ fn deactivate_cgb_infrared_pair(
     );
     context.runtime.save_sessions =
         open_save_sessions_for_session(context.session, context.machine)?;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
         window_title(context.session, &context.session.config),
@@ -9043,7 +9131,7 @@ fn open_selected_cgb_infrared_secondary_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -9140,7 +9228,7 @@ fn activate_dmg07_adapter(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -9235,6 +9323,11 @@ fn reset_rewind_state(runtime: &mut FrontendRuntime) {
     runtime.rewind_frame_tracker.reset();
     runtime.rewind_hotkey_active = false;
     runtime.rewind_gamepad_active = false;
+}
+
+fn reset_frontend_timeline_state(runtime: &mut FrontendRuntime) {
+    reset_rewind_state(runtime);
+    runtime.frame_blending_state.reset();
 }
 
 fn rebuild_rewind_state(runtime: &mut FrontendRuntime, options: RewindOptions) {
@@ -9628,7 +9721,7 @@ fn restore_machine_state_slot_from_bytes(
         .map_err(|error| format!("failed to restore state {}: {error}", path.display()))?;
 
     reset_host_state_after_machine_restore(machine, runtime, frame_pacer)?;
-    reset_rewind_state(runtime);
+    reset_frontend_timeline_state(runtime);
     Ok(path.to_path_buf())
 }
 
@@ -10040,6 +10133,15 @@ fn execute_menu_action(
                 .set_presentation_filter(context.runtime.video_options.presentation_filter)?;
             Ok(None)
         }
+        MenuAction::CycleFrameBlending => {
+            context.runtime.video_options.frame_blending =
+                context.runtime.video_options.frame_blending.next();
+            context.runtime.frame_blending_state.reset();
+            context
+                .settings_store
+                .set_frame_blending(context.runtime.video_options.frame_blending)?;
+            Ok(None)
+        }
         MenuAction::CycleDisplayPalette => {
             if context.session.config.launch.console_model == DesktopConsoleModel::GameBoyColor {
                 return Ok(None);
@@ -10087,6 +10189,7 @@ fn execute_menu_action(
                 context.session.config.launch.console_model,
             );
             context.runtime.video_options = defaults.clone();
+            context.runtime.frame_blending_state.reset();
             apply_renderer_vsync(canvas, context.frame_pacer, defaults.vsync)?;
             set_fullscreen_state(canvas.window_mut(), defaults.fullscreen)?;
             if canvas.window().fullscreen_state() == FullscreenType::Off {
@@ -10236,7 +10339,7 @@ fn execute_menu_action(
                     );
                     context.runtime.save_sessions =
                         open_save_sessions_for_session(context.session, context.machine)?;
-                    reset_rewind_state(context.runtime);
+                    reset_frontend_timeline_state(context.runtime);
                     context.performance_counter.reset_base_title(
                         canvas.window_mut(),
                         window_title(context.session, &context.session.config),
@@ -10529,6 +10632,7 @@ fn current_menu_presentation(
         window_scale: runtime.video_options.window_scale.max(1),
         integer_scale: runtime.video_options.integer_scale,
         presentation_filter: runtime.video_options.presentation_filter,
+        frame_blending: runtime.video_options.frame_blending,
         display_palette: runtime.video_options.display_palette,
         show_background: runtime.video_options.show_background,
         show_window: runtime.video_options.show_window,
@@ -11668,7 +11772,7 @@ fn reset_machine(
 
     clear_live_input_state(machine, runtime);
     *machine = reset_machine;
-    reset_rewind_state(runtime);
+    reset_frontend_timeline_state(runtime);
     if let Some(audio_output) = &mut runtime.audio_output {
         audio_output.reset_for_session_swap(reset_console_model)?;
     }
@@ -11969,6 +12073,81 @@ fn framebuffer_pitch_bytes_for_dimensions(dimensions: FramebufferDimensions) -> 
     dimensions.width as usize * 3
 }
 
+struct FrameBlendGammaTables {
+    half: Vec<u8>,
+}
+
+impl FrameBlendGammaTables {
+    fn new() -> Self {
+        Self {
+            half: frame_blend_gamma_table(0.5),
+        }
+    }
+
+    fn table_for(&self, mode: DesktopFrameBlendingMode) -> Option<&[u8]> {
+        match mode {
+            DesktopFrameBlendingMode::Off => None,
+            DesktopFrameBlendingMode::On => Some(&self.half),
+        }
+    }
+}
+
+fn frame_blend_gamma_tables() -> &'static FrameBlendGammaTables {
+    static TABLES: OnceLock<FrameBlendGammaTables> = OnceLock::new();
+    TABLES.get_or_init(FrameBlendGammaTables::new)
+}
+
+fn frame_blend_gamma_table(previous_weight: f32) -> Vec<u8> {
+    const GAMMA: f32 = 2.2;
+    let current_weight = 1.0 - previous_weight;
+    let mut table = vec![0_u8; 256 * 256];
+    for current in 0..=u8::MAX {
+        let current_linear = (f32::from(current) / 255.0).powf(GAMMA);
+        for previous in 0..=u8::MAX {
+            let previous_linear = (f32::from(previous) / 255.0).powf(GAMMA);
+            let blended = (current_linear * current_weight + previous_linear * previous_weight)
+                .powf(1.0 / GAMMA);
+            table[frame_blend_table_index(current, previous)] =
+                (blended * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    table
+}
+
+fn frame_blend_table_index(current: u8, previous: u8) -> usize {
+    usize::from(current) * 256 + usize::from(previous)
+}
+
+fn blend_rgb24_frames(
+    target_rgb_frame: &mut [u8],
+    current_rgb_frame: &[u8],
+    previous_rgb_frame: &[u8],
+    dimensions: FramebufferDimensions,
+    mode: DesktopFrameBlendingMode,
+) {
+    if mode == DesktopFrameBlendingMode::Off
+        || target_rgb_frame.len() != current_rgb_frame.len()
+        || target_rgb_frame.len() != previous_rgb_frame.len()
+    {
+        return;
+    }
+
+    let tables = frame_blend_gamma_tables();
+    let Some(table) = tables.table_for(mode) else {
+        return;
+    };
+    let pitch = framebuffer_pitch_bytes_for_dimensions(dimensions);
+    let height = dimensions.height as usize;
+    for y in 0..height {
+        let row_start = y * pitch;
+        let row_end = row_start.saturating_add(pitch).min(target_rgb_frame.len());
+        for index in row_start..row_end {
+            target_rgb_frame[index] =
+                table[frame_blend_table_index(current_rgb_frame[index], previous_rgb_frame[index])];
+        }
+    }
+}
+
 fn bgwin_layer_source_visible(
     video_options: &VideoOptions,
     source: PpuFramebufferLayerSource,
@@ -12195,9 +12374,14 @@ fn render_frame(
     rgb_frame: &mut [u8],
     framebuffer: FramebufferRenderInput<'_>,
     video_options: &VideoOptions,
-    menu_state: Option<(&OverlayMenuState, MenuPresentation)>,
-    hud: RenderHudInput,
+    presentation: RenderPresentationInput<'_>,
 ) -> Result<Duration, String> {
+    let RenderPresentationInput {
+        frame_blending_state,
+        menu_state,
+        hud,
+    } = presentation;
+    let menu_open = menu_state.is_some();
     apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
     sync_framebuffer_texture_video_options(texture, video_options);
     rgb_frame.fill(0);
@@ -12217,6 +12401,13 @@ fn render_frame(
             video_options,
         );
     }
+    if let Some(frame_blending_state) = frame_blending_state {
+        frame_blending_state.apply(
+            rgb_frame,
+            framebuffer.dimensions,
+            video_options.frame_blending,
+        );
+    }
     if let Some((menu_state, menu_presentation)) = menu_state {
         menu_state.render_overlay(
             rgb_frame,
@@ -12225,7 +12416,7 @@ fn render_frame(
             menu_presentation,
         );
     }
-    if menu_state.is_none()
+    if !menu_open
         && video_options.show_performance_hud
         && let Some(snapshot) = hud.performance
     {
@@ -12236,14 +12427,14 @@ fn render_frame(
             snapshot,
         );
     }
-    if menu_state.is_none() && hud.rewind_indicator {
+    if !menu_open && hud.rewind_indicator {
         render_rewind_indicator(
             rgb_frame,
             framebuffer.dimensions.width as usize,
             framebuffer.dimensions.height as usize,
         );
     }
-    if menu_state.is_none() && hud.fast_forward_indicator {
+    if !menu_open && hud.fast_forward_indicator {
         render_fast_forward_indicator(
             rgb_frame,
             framebuffer.dimensions.width as usize,
@@ -12770,9 +12961,9 @@ mod tests {
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
-        DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-        GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
-        MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
+        DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
+        GamepadButtonBinding, GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings,
+        GamepadRumbleMode, MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
     };
     use gb_persistence::{
         CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
@@ -12844,6 +13035,32 @@ mod tests {
         fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
             .expect("test ROM should be writable");
         rom_path
+    }
+
+    fn single_panel_render_input<'a>(
+        framebuffer: &'a [u8],
+        layer_sources: &'a [PpuFramebufferLayerSource],
+    ) -> super::FramebufferRenderInput<'a> {
+        super::FramebufferRenderInput {
+            dimensions: super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            },
+            panels: [
+                Some(super::FramebufferPanelInput {
+                    framebuffer,
+                    framebuffer_layer_sources: layer_sources,
+                    bgwin_framebuffer: framebuffer,
+                    backdrop_framebuffer: framebuffer,
+                    bgwin_framebuffer_layer_sources: layer_sources,
+                    display_palette: super::DMG_DISPLAY_PALETTE,
+                    cgb_framebuffer_rgb555: None,
+                }),
+                None,
+                None,
+                None,
+            ],
+        }
     }
 
     fn write_cgb_test_rom(
@@ -14295,6 +14512,7 @@ mod tests {
                 player_inputs,
                 keyboard_bindings: config.input.keyboard,
                 video_options: config.video.clone(),
+                frame_blending_state: super::FrameBlendingState::default(),
                 audio_volume_percent: config.audio.volume_percent,
                 audio_channel_mask: super::ApuRecordedChannelMask::ALL,
                 audio_output,
@@ -19271,6 +19489,87 @@ mod tests {
     }
 
     #[test]
+    fn frame_blending_state_keeps_the_first_frame_raw_and_simple_blends_gamma_correctly() {
+        let dimensions = super::FramebufferDimensions {
+            width: 1,
+            height: 1,
+        };
+        let mut state = super::FrameBlendingState::default();
+        let mut first_frame = vec![255_u8; 3];
+
+        state.apply(&mut first_frame, dimensions, DesktopFrameBlendingMode::On);
+
+        assert_eq!(first_frame, vec![255_u8; 3]);
+        assert_eq!(state.previous_rgb_frame, vec![255_u8; 3]);
+        assert!(state.has_previous_frame);
+
+        let mut second_frame = vec![0_u8; 3];
+        state.apply(&mut second_frame, dimensions, DesktopFrameBlendingMode::On);
+
+        assert_eq!(second_frame, vec![186_u8; 3]);
+        assert_eq!(state.previous_rgb_frame, vec![0_u8; 3]);
+    }
+
+    #[test]
+    fn frame_blending_uses_the_same_half_weight_for_every_line() {
+        let dimensions = super::FramebufferDimensions {
+            width: 1,
+            height: 2,
+        };
+        let current_frame = vec![0_u8; 6];
+        let previous_frame = vec![255_u8; 6];
+        let mut target = current_frame.clone();
+
+        super::blend_rgb24_frames(
+            &mut target,
+            &current_frame,
+            &previous_frame,
+            dimensions,
+            DesktopFrameBlendingMode::On,
+        );
+
+        assert_eq!(&target[0..3], &[186_u8; 3]);
+        assert_eq!(&target[3..6], &[186_u8; 3]);
+    }
+
+    #[test]
+    fn frame_blending_state_clears_history_for_mode_and_dimension_changes() {
+        let one_pixel = super::FramebufferDimensions {
+            width: 1,
+            height: 1,
+        };
+        let two_pixels = super::FramebufferDimensions {
+            width: 2,
+            height: 1,
+        };
+        let mut state = super::FrameBlendingState::default();
+        let mut first_frame = vec![255_u8; 3];
+        let mut second_frame = vec![0_u8; 3];
+
+        state.apply(&mut first_frame, one_pixel, DesktopFrameBlendingMode::On);
+        state.apply(&mut second_frame, one_pixel, DesktopFrameBlendingMode::On);
+        assert_eq!(second_frame, vec![186_u8; 3]);
+
+        let mut resized_frame = vec![64_u8; 6];
+        state.apply(&mut resized_frame, two_pixels, DesktopFrameBlendingMode::On);
+        assert_eq!(resized_frame, vec![64_u8; 6]);
+        assert_eq!(state.dimensions, Some(two_pixels));
+        assert_eq!(state.previous_rgb_frame, vec![64_u8; 6]);
+        assert!(state.has_previous_frame);
+
+        let mut disabled_frame = vec![32_u8; 6];
+        state.apply(
+            &mut disabled_frame,
+            two_pixels,
+            DesktopFrameBlendingMode::Off,
+        );
+        assert_eq!(disabled_frame, vec![32_u8; 6]);
+        assert_eq!(state.mode, DesktopFrameBlendingMode::Off);
+        assert!(state.previous_rgb_frame.is_empty());
+        assert!(!state.has_previous_frame);
+    }
+
+    #[test]
     fn benchmark_helpers_apply_cases_and_write_artifacts() {
         let root = temp_test_root("benchmark-artifact-helpers");
         let rom_path = root.join("bench.gb");
@@ -20835,7 +21134,7 @@ mod tests {
         harness.machine =
             super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
                 .expect("matching machines should link");
-        super::reset_rewind_state(&mut harness.runtime);
+        super::reset_frontend_timeline_state(&mut harness.runtime);
         for _ in 0..16 {
             harness.machine.step_t_cycle();
             super::record_desktop_rewind_point(
@@ -22678,8 +22977,11 @@ mod tests {
                 ],
             },
             &harness.runtime.video_options,
-            Some((&harness.runtime.menu_state, open_menu_presentation)),
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: Some((&harness.runtime.menu_state, open_menu_presentation)),
+                hud: super::RenderHudInput::default(),
+            },
         )
         .expect("overlay frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
@@ -22720,24 +23022,232 @@ mod tests {
                 ],
             },
             &harness.runtime.video_options,
-            None,
-            super::RenderHudInput {
-                performance: Some(PerformanceHudSnapshot {
-                    fps: 59.7,
-                    speed_percent: 100.0,
-                    frame_time_ms: 16.7,
-                    emulation_time_ms: 10.0,
-                    render_time_ms: 2.0,
-                    pacing_time_ms: 4.0,
-                    audio_queue_ms: Some(12.5),
-                    rewind: RewindHudSnapshot::default(),
-                }),
-                rewind_indicator: false,
-                fast_forward_indicator: false,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud: super::RenderHudInput {
+                    performance: Some(PerformanceHudSnapshot {
+                        fps: 59.7,
+                        speed_percent: 100.0,
+                        frame_time_ms: 16.7,
+                        emulation_time_ms: 10.0,
+                        render_time_ms: 2.0,
+                        pacing_time_ms: 4.0,
+                        audio_queue_ms: Some(12.5),
+                        rewind: RewindHudSnapshot::default(),
+                    }),
+                    rewind_indicator: false,
+                    fast_forward_indicator: false,
+                },
             },
         )
         .expect("HUD frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn render_frame_blends_the_base_frame_before_menu_and_hud_overlays() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("frame-blending-render", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let frame_len = super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES;
+        let panel_len = (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize;
+        let previous_panel = vec![0_u8; panel_len];
+        let current_panel = vec![3_u8; panel_len];
+        let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
+        let mut video_options = harness.runtime.video_options.clone();
+        video_options.frame_blending = DesktopFrameBlendingMode::On;
+        video_options.presentation_filter = true;
+        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::On;
+
+        let mut base_state = super::FrameBlendingState::default();
+        let mut first_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut first_frame,
+            single_panel_render_input(&previous_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut base_state),
+                ..super::RenderPresentationInput::default()
+            },
+        )
+        .expect("first frame should render");
+        let mut blended_base_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut blended_base_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut base_state),
+                ..super::RenderPresentationInput::default()
+            },
+        )
+        .expect("blended frame should render");
+        let mut raw_base_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut raw_base_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput::default(),
+        )
+        .expect("raw frame should render");
+
+        assert_ne!(
+            &blended_base_frame[..3],
+            &raw_base_frame[..3],
+            "the base framebuffer should be blended before presentation"
+        );
+        assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Linear);
+
+        let menu_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        harness.runtime.menu_state.open(menu_presentation);
+        let open_menu_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        let mut menu_state = super::FrameBlendingState::default();
+        let mut discarded_first_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut discarded_first_frame,
+            single_panel_render_input(&previous_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut menu_state),
+                ..super::RenderPresentationInput::default()
+            },
+        )
+        .expect("menu blend history frame should render");
+        let mut blended_menu_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut blended_menu_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut menu_state),
+                menu_state: Some((&harness.runtime.menu_state, open_menu_presentation)),
+                hud: super::RenderHudInput::default(),
+            },
+        )
+        .expect("blended menu frame should render");
+        let mut raw_menu_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut raw_menu_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: Some((&harness.runtime.menu_state, open_menu_presentation)),
+                hud: super::RenderHudInput::default(),
+            },
+        )
+        .expect("raw menu frame should render");
+        let menu_panel_pixel = 25 * super::FRAMEBUFFER_PITCH_BYTES + 25 * 3;
+        assert_eq!(
+            &blended_menu_frame[menu_panel_pixel..menu_panel_pixel + 3],
+            &raw_menu_frame[menu_panel_pixel..menu_panel_pixel + 3],
+            "opaque menu panel pixels should be drawn after the frame blend"
+        );
+        assert_ne!(
+            &raw_menu_frame[menu_panel_pixel..menu_panel_pixel + 3],
+            &raw_base_frame[menu_panel_pixel..menu_panel_pixel + 3],
+            "the selected sample should be inside the menu overlay"
+        );
+        harness.runtime.menu_state.close();
+
+        let hud = super::RenderHudInput {
+            performance: Some(PerformanceHudSnapshot {
+                fps: 60.0,
+                speed_percent: 100.0,
+                frame_time_ms: 16.7,
+                emulation_time_ms: 10.0,
+                render_time_ms: 2.0,
+                pacing_time_ms: 4.0,
+                audio_queue_ms: Some(12.0),
+                rewind: RewindHudSnapshot::default(),
+            }),
+            rewind_indicator: false,
+            fast_forward_indicator: false,
+        };
+        video_options.show_performance_hud = true;
+        let mut hud_state = super::FrameBlendingState::default();
+        let mut discarded_hud_first_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut discarded_hud_first_frame,
+            single_panel_render_input(&previous_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut hud_state),
+                ..super::RenderPresentationInput::default()
+            },
+        )
+        .expect("HUD blend history frame should render");
+        let mut blended_hud_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut blended_hud_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: Some(&mut hud_state),
+                menu_state: None,
+                hud,
+            },
+        )
+        .expect("blended HUD frame should render");
+        let mut raw_hud_frame = vec![0_u8; frame_len];
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut raw_hud_frame,
+            single_panel_render_input(&current_panel, &layer_sources),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud,
+            },
+        )
+        .expect("raw HUD frame should render");
+        let hud_panel_pixel = 5 * super::FRAMEBUFFER_PITCH_BYTES + 5 * 3;
+        assert_eq!(
+            &blended_hud_frame[hud_panel_pixel..hud_panel_pixel + 3],
+            &raw_hud_frame[hud_panel_pixel..hud_panel_pixel + 3],
+            "opaque HUD panel pixels should be drawn after the frame blend"
+        );
+        assert_ne!(
+            &raw_hud_frame[hud_panel_pixel..hud_panel_pixel + 3],
+            &raw_base_frame[hud_panel_pixel..hud_panel_pixel + 3],
+            "the selected sample should be inside the HUD overlay"
+        );
     }
 
     #[test]
@@ -22788,8 +23298,7 @@ mod tests {
             &mut baseline_frame,
             render_input(),
             &video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("baseline frame should render");
         super::render_frame(
@@ -22798,11 +23307,14 @@ mod tests {
             &mut indicator_frame,
             render_input(),
             &video_options,
-            None,
-            super::RenderHudInput {
-                performance: None,
-                rewind_indicator: true,
-                fast_forward_indicator: false,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud: super::RenderHudInput {
+                    performance: None,
+                    rewind_indicator: true,
+                    fast_forward_indicator: false,
+                },
             },
         )
         .expect("rewind indicator frame should render");
@@ -22818,11 +23330,14 @@ mod tests {
             &mut fast_forward_indicator_frame,
             render_input(),
             &video_options,
-            None,
-            super::RenderHudInput {
-                performance: None,
-                rewind_indicator: false,
-                fast_forward_indicator: true,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud: super::RenderHudInput {
+                    performance: None,
+                    rewind_indicator: false,
+                    fast_forward_indicator: true,
+                },
             },
         )
         .expect("fast-forward indicator frame should render");
@@ -23166,8 +23681,7 @@ mod tests {
                 ],
             },
             &harness.runtime.video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("linked frame should render");
 
@@ -23269,8 +23783,7 @@ mod tests {
                 ],
             },
             &harness.runtime.video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("DMG-07 grid frame should render");
 
@@ -23342,8 +23855,7 @@ mod tests {
                 ],
             },
             &video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("layer-masked frame should render");
 
@@ -23432,8 +23944,7 @@ mod tests {
                 ],
             },
             &video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("OBJ-only frame should render with a dynamic backdrop");
 
@@ -23488,8 +23999,7 @@ mod tests {
             &mut rgb_frame,
             framebuffer,
             &video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("nearest-neighbor frame should render");
         assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Nearest);
@@ -23501,8 +24011,7 @@ mod tests {
             &mut rgb_frame,
             framebuffer,
             &video_options,
-            None,
-            super::RenderHudInput::default(),
+            super::RenderPresentationInput::default(),
         )
         .expect("filtered frame should render");
         assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Linear);
@@ -24597,6 +25106,48 @@ mod tests {
                 .is_none()
         );
         assert!(harness.runtime.video_options.presentation_filter);
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH,
+            height: super::FRAMEBUFFER_HEIGHT,
+        });
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![1, 2, 3];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleFrameBlending)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.video_options.frame_blending,
+            DesktopFrameBlendingMode::On
+        );
+        assert_eq!(
+            harness.settings_store.base_config().video.frame_blending,
+            DesktopFrameBlendingMode::On
+        );
+        assert_eq!(
+            harness.runtime.frame_blending_state.mode,
+            DesktopFrameBlendingMode::Off
+        );
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleFrameBlending)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.video_options.frame_blending,
+            DesktopFrameBlendingMode::Off
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleDisplayPalette)
@@ -24944,6 +25495,14 @@ mod tests {
             super::DesktopAudioRecordingMode::Disabled
         ));
         assert_eq!(harness.runtime.audio_volume_percent, 100);
+        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH,
+            height: super::FRAMEBUFFER_HEIGHT,
+        });
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![1, 2, 3];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
         assert!(
             harness
                 .execute_action(super::MenuAction::ResetVideoDefaults)
@@ -24959,6 +25518,17 @@ mod tests {
         assert_eq!(
             harness.runtime.video_options.display_palette,
             DesktopDisplayPalette::Pocket
+        );
+        assert_eq!(
+            harness.runtime.video_options.frame_blending,
+            DesktopFrameBlendingMode::Off
+        );
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
         );
         assert!(
             harness
