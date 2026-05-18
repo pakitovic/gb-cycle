@@ -35,6 +35,22 @@ impl NoMbcCartridge {
             .unwrap_or(RAM_ABSENT_READ_VALUE)
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        if address >= 0x8000 {
+            return None;
+        }
+
+        let address = address as usize;
+        Some(CartridgeMappedRomWindow::rom(
+            address / 0x4000,
+            0x4000,
+            address % 0x4000,
+        ))
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, _address: u16, _value: u8) {}
 
     pub(in crate::cartridge) fn read_ram(&self, address: u16) -> u8 {

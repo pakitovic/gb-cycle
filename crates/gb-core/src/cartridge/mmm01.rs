@@ -59,6 +59,29 @@ impl Mmm01Cartridge {
             .unwrap_or(RAM_ABSENT_READ_VALUE)
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        if address >= 0x8000 {
+            return None;
+        }
+
+        let bank = if !self.mapped {
+            self.unmapped_rom_bank(address)
+        } else if address < 0x4000 {
+            self.effective_low_rom_bank()
+        } else {
+            self.effective_high_rom_bank()
+        };
+        let bank_offset = if address < 0x4000 {
+            address as usize
+        } else {
+            address as usize - 0x4000
+        };
+        Some(CartridgeMappedRomWindow::rom(bank, 0x4000, bank_offset))
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x1FFF => {

@@ -147,6 +147,40 @@ pub enum CartridgeSlotState {
     PocketCamera,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum CartridgeMappedRomSource {
+    Rom,
+    Flash,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct CartridgeMappedRomWindow {
+    pub source: CartridgeMappedRomSource,
+    pub bank: usize,
+    pub bank_size: usize,
+    pub bank_offset: usize,
+}
+
+impl CartridgeMappedRomWindow {
+    const fn rom(bank: usize, bank_size: usize, bank_offset: usize) -> Self {
+        Self {
+            source: CartridgeMappedRomSource::Rom,
+            bank,
+            bank_size,
+            bank_offset,
+        }
+    }
+
+    const fn flash(bank: usize, bank_size: usize, bank_offset: usize) -> Self {
+        Self {
+            source: CartridgeMappedRomSource::Flash,
+            bank,
+            bank_size,
+            bank_offset,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CgbFlag {
     None,

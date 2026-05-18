@@ -1,3 +1,26 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CgbInfraredStatus {
+    pub rp_latch: u8,
+    pub emitter_on: bool,
+    pub read_enabled: bool,
+    pub external_optical_input: bool,
+    pub optical_input_active: bool,
+    pub sensor_counter: u32,
+    pub sensor_warmed: bool,
+    pub effective_signal_detected: bool,
+    pub signal_visible_to_rp: bool,
+}
+
+impl CgbInfraredStatus {
+    pub const fn receive_ready(self) -> bool {
+        self.read_enabled
+            && self.sensor_warmed
+            && !self.emitter_on
+            && !self.optical_input_active
+            && !self.effective_signal_detected
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CgbInfraredState {
     rp_latch: u8,
@@ -49,6 +72,20 @@ impl CgbInfraredState {
 
     pub(crate) const fn emitter_on(self) -> bool {
         self.rp_latch & Self::RP_EMITTER_BIT != 0
+    }
+
+    pub(crate) const fn status(self) -> CgbInfraredStatus {
+        CgbInfraredStatus {
+            rp_latch: self.rp_latch,
+            emitter_on: self.emitter_on(),
+            read_enabled: self.read_enabled(),
+            external_optical_input: self.external_optical_input,
+            optical_input_active: self.optical_input_active(),
+            sensor_counter: self.sensor_counter,
+            sensor_warmed: self.sensor_counter >= Self::IR_WARMUP_T_CYCLES,
+            effective_signal_detected: self.effective_signal_detected,
+            signal_visible_to_rp: self.signal_visible_to_rp(),
+        }
     }
 
     #[cfg(test)]
@@ -220,5 +257,29 @@ mod tests {
         );
 
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x00);
+    }
+
+    #[test]
+    fn cgb_infrared_status_reports_receive_ready_and_visible_signal_state() {
+        let mut state = CgbInfraredState::default();
+        state.write_rp(0xC0);
+        tick(&mut state, CgbInfraredState::IR_WARMUP_T_CYCLES);
+
+        let ready = state.status();
+        assert!(ready.read_enabled);
+        assert!(ready.sensor_warmed);
+        assert!(ready.receive_ready());
+        assert!(!ready.effective_signal_detected);
+        assert!(!ready.signal_visible_to_rp);
+
+        state.set_external_optical_input(true);
+        state.tick_t_cycle();
+
+        let receiving = state.status();
+        assert!(receiving.optical_input_active);
+        assert!(receiving.external_optical_input);
+        assert!(receiving.effective_signal_detected);
+        assert!(receiving.signal_visible_to_rp);
+        assert!(!receiving.receive_ready());
     }
 }

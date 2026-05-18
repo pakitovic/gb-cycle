@@ -50,6 +50,36 @@ fn mbc5_reaches_bank_0x1ff_without_applying_a_zero_to_one_translation() {
 }
 
 #[test]
+fn cartridge_slot_reports_mbc5_mapped_rom_window_for_debug_trace_context() {
+    let rom = build_banked_mbc5_rom(0x1B, 0x05, 0x04);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
+    let (mut cartridge, _) = report.into_parts();
+
+    cartridge.write_rom(0x2000, 0x12);
+
+    assert_eq!(
+        cartridge.mapped_rom_window(0x1234),
+        Some(CartridgeMappedRomWindow {
+            source: CartridgeMappedRomSource::Rom,
+            bank: 0,
+            bank_size: 0x4000,
+            bank_offset: 0x1234,
+        })
+    );
+    assert_eq!(
+        cartridge.mapped_rom_window(0x5385),
+        Some(CartridgeMappedRomWindow {
+            source: CartridgeMappedRomSource::Rom,
+            bank: 0x12,
+            bank_size: 0x4000,
+            bank_offset: 0x1385,
+        })
+    );
+    assert_eq!(cartridge.mapped_rom_window(0x8000), None);
+}
+
+#[test]
 fn mbc5_rumble_control_keeps_motor_state_distinct_from_effective_ram_bank() {
     let rom = build_banked_mbc5_rom(0x1E, 0x03, 0x03);
     let report =

@@ -67,6 +67,18 @@ impl Mbc6Cartridge {
         }
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        match address {
+            0x0000..=0x3FFF => Some(CartridgeMappedRomWindow::rom(0, 0x4000, address as usize)),
+            0x4000..=0x5FFF => Some(self.mapped_high_window(Mbc6Window::A, address - 0x4000)),
+            0x6000..=0x7FFF => Some(self.mapped_high_window(Mbc6Window::B, address - 0x6000)),
+            _ => None,
+        }
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x03FF => self.ram_enabled = value & 0x0F == 0x0A,
@@ -217,6 +229,26 @@ impl Mbc6Cartridge {
                 self.read_flash(offset)
             }
             Mbc6WindowSelect::Flash => RAM_ABSENT_READ_VALUE,
+        }
+    }
+
+    fn mapped_high_window(
+        &self,
+        window: Mbc6Window,
+        window_offset: u16,
+    ) -> CartridgeMappedRomWindow {
+        let window_offset = window_offset as usize;
+        match self.window_select(window) {
+            Mbc6WindowSelect::Rom => CartridgeMappedRomWindow::rom(
+                self.effective_rom_flash_bank(window, self.rom_flash_bank_count()),
+                MBC6_ROM_FLASH_BANK_BYTES,
+                window_offset,
+            ),
+            Mbc6WindowSelect::Flash => CartridgeMappedRomWindow::flash(
+                self.effective_rom_flash_bank(window, MBC6_FLASH_BANK_COUNT),
+                MBC6_ROM_FLASH_BANK_BYTES,
+                window_offset,
+            ),
         }
     }
 

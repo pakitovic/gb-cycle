@@ -34,23 +34,24 @@ pub use boot::{
 pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
     BusAddressInfo, BusArbitrationState, BusBlockReason, BusDomain, BusMaster, BusRegion,
-    BusRegionOwner, BusRequester, BusSnapshot, BusStatus, DmaBusState, DmaCpuAccessPolicy,
-    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
-    IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
+    BusRegionOwner, BusRequester, BusSnapshot, BusStatus, CgbInfraredStatus,
+    DebugWramAddressSample, DmaBusState, DmaCpuAccessPolicy, DmaMemoryRegionImpact,
+    IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation, IoRegisterInfo,
+    IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
     UnusableAreaWriteProfile,
 };
 pub use cartridge::{
     CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
     CartridgeExternalAccessInfo, CartridgeExternalAvailability, CartridgeExternalReadBehavior,
     CartridgeExternalTarget, CartridgeExternalWriteBehavior, CartridgeHeader,
-    CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport,
-    CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeRomLayout, CartridgeRomLayoutSource, CartridgeRtcRegister,
-    CartridgeSelection, CartridgeSlot, CartridgeSlotState, CartridgeSnapshot, CgbFlag,
-    Huc3RtcPersistentState, Mbc3RtcPersistentState, Mbc6Window, Mbc7AccelerometerAxis,
-    Mbc7AccelerometerByte, Mbc7AccelerometerError, Mbc7AccelerometerInput, PersistentCartState,
-    PocketCameraFrame, PocketCameraFrameError, RamSizeInfo, RomSizeInfo, SgbFlag,
-    SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport, CartridgeMappedRomSource,
+    CartridgeMappedRomWindow, CartridgePersistenceMetadata, CartridgePersistenceProfile,
+    CartridgePersistentStateError, CartridgeRamPayloadKind, CartridgeRomLayout,
+    CartridgeRomLayoutSource, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
+    CartridgeSlotState, CartridgeSnapshot, CgbFlag, Huc3RtcPersistentState, Mbc3RtcPersistentState,
+    Mbc6Window, Mbc7AccelerometerAxis, Mbc7AccelerometerByte, Mbc7AccelerometerError,
+    Mbc7AccelerometerInput, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
+    RamSizeInfo, RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
@@ -80,8 +81,9 @@ pub use interrupts::{
 };
 pub use joypad::{Joypad, JoypadButton, JoypadSnapshot, JoypadStartupState, JoypadStatus};
 pub use link::{
-    Dmg07Participant, Dmg07Port, LinkedMachines, LinkedMachinesError, LinkedStepResult,
-    LinkedTopologyKind,
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port, LinkedMachines,
+    LinkedMachinesError, LinkedStepResult, LinkedTopologyKind,
+    MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
 };
 pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,

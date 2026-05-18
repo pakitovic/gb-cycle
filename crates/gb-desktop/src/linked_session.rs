@@ -2,8 +2,10 @@ use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
 #[cfg(test)]
 use gb_core::LinkedTopologyKind;
 use gb_core::{
-    ConsoleModel, Dmg07Participant, Dmg07Port, LinkedMachines, LinkedMachinesError, Machine,
-    MachineConfig, MachineStepObserver, StartupMode, TraceSummaryBuffer,
+    ConsoleModel, DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port,
+    LinkedMachines, LinkedMachinesError, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineStepObserver,
+    StartupMode, TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -51,10 +53,24 @@ impl DesktopEmulationSession {
         primary_machine: Machine<TraceSummaryBuffer>,
         secondary_machine: Machine<TraceSummaryBuffer>,
     ) -> Result<Self, String> {
+        Self::new_linked_cgb_infrared_two_player_with_optical_delay(
+            primary_machine,
+            secondary_machine,
+            DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+        )
+    }
+
+    pub fn new_linked_cgb_infrared_two_player_with_optical_delay(
+        primary_machine: Machine<TraceSummaryBuffer>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<Self, String> {
         let mut linked = LinkedMachines::new(vec![primary_machine, secondary_machine])
             .map_err(format_linked_machines_error)?;
         linked
-            .attach_cgb_infrared_pair()
+            .attach_cgb_infrared_pair_with_optical_propagation_delay(
+                optical_propagation_delay_t_cycles,
+            )
             .map_err(format_linked_machines_error)?;
         Ok(Self::LinkedCgbInfraredTwoPlayer(Box::new(linked)))
     }
@@ -260,6 +276,19 @@ impl DesktopEmulationSession {
         &mut self,
         secondary_machine: Machine<TraceSummaryBuffer>,
     ) -> Result<(), String> {
+        self.attach_secondary_cgb_infrared_with_optical_delay(
+            secondary_machine,
+            DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+        )
+    }
+
+    pub fn attach_secondary_cgb_infrared_with_optical_delay(
+        &mut self,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<(), String> {
+        validate_cgb_ir_optical_propagation_delay_t_cycles(optical_propagation_delay_t_cycles)?;
+
         let expected = match self {
             Self::Single(machine) => machine.next_t_cycle(),
             Self::LinkedDmg04TwoPlayer(_) => {
@@ -298,9 +327,18 @@ impl DesktopEmulationSession {
             unreachable!("linked desktop session should have been rejected before replacement");
         };
 
-        let next_session =
+        let next_session = if optical_propagation_delay_t_cycles
+            == DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
+        {
             Self::new_linked_cgb_infrared_two_player(*primary_machine, secondary_machine)
-                .expect("validated desktop CGB IR session should build successfully");
+        } else {
+            Self::new_linked_cgb_infrared_two_player_with_optical_delay(
+                *primary_machine,
+                secondary_machine,
+                optical_propagation_delay_t_cycles,
+            )
+        }
+        .expect("validated desktop CGB IR session should build successfully");
         *self = next_session;
         Ok(())
     }
@@ -426,6 +464,13 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count } => {
             format!("CGB infrared linked sessions require exactly two machines, found {count}")
         }
+        LinkedMachinesError::InvalidCgbInfraredOpticalPropagationDelay {
+            requested_t_cycles,
+            min_t_cycles,
+            max_t_cycles,
+        } => format!(
+            "CGB infrared optical propagation delay must be between {min_t_cycles} and {max_t_cycles} T-cycles, got {requested_t_cycles}"
+        ),
         LinkedMachinesError::MissingDmg07PlayerOne => {
             "DMG-07 linked sessions require adapter port P1".to_string()
         }
@@ -441,6 +486,25 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         } => format!(
             "DMG-07 linked session references machine index {machine_index}, but only {machine_count} machines exist"
         ),
+    }
+}
+
+fn validate_cgb_ir_optical_propagation_delay_t_cycles(
+    requested_t_cycles: usize,
+) -> Result<(), String> {
+    if (MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
+        ..=MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES)
+        .contains(&requested_t_cycles)
+    {
+        Ok(())
+    } else {
+        Err(format_linked_machines_error(
+            LinkedMachinesError::InvalidCgbInfraredOpticalPropagationDelay {
+                requested_t_cycles,
+                min_t_cycles: MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+                max_t_cycles: MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+            },
+        ))
     }
 }
 
@@ -702,6 +766,16 @@ mod tests {
                 LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count: 3 }
             ),
             "CGB infrared linked sessions require exactly two machines, found 3"
+        );
+        assert_eq!(
+            format_linked_machines_error(
+                LinkedMachinesError::InvalidCgbInfraredOpticalPropagationDelay {
+                    requested_t_cycles: 0,
+                    min_t_cycles: 1,
+                    max_t_cycles: 256,
+                }
+            ),
+            "CGB infrared optical propagation delay must be between 1 and 256 T-cycles, got 0"
         );
     }
 }

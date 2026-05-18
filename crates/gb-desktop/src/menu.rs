@@ -44,6 +44,9 @@ const FAST_FORWARD_INDICATOR_TEXT: &str = "FF >>";
 const REWIND_INDICATOR_MARGIN: usize = 4;
 const REWIND_INDICATOR_PADDING_X: usize = 4;
 const REWIND_INDICATOR_PADDING_Y: usize = 4;
+const CGB_IR_INDICATOR_MARGIN: usize = 4;
+const CGB_IR_INDICATOR_PADDING_X: usize = 4;
+const CGB_IR_INDICATOR_PADDING_Y: usize = 4;
 
 const OVERLAY_DIM_FACTOR_NUMERATOR: u16 = 1;
 const OVERLAY_DIM_FACTOR_DENOMINATOR: u16 = 3;
@@ -154,6 +157,13 @@ const FOUR_PLAYER_ADAPTER_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FourPlayerAdapterTwoPlayers,
     MenuItem::FourPlayerAdapterThreePlayers,
     MenuItem::FourPlayerAdapterFourPlayers,
+    MenuItem::Return,
+];
+const CGB_INFRARED_MENU_ITEMS: [MenuItem; 5] = [
+    MenuItem::CgbInfraredNone,
+    MenuItem::CgbInfraredSameGame,
+    MenuItem::CgbInfraredSelectGame,
+    MenuItem::CgbInfraredHelper,
     MenuItem::Return,
 ];
 const KEYBOARD_MENU_ITEMS: [MenuItem; 9] = [
@@ -330,7 +340,10 @@ pub enum MenuAction {
     SetGameLinkSameGame,
     SelectGameLinkRom,
     SetFourPlayerAdapter(DesktopDmg07PlayerCount),
-    OpenCgbInfrared,
+    SetCgbInfraredNone,
+    SetCgbInfraredSameGame,
+    SelectCgbInfraredSecondary,
+    ToggleCgbInfraredHelper,
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
@@ -528,6 +541,21 @@ pub struct PerformanceHudSnapshot {
     pub rewind: RewindHudSnapshot,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CgbInfraredParticipantHudSnapshot {
+    pub emitter_on: bool,
+    pub read_enabled: bool,
+    pub optical_input_active: bool,
+    pub sensor_warmed: bool,
+    pub effective_signal_detected: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CgbInfraredHudSnapshot {
+    pub p1: CgbInfraredParticipantHudSnapshot,
+    pub p2: CgbInfraredParticipantHudSnapshot,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MenuPresentation {
     pub rom_loaded: bool,
@@ -538,6 +566,8 @@ pub struct MenuPresentation {
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
     pub cgb_infrared_link_active: bool,
+    pub cgb_infrared_same_game_active: bool,
+    pub show_cgb_infrared_helper: bool,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_kind: BootRomKind,
     pub boot_rom_verification: BootRomVerificationMode,
@@ -622,7 +652,13 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => self.recent_rom_count >= 11,
             MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
-            MenuItem::CgbInfrared => self.console_model == DesktopConsoleModel::GameBoyColor,
+            MenuItem::CgbInfrared
+            | MenuItem::CgbInfraredNone
+            | MenuItem::CgbInfraredSameGame
+            | MenuItem::CgbInfraredSelectGame
+            | MenuItem::CgbInfraredHelper => {
+                self.console_model == DesktopConsoleModel::GameBoyColor
+            }
             _ => true,
         }
     }
@@ -670,6 +706,14 @@ impl MenuPresentation {
                 self.rom_loaded
                     && self.console_model == DesktopConsoleModel::GameBoyColor
                     && !self.any_dialog_pending
+            }
+            MenuItem::CgbInfraredSameGame | MenuItem::CgbInfraredSelectGame => {
+                self.rom_loaded
+                    && self.console_model == DesktopConsoleModel::GameBoyColor
+                    && !self.any_dialog_pending
+            }
+            MenuItem::CgbInfraredNone | MenuItem::CgbInfraredHelper => {
+                self.console_model == DesktopConsoleModel::GameBoyColor
             }
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
             MenuItem::AudioRecord => self.rom_loaded,
@@ -838,10 +882,40 @@ impl MenuPresentation {
                 DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P ADAPTER".to_string(),
             },
             MenuItem::CgbInfrared => {
-                if self.cgb_infrared_link_active {
-                    "CGB IR ON".to_string()
+                if self.cgb_infrared_link_active && self.cgb_infrared_same_game_active {
+                    "IR SAME GAME".to_string()
+                } else if self.cgb_infrared_link_active {
+                    "IR SELECT GAME".to_string()
                 } else {
-                    "CGB IR OFF".to_string()
+                    "IR NONE".to_string()
+                }
+            }
+            MenuItem::CgbInfraredNone => {
+                if self.cgb_infrared_link_active {
+                    "NONE".to_string()
+                } else {
+                    "NONE ON".to_string()
+                }
+            }
+            MenuItem::CgbInfraredSameGame => {
+                if self.cgb_infrared_link_active && self.cgb_infrared_same_game_active {
+                    "SAME GAME ON".to_string()
+                } else {
+                    "SAME GAME".to_string()
+                }
+            }
+            MenuItem::CgbInfraredSelectGame => {
+                if self.cgb_infrared_link_active && !self.cgb_infrared_same_game_active {
+                    "SELECT GAME ON".to_string()
+                } else {
+                    "SELECT GAME".to_string()
+                }
+            }
+            MenuItem::CgbInfraredHelper => {
+                if self.show_cgb_infrared_helper {
+                    "HELPER ON".to_string()
+                } else {
+                    "HELPER OFF".to_string()
                 }
             }
             MenuItem::KeyboardMenu => "KEYBOARD".to_string(),
@@ -1347,6 +1421,7 @@ enum MenuScreen {
     ExtPort,
     GameLink,
     FourPlayerAdapter,
+    CgbInfrared,
     Gamepad,
     GamepadMenuControls,
     Keyboard,
@@ -1376,6 +1451,7 @@ impl MenuScreen {
             Self::ExtPort => "EXT PORT",
             Self::GameLink => "GAME LINK",
             Self::FourPlayerAdapter => "4P ADAPTER",
+            Self::CgbInfrared => "IR",
             Self::Gamepad => "GAMEPAD",
             Self::GamepadMenuControls => "PAD MENU",
             Self::Keyboard => "KEYBOARD",
@@ -1420,6 +1496,10 @@ enum MenuItem {
     InputMenu,
     ExtPortMenu,
     CgbInfrared,
+    CgbInfraredNone,
+    CgbInfraredSameGame,
+    CgbInfraredSelectGame,
+    CgbInfraredHelper,
     KeyboardMenu,
     KeyboardMenuControls,
     HotkeysMenu,
@@ -1732,6 +1812,53 @@ pub fn render_fast_forward_indicator(
         frame_height,
         FAST_FORWARD_INDICATOR_TEXT,
     );
+}
+
+pub fn render_cgb_ir_indicator(
+    rgb_frame: &mut [u8],
+    frame_width: usize,
+    frame_height: usize,
+    snapshot: CgbInfraredHudSnapshot,
+) {
+    let lines = cgb_ir_indicator_lines(snapshot);
+    let text_width = lines
+        .iter()
+        .map(|line| text_width(line, 1))
+        .max()
+        .unwrap_or(0);
+    let width = text_width + CGB_IR_INDICATOR_PADDING_X * 2;
+    let height = lines.len() * GLYPH_HEIGHT
+        + lines.len().saturating_sub(1) * (HUD_LINE_HEIGHT - GLYPH_HEIGHT)
+        + CGB_IR_INDICATOR_PADDING_Y * 2;
+    let x = frame_width
+        .saturating_sub(width)
+        .saturating_sub(CGB_IR_INDICATOR_MARGIN);
+    let y = CGB_IR_INDICATOR_MARGIN.min(frame_height.saturating_sub(height));
+    let mut canvas = OverlayCanvas::new(rgb_frame, frame_width, frame_height);
+
+    canvas.fill_rect(x, y, width, height, HUD_PANEL_COLOR);
+    canvas.draw_rect(x, y, width, height, PANEL_BORDER_COLOR);
+    canvas.draw_rect(
+        x + 1,
+        y + 1,
+        width.saturating_sub(2),
+        height.saturating_sub(2),
+        PANEL_INNER_BORDER_COLOR,
+    );
+    for (line_index, line) in lines.into_iter().enumerate() {
+        let color = if line_index == 0 && cgb_ir_indicator_ready(snapshot) {
+            SELECTION_COLOR
+        } else {
+            TEXT_COLOR
+        };
+        canvas.draw_text(
+            x + CGB_IR_INDICATOR_PADDING_X,
+            y + CGB_IR_INDICATOR_PADDING_Y + line_index * HUD_LINE_HEIGHT,
+            &line,
+            color,
+            1,
+        );
+    }
 }
 
 fn render_corner_indicator(
@@ -2109,11 +2236,18 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::ExtPort, presentation);
                 None
             }
-            MenuItem::CgbInfrared => Some(MenuAction::OpenCgbInfrared),
             MenuItem::ExternalPortGameLink => {
                 self.push_screen(MenuScreen::GameLink, presentation);
                 None
             }
+            MenuItem::CgbInfrared => {
+                self.push_screen(MenuScreen::CgbInfrared, presentation);
+                None
+            }
+            MenuItem::CgbInfraredNone => Some(MenuAction::SetCgbInfraredNone),
+            MenuItem::CgbInfraredSameGame => Some(MenuAction::SetCgbInfraredSameGame),
+            MenuItem::CgbInfraredSelectGame => Some(MenuAction::SelectCgbInfraredSecondary),
+            MenuItem::CgbInfraredHelper => Some(MenuAction::ToggleCgbInfraredHelper),
             MenuItem::ExternalPortFourPlayerAdapter => {
                 self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
                 None
@@ -2706,6 +2840,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::ExtPort => &EXT_PORT_MENU_ITEMS,
         MenuScreen::GameLink => &GAME_LINK_MENU_ITEMS,
         MenuScreen::FourPlayerAdapter => &FOUR_PLAYER_ADAPTER_MENU_ITEMS,
+        MenuScreen::CgbInfrared => &CGB_INFRARED_MENU_ITEMS,
         MenuScreen::Gamepad => &GAMEPAD_MENU_ITEMS,
         MenuScreen::GamepadMenuControls => &GAMEPAD_MENU_CONTROL_ITEMS,
         MenuScreen::Keyboard => &KEYBOARD_MENU_ITEMS,
@@ -2972,6 +3107,65 @@ fn performance_hud_lines(snapshot: PerformanceHudSnapshot) -> [String; 6] {
     ]
 }
 
+fn cgb_ir_indicator_lines(snapshot: CgbInfraredHudSnapshot) -> [String; 2] {
+    [
+        cgb_ir_indicator_title(snapshot).to_string(),
+        format!(
+            "P1 {} P2 {}",
+            cgb_ir_participant_label(snapshot.p1),
+            cgb_ir_participant_label(snapshot.p2)
+        ),
+    ]
+}
+
+fn cgb_ir_indicator_title(snapshot: CgbInfraredHudSnapshot) -> &'static str {
+    if cgb_ir_indicator_active(snapshot) {
+        "IR ACTIVE"
+    } else if cgb_ir_indicator_ready(snapshot) {
+        "IR READY"
+    } else if snapshot.p1.read_enabled || snapshot.p2.read_enabled {
+        "IR WAIT"
+    } else {
+        "IR LINK"
+    }
+}
+
+fn cgb_ir_indicator_active(snapshot: CgbInfraredHudSnapshot) -> bool {
+    cgb_ir_participant_active(snapshot.p1) || cgb_ir_participant_active(snapshot.p2)
+}
+
+fn cgb_ir_indicator_ready(snapshot: CgbInfraredHudSnapshot) -> bool {
+    cgb_ir_participant_ready(snapshot.p1) && cgb_ir_participant_ready(snapshot.p2)
+}
+
+fn cgb_ir_participant_label(snapshot: CgbInfraredParticipantHudSnapshot) -> &'static str {
+    if snapshot.emitter_on {
+        "TX"
+    } else if snapshot.effective_signal_detected {
+        "SIG"
+    } else if snapshot.optical_input_active {
+        "LIT"
+    } else if cgb_ir_participant_ready(snapshot) {
+        "RDY"
+    } else if snapshot.read_enabled {
+        "RX"
+    } else {
+        "OFF"
+    }
+}
+
+fn cgb_ir_participant_active(snapshot: CgbInfraredParticipantHudSnapshot) -> bool {
+    snapshot.emitter_on || snapshot.optical_input_active || snapshot.effective_signal_detected
+}
+
+fn cgb_ir_participant_ready(snapshot: CgbInfraredParticipantHudSnapshot) -> bool {
+    snapshot.read_enabled
+        && snapshot.sensor_warmed
+        && !snapshot.emitter_on
+        && !snapshot.optical_input_active
+        && !snapshot.effective_signal_detected
+}
+
 fn hud_number(value: f64) -> u32 {
     value.max(0.0).round() as u32
 }
@@ -3228,7 +3422,8 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel,
+        AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CGB_INFRARED_MENU_ITEMS, CgbInfraredHudSnapshot,
+        CgbInfraredParticipantHudSnapshot, CompactMenuLabel, CompactRecentRomLabel,
         EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAME_LINK_MENU_ITEMS,
         GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget,
         GamepadBindingTarget, GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
@@ -3237,10 +3432,11 @@ mod tests {
         MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS,
         RECENT_ROM_MENU_CAPACITY, REWIND_MENU_ITEMS, ROOT_MENU_ITEMS, RewindHudSnapshot,
         SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
-        desktop_key_label, gamepad_binding_label, glyph_rows, normalized_selected_index,
-        performance_hud_lines, previous_enabled_index, render_fast_forward_indicator,
-        render_performance_hud, render_rewind_indicator, rendered_recent_rom_item_label,
-        scroll_indicator_rows, viewport_start_index, visible_item_at, visible_item_count,
+        cgb_ir_indicator_lines, desktop_key_label, gamepad_binding_label, glyph_rows,
+        normalized_selected_index, performance_hud_lines, previous_enabled_index,
+        render_cgb_ir_indicator, render_fast_forward_indicator, render_performance_hud,
+        render_rewind_indicator, rendered_recent_rom_item_label, scroll_indicator_rows,
+        viewport_start_index, visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{BootRomKind, ExecutionMode, StartupMode};
@@ -3263,6 +3459,8 @@ mod tests {
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
             cgb_infrared_link_active: false,
+            cgb_infrared_same_game_active: false,
+            show_cgb_infrared_helper: false,
             boot_rom_uses_default_path: true,
             boot_rom_kind: BootRomKind::Dmg,
             boot_rom_verification: BootRomVerificationMode::Strict,
@@ -4444,6 +4642,12 @@ mod tests {
         assert_eq!(GAME_LINK_MENU_ITEMS[1], MenuItem::GameLinkSelectGame);
         assert_eq!(GAME_LINK_MENU_ITEMS[2], MenuItem::Return);
 
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[0], MenuItem::CgbInfraredNone);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[1], MenuItem::CgbInfraredSameGame);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[2], MenuItem::CgbInfraredSelectGame);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[3], MenuItem::CgbInfraredHelper);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[4], MenuItem::Return);
+
         assert_eq!(KEYBOARD_MENU_ITEMS[0], MenuItem::KeyboardUp);
         assert_eq!(KEYBOARD_MENU_ITEMS[8], MenuItem::Return);
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[0], MenuItem::KeyboardMenuUp);
@@ -4857,19 +5061,79 @@ mod tests {
             "EXT 4P ADAPTER"
         );
 
-        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR OFF");
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "IR NONE");
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredNone),
+            "NONE ON"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredSameGame),
+            "SAME GAME"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredSelectGame),
+            "SELECT GAME"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredHelper),
+            "HELPER OFF"
+        );
         assert!(!presentation.item_visible(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
+        let cgb_no_rom_presentation = MenuPresentation {
+            rom_loaded: false,
+            console_model: DesktopConsoleModel::GameBoyColor,
+            ..presentation
+        };
+        assert_eq!(
+            cgb_no_rom_presentation.item_label(MenuItem::CgbInfrared),
+            "IR NONE"
+        );
+        assert!(cgb_no_rom_presentation.item_visible(MenuItem::CgbInfrared));
+        assert!(!cgb_no_rom_presentation.item_enabled(MenuItem::CgbInfrared));
         presentation.console_model = DesktopConsoleModel::GameBoyColor;
         assert!(presentation.item_visible(MenuItem::CgbInfrared));
         assert!(presentation.item_enabled(MenuItem::CgbInfrared));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredNone));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredSameGame));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredSelectGame));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredHelper));
         presentation.any_dialog_pending = true;
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredSameGame));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredSelectGame));
         presentation.any_dialog_pending = false;
+        assert!(presentation.item_enabled(MenuItem::CgbInfraredHelper));
+        presentation.show_cgb_infrared_helper = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredHelper),
+            "HELPER ON"
+        );
+        presentation.show_cgb_infrared_helper = false;
         presentation.cgb_infrared_link_active = true;
-        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR ON");
-        presentation.cgb_infrared_link_active = false;
-        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR OFF");
+        presentation.cgb_infrared_same_game_active = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfrared),
+            "IR SAME GAME"
+        );
+        assert_eq!(presentation.item_label(MenuItem::CgbInfraredNone), "NONE");
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredSameGame),
+            "SAME GAME ON"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredSelectGame),
+            "SELECT GAME"
+        );
+        presentation.cgb_infrared_same_game_active = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfrared),
+            "IR SELECT GAME"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredSelectGame),
+            "SELECT GAME ON"
+        );
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(
@@ -5217,6 +5481,7 @@ mod tests {
             MenuScreen::FourPlayerAdapter.title(presentation),
             "4P ADAPTER"
         );
+        assert_eq!(MenuScreen::CgbInfrared.title(presentation), "IR");
         assert_eq!(MenuScreen::Gamepad.title(presentation), "GAMEPAD");
         assert_eq!(
             MenuScreen::GamepadMenuControls.title(presentation),
@@ -5296,6 +5561,28 @@ mod tests {
         assert_eq!(
             menu.current_screen_state().screen,
             MenuScreen::FourPlayerAdapter
+        );
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfrared, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::CgbInfrared);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredNone, presentation),
+            Some(MenuAction::SetCgbInfraredNone)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredSameGame, presentation),
+            Some(MenuAction::SetCgbInfraredSameGame)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredSelectGame, presentation),
+            Some(MenuAction::SelectCgbInfraredSecondary)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredHelper, presentation),
+            Some(MenuAction::ToggleCgbInfraredHelper)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::FourPlayerAdapterTwoPlayers, presentation),
@@ -5593,6 +5880,78 @@ mod tests {
                 0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000,
             ],
             "fast-forward indicator text requires the right chevron glyph"
+        );
+    }
+
+    #[test]
+    fn cgb_ir_indicator_lines_report_one_player_init_readiness() {
+        let ready = CgbInfraredParticipantHudSnapshot {
+            read_enabled: true,
+            sensor_warmed: true,
+            ..CgbInfraredParticipantHudSnapshot::default()
+        };
+
+        assert_eq!(
+            cgb_ir_indicator_lines(CgbInfraredHudSnapshot {
+                p1: ready,
+                p2: ready,
+            }),
+            ["IR READY".to_string(), "P1 RDY P2 RDY".to_string()]
+        );
+    }
+
+    #[test]
+    fn cgb_ir_indicator_lines_prioritize_active_optical_state() {
+        let transmitting = CgbInfraredParticipantHudSnapshot {
+            emitter_on: true,
+            read_enabled: true,
+            sensor_warmed: true,
+            optical_input_active: true,
+            ..CgbInfraredParticipantHudSnapshot::default()
+        };
+        let receiving = CgbInfraredParticipantHudSnapshot {
+            read_enabled: true,
+            sensor_warmed: true,
+            effective_signal_detected: true,
+            optical_input_active: true,
+            ..CgbInfraredParticipantHudSnapshot::default()
+        };
+
+        assert_eq!(
+            cgb_ir_indicator_lines(CgbInfraredHudSnapshot {
+                p1: transmitting,
+                p2: receiving,
+            }),
+            ["IR ACTIVE".to_string(), "P1 TX P2 SIG".to_string()]
+        );
+    }
+
+    #[test]
+    fn cgb_ir_indicator_renderer_draws_into_the_top_right_corner() {
+        let ready = CgbInfraredParticipantHudSnapshot {
+            read_enabled: true,
+            sensor_warmed: true,
+            ..CgbInfraredParticipantHudSnapshot::default()
+        };
+        let mut frame = vec![255_u8; 160 * 144 * 3];
+
+        render_cgb_ir_indicator(
+            &mut frame,
+            160,
+            144,
+            CgbInfraredHudSnapshot {
+                p1: ready,
+                p2: ready,
+            },
+        );
+
+        let top_right_region_start = 4 * 160 * 3 + 80 * 3;
+        let top_right_region_end = 40 * 160 * 3;
+        assert!(
+            frame[top_right_region_start..top_right_region_end]
+                .iter()
+                .any(|component| *component != 255),
+            "CGB IR indicator should modify the top-right framebuffer region"
         );
     }
 }

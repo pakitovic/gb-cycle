@@ -1,4 +1,8 @@
 use super::cgb_ir::CgbInfraredPair;
+use super::cgb_ir::{
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+};
 use super::dmg04::Dmg04Cable;
 use super::dmg07::{Dmg07Adapter, Dmg07Participant, Dmg07Port, validate_dmg07_participants};
 use crate::debugger::{TraceBuffer, TraceSink};
@@ -40,6 +44,11 @@ pub enum LinkedMachinesError {
     UnsupportedMachineCountForCgbInfrared {
         count: usize,
     },
+    InvalidCgbInfraredOpticalPropagationDelay {
+        requested_t_cycles: usize,
+        min_t_cycles: usize,
+        max_t_cycles: usize,
+    },
     MissingDmg07PlayerOne,
     DuplicateDmg07Port {
         port: Dmg07Port,
@@ -68,7 +77,7 @@ enum LinkTopology {
     None,
     Dmg04(Dmg04Cable),
     Dmg07(Dmg07Adapter),
-    CgbInfrared(CgbInfraredPair),
+    CgbInfrared(Box<CgbInfraredPair>),
 }
 
 #[derive(Debug, Clone)]
@@ -181,10 +190,31 @@ impl<S: TraceSink> LinkedMachines<S> {
     }
 
     pub fn attach_cgb_infrared_pair(&mut self) -> Result<(), LinkedMachinesError> {
+        self.attach_cgb_infrared_pair_with_optical_propagation_delay(
+            DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+        )
+    }
+
+    pub fn attach_cgb_infrared_pair_with_optical_propagation_delay(
+        &mut self,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<(), LinkedMachinesError> {
         if self.machines.len() != 2 {
             return Err(LinkedMachinesError::UnsupportedMachineCountForCgbInfrared {
                 count: self.machines.len(),
             });
+        }
+        if !(MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
+            ..=MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES)
+            .contains(&optical_propagation_delay_t_cycles)
+        {
+            return Err(
+                LinkedMachinesError::InvalidCgbInfraredOpticalPropagationDelay {
+                    requested_t_cycles: optical_propagation_delay_t_cycles,
+                    min_t_cycles: MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+                    max_t_cycles: MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+                },
+            );
         }
 
         self.detach_link_topology();
@@ -192,7 +222,18 @@ impl<S: TraceSink> LinkedMachines<S> {
             machine.set_cgb_infrared_external_input(false);
         }
 
-        self.topology = LinkTopology::CgbInfrared(CgbInfraredPair::new(0, 1));
+        let pair = if optical_propagation_delay_t_cycles
+            == DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
+        {
+            CgbInfraredPair::new(0, 1)
+        } else {
+            CgbInfraredPair::with_optical_propagation_delay_t_cycles(
+                0,
+                1,
+                optical_propagation_delay_t_cycles,
+            )
+        };
+        self.topology = LinkTopology::CgbInfrared(Box::new(pair));
         Ok(())
     }
 
@@ -290,6 +331,7 @@ impl LinkTopology {
 
 #[cfg(test)]
 mod tests {
+    use super::super::cgb_ir::DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES;
     use super::*;
     use crate::machine::MachineStepObserver;
     use crate::model::{ConsoleModel, MachineConfig, StartupMode};
@@ -733,6 +775,20 @@ mod tests {
             .machine_mut(0)
             .expect("left machine should exist")
             .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
+        );
+
         linked.advance_t_cycle();
 
         assert_eq!(
@@ -742,6 +798,124 @@ mod tests {
                 .read_bus(0xFF56)
                 & 0x02,
             0x02
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_delays_peer_optical_edges() {
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair()
+            .expect("two-machine CGB IR pair should attach");
+
+        linked
+            .machine_mut(1)
+            .expect("right machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC1);
+
+        for _ in 0..DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x02
+        );
+
+        linked.advance_t_cycle();
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_accepts_custom_optical_delay_for_investigation() {
+        const CUSTOM_DELAY_T_CYCLES: usize = 128;
+
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair_with_optical_propagation_delay(CUSTOM_DELAY_T_CYCLES)
+            .expect("custom-delay CGB IR pair should attach");
+
+        linked
+            .machine_mut(1)
+            .expect("right machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC1);
+
+        for _ in 0..CUSTOM_DELAY_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x02
+        );
+
+        linked.advance_t_cycle();
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_rejects_invalid_custom_optical_delay() {
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+
+        let error = linked
+            .attach_cgb_infrared_pair_with_optical_propagation_delay(0)
+            .expect_err("zero-delay CGB IR pair should be rejected");
+
+        assert_eq!(
+            error,
+            LinkedMachinesError::InvalidCgbInfraredOpticalPropagationDelay {
+                requested_t_cycles: 0,
+                min_t_cycles: MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+                max_t_cycles: MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+            }
         );
     }
 

@@ -85,6 +85,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `read_ram(addr)`
   - `write_ram(addr, value)`
   - header or metadata accessors
+  - non-mutating mapped-ROM-window observability for trace/debug output, including mapper-native bank size so `MBC6` `8 KiB` ROM/flash windows are not mislabeled as ordinary `16 KiB` MBC banks
 - The bus must never "write to ROM contents." A write in `0x0000-0x7FFF` is a command routed to the cartridge device on the shared bus timeline.
 - The same contract should cover cartridges with no RAM, ordinary external RAM, mapper-local RAM such as MBC2 internal RAM, banked RAM, RTC-mapped registers, and later extra cartridge-local hardware without requiring a new bus API.
 - Real boot and post-boot execution should read the entry point, Nintendo logo, and header bytes through the same cartridge device rather than through a boot-only bypass.

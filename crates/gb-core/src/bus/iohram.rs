@@ -10,7 +10,7 @@ use crate::serial::Serial;
 use crate::speed::{CgbSpeedMode, SpeedController};
 use crate::timer::Timer;
 
-use super::infrared::CgbInfraredState;
+use super::infrared::{CgbInfraredState, CgbInfraredStatus};
 use super::{
     AddressRouter, BLOCKED_READ_VALUE, BusAddressInfo, BusRegion, HRAM_LEN, IoRegisterAvailability,
     IoRegisterImplementation, IoRegisterKind, IoRegisterOwner,
@@ -139,6 +139,10 @@ impl IoHramDomain {
 
     pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
         self.infrared.emitter_on()
+    }
+
+    pub(crate) fn cgb_infrared_status(&self) -> CgbInfraredStatus {
+        self.infrared.status()
     }
 
     #[cfg(test)]

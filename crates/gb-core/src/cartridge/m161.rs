@@ -29,6 +29,21 @@ impl M161Cartridge {
             .unwrap_or(RAM_ABSENT_READ_VALUE)
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        if address >= 0x8000 {
+            return None;
+        }
+
+        Some(CartridgeMappedRomWindow::rom(
+            self.selected_bank as usize,
+            M161_BANK_BYTES,
+            address as usize,
+        ))
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, _address: u16, value: u8) {
         if self.bank_switch_locked {
             return;

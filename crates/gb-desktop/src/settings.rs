@@ -171,6 +171,18 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_show_cgb_infrared_helper(
+        &mut self,
+        show_cgb_infrared_helper: bool,
+    ) -> Result<(), String> {
+        if self.settings.video.show_cgb_infrared_helper == show_cgb_infrared_helper {
+            return Ok(());
+        }
+
+        self.settings.video.show_cgb_infrared_helper = show_cgb_infrared_helper;
+        self.save()
+    }
+
     pub fn set_vsync(&mut self, vsync: bool) -> Result<(), String> {
         if self.settings.video.vsync == vsync {
             return Ok(());
@@ -1135,6 +1147,7 @@ show_performance_hud = true
             DesktopDisplayPalette::GameBoy
         );
         assert_eq!(settings.video.frame_blending, DesktopFrameBlendingMode::Off);
+        assert!(!settings.video.show_cgb_infrared_helper);
     }
 
     #[test]
@@ -1273,6 +1286,7 @@ max_memory_mib = 128
         settings.video.show_objects = false;
         settings.video.fullscreen = true;
         settings.video.show_performance_hud = false;
+        settings.video.show_cgb_infrared_helper = true;
         settings.video.vsync = false;
         settings.audio.volume_percent = 75;
         settings.audio.muted = true;
@@ -1342,6 +1356,7 @@ max_memory_mib = 128
         assert!(!config.video.show_objects);
         assert!(config.video.fullscreen);
         assert!(!config.video.show_performance_hud);
+        assert!(config.video.show_cgb_infrared_helper);
         assert!(!config.video.vsync);
         assert_eq!(config.audio.volume_percent, 75);
         assert!(store.audio_muted());
@@ -1556,6 +1571,9 @@ max_memory_mib = 128
         store
             .set_show_performance_hud(true)
             .expect("performance HUD visibility should persist");
+        store
+            .set_show_cgb_infrared_helper(true)
+            .expect("CGB IR helper visibility should persist");
         store.set_vsync(false).expect("vsync toggle should persist");
         store
             .set_rewind_options(RewindOptions {
@@ -1627,6 +1645,7 @@ max_memory_mib = 128
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
         assert!(reloaded.video.show_performance_hud);
+        assert!(reloaded.video.show_cgb_infrared_helper);
         assert!(!reloaded.video.vsync);
         assert_eq!(
             reloaded.rewind,
@@ -1696,6 +1715,9 @@ max_memory_mib = 128
         store
             .set_show_performance_hud(true)
             .expect("HUD visibility should persist");
+        store
+            .set_show_cgb_infrared_helper(true)
+            .expect("CGB IR helper visibility should persist");
         store.set_vsync(false).expect("vsync should persist");
         store
             .set_audio_muted(true)

@@ -3,7 +3,7 @@ mod step;
 
 use crate::apu::Apu;
 use crate::boot::BootController;
-use crate::bus::Bus;
+use crate::bus::{Bus, CgbInfraredStatus, DebugWramAddressSample};
 use crate::cartridge::{
     CartridgePersistentStateError, CartridgeSlot, Mbc7AccelerometerError, Mbc7AccelerometerInput,
     PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -352,6 +352,13 @@ impl<S: TraceSink> Machine<S> {
         self.bus.debug_wram_bytes()
     }
 
+    /// Returns the current CPU-visible WRAM value for a WRAM or echo-RAM address without performing a bus read.
+    ///
+    /// This bypasses CPU bus side effects and must be used only by tooling that needs direct storage state annotated with the active WRAM bank mapping.
+    pub fn debug_wram_address_sample(&self, address: u16) -> Option<DebugWramAddressSample> {
+        self.bus.debug_wram_address_sample(address)
+    }
+
     /// Returns raw HRAM backing bytes for deterministic debug probes.
     ///
     /// This excludes MMIO and IE; those live in subsystem state.
@@ -417,6 +424,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub(crate) fn set_cgb_infrared_external_input(&mut self, active: bool) {
         self.bus.set_cgb_infrared_external_input(active);
+    }
+
+    pub fn cgb_infrared_status(&self) -> Option<CgbInfraredStatus> {
+        self.bus.cgb_infrared_status()
     }
 
     #[cfg(test)]
