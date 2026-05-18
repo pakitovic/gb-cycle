@@ -828,7 +828,7 @@ impl MenuPresentation {
                 if self.cgb_infrared_link_active {
                     "CGB IR ON".to_string()
                 } else {
-                    "CGB IR".to_string()
+                    "CGB IR OFF".to_string()
                 }
             }
             MenuItem::KeyboardMenu => "KEYBOARD".to_string(),
@@ -4781,7 +4781,7 @@ mod tests {
         presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
         assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT 4P");
 
-        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR");
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR OFF");
         assert!(!presentation.item_visible(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
         presentation.console_model = DesktopConsoleModel::GameBoyColor;
@@ -4792,6 +4792,8 @@ mod tests {
         presentation.any_dialog_pending = false;
         presentation.cgb_infrared_link_active = true;
         assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR ON");
+        presentation.cgb_infrared_link_active = false;
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR OFF");
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(
