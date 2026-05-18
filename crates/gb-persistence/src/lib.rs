@@ -22,10 +22,14 @@ const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
 pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 1;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
+pub const SAVE_FILE_EXTENSION_P2: &str = "gbsa2";
+pub const SAVE_FILE_EXTENSION_P3: &str = "gbsa3";
+pub const SAVE_FILE_EXTENSION_P4: &str = "gbsa4";
 pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
 pub const MACHINE_SAVE_STATE_FILE_EXTENSION: &str = "gbstate";
 const MBC2_RAM_NIBBLE_COUNT: usize = 512;
 const MBC2_MGBA_PACKED_BYTE_COUNT: usize = MBC2_RAM_NIBBLE_COUNT / 2;
+const MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP: usize = 44;
 const MBC3_EXTERNAL_RTC_SUFFIX_LEN: usize = 48;
 const RAM_KIND_LINEAR_TAG: u8 = 0;
 const RAM_KIND_MBC2_TAG: u8 = 1;
@@ -50,6 +54,26 @@ const STATE_HUC3_TAG: u8 = 10;
 const STATE_POCKET_CAMERA_RAM_TAG: u8 = 11;
 const STATE_MBC6_TAG: u8 = 12;
 const STATE_MBC7_EEPROM_TAG: u8 = 13;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum CartridgeSaveFileExtension {
+    #[default]
+    P1,
+    P2,
+    P3,
+    P4,
+}
+
+impl CartridgeSaveFileExtension {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::P1 => SAVE_FILE_EXTENSION,
+            Self::P2 => SAVE_FILE_EXTENSION_P2,
+            Self::P3 => SAVE_FILE_EXTENSION_P3,
+            Self::P4 => SAVE_FILE_EXTENSION_P4,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -81,25 +105,6 @@ fn is_portable_save_key_character(character: char) -> bool {
             character,
             '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
         )
-}
-
-pub fn legacy_sanitized_save_key(raw_key_material: &str) -> Option<CartridgeSaveKey> {
-    let mut sanitized = String::new();
-    let mut inserted_separator = false;
-    for character in raw_key_material.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
-            sanitized.push(character);
-            inserted_separator = false;
-        } else if !inserted_separator {
-            sanitized.push('_');
-            inserted_separator = true;
-        }
-    }
-    let sanitized = sanitized.trim_matches('_').to_string();
-    if sanitized.is_empty() {
-        return None;
-    }
-    CartridgeSaveKey::new(sanitized).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -628,10 +633,10 @@ pub fn import_external_cartridge_save(
         ) => decode_external_mbc2_ram(bytes, cell_count)
             .map(|ram_nibbles| PersistentCartState::Mbc2Ram { ram_nibbles }),
         (CartridgePersistenceProfile::PersistentRtc, PersistentCartState::Mbc3Rtc { .. }) => {
-            if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+            if !is_external_mbc3_rtc_suffix_len(bytes.len()) {
                 return Err(ExternalSaveError::InvalidLength {
                     context: "MBC3 RTC",
-                    expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+                    expected: mbc3_external_rtc_suffix_length_expectation(),
                     actual: bytes.len(),
                 });
             }
@@ -644,11 +649,16 @@ pub fn import_external_cartridge_save(
             },
             PersistentCartState::Mbc3RamRtc { .. },
         ) => {
+            let expected_len_32bit_timestamp =
+                byte_len + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP;
             let expected_len = byte_len + MBC3_EXTERNAL_RTC_SUFFIX_LEN;
-            if bytes.len() != expected_len {
+            if bytes.len() != expected_len_32bit_timestamp && bytes.len() != expected_len {
                 return Err(ExternalSaveError::InvalidLength {
                     context: "MBC3 RAM+RTC",
-                    expected: ExternalSaveLengthExpectation::Exact(expected_len),
+                    expected: ExternalSaveLengthExpectation::Either {
+                        first: expected_len_32bit_timestamp,
+                        second: expected_len,
+                    },
                     actual: bytes.len(),
                 });
             }
@@ -1062,19 +1072,44 @@ impl<C: CartridgeSaveTimeSource> CartridgeSaveBackend for InMemoryCartridgeSaveB
 pub struct FilesystemCartridgeSaveBackend<C = SystemCartridgeSaveTimeSource> {
     root: PathBuf,
     clock: C,
+    file_extension: CartridgeSaveFileExtension,
 }
 
 impl FilesystemCartridgeSaveBackend<SystemCartridgeSaveTimeSource> {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self::with_time_source(root, SystemCartridgeSaveTimeSource)
     }
+
+    pub fn with_file_extension(
+        root: impl Into<PathBuf>,
+        file_extension: CartridgeSaveFileExtension,
+    ) -> Self {
+        Self::with_time_source_and_file_extension(
+            root,
+            SystemCartridgeSaveTimeSource,
+            file_extension,
+        )
+    }
 }
 
 impl<C> FilesystemCartridgeSaveBackend<C> {
     pub fn with_time_source(root: impl Into<PathBuf>, clock: C) -> Self {
+        Self::with_time_source_and_file_extension(
+            root,
+            clock,
+            CartridgeSaveFileExtension::default(),
+        )
+    }
+
+    pub fn with_time_source_and_file_extension(
+        root: impl Into<PathBuf>,
+        clock: C,
+        file_extension: CartridgeSaveFileExtension,
+    ) -> Self {
         Self {
             root: root.into(),
             clock,
+            file_extension,
         }
     }
 
@@ -1082,9 +1117,13 @@ impl<C> FilesystemCartridgeSaveBackend<C> {
         &self.root
     }
 
+    pub fn file_extension(&self) -> CartridgeSaveFileExtension {
+        self.file_extension
+    }
+
     pub fn path_for_key(&self, key: &CartridgeSaveKey) -> PathBuf {
         self.root
-            .join(format!("{}.{}", key.as_str(), SAVE_FILE_EXTENSION))
+            .join(format!("{}.{}", key.as_str(), self.file_extension.as_str()))
     }
 }
 
@@ -1557,10 +1596,10 @@ fn decode_external_mbc3_rtc_suffix(
     bytes: &[u8],
     current_unix_seconds: u64,
 ) -> Result<Mbc3RtcPersistentState, ExternalSaveError> {
-    if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+    if !is_external_mbc3_rtc_suffix_len(bytes.len()) {
         return Err(ExternalSaveError::InvalidLength {
             context: "MBC3 RTC",
-            expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+            expected: mbc3_external_rtc_suffix_length_expectation(),
             actual: bytes.len(),
         });
     }
@@ -1570,9 +1609,15 @@ fn decode_external_mbc3_rtc_suffix(
     let hours = read_external_u32_low_u8(bytes, 8) & 0x1F;
     let day_low = read_external_u32_low_u8(bytes, 12);
     let day_high = read_external_u32_low_u8(bytes, 16);
-    let saved_unix_seconds = u64::from_le_bytes([
-        bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
-    ]);
+    let saved_unix_seconds = match bytes.len() {
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP => {
+            u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]) as u64
+        }
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN => u64::from_le_bytes([
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
+        ]),
+        _ => unreachable!("MBC3 RTC suffix length should be validated before timestamp decode"),
+    };
 
     let mut rtc = Mbc3RtcPersistentState {
         seconds,
@@ -1584,6 +1629,20 @@ fn decode_external_mbc3_rtc_suffix(
     };
     rtc.apply_elapsed_seconds(current_unix_seconds.saturating_sub(saved_unix_seconds));
     Ok(rtc)
+}
+
+fn is_external_mbc3_rtc_suffix_len(len: usize) -> bool {
+    matches!(
+        len,
+        MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP | MBC3_EXTERNAL_RTC_SUFFIX_LEN
+    )
+}
+
+fn mbc3_external_rtc_suffix_length_expectation() -> ExternalSaveLengthExpectation {
+    ExternalSaveLengthExpectation::Either {
+        first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+        second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+    }
 }
 
 fn read_external_u32_low_u8(bytes: &[u8], offset: usize) -> u8 {
@@ -2836,23 +2895,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_save_key_sanitizer_matches_previous_filename_policy() {
-        let legacy_key = legacy_sanitized_save_key(
-            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)",
-        )
-        .expect("legacy key should be derived");
-        assert_eq!(
-            legacy_key.as_str(),
-            "Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2"
-        );
-        assert_eq!(
-            legacy_sanitized_save_key(":::"),
-            None,
-            "all-separator stems used to collapse to an empty save key"
-        );
-    }
-
-    #[test]
     fn encode_and_decode_round_trip_the_versioned_envelope() {
         let envelope = CartridgeSaveEnvelope {
             backend_metadata: CartridgeSaveBackendMetadata {
@@ -3400,6 +3442,23 @@ mod tests {
                 "saves/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"
             )
         );
+        let slot_extensions = [
+            (CartridgeSaveFileExtension::P1, SAVE_FILE_EXTENSION),
+            (CartridgeSaveFileExtension::P2, SAVE_FILE_EXTENSION_P2),
+            (CartridgeSaveFileExtension::P3, SAVE_FILE_EXTENSION_P3),
+            (CartridgeSaveFileExtension::P4, SAVE_FILE_EXTENSION_P4),
+        ];
+        for (file_extension, expected_suffix) in slot_extensions {
+            let backend =
+                FilesystemCartridgeSaveBackend::with_file_extension("saves", file_extension);
+            assert_eq!(backend.file_extension(), file_extension);
+            assert_eq!(
+                backend.path_for_key(&exact_rom_stem_key),
+                PathBuf::from(format!(
+                    "saves/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).{expected_suffix}"
+                ))
+            );
+        }
         assert_eq!(
             CartridgeSaveKeyError::InvalidCharacter {
                 index: 3,
@@ -4023,6 +4082,104 @@ mod tests {
     }
 
     #[test]
+    fn external_save_imports_mbc3_rtc_suffixes_with_32_bit_timestamps() {
+        let rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRtc,
+        };
+        let rtc_state = PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 1,
+                minutes: 2,
+                hours: 3,
+                day_counter: 4,
+                halt: false,
+                carry: false,
+            },
+        };
+        let mut rtc_external = encode_external_cartridge_save(
+            rtc_metadata,
+            &rtc_state,
+            1_700_000_010,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC3 RTC-only state should export");
+        assert_eq!(rtc_external.len(), MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+        rtc_external.truncate(MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP);
+
+        let rtc_imported =
+            import_external_cartridge_save(rtc_metadata, &rtc_state, &rtc_external, 1_700_000_012)
+                .expect("MBC3 RTC-only 32-bit timestamp suffix should import");
+        assert_eq!(
+            rtc_imported,
+            PersistentCartState::Mbc3Rtc {
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 2,
+                    hours: 3,
+                    day_counter: 4,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+
+        let ram_rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let ram_rtc_state = PersistentCartState::Mbc3RamRtc {
+            ram: vec![0xAB, 0xCD],
+            rtc: Mbc3RtcPersistentState {
+                seconds: 58,
+                minutes: 59,
+                hours: 23,
+                day_counter: 7,
+                halt: false,
+                carry: false,
+            },
+        };
+        let envelope = CartridgeSaveEnvelope {
+            backend_metadata: CartridgeSaveBackendMetadata {
+                format_version: CURRENT_SAVE_FORMAT_VERSION,
+                saved_at_unix_seconds: 100,
+            },
+            cartridge_metadata: ram_rtc_metadata,
+            persistent_state: ram_rtc_state.clone(),
+        };
+        let mut ram_rtc_external =
+            export_external_cartridge_save(&envelope, 103).expect("MBC3 RAM+RTC should export");
+        assert_eq!(ram_rtc_external.len(), 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+        ram_rtc_external.truncate(2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP);
+
+        let ram_rtc_imported = import_external_cartridge_save(
+            ram_rtc_metadata,
+            &ram_rtc_state,
+            &ram_rtc_external,
+            105,
+        )
+        .expect("MBC3 RAM+RTC 32-bit timestamp suffix should import");
+        assert_eq!(
+            ram_rtc_imported,
+            PersistentCartState::Mbc3RamRtc {
+                ram: vec![0xAB, 0xCD],
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 8,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+    }
+
+    #[test]
     fn external_save_round_trips_mbc30_sized_ram_plus_mbc3_rtc_suffix() {
         let metadata = CartridgePersistenceMetadata {
             has_battery: true,
@@ -4199,15 +4356,53 @@ mod tests {
             ),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(
+                mbc3_rtc_metadata,
+                &mbc3_rtc_state,
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1],
+                0,
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1
+        ));
+        assert!(matches!(
+            decode_external_mbc3_rtc_suffix(
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1],
+                0
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP - 1
         ));
         assert!(matches!(
             decode_external_mbc3_rtc_suffix(&[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1], 0),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP,
+                    second: MBC3_EXTERNAL_RTC_SUFFIX_LEN,
+                },
+                actual,
+            }) if actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1
         ));
 
         let ram_rtc_metadata = CartridgePersistenceMetadata {
@@ -4237,8 +4432,14 @@ mod tests {
             ),
             Err(ExternalSaveError::InvalidLength {
                 context: "MBC3 RAM+RTC",
-                ..
-            })
+                expected: ExternalSaveLengthExpectation::Either {
+                    first,
+                    second,
+                },
+                actual,
+            }) if first == 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN_32BIT_TIMESTAMP
+                && second == 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN
+                && actual == MBC3_EXTERNAL_RTC_SUFFIX_LEN + 1
         ));
 
         let unsupported_profile = CartridgePersistenceMetadata {

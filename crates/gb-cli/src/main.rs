@@ -18,7 +18,7 @@ use gb_persistence::{
     ExternalSaveError, FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
     MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource,
     decode_machine_save_state_envelope, encode_machine_save_state_envelope,
-    export_external_cartridge_save, import_external_cartridge_save, legacy_sanitized_save_key,
+    export_external_cartridge_save, import_external_cartridge_save,
     uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
@@ -1299,17 +1299,13 @@ fn saves_export_command(
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
     let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
-    let legacy_key = legacy_save_key_for_rom_path(options.save_key.as_deref(), &rom_path);
     let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    let (envelope, source_save_path) =
-        load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?.ok_or_else(
-            || {
-                format!(
-                    "no gb-cycle save found at {}",
-                    backend.path_for_key(&key).display()
-                )
-            },
-        )?;
+    let (envelope, source_save_path) = load_save_envelope(&backend, &key)?.ok_or_else(|| {
+        format!(
+            "no gb-cycle save found at {}",
+            backend.path_for_key(&key).display()
+        )
+    })?;
     cartridge
         .restore_persistent_state(&envelope.persistent_state)
         .map_err(|error| {
@@ -1339,27 +1335,15 @@ fn saves_export_command(
     Ok(())
 }
 
-fn load_save_envelope_with_legacy_fallback(
+fn load_save_envelope(
     backend: &FilesystemCartridgeSaveBackend,
     key: &CartridgeSaveKey,
-    legacy_key: Option<&CartridgeSaveKey>,
 ) -> Result<Option<(CartridgeSaveEnvelope, PathBuf)>, String> {
     let save_path = backend.path_for_key(key);
-    if let Some(envelope) = backend
-        .load(key)
-        .map_err(|error| format_save_load_error(&save_path, error))?
-    {
-        return Ok(Some((envelope, save_path)));
-    }
-
-    let Some(legacy_key) = legacy_key.filter(|legacy_key| *legacy_key != key) else {
-        return Ok(None);
-    };
-    let legacy_save_path = backend.path_for_key(legacy_key);
     backend
-        .load(legacy_key)
-        .map_err(|error| format_save_load_error(&legacy_save_path, error))
-        .map(|envelope| envelope.map(|envelope| (envelope, legacy_save_path)))
+        .load(key)
+        .map_err(|error| format_save_load_error(&save_path, error))
+        .map(|envelope| envelope.map(|envelope| (envelope, save_path)))
 }
 
 fn saves_import_command(
@@ -1484,16 +1468,12 @@ fn open_save_session(
     } else {
         derive_save_key(rom_path)?
     };
-    let legacy_key = legacy_save_key_for_rom_path(options.save_key.as_deref(), rom_path);
 
     let backend = FilesystemCartridgeSaveBackend::new(save_root);
     let mut loaded_existing_save = false;
     let mut last_saved_state = machine.cartridge().persistent_state();
 
-    if load_existing_save
-        && let Some((envelope, save_path)) =
-            load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?
-    {
+    if load_existing_save && let Some((envelope, save_path)) = load_save_envelope(&backend, &key)? {
         let elapsed_seconds = backend
             .current_unix_seconds()
             .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
@@ -1878,20 +1858,6 @@ fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, String> {
         .into_owned();
     parse_save_key(&stem)
         .map_err(|error| format!("could not use ROM stem {stem:?} as save key: {error}"))
-}
-
-fn legacy_save_key_for_rom_path(
-    explicit_key: Option<&str>,
-    rom_path: &Path,
-) -> Option<CartridgeSaveKey> {
-    if explicit_key.is_some() {
-        return None;
-    }
-    let stem = rom_path
-        .file_stem()
-        .or_else(|| rom_path.file_name())?
-        .to_string_lossy();
-    legacy_sanitized_save_key(&stem)
 }
 
 fn parse_save_key(key: &str) -> Result<CartridgeSaveKey, String> {

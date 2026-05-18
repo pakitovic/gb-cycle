@@ -91,6 +91,15 @@ impl LinkedSessionCase {
                 );
             }
             LinkedSessionTopology::Dmg04 => {}
+            LinkedSessionTopology::CgbIr if participant_count != 2 => {
+                return Err(
+                    LinkedSessionCaseValidationError::UnsupportedTopologyParticipantCount {
+                        topology: self.topology,
+                        count: participant_count,
+                    },
+                );
+            }
+            LinkedSessionTopology::CgbIr => {}
             LinkedSessionTopology::Dmg07 if !(2..=4).contains(&participant_count) => {
                 return Err(
                     LinkedSessionCaseValidationError::UnsupportedTopologyParticipantCount {
@@ -122,6 +131,15 @@ impl LinkedSessionCase {
                     );
                 }
                 (LinkedSessionTopology::Dmg04, None) => {}
+                (LinkedSessionTopology::CgbIr, Some(port)) => {
+                    return Err(
+                        LinkedSessionCaseValidationError::UnexpectedCgbIrParticipantPort {
+                            participant_id: participant.id.clone(),
+                            port,
+                        },
+                    );
+                }
+                (LinkedSessionTopology::CgbIr, None) => {}
                 (LinkedSessionTopology::Dmg07, Some(port)) => {
                     if !seen_dmg07_ports.insert(port) {
                         return Err(

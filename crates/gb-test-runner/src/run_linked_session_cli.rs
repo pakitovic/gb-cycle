@@ -501,6 +501,8 @@ mod tests {
         assert!(output.contains("linked-dmg04-contracts.toml"));
         assert!(output.contains("suite=linked-dmg07-smoke"));
         assert!(output.contains("linked-dmg07-smoke.toml"));
+        assert!(output.contains("suite=linked-cgb-ir-smoke"));
+        assert!(output.contains("linked-cgb-ir-smoke.toml"));
     }
 
     #[test]

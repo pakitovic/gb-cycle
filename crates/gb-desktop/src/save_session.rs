@@ -4,8 +4,8 @@ use gb_core::{
 };
 use gb_desktop::{DEFAULT_SAVE_FLUSH_DEBOUNCE, DesktopSaveFlushPolicy};
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
-    uses_battery_backed_hardware_persistence,
+    CartridgeSaveBackend, CartridgeSaveFileExtension, CartridgeSaveKey,
+    FilesystemCartridgeSaveBackend, uses_battery_backed_hardware_persistence,
 };
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -25,14 +25,20 @@ impl DesktopSaveSession {
         key: Option<CartridgeSaveKey>,
         machine: &mut Machine<TraceSummaryBuffer>,
     ) -> Result<Option<Self>, String> {
-        Self::open_with_legacy_fallback(save_root, flush_policy, key, None, machine)
+        Self::open_with_file_extension(
+            save_root,
+            flush_policy,
+            key,
+            CartridgeSaveFileExtension::P1,
+            machine,
+        )
     }
 
-    pub fn open_with_legacy_fallback(
+    pub fn open_with_file_extension(
         save_root: Option<&Path>,
         flush_policy: DesktopSaveFlushPolicy,
         key: Option<CartridgeSaveKey>,
-        legacy_key: Option<CartridgeSaveKey>,
+        file_extension: CartridgeSaveFileExtension,
         machine: &mut Machine<TraceSummaryBuffer>,
     ) -> Result<Option<Self>, String> {
         let Some(save_root) = save_root else {
@@ -48,32 +54,16 @@ impl DesktopSaveSession {
             return Ok(None);
         };
 
-        let backend = FilesystemCartridgeSaveBackend::new(save_root);
+        let backend =
+            FilesystemCartridgeSaveBackend::with_file_extension(save_root, file_extension);
         let load_result = backend.load(&key).map_err(|error| {
             format!(
                 "failed to load save {}: {error}",
                 backend.path_for_key(&key).display()
             )
         })?;
-        let legacy_load_result = if load_result.is_none() {
-            legacy_key
-                .as_ref()
-                .filter(|legacy_key| *legacy_key != &key)
-                .map(|legacy_key| {
-                    backend.load(legacy_key).map_err(|error| {
-                        format!(
-                            "failed to load save {}: {error}",
-                            backend.path_for_key(legacy_key).display()
-                        )
-                    })
-                })
-                .transpose()?
-                .flatten()
-        } else {
-            None
-        };
 
-        if let Some(envelope) = load_result.or(legacy_load_result) {
+        if let Some(envelope) = load_result {
             let elapsed_seconds = backend
                 .current_unix_seconds()
                 .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
@@ -364,52 +354,55 @@ mod tests {
     }
 
     #[test]
-    fn open_restores_legacy_sanitized_save_but_writes_exact_key() {
+    fn open_uses_configured_player_slot_file_extension_without_legacy_fallback() {
         let root = temp_save_root();
-        let exact_key =
+        let key =
             CartridgeSaveKey::new("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)")
-                .expect("exact ROM stem should be valid");
-        let legacy_key =
+                .expect("ROM stem key should be valid");
+        let old_sanitized_key =
             CartridgeSaveKey::new("Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2")
-                .expect("legacy sanitized key should be valid");
-        let mut saved_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
-        mutate_mbc2_persistent_state(&mut saved_machine, 0x0A);
-        let expected_state = saved_machine.cartridge().persistent_state();
+                .expect("old sanitized key should be valid");
 
         let mut backend = FilesystemCartridgeSaveBackend::new(&root);
         backend
             .save(
-                &legacy_key,
-                saved_machine.cartridge().persistence_metadata(),
-                &expected_state,
+                &old_sanitized_key,
+                load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00))
+                    .cartridge()
+                    .persistence_metadata(),
+                &PersistentCartState::Mbc2Ram {
+                    ram_nibbles: [0x0A; 512],
+                },
             )
-            .expect("legacy save should write");
+            .expect("old sanitized save should write");
 
         let mut restored_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
-        let mut session = DesktopSaveSession::open_with_legacy_fallback(
+        let mut session = DesktopSaveSession::open_with_file_extension(
             Some(&root),
             DesktopSaveFlushPolicy::OnClose,
-            Some(exact_key.clone()),
-            Some(legacy_key.clone()),
+            Some(key.clone()),
+            CartridgeSaveFileExtension::P2,
             &mut restored_machine,
         )
-        .expect("save session should load a legacy save")
+        .expect("save session should open")
         .expect("battery-backed cartridge should create a session");
 
         assert_eq!(
             restored_machine.cartridge().persistent_state(),
-            expected_state
+            load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00))
+                .cartridge()
+                .persistent_state()
         );
         assert_eq!(
             session.save_path(),
-            root.join(format!("{}.gbsav", exact_key.as_str()))
+            root.join(format!("{}.gbsa2", key.as_str()))
         );
-        assert!(backend.path_for_key(&legacy_key).is_file());
         mutate_mbc2_persistent_state(&mut restored_machine, 0x0B);
         session
             .close(&restored_machine)
-            .expect("closing should rewrite through the exact key");
-        assert!(backend.path_for_key(&exact_key).is_file());
+            .expect("closing should write through the configured slot extension");
+        assert!(session.save_path().is_file());
+        assert!(backend.path_for_key(&old_sanitized_key).is_file());
 
         fs::remove_dir_all(root).expect("temp save root should be removable");
     }

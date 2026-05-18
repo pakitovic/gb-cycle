@@ -1136,6 +1136,10 @@ const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[
         "crates/gb-test-runner/data/linked-dmg07-smoke.toml",
     ),
     (
+        "linked-cgb-ir-smoke",
+        "crates/gb-test-runner/data/linked-cgb-ir-smoke.toml",
+    ),
+    (
         "docboy-dmg-linked-extra",
         "crates/gb-test-runner/data/docboy-linked.toml",
     ),

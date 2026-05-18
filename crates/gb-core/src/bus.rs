@@ -1,6 +1,7 @@
 mod access;
 mod corruption;
 mod dispatch;
+mod infrared;
 mod iohram;
 mod map;
 mod meta;
@@ -213,6 +214,26 @@ impl Bus {
     /// This excludes MMIO registers and the interrupt-enable register; those are captured through subsystem snapshots or non-perturbing cloned reads by tooling that needs CPU-visible values.
     pub fn debug_hram_bytes(&self) -> &[u8] {
         self.iohram.hram_bytes()
+    }
+
+    pub(crate) fn tick_cgb_infrared_t_cycle(&mut self) {
+        if self.cgb_extensions_enabled() {
+            self.iohram.tick_cgb_infrared_t_cycle();
+        }
+    }
+
+    pub(crate) fn set_cgb_infrared_external_input(&mut self, active: bool) {
+        let active = self.cgb_extensions_enabled() && active;
+        self.iohram.set_cgb_infrared_external_input(active);
+    }
+
+    pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
+        self.cgb_extensions_enabled() && self.iohram.cgb_infrared_emitter_on()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cgb_infrared_effective_signal_detected(&self) -> bool {
+        self.cgb_extensions_enabled() && self.iohram.cgb_infrared_effective_signal_detected()
     }
 }
 

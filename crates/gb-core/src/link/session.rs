@@ -1,3 +1,4 @@
+use super::cgb_ir::CgbInfraredPair;
 use super::dmg04::Dmg04Cable;
 use super::dmg07::{Dmg07Adapter, Dmg07Participant, Dmg07Port, validate_dmg07_participants};
 use crate::debugger::{TraceBuffer, TraceSink};
@@ -36,6 +37,9 @@ pub enum LinkedMachinesError {
     UnsupportedMachineCountForDmg07 {
         count: usize,
     },
+    UnsupportedMachineCountForCgbInfrared {
+        count: usize,
+    },
     MissingDmg07PlayerOne,
     DuplicateDmg07Port {
         port: Dmg07Port,
@@ -55,6 +59,7 @@ pub enum LinkedTopologyKind {
     None,
     Dmg04,
     Dmg07,
+    CgbInfrared,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -63,6 +68,7 @@ enum LinkTopology {
     None,
     Dmg04(Dmg04Cable),
     Dmg07(Dmg07Adapter),
+    CgbInfrared(CgbInfraredPair),
 }
 
 #[derive(Debug, Clone)]
@@ -174,11 +180,28 @@ impl<S: TraceSink> LinkedMachines<S> {
         Ok(())
     }
 
+    pub fn attach_cgb_infrared_pair(&mut self) -> Result<(), LinkedMachinesError> {
+        if self.machines.len() != 2 {
+            return Err(LinkedMachinesError::UnsupportedMachineCountForCgbInfrared {
+                count: self.machines.len(),
+            });
+        }
+
+        self.detach_link_topology();
+        for machine in &mut self.machines {
+            machine.set_cgb_infrared_external_input(false);
+        }
+
+        self.topology = LinkTopology::CgbInfrared(CgbInfraredPair::new(0, 1));
+        Ok(())
+    }
+
     pub fn detach_link_topology(&mut self) {
         match &self.topology {
             LinkTopology::None => {}
             LinkTopology::Dmg04(cable) => cable.detach(&mut self.machines),
             LinkTopology::Dmg07(adapter) => adapter.detach(&mut self.machines),
+            LinkTopology::CgbInfrared(pair) => pair.detach(&mut self.machines),
         }
 
         self.topology = LinkTopology::None;
@@ -228,6 +251,7 @@ impl<S: TraceSink> LinkedMachines<S> {
         match &mut self.topology {
             LinkTopology::None => {}
             LinkTopology::Dmg04(cable) => cable.prepare_phase(phase, &mut self.machines),
+            LinkTopology::CgbInfrared(pair) => pair.prepare_phase(phase, &mut self.machines),
             LinkTopology::Dmg07(adapter) => {
                 adapter.prepare_phase(phase, t_cycle, &mut self.machines);
             }
@@ -238,6 +262,7 @@ impl<S: TraceSink> LinkedMachines<S> {
         let t_cycle = self.scheduler.next_t_cycle();
         match &mut self.topology {
             LinkTopology::None | LinkTopology::Dmg04(_) => {}
+            LinkTopology::CgbInfrared(_) => {}
             LinkTopology::Dmg07(adapter) => {
                 adapter.finish_phase(phase, t_cycle, &mut self.machines);
             }
@@ -246,7 +271,7 @@ impl<S: TraceSink> LinkedMachines<S> {
 
     pub fn topology_trace_text(&self) -> Option<String> {
         match &self.topology {
-            LinkTopology::None | LinkTopology::Dmg04(_) => None,
+            LinkTopology::None | LinkTopology::Dmg04(_) | LinkTopology::CgbInfrared(_) => None,
             LinkTopology::Dmg07(adapter) => adapter.trace_text(),
         }
     }
@@ -258,6 +283,7 @@ impl LinkTopology {
             Self::None => LinkedTopologyKind::None,
             Self::Dmg04(_) => LinkedTopologyKind::Dmg04,
             Self::Dmg07(_) => LinkedTopologyKind::Dmg07,
+            Self::CgbInfrared(_) => LinkedTopologyKind::CgbInfrared,
         }
     }
 }
@@ -268,10 +294,46 @@ mod tests {
     use crate::machine::MachineStepObserver;
     use crate::model::{ConsoleModel, MachineConfig, StartupMode};
 
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+    const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 19_900;
+    const CGB_IR_POKEMON_GSC_SHORT_PULSE_SAMPLE_T_CYCLES: u64 = 128;
+
+    fn build_cgb_test_rom(cgb_header: u8) -> Vec<u8> {
+        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+        rom[0x0100] = 0xC3;
+        rom[0x0101] = 0x00;
+        rom[0x0102] = 0x01;
+        rom[0x0143] = cgb_header;
+        rom[0x0147] = 0x00;
+        rom[0x0148] = 0x00;
+        rom[0x0149] = 0x00;
+        rom
+    }
+
     fn dmg_skip_boot_machine() -> Machine {
         Machine::new(
             MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
         )
+    }
+
+    fn cgb_native_skip_boot_machine() -> Machine {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_cgb_test_rom(0x80))
+            .expect("CGB native test ROM should load");
+        machine
+    }
+
+    fn cgb_compat_skip_boot_machine() -> Machine {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_cgb_test_rom(0x00))
+            .expect("CGB compatibility test ROM should load");
+        machine
     }
 
     #[derive(Default)]
@@ -618,6 +680,156 @@ mod tests {
                 .machine(1)
                 .map(|machine| machine.external_port().attachment_kind()),
             Some(ExternalPortAttachmentKind::None)
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_routes_emitter_light_between_two_native_cgb_machines() {
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair()
+            .expect("two-machine CGB IR pair should attach");
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC1);
+        linked
+            .machine_mut(1)
+            .expect("right machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x02
+        );
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert!(
+            linked
+                .machine(1)
+                .expect("right machine should exist")
+                .cgb_infrared_effective_signal_detected()
+        );
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
+        );
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC0);
+        linked.advance_t_cycle();
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x02
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_routes_short_pulse_to_readied_peer_sensor() {
+        let left = cgb_native_skip_boot_machine();
+        let right = cgb_native_skip_boot_machine();
+        let mut linked = LinkedMachines::new(vec![left, right]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair()
+            .expect("two-machine CGB IR pair should attach");
+
+        linked
+            .machine_mut(1)
+            .expect("right machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        linked
+            .machine_mut(0)
+            .expect("left machine should exist")
+            .write_bus(0xFF56, 0xC1);
+
+        for _ in 0..CGB_IR_POKEMON_GSC_SHORT_PULSE_SAMPLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("right machine should exist")
+                .read_bus(0xFF56)
+                & 0x02,
+            0x00
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_does_not_enable_rp_in_compatibility_mode() {
+        let native = cgb_native_skip_boot_machine();
+        let compat = cgb_compat_skip_boot_machine();
+        let mut linked =
+            LinkedMachines::new(vec![native, compat]).expect("CGB machines should link");
+        linked
+            .attach_cgb_infrared_pair()
+            .expect("two-machine CGB IR pair should attach");
+
+        linked
+            .machine_mut(0)
+            .expect("native machine should exist")
+            .write_bus(0xFF56, 0xC1);
+        linked
+            .machine_mut(1)
+            .expect("compat machine should exist")
+            .write_bus(0xFF56, 0xC0);
+
+        for _ in 0..CGB_IR_SIGNAL_VISIBLE_T_CYCLES {
+            linked.advance_t_cycle();
+        }
+
+        assert_eq!(
+            linked
+                .machine_mut(1)
+                .expect("compat machine should exist")
+                .read_bus(0xFF56),
+            0xFF
+        );
+    }
+
+    #[test]
+    fn cgb_infrared_pair_requires_exactly_two_machines() {
+        let mut linked = LinkedMachines::new(vec![
+            cgb_native_skip_boot_machine(),
+            cgb_native_skip_boot_machine(),
+            cgb_native_skip_boot_machine(),
+        ])
+        .expect("three machines may form a linked container");
+
+        let error = linked
+            .attach_cgb_infrared_pair()
+            .expect_err("CGB IR pair should reject three participants");
+
+        assert_eq!(
+            error,
+            LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count: 3 }
         );
     }
 }

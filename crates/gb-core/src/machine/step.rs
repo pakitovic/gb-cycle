@@ -367,6 +367,8 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
+        self.bus.tick_cgb_infrared_t_cycle();
+
         if !self.cpu_stop_active() {
             observe_machine_step_region(observer, MachineStepRegion::Apu, || {
                 self.apu

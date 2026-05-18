@@ -4,11 +4,12 @@ use gb_core::{
     PersistentCartState,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey,
+    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveFileExtension, CartridgeSaveKey,
     FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource, HardwarePersistenceActionResult,
     HardwarePersistenceError, HardwarePersistenceFlushPolicy, HardwarePersistenceLoadResult,
     HardwarePersistenceManager, HardwarePersistenceSaveResult, HardwarePersistenceTrigger,
-    InMemoryCartridgeSaveBackend, SAVE_FILE_EXTENSION, load_hardware_cartridge_persistence,
+    InMemoryCartridgeSaveBackend, SAVE_FILE_EXTENSION, SAVE_FILE_EXTENSION_P2,
+    SAVE_FILE_EXTENSION_P3, SAVE_FILE_EXTENSION_P4, load_hardware_cartridge_persistence,
     save_hardware_cartridge_persistence, uses_battery_backed_hardware_persistence,
 };
 use std::path::{Path, PathBuf};
@@ -1193,6 +1194,65 @@ fn filesystem_backend_exposes_root_path_and_missing_load_cleanly() {
         root.join(format!("{key}.{}", SAVE_FILE_EXTENSION, key = key.as_str()))
     );
     assert_eq!(backend.load(&key).expect("load should succeed"), None);
+
+    fs::remove_dir_all(root).expect("temp save root should be removable");
+}
+
+#[test]
+fn filesystem_backend_uses_the_configured_slot_file_extension() {
+    let root = temp_save_root();
+    let key = CartridgeSaveKey::new("slot_extension").expect("key should be valid");
+    let slot_extensions = [
+        (CartridgeSaveFileExtension::P1, SAVE_FILE_EXTENSION),
+        (CartridgeSaveFileExtension::P2, SAVE_FILE_EXTENSION_P2),
+        (CartridgeSaveFileExtension::P3, SAVE_FILE_EXTENSION_P3),
+        (CartridgeSaveFileExtension::P4, SAVE_FILE_EXTENSION_P4),
+    ];
+
+    for (file_extension, expected_suffix) in slot_extensions {
+        let backend = FilesystemCartridgeSaveBackend::with_file_extension(&root, file_extension);
+        assert_eq!(backend.file_extension(), file_extension);
+        assert_eq!(
+            backend.path_for_key(&key),
+            root.join(format!("{}.{expected_suffix}", key.as_str()))
+        );
+    }
+
+    let cartridge = load_cartridge(build_test_rom(32 * 1024, 0x09, 0x00, 0x02));
+    let metadata = cartridge.persistence_metadata();
+    let mut p1_backend =
+        FilesystemCartridgeSaveBackend::with_file_extension(&root, CartridgeSaveFileExtension::P1);
+    let mut p2_backend =
+        FilesystemCartridgeSaveBackend::with_file_extension(&root, CartridgeSaveFileExtension::P2);
+    p1_backend
+        .save(
+            &key,
+            metadata,
+            &PersistentCartState::NoMbcRam {
+                ram: vec![0x11; 8 * 1024],
+            },
+        )
+        .expect("P1 save should write");
+    p2_backend
+        .save(
+            &key,
+            metadata,
+            &PersistentCartState::NoMbcRam {
+                ram: vec![0x22; 8 * 1024],
+            },
+        )
+        .expect("P2 save should write");
+    let p1_state = p1_backend
+        .load(&key)
+        .expect("P1 load should succeed")
+        .expect("P1 save should exist")
+        .persistent_state;
+    let p2_state = p2_backend
+        .load(&key)
+        .expect("P2 load should succeed")
+        .expect("P2 save should exist")
+        .persistent_state;
+    assert_ne!(p1_state, p2_state);
 
     fs::remove_dir_all(root).expect("temp save root should be removable");
 }

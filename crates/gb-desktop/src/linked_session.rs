@@ -12,6 +12,7 @@ use std::ops::{Deref, DerefMut};
 pub enum DesktopEmulationSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
+    LinkedCgbInfraredTwoPlayer,
     LinkedDmg07 {
         player_count: DesktopDmg07PlayerCount,
     },
@@ -22,6 +23,7 @@ pub enum DesktopEmulationSessionKind {
 pub enum DesktopEmulationSession {
     Single(Box<Machine<TraceSummaryBuffer>>),
     LinkedDmg04TwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
+    LinkedCgbInfraredTwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
     LinkedDmg07 {
         linked: Box<LinkedMachines<TraceSummaryBuffer>>,
         player_count: DesktopDmg07PlayerCount,
@@ -43,6 +45,18 @@ impl DesktopEmulationSession {
             .attach_dmg04_cable()
             .map_err(format_linked_machines_error)?;
         Ok(Self::LinkedDmg04TwoPlayer(Box::new(linked)))
+    }
+
+    pub fn new_linked_cgb_infrared_two_player(
+        primary_machine: Machine<TraceSummaryBuffer>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+    ) -> Result<Self, String> {
+        let mut linked = LinkedMachines::new(vec![primary_machine, secondary_machine])
+            .map_err(format_linked_machines_error)?;
+        linked
+            .attach_cgb_infrared_pair()
+            .map_err(format_linked_machines_error)?;
+        Ok(Self::LinkedCgbInfraredTwoPlayer(Box::new(linked)))
     }
 
     pub fn new_linked_dmg07(
@@ -74,6 +88,9 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => DesktopEmulationSessionKind::Single,
             Self::LinkedDmg04TwoPlayer(_) => DesktopEmulationSessionKind::LinkedDmg04TwoPlayer,
+            Self::LinkedCgbInfraredTwoPlayer(_) => {
+                DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+            }
             Self::LinkedDmg07 { player_count, .. } => DesktopEmulationSessionKind::LinkedDmg07 {
                 player_count: *player_count,
             },
@@ -85,6 +102,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => LinkedTopologyKind::None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.topology_kind(),
+            Self::LinkedCgbInfraredTwoPlayer(linked) => linked.topology_kind(),
             Self::LinkedDmg07 { linked, .. } => linked.topology_kind(),
         }
     }
@@ -93,6 +111,9 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(machine) => machine,
             Self::LinkedDmg04TwoPlayer(linked) => linked
+                .machine(0)
+                .expect("linked desktop session should always have a primary machine"),
+            Self::LinkedCgbInfraredTwoPlayer(linked) => linked
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
             Self::LinkedDmg07 { linked, .. } => linked
@@ -107,6 +128,9 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
+            Self::LinkedCgbInfraredTwoPlayer(linked) => linked
+                .machine_mut(0)
+                .expect("linked desktop session should always have a primary machine"),
             Self::LinkedDmg07 { linked, .. } => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
@@ -117,6 +141,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine(1),
+            Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine(1),
         }
     }
@@ -125,6 +150,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
+            Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine_mut(1),
         }
     }
@@ -138,7 +164,9 @@ impl DesktopEmulationSession {
             PlayerSlot::P2 => self.secondary_machine(),
             PlayerSlot::P3 | PlayerSlot::P4 => match self {
                 Self::LinkedDmg07 { linked, .. } => linked.machine(slot.machine_index()),
-                Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+                Self::Single(_)
+                | Self::LinkedDmg04TwoPlayer(_)
+                | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
         }
     }
@@ -152,7 +180,9 @@ impl DesktopEmulationSession {
             PlayerSlot::P2 => self.secondary_machine_mut(),
             PlayerSlot::P3 | PlayerSlot::P4 => match self {
                 Self::LinkedDmg07 { linked, .. } => linked.machine_mut(slot.machine_index()),
-                Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+                Self::Single(_)
+                | Self::LinkedDmg04TwoPlayer(_)
+                | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
         }
     }
@@ -161,10 +191,16 @@ impl DesktopEmulationSession {
         matches!(self, Self::LinkedDmg04TwoPlayer(_))
     }
 
+    pub const fn is_linked_cgb_infrared_two_player(&self) -> bool {
+        matches!(self, Self::LinkedCgbInfraredTwoPlayer(_))
+    }
+
     pub const fn dmg07_player_count(&self) -> Option<DesktopDmg07PlayerCount> {
         match self {
             Self::LinkedDmg07 { player_count, .. } => Some(*player_count),
-            Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+            Self::Single(_)
+            | Self::LinkedDmg04TwoPlayer(_)
+            | Self::LinkedCgbInfraredTwoPlayer(_) => None,
         }
     }
 
@@ -187,6 +223,12 @@ impl DesktopEmulationSession {
             Self::LinkedDmg07 { .. } => {
                 return Err(
                     "desktop emulation session is already running a linked DMG-07 runtime"
+                        .to_string(),
+                );
+            }
+            Self::LinkedCgbInfraredTwoPlayer(_) => {
+                return Err(
+                    "desktop emulation session is already running a linked CGB IR runtime"
                         .to_string(),
                 );
             }
@@ -214,6 +256,55 @@ impl DesktopEmulationSession {
         Ok(())
     }
 
+    pub fn attach_secondary_cgb_infrared(
+        &mut self,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+    ) -> Result<(), String> {
+        let expected = match self {
+            Self::Single(machine) => machine.next_t_cycle(),
+            Self::LinkedDmg04TwoPlayer(_) => {
+                return Err(
+                    "desktop emulation session is already running a linked DMG-04 runtime"
+                        .to_string(),
+                );
+            }
+            Self::LinkedDmg07 { .. } => {
+                return Err(
+                    "desktop emulation session is already running a linked DMG-07 runtime"
+                        .to_string(),
+                );
+            }
+            Self::LinkedCgbInfraredTwoPlayer(_) => {
+                return Err(
+                    "desktop emulation session is already running a linked CGB IR runtime"
+                        .to_string(),
+                );
+            }
+        };
+        let found = secondary_machine.next_t_cycle();
+        if found != expected {
+            return Err(format_linked_machines_error(
+                LinkedMachinesError::MismatchedNextTCycle {
+                    expected,
+                    found,
+                    machine_index: 1,
+                },
+            ));
+        }
+
+        let current_session =
+            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        let Self::Single(primary_machine) = current_session else {
+            unreachable!("linked desktop session should have been rejected before replacement");
+        };
+
+        let next_session =
+            Self::new_linked_cgb_infrared_two_player(*primary_machine, secondary_machine)
+                .expect("validated desktop CGB IR session should build successfully");
+        *self = next_session;
+        Ok(())
+    }
+
     pub fn detach_to_single_primary(&mut self) {
         if matches!(self, Self::Single(_)) {
             return;
@@ -232,6 +323,9 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => {
                 linked.advance_t_cycle();
             }
+            Self::LinkedCgbInfraredTwoPlayer(linked) => {
+                linked.advance_t_cycle();
+            }
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle();
             }
@@ -246,6 +340,9 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => {
                 linked.advance_t_cycle_with_observer(observer);
             }
+            Self::LinkedCgbInfraredTwoPlayer(linked) => {
+                linked.advance_t_cycle_with_observer(observer);
+            }
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle_with_observer(observer);
             }
@@ -256,6 +353,14 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(machine) => *machine,
             Self::LinkedDmg04TwoPlayer(mut linked) => {
+                linked.detach_link_topology();
+                linked
+                    .into_machines()
+                    .into_iter()
+                    .next()
+                    .expect("linked desktop session should keep the primary machine")
+            }
+            Self::LinkedCgbInfraredTwoPlayer(mut linked) => {
                 linked.detach_link_topology();
                 linked
                     .into_machines()
@@ -317,6 +422,9 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         }
         LinkedMachinesError::UnsupportedMachineCountForDmg07 { count } => {
             format!("DMG-07 linked sessions require two to four machines, found {count}")
+        }
+        LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count } => {
+            format!("CGB infrared linked sessions require exactly two machines, found {count}")
         }
         LinkedMachinesError::MissingDmg07PlayerOne => {
             "DMG-07 linked sessions require adapter port P1".to_string()
@@ -588,6 +696,12 @@ mod tests {
                 count: 3
             }),
             "DMG-04 desktop sessions currently require exactly two machines, found 3"
+        );
+        assert_eq!(
+            format_linked_machines_error(
+                LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count: 3 }
+            ),
+            "CGB infrared linked sessions require exactly two machines, found 3"
         );
     }
 }

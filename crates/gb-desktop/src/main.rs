@@ -43,15 +43,15 @@ use gb_desktop::{
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
     GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
     KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
+    SaveDirectoryPolicy, VideoOptions,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
-    ExternalSaveError, ExternalSaveExportFormat, FilesystemCartridgeSaveBackend,
-    FixedCartridgeSaveTimeSource, MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope,
-    SystemCartridgeSaveTimeSource, decode_machine_save_state_envelope,
-    encode_external_cartridge_save, encode_machine_save_state_envelope,
-    import_external_cartridge_save, legacy_sanitized_save_key,
+    CartridgeSaveBackend, CartridgeSaveFileExtension, CartridgeSaveKey, CartridgeSaveTimeSource,
+    EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError, ExternalSaveExportFormat,
+    FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
+    MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource,
+    decode_machine_save_state_envelope, encode_external_cartridge_save,
+    encode_machine_save_state_envelope, import_external_cartridge_save,
     uses_battery_backed_hardware_persistence,
 };
 use input::{
@@ -262,7 +262,7 @@ const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
 const EXTERNAL_SAVE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "Game Boy saves",
-        pattern: "sav",
+        pattern: "sav;sa1;sa2;sa3;sa4",
     },
     DialogFileFilter {
         name: "All files",
@@ -306,6 +306,7 @@ enum LoopSignal {
 enum EmulationProfileSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
+    LinkedCgbInfraredTwoPlayer,
     LinkedDmg07,
 }
 
@@ -314,6 +315,7 @@ impl EmulationProfileSessionKind {
         match self {
             Self::Single => "single",
             Self::LinkedDmg04TwoPlayer => "linked-dmg04-2p",
+            Self::LinkedCgbInfraredTwoPlayer => "linked-cgb-ir-2p",
             Self::LinkedDmg07 => "linked-dmg07",
         }
     }
@@ -429,6 +431,7 @@ struct DesktopSession {
     loaded_rom: Option<LoadedRom>,
     linked_secondary_rom: Option<LoadedRom>,
     dmg07_player_count: Option<DesktopDmg07PlayerCount>,
+    cgb_infrared_link_active: bool,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
     pocket_camera_frame: Option<PocketCameraFrame>,
@@ -489,6 +492,10 @@ impl DesktopSession {
             Some(rom) => Some(rom.bytes.as_slice()),
             None => None,
         }
+    }
+
+    fn cgb_infrared_link_active(&self) -> bool {
+        self.cgb_infrared_link_active
     }
 
     fn rom_directory_hint(&self) -> &Path {
@@ -854,6 +861,7 @@ enum OpenRomDialogMode {
     #[default]
     Primary,
     LinkedSecondary,
+    CgbInfraredSecondary,
 }
 
 impl PathSelectionDialog {
@@ -4768,6 +4776,9 @@ fn player_session_kind(machine: &DesktopEmulationSession) -> DesktopPlayerSessio
     if let Some(player_count) = machine.dmg07_player_count() {
         return DesktopPlayerSessionKind::LinkedDmg07 { player_count };
     }
+    if machine.is_linked_cgb_infrared_two_player() {
+        return DesktopPlayerSessionKind::LinkedCgbInfraredTwoPlayer;
+    }
     if machine.is_linked_dmg04_two_player() {
         return DesktopPlayerSessionKind::LinkedDmg04TwoPlayer;
     }
@@ -4840,6 +4851,8 @@ fn emulation_profile_session_kind(
 ) -> EmulationProfileSessionKind {
     if machine.is_linked_dmg07() {
         EmulationProfileSessionKind::LinkedDmg07
+    } else if machine.is_linked_cgb_infrared_two_player() {
+        EmulationProfileSessionKind::LinkedCgbInfraredTwoPlayer
     } else if machine.is_linked_dmg04_two_player() {
         EmulationProfileSessionKind::LinkedDmg04TwoPlayer
     } else {
@@ -5046,6 +5059,7 @@ fn run_desktop_prepared(
         loaded_rom,
         linked_secondary_rom,
         dmg07_player_count: None,
+        cgb_infrared_link_active: false,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         pocket_camera_frame: None,
@@ -5670,11 +5684,29 @@ fn load_initial_emulation_session(
     match (
         session.rom_bytes(),
         session.linked_secondary_rom_bytes(),
+        session.cgb_infrared_link_active,
         session.external_port_selection,
     ) {
+        (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _) => {
+            let loaded = load_cgb_infrared_machines_for_roms(
+                &session.config,
+                &session.current_dir,
+                primary_rom_bytes,
+                secondary_rom_bytes,
+                "linked CGB IR desktop startup",
+            )?;
+            for warning in &loaded.boot_rom_fallback_warnings {
+                log_boot_rom_fallback_warning(Some(warning));
+            }
+            session.config = loaded.effective_config;
+            let mut machine = loaded.machine;
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut machine)?;
+            Ok((machine, loaded.diagnostics))
+        }
         (
             Some(primary_rom_bytes),
             Some(secondary_rom_bytes),
+            false,
             DesktopExternalPortSelection::GameLink,
         ) => {
             let primary_loaded =
@@ -5700,7 +5732,7 @@ fn load_initial_emulation_session(
             diagnostics.extend(secondary_loaded.diagnostics);
             Ok((machine, diagnostics))
         }
-        (Some(rom_bytes), _, _) => {
+        (Some(rom_bytes), _, _, _) => {
             let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
             log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
             session.config = loaded.effective_config;
@@ -5709,7 +5741,7 @@ fn load_initial_emulation_session(
             apply_session_pocket_camera_frame_to_desktop_session(session, &mut machine)?;
             Ok((machine, loaded.diagnostics))
         }
-        (None, _, _) => {
+        (None, _, _, _) => {
             let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
             log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
             session.config = prepared.effective_config;
@@ -5738,6 +5770,13 @@ struct LoadedMachine {
 }
 
 struct LoadedDmg07Machines {
+    effective_config: DesktopConfig,
+    machine: DesktopEmulationSession,
+    diagnostics: Vec<CartridgeDiagnostic>,
+    boot_rom_fallback_warnings: Vec<String>,
+}
+
+struct LoadedCgbInfraredMachines {
     effective_config: DesktopConfig,
     machine: DesktopEmulationSession,
     diagnostics: Vec<CartridgeDiagnostic>,
@@ -5869,6 +5908,63 @@ fn load_dmg07_machines_for_rom(
     let effective_config = effective_config.unwrap_or_else(|| config.clone());
     let machine = DesktopEmulationSession::new_linked_dmg07(loaded_machines, player_count)?;
     Ok(LoadedDmg07Machines {
+        effective_config,
+        machine,
+        diagnostics,
+        boot_rom_fallback_warnings,
+    })
+}
+
+fn load_cgb_infrared_machines_for_roms(
+    config: &DesktopConfig,
+    current_dir: &Path,
+    primary_rom_bytes: &[u8],
+    secondary_rom_bytes: &[u8],
+    operation: &str,
+) -> Result<LoadedCgbInfraredMachines, String> {
+    if config.launch.console_model != DesktopConsoleModel::GameBoyColor {
+        return Err(format!("{operation} requires MODEL GB COLOR"));
+    }
+
+    let primary_loaded = load_machine_for_rom(config, current_dir, primary_rom_bytes)?;
+    let secondary_loaded = load_machine_for_rom(config, current_dir, secondary_rom_bytes)?;
+    if primary_loaded.effective_config != secondary_loaded.effective_config {
+        return Err(format!(
+            "{operation} produced divergent effective configs between primary and secondary machines"
+        ));
+    }
+
+    let primary_native_cgb = primary_loaded
+        .machine
+        .config()
+        .capability_set()
+        .cgb_extensions_enabled();
+    let secondary_native_cgb = secondary_loaded
+        .machine
+        .config()
+        .capability_set()
+        .cgb_extensions_enabled();
+    if !primary_native_cgb || !secondary_native_cgb {
+        return Err(format!(
+            "{operation} requires native CGB mode for both cartridges"
+        ));
+    }
+
+    let mut diagnostics = primary_loaded.diagnostics;
+    diagnostics.extend(secondary_loaded.diagnostics);
+    let mut boot_rom_fallback_warnings = Vec::new();
+    if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+        boot_rom_fallback_warnings.push(warning);
+    }
+    if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+        boot_rom_fallback_warnings.push(warning);
+    }
+
+    let effective_config = primary_loaded.effective_config;
+    let mut machine = DesktopEmulationSession::new_single(primary_loaded.machine);
+    machine.attach_secondary_cgb_infrared(secondary_loaded.machine)?;
+
+    Ok(LoadedCgbInfraredMachines {
         effective_config,
         machine,
         diagnostics,
@@ -6137,52 +6233,33 @@ fn open_save_session_for_player_slot(
         .saves
         .resolve_directory(rom_path)
         .map(|path| resolve_path(&session.current_dir, &path));
-    let save_key = save_key_for_player_slot(session, slot, rom_path)?;
-    let legacy_save_key = if session.external_port_selection
-        == DesktopExternalPortSelection::FourPlayerAdapter
-        && slot != PlayerSlot::P1
-    {
-        None
-    } else {
-        legacy_save_key_for_loaded_rom(session, rom_path)
-    };
-
-    if let Some(legacy_save_key) = legacy_save_key {
-        DesktopSaveSession::open_with_legacy_fallback(
-            save_root.as_deref(),
-            session.config.saves.flush_policy,
-            save_key,
-            Some(legacy_save_key),
-            machine,
-        )
-    } else {
-        DesktopSaveSession::open(
+    let save_key = save_key_for_player_slot(session, rom_path)?;
+    if slot == PlayerSlot::P1 {
+        return DesktopSaveSession::open(
             save_root.as_deref(),
             session.config.saves.flush_policy,
             save_key,
             machine,
-        )
+        );
     }
-}
-
-fn legacy_save_key_for_loaded_rom(
-    session: &DesktopSession,
-    rom_path: &Path,
-) -> Option<CartridgeSaveKey> {
-    if !matches!(
-        session.config.saves.key_policy,
-        SaveKeyPolicy::DerivedFromRomStem
-    ) {
-        return None;
-    }
-    let stem = rom_path
-        .file_stem()
-        .or_else(|| rom_path.file_name())?
-        .to_string_lossy();
-    legacy_sanitized_save_key(&stem)
+    DesktopSaveSession::open_with_file_extension(
+        save_root.as_deref(),
+        session.config.saves.flush_policy,
+        save_key,
+        save_file_extension_for_player_slot(slot),
+        machine,
+    )
 }
 
 fn save_rom_path_for_player_slot(session: &DesktopSession, slot: PlayerSlot) -> Option<&Path> {
+    if session.cgb_infrared_link_active {
+        return match slot {
+            PlayerSlot::P1 => session.rom_path(),
+            PlayerSlot::P2 => session.linked_secondary_rom_path(),
+            PlayerSlot::P3 | PlayerSlot::P4 => None,
+        };
+    }
+
     match (session.external_port_selection, slot) {
         (_, PlayerSlot::P1) => session.rom_path(),
         (DesktopExternalPortSelection::GameLink, PlayerSlot::P2) => {
@@ -6202,7 +6279,6 @@ fn save_rom_path_for_player_slot(session: &DesktopSession, slot: PlayerSlot) -> 
 
 fn save_key_for_player_slot(
     session: &DesktopSession,
-    slot: PlayerSlot,
     rom_path: &Path,
 ) -> Result<Option<CartridgeSaveKey>, String> {
     let save_key = session
@@ -6214,15 +6290,16 @@ fn save_key_for_player_slot(
         return Ok(None);
     };
 
-    if session.external_port_selection == DesktopExternalPortSelection::FourPlayerAdapter
-        && slot != PlayerSlot::P1
-    {
-        return CartridgeSaveKey::new(format!("{}_dmg07_p{}", save_key.as_str(), slot.index() + 1))
-            .map(Some)
-            .map_err(|error| error.to_string());
-    }
-
     Ok(Some(save_key))
+}
+
+fn save_file_extension_for_player_slot(slot: PlayerSlot) -> CartridgeSaveFileExtension {
+    match slot {
+        PlayerSlot::P1 => CartridgeSaveFileExtension::P1,
+        PlayerSlot::P2 => CartridgeSaveFileExtension::P2,
+        PlayerSlot::P3 => CartridgeSaveFileExtension::P3,
+        PlayerSlot::P4 => CartridgeSaveFileExtension::P4,
+    }
 }
 
 fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
@@ -7478,6 +7555,9 @@ fn process_pending_open_rom_dialog(
                 OpenRomDialogMode::LinkedSecondary => {
                     open_selected_linked_secondary_rom(event_pump, canvas, path, context)
                 }
+                OpenRomDialogMode::CgbInfraredSecondary => {
+                    open_selected_cgb_infrared_secondary_rom(event_pump, canvas, path, context)
+                }
             };
             if let Err(error) = open_result {
                 show_error_message(Some(canvas.window()), "Open ROM failed", &error);
@@ -7835,12 +7915,24 @@ fn check_current_session_rebuilds_with_config(
     match (
         session.rom_bytes(),
         session.linked_secondary_rom_bytes(),
+        session.cgb_infrared_link_active,
         session.external_port_selection,
         session.dmg07_player_count,
     ) {
+        (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _) => {
+            load_cgb_infrared_machines_for_roms(
+                config,
+                &session.current_dir,
+                primary_rom_bytes,
+                secondary_rom_bytes,
+                "checking a CGB IR session",
+            )
+            .map(|_| ())
+        }
         (
             Some(primary_rom_bytes),
             Some(secondary_rom_bytes),
+            false,
             DesktopExternalPortSelection::GameLink,
             _,
         ) => {
@@ -7859,6 +7951,7 @@ fn check_current_session_rebuilds_with_config(
         (
             Some(primary_rom_bytes),
             _,
+            false,
             DesktopExternalPortSelection::FourPlayerAdapter,
             Some(player_count),
         ) => load_dmg07_machines_for_rom(
@@ -7869,10 +7962,10 @@ fn check_current_session_rebuilds_with_config(
             "checking a DMG-07 session",
         )
         .map(|_| ()),
-        (Some(rom_bytes), _, _, _) => {
+        (Some(rom_bytes), _, _, _, _) => {
             load_machine_for_rom(config, &session.current_dir, rom_bytes).map(|_| ())
         }
-        (None, _, _, _) => prepare_machine_config(config, &session.current_dir).map(|_| ()),
+        (None, _, _, _, _) => prepare_machine_config(config, &session.current_dir).map(|_| ()),
     }
 }
 
@@ -7915,6 +8008,7 @@ fn rebuild_machine_for_config(
             loaded_rom: context.session.loaded_rom.clone(),
             linked_secondary_rom: context.session.linked_secondary_rom.clone(),
             dmg07_player_count: context.session.dmg07_player_count,
+            cgb_infrared_link_active: context.session.cgb_infrared_link_active,
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -7924,12 +8018,53 @@ fn rebuild_machine_for_config(
         match (
             next_session.rom_bytes(),
             next_session.linked_secondary_rom_bytes(),
+            next_session.cgb_infrared_link_active,
             next_session.external_port_selection,
             next_session.dmg07_player_count,
         ) {
+            (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _) => {
+                let loaded = load_cgb_infrared_machines_for_roms(
+                    next_config,
+                    &context.session.current_dir,
+                    primary_rom_bytes,
+                    secondary_rom_bytes,
+                    "reconfiguring a CGB IR session",
+                )?;
+                write_cartridge_diagnostics(&loaded.diagnostics);
+                boot_rom_fallback_warnings.extend(loaded.boot_rom_fallback_warnings);
+                let mut next_machine = loaded.machine;
+                restore_battery_backed_states_by_player_slot(
+                    &mut next_machine,
+                    &battery_backed_states,
+                    "after reconfigure",
+                )?;
+                apply_session_pocket_camera_frame_to_desktop_session(
+                    &next_session,
+                    &mut next_machine,
+                )?;
+
+                let effective_config = loaded.effective_config;
+                let next_save_sessions = open_save_sessions_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        external_port_selection: DesktopExternalPortSelection::None,
+                        dmg07_player_count: None,
+                        cgb_infrared_link_active: true,
+                        ..next_session
+                    },
+                    &mut next_machine,
+                )?;
+                Ok((
+                    effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    next_save_sessions,
+                ))
+            }
             (
                 Some(primary_rom_bytes),
                 Some(secondary_rom_bytes),
+                false,
                 DesktopExternalPortSelection::GameLink,
                 _,
             ) => {
@@ -7975,6 +8110,7 @@ fn rebuild_machine_for_config(
                 let next_save_sessions = open_save_sessions_for_session(
                     &DesktopSession {
                         config: effective_config.clone(),
+                        cgb_infrared_link_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -7989,6 +8125,7 @@ fn rebuild_machine_for_config(
             (
                 Some(primary_rom_bytes),
                 _,
+                false,
                 DesktopExternalPortSelection::FourPlayerAdapter,
                 Some(player_count),
             ) => {
@@ -8019,6 +8156,7 @@ fn rebuild_machine_for_config(
                         linked_secondary_rom: None,
                         external_port_selection: DesktopExternalPortSelection::FourPlayerAdapter,
                         dmg07_player_count: Some(player_count),
+                        cgb_infrared_link_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -8030,7 +8168,7 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
-            (Some(rom_bytes), _, _, _) => {
+            (Some(rom_bytes), _, _, _, _) => {
                 let loaded =
                     load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
                 write_cartridge_diagnostics(&loaded.diagnostics);
@@ -8058,6 +8196,7 @@ fn rebuild_machine_for_config(
                         config: effective_config.clone(),
                         linked_secondary_rom: None,
                         dmg07_player_count: None,
+                        cgb_infrared_link_active: false,
                         external_port_selection: next_session.external_port_selection,
                         ..next_session
                     },
@@ -8070,7 +8209,7 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
-            (None, _, _, _) => {
+            (None, _, _, _, _) => {
                 let prepared = prepare_machine_config(next_config, &context.session.current_dir)?;
                 if let Some(warning) = prepared.boot_rom_fallback_warning {
                     boot_rom_fallback_warnings.push(warning);
@@ -8541,6 +8680,7 @@ fn open_selected_rom(
         loaded_rom: Some(next_loaded_rom),
         linked_secondary_rom: None,
         dmg07_player_count: None,
+        cgb_infrared_link_active: false,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -8556,6 +8696,7 @@ fn open_selected_rom(
     context.session.loaded_rom = next_session.loaded_rom;
     context.session.linked_secondary_rom = None;
     context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = false;
     context.session.last_open_directory = context
         .session
         .loaded_rom
@@ -8708,6 +8849,7 @@ fn open_selected_linked_secondary_rom(
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: Some(next_secondary_rom),
         dmg07_player_count: None,
+        cgb_infrared_link_active: false,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -8722,12 +8864,178 @@ fn open_selected_linked_secondary_rom(
     context.session.config = effective_config;
     context.session.linked_secondary_rom = next_session.linked_secondary_rom;
     context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = false;
     context.session.last_open_directory = context
         .session
         .linked_secondary_rom
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
     context.session.external_port_selection = DesktopExternalPortSelection::GameLink;
+    if config_fell_back && !context.session.test_runner {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
+    clear_live_input_state(context.machine, context.runtime);
+    *context.machine = next_machine;
+    reset_rewind_state(context.runtime);
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.reset_for_session_swap(next_console_model)?;
+    }
+    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+        audio_recorder.reset_for_session_swap(next_console_model)?;
+    }
+    context.runtime.save_sessions = next_save_sessions;
+    context.runtime.rtc_sync.resync_to_host_clock();
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+
+    if context.runtime.menu_state.is_open() {
+        close_menu(event_pump, context.machine, context.runtime)?;
+    }
+
+    Ok(())
+}
+
+fn deactivate_cgb_infrared_pair(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+
+    if context.machine.is_linked_cgb_infrared_two_player() {
+        close_runtime_save_sessions(context.runtime, context.machine)?;
+        context.machine.detach_to_single_primary();
+    }
+
+    context.session.linked_secondary_rom = None;
+    context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = false;
+    context.session.external_port_selection = DesktopExternalPortSelection::None;
+    apply_external_port_selection_to_machine(
+        context.machine.primary_machine_mut(),
+        DesktopExternalPortSelection::None,
+    );
+    context.runtime.save_sessions =
+        open_save_sessions_for_session(context.session, context.machine)?;
+    reset_rewind_state(context.runtime);
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+    context.runtime.rtc_sync.resync_to_host_clock();
+
+    Ok(())
+}
+
+fn open_selected_cgb_infrared_secondary_rom(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom() {
+        return Err(
+            "CGB IR requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    }
+    if context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor {
+        return Err("CGB IR requires MODEL GB COLOR".to_string());
+    }
+
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    let Some(primary_rom_bytes) = context.session.rom_bytes() else {
+        return Err(
+            "CGB IR requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    };
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
+    )
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+
+    let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
+    let loaded = load_cgb_infrared_machines_for_roms(
+        &context.session.config,
+        &context.session.current_dir,
+        primary_rom_bytes,
+        &next_secondary_rom.bytes,
+        "activating CGB IR",
+    )?;
+    for warning in &loaded.boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
+    write_cartridge_diagnostics(&loaded.diagnostics);
+
+    let effective_config = loaded.effective_config;
+    let config_fell_back = effective_config != context.session.config;
+    let mut next_machine = loaded.machine;
+    if let Some(persistent_state) = primary_battery_backed_state
+        && let Err(error) = next_machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&persistent_state)
+    {
+        return Err(format!(
+            "failed to restore battery-backed persistence while activating CGB IR: {error:?}"
+        ));
+    }
+
+    let next_session = DesktopSession {
+        config: effective_config.clone(),
+        test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
+        current_dir: context.session.current_dir.clone(),
+        loaded_rom: context.session.loaded_rom.clone(),
+        linked_secondary_rom: Some(next_secondary_rom),
+        dmg07_player_count: None,
+        cgb_infrared_link_active: true,
+        last_open_directory: context.session.last_open_directory.clone(),
+        recent_roms: context.session.recent_roms.clone(),
+        pocket_camera_frame: context.session.pocket_camera_frame.clone(),
+        external_port_selection: DesktopExternalPortSelection::None,
+    };
+    apply_session_pocket_camera_frame_to_desktop_session(&next_session, &mut next_machine)?;
+    let next_save_sessions = open_save_sessions_for_session(&next_session, &mut next_machine)?;
+
+    close_runtime_save_sessions(context.runtime, context.machine)?;
+    let next_console_model = next_machine.primary_machine().apu().console_model();
+
+    context.session.config = effective_config;
+    context.session.linked_secondary_rom = next_session.linked_secondary_rom;
+    context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = true;
+    context.session.last_open_directory = context
+        .session
+        .linked_secondary_rom
+        .as_ref()
+        .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = DesktopExternalPortSelection::None;
     if config_fell_back && !context.session.test_runner {
         context
             .settings_store
@@ -8808,6 +9116,7 @@ fn activate_dmg07_adapter(
         loaded_rom: context.session.loaded_rom.clone(),
         linked_secondary_rom: None,
         dmg07_player_count: Some(player_count),
+        cgb_infrared_link_active: false,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -8822,6 +9131,7 @@ fn activate_dmg07_adapter(
     context.session.config = effective_config;
     context.session.linked_secondary_rom = None;
     context.session.dmg07_player_count = Some(player_count);
+    context.session.cgb_infrared_link_active = false;
     context.session.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
     if config_fell_back && !context.session.test_runner {
         context
@@ -8904,6 +9214,7 @@ fn machine_state_actions_available(
     session.has_loaded_rom()
         && !machine.primary_machine().cartridge().is_empty()
         && !machine.is_linked_dmg04_two_player()
+        && !machine.is_linked_cgb_infrared_two_player()
         && !machine.is_linked_dmg07()
 }
 
@@ -8915,6 +9226,7 @@ fn rewind_session_supported(session: &DesktopSession, machine: &DesktopEmulation
     session.has_loaded_rom()
         && !machine.primary_machine().cartridge().is_empty()
         && !machine.is_linked_dmg04_two_player()
+        && !machine.is_linked_cgb_infrared_two_player()
         && !machine.is_linked_dmg07()
 }
 
@@ -9853,6 +10165,32 @@ fn execute_menu_action(
             context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
+        MenuAction::OpenCgbInfrared => {
+            if context.session.cgb_infrared_link_active
+                || context.machine.is_linked_cgb_infrared_two_player()
+            {
+                deactivate_cgb_infrared_pair(canvas, context)?;
+                return Ok(None);
+            }
+            if !context.session.has_loaded_rom()
+                || context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor
+            {
+                return Ok(None);
+            }
+
+            context.runtime.open_rom_dialog_mode = OpenRomDialogMode::CgbInfraredSecondary;
+            let default_location = context.session.rom_directory_hint();
+            if let Err(error) = context.runtime.open_rom_dialog.show_file(
+                &ROM_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                default_location,
+            ) {
+                context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
+                show_warning_message(Some(canvas.window()), "CGB IR", &error);
+                eprintln!("warning: {error}");
+            }
+            Ok(None)
+        }
         MenuAction::SetExternalPort(selection) => {
             drain_printed_pages_into_printer_output(
                 canvas.window(),
@@ -9882,6 +10220,7 @@ fn execute_menu_action(
                 DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
                     if context.machine.is_linked_dmg04_two_player()
                         || context.machine.is_linked_dmg07()
+                        || context.machine.is_linked_cgb_infrared_two_player()
                     {
                         close_runtime_save_sessions(context.runtime, context.machine)?;
                         context.machine.detach_to_single_primary();
@@ -9889,6 +10228,7 @@ fn execute_menu_action(
 
                     context.session.linked_secondary_rom = None;
                     context.session.dmg07_player_count = None;
+                    context.session.cgb_infrared_link_active = false;
                     context.session.external_port_selection = selection;
                     apply_external_port_selection_to_machine(
                         context.machine.primary_machine_mut(),
@@ -10171,6 +10511,7 @@ fn current_menu_presentation(
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
+        cgb_infrared_link_active: session.cgb_infrared_link_active(),
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_kind: session
             .config
@@ -11125,10 +11466,47 @@ fn reset_machine(
 
     let (effective_config, boot_rom_fallback_warnings, reset_machine, next_save_sessions) = match (
         session.linked_secondary_rom_bytes(),
+        session.cgb_infrared_link_active,
         session.external_port_selection,
         session.dmg07_player_count,
     ) {
-        (Some(secondary_rom_bytes), DesktopExternalPortSelection::GameLink, _) => {
+        (Some(secondary_rom_bytes), true, _, _) => {
+            let loaded = load_cgb_infrared_machines_for_roms(
+                &session.config,
+                &session.current_dir,
+                rom_bytes,
+                secondary_rom_bytes,
+                "resetting a CGB IR session",
+            )?;
+            let boot_rom_fallback_warnings = loaded.boot_rom_fallback_warnings;
+            write_cartridge_diagnostics(&loaded.diagnostics);
+            let mut reset_machine = loaded.machine;
+            restore_battery_backed_states_by_player_slot(
+                &mut reset_machine,
+                &battery_backed_states,
+                "after reset",
+            )?;
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut reset_machine)?;
+
+            let effective_config = loaded.effective_config;
+            let next_save_sessions = open_save_sessions_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    external_port_selection: DesktopExternalPortSelection::None,
+                    dmg07_player_count: None,
+                    cgb_infrared_link_active: true,
+                    ..session.clone()
+                },
+                &mut reset_machine,
+            )?;
+            (
+                effective_config,
+                boot_rom_fallback_warnings,
+                reset_machine,
+                next_save_sessions,
+            )
+        }
+        (Some(secondary_rom_bytes), false, DesktopExternalPortSelection::GameLink, _) => {
             let primary_loaded =
                 match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
                     Ok(result) => result,
@@ -11193,7 +11571,7 @@ fn reset_machine(
                 next_save_sessions,
             )
         }
-        (_, DesktopExternalPortSelection::FourPlayerAdapter, Some(player_count)) => {
+        (_, false, DesktopExternalPortSelection::FourPlayerAdapter, Some(player_count)) => {
             let loaded = load_dmg07_machines_for_rom(
                 &session.config,
                 &session.current_dir,
@@ -11218,6 +11596,7 @@ fn reset_machine(
                     linked_secondary_rom: None,
                     external_port_selection: DesktopExternalPortSelection::FourPlayerAdapter,
                     dmg07_player_count: Some(player_count),
+                    cgb_infrared_link_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -11263,6 +11642,7 @@ fn reset_machine(
                     config: effective_config.clone(),
                     linked_secondary_rom: None,
                     dmg07_player_count: None,
+                    cgb_infrared_link_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -12466,6 +12846,21 @@ mod tests {
         rom_path
     }
 
+    fn write_cgb_test_rom(
+        root: &Path,
+        name: &str,
+        cartridge_type: u8,
+        ram_size_code: u8,
+    ) -> PathBuf {
+        let rom_path = root.join(name);
+        fs::write(
+            &rom_path,
+            build_test_rom(32 * 1024, cartridge_type, 0x00, ram_size_code),
+        )
+        .expect("CGB test ROM should be writable");
+        rom_path
+    }
+
     fn build_stop_test_rom() -> Vec<u8> {
         let mut rom = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
         rom[ENTRY_POINT_START..ENTRY_POINT_START + 4].copy_from_slice(&[
@@ -12619,6 +13014,12 @@ mod tests {
         )
     }
 
+    fn cgb_skip_boot_summary_machine() -> Machine<TraceSummaryBuffer> {
+        Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        )
+    }
+
     fn assert_dmg07_slot_port(
         session: &super::linked_session::DesktopEmulationSession,
         slot: super::PlayerSlot,
@@ -12680,6 +13081,39 @@ mod tests {
                 .external_port()
                 .attachment_kind(),
             ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
+    fn desktop_emulation_session_can_wrap_a_two_console_cgb_ir_runtime() {
+        let primary = cgb_skip_boot_summary_machine();
+        let secondary = cgb_skip_boot_summary_machine();
+
+        let linked =
+            super::linked_session::DesktopEmulationSession::new_linked_cgb_infrared_two_player(
+                primary, secondary,
+            )
+            .expect("desktop CGB IR session should build from two aligned machines");
+
+        assert_eq!(
+            linked.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+        );
+        assert_eq!(
+            linked.linked_topology_kind(),
+            LinkedTopologyKind::CgbInfrared
+        );
+        assert_eq!(
+            linked.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(
+            linked
+                .secondary_machine()
+                .expect("secondary CGB IR machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::None
         );
     }
 
@@ -12969,6 +13403,287 @@ mod tests {
                 .read_bus(0xC000),
             secondary_reset_baseline
         );
+    }
+
+    #[test]
+    fn cgb_ir_menu_action_switches_the_open_rom_dialog_into_secondary_mode() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-action", false, false, false);
+        open_cgb_primary_rom(&mut harness, "primary.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog.pending = true;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .expect("CGB IR action should not fail when the open dialog is already pending")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::CgbInfraredSecondary
+        );
+    }
+
+    #[test]
+    fn cgb_ir_menu_action_ignores_non_cgb_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-action-dmg", true, false, false);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .expect("CGB IR action should be a no-op outside MODEL GB COLOR")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+        assert!(!harness.runtime.open_rom_dialog.is_pending());
+    }
+
+    #[test]
+    fn cgb_ir_secondary_selection_loads_a_two_console_infrared_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-activate", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        let secondary_rom_path = write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(harness.session.cgb_infrared_link_active());
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(secondary_rom_path.as_path())
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::CgbInfrared
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary CGB IR machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert!(!super::machine_state_actions_available(
+            &harness.session,
+            &harness.machine
+        ));
+        assert!(!super::rewind_session_supported(
+            &harness.session,
+            &harness.machine
+        ));
+    }
+
+    #[test]
+    fn cgb_ir_menu_action_turns_active_session_off_without_opening_picker() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-toggle-off", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+
+        assert!(harness.session.cgb_infrared_link_active());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .expect("active CGB IR action should turn the pair off")
+                .is_none()
+        );
+
+        assert!(!harness.runtime.open_rom_dialog.is_pending());
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
+    }
+
+    #[test]
+    fn selecting_none_after_cgb_ir_returns_to_a_single_primary_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-detach", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+        harness.machine.write_bus(0xC000, 0x5A);
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary CGB IR machine should exist")
+            .write_bus(0xC000, 0x99);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::None,
+                ))
+                .expect("returning to NONE should tear down CGB IR")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), 0x5A);
+    }
+
+    #[test]
+    fn reset_keeps_the_cgb_ir_runtime_active() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-reset", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+
+        let primary_reset_baseline = harness.machine.read_bus(0xC000);
+        let secondary_reset_baseline = harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary CGB IR machine should exist")
+            .read_bus(0xC000);
+        harness.machine.write_bus(0xC000, 0xA5);
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary CGB IR machine should exist")
+            .write_bus(0xC000, 0x3C);
+
+        super::reset_machine(
+            harness.canvas.window(),
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("CGB IR reset should rebuild a fresh linked runtime");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_some());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), primary_reset_baseline);
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine_mut()
+                .expect("secondary CGB IR machine should exist")
+                .read_bus(0xC000),
+            secondary_reset_baseline
+        );
+    }
+
+    #[test]
+    fn cgb_ir_save_sessions_use_the_secondary_rom_with_the_p2_extension() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-save-keys", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x03, 0x02);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x03, 0x02);
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+
+        let save_root = harness.root.join("saves");
+        let p1_save_session = harness.runtime.save_sessions[super::PlayerSlot::P1.index()]
+            .as_ref()
+            .expect("CGB IR P1 should have a save session");
+        let p2_save_session = harness.runtime.save_sessions[super::PlayerSlot::P2.index()]
+            .as_ref()
+            .expect("CGB IR P2 should have a save session");
+        assert_eq!(p1_save_session.save_path(), save_root.join("gold.gbsav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("silver.gbsa2"));
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
     }
 
     #[test]
@@ -13276,7 +13991,7 @@ mod tests {
     }
 
     #[test]
-    fn dmg07_save_sessions_use_isolated_keys_for_each_physical_cartridge_slot() {
+    fn dmg07_save_sessions_use_player_slot_file_extensions() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("dmg07-save-keys", false, false, false);
         let rom_name = "battery.gb";
@@ -13306,9 +14021,9 @@ mod tests {
         let save_root = harness.root.join("saves");
         let expected_paths = [
             save_root.join("battery.gbsav"),
-            save_root.join("battery_dmg07_p2.gbsav"),
-            save_root.join("battery_dmg07_p3.gbsav"),
-            save_root.join("battery_dmg07_p4.gbsav"),
+            save_root.join("battery.gbsa2"),
+            save_root.join("battery.gbsa3"),
+            save_root.join("battery.gbsa4"),
         ];
         for (slot, expected_path) in super::PlayerSlot::ALL.into_iter().zip(expected_paths) {
             let save_session = harness.runtime.save_sessions[slot.index()]
@@ -13519,6 +14234,7 @@ mod tests {
                 loaded_rom,
                 linked_secondary_rom: None,
                 dmg07_player_count: None,
+                cgb_infrared_link_active: false,
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
                 pocket_camera_frame: None,
@@ -13834,6 +14550,31 @@ mod tests {
             };
             super::process_pending_external_save_import_dialog(&mut self.canvas, &mut context)
         }
+    }
+
+    fn open_cgb_primary_rom(
+        harness: &mut FrontendHarness,
+        name: &str,
+        cartridge_type: u8,
+        ram_size_code: u8,
+    ) -> PathBuf {
+        harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyColor;
+        let rom_path = write_cgb_test_rom(&harness.root, name, cartridge_type, ram_size_code);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(name)))
+            .expect("CGB primary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("CGB primary ROM should load");
+        assert_eq!(
+            harness.session.config.launch.console_model,
+            DesktopConsoleModel::GameBoyColor
+        );
+        assert_eq!(harness.session.rom_path(), Some(rom_path.as_path()));
+        rom_path
     }
 
     #[test]
@@ -17181,6 +17922,7 @@ mod tests {
             loaded_rom: None,
             linked_secondary_rom: None,
             dmg07_player_count: None,
+            cgb_infrared_link_active: false,
             last_open_directory: None,
             recent_roms: vec![primary_path.clone()],
             pocket_camera_frame: None,
@@ -18662,6 +19404,7 @@ mod tests {
             }),
             linked_secondary_rom: None,
             dmg07_player_count: None,
+            cgb_infrared_link_active: false,
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -18722,6 +19465,10 @@ mod tests {
         assert_eq!(
             super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer.label(),
             "linked-dmg04-2p"
+        );
+        assert_eq!(
+            super::EmulationProfileSessionKind::LinkedCgbInfraredTwoPlayer.label(),
+            "linked-cgb-ir-2p"
         );
         assert_eq!(
             super::EmulationProfileSessionKind::LinkedDmg07.label(),
@@ -18913,6 +19660,7 @@ mod tests {
                 bytes: secondary_bytes,
             }),
             dmg07_player_count: None,
+            cgb_infrared_link_active: false,
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -18924,6 +19672,49 @@ mod tests {
 
         assert!(diagnostics.is_empty());
         assert!(machine.is_linked_dmg04_two_player());
+        assert!(machine.secondary_machine().is_some());
+    }
+
+    #[test]
+    fn load_initial_emulation_session_supports_direct_cgb_ir_startup() {
+        let root = temp_test_root("direct-cgb-ir-startup");
+        let primary_rom_path = write_cgb_test_rom(&root, "gold.gbc", 0x00, 0x00);
+        let secondary_rom_path = write_cgb_test_rom(&root, "silver.gbc", 0x00, 0x00);
+        let primary_bytes = fs::read(&primary_rom_path).expect("primary ROM should exist");
+        let secondary_bytes = fs::read(&secondary_rom_path).expect("secondary ROM should exist");
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = DesktopConsoleModel::GameBoyColor;
+        let mut session = super::DesktopSession {
+            config,
+            test_runner: false,
+            benchmark: None,
+            current_dir: root.clone(),
+            loaded_rom: Some(super::LoadedRom {
+                path: primary_rom_path,
+                bytes: primary_bytes,
+            }),
+            linked_secondary_rom: Some(super::LoadedRom {
+                path: secondary_rom_path,
+                bytes: secondary_bytes,
+            }),
+            dmg07_player_count: None,
+            cgb_infrared_link_active: true,
+            last_open_directory: Some(root.clone()),
+            recent_roms: Vec::new(),
+            pocket_camera_frame: None,
+            external_port_selection: super::DesktopExternalPortSelection::None,
+        };
+
+        let (machine, diagnostics) = super::load_initial_emulation_session(&mut session)
+            .expect("linked CGB IR startup helper should build an infrared session");
+
+        assert!(diagnostics.is_empty());
+        assert!(session.cgb_infrared_link_active());
+        assert!(machine.is_linked_cgb_infrared_two_player());
+        assert_eq!(
+            machine.linked_topology_kind(),
+            LinkedTopologyKind::CgbInfrared
+        );
         assert!(machine.secondary_machine().is_some());
     }
 
@@ -19165,6 +19956,10 @@ mod tests {
         assert_eq!(harness.session.rom_directory_hint(), harness.root.as_path());
         assert!(harness.session.recent_roms().is_empty());
         assert!(!harness.runtime.any_dialog_pending());
+        assert_eq!(
+            super::EXTERNAL_SAVE_FILE_DIALOG_FILTERS[0].pattern,
+            "sav;sa1;sa2;sa3;sa4"
+        );
         harness.runtime.external_save_export_dialog.pending = true;
         assert!(harness.runtime.any_dialog_pending());
         harness.runtime.external_save_export_dialog.pending = false;
@@ -20618,7 +21413,7 @@ mod tests {
     fn external_save_helpers_cover_disabled_non_battery_and_io_error_paths() {
         let _guard = crate::lock_sdl_test();
 
-        let mut no_rom_harness = FrontendHarness::new("external-save-no-rom", false, false, false);
+        let no_rom_harness = FrontendHarness::new("external-save-no-rom", false, false, false);
         assert_eq!(
             super::external_save_default_file_name(&no_rom_harness.session),
             "save.sav"
@@ -20651,15 +21446,6 @@ mod tests {
                 .is_none()
         );
 
-        no_rom_harness.session.loaded_rom = Some(super::LoadedRom {
-            path: PathBuf::from("/"),
-            bytes: Vec::new(),
-        });
-        assert_eq!(
-            super::legacy_save_key_for_loaded_rom(&no_rom_harness.session, Path::new("/")),
-            None
-        );
-        no_rom_harness.session.loaded_rom = None;
         drop(no_rom_harness);
 
         let mut disabled_harness =
@@ -21569,6 +22355,48 @@ mod tests {
             DesktopExternalPortSelection::None
         );
         assert_eq!(harness.session.dmg07_player_count, None);
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+    }
+
+    #[test]
+    fn opening_a_new_primary_rom_clears_cgb_ir_linked_state() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("open-rom-clears-cgb-ir", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        write_cgb_test_rom(&harness.root, "silver.gbc", 0x00, 0x00);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::CgbInfraredSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("silver.gbc")))
+            .expect("CGB IR secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate CGB IR");
+        assert!(harness.machine.is_linked_cgb_infrared_two_player());
+
+        let next_rom_path = write_cgb_test_rom(&harness.root, "crystal.gbc", 0x00, 0x00);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("crystal.gbc")))
+            .expect("next open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("next ROM should load");
+
+        assert_eq!(harness.session.rom_path(), Some(next_rom_path.as_path()));
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(!harness.session.cgb_infrared_link_active());
         assert!(harness.session.linked_secondary_rom.is_none());
         assert_eq!(
             harness.machine.kind(),
@@ -23497,6 +24325,7 @@ mod tests {
             loaded_rom: None,
             linked_secondary_rom: None,
             dmg07_player_count: None,
+            cgb_infrared_link_active: false,
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -23507,17 +24336,39 @@ mod tests {
 
         let linked_session = super::DesktopSession {
             loaded_rom: Some(primary_loaded.clone()),
-            linked_secondary_rom: Some(secondary_loaded),
+            linked_secondary_rom: Some(secondary_loaded.clone()),
             external_port_selection: DesktopExternalPortSelection::GameLink,
             ..launcher_session.clone()
         };
         super::check_current_session_rebuilds_with_config(&linked_session, &config)
             .expect("DMG-04 preflight should load both cartridges");
 
+        let mut cgb_config = config.clone();
+        cgb_config.launch.console_model = DesktopConsoleModel::GameBoyColor;
+        let cgb_primary_loaded = super::LoadedRom {
+            path: root.join("gold.gbc"),
+            bytes: build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        };
+        let cgb_secondary_loaded = super::LoadedRom {
+            path: root.join("silver.gbc"),
+            bytes: build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        };
+        let cgb_ir_session = super::DesktopSession {
+            config: cgb_config.clone(),
+            loaded_rom: Some(cgb_primary_loaded),
+            linked_secondary_rom: Some(cgb_secondary_loaded),
+            cgb_infrared_link_active: true,
+            external_port_selection: DesktopExternalPortSelection::None,
+            ..launcher_session.clone()
+        };
+        super::check_current_session_rebuilds_with_config(&cgb_ir_session, &cgb_config)
+            .expect("CGB IR preflight should load both native CGB cartridges");
+
         let adapter_session = super::DesktopSession {
             loaded_rom: Some(primary_loaded),
             external_port_selection: DesktopExternalPortSelection::FourPlayerAdapter,
             dmg07_player_count: Some(super::DesktopDmg07PlayerCount::Two),
+            cgb_infrared_link_active: false,
             ..launcher_session
         };
         super::check_current_session_rebuilds_with_config(&adapter_session, &config)

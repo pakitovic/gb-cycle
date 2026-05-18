@@ -1,3 +1,4 @@
+mod cgb_ir;
 mod dmg04;
 mod dmg07;
 mod session;

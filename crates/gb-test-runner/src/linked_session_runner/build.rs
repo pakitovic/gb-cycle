@@ -103,6 +103,9 @@ impl LinkedSessionRunner {
             crate::LinkedSessionTopology::Dmg04 => linked
                 .attach_dmg04_cable()
                 .map_err(|source| LinkedSessionExecutionError::LinkedMachines { source }),
+            crate::LinkedSessionTopology::CgbIr => linked
+                .attach_cgb_infrared_pair()
+                .map_err(|source| LinkedSessionExecutionError::LinkedMachines { source }),
             crate::LinkedSessionTopology::Dmg07 => {
                 let participants = session
                     .participants

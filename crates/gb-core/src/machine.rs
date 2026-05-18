@@ -411,6 +411,19 @@ impl<S: TraceSink> Machine<S> {
         self.serial.latest_completed_output_byte()
     }
 
+    pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
+        self.bus.cgb_infrared_emitter_on()
+    }
+
+    pub(crate) fn set_cgb_infrared_external_input(&mut self, active: bool) {
+        self.bus.set_cgb_infrared_external_input(active);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cgb_infrared_effective_signal_detected(&self) -> bool {
+        self.bus.cgb_infrared_effective_signal_detected()
+    }
+
     pub fn take_printed_pages(&mut self) -> Vec<crate::external_port::PrintedPage> {
         self.external_port.take_printed_pages()
     }

@@ -566,19 +566,17 @@ fn saves_commands_export_and_import_external_sav_files() {
     let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
         .expect("test ROM should load for save seeding");
     let key = derive_save_key(&rom_path).expect("save key should derive");
-    let legacy_key =
-        legacy_save_key_for_rom_path(None, &rom_path).expect("legacy key should derive");
     let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
     let mut seeded_ram = vec![0; 8 * 1024];
     seeded_ram[0] = 0x5A;
     seeded_ram[1] = 0xC3;
     backend
         .save(
-            &legacy_key,
+            &key,
             report.cartridge().persistence_metadata(),
             &PersistentCartState::NoMbcRam { ram: seeded_ram },
         )
-        .expect("legacy seed save should persist");
+        .expect("seed save should persist");
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -604,7 +602,7 @@ fn saves_commands_export_and_import_external_sav_files() {
         output.contains("save_key=Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"),
         "{output}"
     );
-    assert!(output.contains("Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2.gbsav"));
+    assert!(output.contains("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"));
     assert!(output.contains("external_bytes=8192"));
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
@@ -645,7 +643,7 @@ fn saves_commands_export_and_import_external_sav_files() {
 }
 
 #[test]
-fn saves_commands_cover_conversion_error_paths_and_legacy_session_loads() {
+fn saves_commands_cover_conversion_error_paths_and_exact_session_loads() {
     let temp_dir = unique_temp_dir("saves-convert-errors");
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
 
@@ -695,8 +693,6 @@ fn saves_commands_cover_conversion_error_paths_and_legacy_session_loads() {
     let report = CartridgeSlot::load(battery_rom.clone(), &CompatibilityPolicy::strict())
         .expect("battery ROM should load");
     let exact_key = derive_save_key(&battery_rom_path).expect("exact key should derive");
-    let legacy_key =
-        legacy_save_key_for_rom_path(None, &battery_rom_path).expect("legacy key should derive");
     let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
     backend
         .save(
@@ -716,25 +712,34 @@ fn saves_commands_cover_conversion_error_paths_and_legacy_session_loads() {
         .delete(&exact_key)
         .expect("mismatched exact save should be removable");
 
-    let legacy_path = backend.path_for_key(&legacy_key);
-    fs::create_dir_all(legacy_path.parent().expect("legacy parent should exist"))
-        .expect("legacy parent should be creatable");
-    fs::write(&legacy_path, b"not-a-valid-save").expect("broken legacy save should be writable");
-    let legacy_load_error =
+    let old_sanitized_key =
+        CartridgeSaveKey::new("Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2")
+            .expect("old sanitized key should be valid");
+    let old_sanitized_path = backend.path_for_key(&old_sanitized_key);
+    fs::create_dir_all(
+        old_sanitized_path
+            .parent()
+            .expect("old sanitized parent should exist"),
+    )
+    .expect("old sanitized parent should be creatable");
+    fs::write(&old_sanitized_path, b"not-a-valid-save")
+        .expect("broken old sanitized save should be writable");
+    let ignored_old_sanitized_error =
         saves_export_command(battery_options.clone(), &mut Vec::new(), &mut Vec::new())
-            .expect_err("broken legacy saves should surface load errors");
-    assert!(legacy_load_error.contains("failed to load save"));
-    fs::remove_file(&legacy_path).expect("broken legacy save should be removable");
+            .expect_err("old sanitized saves should not be loaded");
+    assert!(ignored_old_sanitized_error.contains("no gb-cycle save found"));
+    assert!(!ignored_old_sanitized_error.contains("failed to load save"));
+    fs::remove_file(&old_sanitized_path).expect("broken old sanitized save should be removable");
 
-    let mut legacy_ram = vec![0; 8 * 1024];
-    legacy_ram[0] = 0x44;
+    let mut exact_ram = vec![0; 8 * 1024];
+    exact_ram[0] = 0x44;
     backend
         .save(
-            &legacy_key,
+            &exact_key,
             report.cartridge().persistence_metadata(),
-            &PersistentCartState::NoMbcRam { ram: legacy_ram },
+            &PersistentCartState::NoMbcRam { ram: exact_ram },
         )
-        .expect("legacy save should persist");
+        .expect("exact save should persist");
     let mut machine = build_loaded_machine(battery_rom, false);
     let session = open_save_session(
         Some(&save_root),
@@ -744,7 +749,7 @@ fn saves_commands_cover_conversion_error_paths_and_legacy_session_loads() {
         &mut Vec::new(),
         true,
     )
-    .expect("legacy save session should open")
+    .expect("exact save session should open")
     .expect("battery-backed ROMs should create a save session");
     assert!(session.loaded_existing_save);
     assert_eq!(session.key, exact_key);
@@ -2323,7 +2328,6 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
             .expect_err("root paths do not provide a file name")
             .contains("could not derive a save key")
     );
-    assert_eq!(legacy_save_key_for_rom_path(None, Path::new("/")), None);
     assert!(
         derive_save_key(Path::new("bad*name.gb"))
             .expect_err("unsafe save key characters should fail")

@@ -68,13 +68,13 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 - `Machine::capture_save_state()` captures at the stable boundary between public T-cycle steps. The scheduler portion records `next_t_cycle`; machine-local pending external events are captured separately from scheduler timing.
 - `Machine::restore_save_state()` validates metadata before mutation, then restores owned subsystem fields directly. It does not replay MMIO writes and does not apply cartridge RTC elapsed off-session time.
 - Mandatory metadata includes console model, operating mode, host platform, startup mode, compatibility policy / execution mode / overrides, `next_t_cycle`, loaded cartridge kind and ROM fingerprint, plus boot-ROM kind, mapping state, and fingerprint when a boot ROM applies.
-- Additive subsystem DTO fields that preserve the current `.gbstate` version must deserialize missing data through an explicit `#[serde(default)]` or named default so existing same-version states remain loadable; schema-breaking fields require either a future version bump or an explicit development-contract reset instead of silent fallback.
+- During the current local-development contract, `.gbstate` payload DTOs are current-only even while the envelope remains version `1`; additive or schema-breaking fields may reject older local slot files, and those files should be recreated instead of migrated.
 - `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, current version `1`, extension `.gbstate`) separately from `.gbsav`. Decode rejects unsupported non-current versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
 - Phase 8 keeps `MachineSaveState` cloneable and usable entirely in memory. That is the future rewind hook: a later phase can add a frame/subframe ring buffer, compression, deltas, and UI without adding disk or timestamp policy to `gb-core`.
 
 #### Phase 8.1 semantic hardening contract
 
-- Keep the public `MachineSaveState` API and `.gbstate` version `1` compatible; this hardening step must not introduce rewind UI, ring buffers, compression, deltas, or a schema-breaking DTO conversion.
+- Keep the public `MachineSaveState` API and `.gbstate` version `1` envelope stable; this hardening step must not introduce rewind UI, ring buffers, compression, deltas, or a schema-breaking DTO conversion.
 - Validate restore semantics through one reusable continuation harness that captures a save state, forks an uninterrupted continuation, dirties and restores the original machine, then compares post-restore continuation state.
 - Coverage must include CPU mid-instruction / HALT / pending IME, PPU Mode 3 fetch/FIFO/window/OBJ state, active DMA with restart state, timer overflow pipeline, serial transfers in flight, active APU output state, and representative cartridge runtime state for NoMBC, MBC1, MBC2, MBC3 RAM+RTC, MBC5, and Pocket Camera.
 - A later Phase 8.2 may convert mirror-style subsystem wrappers into explicit durable DTOs, but only after the Phase 8.1 semantic coverage is green.

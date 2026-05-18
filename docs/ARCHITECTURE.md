@@ -160,7 +160,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
 - Joypad and serial: hardware-visible registers and signaling
 - External port: attachment identity, attachment reset/startup policy, printer protocol state, and per-console attachment snapshots, but not `SB` / `SC` transfer semantics
-- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, and shared multi-console T-cycle coordination, but not frontend player-slot UX
+- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, CGB infrared optical-pair routing, and shared multi-console T-cycle coordination, but not frontend player-slot UX
 - Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
@@ -327,10 +327,11 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 
 ### `link/`
 
-- `DMG-04` cable routing and `DMG-07` adapter topology
+- `DMG-04` cable routing, `DMG-07` adapter topology, and native CGB-to-CGB infrared optical-pair topology
 - shared multi-console session orchestration on one T-cycle timeline
 - linked stepping over two or more `Machine` instances without moving per-console `SB` / `SC` semantics out of `serial/`
 - `DMG-07` participant/port identity, adapter packet routing, and adapter timing state
+- CGB IR peer-emitter sampling and optical input routing without treating infrared as an external-port cable attachment
 - separation between attachment/topology ownership and the per-console serial controller that consumes only a narrow signal boundary
 - separation between core attachment/session ownership and frontend-owned player-slot UX, mute policy, and window/layout policy
 
@@ -406,6 +407,7 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 - `MachineSaveState` is the core-owned whole-machine boundary. It is distinct from `MachineSnapshot` (debug/inspection only) and `.gbsav` cartridge persistence.
 - Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
 - The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `1`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
+- During active development the `.gbstate` payload schema is current-only even while the envelope remains version `1`; incompatible local slot files from earlier builds may be rejected and should be recreated instead of migrated.
 - The Phase 8 durability layer stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
 - Rewind is layered over repeated in-memory `MachineSaveState` capture/restore. Phase 8.4 defines the core-only frame/subframe `MachineRewindBuffer` ring buffer and memory telemetry; Phase 8.7 accounts `MachineSaveState` payload bytes by deterministic deep-size of owned snapshot storage while still excluding allocator/RSS overhead. `gb-desktop` owns the single-machine host integration by recording frame/subframe snapshots during normal runtime, exposing a remappable hold hotkey (`Left Shift` by default), persistent rewind capture/capacity/playback-speed options under `SYSTEM -> REWIND`, compact HUD telemetry plus a top-right active-rewind indicator, and host input/audio/pacing/RTC/save-baseline cleanup after restore. Multi-machine coordination, compression, deltas, and debugger-grade reverse T-cycle stepping remain outside the core contract.
 - Host-facing `.gbstate` I/O is a frontend/tooling policy on top of the core contract. `gb-cli run --state-in/--state-out` restores after ROM load and saves after the normal run budget, while `gb-desktop` stores single-machine slots under `<rom-dir>/states/<state-key>.slot<N>.gbstate` and keeps `LOAD STATE` visible but disabled until the selected ROM-related slot exists. Loading a `.gbstate` must not apply elapsed RTC off-session time or replay cartridge `.gbsav`; any cartridge save session uses the restored cartridge state as its new baseline, and the desktop rewind buffer is cleared because the host timeline has jumped to an externally loaded state.
