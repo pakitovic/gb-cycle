@@ -164,7 +164,6 @@ impl DesktopDisplayPalette {
 pub enum DesktopFrameBlendingMode {
     #[default]
     Off,
-    #[serde(alias = "simple", alias = "lcd")]
     On,
 }
 

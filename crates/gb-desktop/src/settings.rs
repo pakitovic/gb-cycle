@@ -1181,9 +1181,9 @@ show_performance_hud = true
     }
 
     #[test]
-    fn frame_blending_settings_migrate_legacy_simple_and_lcd_modes_to_on() {
-        for (index, legacy_mode) in ["simple", "lcd"].into_iter().enumerate() {
-            let path = unique_test_path(&format!("frame-blending-legacy-{index}"));
+    fn frame_blending_settings_reject_removed_simple_and_lcd_modes() {
+        for removed_mode in ["simple", "lcd"] {
+            let path = unique_test_path(&format!("frame-blending-removed-{removed_mode}"));
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).expect("settings parent should be creatable");
             }
@@ -1194,15 +1194,15 @@ show_performance_hud = true
 version = 1
 
 [video]
-frame_blending = \"{legacy_mode}\"
+frame_blending = \"{removed_mode}\"
 "
                 ),
             )
-            .expect("legacy frame blending setting should be writable");
+            .expect("removed frame blending setting should be writable");
 
-            let reloaded =
-                PersistedDesktopSettings::load(&path).expect("legacy frame blending should reload");
-            assert_eq!(reloaded.video.frame_blending, DesktopFrameBlendingMode::On);
+            let parse_error = PersistedDesktopSettings::load(&path)
+                .expect_err("removed frame blending values should fail");
+            assert!(parse_error.contains("failed to parse desktop settings"));
         }
     }
 

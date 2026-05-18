@@ -486,7 +486,7 @@ fn parse_display_palette(value: &str) -> Result<DesktopDisplayPalette, String> {
 fn parse_frame_blending_mode(value: &str) -> Result<DesktopFrameBlendingMode, String> {
     match value {
         "off" => Ok(DesktopFrameBlendingMode::Off),
-        "on" | "simple" | "lcd" => Ok(DesktopFrameBlendingMode::On),
+        "on" => Ok(DesktopFrameBlendingMode::On),
         _ => Err(format!(
             "unsupported --frame-blend value {value:?}; expected off or on"
         )),
@@ -1211,25 +1211,8 @@ mod tests {
             DesktopFrameBlendingMode::On
         );
 
-        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "simple"])
-            .expect("legacy simple frame blend override should parse");
-        let CliAction::Run(options) = action else {
-            panic!("expected a run action");
-        };
-        assert_eq!(
-            options.config.video.frame_blending,
-            DesktopFrameBlendingMode::On
-        );
-
-        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "lcd"])
-            .expect("legacy lcd frame blend override should parse as the stable on mode");
-        let CliAction::Run(options) = action else {
-            panic!("expected a run action");
-        };
-        assert_eq!(
-            options.config.video.frame_blending,
-            DesktopFrameBlendingMode::On
-        );
+        assert!(parse_cli_arguments(["demo.gb", "--frame-blend", "simple"]).is_err());
+        assert!(parse_cli_arguments(["demo.gb", "--frame-blend", "lcd"]).is_err());
     }
 
     #[test]
