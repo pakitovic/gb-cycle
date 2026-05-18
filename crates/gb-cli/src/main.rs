@@ -1155,18 +1155,20 @@ fn inspect_rom_command(options: InspectRomOptions, output: &mut dyn Write) -> Re
     let header = CartridgeHeader::parse(&rom_bytes).map_err(format_header_parse_error)?;
     let compatibility = compatibility_for_execution_mode(options.execution_mode);
 
-    let (load_status, classification, diagnostics, rejection_reason) =
+    let (load_status, classification, diagnostics, rejection_reason, effective_rom_layout) =
         match CartridgeSlot::load(rom_bytes, &compatibility) {
             Ok(report) => {
                 let classification = report
                     .cartridge()
                     .classification()
                     .expect("loaded cartridges should always expose a classification");
+                let effective_rom_layout = report.effective_rom_layout();
                 (
                     "ok",
                     classification,
                     report.diagnostics().to_vec(),
                     None::<String>,
+                    effective_rom_layout,
                 )
             }
             Err(CartridgeLoadError::Rejected {
@@ -1174,7 +1176,7 @@ fn inspect_rom_command(options: InspectRomOptions, output: &mut dyn Write) -> Re
                 reason,
                 diagnostics,
                 ..
-            }) => ("rejected", classification, diagnostics, Some(reason)),
+            }) => ("rejected", classification, diagnostics, Some(reason), None),
             Err(CartridgeLoadError::HeaderParse(error)) => {
                 return Err(format_header_parse_error(error));
             }
@@ -1230,6 +1232,27 @@ fn inspect_rom_command(options: InspectRomOptions, output: &mut dyn Write) -> Re
         &format!(
             "rom_bank_count={}",
             optional_usize_name(header.rom_size.bank_count)
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "effective_rom_size_bytes={}",
+            optional_usize_name(effective_rom_layout.map(|layout| layout.effective_bytes))
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "effective_rom_bank_count={}",
+            optional_usize_name(effective_rom_layout.map(|layout| layout.effective_bank_count))
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "rom_size_source={}",
+            effective_rom_layout.map_or("unknown", |layout| layout.source.name())
         ),
     )?;
     writeln_checked(

@@ -23,6 +23,13 @@ impl CartridgeDevice {
         SaveStateByteFingerprint::from_bytes(self.rom_bytes())
     }
 
+    pub(in crate::cartridge) fn rom_layout(&self) -> CartridgeRomLayout {
+        match self {
+            Self::Mbc5(cartridge) => cartridge.rom_layout,
+            _ => CartridgeRomLayout::loaded_image(self.header(), self.rom_bytes().len()),
+        }
+    }
+
     pub(in crate::cartridge) fn trace_summary(&self) -> String {
         match self {
             Self::M161(cartridge) => cartridge.trace_summary(),

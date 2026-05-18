@@ -268,6 +268,7 @@ fn private_mapper_helpers_cover_remaining_zero_bank_noop_and_none_profile_branch
         header: mbc5_header,
         classification: CartridgeClassification::classify(0x19),
         variant: Mbc5Variant::NoRam,
+        rom_layout: CartridgeRomLayout::declared_exact(256 * 1024, 256 * 1024),
         ram_enabled: false,
         rom_bank_low8: 0,
         rom_bank_high1: 0,

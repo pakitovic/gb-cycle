@@ -14,6 +14,8 @@ cargo run -p gb-cli -- inspect-rom path/to/rom.gb
 
 Use `--mode <strict|permissive|experimental>` when the inspection should evaluate cartridge-loader compatibility under a specific policy preset; the default is `strict`.
 
+The report includes the declared ROM-size fields from `0x0148` (`rom_size_bytes`, `rom_bank_count`) plus loader-resolved fields (`effective_rom_size_bytes`, `effective_rom_bank_count`, `rom_size_source`). `rom_size_source=declared-exact` means the loaded mapper uses the header declaration directly; `rom_size_source=permissive-rounded-actual` means a tolerant policy admitted a supported mapper with contradictory size metadata and derived the mapper capacity from the file length. Rejected ROMs report these effective fields as `unknown` because no cartridge device was constructed.
+
 ### `run`
 
 Execute a ROM headlessly:
@@ -46,6 +48,7 @@ Both commands load the ROM first, then validate the save payload against the car
 ## Startup and compatibility
 
 - `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
+- `--mode permissive` may load explicit supported MBC5 homebrew/public-domain ROMs whose `0x0148` ROM-size metadata is unsupported or contradicts the file length; the core emits loader diagnostics, pads missing ROM bytes with `0xFF`, and keeps MBC5 banking semantics unchanged. Keep `strict` for oracle runs, differential comparisons, and accuracy claims.
 - `custom-boot` is a direct-start path for boot-logo-inspecting ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot` and overlays the DMG boot-logo VRAM/map seed without loading a boot ROM asset.
 - `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`.
 

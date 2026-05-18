@@ -169,6 +169,7 @@ This checklist should change only when a discovered regression invalidates one o
 
 - `Strict` is the only mode that counts as the project's oracle path for CI, differential comparison, DMG closure, and official accuracy claims.
 - `Permissive` is for tolerant interactive use and loader-validation coverage around odd but still unambiguous supported cartridges; it must not change the runtime semantics of admitted supported hardware.
+- MBC5 homebrew/public-domain ROMs with explicit supported MBC5 cartridge types but malformed `0x0148` metadata are a `Permissive` loader-coverage case, not oracle evidence: strict tests must keep rejecting unsupported or contradictory ROM-size declarations, while permissive tests should assert the warning, the rounded effective ROM capacity, `0xFF` padding for bytes outside the file, and unchanged MBC5 bank semantics.
 - `Experimental` is for research and bring-up; its results must stay segregated from official closure metrics, oracle comparisons, and compatibility claims.
 - Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
 - When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.

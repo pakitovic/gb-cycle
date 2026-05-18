@@ -3,11 +3,11 @@ use gb_core::{
     CartridgeClassification, CartridgeExternalAccessInfo, CartridgeExternalAvailability,
     CartridgeExternalReadBehavior, CartridgeExternalTarget, CartridgeExternalWriteBehavior,
     CartridgeHeader, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
-    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
-    Huc3RtcPersistentState, Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy,
-    PersistentCartState, RomSizeInfo, StartupMode, SupportedCartridgeFamily, TCycle,
-    UnsupportedCartridgeCategory, ValidationPolicy,
+    CartridgeRamPayloadKind, CartridgeRomLayoutSource, CartridgeRtcRegister, CartridgeSelection,
+    CartridgeSlot, CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy,
+    HeuristicPolicy, Huc3RtcPersistentState, Machine, MachineConfig, Mbc3RtcPersistentState,
+    OverridePolicy, PersistentCartState, RomSizeInfo, StartupMode, SupportedCartridgeFamily,
+    TCycle, UnsupportedCartridgeCategory, ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;

@@ -131,6 +131,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `Permissive` is the tolerant normal-use mode for cartridges that still map unambiguously to already supported hardware.
 - In `Permissive`, all `Supported` cartridges should load with identical runtime semantics to `Strict`; only unambiguous header inconsistencies may degrade from error to warning; automatic heuristic mapper detection stays off; and manual overrides may be allowed, but never silently.
 - Current repo decision: for already supported `NoMbc` cartridges, legacy or inconsistent RAM-size declarations that still map unambiguously to the fixed `8 KiB` always-enabled `ROM+RAM` baseline should degrade to warnings under `Permissive` / `Warn` instead of remaining fatal, while `Strict` still rejects them.
+- Current repo decision: for already supported explicit `MBC5` cartridges, `Permissive` / `Warn` may admit malformed homebrew or public-domain ROM-size metadata when `0x0147` is one of the supported MBC5 type codes and the actual image is no larger than `8 MiB`; the loader records an effective ROM layout derived from the file length, rounds it up to a `16 KiB` bank boundary and then to a power-of-two capacity with a `32 KiB` minimum, pads absent bytes with `0xFF`, and emits a warning while `Strict` still rejects the same contradiction.
 - `Experimental` is the research and bring-up mode.
 - In `Experimental`, `Supported` cartridges still keep the same runtime semantics as the other modes, but explicit heuristic paths, partial planned-variant implementations, and clearly marked stub or placeholder paths for special hardware may be enabled behind explicit policy gates.
 - `Experimental` results must be marked as non-oracle in diagnostics, tooling, and project claims.
@@ -533,7 +534,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Rumble-capable MBC5 external RAM support should cover `8 KiB`, `32 KiB`, and `64 KiB` SRAM configurations. Because `bit 3` of the RAM-bank control register is wired to the motor rather than the RAM chip, only `3` bank-select bits remain for external RAM on those variants.
 - MBC5 external RAM should be modeled as linear `8 KiB` banks selected directly by the RAM-bank register, with no MBC1-style dual banking mode.
 - If a cartridge declares an MBC5 header type but validated ROM size exceeds `8 MiB`, the loader should emit an explicit diagnostic instead of guessing another mapper.
+- If a cartridge declares a supported MBC5 header type but `0x0148` is unsupported or contradicts the actual image size, `Strict` should reject the image, while `Permissive` should derive a validated effective ROM layout from the actual image length, round it to a `16 KiB` bank boundary and then to a power-of-two capacity, enforce the `32 KiB..=8 MiB` range, pad reads beyond the file with `0xFF`, and use the effective bank count for MBC5 ROM-bank masking instead of `header.rom_size.bank_count`.
 - If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, a standard non-rumble MBC5 RAM size larger than `128 KiB`, or a rumble-capable MBC5 RAM size larger than `64 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
+- If the MBC5 cartridge type is `0x19` or `0x1C`, external RAM is absent even when `0x0149` is nonzero or unsupported; under `Permissive` that contradiction is a warning and must not allocate a speculative RAM backing store.
 - The visible MBC5 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
   - `0x4000-0x7FFF`: switchable ROM bank `0x000..=0x1FF`
@@ -547,6 +550,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Hardware still appears to power up MBC5 with bank `1` visible in `0x4000-0x7FFF`, even though later writes may legitimately select bank `0` there.
 - Unlike MBC1, MBC2, and MBC3, MBC5 must not apply a `0 -> 1` translation to the high ROM window. Writing bank `0` should really expose bank `0` in `0x4000-0x7FFF`.
 - Effective MBC5 ROM-bank selection should combine `rom_bank_low8` plus `rom_bank_high1` into one `9`-bit value and then mask by the real number of loaded ROM banks without inventing a synthetic `0 -> 1` rule.
+- For permissively admitted malformed-size MBC5 images, "real number of loaded ROM banks" means the validated effective bank count after file-length rounding and `0xFF` padding, not the contradictory header declaration.
 - Do not reuse MBC1 or MBC3 helper paths if they carry the `0 -> 1` rule, because that would make valid MBC5 high-window bank `0` unreachable.
 - `0x4000-0x5FFF` is a write-only RAM-bank / rumble control register.
 - On standard non-rumble MBC5, use the low `4` bits as the raw RAM-bank register and then mask by the real RAM-bank count.
@@ -558,7 +562,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - In cartridges without external RAM, `0xA000-0xBFFF` must not behave like SRAM merely because `ram_bank_raw` exists. RAM presence still comes from validated header capabilities.
 - MBC5 control writes are ordinary cartridge commands on the shared T-cycle timeline. RAM-enable, ROM-bank, and RAM-bank changes must become visible on the access T-cycle for all later cartridge accesses; do not defer them to instruction or frame boundaries.
 - A concrete `Mbc5Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
-- It should contain at least `rom`, optional `ram`, `has_battery`, `has_rumble`, explicit MBC5 variant metadata, `ram_enabled`, `rom_bank_low8`, `rom_bank_high1`, `ram_bank_raw`, `rumble_on`, and `header`.
+- It should contain at least `rom`, optional `ram`, `has_battery`, `has_rumble`, explicit MBC5 variant metadata, a validated ROM layout with declared size, actual size, effective capacity, effective bank count, and layout source, `ram_enabled`, `rom_bank_low8`, `rom_bank_high1`, `ram_bank_raw`, `rumble_on`, and `header`.
 - Prefer explicit helpers such as `effective_rom_bank()`, `effective_ram_bank()`, and `effective_rumble_state()` so raw register state, variant decisions, final masked bank numbers, and observable rumble state remain inspectable.
 
 ## Timing / accuracy requirements

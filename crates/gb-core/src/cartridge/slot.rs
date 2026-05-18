@@ -13,6 +13,10 @@ impl CartridgeLoadReport {
         &self.cartridge
     }
 
+    pub fn effective_rom_layout(&self) -> Option<CartridgeRomLayout> {
+        self.cartridge.effective_rom_layout()
+    }
+
     pub fn diagnostics(&self) -> &[CartridgeDiagnostic] {
         &self.diagnostics
     }
@@ -579,7 +583,7 @@ impl CartridgeSlot {
                 })
             }
             CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc5) => {
-                let variant = validate_mbc5(
+                let layout = validate_mbc5(
                     &header,
                     rom_bytes.len(),
                     compatibility,
@@ -587,19 +591,24 @@ impl CartridgeSlot {
                     &mut diagnostics,
                 )?;
 
-                let has_battery = variant.has_battery();
-                let has_rumble = variant.has_rumble();
-                let ram = (variant.has_ram() && header.ram_size.decoded_bytes.unwrap_or(0) != 0)
-                    .then(|| vec![0; header.ram_size.decoded_bytes.unwrap_or(0)]);
+                let mut rom = rom_bytes;
+                if rom.len() < layout.rom_layout.effective_bytes {
+                    rom.resize(layout.rom_layout.effective_bytes, RAM_ABSENT_READ_VALUE);
+                }
+
+                let has_battery = layout.variant.has_battery();
+                let has_rumble = layout.variant.has_rumble();
+                let ram = (layout.ram_len != 0).then(|| vec![0; layout.ram_len]);
                 let cartridge = Self::with_loaded_device(
                     CartridgeDevice::Mbc5(Mbc5Cartridge {
-                        rom: rom_bytes,
+                        rom,
                         ram,
                         has_battery,
                         has_rumble,
                         header,
                         classification,
-                        variant,
+                        variant: layout.variant,
+                        rom_layout: layout.rom_layout,
                         ram_enabled: false,
                         // MBC5 keeps bank 0 valid in the switchable window, but
                         // the power-up mapping still exposes bank 1 until software
@@ -756,6 +765,10 @@ impl CartridgeSlot {
 
     pub fn classification(&self) -> Option<CartridgeClassification> {
         self.device.as_ref().map(CartridgeDevice::classification)
+    }
+
+    pub fn effective_rom_layout(&self) -> Option<CartridgeRomLayout> {
+        self.device.as_ref().map(CartridgeDevice::rom_layout)
     }
 
     pub fn rom_fingerprint(&self) -> Option<SaveStateByteFingerprint> {
