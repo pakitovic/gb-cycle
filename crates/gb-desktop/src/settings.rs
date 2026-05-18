@@ -1163,13 +1163,9 @@ show_performance_hud = true
 
     #[test]
     fn frame_blending_settings_round_trip_each_mode() {
-        for (index, frame_blending) in [
-            DesktopFrameBlendingMode::Off,
-            DesktopFrameBlendingMode::Simple,
-            DesktopFrameBlendingMode::Lcd,
-        ]
-        .into_iter()
-        .enumerate()
+        for (index, frame_blending) in [DesktopFrameBlendingMode::Off, DesktopFrameBlendingMode::On]
+            .into_iter()
+            .enumerate()
         {
             let path = unique_test_path(&format!("frame-blending-{index}"));
             let mut settings = PersistedDesktopSettings::default();
@@ -1181,6 +1177,32 @@ show_performance_hud = true
             let reloaded =
                 PersistedDesktopSettings::load(&path).expect("frame blending should reload");
             assert_eq!(reloaded.video.frame_blending, frame_blending);
+        }
+    }
+
+    #[test]
+    fn frame_blending_settings_migrate_legacy_simple_and_lcd_modes_to_on() {
+        for (index, legacy_mode) in ["simple", "lcd"].into_iter().enumerate() {
+            let path = unique_test_path(&format!("frame-blending-legacy-{index}"));
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("settings parent should be creatable");
+            }
+            fs::write(
+                &path,
+                format!(
+                    "\
+version = 1
+
+[video]
+frame_blending = \"{legacy_mode}\"
+"
+                ),
+            )
+            .expect("legacy frame blending setting should be writable");
+
+            let reloaded =
+                PersistedDesktopSettings::load(&path).expect("legacy frame blending should reload");
+            assert_eq!(reloaded.video.frame_blending, DesktopFrameBlendingMode::On);
         }
     }
 
@@ -1244,7 +1266,7 @@ max_memory_mib = 128
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.presentation_filter = true;
-        settings.video.frame_blending = DesktopFrameBlendingMode::Lcd;
+        settings.video.frame_blending = DesktopFrameBlendingMode::On;
         settings.video.display_palette = DesktopDisplayPalette::Pocket;
         settings.video.show_background = false;
         settings.video.show_window = false;
@@ -1313,7 +1335,7 @@ max_memory_mib = 128
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.presentation_filter);
-        assert_eq!(config.video.frame_blending, DesktopFrameBlendingMode::Lcd);
+        assert_eq!(config.video.frame_blending, DesktopFrameBlendingMode::On);
         assert_eq!(config.video.display_palette, DesktopDisplayPalette::Pocket);
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
@@ -1517,7 +1539,7 @@ max_memory_mib = 128
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
         store
-            .set_frame_blending(DesktopFrameBlendingMode::Simple)
+            .set_frame_blending(DesktopFrameBlendingMode::On)
             .expect("frame blending should persist");
         store
             .set_display_palette(DesktopDisplayPalette::Light)
@@ -1599,10 +1621,7 @@ max_memory_mib = 128
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
         assert!(reloaded.video.presentation_filter);
-        assert_eq!(
-            reloaded.video.frame_blending,
-            DesktopFrameBlendingMode::Simple
-        );
+        assert_eq!(reloaded.video.frame_blending, DesktopFrameBlendingMode::On);
         assert_eq!(reloaded.video.display_palette, DesktopDisplayPalette::Light);
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
@@ -1672,7 +1691,7 @@ max_memory_mib = 128
             .set_presentation_filter(true)
             .expect("presentation filter should persist");
         store
-            .set_frame_blending(DesktopFrameBlendingMode::Lcd)
+            .set_frame_blending(DesktopFrameBlendingMode::On)
             .expect("frame blending should persist");
         store
             .set_show_performance_hud(true)

@@ -164,16 +164,15 @@ impl DesktopDisplayPalette {
 pub enum DesktopFrameBlendingMode {
     #[default]
     Off,
-    Simple,
-    Lcd,
+    #[serde(alias = "simple", alias = "lcd")]
+    On,
 }
 
 impl DesktopFrameBlendingMode {
     pub fn next(self) -> Self {
         match self {
-            Self::Off => Self::Simple,
-            Self::Simple => Self::Lcd,
-            Self::Lcd => Self::Off,
+            Self::Off => Self::On,
+            Self::On => Self::Off,
         }
     }
 }
@@ -1219,14 +1218,10 @@ mod tests {
         );
         assert_eq!(
             DesktopFrameBlendingMode::Off.next(),
-            DesktopFrameBlendingMode::Simple
+            DesktopFrameBlendingMode::On
         );
         assert_eq!(
-            DesktopFrameBlendingMode::Simple.next(),
-            DesktopFrameBlendingMode::Lcd
-        );
-        assert_eq!(
-            DesktopFrameBlendingMode::Lcd.next(),
+            DesktopFrameBlendingMode::On.next(),
             DesktopFrameBlendingMode::Off
         );
         assert_eq!(

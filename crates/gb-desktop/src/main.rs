@@ -172,7 +172,6 @@ struct FrameBlendingState {
     previous_rgb_frame: Vec<u8>,
     current_rgb_frame: Vec<u8>,
     has_previous_frame: bool,
-    odd_frame: bool,
 }
 
 impl FrameBlendingState {
@@ -182,7 +181,6 @@ impl FrameBlendingState {
         self.previous_rgb_frame.clear();
         self.current_rgb_frame.clear();
         self.has_previous_frame = false;
-        self.odd_frame = false;
     }
 
     fn apply(
@@ -210,7 +208,6 @@ impl FrameBlendingState {
             self.previous_rgb_frame.resize(rgb_frame.len(), 0);
             self.current_rgb_frame.clear();
             self.has_previous_frame = false;
-            self.odd_frame = false;
         }
 
         if !self.has_previous_frame {
@@ -227,11 +224,9 @@ impl FrameBlendingState {
             &self.previous_rgb_frame,
             dimensions,
             mode,
-            self.odd_frame,
         );
         self.previous_rgb_frame
             .copy_from_slice(&self.current_rgb_frame);
-        self.odd_frame = !self.odd_frame;
     }
 }
 
@@ -12080,36 +12075,19 @@ fn framebuffer_pitch_bytes_for_dimensions(dimensions: FramebufferDimensions) -> 
 
 struct FrameBlendGammaTables {
     half: Vec<u8>,
-    one_third: Vec<u8>,
-    two_thirds: Vec<u8>,
 }
 
 impl FrameBlendGammaTables {
     fn new() -> Self {
         Self {
             half: frame_blend_gamma_table(0.5),
-            one_third: frame_blend_gamma_table(1.0 / 3.0),
-            two_thirds: frame_blend_gamma_table(2.0 / 3.0),
         }
     }
 
-    fn table_for(
-        &self,
-        mode: DesktopFrameBlendingMode,
-        y: usize,
-        odd_frame: bool,
-    ) -> Option<&[u8]> {
+    fn table_for(&self, mode: DesktopFrameBlendingMode) -> Option<&[u8]> {
         match mode {
             DesktopFrameBlendingMode::Off => None,
-            DesktopFrameBlendingMode::Simple => Some(&self.half),
-            DesktopFrameBlendingMode::Lcd => {
-                let even_line = y & 1 == 0;
-                if even_line ^ odd_frame {
-                    Some(&self.one_third)
-                } else {
-                    Some(&self.two_thirds)
-                }
-            }
+            DesktopFrameBlendingMode::On => Some(&self.half),
         }
     }
 }
@@ -12146,7 +12124,6 @@ fn blend_rgb24_frames(
     previous_rgb_frame: &[u8],
     dimensions: FramebufferDimensions,
     mode: DesktopFrameBlendingMode,
-    odd_frame: bool,
 ) {
     if mode == DesktopFrameBlendingMode::Off
         || target_rgb_frame.len() != current_rgb_frame.len()
@@ -12156,12 +12133,12 @@ fn blend_rgb24_frames(
     }
 
     let tables = frame_blend_gamma_tables();
+    let Some(table) = tables.table_for(mode) else {
+        return;
+    };
     let pitch = framebuffer_pitch_bytes_for_dimensions(dimensions);
     let height = dimensions.height as usize;
     for y in 0..height {
-        let Some(table) = tables.table_for(mode, y, odd_frame) else {
-            continue;
-        };
         let row_start = y * pitch;
         let row_end = row_start.saturating_add(pitch).min(target_rgb_frame.len());
         for index in row_start..row_end {
@@ -19520,61 +19497,39 @@ mod tests {
         let mut state = super::FrameBlendingState::default();
         let mut first_frame = vec![255_u8; 3];
 
-        state.apply(
-            &mut first_frame,
-            dimensions,
-            DesktopFrameBlendingMode::Simple,
-        );
+        state.apply(&mut first_frame, dimensions, DesktopFrameBlendingMode::On);
 
         assert_eq!(first_frame, vec![255_u8; 3]);
         assert_eq!(state.previous_rgb_frame, vec![255_u8; 3]);
         assert!(state.has_previous_frame);
-        assert!(!state.odd_frame);
 
         let mut second_frame = vec![0_u8; 3];
-        state.apply(
-            &mut second_frame,
-            dimensions,
-            DesktopFrameBlendingMode::Simple,
-        );
+        state.apply(&mut second_frame, dimensions, DesktopFrameBlendingMode::On);
 
         assert_eq!(second_frame, vec![186_u8; 3]);
         assert_eq!(state.previous_rgb_frame, vec![0_u8; 3]);
-        assert!(state.odd_frame);
     }
 
     #[test]
-    fn lcd_frame_blending_alternates_line_weights_by_frame_parity() {
+    fn frame_blending_uses_the_same_half_weight_for_every_line() {
         let dimensions = super::FramebufferDimensions {
             width: 1,
             height: 2,
         };
         let current_frame = vec![0_u8; 6];
         let previous_frame = vec![255_u8; 6];
-        let mut even_frame_target = current_frame.clone();
-        let mut odd_frame_target = current_frame.clone();
+        let mut target = current_frame.clone();
 
         super::blend_rgb24_frames(
-            &mut even_frame_target,
+            &mut target,
             &current_frame,
             &previous_frame,
             dimensions,
-            DesktopFrameBlendingMode::Lcd,
-            false,
-        );
-        super::blend_rgb24_frames(
-            &mut odd_frame_target,
-            &current_frame,
-            &previous_frame,
-            dimensions,
-            DesktopFrameBlendingMode::Lcd,
-            true,
+            DesktopFrameBlendingMode::On,
         );
 
-        assert_eq!(&even_frame_target[0..3], &[155_u8; 3]);
-        assert_eq!(&even_frame_target[3..6], &[212_u8; 3]);
-        assert_eq!(&odd_frame_target[0..3], &[212_u8; 3]);
-        assert_eq!(&odd_frame_target[3..6], &[155_u8; 3]);
+        assert_eq!(&target[0..3], &[186_u8; 3]);
+        assert_eq!(&target[3..6], &[186_u8; 3]);
     }
 
     #[test]
@@ -19591,46 +19546,24 @@ mod tests {
         let mut first_frame = vec![255_u8; 3];
         let mut second_frame = vec![0_u8; 3];
 
-        state.apply(
-            &mut first_frame,
-            one_pixel,
-            DesktopFrameBlendingMode::Simple,
-        );
-        state.apply(
-            &mut second_frame,
-            one_pixel,
-            DesktopFrameBlendingMode::Simple,
-        );
+        state.apply(&mut first_frame, one_pixel, DesktopFrameBlendingMode::On);
+        state.apply(&mut second_frame, one_pixel, DesktopFrameBlendingMode::On);
         assert_eq!(second_frame, vec![186_u8; 3]);
-        assert!(state.odd_frame);
 
         let mut resized_frame = vec![64_u8; 6];
-        state.apply(
-            &mut resized_frame,
-            two_pixels,
-            DesktopFrameBlendingMode::Simple,
-        );
+        state.apply(&mut resized_frame, two_pixels, DesktopFrameBlendingMode::On);
         assert_eq!(resized_frame, vec![64_u8; 6]);
         assert_eq!(state.dimensions, Some(two_pixels));
         assert_eq!(state.previous_rgb_frame, vec![64_u8; 6]);
         assert!(state.has_previous_frame);
-        assert!(!state.odd_frame);
 
-        let mut mode_changed_frame = vec![32_u8; 6];
+        let mut disabled_frame = vec![32_u8; 6];
         state.apply(
-            &mut mode_changed_frame,
-            two_pixels,
-            DesktopFrameBlendingMode::Lcd,
-        );
-        assert_eq!(mode_changed_frame, vec![32_u8; 6]);
-        assert_eq!(state.mode, DesktopFrameBlendingMode::Lcd);
-        assert_eq!(state.previous_rgb_frame, vec![32_u8; 6]);
-
-        state.apply(
-            &mut mode_changed_frame,
+            &mut disabled_frame,
             two_pixels,
             DesktopFrameBlendingMode::Off,
         );
+        assert_eq!(disabled_frame, vec![32_u8; 6]);
         assert_eq!(state.mode, DesktopFrameBlendingMode::Off);
         assert!(state.previous_rgb_frame.is_empty());
         assert!(!state.has_previous_frame);
@@ -23130,9 +23063,9 @@ mod tests {
         let current_panel = vec![3_u8; panel_len];
         let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
         let mut video_options = harness.runtime.video_options.clone();
-        video_options.frame_blending = DesktopFrameBlendingMode::Simple;
+        video_options.frame_blending = DesktopFrameBlendingMode::On;
         video_options.presentation_filter = true;
-        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::Simple;
+        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::On;
 
         let mut base_state = super::FrameBlendingState::default();
         let mut first_frame = vec![0_u8; frame_len];
@@ -25173,7 +25106,7 @@ mod tests {
                 .is_none()
         );
         assert!(harness.runtime.video_options.presentation_filter);
-        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::Lcd;
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
         harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
             width: super::FRAMEBUFFER_WIDTH,
             height: super::FRAMEBUFFER_HEIGHT,
@@ -25188,11 +25121,11 @@ mod tests {
         );
         assert_eq!(
             harness.runtime.video_options.frame_blending,
-            DesktopFrameBlendingMode::Simple
+            DesktopFrameBlendingMode::On
         );
         assert_eq!(
             harness.settings_store.base_config().video.frame_blending,
-            DesktopFrameBlendingMode::Simple
+            DesktopFrameBlendingMode::On
         );
         assert_eq!(
             harness.runtime.frame_blending_state.mode,
@@ -25204,16 +25137,6 @@ mod tests {
                 .frame_blending_state
                 .previous_rgb_frame
                 .is_empty()
-        );
-        assert!(
-            harness
-                .execute_action(super::MenuAction::CycleFrameBlending)
-                .unwrap()
-                .is_none()
-        );
-        assert_eq!(
-            harness.runtime.video_options.frame_blending,
-            DesktopFrameBlendingMode::Lcd
         );
         assert!(
             harness
@@ -25572,8 +25495,8 @@ mod tests {
             super::DesktopAudioRecordingMode::Disabled
         ));
         assert_eq!(harness.runtime.audio_volume_percent, 100);
-        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::Lcd;
-        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::Lcd;
+        harness.runtime.video_options.frame_blending = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
         harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
             width: super::FRAMEBUFFER_WIDTH,
             height: super::FRAMEBUFFER_HEIGHT,

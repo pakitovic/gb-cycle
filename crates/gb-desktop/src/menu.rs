@@ -972,8 +972,7 @@ impl MenuPresentation {
             }
             MenuItem::FrameBlending => match self.frame_blending {
                 DesktopFrameBlendingMode::Off => "BLEND OFF".to_string(),
-                DesktopFrameBlendingMode::Simple => "BLEND SIMPLE".to_string(),
-                DesktopFrameBlendingMode::Lcd => "BLEND LCD".to_string(),
+                DesktopFrameBlendingMode::On => "BLEND ON".to_string(),
             },
             MenuItem::DisplayPalette => {
                 if self.console_model == DesktopConsoleModel::GameBoyColor {
@@ -4723,8 +4722,7 @@ mod tests {
         );
         for (frame_blending, expected_label) in [
             (DesktopFrameBlendingMode::Off, "BLEND OFF"),
-            (DesktopFrameBlendingMode::Simple, "BLEND SIMPLE"),
-            (DesktopFrameBlendingMode::Lcd, "BLEND LCD"),
+            (DesktopFrameBlendingMode::On, "BLEND ON"),
         ] {
             presentation.frame_blending = frame_blending;
             assert_eq!(

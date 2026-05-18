@@ -393,7 +393,7 @@ pub fn help_text() -> &'static str {
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
         "  --palette <grey>                       Use the DMG grey display palette when --model DMG is active\n",
-        "  --frame-blend <off|simple|lcd>         Simulate LCD frame persistence in desktop presentation\n",
+        "  --frame-blend <off|on>                 Simulate LCD frame persistence in desktop presentation\n",
         "  --mute                                 Start with audio disabled\n",
         "  --audio-record <path.wav|path.aifc>    Record direct stereo APU output to WAV/AIFC (pre-mute/pre-volume)\n",
         "  --audio-record-rate <hz>               Override the recording sample rate (default: 96000)\n",
@@ -486,10 +486,9 @@ fn parse_display_palette(value: &str) -> Result<DesktopDisplayPalette, String> {
 fn parse_frame_blending_mode(value: &str) -> Result<DesktopFrameBlendingMode, String> {
     match value {
         "off" => Ok(DesktopFrameBlendingMode::Off),
-        "simple" => Ok(DesktopFrameBlendingMode::Simple),
-        "lcd" => Ok(DesktopFrameBlendingMode::Lcd),
+        "on" | "simple" | "lcd" => Ok(DesktopFrameBlendingMode::On),
         _ => Err(format!(
-            "unsupported --frame-blend value {value:?}; expected off, simple, or lcd"
+            "unsupported --frame-blend value {value:?}; expected off or on"
         )),
     }
 }
@@ -1075,7 +1074,7 @@ mod tests {
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--no-rewind"));
         assert!(text.contains("--palette <grey>"));
-        assert!(text.contains("--frame-blend <off|simple|lcd>"));
+        assert!(text.contains("--frame-blend <off|on>"));
         assert!(text.contains("--mute"));
         assert!(text.contains("--audio-record <path.wav|path.aifc>"));
         assert!(text.contains("--audio-record-rate <hz>"));
@@ -1202,24 +1201,34 @@ mod tests {
 
     #[test]
     fn parse_supports_frame_blending_override() {
-        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "lcd"])
-            .expect("LCD frame blend override should parse");
+        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "on"])
+            .expect("frame blend override should parse");
         let CliAction::Run(options) = action else {
             panic!("expected a run action");
         };
         assert_eq!(
             options.config.video.frame_blending,
-            DesktopFrameBlendingMode::Lcd
+            DesktopFrameBlendingMode::On
         );
 
         let action = parse_cli_arguments(["demo.gb", "--frame-blend", "simple"])
-            .expect("simple frame blend override should parse");
+            .expect("legacy simple frame blend override should parse");
         let CliAction::Run(options) = action else {
             panic!("expected a run action");
         };
         assert_eq!(
             options.config.video.frame_blending,
-            DesktopFrameBlendingMode::Simple
+            DesktopFrameBlendingMode::On
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "lcd"])
+            .expect("legacy lcd frame blend override should parse as the stable on mode");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.frame_blending,
+            DesktopFrameBlendingMode::On
         );
     }
 
