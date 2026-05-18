@@ -4,8 +4,9 @@ use crate::audio_recording::{
 use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
-    DesktopDisplayPalette, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadFaceLayout, SaveDirectoryPolicy, SaveKeyPolicy,
+    DesktopDisplayPalette, DesktopFrameBlendingMode, DesktopSaveFlushPolicy, GamepadButtonBinding,
+    GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout, SaveDirectoryPolicy,
+    SaveKeyPolicy,
 };
 use gb_persistence::CartridgeSaveKey;
 use std::path::PathBuf;
@@ -161,6 +162,12 @@ where
                     return Err("--palette requires a value".to_string());
                 };
                 requested_display_palette = Some(parse_display_palette(value.as_ref())?);
+            }
+            "--frame-blend" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--frame-blend requires a value".to_string());
+                };
+                config.video.frame_blending = parse_frame_blending_mode(value.as_ref())?;
             }
             "--scale" => {
                 let Some(value) = arguments.next() else {
@@ -386,6 +393,7 @@ pub fn help_text() -> &'static str {
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
         "  --palette <grey>                       Use the DMG grey display palette when --model DMG is active\n",
+        "  --frame-blend <off|simple|lcd>         Simulate LCD frame persistence in desktop presentation\n",
         "  --mute                                 Start with audio disabled\n",
         "  --audio-record <path.wav|path.aifc>    Record direct stereo APU output to WAV/AIFC (pre-mute/pre-volume)\n",
         "  --audio-record-rate <hz>               Override the recording sample rate (default: 96000)\n",
@@ -471,6 +479,17 @@ fn parse_display_palette(value: &str) -> Result<DesktopDisplayPalette, String> {
         "grey" => Ok(DesktopDisplayPalette::Grey),
         _ => Err(format!(
             "unsupported --palette value {value:?}; expected grey"
+        )),
+    }
+}
+
+fn parse_frame_blending_mode(value: &str) -> Result<DesktopFrameBlendingMode, String> {
+    match value {
+        "off" => Ok(DesktopFrameBlendingMode::Off),
+        "simple" => Ok(DesktopFrameBlendingMode::Simple),
+        "lcd" => Ok(DesktopFrameBlendingMode::Lcd),
+        _ => Err(format!(
+            "unsupported --frame-blend value {value:?}; expected off, simple, or lcd"
         )),
     }
 }
@@ -651,7 +670,7 @@ fn parse_audio_recording_stems(value: &str) -> Result<Vec<ApuRecordedChannel>, S
 mod tests {
     use super::*;
     use gb_core::BootRomKind;
-    use gb_desktop::PreferredGamepadIdentity;
+    use gb_desktop::{DesktopFrameBlendingMode, PreferredGamepadIdentity};
 
     #[test]
     fn parse_defaults_to_the_expected_dmg_desktop_baseline() {
@@ -680,6 +699,10 @@ mod tests {
         assert_eq!(
             options.config.video.window_scale,
             DesktopConfig::default().video.window_scale
+        );
+        assert_eq!(
+            options.config.video.frame_blending,
+            DesktopFrameBlendingMode::Off
         );
     }
 
@@ -1052,6 +1075,7 @@ mod tests {
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--no-rewind"));
         assert!(text.contains("--palette <grey>"));
+        assert!(text.contains("--frame-blend <off|simple|lcd>"));
         assert!(text.contains("--mute"));
         assert!(text.contains("--audio-record <path.wav|path.aifc>"));
         assert!(text.contains("--audio-record-rate <hz>"));
@@ -1173,6 +1197,29 @@ mod tests {
         assert_eq!(
             options.config.video.display_palette,
             DesktopConfig::default().video.display_palette
+        );
+    }
+
+    #[test]
+    fn parse_supports_frame_blending_override() {
+        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "lcd"])
+            .expect("LCD frame blend override should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.frame_blending,
+            DesktopFrameBlendingMode::Lcd
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--frame-blend", "simple"])
+            .expect("simple frame blend override should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.frame_blending,
+            DesktopFrameBlendingMode::Simple
         );
     }
 
@@ -1503,6 +1550,11 @@ mod tests {
             "--palette requires a value"
         );
         assert_eq!(
+            parse_cli_arguments(["--frame-blend"])
+                .expect_err("missing frame-blend values should fail"),
+            "--frame-blend requires a value"
+        );
+        assert_eq!(
             parse_cli_arguments(["--audio-record"])
                 .expect_err("missing audio-record values should fail"),
             "--audio-record requires a value"
@@ -1560,6 +1612,7 @@ mod tests {
         assert!(parse_cli_arguments(["--save-key", "bad/key"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
         assert!(parse_cli_arguments(["--palette", "green"]).is_err());
+        assert!(parse_cli_arguments(["--frame-blend", "smart"]).is_err());
         assert!(parse_cli_arguments(["--scale", "0"]).is_err());
         assert!(parse_cli_arguments(["--audio-record-rate", "0"]).is_err());
         assert!(parse_cli_arguments(["--audio-record-rate", "wide"]).is_err());
