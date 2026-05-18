@@ -1,11 +1,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CgbInfraredState {
     rp_latch: u8,
-    #[serde(default)]
     external_optical_input: bool,
-    #[serde(default)]
     sensor_counter: u32,
-    #[serde(default)]
     effective_signal_detected: bool,
 }
 
@@ -223,35 +220,5 @@ mod tests {
         );
 
         assert_eq!(state.read_rp() & CgbInfraredState::RP_SIGNAL_BIT, 0x00);
-    }
-
-    #[test]
-    fn save_state_defaults_missing_sensor_fields_for_backward_compatibility() {
-        let mut serialized = serde_json::to_value(CgbInfraredState {
-            rp_latch: 0xC1,
-            external_optical_input: true,
-            sensor_counter: CgbInfraredState::IR_WARMUP_T_CYCLES,
-            effective_signal_detected: true,
-        })
-        .expect("CGB IR save state should serialize to JSON for compatibility checks");
-        let fields = serialized
-            .as_object_mut()
-            .expect("CGB IR save state should serialize as a JSON object");
-        fields.remove("external_optical_input");
-        fields.remove("sensor_counter");
-        fields.remove("effective_signal_detected");
-
-        let restored: CgbInfraredState = serde_json::from_value(serialized)
-            .expect("pre-sensor CGB IR save state should default additive fields");
-
-        assert_eq!(
-            restored,
-            CgbInfraredState {
-                rp_latch: 0xC1,
-                external_optical_input: false,
-                sensor_counter: 0,
-                effective_signal_detected: false,
-            }
-        );
     }
 }
