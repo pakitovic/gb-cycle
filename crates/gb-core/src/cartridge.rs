@@ -59,6 +59,7 @@ const OLD_LICENSEE_CODE_ADDRESS: usize = 0x014B;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 
 const RAM_ABSENT_READ_VALUE: u8 = 0xFF;
+const ROM_BANK_BYTES: usize = 16 * 1024;
 const NO_MBC_SUPPORTED_ROM_BYTES: usize = 32 * 1024;
 const NO_MBC_SUPPORTED_RAM_BYTES: usize = 8 * 1024;
 const MBC1_STANDARD_RAM_BYTES_MAX: usize = 32 * 1024;
@@ -358,6 +359,75 @@ pub struct CartridgeDiagnostic {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CartridgeRomLayoutSource {
+    DeclaredExact,
+    PermissiveRoundedActual,
+}
+
+impl CartridgeRomLayoutSource {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::DeclaredExact => "declared-exact",
+            Self::PermissiveRoundedActual => "permissive-rounded-actual",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CartridgeRomLayout {
+    pub declared_bytes: Option<usize>,
+    pub actual_bytes: usize,
+    pub effective_bytes: usize,
+    pub effective_bank_count: usize,
+    pub source: CartridgeRomLayoutSource,
+}
+
+impl CartridgeRomLayout {
+    const fn declared_exact(declared_bytes: usize, actual_bytes: usize) -> Self {
+        Self {
+            declared_bytes: Some(declared_bytes),
+            actual_bytes,
+            effective_bytes: declared_bytes,
+            effective_bank_count: declared_bytes / ROM_BANK_BYTES,
+            source: CartridgeRomLayoutSource::DeclaredExact,
+        }
+    }
+
+    fn loaded_image(header: &CartridgeHeader, actual_bytes: usize) -> Self {
+        let exact_declared = header.rom_size.decoded_bytes == Some(actual_bytes);
+        let source = if exact_declared {
+            CartridgeRomLayoutSource::DeclaredExact
+        } else {
+            CartridgeRomLayoutSource::PermissiveRoundedActual
+        };
+        let effective_bytes = if exact_declared {
+            header.rom_size.decoded_bytes.unwrap_or(actual_bytes)
+        } else {
+            actual_bytes
+        };
+        let effective_bank_count = if exact_declared {
+            header.rom_size.bank_count.unwrap_or_else(|| {
+                actual_bytes
+                    .div_ceil(ROM_BANK_BYTES)
+                    .max(NO_MBC_SUPPORTED_ROM_BYTES / ROM_BANK_BYTES)
+            })
+        } else {
+            actual_bytes
+                .div_ceil(ROM_BANK_BYTES)
+                .max(NO_MBC_SUPPORTED_ROM_BYTES / ROM_BANK_BYTES)
+        };
+
+        Self {
+            declared_bytes: header.rom_size.decoded_bytes,
+            actual_bytes,
+            effective_bytes,
+            effective_bank_count,
+            source,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CartridgeLoadError {
     HeaderParse(CartridgeHeaderParseError),
@@ -621,6 +691,13 @@ enum Mbc5Variant {
     RumbleRamBattery,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc5ValidationLayout {
+    variant: Mbc5Variant,
+    rom_layout: CartridgeRomLayout,
+    ram_len: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Mbc5Cartridge {
     rom: Vec<u8>,
@@ -630,6 +707,7 @@ struct Mbc5Cartridge {
     header: CartridgeHeader,
     classification: CartridgeClassification,
     variant: Mbc5Variant,
+    rom_layout: CartridgeRomLayout,
     ram_enabled: bool,
     rom_bank_low8: u8,
     rom_bank_high1: u8,
