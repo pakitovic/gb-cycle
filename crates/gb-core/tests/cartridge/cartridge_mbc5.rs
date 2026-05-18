@@ -1,5 +1,20 @@
 use super::*;
 
+fn mark_mbc5_bank_sentinels(rom: &mut [u8]) {
+    for bank in 0..rom.len().div_ceil(0x4000) {
+        let start = bank * 0x4000;
+        if start < rom.len() {
+            rom[start] = bank as u8;
+        }
+        if start + 1 < rom.len() {
+            rom[start + 1] = ((bank >> 8) & 0x01) as u8;
+        }
+        if start + 0x0100 < rom.len() {
+            rom[start + 0x0100] = bank as u8;
+        }
+    }
+}
+
 #[test]
 fn loading_supported_mbc5_families_constructs_the_mapper_device() {
     let cases = [
@@ -399,6 +414,130 @@ fn strict_validation_rejects_oversized_and_invalid_128kib_rumble_mbc5_configurat
     let valid_rumble_64k = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
     CartridgeSlot::load(valid_rumble_64k, &CompatibilityPolicy::strict())
         .expect("64 KiB rumble MBC5 should load");
+}
+
+#[test]
+fn strict_rejects_mbc5_rom_size_mismatches_that_permissive_rounds_to_effective_capacity() {
+    let mut rom = build_test_rom(64 * 1024, 0x19, 0x00, 0x00);
+    mark_mbc5_bank_sentinels(&mut rom);
+
+    let strict_error = CartridgeSlot::load(rom.clone(), &CompatibilityPolicy::strict())
+        .expect_err("strict mode should reject contradictory MBC5 ROM sizes");
+    let strict_reason = match strict_error {
+        gb_core::CartridgeLoadError::Rejected { reason, .. } => reason,
+        other => panic!("unexpected error: {other:?}"),
+    };
+    assert!(strict_reason.contains("loaded ROM is 65536 bytes"));
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::permissive()).expect(
+        "permissive mode should admit an explicit MBC5 mapper with malformed size metadata",
+    );
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc5);
+    let rom_layout = report
+        .effective_rom_layout()
+        .expect("loaded cartridges should expose an effective ROM layout");
+    assert_eq!(rom_layout.declared_bytes, Some(32 * 1024));
+    assert_eq!(rom_layout.actual_bytes, 64 * 1024);
+    assert_eq!(rom_layout.effective_bytes, 64 * 1024);
+    assert_eq!(rom_layout.effective_bank_count, 4);
+    assert_eq!(
+        rom_layout.source,
+        CartridgeRomLayoutSource::PermissiveRoundedActual
+    );
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("permissive ROM capacity"))
+    );
+
+    let (mut cartridge, _) = report.into_parts();
+    cartridge.write_rom(0x2000, 0x03);
+    assert_eq!(cartridge.read_rom(0x4000), 0x03);
+}
+
+#[test]
+fn permissive_mbc5_unknown_rom_size_code_uses_padded_power_of_two_layout() {
+    let mut rom = build_test_rom(96 * 1024, 0x19, 0xFF, 0x00);
+    mark_mbc5_bank_sentinels(&mut rom);
+
+    let strict_error = CartridgeSlot::load(rom.clone(), &CompatibilityPolicy::strict())
+        .expect_err("strict mode should reject unknown MBC5 ROM size metadata");
+    let strict_reason = match strict_error {
+        gb_core::CartridgeLoadError::Rejected { reason, .. } => reason,
+        other => panic!("unexpected error: {other:?}"),
+    };
+    assert!(strict_reason.contains("unsupported ROM size code 0xFF"));
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::permissive())
+        .expect("permissive mode should use the actual MBC5 image length");
+    let rom_layout = report
+        .effective_rom_layout()
+        .expect("loaded cartridges should expose an effective ROM layout");
+    assert_eq!(rom_layout.declared_bytes, None);
+    assert_eq!(rom_layout.actual_bytes, 96 * 1024);
+    assert_eq!(rom_layout.effective_bytes, 128 * 1024);
+    assert_eq!(rom_layout.effective_bank_count, 8);
+    assert_eq!(
+        rom_layout.source,
+        CartridgeRomLayoutSource::PermissiveRoundedActual
+    );
+    assert!(report.diagnostics().iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("unsupported ROM size code 0xFF")
+    }));
+
+    let (mut cartridge, _) = report.into_parts();
+    cartridge.write_rom(0x2000, 0x05);
+    assert_eq!(cartridge.read_rom(0x4000), 0x05);
+    cartridge.write_rom(0x2000, 0x07);
+    assert_eq!(cartridge.read_rom(0x4000), 0xFF);
+}
+
+#[test]
+fn permissive_mbc5_no_ram_variant_warns_on_unknown_ram_size_without_allocating_ram() {
+    let rom = build_banked_mbc5_rom(0x19, 0x03, 0xFF);
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::permissive())
+        .expect("permissive mode should admit no-RAM MBC5 with bogus RAM metadata");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc5);
+    assert_eq!(
+        report.cartridge().persistence_metadata().profile,
+        CartridgePersistenceProfile::None
+    );
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("does not provide external RAM"))
+    );
+}
+
+#[test]
+fn permissive_mbc5_short_images_are_padded_to_the_minimum_rom_capacity() {
+    let mut rom = build_test_rom(32 * 1024, 0x19, 0x00, 0x00);
+    mark_mbc5_bank_sentinels(&mut rom);
+    rom.truncate(16 * 1024);
+
+    let strict_error = CartridgeSlot::load(rom.clone(), &CompatibilityPolicy::strict())
+        .expect_err("strict mode should reject short MBC5 images");
+    let strict_reason = match strict_error {
+        gb_core::CartridgeLoadError::Rejected { reason, .. } => reason,
+        other => panic!("unexpected error: {other:?}"),
+    };
+    assert!(strict_reason.contains("loaded ROM is 16384 bytes"));
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::permissive())
+        .expect("permissive mode should pad short explicit MBC5 images");
+    let rom_layout = report
+        .effective_rom_layout()
+        .expect("loaded cartridges should expose an effective ROM layout");
+    assert_eq!(rom_layout.actual_bytes, 16 * 1024);
+    assert_eq!(rom_layout.effective_bytes, 32 * 1024);
+    assert_eq!(rom_layout.effective_bank_count, 2);
+
+    assert_eq!(report.cartridge().read_rom(0x4000), 0xFF);
 }
 
 #[test]

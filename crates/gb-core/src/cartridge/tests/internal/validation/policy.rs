@@ -246,6 +246,6 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
         &mut diagnostics,
     )
     .expect("rumble-capable MBC5 should accept 64 KiB SRAM");
-    assert_eq!(mbc5_rumble_variant, Mbc5Variant::RumbleRam);
+    assert_eq!(mbc5_rumble_variant.variant, Mbc5Variant::RumbleRam);
     assert!(diagnostics.is_empty());
 }

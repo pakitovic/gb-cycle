@@ -55,7 +55,7 @@ impl Mbc5Cartridge {
 
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
-        let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
+        let bank_count = self.rom_layout.effective_bank_count;
 
         let rom_index = if address < 0x4000 {
             address

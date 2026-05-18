@@ -269,6 +269,47 @@ fn inspect_rom_reports_the_supported_nomcb_header_shape() {
     assert!(output.contains("load_status=ok"));
     assert!(output.contains("mapper_name=ROM ONLY"));
     assert!(output.contains("selection=supported"));
+    assert!(output.contains("effective_rom_size_bytes=32768"));
+    assert!(output.contains("effective_rom_bank_count=2"));
+    assert!(output.contains("rom_size_source=declared-exact"));
+    assert!(stderr.is_empty());
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn inspect_rom_reports_effective_layout_for_permissive_mbc5_size_metadata() {
+    let temp_dir = unique_temp_dir("inspect-rom-mbc5-effective");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("permissive-mbc5.gbc");
+    let mut rom = build_test_rom_with_header(&[0x00], 0x19, 0x00, 0x00);
+    rom.resize(64 * 1024, 0xFF);
+    fs::write(&rom_path, rom).expect("test ROM should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        [
+            "inspect-rom",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            "--mode",
+            "permissive",
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("inspect-rom should succeed");
+
+    let output = String::from_utf8(stdout).expect("inspect output should be UTF-8");
+    assert!(output.contains("load_status=ok"));
+    assert!(output.contains("mapper_name=MBC5"));
+    assert!(output.contains("rom_size_bytes=32768"));
+    assert!(output.contains("rom_bank_count=2"));
+    assert!(output.contains("effective_rom_size_bytes=65536"));
+    assert!(output.contains("effective_rom_bank_count=4"));
+    assert!(output.contains("rom_size_source=permissive-rounded-actual"));
+    assert!(output.contains("diagnostic=warning MBC5 declared a 32768-byte ROM"));
     assert!(stderr.is_empty());
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
@@ -1839,6 +1880,9 @@ fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     assert!(text.contains("cgb_flag=supported-noncanonical(0xAA)"));
     assert!(text.contains("sgb_flag=unknown(0x7F)"));
     assert!(text.contains("rom_size_bytes=unknown"));
+    assert!(text.contains("effective_rom_size_bytes=unknown"));
+    assert!(text.contains("effective_rom_bank_count=unknown"));
+    assert!(text.contains("rom_size_source=unknown"));
     assert!(text.contains("ram_size_bytes=unknown"));
 
     let tiny_path = temp_dir.join("tiny.gb");

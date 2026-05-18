@@ -581,39 +581,14 @@ pub(in crate::cartridge) fn validate_mbc5(
     compatibility: &CompatibilityPolicy,
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
-) -> Result<Mbc5Variant, CartridgeLoadError> {
+) -> Result<Mbc5ValidationLayout, CartridgeLoadError> {
     let mut ctx = ValidationContext {
         compatibility,
         classification,
         diagnostics,
     };
 
-    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
-        return Err(ctx.reject(format!(
-            "{} declared an unsupported ROM size code {:#04X}",
-            ctx.name(),
-            header.rom_size.raw_code
-        )));
-    };
-
-    if actual_rom_size > MBC5_SUPPORTED_ROM_BYTES_MAX {
-        return Err(ctx.reject(format!(
-            "{} exceeds the current MBC5 ROM limit of {} bytes with {} bytes",
-            ctx.name(),
-            MBC5_SUPPORTED_ROM_BYTES_MAX,
-            actual_rom_size
-        )));
-    }
-
-    if actual_rom_size != declared_rom_bytes {
-        return Err(ctx.reject(format!(
-            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
-            ctx.name(),
-            declared_rom_bytes,
-            actual_rom_size
-        )));
-    }
-
+    let rom_layout = validate_mbc5_rom_layout(&mut ctx, header, actual_rom_size)?;
     let variant = match classification.raw_type() {
         0x19 => Mbc5Variant::NoRam,
         0x1A => Mbc5Variant::Ram,
@@ -624,6 +599,7 @@ pub(in crate::cartridge) fn validate_mbc5(
         _ => unreachable!("non-MBC5 type entered MBC5 validation"),
     };
 
+    let ram_len;
     if variant.has_ram() {
         let allowed_ram_codes = if variant.has_rumble() {
             [0x02, 0x03, 0x05].as_slice()
@@ -643,15 +619,105 @@ pub(in crate::cartridge) fn validate_mbc5(
                 }
             )));
         }
+        ram_len = header.ram_size.decoded_bytes.unwrap_or(0);
     } else if header.ram_size.raw_code != 0x00 {
         ctx.check_degradable(format!(
             "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
             ctx.name(),
             header.ram_size.raw_code
         ))?;
+        ram_len = 0;
+    } else {
+        ram_len = 0;
     }
 
-    Ok(variant)
+    Ok(Mbc5ValidationLayout {
+        variant,
+        rom_layout,
+        ram_len,
+    })
+}
+
+fn validate_mbc5_rom_layout(
+    ctx: &mut ValidationContext<'_>,
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+) -> Result<CartridgeRomLayout, CartridgeLoadError> {
+    if actual_rom_size > MBC5_SUPPORTED_ROM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} exceeds the current MBC5 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            MBC5_SUPPORTED_ROM_BYTES_MAX,
+            actual_rom_size
+        )));
+    }
+
+    if let Some(declared_rom_bytes) = header.rom_size.decoded_bytes {
+        if actual_rom_size == declared_rom_bytes {
+            return Ok(CartridgeRomLayout::declared_exact(
+                declared_rom_bytes,
+                actual_rom_size,
+            ));
+        }
+
+        if ctx.compatibility.validation_policy == ValidationPolicy::Strict {
+            return Err(ctx.reject(format!(
+                "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+                ctx.name(),
+                declared_rom_bytes,
+                actual_rom_size
+            )));
+        }
+
+        let effective_rom_size = rounded_mbc5_actual_rom_capacity(actual_rom_size);
+        ctx.check_degradable(format!(
+            "{} declared a {}-byte ROM from size code {:#04X}, but the loaded ROM is {} bytes; using a {}-byte permissive ROM capacity padded with 0xFF",
+            ctx.name(),
+            declared_rom_bytes,
+            header.rom_size.raw_code,
+            actual_rom_size,
+            effective_rom_size
+        ))?;
+        return Ok(CartridgeRomLayout {
+            declared_bytes: Some(declared_rom_bytes),
+            actual_bytes: actual_rom_size,
+            effective_bytes: effective_rom_size,
+            effective_bank_count: effective_rom_size / ROM_BANK_BYTES,
+            source: CartridgeRomLayoutSource::PermissiveRoundedActual,
+        });
+    }
+
+    if ctx.compatibility.validation_policy == ValidationPolicy::Strict {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    }
+
+    let effective_rom_size = rounded_mbc5_actual_rom_capacity(actual_rom_size);
+    ctx.check_degradable(format!(
+        "{} declared unsupported ROM size code {:#04X}; using a {}-byte permissive ROM capacity derived from the {}-byte image and padded with 0xFF",
+        ctx.name(),
+        header.rom_size.raw_code,
+        effective_rom_size,
+        actual_rom_size
+    ))?;
+    Ok(CartridgeRomLayout {
+        declared_bytes: None,
+        actual_bytes: actual_rom_size,
+        effective_bytes: effective_rom_size,
+        effective_bank_count: effective_rom_size / ROM_BANK_BYTES,
+        source: CartridgeRomLayoutSource::PermissiveRoundedActual,
+    })
+}
+
+fn rounded_mbc5_actual_rom_capacity(actual_rom_size: usize) -> usize {
+    let bank_rounded = actual_rom_size
+        .div_ceil(ROM_BANK_BYTES)
+        .max(NO_MBC_SUPPORTED_ROM_BYTES / ROM_BANK_BYTES)
+        * ROM_BANK_BYTES;
+    bank_rounded.next_power_of_two()
 }
 
 pub(in crate::cartridge) fn validate_mbc6(
