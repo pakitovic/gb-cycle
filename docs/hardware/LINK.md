@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable, the active `DMG-07` 4-Player Adapter, and the native-CGB IR optical pair. Own shared T-cycle coordination when a link topology must route clocks, data, or optical emitter state between multiple `Machine` instances. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, `RP` / `FF56` sensor state, printer command parsing, or frontend session UX.
+Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable, the active `DMG-07` 4-Player Adapter, the native-CGB IR optical pair, and single-cartridge CGB IR accessory sessions such as `PokemonPikachuColor`. Own shared T-cycle coordination when a link topology or accessory session must route clocks, data, or optical emitter state between one or more `Machine` instances and explicit external hardware models. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, `RP` / `FF56` sensor state, printer command parsing, or frontend session UX.
 
 ## Responsibilities
 
@@ -12,6 +12,7 @@ Own passive and active external-port topologies that span more than one console,
 - shared linked-session stepping across multiple `Machine` instances
 - active `DMG-07` adapter clocking, ping, and packet broadcast rules
 - native-CGB IR optical routing between exactly two CGB machines
+- single-cartridge CGB IR accessory sessions that inject external light into one CGB sensor
 
 ## `DMG-04` baseline
 
@@ -56,14 +57,23 @@ Own passive and active external-port topologies that span more than one console,
 - The optical input presented to each CGB sensor is the peer emitter state routed by the linked topology; the CGB bus-owned sensor also ORs that input with the machine's own emitter latch to model local self-visibility.
 - Frontend readiness indicators must observe each machine's bus-owned `CgbInfraredStatus` instead of duplicating link-topology state, so `IR READY` means both native-CGB sensors are receiver-enabled, warmed, and idle rather than merely having a paired topology.
 - Do not route CGB IR through `DMG-04`, `DMG-07`, serial `SB` / `SC`, or frontend transport abstractions. Future netplay or UI light-injection work must attach to an explicit IR seam rather than repurposing link-cable state.
-- The current scope is CGB-to-CGB only. Pokémon Pikachu 2, Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and title-specific external protocols require separate device/protocol ownership before they can share this topology.
+
+## CGB infrared accessory model
+
+- Model external IR accessories as explicit devices paired with a single `Machine`, not as second CGB consoles and not as `external_port` attachments.
+- `PokemonPikachuColorSession` owns one `Machine` plus one `PokemonPikachuColor` accessory. On each T-cycle it samples the game's bus-owned `RP` emitter latch, advances the accessory protocol, and applies the accessory's delayed optical output to the CGB sensor during `ExternalEventIngress` before the machine executes the rest of the cycle.
+- The accessory only injects external light. `RP` remains bus-owned: read enable, self-emitter visibility, warmup, fade, and effective-signal readback stay in the CGB sensor model rather than moving into the accessory.
+- `PokemonPikachuColor` implements the Pokémon Pikachu 2 / Pocket Pikachu Color Mystery Gift protocol as generated pulses and parsed blocks rather than replaying GBE+ waveform data. The v1 payload is the 20-byte western PP2 gift payload with version `0x03`, ID `0x0000`, name `PIKACHU`, zeroed decoration/status/counter fields, and one of the documented 11 item bytes.
+- PP2 pulse durations follow the Pokémon Gold/Silver/Crystal Mystery Gift IR routines: the hello uses the fast IR timer cadence with long/mid/short off windows, data messages use the same preamble/trailer shape as `SendIRDataMessage`, and payload bits are MSB-first with a short mark plus a zero/one off duration. `PokemonPikachuColor` models PP2 as protocol role A: it emits hello messages, waits for the game's hello response before sending each data block, retries with a short cadence instead of answering unrelated initial game hellos, and re-arms after a successful exchange so an active frontend accessory can serve a later Mystery Gift attempt without being detached and attached again.
+- Region handling defaults to `Auto` for the validated western Gold/Silver/Crystal region codes `0x90`, `0x96`, `0x99`, `0x9A`, and `0x9F`. Japanese and Korean variants remain deferred until hardware traces or ROM-level validation prove the correct protocol behavior.
+- Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and other title-specific external protocols require their own device/protocol ownership before they can share the optical accessory seam.
 
 ## Ownership boundary
 
 - `serial` owns `SB`, `SC`, transfer progress, bit shifting, and serial IRQ timing.
 - `external_port` owns the per-console attachment identity and the immediate endpoint state presented to `serial`.
 - `bus` / CGB infrared state owns `RP`, the emitter latch, read-enable latches, sensor counter, and effective-signal readback.
-- `link` owns topology, cable routing, CGB IR peer optical routing, and shared multi-console timing.
+- `link` owns topology, cable routing, CGB IR peer optical routing, single-accessory IR protocol sessions, and shared T-cycle timing.
 - Linked sessions expose public attach / detach operations for session-owned topologies such as `DMG-04` or `DMG-07`; callers should not need to mutate individual member machines' `external_port` attachments just to disconnect or reconnect a session-owned cable or adapter.
 - Frontends and harnesses own player-slot UX, windows, audio muting, and host transport.
 
@@ -92,4 +102,5 @@ Concrete cases live in link unit/integration tests plus the `gb-test-runner` lin
 - `DMG-07` physical port identity, `P1` anchor behavior, sparse occupancy, ping acknowledgement / status-byte sampling, `RATE` / `SIZE` capture, transition-marker handling, restart handling, and protocol phase transitions
 - `DMG-07` transmission timing, packet length, high-/low-nibble `RATE` effects, one-packet delayed double-buffer behavior, first stale packet, zero-filled absent-port slots, and deterministic 2-, 3-, and 4-console linked sessions
 - `CGB IR` pair validation, exact two-participant attach behavior, native-CGB-only `RP` participation, peer emitter sampling, self-emitter visibility, sensor warmup/fade/recovery, warmed-sensor short-pulse visibility, and one retained internal linked-session smoke suite using synthetic CGB ROMs
+- `PokemonPikachuColor` gift table coverage, PP2 payload bytes, block checksum/ACK/empty-block encoding, western region auto-detection, accessory-to-sensor optical ingress, and `into_machine()` cleanup
 - shared linked-session stepping on one T-cycle timeline, with frontend or harness tests limited to topology construction, input routing, artifacts, and presentation rather than redefining serial or adapter hardware rules

@@ -13,12 +13,12 @@ A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, 
 | DMA / bus / memory | Requester-aware arbitration with DMG and CGB OAM DMA policies, native-CGB VRAM/WRAM banking, GDMA/HDMA, blocked VRAM/OAM semantics, and explicit MMIO ownership. |
 | Timer / speed / interrupts | Falling-edge timer model with delayed `TIMA` reload/request timing, native-CGB `KEY1` normal/double-speed domains, centralized `IF` / `IE` ownership, and scheduler-visible IRQ aggregation. |
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF, and host-facing sample export. |
-| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, and `SC` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, CGB `RP` baseline, explicit link-endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, and `DMG-07` 2/3/4-player topology. |
+| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, `SC`, and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, explicit link / IR endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, `DMG-07` 2/3/4-player topology, native CGB-to-CGB infrared sessions, and the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color Mystery Gift accessory model. |
 | Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, flash / EEPROM / accelerometer paths, rumble-capable metadata, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family and CGB-family models, including CGB boot-window routing, header-driven native/compatibility mode selection, and coherent first post-boot timer, PPU, and APU state. |
-| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, link, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
+| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
-| Save states / rewind | Versioned `.gbstate` v1 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
+| Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
 | Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix. |
 
@@ -30,11 +30,11 @@ The current workspace uses the `crates/`-based layout below.
 
 ```text
 crates/
-  gb-core/         Pure DMG/CGB emulation core, hardware state, debugger snapshots, and save-state / rewind DTOs
+  gb-core/         Pure DMG/CGB emulation core, hardware state, link/IR devices, debugger snapshots, and save-state / rewind DTOs
   gb-test-runner/  Typed ROM harness, DMG/CGB executable suites, differential tooling, determinism checks, and linked-session validation
   gb-benchmark/    Portable benchmark TOML parsing, deterministic joypad stimuli, shared artifact paths, and frontend-neutral stats
   gb-cli/          Headless CLI frontend, ROM inspection, battery-save runtime/conversion, and `.gbstate` run tooling
-  gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link sessions, printer, Pocket Camera, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward
+  gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link/IR sessions, printer, Pocket Camera, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward
   gb-persistence/  Host-side cartridge save storage (`.sav/.saN` primary plus `.gbsav/.gbsaN` fallback), external conversion, and `.gbstate` envelope formats
 
 docs/              Architecture, roadmap, testing, frontend, hardware, and reference documentation
@@ -73,12 +73,27 @@ cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
 # Desktop: launch a local DMG-04 two-player Game Link session
 cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
 
+# Desktop: CGB infrared and Pokémon Pikachu 2 are selected at runtime from the overlay GBC IR submenu
+cargo run --release -p gb-desktop -- path/to/pokemon-crystal.gbc --model CGB
+
 # Benchmarks: create a sample portable case and run a case directory through desktop
 scripts/run-benchmark.sh --sample
 scripts/run-benchmark.sh path/to/benchmark-cases
 ```
 
 See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.md](docs/frontends/DESKTOP.md) for full usage details.
+
+## CGB infrared and Pokémon Pikachu 2
+
+`gb-core` models CGB infrared as bus-owned `RP` state plus explicit optical topologies. Native CGB-to-CGB IR sessions route light between two independent `Machine` instances, while accessory sessions pair one CGB `Machine` with a protocol device that only injects external IR light into the sensor.
+
+`gb-desktop` exposes CGB infrared through the `GBC IR` overlay submenu when `CONFIG -> SYSTEM -> MODEL GB COLOR` is active. The root label reports `IR: NONE`, `IR: SAME GAME`, `IR: SELECT GAME`, or `IR: PIKACHU 2`; the submenu marks the active mode with `✓`, keeps `HELPER ON/OFF` for the top-right IR timing helper, and disables save states / rewind while an IR session is active.
+
+`IR -> SAME GAME` clones the loaded CGB ROM into a fresh second console with an isolated P2 save slot. `IR -> SELECT GAME` asks for a second CGB ROM and supports different Gold / Silver / Crystal cartridges on the two IR sides, matching Mystery Gift station and two-console flows without treating IR as a Game Link cable mode.
+
+`IR -> PIKACHU 2` enables the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color accessory model for western Pokémon Gold, Silver, and Crystal. The implementation generates the PP2 Mystery Gift protocol rather than replaying external waveform data, acts as PP2 role A, mirrors the receiving game's supported western region code (`0x90`, `0x96`, `0x99`, `0x9A`, or `0x9F`), re-arms after each successful send, and currently leaves Japanese / Korean validation as future work.
+
+The `PIKACHU 2` gift selector is enabled only after `PIKACHU 2 ✓` is active and cycles the documented watt tiers: `1W EON MAIL`, `100W BERRY`, `200W BITTER BERRY`, `300W GREAT BALL`, `400W MAX REPEL`, `500W ETHER`, `600W MIRACLEBERRY`, `700W GOLD BERRY`, `800W ELIXIR`, `900W REVIVE`, and `999W RARE CANDY`.
 
 ## Release packages
 
@@ -155,6 +170,7 @@ gb-cycle is an independent emulator, but its hardware-fidelity work benefits hea
 - [SameBoy](https://github.com/LIJI32/SameBoy), for its high-accuracy DMG/CGB implementation, mature tester/oracle paths, and readable hardware behavior cross-checks.
 - [DocBoy](https://github.com/Docheinstein/docboy) and the [docboy-test-suite](https://github.com/Docheinstein/docboy-test-suite/), for precision-focused emulator architecture ideas and high-value timing, PPU, APU, bus, and linked-session tests.
 - [GBE+](https://github.com/shonumi/gbe-plus), for its broad accessory/peripheral coverage and practical examples around less common Game Boy hardware.
+- [bayleef](https://projectpokemon.org/home/forums/topic/43930-mystery-gift-reverse-engineering-of-ir-protocol/#comment-232992), for the ProjectPokemon post [“Mystery Gift: Reverse Engineering of IR Protocol”](https://projectpokemon.org/home/forums/topic/43930-mystery-gift-reverse-engineering-of-ir-protocol/#comment-232992), which documents the Generation 2 IR Mystery Gift protocol and Pokémon Pikachu 2 GS behavior.
 
 These projects are used as references, examples, and inspiration; primary documentation, hardware research, and explicit tests remain the source of truth for gb-cycle behavior. See [docs/REFERENCES.md](docs/REFERENCES.md) for the project consultation policy.
 

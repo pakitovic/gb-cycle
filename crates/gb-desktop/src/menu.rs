@@ -1,5 +1,7 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
-use gb_core::{ApuRecordedChannel, BootRomKind, ExecutionMode, StartupMode};
+use gb_core::{
+    ApuRecordedChannel, BootRomKind, ExecutionMode, PokemonPikachuColorGift, StartupMode,
+};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
     DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
@@ -68,7 +70,7 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 16] = [
+const ROOT_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::CameraLive,
     MenuItem::CameraImage,
     MenuItem::CameraReset,
@@ -78,13 +80,17 @@ const ROOT_MENU_ITEMS: [MenuItem; 16] = [
     MenuItem::LoadState,
     MenuItem::StateSlot,
     MenuItem::StateAutoloadSlot,
-    MenuItem::VideoMenu,
-    MenuItem::AudioMenu,
-    MenuItem::InputMenu,
     MenuItem::ExtPortMenu,
     MenuItem::CgbInfrared,
-    MenuItem::SystemMenu,
+    MenuItem::ConfigMenu,
     MenuItem::Quit,
+];
+const CONFIG_MENU_ITEMS: [MenuItem; 5] = [
+    MenuItem::AudioMenu,
+    MenuItem::VideoMenu,
+    MenuItem::InputMenu,
+    MenuItem::SystemMenu,
+    MenuItem::Return,
 ];
 const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::RecentRom1,
@@ -159,10 +165,12 @@ const FOUR_PLAYER_ADAPTER_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FourPlayerAdapterFourPlayers,
     MenuItem::Return,
 ];
-const CGB_INFRARED_MENU_ITEMS: [MenuItem; 5] = [
+const CGB_INFRARED_MENU_ITEMS: [MenuItem; 7] = [
     MenuItem::CgbInfraredNone,
     MenuItem::CgbInfraredSameGame,
     MenuItem::CgbInfraredSelectGame,
+    MenuItem::CgbInfraredPikachuColor,
+    MenuItem::CgbInfraredPikachuGift,
     MenuItem::CgbInfraredHelper,
     MenuItem::Return,
 ];
@@ -343,6 +351,8 @@ pub enum MenuAction {
     SetCgbInfraredNone,
     SetCgbInfraredSameGame,
     SelectCgbInfraredSecondary,
+    SetCgbInfraredPikachuColor,
+    CycleCgbInfraredPikachuGift,
     ToggleCgbInfraredHelper,
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
@@ -567,6 +577,8 @@ pub struct MenuPresentation {
     pub external_port_selection: DesktopExternalPortSelection,
     pub cgb_infrared_link_active: bool,
     pub cgb_infrared_same_game_active: bool,
+    pub pokemon_pikachu_color_active: bool,
+    pub pokemon_pikachu_color_gift: PokemonPikachuColorGift,
     pub show_cgb_infrared_helper: bool,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_kind: BootRomKind,
@@ -656,6 +668,8 @@ impl MenuPresentation {
             | MenuItem::CgbInfraredNone
             | MenuItem::CgbInfraredSameGame
             | MenuItem::CgbInfraredSelectGame
+            | MenuItem::CgbInfraredPikachuColor
+            | MenuItem::CgbInfraredPikachuGift
             | MenuItem::CgbInfraredHelper => {
                 self.console_model == DesktopConsoleModel::GameBoyColor
             }
@@ -712,8 +726,17 @@ impl MenuPresentation {
                     && self.console_model == DesktopConsoleModel::GameBoyColor
                     && !self.any_dialog_pending
             }
+            MenuItem::CgbInfraredPikachuColor => {
+                self.rom_loaded
+                    && self.console_model == DesktopConsoleModel::GameBoyColor
+                    && !self.any_dialog_pending
+            }
             MenuItem::CgbInfraredNone | MenuItem::CgbInfraredHelper => {
                 self.console_model == DesktopConsoleModel::GameBoyColor
+            }
+            MenuItem::CgbInfraredPikachuGift => {
+                self.console_model == DesktopConsoleModel::GameBoyColor
+                    && self.pokemon_pikachu_color_active
             }
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
             MenuItem::AudioRecord => self.rom_loaded,
@@ -781,8 +804,8 @@ impl MenuPresentation {
             | MenuItem::HotkeyFullscreen
             | MenuItem::HotkeyPerformanceHud
             | MenuItem::HotkeySaveBattery
+            | MenuItem::ConfigMenu
             | MenuItem::InputMenu
-            | MenuItem::ExtPortMenu
             | MenuItem::VideoMenu
             | MenuItem::SystemMenu
             | MenuItem::BootRomMenu
@@ -825,6 +848,7 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
+            MenuItem::ExtPortMenu => self.rom_loaded,
             MenuItem::ExternalPortGameLink
             | MenuItem::GameLinkSameGame
             | MenuItem::GameLinkSelectGame
@@ -875,41 +899,54 @@ impl MenuPresentation {
             MenuItem::VideoMenu => "VIDEO".to_string(),
             MenuItem::AudioMenu => "AUDIO".to_string(),
             MenuItem::InputMenu => "INPUT".to_string(),
+            MenuItem::ConfigMenu => "CONFIG".to_string(),
             MenuItem::ExtPortMenu => match self.external_port_selection {
-                DesktopExternalPortSelection::None => "EXT NONE".to_string(),
-                DesktopExternalPortSelection::Printer => "EXT PRINTER".to_string(),
-                DesktopExternalPortSelection::GameLink => "EXT GAME LINK".to_string(),
-                DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P ADAPTER".to_string(),
+                DesktopExternalPortSelection::None => "EXT: NONE".to_string(),
+                DesktopExternalPortSelection::Printer => "EXT: PRINTER".to_string(),
+                DesktopExternalPortSelection::GameLink => "EXT: GAME LINK".to_string(),
+                DesktopExternalPortSelection::FourPlayerAdapter => "EXT: 4P ADAPTER".to_string(),
             },
             MenuItem::CgbInfrared => {
                 if self.cgb_infrared_link_active && self.cgb_infrared_same_game_active {
-                    "IR SAME GAME".to_string()
+                    "IR: SAME GAME".to_string()
                 } else if self.cgb_infrared_link_active {
-                    "IR SELECT GAME".to_string()
+                    "IR: SELECT GAME".to_string()
+                } else if self.pokemon_pikachu_color_active {
+                    "IR: PIKACHU 2".to_string()
                 } else {
-                    "IR NONE".to_string()
+                    "IR: NONE".to_string()
                 }
             }
             MenuItem::CgbInfraredNone => {
-                if self.cgb_infrared_link_active {
+                if self.cgb_infrared_link_active || self.pokemon_pikachu_color_active {
                     "NONE".to_string()
                 } else {
-                    "NONE ON".to_string()
+                    checked_menu_label("NONE")
                 }
             }
             MenuItem::CgbInfraredSameGame => {
                 if self.cgb_infrared_link_active && self.cgb_infrared_same_game_active {
-                    "SAME GAME ON".to_string()
+                    checked_menu_label("SAME GAME")
                 } else {
                     "SAME GAME".to_string()
                 }
             }
             MenuItem::CgbInfraredSelectGame => {
                 if self.cgb_infrared_link_active && !self.cgb_infrared_same_game_active {
-                    "SELECT GAME ON".to_string()
+                    checked_menu_label("SELECT GAME")
                 } else {
                     "SELECT GAME".to_string()
                 }
+            }
+            MenuItem::CgbInfraredPikachuColor => {
+                if self.pokemon_pikachu_color_active {
+                    checked_menu_label("PIKACHU 2")
+                } else {
+                    "PIKACHU 2".to_string()
+                }
+            }
+            MenuItem::CgbInfraredPikachuGift => {
+                pokemon_pikachu_color_gift_menu_label(self.pokemon_pikachu_color_gift).to_string()
             }
             MenuItem::CgbInfraredHelper => {
                 if self.show_cgb_infrared_helper {
@@ -1179,22 +1216,34 @@ impl MenuPresentation {
             MenuItem::InputDefaults => "DEFAULTS".to_string(),
             MenuItem::ExternalPortNone => {
                 if self.external_port_selection == DesktopExternalPortSelection::None {
-                    "NONE ON".to_string()
+                    checked_menu_label("NONE")
                 } else {
                     "NONE".to_string()
                 }
             }
             MenuItem::ExternalPortPrinter => {
                 if self.external_port_selection == DesktopExternalPortSelection::Printer {
-                    "PRINTER ON".to_string()
+                    checked_menu_label("PRINTER")
                 } else {
                     "PRINTER".to_string()
                 }
             }
-            MenuItem::ExternalPortGameLink => "GAME LINK".to_string(),
+            MenuItem::ExternalPortGameLink => {
+                if self.external_port_selection == DesktopExternalPortSelection::GameLink {
+                    checked_menu_label("GAME LINK")
+                } else {
+                    "GAME LINK".to_string()
+                }
+            }
             MenuItem::GameLinkSameGame => "SAME GAME".to_string(),
             MenuItem::GameLinkSelectGame => "SELECT GAME".to_string(),
-            MenuItem::ExternalPortFourPlayerAdapter => "4P ADAPTER".to_string(),
+            MenuItem::ExternalPortFourPlayerAdapter => {
+                if self.external_port_selection == DesktopExternalPortSelection::FourPlayerAdapter {
+                    checked_menu_label("4P ADAPTER")
+                } else {
+                    "4P ADAPTER".to_string()
+                }
+            }
             MenuItem::FourPlayerAdapterTwoPlayers => "2 PLAYERS".to_string(),
             MenuItem::FourPlayerAdapterThreePlayers => "3 PLAYERS".to_string(),
             MenuItem::FourPlayerAdapterFourPlayers => "4 PLAYERS".to_string(),
@@ -1415,6 +1464,7 @@ impl MenuPresentation {
 enum MenuScreen {
     Root,
     Recent,
+    Config,
     Video,
     Audio,
     Input,
@@ -1445,13 +1495,14 @@ impl MenuScreen {
                 }
             }
             Self::Recent => "RECENT",
+            Self::Config => "CONFIG",
             Self::Video => "VIDEO",
             Self::Audio => "AUDIO",
             Self::Input => "INPUT",
             Self::ExtPort => "EXT PORT",
             Self::GameLink => "GAME LINK",
             Self::FourPlayerAdapter => "4P ADAPTER",
-            Self::CgbInfrared => "IR",
+            Self::CgbInfrared => "GBC IR",
             Self::Gamepad => "GAMEPAD",
             Self::GamepadMenuControls => "PAD MENU",
             Self::Keyboard => "KEYBOARD",
@@ -1491,6 +1542,7 @@ enum MenuItem {
     CameraImage,
     CameraLive,
     CameraReset,
+    ConfigMenu,
     VideoMenu,
     AudioMenu,
     InputMenu,
@@ -1499,6 +1551,8 @@ enum MenuItem {
     CgbInfraredNone,
     CgbInfraredSameGame,
     CgbInfraredSelectGame,
+    CgbInfraredPikachuColor,
+    CgbInfraredPikachuGift,
     CgbInfraredHelper,
     KeyboardMenu,
     KeyboardMenuControls,
@@ -2220,6 +2274,10 @@ impl OverlayMenuState {
             MenuItem::CameraImage => Some(MenuAction::SelectCameraImage),
             MenuItem::CameraLive => Some(MenuAction::ToggleCameraLive),
             MenuItem::CameraReset => Some(MenuAction::ResetCameraImage),
+            MenuItem::ConfigMenu => {
+                self.push_screen(MenuScreen::Config, presentation);
+                None
+            }
             MenuItem::VideoMenu => {
                 self.push_screen(MenuScreen::Video, presentation);
                 None
@@ -2247,6 +2305,8 @@ impl OverlayMenuState {
             MenuItem::CgbInfraredNone => Some(MenuAction::SetCgbInfraredNone),
             MenuItem::CgbInfraredSameGame => Some(MenuAction::SetCgbInfraredSameGame),
             MenuItem::CgbInfraredSelectGame => Some(MenuAction::SelectCgbInfraredSecondary),
+            MenuItem::CgbInfraredPikachuColor => Some(MenuAction::SetCgbInfraredPikachuColor),
+            MenuItem::CgbInfraredPikachuGift => Some(MenuAction::CycleCgbInfraredPikachuGift),
             MenuItem::CgbInfraredHelper => Some(MenuAction::ToggleCgbInfraredHelper),
             MenuItem::ExternalPortFourPlayerAdapter => {
                 self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
@@ -2834,6 +2894,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
     match screen {
         MenuScreen::Root => &ROOT_MENU_ITEMS,
         MenuScreen::Recent => &RECENT_MENU_ITEMS,
+        MenuScreen::Config => &CONFIG_MENU_ITEMS,
         MenuScreen::Video => &VIDEO_MENU_ITEMS,
         MenuScreen::Audio => &AUDIO_MENU_ITEMS,
         MenuScreen::Input => &INPUT_MENU_ITEMS,
@@ -2982,6 +3043,26 @@ fn recent_rom_item_label(label: CompactRecentRomLabel) -> String {
     }
 }
 
+fn checked_menu_label(label: &str) -> String {
+    format!("{label} ✓")
+}
+
+fn pokemon_pikachu_color_gift_menu_label(gift: PokemonPikachuColorGift) -> &'static str {
+    match gift {
+        PokemonPikachuColorGift::Watts1 => "1W EON MAIL",
+        PokemonPikachuColorGift::Watts100 => "100W BERRY",
+        PokemonPikachuColorGift::Watts200 => "200W BITTER BERRY",
+        PokemonPikachuColorGift::Watts300 => "300W GREAT BALL",
+        PokemonPikachuColorGift::Watts400 => "400W MAX REPEL",
+        PokemonPikachuColorGift::Watts500 => "500W ETHER",
+        PokemonPikachuColorGift::Watts600 => "600W MIRACLEBERRY",
+        PokemonPikachuColorGift::Watts700 => "700W GOLD BERRY",
+        PokemonPikachuColorGift::Watts800 => "800W ELIXIR",
+        PokemonPikachuColorGift::Watts900 => "900W REVIVE",
+        PokemonPikachuColorGift::Watts999 => "999W RARE CANDY",
+    }
+}
+
 fn rendered_item_label(
     item: MenuItem,
     selected: bool,
@@ -2989,6 +3070,10 @@ fn rendered_item_label(
     selection_elapsed: Duration,
 ) -> String {
     let label = presentation.item_label(item);
+    if item == MenuItem::CgbInfraredPikachuGift {
+        return rendered_menu_item_label(&label, selected, selection_elapsed);
+    }
+
     if !matches!(
         item,
         MenuItem::RecentRom1
@@ -3015,6 +3100,10 @@ fn rendered_recent_rom_item_label(
     selected: bool,
     selection_elapsed: Duration,
 ) -> String {
+    rendered_menu_item_label(label, selected, selection_elapsed)
+}
+
+fn rendered_menu_item_label(label: &str, selected: bool, selection_elapsed: Duration) -> String {
     if label.len() <= MENU_ITEM_TEXT_CAPACITY {
         return label.to_string();
     }
@@ -3408,11 +3497,17 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
         '%' => [
             0b11001, 0b11010, 0b00100, 0b01000, 0b10110, 0b00110, 0b00000,
         ],
+        ':' => [
+            0b00000, 0b00100, 0b00100, 0b00000, 0b00100, 0b00100, 0b00000,
+        ],
         '<' => [
             0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010,
         ],
         '>' => [
             0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000,
+        ],
+        '✓' => [
+            0b00000, 0b00000, 0b00001, 0b00010, 0b10100, 0b01000, 0b00000,
         ],
         ' ' => [0, 0, 0, 0, 0, 0, 0],
         _ => [0, 0, 0, 0, 0, 0, 0],
@@ -3422,9 +3517,9 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CGB_INFRARED_MENU_ITEMS, CgbInfraredHudSnapshot,
-        CgbInfraredParticipantHudSnapshot, CompactMenuLabel, CompactRecentRomLabel,
-        EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAME_LINK_MENU_ITEMS,
+        AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CGB_INFRARED_MENU_ITEMS, CONFIG_MENU_ITEMS,
+        CgbInfraredHudSnapshot, CgbInfraredParticipantHudSnapshot, CompactMenuLabel,
+        CompactRecentRomLabel, EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAME_LINK_MENU_ITEMS,
         GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget,
         GamepadBindingTarget, GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
         KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
@@ -3433,13 +3528,14 @@ mod tests {
         RECENT_ROM_MENU_CAPACITY, REWIND_MENU_ITEMS, ROOT_MENU_ITEMS, RewindHudSnapshot,
         SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
         cgb_ir_indicator_lines, desktop_key_label, gamepad_binding_label, glyph_rows,
-        normalized_selected_index, performance_hud_lines, previous_enabled_index,
-        render_cgb_ir_indicator, render_fast_forward_indicator, render_performance_hud,
-        render_rewind_indicator, rendered_recent_rom_item_label, scroll_indicator_rows,
-        viewport_start_index, visible_item_at, visible_item_count,
+        normalized_selected_index, performance_hud_lines, pokemon_pikachu_color_gift_menu_label,
+        previous_enabled_index, render_cgb_ir_indicator, render_fast_forward_indicator,
+        render_performance_hud, render_rewind_indicator, rendered_item_label,
+        rendered_recent_rom_item_label, scroll_indicator_rows, viewport_start_index,
+        visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
-    use gb_core::{BootRomKind, ExecutionMode, StartupMode};
+    use gb_core::{BootRomKind, ExecutionMode, PokemonPikachuColorGift, StartupMode};
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
         DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
@@ -3460,6 +3556,8 @@ mod tests {
             external_port_selection: DesktopExternalPortSelection::None,
             cgb_infrared_link_active: false,
             cgb_infrared_same_game_active: false,
+            pokemon_pikachu_color_active: false,
+            pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
             show_cgb_infrared_helper: false,
             boot_rom_uses_default_path: true,
             boot_rom_kind: BootRomKind::Dmg,
@@ -3538,18 +3636,24 @@ mod tests {
 
     fn open_video_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
         menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::ConfigMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         select_visible_item(menu, presentation, MenuItem::VideoMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
 
     fn open_audio_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
         menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::ConfigMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         select_visible_item(menu, presentation, MenuItem::AudioMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
 
     fn open_input_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
         menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::ConfigMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         select_visible_item(menu, presentation, MenuItem::InputMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
@@ -3562,6 +3666,8 @@ mod tests {
 
     fn open_system_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
         menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::ConfigMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         select_visible_item(menu, presentation, MenuItem::SystemMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
@@ -3605,6 +3711,7 @@ mod tests {
             Some(MenuAction::OpenRom)
         );
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -3998,6 +4105,10 @@ mod tests {
         );
         assert_eq!(
             menu.handle_input(MenuInput::Down, blocked_presentation),
+            None
+        );
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, blocked_presentation),
             None
         );
         assert_eq!(
@@ -4477,7 +4588,7 @@ mod tests {
         }
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            10
+            7
         );
 
         let mut presentation = test_presentation();
@@ -4584,7 +4695,53 @@ mod tests {
     }
 
     #[test]
-    fn recent_and_video_menu_order_matches_the_overlay_contract() {
+    fn pokemon_pikachu_color_gift_labels_cover_documented_rewards() {
+        assert_eq!(
+            PokemonPikachuColorGift::ALL.map(pokemon_pikachu_color_gift_menu_label),
+            [
+                "1W EON MAIL",
+                "100W BERRY",
+                "200W BITTER BERRY",
+                "300W GREAT BALL",
+                "400W MAX REPEL",
+                "500W ETHER",
+                "600W MIRACLEBERRY",
+                "700W GOLD BERRY",
+                "800W ELIXIR",
+                "900W REVIVE",
+                "999W RARE CANDY",
+            ]
+        );
+    }
+
+    #[test]
+    fn pokemon_pikachu_color_gift_label_scrolls_when_too_long() {
+        let mut presentation = test_presentation();
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        presentation.pokemon_pikachu_color_gift = PokemonPikachuColorGift::Watts200;
+
+        assert_eq!(
+            rendered_item_label(
+                MenuItem::CgbInfraredPikachuGift,
+                false,
+                presentation,
+                Duration::from_millis(2_000)
+            ),
+            "200W BITTER BER"
+        );
+        assert_eq!(
+            rendered_item_label(
+                MenuItem::CgbInfraredPikachuGift,
+                true,
+                presentation,
+                Duration::from_millis(1_050)
+            ),
+            "00W BITTER BERR"
+        );
+    }
+
+    #[test]
+    fn root_config_and_video_menu_order_matches_the_overlay_contract() {
         assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::CameraLive);
         assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraImage);
         assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraReset);
@@ -4594,10 +4751,21 @@ mod tests {
         assert_eq!(ROOT_MENU_ITEMS[6], MenuItem::LoadState);
         assert_eq!(ROOT_MENU_ITEMS[7], MenuItem::StateSlot);
         assert_eq!(ROOT_MENU_ITEMS[8], MenuItem::StateAutoloadSlot);
-        assert_eq!(ROOT_MENU_ITEMS[9], MenuItem::VideoMenu);
-        assert_eq!(ROOT_MENU_ITEMS[12], MenuItem::ExtPortMenu);
-        assert_eq!(ROOT_MENU_ITEMS[13], MenuItem::CgbInfrared);
+        assert_eq!(ROOT_MENU_ITEMS[9], MenuItem::ExtPortMenu);
+        assert_eq!(ROOT_MENU_ITEMS[10], MenuItem::CgbInfrared);
+        assert_eq!(ROOT_MENU_ITEMS[11], MenuItem::ConfigMenu);
+        assert_eq!(ROOT_MENU_ITEMS[12], MenuItem::Quit);
         assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SaveBattery));
+        assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::AudioMenu));
+        assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::VideoMenu));
+        assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::InputMenu));
+        assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SystemMenu));
+
+        assert_eq!(CONFIG_MENU_ITEMS[0], MenuItem::AudioMenu);
+        assert_eq!(CONFIG_MENU_ITEMS[1], MenuItem::VideoMenu);
+        assert_eq!(CONFIG_MENU_ITEMS[2], MenuItem::InputMenu);
+        assert_eq!(CONFIG_MENU_ITEMS[3], MenuItem::SystemMenu);
+        assert_eq!(CONFIG_MENU_ITEMS[4], MenuItem::Return);
 
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
         assert_eq!(RECENT_MENU_ITEMS[7], MenuItem::RecentRom8);
@@ -4645,8 +4813,13 @@ mod tests {
         assert_eq!(CGB_INFRARED_MENU_ITEMS[0], MenuItem::CgbInfraredNone);
         assert_eq!(CGB_INFRARED_MENU_ITEMS[1], MenuItem::CgbInfraredSameGame);
         assert_eq!(CGB_INFRARED_MENU_ITEMS[2], MenuItem::CgbInfraredSelectGame);
-        assert_eq!(CGB_INFRARED_MENU_ITEMS[3], MenuItem::CgbInfraredHelper);
-        assert_eq!(CGB_INFRARED_MENU_ITEMS[4], MenuItem::Return);
+        assert_eq!(
+            CGB_INFRARED_MENU_ITEMS[3],
+            MenuItem::CgbInfraredPikachuColor
+        );
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[4], MenuItem::CgbInfraredPikachuGift);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[5], MenuItem::CgbInfraredHelper);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[6], MenuItem::Return);
 
         assert_eq!(KEYBOARD_MENU_ITEMS[0], MenuItem::KeyboardUp);
         assert_eq!(KEYBOARD_MENU_ITEMS[8], MenuItem::Return);
@@ -4992,25 +5165,36 @@ mod tests {
             presentation.item_label(MenuItem::PerformanceHud),
             "STATS OFF"
         );
+        assert_eq!(presentation.item_label(MenuItem::ConfigMenu), "CONFIG");
         presentation.muted = true;
         assert_eq!(presentation.item_label(MenuItem::ToggleMute), "MUTE ON");
         presentation.audio_volume_percent = 250;
         assert_eq!(presentation.item_label(MenuItem::AudioVolume), "VOL 100%");
 
-        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT NONE");
+        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT: NONE");
+        assert!(presentation.item_enabled(MenuItem::ExtPortMenu));
+        let no_rom_presentation = MenuPresentation {
+            rom_loaded: false,
+            ..presentation
+        };
+        assert_eq!(
+            no_rom_presentation.item_label(MenuItem::ExtPortMenu),
+            "EXT: NONE"
+        );
+        assert!(!no_rom_presentation.item_enabled(MenuItem::ExtPortMenu));
         assert_eq!(
             presentation.item_label(MenuItem::ExternalPortNone),
-            "NONE ON"
+            "NONE ✓"
         );
         presentation.external_port_selection = DesktopExternalPortSelection::Printer;
         assert_eq!(
             presentation.item_label(MenuItem::ExtPortMenu),
-            "EXT PRINTER"
+            "EXT: PRINTER"
         );
         assert_eq!(presentation.item_label(MenuItem::ExternalPortNone), "NONE");
         assert_eq!(
             presentation.item_label(MenuItem::ExternalPortPrinter),
-            "PRINTER ON"
+            "PRINTER ✓"
         );
         assert_eq!(
             presentation.item_label(MenuItem::ExternalPortGameLink),
@@ -5053,19 +5237,32 @@ mod tests {
         presentation.external_port_selection = DesktopExternalPortSelection::GameLink;
         assert_eq!(
             presentation.item_label(MenuItem::ExtPortMenu),
-            "EXT GAME LINK"
+            "EXT: GAME LINK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortGameLink),
+            "GAME LINK ✓"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
+            "4P ADAPTER"
         );
         presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
         assert_eq!(
             presentation.item_label(MenuItem::ExtPortMenu),
-            "EXT 4P ADAPTER"
+            "EXT: 4P ADAPTER"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortGameLink),
+            "GAME LINK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
+            "4P ADAPTER ✓"
         );
 
-        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "IR NONE");
-        assert_eq!(
-            presentation.item_label(MenuItem::CgbInfraredNone),
-            "NONE ON"
-        );
+        assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "IR: NONE");
+        assert_eq!(presentation.item_label(MenuItem::CgbInfraredNone), "NONE ✓");
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfraredSameGame),
             "SAME GAME"
@@ -5078,6 +5275,14 @@ mod tests {
             presentation.item_label(MenuItem::CgbInfraredHelper),
             "HELPER OFF"
         );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredPikachuColor),
+            "PIKACHU 2"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredPikachuGift),
+            "1W EON MAIL"
+        );
         assert!(!presentation.item_visible(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
         let cgb_no_rom_presentation = MenuPresentation {
@@ -5087,7 +5292,7 @@ mod tests {
         };
         assert_eq!(
             cgb_no_rom_presentation.item_label(MenuItem::CgbInfrared),
-            "IR NONE"
+            "IR: NONE"
         );
         assert!(cgb_no_rom_presentation.item_visible(MenuItem::CgbInfrared));
         assert!(!cgb_no_rom_presentation.item_enabled(MenuItem::CgbInfrared));
@@ -5097,12 +5302,16 @@ mod tests {
         assert!(presentation.item_visible(MenuItem::CgbInfraredNone));
         assert!(presentation.item_visible(MenuItem::CgbInfraredSameGame));
         assert!(presentation.item_visible(MenuItem::CgbInfraredSelectGame));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredPikachuColor));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredPikachuGift));
         assert!(presentation.item_visible(MenuItem::CgbInfraredHelper));
         presentation.any_dialog_pending = true;
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredSameGame));
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredSelectGame));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredPikachuColor));
         presentation.any_dialog_pending = false;
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredPikachuGift));
         assert!(presentation.item_enabled(MenuItem::CgbInfraredHelper));
         presentation.show_cgb_infrared_helper = true;
         assert_eq!(
@@ -5114,12 +5323,12 @@ mod tests {
         presentation.cgb_infrared_same_game_active = true;
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfrared),
-            "IR SAME GAME"
+            "IR: SAME GAME"
         );
         assert_eq!(presentation.item_label(MenuItem::CgbInfraredNone), "NONE");
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfraredSameGame),
-            "SAME GAME ON"
+            "SAME GAME ✓"
         );
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfraredSelectGame),
@@ -5128,11 +5337,27 @@ mod tests {
         presentation.cgb_infrared_same_game_active = false;
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfrared),
-            "IR SELECT GAME"
+            "IR: SELECT GAME"
         );
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfraredSelectGame),
-            "SELECT GAME ON"
+            "SELECT GAME ✓"
+        );
+        presentation.cgb_infrared_link_active = false;
+        presentation.pokemon_pikachu_color_active = true;
+        presentation.pokemon_pikachu_color_gift = PokemonPikachuColorGift::Watts999;
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfrared),
+            "IR: PIKACHU 2"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredPikachuColor),
+            "PIKACHU 2 ✓"
+        );
+        assert!(presentation.item_enabled(MenuItem::CgbInfraredPikachuGift));
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredPikachuGift),
+            "999W RARE CANDY"
         );
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
@@ -5472,6 +5697,7 @@ mod tests {
             "NO ROM"
         );
         assert_eq!(MenuScreen::Recent.title(presentation), "RECENT");
+        assert_eq!(MenuScreen::Config.title(presentation), "CONFIG");
         assert_eq!(MenuScreen::Video.title(presentation), "VIDEO");
         assert_eq!(MenuScreen::Audio.title(presentation), "AUDIO");
         assert_eq!(MenuScreen::Input.title(presentation), "INPUT");
@@ -5481,7 +5707,7 @@ mod tests {
             MenuScreen::FourPlayerAdapter.title(presentation),
             "4P ADAPTER"
         );
-        assert_eq!(MenuScreen::CgbInfrared.title(presentation), "IR");
+        assert_eq!(MenuScreen::CgbInfrared.title(presentation), "GBC IR");
         assert_eq!(MenuScreen::Gamepad.title(presentation), "GAMEPAD");
         assert_eq!(
             MenuScreen::GamepadMenuControls.title(presentation),
@@ -5519,17 +5745,38 @@ mod tests {
         );
         menu.open(presentation);
         assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
+        assert_eq!(
             menu.apply_item_action(MenuItem::VideoMenu, presentation),
             None
         );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Video);
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
         assert_eq!(
             menu.apply_item_action(MenuItem::AudioMenu, presentation),
             None
         );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Audio);
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
         assert_eq!(
             menu.apply_item_action(MenuItem::InputMenu, presentation),
             None
         );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Input);
+        menu.open(presentation);
         assert_eq!(
             menu.apply_item_action(MenuItem::ExtPortMenu, presentation),
             None
@@ -5581,6 +5828,14 @@ mod tests {
             Some(MenuAction::SelectCgbInfraredSecondary)
         );
         assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredPikachuColor, presentation),
+            Some(MenuAction::SetCgbInfraredPikachuColor)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredPikachuGift, presentation),
+            Some(MenuAction::CycleCgbInfraredPikachuGift)
+        );
+        assert_eq!(
             menu.apply_item_action(MenuItem::CgbInfraredHelper, presentation),
             Some(MenuAction::ToggleCgbInfraredHelper)
         );
@@ -5604,6 +5859,11 @@ mod tests {
         );
         menu.open(presentation);
         assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
+        assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None
         );
@@ -5614,6 +5874,11 @@ mod tests {
         );
         assert_eq!(menu.current_screen_state().screen, MenuScreen::BootRom);
         menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None
@@ -5636,6 +5901,11 @@ mod tests {
             Some(MenuAction::SaveBattery)
         );
         menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None
@@ -5670,6 +5940,11 @@ mod tests {
             Some(MenuAction::ResetRewindDefaults)
         );
         menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ConfigMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Config);
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None
@@ -5881,6 +6156,8 @@ mod tests {
             ],
             "fast-forward indicator text requires the right chevron glyph"
         );
+        assert_ne!(glyph_rows(':'), [0; super::GLYPH_HEIGHT]);
+        assert_ne!(glyph_rows('✓'), [0; super::GLYPH_HEIGHT]);
     }
 
     #[test]
