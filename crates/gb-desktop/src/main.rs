@@ -8863,6 +8863,43 @@ fn open_selected_linked_secondary_rom(
         );
     }
 
+    let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
+    activate_game_link_with_secondary_rom(event_pump, canvas, next_secondary_rom, context)
+}
+
+fn open_game_link_secondary_rom_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) {
+    if !context.session.has_loaded_rom() {
+        return;
+    }
+
+    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::LinkedSecondary;
+    let default_location = context.session.rom_directory_hint();
+    if let Err(error) = context.runtime.open_rom_dialog.show_file(
+        &ROM_FILE_DIALOG_FILTERS,
+        canvas.window(),
+        default_location,
+    ) {
+        context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
+        show_warning_message(Some(canvas.window()), "GAME LINK", &error);
+        eprintln!("warning: {error}");
+    }
+}
+
+fn activate_game_link_with_secondary_rom(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    next_secondary_rom: LoadedRom,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom() {
+        return Err(
+            "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    }
+
     drain_printed_pages_into_printer_output(
         canvas.window(),
         context.session,
@@ -8892,7 +8929,6 @@ fn open_selected_linked_secondary_rom(
             .persistent_state()
     });
 
-    let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
     let loaded_primary = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
@@ -10304,21 +10340,7 @@ fn execute_menu_action(
             flush_pending_printer_output(canvas.window(), context.session, context.runtime);
             match selection {
                 DesktopExternalPortSelection::GameLink => {
-                    if !context.session.has_loaded_rom() {
-                        return Ok(None);
-                    }
-
-                    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::LinkedSecondary;
-                    let default_location = context.session.rom_directory_hint();
-                    if let Err(error) = context.runtime.open_rom_dialog.show_file(
-                        &ROM_FILE_DIALOG_FILTERS,
-                        canvas.window(),
-                        default_location,
-                    ) {
-                        context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
-                        show_warning_message(Some(canvas.window()), "GAME LINK", &error);
-                        eprintln!("warning: {error}");
-                    }
+                    open_game_link_secondary_rom_dialog(canvas, context);
                 }
                 DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
                     if context.machine.is_linked_dmg04_two_player()
@@ -10348,6 +10370,24 @@ fn execute_menu_action(
                 }
                 DesktopExternalPortSelection::FourPlayerAdapter => {}
             }
+            Ok(None)
+        }
+        MenuAction::SetGameLinkSameGame => {
+            let Some(next_secondary_rom) = context.session.loaded_rom.clone() else {
+                return Ok(None);
+            };
+            activate_game_link_with_secondary_rom(event_pump, canvas, next_secondary_rom, context)?;
+            Ok(None)
+        }
+        MenuAction::SelectGameLinkRom => {
+            drain_printed_pages_into_printer_output(
+                canvas.window(),
+                context.session,
+                context.runtime,
+                context.machine,
+            );
+            flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+            open_game_link_secondary_rom_dialog(canvas, context);
             Ok(None)
         }
         MenuAction::SetFourPlayerAdapter(player_count) => {
@@ -13457,6 +13497,68 @@ mod tests {
     }
 
     #[test]
+    fn game_link_same_game_action_clones_the_primary_rom_without_opening_a_dialog() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-same-game", true, false, false);
+        let primary_rom_path = harness
+            .session
+            .rom_path()
+            .expect("primary ROM should be loaded")
+            .to_path_buf();
+        for _ in 0..256 {
+            harness.machine.step_t_cycle();
+        }
+        assert_ne!(harness.machine.next_t_cycle(), gb_core::TCycle::ZERO);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGameLinkSameGame)
+                .expect("SAME GAME should build a fresh GAME LINK session")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::GameLink
+        );
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(primary_rom_path.as_path())
+        );
+        assert_eq!(harness.session.dmg07_player_count, None);
+        assert!(!harness.runtime.open_rom_dialog.is_pending());
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::Dmg04
+        );
+        assert_eq!(
+            harness.machine.primary_machine().next_t_cycle(),
+            gb_core::TCycle::ZERO
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary linked machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
     fn selecting_none_after_game_link_returns_to_a_single_primary_runtime() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("game-link-detach", true, false, false);
@@ -13904,16 +14006,57 @@ mod tests {
     }
 
     #[test]
-    fn game_link_menu_action_switches_the_open_rom_dialog_into_secondary_mode() {
+    fn game_link_same_game_save_sessions_use_player_slot_file_extensions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-same-save-keys", false, false, false);
+        let rom_name = "battery.gb";
+        let rom_path = harness.root.join(rom_name);
+        fs::write(&rom_path, build_test_rom(32 * 1024, 0x03, 0x00, 0x02))
+            .expect("battery-backed ROM should be writable");
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(rom_name)))
+            .expect("open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("battery-backed ROM should load");
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGameLinkSameGame)
+                .expect("SAME GAME should activate a DMG-04 session")
+                .is_none()
+        );
+
+        let save_root = harness.root.join("saves");
+        let p1_save_session = harness.runtime.save_sessions[super::PlayerSlot::P1.index()]
+            .as_ref()
+            .expect("GAME LINK P1 should have a save session");
+        let p2_save_session = harness.runtime.save_sessions[super::PlayerSlot::P2.index()]
+            .as_ref()
+            .expect("GAME LINK P2 should have a save session");
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(rom_path.as_path())
+        );
+        assert_eq!(p1_save_session.save_path(), save_root.join("battery.gbsav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("battery.gbsa2"));
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
+    }
+
+    #[test]
+    fn game_link_select_game_action_switches_the_open_rom_dialog_into_secondary_mode() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("game-link-action", true, false, false);
         harness.runtime.open_rom_dialog.pending = true;
 
         assert!(
             harness
-                .execute_action(super::MenuAction::SetExternalPort(
-                    DesktopExternalPortSelection::GameLink,
-                ))
+                .execute_action(super::MenuAction::SelectGameLinkRom)
                 .expect("GAME LINK action should not fail when the open dialog is already pending")
                 .is_none()
         );

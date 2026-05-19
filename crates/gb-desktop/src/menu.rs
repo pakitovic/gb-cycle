@@ -145,6 +145,11 @@ const EXT_PORT_MENU_ITEMS: [MenuItem; 5] = [
     MenuItem::ExternalPortFourPlayerAdapter,
     MenuItem::Return,
 ];
+const GAME_LINK_MENU_ITEMS: [MenuItem; 3] = [
+    MenuItem::GameLinkSameGame,
+    MenuItem::GameLinkSelectGame,
+    MenuItem::Return,
+];
 const FOUR_PLAYER_ADAPTER_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FourPlayerAdapterTwoPlayers,
     MenuItem::FourPlayerAdapterThreePlayers,
@@ -322,6 +327,8 @@ pub enum MenuAction {
     ResetVideoDefaults,
     ResetAudioDefaults,
     SetExternalPort(DesktopExternalPortSelection),
+    SetGameLinkSameGame,
+    SelectGameLinkRom,
     SetFourPlayerAdapter(DesktopDmg07PlayerCount),
     OpenCgbInfrared,
     ResetInputDefaults,
@@ -775,6 +782,8 @@ impl MenuPresentation {
             | MenuItem::Quit
             | MenuItem::Return => true,
             MenuItem::ExternalPortGameLink
+            | MenuItem::GameLinkSameGame
+            | MenuItem::GameLinkSelectGame
             | MenuItem::ExternalPortFourPlayerAdapter
             | MenuItem::FourPlayerAdapterTwoPlayers
             | MenuItem::FourPlayerAdapterThreePlayers
@@ -825,8 +834,8 @@ impl MenuPresentation {
             MenuItem::ExtPortMenu => match self.external_port_selection {
                 DesktopExternalPortSelection::None => "EXT NONE".to_string(),
                 DesktopExternalPortSelection::Printer => "EXT PRINTER".to_string(),
-                DesktopExternalPortSelection::GameLink => "EXT LINK".to_string(),
-                DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P".to_string(),
+                DesktopExternalPortSelection::GameLink => "EXT GAME LINK".to_string(),
+                DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P ADAPTER".to_string(),
             },
             MenuItem::CgbInfrared => {
                 if self.cgb_infrared_link_active {
@@ -1109,6 +1118,8 @@ impl MenuPresentation {
                 }
             }
             MenuItem::ExternalPortGameLink => "GAME LINK".to_string(),
+            MenuItem::GameLinkSameGame => "SAME GAME".to_string(),
+            MenuItem::GameLinkSelectGame => "SELECT GAME".to_string(),
             MenuItem::ExternalPortFourPlayerAdapter => "4P ADAPTER".to_string(),
             MenuItem::FourPlayerAdapterTwoPlayers => "2 PLAYERS".to_string(),
             MenuItem::FourPlayerAdapterThreePlayers => "3 PLAYERS".to_string(),
@@ -1334,6 +1345,7 @@ enum MenuScreen {
     Audio,
     Input,
     ExtPort,
+    GameLink,
     FourPlayerAdapter,
     Gamepad,
     GamepadMenuControls,
@@ -1362,6 +1374,7 @@ impl MenuScreen {
             Self::Audio => "AUDIO",
             Self::Input => "INPUT",
             Self::ExtPort => "EXT PORT",
+            Self::GameLink => "GAME LINK",
             Self::FourPlayerAdapter => "4P ADAPTER",
             Self::Gamepad => "GAMEPAD",
             Self::GamepadMenuControls => "PAD MENU",
@@ -1465,6 +1478,8 @@ enum MenuItem {
     ExternalPortNone,
     ExternalPortPrinter,
     ExternalPortGameLink,
+    GameLinkSameGame,
+    GameLinkSelectGame,
     ExternalPortFourPlayerAdapter,
     FourPlayerAdapterTwoPlayers,
     FourPlayerAdapterThreePlayers,
@@ -2095,6 +2110,10 @@ impl OverlayMenuState {
                 None
             }
             MenuItem::CgbInfrared => Some(MenuAction::OpenCgbInfrared),
+            MenuItem::ExternalPortGameLink => {
+                self.push_screen(MenuScreen::GameLink, presentation);
+                None
+            }
             MenuItem::ExternalPortFourPlayerAdapter => {
                 self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
                 None
@@ -2198,9 +2217,8 @@ impl OverlayMenuState {
             MenuItem::ExternalPortPrinter => Some(MenuAction::SetExternalPort(
                 DesktopExternalPortSelection::Printer,
             )),
-            MenuItem::ExternalPortGameLink => Some(MenuAction::SetExternalPort(
-                DesktopExternalPortSelection::GameLink,
-            )),
+            MenuItem::GameLinkSameGame => Some(MenuAction::SetGameLinkSameGame),
+            MenuItem::GameLinkSelectGame => Some(MenuAction::SelectGameLinkRom),
             MenuItem::FourPlayerAdapterTwoPlayers => Some(MenuAction::SetFourPlayerAdapter(
                 DesktopDmg07PlayerCount::Two,
             )),
@@ -2686,6 +2704,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::Audio => &AUDIO_MENU_ITEMS,
         MenuScreen::Input => &INPUT_MENU_ITEMS,
         MenuScreen::ExtPort => &EXT_PORT_MENU_ITEMS,
+        MenuScreen::GameLink => &GAME_LINK_MENU_ITEMS,
         MenuScreen::FourPlayerAdapter => &FOUR_PLAYER_ADAPTER_MENU_ITEMS,
         MenuScreen::Gamepad => &GAMEPAD_MENU_ITEMS,
         MenuScreen::GamepadMenuControls => &GAMEPAD_MENU_CONTROL_ITEMS,
@@ -3210,9 +3229,9 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 mod tests {
     use super::{
         AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel,
-        EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAMEPAD_MENU_CONTROL_ITEMS,
-        GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget, GamepadBindingTarget,
-        GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
+        EXT_PORT_MENU_ITEMS, FAST_FORWARD_MENU_ITEMS, GAME_LINK_MENU_ITEMS,
+        GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget,
+        GamepadBindingTarget, GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
         KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
         KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem,
         MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS,
@@ -4421,6 +4440,10 @@ mod tests {
         );
         assert_eq!(EXT_PORT_MENU_ITEMS[4], MenuItem::Return);
 
+        assert_eq!(GAME_LINK_MENU_ITEMS[0], MenuItem::GameLinkSameGame);
+        assert_eq!(GAME_LINK_MENU_ITEMS[1], MenuItem::GameLinkSelectGame);
+        assert_eq!(GAME_LINK_MENU_ITEMS[2], MenuItem::Return);
+
         assert_eq!(KEYBOARD_MENU_ITEMS[0], MenuItem::KeyboardUp);
         assert_eq!(KEYBOARD_MENU_ITEMS[8], MenuItem::Return);
         assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[0], MenuItem::KeyboardMenuUp);
@@ -4790,10 +4813,20 @@ mod tests {
             "GAME LINK"
         );
         assert_eq!(
+            presentation.item_label(MenuItem::GameLinkSameGame),
+            "SAME GAME"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GameLinkSelectGame),
+            "SELECT GAME"
+        );
+        assert_eq!(
             presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
             "4P ADAPTER"
         );
         assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        assert!(presentation.item_enabled(MenuItem::GameLinkSameGame));
+        assert!(presentation.item_enabled(MenuItem::GameLinkSelectGame));
         assert!(presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
         assert_eq!(
             presentation.item_label(MenuItem::FourPlayerAdapterTwoPlayers),
@@ -4809,12 +4842,20 @@ mod tests {
         );
         presentation.any_dialog_pending = true;
         assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        assert!(!presentation.item_enabled(MenuItem::GameLinkSameGame));
+        assert!(!presentation.item_enabled(MenuItem::GameLinkSelectGame));
         assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
         presentation.any_dialog_pending = false;
         presentation.external_port_selection = DesktopExternalPortSelection::GameLink;
-        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT LINK");
+        assert_eq!(
+            presentation.item_label(MenuItem::ExtPortMenu),
+            "EXT GAME LINK"
+        );
         presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
-        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT 4P");
+        assert_eq!(
+            presentation.item_label(MenuItem::ExtPortMenu),
+            "EXT 4P ADAPTER"
+        );
 
         assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "CGB IR OFF");
         assert!(!presentation.item_visible(MenuItem::CgbInfrared));
@@ -5171,6 +5212,7 @@ mod tests {
         assert_eq!(MenuScreen::Audio.title(presentation), "AUDIO");
         assert_eq!(MenuScreen::Input.title(presentation), "INPUT");
         assert_eq!(MenuScreen::ExtPort.title(presentation), "EXT PORT");
+        assert_eq!(MenuScreen::GameLink.title(presentation), "GAME LINK");
         assert_eq!(
             MenuScreen::FourPlayerAdapter.title(presentation),
             "4P ADAPTER"
@@ -5223,6 +5265,25 @@ mod tests {
             menu.apply_item_action(MenuItem::InputMenu, presentation),
             None
         );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ExtPortMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::ExtPort);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ExternalPortGameLink, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::GameLink);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GameLinkSameGame, presentation),
+            Some(MenuAction::SetGameLinkSameGame)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GameLinkSelectGame, presentation),
+            Some(MenuAction::SelectGameLinkRom)
+        );
+        menu.open(presentation);
         assert_eq!(
             menu.apply_item_action(MenuItem::ExtPortMenu, presentation),
             None
