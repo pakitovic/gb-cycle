@@ -41,7 +41,7 @@
 - Every hardware quirk should have an explicit home in code.
 - Default to private items and widen visibility only when the subsystem boundary requires it.
 - Keep `gb-core` free of platform APIs, file dialogs, SDL/web/audio-device code, filesystem save mechanics, and host wall-clock policy except through explicit injected boundaries.
-- Keep `gb-persistence` responsible for durable cartridge-save envelopes, safe file replacement, elapsed-time integration, and external `.sav` conversion; do not move those storage mechanics into mapper runtime code.
+- Keep `gb-persistence` responsible for cartridge-save storage policy (`.sav/.saN` primary when lossless, `.gbsav/.gbsaN` envelope fallback otherwise), safe file replacement, elapsed-time integration, and external `.sav` conversion; do not move those storage mechanics into mapper runtime code.
 - Keep hardware-style cartridge persistence, whole-machine save states, debugger snapshots, replay metadata, and frontend settings as separate systems with separate DTOs and validation rules.
 - Keep `machine/` as composition and lifecycle orchestration, not as a dumping ground for subsystem behavior that belongs in CPU, bus, PPU, APU, DMA, timer, serial, external port, link, boot, interrupts, joypad, or cartridge owners.
 
