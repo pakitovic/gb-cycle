@@ -84,6 +84,8 @@ pub use link::{
     DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port, LinkedMachines,
     LinkedMachinesError, LinkedStepResult, LinkedTopologyKind,
     MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    PokemonPikachuColor, PokemonPikachuColorGift, PokemonPikachuColorRegion,
+    PokemonPikachuColorSession, PokemonPikachuColorStatus,
 };
 pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,

@@ -5,7 +5,8 @@ use gb_core::{
     DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port, LinkedMachines,
     LinkedMachinesError, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
     MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineStepObserver,
-    TraceSummaryBuffer,
+    PokemonPikachuColor, PokemonPikachuColorGift, PokemonPikachuColorRegion,
+    PokemonPikachuColorSession, PokemonPikachuColorStatus, TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -15,6 +16,7 @@ pub enum DesktopEmulationSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
     LinkedCgbInfraredTwoPlayer,
+    PokemonPikachuColor,
     LinkedDmg07 {
         player_count: DesktopDmg07PlayerCount,
     },
@@ -27,6 +29,7 @@ pub enum DesktopEmulationSession {
     Single(Box<Machine<TraceSummaryBuffer>>),
     LinkedDmg04TwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
     LinkedCgbInfraredTwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
+    PokemonPikachuColor(Box<PokemonPikachuColorSession<TraceSummaryBuffer>>),
     LinkedDmg07 {
         linked: Box<LinkedMachines<TraceSummaryBuffer>>,
         player_count: DesktopDmg07PlayerCount,
@@ -36,6 +39,17 @@ pub enum DesktopEmulationSession {
 impl DesktopEmulationSession {
     pub fn new_single(machine: Machine<TraceSummaryBuffer>) -> Self {
         Self::Single(Box::new(machine))
+    }
+
+    pub fn new_pokemon_pikachu_color(
+        machine: Machine<TraceSummaryBuffer>,
+        gift: PokemonPikachuColorGift,
+        region: PokemonPikachuColorRegion,
+    ) -> Self {
+        Self::PokemonPikachuColor(Box::new(PokemonPikachuColorSession::new(
+            machine,
+            PokemonPikachuColor::new(gift, region),
+        )))
     }
 
     pub fn new_linked_dmg04_two_player(
@@ -171,6 +185,7 @@ impl DesktopEmulationSession {
             Self::LinkedCgbInfraredTwoPlayer(_) => {
                 DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
             }
+            Self::PokemonPikachuColor(_) => DesktopEmulationSessionKind::PokemonPikachuColor,
             Self::LinkedDmg07 { player_count, .. } => DesktopEmulationSessionKind::LinkedDmg07 {
                 player_count: *player_count,
             },
@@ -184,6 +199,7 @@ impl DesktopEmulationSession {
             Self::Single(_) => LinkedTopologyKind::None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.topology_kind(),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.topology_kind(),
+            Self::PokemonPikachuColor(_) => LinkedTopologyKind::None,
             Self::LinkedDmg07 { linked, .. } => linked.topology_kind(),
         }
     }
@@ -200,6 +216,7 @@ impl DesktopEmulationSession {
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
+            Self::PokemonPikachuColor(session) => session.machine(),
             Self::LinkedDmg07 { linked, .. } => linked
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
@@ -218,6 +235,7 @@ impl DesktopEmulationSession {
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
+            Self::PokemonPikachuColor(session) => session.machine_mut(),
             Self::LinkedDmg07 { linked, .. } => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
@@ -228,6 +246,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Transitioning => None,
             Self::Single(_) => None,
+            Self::PokemonPikachuColor(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine(1),
@@ -238,6 +257,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Transitioning => None,
             Self::Single(_) => None,
+            Self::PokemonPikachuColor(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine_mut(1),
@@ -255,6 +275,7 @@ impl DesktopEmulationSession {
                 Self::LinkedDmg07 { linked, .. } => linked.machine(slot.machine_index()),
                 Self::Transitioning
                 | Self::Single(_)
+                | Self::PokemonPikachuColor(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -272,6 +293,7 @@ impl DesktopEmulationSession {
                 Self::LinkedDmg07 { linked, .. } => linked.machine_mut(slot.machine_index()),
                 Self::Transitioning
                 | Self::Single(_)
+                | Self::PokemonPikachuColor(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -286,11 +308,29 @@ impl DesktopEmulationSession {
         matches!(self, Self::LinkedCgbInfraredTwoPlayer(_))
     }
 
+    pub const fn is_pokemon_pikachu_color(&self) -> bool {
+        matches!(self, Self::PokemonPikachuColor(_))
+    }
+
+    pub fn set_pokemon_pikachu_color_gift(&mut self, gift: PokemonPikachuColorGift) {
+        if let Self::PokemonPikachuColor(session) = self {
+            session.pokemon_pikachu_color_mut().set_gift(gift);
+        }
+    }
+
+    pub fn pokemon_pikachu_color_status(&self) -> Option<PokemonPikachuColorStatus> {
+        match self {
+            Self::PokemonPikachuColor(session) => Some(session.pokemon_pikachu_color().status()),
+            _ => None,
+        }
+    }
+
     pub const fn dmg07_player_count(&self) -> Option<DesktopDmg07PlayerCount> {
         match self {
             Self::LinkedDmg07 { player_count, .. } => Some(*player_count),
             Self::Transitioning
             | Self::Single(_)
+            | Self::PokemonPikachuColor(_)
             | Self::LinkedDmg04TwoPlayer(_)
             | Self::LinkedCgbInfraredTwoPlayer(_) => None,
         }
@@ -324,6 +364,12 @@ impl DesktopEmulationSession {
             Self::LinkedCgbInfraredTwoPlayer(_) => {
                 return Err(
                     "desktop emulation session is already running a linked CGB IR runtime"
+                        .to_string(),
+                );
+            }
+            Self::PokemonPikachuColor(_) => {
+                return Err(
+                    "desktop emulation session is already running a Pokemon Pikachu Color runtime"
                         .to_string(),
                 );
             }
@@ -391,6 +437,12 @@ impl DesktopEmulationSession {
                         .to_string(),
                 );
             }
+            Self::PokemonPikachuColor(_) => {
+                return Err(
+                    "desktop emulation session is already running a Pokemon Pikachu Color runtime"
+                        .to_string(),
+                );
+            }
         };
         let found = secondary_machine.next_t_cycle();
         if found != expected {
@@ -441,6 +493,9 @@ impl DesktopEmulationSession {
             Self::LinkedCgbInfraredTwoPlayer(linked) => {
                 linked.advance_t_cycle();
             }
+            Self::PokemonPikachuColor(session) => {
+                session.advance_t_cycle();
+            }
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle();
             }
@@ -460,6 +515,9 @@ impl DesktopEmulationSession {
             }
             Self::LinkedCgbInfraredTwoPlayer(linked) => {
                 linked.advance_t_cycle_with_observer(observer);
+            }
+            Self::PokemonPikachuColor(session) => {
+                session.advance_t_cycle_with_observer(observer);
             }
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle_with_observer(observer);
@@ -489,6 +547,7 @@ impl DesktopEmulationSession {
                     .next()
                     .expect("linked desktop session should keep the primary machine")
             }
+            Self::PokemonPikachuColor(session) => session.into_machine(),
             Self::LinkedDmg07 { mut linked, .. } => {
                 linked.detach_link_topology();
                 linked
