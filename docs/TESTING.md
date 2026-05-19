@@ -241,7 +241,7 @@ Map every ROM case to the subsystem and acceptance channel it validates, and kee
 - Cartridge-persistence tests validate cartridge-owned backing stores, EEPROM payloads, and RTC state only; they must not require CPU, PPU, APU, WRAM, or other console-state serialization.
 - Full-emulator save-state tests validate whole-machine snapshot ownership, hidden temporal-state restore, metadata compatibility, and save/load continuation determinism under the recorded execution mode and overrides.
 - Rewind tests validate repeated in-memory save-state capture/restore through the same core restore path used by explicit save/load; frontend tests may cover host cleanup, HUD, settings, and buffer policy, but they must not redefine core restore semantics.
-- Cartridge state included in a whole-machine save state should be validated as mapper-owned runtime snapshot state, not as a shortcut through the hardware-style `.gbsav` persistence payload.
+- Cartridge state included in a whole-machine save state should be validated as mapper-owned runtime snapshot state, not as a shortcut through hardware-style cartridge save storage (`.sav/.saN` or `.gbsav/.gbsaN`).
 - Save/load and rewind validation should include at least one timing-sensitive mid-run restore and at least one banked-cartridge scenario before being counted as Phase `9` closure evidence; `run_determinism`, `phase9-determinism-smoke`, and `phase9-determinism-local` provide the accepted in-memory save/load continuation lane across Phase `2`, Mooneye Timer/DMA, Acid/Mealybug PPU, Phase `6` cartridge, and one Blargg APU case.
 
 ## DMA and APU validation focus

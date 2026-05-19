@@ -16,9 +16,9 @@ A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, 
 | Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, and `SC` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, CGB `RP` baseline, explicit link-endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, and `DMG-07` 2/3/4-player topology. |
 | Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, flash / EEPROM / accelerometer paths, rumble-capable metadata, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family and CGB-family models, including CGB boot-window routing, header-driven native/compatibility mode selection, and coherent first post-boot timer, PPU, and APU state. |
-| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, link, audio/video diagnostics, save states, rewind, and Fast Forward. |
+| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, link, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
-| Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
+| Save states / rewind | Versioned `.gbstate` v1 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
 | Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix. |
 
@@ -33,8 +33,8 @@ crates/
   gb-core/         Pure DMG/CGB emulation core, hardware state, debugger snapshots, and save-state / rewind DTOs
   gb-test-runner/  Typed ROM harness, DMG/CGB executable suites, differential tooling, determinism checks, and linked-session validation
   gb-benchmark/    Portable benchmark TOML parsing, deterministic joypad stimuli, shared artifact paths, and frontend-neutral stats
-  gb-cli/          Headless CLI frontend, ROM inspection, save conversion, and `.gbstate` run tooling
-  gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link sessions, printer, Pocket Camera, audio/video diagnostics, save states, rewind, and Fast Forward
+  gb-cli/          Headless CLI frontend, ROM inspection, battery-save runtime/conversion, and `.gbstate` run tooling
+  gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link sessions, printer, Pocket Camera, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward
   gb-persistence/  Host-side cartridge save storage (`.sav/.saN` primary plus `.gbsav/.gbsaN` fallback), external conversion, and `.gbstate` envelope formats
 
 docs/              Architecture, roadmap, testing, frontend, hardware, and reference documentation
