@@ -4,7 +4,8 @@ use gb_core::{
     SupportedCartridgeFamily,
 };
 use gb_persistence::{
-    CartridgeSaveBackendError, FilesystemCartridgeSaveBackend, decode_machine_save_state_envelope,
+    CartridgeSaveBackendError, FilesystemCartridgeSaveBackend, FilesystemCartridgeSaveStore,
+    decode_machine_save_state_envelope,
 };
 use std::io;
 use std::sync::Mutex;
@@ -384,15 +385,11 @@ fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
     assert!(trace.contains("t_cycle="));
 
     let save_key = derive_save_key(&rom_path).expect("save key should derive");
-    let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    let envelope = backend
-        .load(&save_key)
-        .expect("save should be readable")
-        .expect("save should exist");
-    match envelope.persistent_state {
-        PersistentCartState::NoMbcRam { ram } => assert_eq!(ram[0], 0x5A),
-        other => panic!("expected NoMbcRam persistence, got {other:?}"),
-    }
+    assert_eq!(
+        fs::read(save_root.join(format!("{}.sav", save_key.as_str())))
+            .expect("external-primary save should exist")[0],
+        0x5A
+    );
 
     let stderr_output = String::from_utf8(stderr).expect("stderr should be UTF-8");
     assert!(stderr_output.contains("save_writes=1"));
@@ -643,7 +640,11 @@ fn saves_commands_export_and_import_external_sav_files() {
         output.contains("save_key=Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"),
         "{output}"
     );
-    assert!(output.contains("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"));
+    assert!(
+        output.contains("source_save=")
+            && output
+                .contains("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav")
+    );
     assert!(output.contains("external_bytes=8192"));
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
@@ -668,16 +669,40 @@ fn saves_commands_export_and_import_external_sav_files() {
     )
     .expect("save import should succeed");
 
-    let envelope = backend
-        .load(&key)
-        .expect("imported save should be readable")
-        .expect("imported save should exist");
-    match envelope.persistent_state {
-        PersistentCartState::NoMbcRam { ram } => assert_eq!(&ram[..2], &[0xA5, 0x3C]),
-        other => panic!("expected NoMbcRam persistence, got {other:?}"),
-    }
+    assert_eq!(
+        &fs::read(save_root.join(format!("{}.sav", key.as_str())))
+            .expect("imported external-primary save should exist")[..2],
+        &[0xA5, 0x3C]
+    );
     let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
-    assert!(output.contains("target_gbsav="));
+    assert!(output.contains("target_save="));
+    let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
+
+    let reexport_path = temp_dir.join("exports/reexported.sav");
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        [
+            "saves",
+            "export",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            reexport_path.to_str().expect("path should be valid UTF-8"),
+            "--save-dir",
+            save_root.to_str().expect("path should be valid UTF-8"),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("save export should prefer the external-primary runtime save");
+    assert_eq!(
+        &fs::read(&reexport_path).expect("re-exported external save should exist")[..2],
+        &[0xA5, 0x3C]
+    );
+    let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
+    assert!(
+        output.contains("source_save=") && output.contains(&format!("{}.sav", key.as_str())),
+        "{output}"
+    );
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
@@ -772,9 +797,18 @@ fn saves_commands_cover_conversion_error_paths_and_exact_session_loads() {
     assert!(!ignored_old_sanitized_error.contains("failed to load save"));
     fs::remove_file(&old_sanitized_path).expect("broken old sanitized save should be removable");
 
+    let broken_exact_path = backend.path_for_key(&exact_key);
+    fs::write(&broken_exact_path, b"not-a-valid-save")
+        .expect("broken exact save should be writable");
+    let exact_load_error =
+        load_save_envelope(&backend, &exact_key).expect_err("broken exact saves should fail");
+    assert!(exact_load_error.contains("failed to load save"));
+    fs::remove_file(&broken_exact_path).expect("broken exact save should be removable");
+
     let mut exact_ram = vec![0; 8 * 1024];
     exact_ram[0] = 0x44;
-    backend
+    let mut store = FilesystemCartridgeSaveStore::new(&save_root);
+    store
         .save(
             &exact_key,
             report.cartridge().persistence_metadata(),
@@ -833,8 +867,8 @@ fn saves_commands_cover_conversion_error_paths_and_exact_session_loads() {
     fs::write(&valid_external_path, vec![0x55; 8 * 1024])
         .expect("valid external save should be writable");
     let blocked_save_root = temp_dir.join("blocked-import-save");
-    let blocked_backend = FilesystemCartridgeSaveBackend::new(&blocked_save_root);
-    let blocked_target_path = blocked_backend.path_for_key(&exact_key);
+    let blocked_store = FilesystemCartridgeSaveStore::new(&blocked_save_root);
+    let blocked_target_path = blocked_store.external_path_for_key(&exact_key);
     let mut blocked_temp_path = blocked_target_path.as_os_str().to_os_string();
     blocked_temp_path.push(".tmp");
     fs::create_dir_all(PathBuf::from(blocked_temp_path))
@@ -1553,8 +1587,8 @@ fn save_session_helpers_cover_skip_restore_and_noop_flush_paths() {
     let seeded_state = PersistentCartState::NoMbcRam {
         ram: vec![0x33; 8 * 1024],
     };
-    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    backend
+    let mut store = FilesystemCartridgeSaveStore::new(&save_root);
+    store
         .save(
             &save_key,
             battery_machine.cartridge().persistence_metadata(),
@@ -1626,8 +1660,8 @@ fn save_session_and_flush_error_paths_surface_backend_failures() {
     let mut options = RunOptions::default_with_rom(PathBuf::from("battery.gb"));
     options.save_key = Some("battery_manual".to_string());
     let key = CartridgeSaveKey::new("battery_manual").expect("save key should be valid");
-    let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    fs::write(backend.path_for_key(&key), b"not-a-valid-save")
+    let store = FilesystemCartridgeSaveStore::new(&save_root);
+    fs::write(store.external_path_for_key(&key), b"not-a-valid-save")
         .expect("broken save bytes should be writable");
     let load_error = open_save_session(
         Some(&save_root),
@@ -1643,8 +1677,9 @@ fn save_session_and_flush_error_paths_surface_backend_failures() {
     let blocking_root = temp_dir.join("blocking-root");
     fs::write(&blocking_root, b"file").expect("blocking file should be writable");
     let mut failing_session = SaveSession {
-        backend: FilesystemCartridgeSaveBackend::new(&blocking_root),
+        backend: FilesystemCartridgeSaveStore::new(&blocking_root),
         key: CartridgeSaveKey::new("battery").expect("save key should be valid"),
+        save_path: blocking_root.join("battery.sav"),
         last_saved_state: PersistentCartState::None,
         loaded_existing_save: false,
         save_writes: 0,
@@ -1653,31 +1688,19 @@ fn save_session_and_flush_error_paths_surface_backend_failures() {
         .expect_err("broken save roots should surface backend save errors");
     assert!(save_error.contains("failed to save cartridge persistence (forced-save)"));
 
-    let mut mismatch_options = RunOptions::default_with_rom(PathBuf::from("battery.gb"));
-    mismatch_options.save_key = Some("battery_mismatch".to_string());
-    let mismatch_key = CartridgeSaveKey::new("battery_mismatch").expect("save key should be valid");
-    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    backend
-        .save(
-            &mismatch_key,
-            battery_machine.cartridge().persistence_metadata(),
-            &PersistentCartState::Mbc2Ram {
-                ram_nibbles: [0; 512],
-            },
-        )
-        .expect("mismatched save should persist for restore checks");
-    let mut mismatch_machine =
-        build_loaded_machine(build_battery_backed_serial_and_ram_rom(b'R', 0), false);
-    let restore_error = open_save_session(
-        Some(&save_root),
-        &mismatch_options,
-        Path::new("battery.gb"),
-        &mut mismatch_machine,
-        &mut Vec::new(),
-        true,
-    )
-    .expect_err("incompatible saved state should surface restore errors");
-    assert!(restore_error.contains("failed to restore cartridge persistence"));
+    let mut state_machine =
+        build_loaded_machine(build_battery_backed_serial_and_ram_rom(b'T', 0), false);
+    let missing_state_error =
+        restore_machine_save_state_from_path(&mut state_machine, &temp_dir.join("missing.gbstate"))
+            .expect_err("missing state files should surface read errors");
+    assert!(missing_state_error.contains("failed to read .gbstate state"));
+
+    let blocking_state_parent = temp_dir.join("blocking-state-parent");
+    fs::write(&blocking_state_parent, b"file").expect("blocking state parent should be writable");
+    let state_write_error =
+        write_machine_save_state_to_path(&state_machine, &blocking_state_parent.join("state.bin"))
+            .expect_err("non-directory state parents should block writes");
+    assert!(state_write_error.contains("failed to write state"));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

@@ -32,14 +32,14 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 
 ### `saves`
 
-Convert between GB Cycle's internal `.gbsav` envelope and the raw `.sav` layout used by SameBoy and mGBA:
+Convert between GB Cycle cartridge persistence and the raw `.sav` layout used by SameBoy and mGBA:
 
 ```bash
 cargo run -p gb-cli -- saves export path/to/rom.gb path/to/out.sav --save-dir path/to/saves
 cargo run -p gb-cli -- saves import path/to/rom.gb path/to/in.sav --save-dir path/to/saves
 ```
 
-Both commands load the ROM first, then validate the save payload against the cartridge mapper and persistence profile instead of inferring compatibility from the filename. `saves import` reads the selected external path exactly as provided, so extensionless files are valid when the caller supplies one. Use `--save-key <key>` when the internal `.gbsav` key differs from the ROM stem.
+Both commands load the ROM first, then validate the save payload against the cartridge mapper and persistence profile instead of inferring compatibility from the filename. `saves export` reads the current authoritative runtime save first (`.sav/.saN` when external-stable, `.gbsav/.gbsaN` for fallback-only state), then falls back to an internal `.gbsav` envelope for explicit legacy migration when no runtime save exists. `saves import` reads the selected external path exactly as provided, so extensionless files are valid when the caller supplies one, and then writes the same authoritative storage format that `run --save-dir` would use for the mapper: `.sav` when lossless externally, `.gbsav` only for fallback-only state. Use `--save-key <key>` when the save key differs from the ROM stem.
 
 ## Console models
 
@@ -62,11 +62,11 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Battery saves
 
-`--save-dir` loads and stores battery-backed cartridge persistence using the host-side P1 `.gbsav` extension from `gb-persistence`. Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav` extension, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. The CLI does not probe older sanitized save names; rename old files manually when needed.
+`--save-dir` loads and stores battery-backed cartridge persistence using `.sav` as the P1 runtime file when the mapper state is representable without loss in an external save. Default names use the exact ROM filename stem, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).sav` for external-stable cartridges; only path separators, control characters, and portable-filesystem reserved characters require an explicit `--save-key`. The CLI does not probe older sanitized save names or auto-load legacy `.gbsav` files for external-stable carts; export legacy saves manually when needed.
 
 `--save-policy <manual|on-close|on-write>` selects automatic flush behavior when `--save-dir` is present and defaults to `on-close`; `manual` loads any existing save without automatic writes, `on-close` writes changed persistence at run completion, and `on-write` also flushes changed persistence at frame boundaries after cartridge writes.
 
-`gb-cli saves export` writes emulator-compatible `.sav` files at the host boundary without changing the internal `.gbsav` format. Linear cartridge RAM is exported as raw bytes; `MBC3` RTC saves export the shared `48`-byte little-endian RTC suffix used by SameBoy/mGBA and import both the older `44`-byte timestamp form and the `48`-byte form; `MBC2` export defaults to mGBA's `256`-byte packed format while import accepts both mGBA packed saves and SameBoy's `512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a safe external mapping fail explicitly instead of producing partial saves.
+`gb-cli saves export` writes emulator-compatible `.sav` files at the host boundary without changing existing source files. Runtime saving writes `.sav` for external-stable mappers, and reserves `.gbsav` for HuC-3, non-representable MBC6 state, and future mapper state without a safe external contract; export follows that runtime path first so a save created by `run --save-dir` or `saves import` can be exported again, while still probing a legacy `.gbsav` as a migration fallback when no authoritative runtime save exists. Linear cartridge RAM is exported as raw bytes; `MBC3` RTC saves export the shared `48`-byte little-endian RTC suffix used by SameBoy/mGBA and import both the older `44`-byte timestamp form and the `48`-byte form; `MBC2` export defaults to mGBA's `256`-byte packed format while import accepts both mGBA packed saves and SameBoy's `512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a safe external mapping fail explicitly for conversion and use the internal fallback for runtime storage instead of producing partial saves.
 
 ## Default stop conditions
 

@@ -15,11 +15,11 @@ use gb_core::{
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveEnvelope, CartridgeSaveKey,
     CartridgeSaveKeyError, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
-    ExternalSaveError, FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
-    MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource,
-    decode_machine_save_state_envelope, encode_machine_save_state_envelope,
-    export_external_cartridge_save, import_external_cartridge_save,
-    uses_battery_backed_hardware_persistence,
+    ExternalSaveError, FilesystemCartridgeSaveBackend, FilesystemCartridgeSaveStore,
+    FixedCartridgeSaveTimeSource, MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope,
+    SystemCartridgeSaveTimeSource, decode_machine_save_state_envelope,
+    encode_machine_save_state_envelope, export_external_cartridge_save,
+    import_external_cartridge_save, uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -86,7 +86,7 @@ const SAVES_HELP_TEXT: &str = concat!(
     "  gb-cli saves import <rom> <in.sav> --save-dir <dir> [--save-key <key>]\n",
     "\n",
     "Options:\n",
-    "  --save-dir <dir>                       Directory containing gb-cycle .gbsav files\n",
+    "  --save-dir <dir>                       Directory containing gb-cycle cartridge save files\n",
     "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
 );
 
@@ -440,8 +440,9 @@ impl CliMachine {
 
 #[derive(Debug)]
 struct SaveSession {
-    backend: FilesystemCartridgeSaveBackend,
+    backend: FilesystemCartridgeSaveStore,
     key: CartridgeSaveKey,
+    save_path: PathBuf,
     last_saved_state: PersistentCartState,
     loaded_existing_save: bool,
     save_writes: usize,
@@ -449,7 +450,7 @@ struct SaveSession {
 
 impl SaveSession {
     fn save_path(&self) -> PathBuf {
-        self.backend.path_for_key(&self.key)
+        self.save_path.clone()
     }
 }
 
@@ -475,7 +476,7 @@ fn general_help_text() -> &'static str {
         "Commands:\n",
         "  run         Execute one ROM with the headless runner\n",
         "  inspect-rom Parse the cartridge header and report mapper compatibility\n",
-        "  saves       Convert gb-cycle .gbsav cartridge persistence to or from external .sav files\n",
+        "  saves       Convert gb-cycle cartridge persistence to or from external .sav files\n",
         "\n",
         "Run `gb-cli <command> --help` for command-specific options.\n",
     )
@@ -1322,13 +1323,28 @@ fn saves_export_command(
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
     let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
+    let store = FilesystemCartridgeSaveStore::new(&save_root);
+    let target_state = cartridge.persistent_state();
+    let runtime_save_path = store.preferred_path_for_state(&key, metadata, &target_state);
     let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    let (envelope, source_save_path) = load_save_envelope(&backend, &key)?.ok_or_else(|| {
-        format!(
-            "no gb-cycle save found at {}",
-            backend.path_for_key(&key).display()
-        )
-    })?;
+    let legacy_save_path = backend.path_for_key(&key);
+    let (envelope, source_save_path) = match store
+        .load(&key, metadata, &target_state)
+        .map_err(|error| format_save_load_error(&runtime_save_path, error))?
+    {
+        Some(load) => (load.envelope, load.path),
+        None => load_save_envelope(&backend, &key)?.ok_or_else(|| {
+            if runtime_save_path == legacy_save_path {
+                format!("no gb-cycle save found at {}", runtime_save_path.display())
+            } else {
+                format!(
+                    "no gb-cycle save found at {} or {}",
+                    runtime_save_path.display(),
+                    legacy_save_path.display()
+                )
+            }
+        })?,
+    };
     cartridge
         .restore_persistent_state(&envelope.persistent_state)
         .map_err(|error| {
@@ -1339,7 +1355,7 @@ fn saves_export_command(
             )
         })?;
 
-    let external_bytes = export_external_cartridge_save(&envelope, backend.current_unix_seconds())
+    let external_bytes = export_external_cartridge_save(&envelope, store.current_unix_seconds())
         .map_err(format_external_save_error)?;
     let external_path = resolve_path(&current_dir, &options.external_save_path);
     write_bytes_with_parent(&external_path, &external_bytes)?;
@@ -1348,7 +1364,7 @@ fn saves_export_command(
     writeln_checked(output, &format!("save_key={}", key.as_str()))?;
     writeln_checked(
         output,
-        &format!("source_gbsav={}", source_save_path.display()),
+        &format!("source_save={}", source_save_path.display()),
     )?;
     writeln_checked(
         output,
@@ -1398,7 +1414,7 @@ fn saves_import_command(
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
     let import_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
-    let mut backend = FilesystemCartridgeSaveBackend::with_time_source(
+    let mut store = FilesystemCartridgeSaveStore::with_time_source(
         &save_root,
         FixedCartridgeSaveTimeSource::new(import_unix_seconds),
     );
@@ -1420,8 +1436,8 @@ fn saves_import_command(
         })?;
 
     let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
-    let target_save_path = backend.path_for_key(&key);
-    let envelope = backend
+    let target_save_path = store.preferred_path_for_state(&key, metadata, &imported_state);
+    let write = store
         .save(&key, metadata, &imported_state)
         .map_err(|error| format_save_flush_error(&target_save_path, "saves-import", error))?;
 
@@ -1431,15 +1447,12 @@ fn saves_import_command(
         output,
         &format!("external_save={}", external_path.display()),
     )?;
-    writeln_checked(
-        output,
-        &format!("target_gbsav={}", target_save_path.display()),
-    )?;
+    writeln_checked(output, &format!("target_save={}", write.path.display()))?;
     writeln_checked(
         output,
         &format!(
             "saved_at_unix_seconds={}",
-            envelope.backend_metadata.saved_at_unix_seconds
+            write.envelope.backend_metadata.saved_at_unix_seconds
         ),
     )?;
     Ok(())
@@ -1492,15 +1505,31 @@ fn open_save_session(
         derive_save_key(rom_path)?
     };
 
-    let backend = FilesystemCartridgeSaveBackend::new(save_root);
+    let backend = FilesystemCartridgeSaveStore::new(save_root);
     let mut loaded_existing_save = false;
     let mut last_saved_state = machine.cartridge().persistent_state();
+    let mut save_path =
+        backend.preferred_path_for_state(&key, metadata, &machine.cartridge().persistent_state());
 
-    if load_existing_save && let Some((envelope, save_path)) = load_save_envelope(&backend, &key)? {
+    if load_existing_save
+        && let Some(load) = backend
+            .load(&key, metadata, &machine.cartridge().persistent_state())
+            .map_err(|error| {
+                format_save_load_error(
+                    &backend.preferred_path_for_state(
+                        &key,
+                        metadata,
+                        &machine.cartridge().persistent_state(),
+                    ),
+                    error,
+                )
+            })?
+    {
+        save_path = load.path;
         let elapsed_seconds = backend
             .current_unix_seconds()
-            .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
-        let mut restored_state = envelope.persistent_state;
+            .saturating_sub(load.envelope.backend_metadata.saved_at_unix_seconds);
+        let mut restored_state = load.envelope.persistent_state;
         apply_elapsed_off_session_seconds(&mut restored_state, elapsed_seconds);
         machine
             .restore_cartridge_persistent_state(&restored_state)
@@ -1519,6 +1548,7 @@ fn open_save_session(
     Ok(Some(SaveSession {
         backend,
         key,
+        save_path,
         last_saved_state,
         loaded_existing_save,
         save_writes: 0,
@@ -1535,14 +1565,20 @@ fn flush_save_if_changed(
         return Ok(false);
     }
 
-    save_session
+    let save_path = save_session.backend.preferred_path_for_state(
+        &save_session.key,
+        machine.cartridge().persistence_metadata(),
+        &current_state,
+    );
+    let write = save_session
         .backend
         .save(
             &save_session.key,
             machine.cartridge().persistence_metadata(),
             &current_state,
         )
-        .map_err(|error| format_save_flush_error(&save_session.save_path(), reason, error))?;
+        .map_err(|error| format_save_flush_error(&save_path, reason, error))?;
+    save_session.save_path = write.path;
     save_session.last_saved_state = current_state;
     save_session.save_writes += 1;
     Ok(true)
