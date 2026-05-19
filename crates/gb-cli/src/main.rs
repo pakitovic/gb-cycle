@@ -1323,13 +1323,28 @@ fn saves_export_command(
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
     let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
+    let store = FilesystemCartridgeSaveStore::new(&save_root);
+    let target_state = cartridge.persistent_state();
+    let runtime_save_path = store.preferred_path_for_state(&key, metadata, &target_state);
     let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    let (envelope, source_save_path) = load_save_envelope(&backend, &key)?.ok_or_else(|| {
-        format!(
-            "no gb-cycle save found at {}",
-            backend.path_for_key(&key).display()
-        )
-    })?;
+    let legacy_save_path = backend.path_for_key(&key);
+    let (envelope, source_save_path) = match store
+        .load(&key, metadata, &target_state)
+        .map_err(|error| format_save_load_error(&runtime_save_path, error))?
+    {
+        Some(load) => (load.envelope, load.path),
+        None => load_save_envelope(&backend, &key)?.ok_or_else(|| {
+            if runtime_save_path == legacy_save_path {
+                format!("no gb-cycle save found at {}", runtime_save_path.display())
+            } else {
+                format!(
+                    "no gb-cycle save found at {} or {}",
+                    runtime_save_path.display(),
+                    legacy_save_path.display()
+                )
+            }
+        })?,
+    };
     cartridge
         .restore_persistent_state(&envelope.persistent_state)
         .map_err(|error| {
@@ -1340,7 +1355,7 @@ fn saves_export_command(
             )
         })?;
 
-    let external_bytes = export_external_cartridge_save(&envelope, backend.current_unix_seconds())
+    let external_bytes = export_external_cartridge_save(&envelope, store.current_unix_seconds())
         .map_err(format_external_save_error)?;
     let external_path = resolve_path(&current_dir, &options.external_save_path);
     write_bytes_with_parent(&external_path, &external_bytes)?;
@@ -1349,7 +1364,7 @@ fn saves_export_command(
     writeln_checked(output, &format!("save_key={}", key.as_str()))?;
     writeln_checked(
         output,
-        &format!("source_gbsav={}", source_save_path.display()),
+        &format!("source_save={}", source_save_path.display()),
     )?;
     writeln_checked(
         output,

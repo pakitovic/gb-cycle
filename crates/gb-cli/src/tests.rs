@@ -640,7 +640,11 @@ fn saves_commands_export_and_import_external_sav_files() {
         output.contains("save_key=Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"),
         "{output}"
     );
-    assert!(output.contains("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"));
+    assert!(
+        output.contains("source_save=")
+            && output
+                .contains("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav")
+    );
     assert!(output.contains("external_bytes=8192"));
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
@@ -672,6 +676,33 @@ fn saves_commands_export_and_import_external_sav_files() {
     );
     let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
     assert!(output.contains("target_save="));
+    let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
+
+    let reexport_path = temp_dir.join("exports/reexported.sav");
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        [
+            "saves",
+            "export",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            reexport_path.to_str().expect("path should be valid UTF-8"),
+            "--save-dir",
+            save_root.to_str().expect("path should be valid UTF-8"),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("save export should prefer the external-primary runtime save");
+    assert_eq!(
+        &fs::read(&reexport_path).expect("re-exported external save should exist")[..2],
+        &[0xA5, 0x3C]
+    );
+    let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
+    assert!(
+        output.contains("source_save=") && output.contains(&format!("{}.sav", key.as_str())),
+        "{output}"
+    );
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
