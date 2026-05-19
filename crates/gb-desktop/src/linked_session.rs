@@ -2,10 +2,10 @@ use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
 #[cfg(test)]
 use gb_core::LinkedTopologyKind;
 use gb_core::{
-    ConsoleModel, DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port,
-    LinkedMachines, LinkedMachinesError, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
-    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineStepObserver,
-    StartupMode, TraceSummaryBuffer,
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port, LinkedMachines,
+    LinkedMachinesError, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineStepObserver,
+    TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -23,6 +23,7 @@ pub enum DesktopEmulationSessionKind {
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub enum DesktopEmulationSession {
+    Transitioning,
     Single(Box<Machine<TraceSummaryBuffer>>),
     LinkedDmg04TwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
     LinkedCgbInfraredTwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
@@ -41,14 +42,10 @@ impl DesktopEmulationSession {
         primary_machine: Machine<TraceSummaryBuffer>,
         secondary_machine: Machine<TraceSummaryBuffer>,
     ) -> Result<Self, String> {
-        let mut linked = LinkedMachines::new(vec![primary_machine, secondary_machine])
-            .map_err(format_linked_machines_error)?;
-        linked
-            .attach_dmg04_cable()
-            .map_err(format_linked_machines_error)?;
-        Ok(Self::LinkedDmg04TwoPlayer(Box::new(linked)))
+        Self::new_linked_dmg04_two_player_from_machines(primary_machine, secondary_machine)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new_linked_cgb_infrared_two_player(
         primary_machine: Machine<TraceSummaryBuffer>,
         secondary_machine: Machine<TraceSummaryBuffer>,
@@ -60,13 +57,77 @@ impl DesktopEmulationSession {
         )
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new_linked_cgb_infrared_two_player_with_optical_delay(
         primary_machine: Machine<TraceSummaryBuffer>,
         secondary_machine: Machine<TraceSummaryBuffer>,
         optical_propagation_delay_t_cycles: usize,
     ) -> Result<Self, String> {
-        let mut linked = LinkedMachines::new(vec![primary_machine, secondary_machine])
+        Self::new_linked_cgb_infrared_two_player_from_machines(
+            primary_machine,
+            secondary_machine,
+            optical_propagation_delay_t_cycles,
+        )
+    }
+
+    fn new_linked_dmg04_two_player_from_machines(
+        primary_machine: Machine<TraceSummaryBuffer>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+    ) -> Result<Self, String> {
+        let mut linked = LinkedMachines::new(linked_machine_pair_from_values(
+            primary_machine,
+            secondary_machine,
+        ))
+        .map_err(format_linked_machines_error)?;
+        linked
+            .attach_dmg04_cable()
             .map_err(format_linked_machines_error)?;
+        Ok(Self::LinkedDmg04TwoPlayer(Box::new(linked)))
+    }
+
+    fn new_linked_dmg04_two_player_from_primary_box(
+        primary_machine: Box<Machine<TraceSummaryBuffer>>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+    ) -> Result<Self, String> {
+        let mut linked = LinkedMachines::new(linked_machine_pair_from_primary_box(
+            primary_machine,
+            secondary_machine,
+        ))
+        .map_err(format_linked_machines_error)?;
+        linked
+            .attach_dmg04_cable()
+            .map_err(format_linked_machines_error)?;
+        Ok(Self::LinkedDmg04TwoPlayer(Box::new(linked)))
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn new_linked_cgb_infrared_two_player_from_machines(
+        primary_machine: Machine<TraceSummaryBuffer>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<Self, String> {
+        Self::new_linked_cgb_infrared_two_player_from_vec(
+            linked_machine_pair_from_values(primary_machine, secondary_machine),
+            optical_propagation_delay_t_cycles,
+        )
+    }
+
+    fn new_linked_cgb_infrared_two_player_from_primary_box(
+        primary_machine: Box<Machine<TraceSummaryBuffer>>,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<Self, String> {
+        Self::new_linked_cgb_infrared_two_player_from_vec(
+            linked_machine_pair_from_primary_box(primary_machine, secondary_machine),
+            optical_propagation_delay_t_cycles,
+        )
+    }
+
+    fn new_linked_cgb_infrared_two_player_from_vec(
+        machines: Vec<Machine<TraceSummaryBuffer>>,
+        optical_propagation_delay_t_cycles: usize,
+    ) -> Result<Self, String> {
+        let mut linked = LinkedMachines::new(machines).map_err(format_linked_machines_error)?;
         linked
             .attach_cgb_infrared_pair_with_optical_propagation_delay(
                 optical_propagation_delay_t_cycles,
@@ -100,8 +161,11 @@ impl DesktopEmulationSession {
     }
 
     #[cfg(test)]
-    pub const fn kind(&self) -> DesktopEmulationSessionKind {
+    pub fn kind(&self) -> DesktopEmulationSessionKind {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be observed while transitioning")
+            }
             Self::Single(_) => DesktopEmulationSessionKind::Single,
             Self::LinkedDmg04TwoPlayer(_) => DesktopEmulationSessionKind::LinkedDmg04TwoPlayer,
             Self::LinkedCgbInfraredTwoPlayer(_) => {
@@ -116,6 +180,7 @@ impl DesktopEmulationSession {
     #[cfg(test)]
     pub fn linked_topology_kind(&self) -> LinkedTopologyKind {
         match self {
+            Self::Transitioning => LinkedTopologyKind::None,
             Self::Single(_) => LinkedTopologyKind::None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.topology_kind(),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.topology_kind(),
@@ -125,6 +190,9 @@ impl DesktopEmulationSession {
 
     pub fn primary_machine(&self) -> &Machine<TraceSummaryBuffer> {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be observed while transitioning")
+            }
             Self::Single(machine) => machine,
             Self::LinkedDmg04TwoPlayer(linked) => linked
                 .machine(0)
@@ -140,6 +208,9 @@ impl DesktopEmulationSession {
 
     pub fn primary_machine_mut(&mut self) -> &mut Machine<TraceSummaryBuffer> {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be observed while transitioning")
+            }
             Self::Single(machine) => machine,
             Self::LinkedDmg04TwoPlayer(linked) => linked
                 .machine_mut(0)
@@ -155,6 +226,7 @@ impl DesktopEmulationSession {
 
     pub fn secondary_machine(&self) -> Option<&Machine<TraceSummaryBuffer>> {
         match self {
+            Self::Transitioning => None,
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine(1),
@@ -164,6 +236,7 @@ impl DesktopEmulationSession {
 
     pub fn secondary_machine_mut(&mut self) -> Option<&mut Machine<TraceSummaryBuffer>> {
         match self {
+            Self::Transitioning => None,
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine_mut(1),
@@ -180,7 +253,8 @@ impl DesktopEmulationSession {
             PlayerSlot::P2 => self.secondary_machine(),
             PlayerSlot::P3 | PlayerSlot::P4 => match self {
                 Self::LinkedDmg07 { linked, .. } => linked.machine(slot.machine_index()),
-                Self::Single(_)
+                Self::Transitioning
+                | Self::Single(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -196,7 +270,8 @@ impl DesktopEmulationSession {
             PlayerSlot::P2 => self.secondary_machine_mut(),
             PlayerSlot::P3 | PlayerSlot::P4 => match self {
                 Self::LinkedDmg07 { linked, .. } => linked.machine_mut(slot.machine_index()),
-                Self::Single(_)
+                Self::Transitioning
+                | Self::Single(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -214,7 +289,8 @@ impl DesktopEmulationSession {
     pub const fn dmg07_player_count(&self) -> Option<DesktopDmg07PlayerCount> {
         match self {
             Self::LinkedDmg07 { player_count, .. } => Some(*player_count),
-            Self::Single(_)
+            Self::Transitioning
+            | Self::Single(_)
             | Self::LinkedDmg04TwoPlayer(_)
             | Self::LinkedCgbInfraredTwoPlayer(_) => None,
         }
@@ -229,6 +305,9 @@ impl DesktopEmulationSession {
         secondary_machine: Machine<TraceSummaryBuffer>,
     ) -> Result<(), String> {
         let expected = match self {
+            Self::Transitioning => {
+                return Err("desktop emulation session is already transitioning".to_string());
+            }
             Self::Single(machine) => machine.next_t_cycle(),
             Self::LinkedDmg04TwoPlayer(_) => {
                 return Err(
@@ -260,14 +339,14 @@ impl DesktopEmulationSession {
             ));
         }
 
-        let current_session =
-            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        let current_session = std::mem::replace(self, Self::Transitioning);
         let Self::Single(primary_machine) = current_session else {
             unreachable!("linked desktop session should have been rejected before replacement");
         };
 
-        let next_session = Self::new_linked_dmg04_two_player(*primary_machine, secondary_machine)
-            .expect("validated desktop DMG-04 session should build successfully");
+        let next_session =
+            Self::new_linked_dmg04_two_player_from_primary_box(primary_machine, secondary_machine)
+                .expect("validated desktop DMG-04 session should build successfully");
         *self = next_session;
         Ok(())
     }
@@ -290,6 +369,9 @@ impl DesktopEmulationSession {
         validate_cgb_ir_optical_propagation_delay_t_cycles(optical_propagation_delay_t_cycles)?;
 
         let expected = match self {
+            Self::Transitioning => {
+                return Err("desktop emulation session is already transitioning".to_string());
+            }
             Self::Single(machine) => machine.next_t_cycle(),
             Self::LinkedDmg04TwoPlayer(_) => {
                 return Err(
@@ -321,40 +403,35 @@ impl DesktopEmulationSession {
             ));
         }
 
-        let current_session =
-            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        let current_session = std::mem::replace(self, Self::Transitioning);
         let Self::Single(primary_machine) = current_session else {
             unreachable!("linked desktop session should have been rejected before replacement");
         };
 
-        let next_session = if optical_propagation_delay_t_cycles
-            == DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
-        {
-            Self::new_linked_cgb_infrared_two_player(*primary_machine, secondary_machine)
-        } else {
-            Self::new_linked_cgb_infrared_two_player_with_optical_delay(
-                *primary_machine,
-                secondary_machine,
-                optical_propagation_delay_t_cycles,
-            )
-        }
+        let next_session = Self::new_linked_cgb_infrared_two_player_from_primary_box(
+            primary_machine,
+            secondary_machine,
+            optical_propagation_delay_t_cycles,
+        )
         .expect("validated desktop CGB IR session should build successfully");
         *self = next_session;
         Ok(())
     }
 
     pub fn detach_to_single_primary(&mut self) {
-        if matches!(self, Self::Single(_)) {
+        if matches!(self, Self::Transitioning | Self::Single(_)) {
             return;
         }
 
-        let linked_session =
-            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        let linked_session = std::mem::replace(self, Self::Transitioning);
         *self = Self::new_single(linked_session.into_primary_machine());
     }
 
     pub fn step_t_cycle(&mut self) {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be stepped while transitioning")
+            }
             Self::Single(machine) => {
                 let _ = machine.step_t_cycle();
             }
@@ -372,6 +449,9 @@ impl DesktopEmulationSession {
 
     pub fn step_t_cycle_with_observer<O: MachineStepObserver>(&mut self, observer: &mut O) {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be stepped while transitioning")
+            }
             Self::Single(machine) => {
                 let _ = machine.step_t_cycle_with_observer(observer);
             }
@@ -389,6 +469,9 @@ impl DesktopEmulationSession {
 
     pub fn into_primary_machine(self) -> Machine<TraceSummaryBuffer> {
         match self {
+            Self::Transitioning => {
+                unreachable!("desktop emulation session should not be consumed while transitioning")
+            }
             Self::Single(machine) => *machine,
             Self::LinkedDmg04TwoPlayer(mut linked) => {
                 linked.detach_link_topology();
@@ -508,10 +591,32 @@ fn validate_cgb_ir_optical_propagation_delay_t_cycles(
     }
 }
 
-fn placeholder_summary_machine() -> Machine<TraceSummaryBuffer> {
-    Machine::new_summary(
-        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-    )
+fn linked_machine_pair_from_values(
+    primary_machine: Machine<TraceSummaryBuffer>,
+    secondary_machine: Machine<TraceSummaryBuffer>,
+) -> Vec<Machine<TraceSummaryBuffer>> {
+    // Do not use `vec![primary_machine, secondary_machine]` here. The macro can materialize a large temporary pair on the test stack under coverage-instrumented builds before moving the machines into the heap-backed vector.
+    #[allow(clippy::vec_init_then_push)]
+    {
+        let mut machines = Vec::with_capacity(2);
+        machines.push(primary_machine);
+        machines.push(secondary_machine);
+        machines
+    }
+}
+
+fn linked_machine_pair_from_primary_box(
+    primary_machine: Box<Machine<TraceSummaryBuffer>>,
+    secondary_machine: Machine<TraceSummaryBuffer>,
+) -> Vec<Machine<TraceSummaryBuffer>> {
+    // Keep the primary machine boxed until the vector allocation exists so session swaps do not need a placeholder machine or a stack-backed pair.
+    #[allow(clippy::vec_init_then_push)]
+    {
+        let mut machines = Vec::with_capacity(2);
+        machines.push(*primary_machine);
+        machines.push(secondary_machine);
+        machines
+    }
 }
 
 #[cfg(test)]

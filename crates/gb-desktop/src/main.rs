@@ -6634,21 +6634,31 @@ fn load_cgb_infrared_machines_for_roms(
         return Err(format!("{operation} requires MODEL GB COLOR"));
     }
 
-    let primary_loaded = load_machine_for_rom(config, current_dir, primary_rom_bytes)?;
-    let secondary_loaded = load_machine_for_rom(config, current_dir, secondary_rom_bytes)?;
-    if primary_loaded.effective_config != secondary_loaded.effective_config {
+    let LoadedMachine {
+        effective_config,
+        machine: primary_machine,
+        mut diagnostics,
+        boot_rom_fallback_warning: primary_boot_rom_fallback_warning,
+    } = load_machine_for_rom(config, current_dir, primary_rom_bytes)?;
+    let primary_native_cgb = primary_machine
+        .config()
+        .capability_set()
+        .cgb_extensions_enabled();
+    let mut machine = DesktopEmulationSession::new_single(primary_machine);
+
+    let LoadedMachine {
+        effective_config: secondary_effective_config,
+        machine: secondary_machine,
+        diagnostics: secondary_diagnostics,
+        boot_rom_fallback_warning: secondary_boot_rom_fallback_warning,
+    } = load_machine_for_rom(config, current_dir, secondary_rom_bytes)?;
+    if effective_config != secondary_effective_config {
         return Err(format!(
             "{operation} produced divergent effective configs between primary and secondary machines"
         ));
     }
 
-    let primary_native_cgb = primary_loaded
-        .machine
-        .config()
-        .capability_set()
-        .cgb_extensions_enabled();
-    let secondary_native_cgb = secondary_loaded
-        .machine
+    let secondary_native_cgb = secondary_machine
         .config()
         .capability_set()
         .cgb_extensions_enabled();
@@ -6658,24 +6668,21 @@ fn load_cgb_infrared_machines_for_roms(
         ));
     }
 
-    let mut diagnostics = primary_loaded.diagnostics;
-    diagnostics.extend(secondary_loaded.diagnostics);
+    diagnostics.extend(secondary_diagnostics);
     let mut boot_rom_fallback_warnings = Vec::new();
-    if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+    if let Some(warning) = primary_boot_rom_fallback_warning {
         boot_rom_fallback_warnings.push(warning);
     }
-    if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+    if let Some(warning) = secondary_boot_rom_fallback_warning {
         boot_rom_fallback_warnings.push(warning);
     }
 
-    let effective_config = primary_loaded.effective_config;
-    let mut machine = DesktopEmulationSession::new_single(primary_loaded.machine);
     let cgb_ir_optical_delay_t_cycles = cgb_ir_optical_delay_t_cycles_from_env()?;
     if cgb_ir_optical_delay_t_cycles == DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES {
-        machine.attach_secondary_cgb_infrared(secondary_loaded.machine)?;
+        machine.attach_secondary_cgb_infrared(secondary_machine)?;
     } else {
         machine.attach_secondary_cgb_infrared_with_optical_delay(
-            secondary_loaded.machine,
+            secondary_machine,
             cgb_ir_optical_delay_t_cycles,
         )?;
     }
@@ -9796,7 +9803,7 @@ fn activate_cgb_infrared_same_game(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
-    reset_rewind_state(context.runtime);
+    reset_frontend_timeline_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -13868,6 +13875,17 @@ mod tests {
         root
     }
 
+    fn run_with_large_test_stack(name: &str, f: impl FnOnce() + Send + 'static) {
+        let handle = std::thread::Builder::new()
+            .name(name.to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("large-stack test helper should spawn");
+        if let Err(payload) = handle.join() {
+            std::panic::resume_unwind(payload);
+        }
+    }
+
     fn build_test_rom(
         len: usize,
         cartridge_type: u8,
@@ -14667,6 +14685,13 @@ mod tests {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("cgb-ir-same-game", false, false, false);
         let primary_rom_path = open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH,
+            height: super::FRAMEBUFFER_HEIGHT,
+        });
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![1, 2, 3];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
 
         assert!(
             harness
@@ -14706,6 +14731,19 @@ mod tests {
                 .attachment_kind(),
             ExternalPortAttachmentKind::None
         );
+        assert_eq!(
+            harness.runtime.frame_blending_state.mode,
+            DesktopFrameBlendingMode::Off
+        );
+        assert!(harness.runtime.frame_blending_state.dimensions.is_none());
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
+        assert!(!harness.runtime.frame_blending_state.has_previous_frame);
     }
 
     #[test]
@@ -21478,6 +21516,13 @@ mod tests {
 
     #[test]
     fn load_initial_emulation_session_supports_direct_cgb_ir_startup() {
+        run_with_large_test_stack(
+            "direct-cgb-ir-startup",
+            load_initial_emulation_session_supports_direct_cgb_ir_startup_inner,
+        );
+    }
+
+    fn load_initial_emulation_session_supports_direct_cgb_ir_startup_inner() {
         let root = temp_test_root("direct-cgb-ir-startup");
         let primary_rom_path = write_cgb_test_rom(&root, "gold.gbc", 0x00, 0x00);
         let secondary_rom_path = write_cgb_test_rom(&root, "silver.gbc", 0x00, 0x00);
