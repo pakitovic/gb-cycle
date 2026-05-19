@@ -118,6 +118,26 @@ impl CartridgeDevice {
         }
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        match self {
+            Self::NoMbc(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mmm01(cartridge) => cartridge.mapped_rom_window(address),
+            Self::M161(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Huc1(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Huc3(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc1(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc2(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc3(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc5(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc6(cartridge) => cartridge.mapped_rom_window(address),
+            Self::Mbc7(cartridge) => cartridge.mapped_rom_window(address),
+            Self::PocketCamera(cartridge) => cartridge.mapped_rom_window(address),
+        }
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, address: u16, value: u8) {
         match self {
             Self::NoMbc(cartridge) => cartridge.write_rom(address, value),

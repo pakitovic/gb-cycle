@@ -145,6 +145,27 @@ impl PocketCameraCartridge {
             .unwrap_or(RAM_ABSENT_READ_VALUE)
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        if address >= 0x8000 {
+            return None;
+        }
+
+        let bank = if address < 0x4000 {
+            0
+        } else {
+            self.effective_rom_bank(self.header.rom_size.bank_count.unwrap_or(1).max(1))
+        };
+        let bank_offset = if address < 0x4000 {
+            address as usize
+        } else {
+            address as usize - 0x4000
+        };
+        Some(CartridgeMappedRomWindow::rom(bank, 0x4000, bank_offset))
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x1FFF => {

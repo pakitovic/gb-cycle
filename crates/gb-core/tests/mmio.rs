@@ -414,6 +414,14 @@ fn native_cgb_svbk_selects_wram_banks_and_echo_aliases_selected_bank() {
     assert_eq!(machine.read_bus(0xD123), 0x11);
     machine.write_bus(0xFF70, 0x02);
     assert_eq!(machine.read_bus(0xD123), 0x33);
+    let sample = machine
+        .debug_wram_address_sample(0xD123)
+        .expect("D123 should map to CPU-visible WRAM");
+    assert_eq!(sample.address, 0xD123);
+    assert_eq!(sample.bank, 0x02);
+    assert_eq!(sample.bank_offset, 0x0123);
+    assert_eq!(sample.value, 0x33);
+    assert_eq!(machine.debug_wram_address_sample(0x8000), None);
 
     let wram = machine.debug_wram_bytes();
     assert_eq!(wram[0x0123], 0x44);
@@ -539,4 +547,33 @@ fn dmg_family_reads_ff_and_ignores_writes_for_unavailable_cgb_registers() {
         machine.write_bus(address, 0xA5);
         assert_eq!(machine.read_bus(address), 0xFF);
     }
+}
+
+#[test]
+fn machine_cgb_infrared_status_follows_native_cgb_mode() {
+    let dmg = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    assert!(dmg.cgb_infrared_status().is_none());
+
+    let mut cgb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_operating_mode(gb_core::OperatingMode::Cgb)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    let initial = cgb
+        .cgb_infrared_status()
+        .expect("native CGB mode exposes RP status");
+    assert_eq!(initial.rp_latch, 0x00);
+    assert!(!initial.receive_ready());
+
+    cgb.write_bus(0xFF56, 0xC1);
+
+    let emitting = cgb
+        .cgb_infrared_status()
+        .expect("native CGB mode still exposes RP status while emitting");
+    assert_eq!(emitting.rp_latch, 0xC1);
+    assert!(emitting.emitter_on);
+    assert!(!emitting.receive_ready());
 }

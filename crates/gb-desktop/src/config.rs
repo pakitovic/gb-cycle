@@ -467,6 +467,7 @@ pub struct VideoOptions {
     pub vsync: bool,
     pub fullscreen: bool,
     pub show_performance_hud: bool,
+    pub show_cgb_infrared_helper: bool,
 }
 
 impl VideoOptions {
@@ -492,6 +493,7 @@ impl Default for VideoOptions {
             vsync: true,
             fullscreen: false,
             show_performance_hud: false,
+            show_cgb_infrared_helper: false,
         }
     }
 }
@@ -918,6 +920,7 @@ mod tests {
         assert!(config.video.show_objects);
         assert!(config.video.vsync);
         assert!(!config.video.show_performance_hud);
+        assert!(!config.video.show_cgb_infrared_helper);
         assert!(config.audio.enabled);
         assert_eq!(
             config.audio.output_sample_rate_hz,

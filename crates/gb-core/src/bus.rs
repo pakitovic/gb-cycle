@@ -14,6 +14,7 @@ mod wram;
 
 use crate::cartridge::{CartridgeHeader, CgbFlag};
 use crate::model::{ConsoleModel, OperatingMode, StartupMode};
+pub use infrared::CgbInfraredStatus;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
@@ -42,6 +43,14 @@ const HRAM_LEN: usize = 0x007F;
 
 const BLOCKED_READ_VALUE: u8 = 0xFF;
 const DMG_UNUSABLE_READ_VALUE: u8 = 0x00;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DebugWramAddressSample {
+    pub address: u16,
+    pub bank: u8,
+    pub bank_offset: u16,
+    pub value: u8,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Bus {
@@ -178,6 +187,13 @@ impl Bus {
         self.wram.debug_bytes()
     }
 
+    /// Returns the current CPU-visible WRAM value for a WRAM or echo-RAM address without performing a bus read.
+    ///
+    /// This is intended for deterministic debug probes that need to annotate traces with live WRAM state while preserving the current bus side effects, arbitration state, and trace timing.
+    pub fn debug_wram_address_sample(&self, address: u16) -> Option<DebugWramAddressSample> {
+        self.wram.debug_address_sample(address)
+    }
+
     pub(crate) fn apply_cgb_startup_state(
         &mut self,
         startup_mode: StartupMode,
@@ -229,6 +245,11 @@ impl Bus {
 
     pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
         self.cgb_extensions_enabled() && self.iohram.cgb_infrared_emitter_on()
+    }
+
+    pub fn cgb_infrared_status(&self) -> Option<CgbInfraredStatus> {
+        self.cgb_extensions_enabled()
+            .then(|| self.iohram.cgb_infrared_status())
     }
 
     #[cfg(test)]

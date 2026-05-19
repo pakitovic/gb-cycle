@@ -785,6 +785,12 @@ impl CartridgeSlot {
             .map_or(RAM_ABSENT_READ_VALUE, |device| device.read_rom(address))
     }
 
+    pub fn mapped_rom_window(&self, address: u16) -> Option<CartridgeMappedRomWindow> {
+        self.device
+            .as_ref()
+            .and_then(|device| device.mapped_rom_window(address))
+    }
+
     pub fn write_rom(&mut self, address: u16, value: u8) {
         if let Some(device) = &mut self.device {
             device.write_rom(address, value);

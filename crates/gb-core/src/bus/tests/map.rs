@@ -365,6 +365,56 @@ fn native_cgb_rp_register_exposes_only_the_phase10_infrared_latches() {
 }
 
 #[test]
+fn native_cgb_infrared_status_is_available_only_with_cgb_extensions() {
+    const IR_WARMUP_T_CYCLES: usize = 19_900;
+
+    let dmg = Bus::new(ConsoleModel::GameBoy);
+    assert_eq!(dmg.cgb_infrared_status(), None);
+
+    let cgb_compat = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::GbCompatible,
+    );
+    assert_eq!(cgb_compat.cgb_infrared_status(), None);
+
+    let mut bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    let initial = bus
+        .cgb_infrared_status()
+        .expect("native CGB mode exposes RP status");
+    assert_eq!(initial.rp_latch, 0x00);
+    assert!(!initial.receive_ready());
+
+    bus.write_with_context(
+        0xFF56,
+        0xC0,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    for _ in 0..IR_WARMUP_T_CYCLES {
+        bus.tick_cgb_infrared_t_cycle();
+    }
+
+    let ready = bus
+        .cgb_infrared_status()
+        .expect("native CGB mode exposes warmed RP status");
+    assert_eq!(ready.rp_latch, 0xC0);
+    assert!(ready.receive_ready());
+
+    bus.set_cgb_infrared_external_input(true);
+    bus.tick_cgb_infrared_t_cycle();
+
+    let receiving = bus
+        .cgb_infrared_status()
+        .expect("native CGB mode exposes receiving RP status");
+    assert!(receiving.effective_signal_detected);
+    assert!(receiving.signal_visible_to_rp);
+    assert!(!receiving.receive_ready());
+}
+
+#[test]
 fn native_cgb_pcm_registers_route_to_apu_owner_as_read_only_taps() {
     let mut bus =
         Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);

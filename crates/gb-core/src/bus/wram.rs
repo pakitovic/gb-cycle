@@ -1,7 +1,7 @@
 use crate::boot::StartupMemoryPolicy;
 use crate::model::ConsoleModel;
 
-use super::{CGB_WRAM_LEN, DMG_WRAM_LEN};
+use super::{CGB_WRAM_LEN, DMG_WRAM_LEN, DebugWramAddressSample};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct WramDomain {
@@ -53,6 +53,16 @@ impl WramDomain {
             DMG_WRAM_LEN
         };
         &self.bytes[..len]
+    }
+
+    pub(crate) fn debug_address_sample(&self, address: u16) -> Option<DebugWramAddressSample> {
+        let (bank, bank_offset) = self.debug_address_bank_and_offset(address)?;
+        Some(DebugWramAddressSample {
+            address,
+            bank,
+            bank_offset,
+            value: self.read(address),
+        })
     }
 
     fn debug_bytes_mut(&mut self) -> &mut [u8] {
@@ -108,6 +118,16 @@ impl WramDomain {
             0xE000..=0xEFFF => (address - 0xE000) as usize,
             0xF000..=0xFDFF => self.switchable_bank_index(address - 0xF000),
             _ => panic!("address {address:#06X} does not map to WRAM storage"),
+        }
+    }
+
+    fn debug_address_bank_and_offset(&self, address: u16) -> Option<(u8, u16)> {
+        match address {
+            0xC000..=0xCFFF => Some((0, address - 0xC000)),
+            0xD000..=0xDFFF => Some((self.selected_wram_bank(), address - 0xD000)),
+            0xE000..=0xEFFF => Some((0, address - 0xE000)),
+            0xF000..=0xFDFF => Some((self.selected_wram_bank(), address - 0xF000)),
+            _ => None,
         }
     }
 

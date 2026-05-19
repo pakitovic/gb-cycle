@@ -149,6 +149,32 @@ impl Mbc7Cartridge {
             .unwrap_or(RAM_ABSENT_READ_VALUE)
     }
 
+    pub(in crate::cartridge) fn mapped_rom_window(
+        &self,
+        address: u16,
+    ) -> Option<CartridgeMappedRomWindow> {
+        if address >= 0x8000 {
+            return None;
+        }
+
+        let address = address as usize;
+        let bank = if address < MBC7_ROM_BANK_BYTES {
+            0
+        } else {
+            self.effective_rom_bank(self.header.rom_size.bank_count.unwrap_or(0).max(1))
+        };
+        let bank_offset = if address < MBC7_ROM_BANK_BYTES {
+            address
+        } else {
+            address - MBC7_ROM_BANK_BYTES
+        };
+        Some(CartridgeMappedRomWindow::rom(
+            bank,
+            MBC7_ROM_BANK_BYTES,
+            bank_offset,
+        ))
+    }
+
     pub(in crate::cartridge) fn write_rom(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x1FFF => {

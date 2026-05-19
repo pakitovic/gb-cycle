@@ -8,6 +8,7 @@ mod huc1;
 mod huc3;
 mod internal;
 mod m161;
+mod mapped_rom;
 mod mbc1;
 mod mbc2;
 mod mbc3;

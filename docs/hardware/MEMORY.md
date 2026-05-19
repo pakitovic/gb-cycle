@@ -69,6 +69,7 @@ DMG exposes simple WRAM behavior, while native CGB mode exposes banked WRAM thro
 - When `SkipBoot` is used, initialize WRAM and HRAM through an explicit uninitialized-memory policy rather than silently zero-filling them as if that were proven hardware behavior.
 - Keep that uninitialized-memory policy reproducible for tests while remaining clearly separate from deterministic startup values owned by the boot snapshot.
 - Let bus decode own the echo-RAM alias decision; the memory subsystem should expose the shared storage it aliases, not invent a second echo-specific backing store.
+- Non-perturbing debug probes may expose the CPU-visible WRAM sample for a WRAM or echo-RAM address, including the effective CGB WRAM bank and bank-local offset, but this must remain a storage annotation path rather than a CPU bus read and must not participate in timing, arbitration, or MMIO side effects.
 
 ## Known pitfalls
 

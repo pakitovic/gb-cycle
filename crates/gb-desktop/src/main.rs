@@ -28,13 +28,17 @@ use gb_benchmark::{
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
-    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CgbSpeedMode, CpuAddressEvent,
+    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeMappedRomSource,
+    CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
-    CpuExecutionState, CpuSnapshot, DMG_T_CYCLES_PER_SECOND, ExecutionMode,
-    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineRewindBuffer, MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion,
-    PersistentCartState, PocketCameraFrame, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
+    CpuExecutionState, CpuRegisters, CpuSnapshot,
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_SECOND,
+    DebugWramAddressSample, ExecutionMode, InterruptControllerSnapshot, JoypadButton,
+    JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineRewindBuffer,
+    MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
+    PocketCameraFrame, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion,
+    SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -61,11 +65,12 @@ use input::{
 };
 use linked_session::DesktopEmulationSession;
 use menu::{
-    CompactMenuLabel, CompactRecentRomLabel, GamepadActionBindingTarget, GamepadBindingTarget,
+    CgbInfraredHudSnapshot, CgbInfraredParticipantHudSnapshot, CompactMenuLabel,
+    CompactRecentRomLabel, GamepadActionBindingTarget, GamepadBindingTarget,
     GamepadMenuBindingTarget, KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction,
     MenuInput, MenuPresentation, OverlayMenuState, PerformanceHudSnapshot,
-    RECENT_ROM_MENU_CAPACITY, RewindHudSnapshot, render_fast_forward_indicator,
-    render_performance_hud, render_rewind_indicator,
+    RECENT_ROM_MENU_CAPACITY, RewindHudSnapshot, render_cgb_ir_indicator,
+    render_fast_forward_indicator, render_performance_hud, render_rewind_indicator,
 };
 use player_slots::{
     DesktopDmg07PlayerCount, DesktopPlayerSessionKind, PLAYER_SLOT_COUNT, PlayerInputStates,
@@ -122,6 +127,7 @@ const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
 const DEFAULT_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_PC_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_EDGE_TRACE_EVENTS: usize = 4_096;
+const DEFAULT_CGB_IR_TRACE_EVENTS: usize = 16_384;
 const MACHINE_STATE_SLOT_COUNT: u8 = 4;
 const DEFAULT_MACHINE_STATE_SLOT: u8 = 1;
 const REWIND_HISTORY_SECONDS_OPTIONS: [u16; 5] = [5, 10, 20, 30, 60];
@@ -154,6 +160,7 @@ struct FramebufferRenderInput<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 struct RenderHudInput {
     performance: Option<PerformanceHudSnapshot>,
+    cgb_ir: Option<CgbInfraredHudSnapshot>,
     rewind_indicator: bool,
     fast_forward_indicator: bool,
 }
@@ -294,11 +301,20 @@ const DESKTOP_EDGE_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_PATH"
 const DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_ADDRESSES";
 const DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_PC_RANGES";
 const DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_EVENTS";
+const DESKTOP_CGB_IR_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CGB_IR_TRACE_PATH";
+const DESKTOP_CGB_IR_TRACE_WATCH_ADDRESSES_ENV_VAR: &str =
+    "GB_CYCLE_DESKTOP_CGB_IR_TRACE_WATCH_ADDRESSES";
+const DESKTOP_CGB_IR_TRACE_TRIGGER_ADDRESSES_ENV_VAR: &str =
+    "GB_CYCLE_DESKTOP_CGB_IR_TRACE_TRIGGER_ADDRESSES";
+const DESKTOP_CGB_IR_TRACE_EVENTS_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CGB_IR_TRACE_EVENTS";
+const DESKTOP_CGB_IR_OPTICAL_DELAY_T_CYCLES_ENV_VAR: &str =
+    "GB_CYCLE_DESKTOP_CGB_IR_OPTICAL_DELAY_T_CYCLES";
 const DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH";
 const DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_STARTUP_TRACE_PATH";
 const DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CPU_WINDOW_TRACE_PATH";
 const CPU_WINDOW_TRACE_START_PC: u16 = 0x4136;
 const CPU_WINDOW_TRACE_END_PC: u16 = 0x7A8F;
+const CGB_RP_ADDRESS: u16 = 0xFF56;
 const MASTER_NR52_ADDRESS: u16 = 0xFF26;
 const CH4_NR42_ADDRESS: u16 = 0xFF21;
 const CH4_NR43_ADDRESS: u16 = 0xFF22;
@@ -484,6 +500,7 @@ struct FrontendRuntime {
     watch_trace: DesktopWatchTraceCapture,
     pc_watch_trace: DesktopPcWatchTraceCapture,
     edge_trace: DesktopEdgeTraceCapture,
+    cgb_ir_trace: DesktopCgbIrTraceCapture,
     ch4_nr43_trace: DesktopCh4Nr43TraceCapture,
     ch4_startup_trace: DesktopCh4StartupTraceCapture,
     cpu_window_trace: DesktopCpuWindowTraceCapture,
@@ -590,6 +607,17 @@ impl DesktopSession {
     }
 }
 
+fn cgb_infrared_same_game_active(session: &DesktopSession) -> bool {
+    if !session.cgb_infrared_link_active {
+        return false;
+    }
+
+    match (session.rom_path(), session.linked_secondary_rom_path()) {
+        (Some(primary_path), Some(secondary_path)) => primary_path == secondary_path,
+        _ => false,
+    }
+}
+
 struct PathSelectionDialog {
     pending: bool,
     sender: Sender<PathDialogResult>,
@@ -627,6 +655,18 @@ struct DesktopEdgeTraceCapture {
     records: VecDeque<DesktopEdgeTraceRecord>,
 }
 
+struct DesktopCgbIrTraceCapture {
+    output_path: Option<PathBuf>,
+    watched_addresses: BTreeSet<u16>,
+    watched_trigger_addresses: BTreeSet<u16>,
+    max_records: usize,
+    records: VecDeque<DesktopCgbIrTraceRecord>,
+    last_p1_status: Option<CgbInfraredStatus>,
+    last_p2_status: Option<CgbInfraredStatus>,
+    last_p1_pressed_mask: Option<u8>,
+    last_p2_pressed_mask: Option<u8>,
+}
+
 struct DesktopCh4Nr43TraceCapture {
     output_path: Option<PathBuf>,
     records: Vec<DesktopCh4Nr43TraceRecord>,
@@ -651,6 +691,7 @@ struct DesktopTraceServiceFlags {
     watch_trace: bool,
     pc_watch_trace: bool,
     edge_trace: bool,
+    cgb_ir_trace: bool,
     ch4_nr43_trace: bool,
     ch4_startup_trace: bool,
     cpu_window_trace: bool,
@@ -730,6 +771,65 @@ struct DesktopEdgeTraceRecord {
     ppu_ly: u8,
     ppu_line_dot: u16,
     cartridge_trace: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DesktopCgbIrTraceTrigger {
+    StatusChanged {
+        slot: PlayerSlot,
+        previous: Option<CgbInfraredStatus>,
+        current: CgbInfraredStatus,
+    },
+    RpBusActivity {
+        slot: PlayerSlot,
+        activity: CpuBusActivitySnapshot,
+    },
+    WatchedBusActivity {
+        slot: PlayerSlot,
+        activity: CpuBusActivitySnapshot,
+    },
+    JoypadPressedMaskChanged {
+        slot: PlayerSlot,
+        previous: Option<u8>,
+        current: u8,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct DesktopCgbIrTraceParticipantRecord {
+    status: CgbInfraredStatus,
+    cpu: CpuSnapshot,
+    joypad: JoypadSnapshot,
+    rom_window: Option<CartridgeMappedRomWindow>,
+    watched_values: Vec<DesktopCgbIrTraceWatchedValue>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopCgbIrTraceRecord {
+    t_cycle: u64,
+    triggers: Vec<DesktopCgbIrTraceTrigger>,
+    p1: DesktopCgbIrTraceParticipantRecord,
+    p2: DesktopCgbIrTraceParticipantRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DesktopCgbIrTraceStatusKey {
+    rp_latch: u8,
+    emitter_on: bool,
+    read_enabled: bool,
+    external_optical_input: bool,
+    optical_input_active: bool,
+    sensor_warmed: bool,
+    effective_signal_detected: bool,
+    signal_visible_to_rp: bool,
+    receive_ready: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopCgbIrTraceWatchedValue {
+    Wram(DebugWramAddressSample),
+    Hram { address: u16, offset: u8, value: u8 },
+    Unsupported { address: u16 },
 }
 
 #[derive(Debug, Clone)]
@@ -1970,6 +2070,285 @@ impl DesktopEdgeTraceCapture {
     }
 }
 
+impl DesktopCgbIrTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        let output_path = env::var_os(DESKTOP_CGB_IR_TRACE_PATH_ENV_VAR).map(PathBuf::from);
+        let watched_addresses = if output_path.is_some() {
+            parse_cgb_ir_trace_watch_addresses(
+                env::var_os(DESKTOP_CGB_IR_TRACE_WATCH_ADDRESSES_ENV_VAR).as_deref(),
+            )?
+        } else {
+            BTreeSet::new()
+        };
+        let watched_trigger_addresses = if output_path.is_some() {
+            match env::var_os(DESKTOP_CGB_IR_TRACE_TRIGGER_ADDRESSES_ENV_VAR) {
+                Some(value) => parse_cgb_ir_trace_trigger_addresses(Some(value.as_os_str()))?,
+                None => watched_addresses.clone(),
+            }
+        } else {
+            BTreeSet::new()
+        };
+        let max_records = if output_path.is_some() {
+            parse_cgb_ir_trace_event_count(
+                env::var_os(DESKTOP_CGB_IR_TRACE_EVENTS_ENV_VAR).as_deref(),
+            )?
+        } else {
+            DEFAULT_CGB_IR_TRACE_EVENTS
+        };
+        Ok(Self {
+            output_path,
+            watched_addresses,
+            watched_trigger_addresses,
+            max_records,
+            records: VecDeque::new(),
+            last_p1_status: None,
+            last_p2_status: None,
+            last_p1_pressed_mask: None,
+            last_p2_pressed_mask: None,
+        })
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.output_path.is_some()
+    }
+
+    fn record_t_cycle(&mut self, machine: &DesktopEmulationSession) {
+        if !self.is_enabled() {
+            return;
+        }
+        if !machine.is_linked_cgb_infrared_two_player() {
+            self.reset_observed_state();
+            return;
+        }
+
+        let Some(p1) = cgb_ir_trace_participant(machine, PlayerSlot::P1, &self.watched_addresses)
+        else {
+            return;
+        };
+        let Some(p2) = cgb_ir_trace_participant(machine, PlayerSlot::P2, &self.watched_addresses)
+        else {
+            return;
+        };
+
+        let mut triggers = Vec::new();
+        collect_cgb_ir_status_trigger(
+            &mut triggers,
+            PlayerSlot::P1,
+            self.last_p1_status,
+            p1.status,
+        );
+        collect_cgb_ir_status_trigger(
+            &mut triggers,
+            PlayerSlot::P2,
+            self.last_p2_status,
+            p2.status,
+        );
+        collect_cgb_ir_rp_bus_trigger(&mut triggers, PlayerSlot::P1, p1.cpu.last_bus_activity);
+        collect_cgb_ir_rp_bus_trigger(&mut triggers, PlayerSlot::P2, p2.cpu.last_bus_activity);
+        collect_cgb_ir_watched_bus_trigger(
+            &mut triggers,
+            PlayerSlot::P1,
+            p1.cpu.last_bus_activity,
+            &self.watched_trigger_addresses,
+        );
+        collect_cgb_ir_watched_bus_trigger(
+            &mut triggers,
+            PlayerSlot::P2,
+            p2.cpu.last_bus_activity,
+            &self.watched_trigger_addresses,
+        );
+        collect_cgb_ir_joypad_trigger(
+            &mut triggers,
+            PlayerSlot::P1,
+            self.last_p1_pressed_mask,
+            p1.joypad.pressed_mask,
+        );
+        collect_cgb_ir_joypad_trigger(
+            &mut triggers,
+            PlayerSlot::P2,
+            self.last_p2_pressed_mask,
+            p2.joypad.pressed_mask,
+        );
+
+        self.last_p1_status = Some(p1.status);
+        self.last_p2_status = Some(p2.status);
+        self.last_p1_pressed_mask = Some(p1.joypad.pressed_mask);
+        self.last_p2_pressed_mask = Some(p2.joypad.pressed_mask);
+
+        if triggers.is_empty() {
+            return;
+        }
+        if self.records.len() == self.max_records {
+            self.records.pop_front();
+        }
+        self.records.push_back(DesktopCgbIrTraceRecord {
+            t_cycle: machine
+                .primary_machine()
+                .next_t_cycle()
+                .get()
+                .saturating_sub(1),
+            triggers,
+            p1,
+            p2,
+        });
+    }
+
+    fn reset_observed_state(&mut self) {
+        self.last_p1_status = None;
+        self.last_p2_status = None;
+        self.last_p1_pressed_mask = None;
+        self.last_p2_pressed_mask = None;
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create desktop CGB IR trace artifact directory {parent:?}: {error}"
+                )
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_cgb_ir_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write desktop CGB IR trace artifact {path:?}: {error}")
+        })
+    }
+}
+
+fn cgb_ir_trace_participant(
+    machine: &DesktopEmulationSession,
+    slot: PlayerSlot,
+    watched_addresses: &BTreeSet<u16>,
+) -> Option<DesktopCgbIrTraceParticipantRecord> {
+    let participant = machine.machine_for_player_slot(slot)?;
+    let cpu = participant.cpu().snapshot();
+    let rom_window = participant.cartridge().mapped_rom_window(cpu.registers.pc);
+    let watched_values = cgb_ir_trace_watched_values(participant, watched_addresses);
+    Some(DesktopCgbIrTraceParticipantRecord {
+        status: participant.cgb_infrared_status()?,
+        cpu,
+        joypad: participant.joypad().snapshot(),
+        rom_window,
+        watched_values,
+    })
+}
+
+fn cgb_ir_trace_watched_values(
+    machine: &Machine<TraceSummaryBuffer>,
+    watched_addresses: &BTreeSet<u16>,
+) -> Vec<DesktopCgbIrTraceWatchedValue> {
+    watched_addresses
+        .iter()
+        .copied()
+        .map(|address| cgb_ir_trace_watched_value(machine, address))
+        .collect()
+}
+
+fn cgb_ir_trace_watched_value(
+    machine: &Machine<TraceSummaryBuffer>,
+    address: u16,
+) -> DesktopCgbIrTraceWatchedValue {
+    if let Some(sample) = machine.debug_wram_address_sample(address) {
+        return DesktopCgbIrTraceWatchedValue::Wram(sample);
+    }
+
+    if let Some(offset) = cgb_ir_trace_hram_offset(address) {
+        return DesktopCgbIrTraceWatchedValue::Hram {
+            address,
+            offset,
+            value: machine.debug_hram_bytes()[usize::from(offset)],
+        };
+    }
+
+    DesktopCgbIrTraceWatchedValue::Unsupported { address }
+}
+
+fn cgb_ir_trace_hram_offset(address: u16) -> Option<u8> {
+    (0xFF80..=0xFFFE)
+        .contains(&address)
+        .then(|| (address - 0xFF80) as u8)
+}
+
+fn collect_cgb_ir_status_trigger(
+    triggers: &mut Vec<DesktopCgbIrTraceTrigger>,
+    slot: PlayerSlot,
+    previous: Option<CgbInfraredStatus>,
+    current: CgbInfraredStatus,
+) {
+    if previous.map(cgb_ir_trace_status_key) != Some(cgb_ir_trace_status_key(current)) {
+        triggers.push(DesktopCgbIrTraceTrigger::StatusChanged {
+            slot,
+            previous,
+            current,
+        });
+    }
+}
+
+fn cgb_ir_trace_status_key(status: CgbInfraredStatus) -> DesktopCgbIrTraceStatusKey {
+    DesktopCgbIrTraceStatusKey {
+        rp_latch: status.rp_latch,
+        emitter_on: status.emitter_on,
+        read_enabled: status.read_enabled,
+        external_optical_input: status.external_optical_input,
+        optical_input_active: status.optical_input_active,
+        sensor_warmed: status.sensor_warmed,
+        effective_signal_detected: status.effective_signal_detected,
+        signal_visible_to_rp: status.signal_visible_to_rp,
+        receive_ready: status.receive_ready(),
+    }
+}
+
+fn collect_cgb_ir_rp_bus_trigger(
+    triggers: &mut Vec<DesktopCgbIrTraceTrigger>,
+    slot: PlayerSlot,
+    activity: Option<CpuBusActivitySnapshot>,
+) {
+    if let Some(activity) = activity
+        && activity.address == CGB_RP_ADDRESS
+    {
+        triggers.push(DesktopCgbIrTraceTrigger::RpBusActivity { slot, activity });
+    }
+}
+
+fn collect_cgb_ir_watched_bus_trigger(
+    triggers: &mut Vec<DesktopCgbIrTraceTrigger>,
+    slot: PlayerSlot,
+    activity: Option<CpuBusActivitySnapshot>,
+    watched_addresses: &BTreeSet<u16>,
+) {
+    if let Some(activity) = activity
+        && watched_addresses.contains(&activity.address)
+    {
+        triggers.push(DesktopCgbIrTraceTrigger::WatchedBusActivity { slot, activity });
+    }
+}
+
+fn collect_cgb_ir_joypad_trigger(
+    triggers: &mut Vec<DesktopCgbIrTraceTrigger>,
+    slot: PlayerSlot,
+    previous: Option<u8>,
+    current: u8,
+) {
+    if previous != Some(current) {
+        triggers.push(DesktopCgbIrTraceTrigger::JoypadPressedMaskChanged {
+            slot,
+            previous,
+            current,
+        });
+    }
+}
+
 impl DesktopCh4Nr43TraceCapture {
     fn from_env() -> Result<Self, String> {
         Ok(Self {
@@ -2186,6 +2565,7 @@ impl DesktopTraceServiceFlags {
             watch_trace: runtime.watch_trace.is_enabled(),
             pc_watch_trace: runtime.pc_watch_trace.is_enabled(),
             edge_trace: runtime.edge_trace.is_enabled(),
+            cgb_ir_trace: runtime.cgb_ir_trace.is_enabled(),
             ch4_nr43_trace: runtime.ch4_nr43_trace.is_enabled(),
             ch4_startup_trace: runtime.ch4_startup_trace.is_enabled(),
             cpu_window_trace: runtime.cpu_window_trace.is_enabled(),
@@ -2197,6 +2577,7 @@ impl DesktopTraceServiceFlags {
             || self.watch_trace
             || self.pc_watch_trace
             || self.edge_trace
+            || self.cgb_ir_trace
             || self.ch4_nr43_trace
             || self.ch4_startup_trace
             || self.cpu_window_trace
@@ -2328,6 +2709,16 @@ fn render_desktop_edge_trace_record(record: &DesktopEdgeTraceRecord) -> String {
     )
 }
 
+fn render_desktop_cgb_ir_trace_record(record: &DesktopCgbIrTraceRecord) -> String {
+    format!(
+        "t_cycle={} cgb_ir.triggers={} p1={} p2={}",
+        record.t_cycle,
+        format_cgb_ir_trace_triggers(&record.triggers),
+        format_cgb_ir_trace_participant(&record.p1),
+        format_cgb_ir_trace_participant(&record.p2),
+    )
+}
+
 fn render_desktop_ch4_nr43_trace_record(record: &DesktopCh4Nr43TraceRecord) -> String {
     format!(
         "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?}{} {}",
@@ -2434,6 +2825,176 @@ fn format_edge_trace_triggers(triggers: &[DesktopEdgeTraceTrigger]) -> String {
     }
     rendered.push(']');
     rendered
+}
+
+fn format_cgb_ir_trace_triggers(triggers: &[DesktopCgbIrTraceTrigger]) -> String {
+    let mut rendered = String::from("[");
+    for (index, trigger) in triggers.iter().enumerate() {
+        if index > 0 {
+            rendered.push(',');
+        }
+        match trigger {
+            DesktopCgbIrTraceTrigger::StatusChanged {
+                slot,
+                previous,
+                current,
+            } => match previous {
+                Some(previous) => rendered.push_str(&format!(
+                    "{}.status({}->{})",
+                    slot.label(),
+                    format_cgb_ir_status_short(*previous),
+                    format_cgb_ir_status_short(*current)
+                )),
+                None => rendered.push_str(&format!(
+                    "{}.status({})",
+                    slot.label(),
+                    format_cgb_ir_status_short(*current)
+                )),
+            },
+            DesktopCgbIrTraceTrigger::RpBusActivity { slot, activity } => {
+                rendered.push_str(&format!(
+                    "{}.rp({}@{:#06X}={:#04X})",
+                    slot.label(),
+                    cpu_bus_access_kind_name(activity.kind),
+                    activity.address,
+                    activity.value
+                ));
+            }
+            DesktopCgbIrTraceTrigger::WatchedBusActivity { slot, activity } => {
+                rendered.push_str(&format!(
+                    "{}.watch({}@{:#06X}={:#04X})",
+                    slot.label(),
+                    cpu_bus_access_kind_name(activity.kind),
+                    activity.address,
+                    activity.value
+                ));
+            }
+            DesktopCgbIrTraceTrigger::JoypadPressedMaskChanged {
+                slot,
+                previous,
+                current,
+            } => match previous {
+                Some(previous) => rendered.push_str(&format!(
+                    "{}.joy({previous:#04X}->{current:#04X})",
+                    slot.label()
+                )),
+                None => rendered.push_str(&format!("{}.joy({current:#04X})", slot.label())),
+            },
+        }
+    }
+    rendered.push(']');
+    rendered
+}
+
+fn format_cgb_ir_trace_participant(record: &DesktopCgbIrTraceParticipantRecord) -> String {
+    format!(
+        "{{pc={:#06X} regs={} rom={} op={:?} bus={} joy={:#04X} watch={} ir={}}}",
+        record.cpu.registers.pc,
+        format_cpu_register_pairs(record.cpu.registers),
+        format_mapped_rom_window(record.rom_window),
+        record.cpu.current_opcode,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        record.joypad.pressed_mask,
+        format_cgb_ir_trace_watched_values(&record.watched_values),
+        format_cgb_ir_status(record.status),
+    )
+}
+
+fn format_cpu_register_pairs(registers: CpuRegisters) -> String {
+    let af = u16::from_be_bytes([registers.a, registers.f]);
+    let bc = u16::from_be_bytes([registers.b, registers.c]);
+    let de = u16::from_be_bytes([registers.d, registers.e]);
+    let hl = u16::from_be_bytes([registers.h, registers.l]);
+
+    format!(
+        "{{af={af:#06X} bc={bc:#06X} de={de:#06X} hl={hl:#06X} sp={:#06X}}}",
+        registers.sp
+    )
+}
+
+fn format_cgb_ir_trace_watched_values(values: &[DesktopCgbIrTraceWatchedValue]) -> String {
+    let mut rendered = String::from("[");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            rendered.push(',');
+        }
+        rendered.push_str(&format_cgb_ir_trace_watched_value(*value));
+    }
+    rendered.push(']');
+    rendered
+}
+
+fn format_cgb_ir_trace_watched_value(value: DesktopCgbIrTraceWatchedValue) -> String {
+    match value {
+        DesktopCgbIrTraceWatchedValue::Wram(sample) => format!(
+            "{:#06X}=wram(bank={:#04X},off={:#06X},value={:#04X})",
+            sample.address, sample.bank, sample.bank_offset, sample.value
+        ),
+        DesktopCgbIrTraceWatchedValue::Hram {
+            address,
+            offset,
+            value,
+        } => format!("{address:#06X}=hram(off={offset:#04X},value={value:#04X})"),
+        DesktopCgbIrTraceWatchedValue::Unsupported { address } => {
+            format!("{address:#06X}=unsupported")
+        }
+    }
+}
+
+fn format_mapped_rom_window(window: Option<CartridgeMappedRomWindow>) -> String {
+    let Some(window) = window else {
+        return "none".to_string();
+    };
+
+    format!(
+        "{{src={} rom_bank={:#04X} bank_size={:#06X} bank_off={:#06X}}}",
+        mapped_rom_source_name(window.source),
+        window.bank,
+        window.bank_size,
+        window.bank_offset,
+    )
+}
+
+fn mapped_rom_source_name(source: CartridgeMappedRomSource) -> &'static str {
+    match source {
+        CartridgeMappedRomSource::Rom => "rom",
+        CartridgeMappedRomSource::Flash => "flash",
+    }
+}
+
+fn format_cgb_ir_status(status: CgbInfraredStatus) -> String {
+    format!(
+        "{{rp={:#04X} emit={} rd={} ext={} opt={} warm={} ctr={} eff={} vis={} ready={}}}",
+        status.rp_latch,
+        bool_bit(status.emitter_on),
+        bool_bit(status.read_enabled),
+        bool_bit(status.external_optical_input),
+        bool_bit(status.optical_input_active),
+        bool_bit(status.sensor_warmed),
+        status.sensor_counter,
+        bool_bit(status.effective_signal_detected),
+        bool_bit(status.signal_visible_to_rp),
+        bool_bit(status.receive_ready()),
+    )
+}
+
+fn format_cgb_ir_status_short(status: CgbInfraredStatus) -> String {
+    format!(
+        "rp={:#04X}/emit{}/rd{}/ext{}/opt{}/warm{}/eff{}/vis{}/ready{}",
+        status.rp_latch,
+        bool_bit(status.emitter_on),
+        bool_bit(status.read_enabled),
+        bool_bit(status.external_optical_input),
+        bool_bit(status.optical_input_active),
+        bool_bit(status.sensor_warmed),
+        bool_bit(status.effective_signal_detected),
+        bool_bit(status.signal_visible_to_rp),
+        bool_bit(status.receive_ready()),
+    )
+}
+
+const fn bool_bit(value: bool) -> u8 {
+    if value { 1 } else { 0 }
 }
 
 fn watched_cpu_addresses(cpu: &CpuSnapshot, watched_addresses: &BTreeSet<u16>) -> Vec<u16> {
@@ -2774,6 +3335,22 @@ fn parse_edge_trace_addresses(value: Option<&OsStr>) -> Result<BTreeSet<u16>, St
     )
 }
 
+fn parse_cgb_ir_trace_watch_addresses(value: Option<&OsStr>) -> Result<BTreeSet<u16>, String> {
+    parse_hex_address_list(
+        value,
+        DESKTOP_CGB_IR_TRACE_WATCH_ADDRESSES_ENV_VAR,
+        MissingWatchConfigPolicy::AllowEmpty,
+    )
+}
+
+fn parse_cgb_ir_trace_trigger_addresses(value: Option<&OsStr>) -> Result<BTreeSet<u16>, String> {
+    parse_hex_address_list(
+        value,
+        DESKTOP_CGB_IR_TRACE_TRIGGER_ADDRESSES_ENV_VAR,
+        MissingWatchConfigPolicy::AllowEmpty,
+    )
+}
+
 fn parse_watch_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> {
     parse_positive_event_count(
         value,
@@ -2851,6 +3428,42 @@ fn parse_edge_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> 
         DEFAULT_EDGE_TRACE_EVENTS,
         DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR,
     )
+}
+
+fn parse_cgb_ir_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> {
+    parse_positive_event_count(
+        value,
+        DEFAULT_CGB_IR_TRACE_EVENTS,
+        DESKTOP_CGB_IR_TRACE_EVENTS_ENV_VAR,
+    )
+}
+
+fn cgb_ir_optical_delay_t_cycles_from_env() -> Result<usize, String> {
+    parse_cgb_ir_optical_delay_t_cycles(
+        env::var_os(DESKTOP_CGB_IR_OPTICAL_DELAY_T_CYCLES_ENV_VAR).as_deref(),
+    )
+}
+
+fn parse_cgb_ir_optical_delay_t_cycles(value: Option<&OsStr>) -> Result<usize, String> {
+    let Some(value) = value else {
+        return Ok(DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES);
+    };
+
+    let text = value.to_string_lossy();
+    let parsed = text.parse::<usize>().map_err(|error| {
+        format!(
+            "{DESKTOP_CGB_IR_OPTICAL_DELAY_T_CYCLES_ENV_VAR} must be an integer T-cycle count: {error}"
+        )
+    })?;
+    if !(MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES
+        ..=MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES)
+        .contains(&parsed)
+    {
+        return Err(format!(
+            "{DESKTOP_CGB_IR_OPTICAL_DELAY_T_CYCLES_ENV_VAR} must be between {MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES} and {MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES} T-cycles"
+        ));
+    }
+    Ok(parsed)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5284,6 +5897,7 @@ fn run_desktop_prepared(
         watch_trace: DesktopWatchTraceCapture::from_env()?,
         pc_watch_trace: DesktopPcWatchTraceCapture::from_env()?,
         edge_trace: DesktopEdgeTraceCapture::from_env()?,
+        cgb_ir_trace: DesktopCgbIrTraceCapture::from_env()?,
         ch4_nr43_trace: DesktopCh4Nr43TraceCapture::from_env()?,
         ch4_startup_trace: DesktopCh4StartupTraceCapture::from_env()?,
         cpu_window_trace: DesktopCpuWindowTraceCapture::from_env(),
@@ -5564,6 +6178,11 @@ fn run_desktop_prepared(
                     &session,
                     &machine,
                 ),
+                cgb_ir: runtime
+                    .video_options
+                    .show_cgb_infrared_helper
+                    .then(|| current_cgb_ir_hud_snapshot(&machine))
+                    .flatten(),
                 rewind_indicator,
                 fast_forward_indicator: fast_forward_indicator_visible(
                     &runtime,
@@ -5759,6 +6378,7 @@ fn run_desktop_prepared(
     runtime.watch_trace.write_artifact()?;
     runtime.pc_watch_trace.write_artifact()?;
     runtime.edge_trace.write_artifact()?;
+    runtime.cgb_ir_trace.write_artifact()?;
     runtime.ch4_nr43_trace.write_artifact()?;
     runtime.ch4_startup_trace.write_artifact()?;
     runtime.cpu_window_trace.write_artifact()?;
@@ -6014,21 +6634,31 @@ fn load_cgb_infrared_machines_for_roms(
         return Err(format!("{operation} requires MODEL GB COLOR"));
     }
 
-    let primary_loaded = load_machine_for_rom(config, current_dir, primary_rom_bytes)?;
-    let secondary_loaded = load_machine_for_rom(config, current_dir, secondary_rom_bytes)?;
-    if primary_loaded.effective_config != secondary_loaded.effective_config {
+    let LoadedMachine {
+        effective_config,
+        machine: primary_machine,
+        mut diagnostics,
+        boot_rom_fallback_warning: primary_boot_rom_fallback_warning,
+    } = load_machine_for_rom(config, current_dir, primary_rom_bytes)?;
+    let primary_native_cgb = primary_machine
+        .config()
+        .capability_set()
+        .cgb_extensions_enabled();
+    let mut machine = DesktopEmulationSession::new_single(primary_machine);
+
+    let LoadedMachine {
+        effective_config: secondary_effective_config,
+        machine: secondary_machine,
+        diagnostics: secondary_diagnostics,
+        boot_rom_fallback_warning: secondary_boot_rom_fallback_warning,
+    } = load_machine_for_rom(config, current_dir, secondary_rom_bytes)?;
+    if effective_config != secondary_effective_config {
         return Err(format!(
             "{operation} produced divergent effective configs between primary and secondary machines"
         ));
     }
 
-    let primary_native_cgb = primary_loaded
-        .machine
-        .config()
-        .capability_set()
-        .cgb_extensions_enabled();
-    let secondary_native_cgb = secondary_loaded
-        .machine
+    let secondary_native_cgb = secondary_machine
         .config()
         .capability_set()
         .cgb_extensions_enabled();
@@ -6038,19 +6668,24 @@ fn load_cgb_infrared_machines_for_roms(
         ));
     }
 
-    let mut diagnostics = primary_loaded.diagnostics;
-    diagnostics.extend(secondary_loaded.diagnostics);
+    diagnostics.extend(secondary_diagnostics);
     let mut boot_rom_fallback_warnings = Vec::new();
-    if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+    if let Some(warning) = primary_boot_rom_fallback_warning {
         boot_rom_fallback_warnings.push(warning);
     }
-    if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+    if let Some(warning) = secondary_boot_rom_fallback_warning {
         boot_rom_fallback_warnings.push(warning);
     }
 
-    let effective_config = primary_loaded.effective_config;
-    let mut machine = DesktopEmulationSession::new_single(primary_loaded.machine);
-    machine.attach_secondary_cgb_infrared(secondary_loaded.machine)?;
+    let cgb_ir_optical_delay_t_cycles = cgb_ir_optical_delay_t_cycles_from_env()?;
+    if cgb_ir_optical_delay_t_cycles == DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES {
+        machine.attach_secondary_cgb_infrared(secondary_machine)?;
+    } else {
+        machine.attach_secondary_cgb_infrared_with_optical_delay(
+            secondary_machine,
+            cgb_ir_optical_delay_t_cycles,
+        )?;
+    }
 
     Ok(LoadedCgbInfraredMachines {
         effective_config,
@@ -7300,6 +7935,9 @@ fn step_until_next_frame(
                 }
                 if tcycle_host_services.traces.edge_trace {
                     context.runtime.edge_trace.record_t_cycle(trace_machine);
+                }
+                if tcycle_host_services.traces.cgb_ir_trace {
+                    context.runtime.cgb_ir_trace.record_t_cycle(context.machine);
                 }
                 if tcycle_host_services.traces.ch4_nr43_trace {
                     context.runtime.ch4_nr43_trace.record_t_cycle(trace_machine);
@@ -9060,6 +9698,132 @@ fn deactivate_cgb_infrared_pair(
     Ok(())
 }
 
+fn activate_cgb_infrared_same_game(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom()
+        || context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor
+    {
+        return Ok(());
+    }
+    if cgb_infrared_same_game_active(context.session)
+        && context.machine.is_linked_cgb_infrared_two_player()
+    {
+        return Ok(());
+    }
+
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    let Some(primary_rom) = context.session.loaded_rom.clone() else {
+        return Ok(());
+    };
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
+    )
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+
+    let loaded = load_cgb_infrared_machines_for_roms(
+        &context.session.config,
+        &context.session.current_dir,
+        &primary_rom.bytes,
+        &primary_rom.bytes,
+        "activating CGB IR SAME GAME",
+    )?;
+    for warning in &loaded.boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
+    write_cartridge_diagnostics(&loaded.diagnostics);
+
+    let effective_config = loaded.effective_config;
+    let config_fell_back = effective_config != context.session.config;
+    let mut next_machine = loaded.machine;
+    if let Some(persistent_state) = primary_battery_backed_state
+        && let Err(error) = next_machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&persistent_state)
+    {
+        return Err(format!(
+            "failed to restore battery-backed persistence while activating CGB IR SAME GAME: {error:?}"
+        ));
+    }
+
+    let next_session = DesktopSession {
+        config: effective_config.clone(),
+        test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
+        current_dir: context.session.current_dir.clone(),
+        loaded_rom: context.session.loaded_rom.clone(),
+        linked_secondary_rom: Some(primary_rom),
+        dmg07_player_count: None,
+        cgb_infrared_link_active: true,
+        last_open_directory: context.session.last_open_directory.clone(),
+        recent_roms: context.session.recent_roms.clone(),
+        pocket_camera_frame: context.session.pocket_camera_frame.clone(),
+        external_port_selection: DesktopExternalPortSelection::None,
+    };
+    apply_session_pocket_camera_frame_to_desktop_session(&next_session, &mut next_machine)?;
+    let next_save_sessions = open_save_sessions_for_session(&next_session, &mut next_machine)?;
+
+    close_runtime_save_sessions(context.runtime, context.machine)?;
+    let next_console_model = next_machine.primary_machine().apu().console_model();
+
+    context.session.config = effective_config;
+    context.session.linked_secondary_rom = next_session.linked_secondary_rom;
+    context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = true;
+    context.session.last_open_directory = context
+        .session
+        .linked_secondary_rom
+        .as_ref()
+        .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = DesktopExternalPortSelection::None;
+    if config_fell_back && !context.session.test_runner {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
+    clear_live_input_state(context.machine, context.runtime);
+    *context.machine = next_machine;
+    reset_frontend_timeline_state(context.runtime);
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.reset_for_session_swap(next_console_model)?;
+    }
+    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+        audio_recorder.reset_for_session_swap(next_console_model)?;
+    }
+    context.runtime.save_sessions = next_save_sessions;
+    context.runtime.rtc_sync.resync_to_host_clock();
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+
+    if context.runtime.menu_state.is_open() {
+        close_menu(event_pump, context.machine, context.runtime)?;
+    }
+
+    Ok(())
+}
+
 fn open_selected_cgb_infrared_secondary_rom(
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -9497,6 +10261,35 @@ fn current_performance_hud_snapshot(
         snapshot.rewind = current_rewind_hud_snapshot(runtime, session, machine);
         snapshot
     })
+}
+
+fn current_cgb_ir_hud_snapshot(
+    machine: &DesktopEmulationSession,
+) -> Option<CgbInfraredHudSnapshot> {
+    if !machine.is_linked_cgb_infrared_two_player() {
+        return None;
+    }
+
+    let p1 = machine
+        .machine_for_player_slot(PlayerSlot::P1)?
+        .cgb_infrared_status()?;
+    let p2 = machine
+        .machine_for_player_slot(PlayerSlot::P2)?
+        .cgb_infrared_status()?;
+    Some(CgbInfraredHudSnapshot {
+        p1: cgb_ir_participant_hud_snapshot(p1),
+        p2: cgb_ir_participant_hud_snapshot(p2),
+    })
+}
+
+fn cgb_ir_participant_hud_snapshot(status: CgbInfraredStatus) -> CgbInfraredParticipantHudSnapshot {
+    CgbInfraredParticipantHudSnapshot {
+        emitter_on: status.emitter_on,
+        read_enabled: status.read_enabled,
+        optical_input_active: status.optical_input_active,
+        sensor_warmed: status.sensor_warmed,
+        effective_signal_detected: status.effective_signal_detected,
+    }
 }
 
 fn reset_host_state_after_machine_restore(
@@ -10220,6 +11013,14 @@ fn execute_menu_action(
                 .set_show_performance_hud(context.runtime.video_options.show_performance_hud)?;
             Ok(None)
         }
+        MenuAction::ToggleCgbInfraredHelper => {
+            context.runtime.video_options.show_cgb_infrared_helper =
+                !context.runtime.video_options.show_cgb_infrared_helper;
+            context.settings_store.set_show_cgb_infrared_helper(
+                context.runtime.video_options.show_cgb_infrared_helper,
+            )?;
+            Ok(None)
+        }
         MenuAction::ResetVideoDefaults => {
             let defaults = VideoOptions::default_for_console_model(
                 context.session.config.launch.console_model,
@@ -10304,13 +11105,19 @@ fn execute_menu_action(
             context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
-        MenuAction::OpenCgbInfrared => {
+        MenuAction::SetCgbInfraredNone => {
             if context.session.cgb_infrared_link_active
                 || context.machine.is_linked_cgb_infrared_two_player()
             {
                 deactivate_cgb_infrared_pair(canvas, context)?;
-                return Ok(None);
             }
+            Ok(None)
+        }
+        MenuAction::SetCgbInfraredSameGame => {
+            activate_cgb_infrared_same_game(event_pump, canvas, context)?;
+            Ok(None)
+        }
+        MenuAction::SelectCgbInfraredSecondary => {
             if !context.session.has_loaded_rom()
                 || context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor
             {
@@ -10655,6 +11462,7 @@ fn current_menu_presentation(
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
         cgb_infrared_link_active: session.cgb_infrared_link_active(),
+        cgb_infrared_same_game_active: cgb_infrared_same_game_active(session),
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_kind: session
             .config
@@ -10678,6 +11486,7 @@ fn current_menu_presentation(
         show_window: runtime.video_options.show_window,
         show_objects: runtime.video_options.show_objects,
         show_performance_hud: runtime.video_options.show_performance_hud,
+        show_cgb_infrared_helper: runtime.video_options.show_cgb_infrared_helper,
         muted: runtime
             .audio_output
             .as_ref()
@@ -12467,6 +13276,17 @@ fn render_frame(
             snapshot,
         );
     }
+    if !menu_open
+        && video_options.show_cgb_infrared_helper
+        && let Some(snapshot) = hud.cgb_ir
+    {
+        render_cgb_ir_indicator(
+            rgb_frame,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
+            snapshot,
+        );
+    }
     if !menu_open && hud.rewind_indicator {
         render_rewind_indicator(
             rgb_frame,
@@ -12972,13 +13792,17 @@ mod tests {
         next_boot_rom_kind, next_boot_rom_verification_mode, next_console_model,
         next_execution_mode, next_fast_forward_speed_multiplier, next_gamepad_directional_source,
         next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot,
-        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
-        parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
-        parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
-        parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
-        render_desktop_pc_watch_trace_record, render_desktop_trace_record,
-        render_desktop_watch_trace_record, run_desktop, save_machine_state_slot,
-        watched_bus_value_change, watched_cpu_addresses, watched_pc_ranges,
+        next_save_flush_policy, next_startup_mode, next_window_scale,
+        parse_cgb_ir_optical_delay_t_cycles, parse_cgb_ir_trace_event_count,
+        parse_cgb_ir_trace_trigger_addresses, parse_cgb_ir_trace_watch_addresses,
+        parse_edge_trace_addresses, parse_edge_trace_event_count, parse_edge_trace_pc_ranges,
+        parse_pc_watch_trace_event_count, parse_pc_watch_trace_ranges,
+        parse_trace_capture_t_cycles, parse_watch_trace_addresses, parse_watch_trace_event_count,
+        performance_window_title, render_desktop_cgb_ir_trace_record,
+        render_desktop_edge_trace_record, render_desktop_pc_watch_trace_record,
+        render_desktop_trace_record, render_desktop_watch_trace_record, run_desktop,
+        save_machine_state_slot, watched_bus_value_change, watched_cpu_addresses,
+        watched_pc_ranges,
     };
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_benchmark::{
@@ -12991,8 +13815,9 @@ mod tests {
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
         ApuSampleCapture, BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
-        CgbSpeedMode, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
-        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
+        CartridgeMappedRomSource, CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode,
+        ConsoleModel, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
+        CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, DebugWramAddressSample,
         Dmg07Port, ExecutionMode, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
         JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine, MachineConfig,
         MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource,
@@ -13048,6 +13873,17 @@ mod tests {
         }
         fs::create_dir_all(&root).expect("temp root should be creatable");
         root
+    }
+
+    fn run_with_large_test_stack(name: &str, f: impl FnOnce() + Send + 'static) {
+        let handle = std::thread::Builder::new()
+            .name(name.to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("large-stack test helper should spawn");
+        if let Err(payload) = handle.join() {
+            std::panic::resume_unwind(payload);
+        }
     }
 
     fn build_test_rom(
@@ -13725,7 +14561,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_ir_menu_action_switches_the_open_rom_dialog_into_secondary_mode() {
+    fn cgb_ir_select_game_action_switches_the_open_rom_dialog_into_secondary_mode() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("cgb-ir-action", false, false, false);
         open_cgb_primary_rom(&mut harness, "primary.gbc", 0x00, 0x00);
@@ -13733,7 +14569,7 @@ mod tests {
 
         assert!(
             harness
-                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .execute_action(super::MenuAction::SelectCgbInfraredSecondary)
                 .expect("CGB IR action should not fail when the open dialog is already pending")
                 .is_none()
         );
@@ -13750,7 +14586,7 @@ mod tests {
 
         assert!(
             harness
-                .execute_action(super::MenuAction::OpenCgbInfrared)
+                .execute_action(super::MenuAction::SelectCgbInfraredSecondary)
                 .expect("CGB IR action should be a no-op outside MODEL GB COLOR")
                 .is_none()
         );
@@ -13759,6 +14595,155 @@ mod tests {
             super::OpenRomDialogMode::Primary
         );
         assert!(!harness.runtime.open_rom_dialog.is_pending());
+    }
+
+    #[test]
+    fn cgb_ir_same_game_action_ignores_non_cgb_or_unloaded_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut dmg_harness = FrontendHarness::new("cgb-ir-same-game-dmg", true, false, false);
+        assert!(
+            dmg_harness
+                .execute_action(super::MenuAction::SetCgbInfraredSameGame)
+                .expect("CGB IR SAME GAME should be a no-op outside MODEL GB COLOR")
+                .is_none()
+        );
+        assert!(!dmg_harness.session.cgb_infrared_link_active());
+        assert!(dmg_harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            dmg_harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert!(!dmg_harness.runtime.open_rom_dialog.is_pending());
+        drop(dmg_harness);
+
+        let mut unloaded_cgb_harness =
+            FrontendHarness::new("cgb-ir-same-game-unloaded", false, false, false);
+        assert!(
+            unloaded_cgb_harness
+                .execute_action(super::MenuAction::SetCgbInfraredSameGame)
+                .expect("CGB IR SAME GAME should be a no-op without a loaded ROM")
+                .is_none()
+        );
+        assert!(!unloaded_cgb_harness.session.cgb_infrared_link_active());
+        assert!(unloaded_cgb_harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            unloaded_cgb_harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert!(!unloaded_cgb_harness.runtime.open_rom_dialog.is_pending());
+    }
+
+    #[test]
+    fn cgb_ir_select_game_action_ignores_unloaded_cgb_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-select-game-unloaded", false, false, false);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SelectCgbInfraredSecondary)
+                .expect("CGB IR SELECT GAME should be a no-op without a loaded ROM")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+        assert!(!harness.runtime.open_rom_dialog.is_pending());
+    }
+
+    #[test]
+    fn cgb_ir_helper_action_toggles_runtime_video_option_and_persists_settings() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-helper-toggle", false, false, false);
+
+        assert!(!harness.runtime.video_options.show_cgb_infrared_helper);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCgbInfraredHelper)
+                .expect("CGB IR helper action should persist the enabled state")
+                .is_none()
+        );
+        assert!(harness.runtime.video_options.show_cgb_infrared_helper);
+        let persisted =
+            fs::read_to_string(&harness.settings_path).expect("settings should be persisted");
+        assert!(persisted.contains("show_cgb_infrared_helper = true"));
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCgbInfraredHelper)
+                .expect("CGB IR helper action should persist the disabled state")
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_cgb_infrared_helper);
+        let persisted =
+            fs::read_to_string(&harness.settings_path).expect("settings should be persisted");
+        assert!(persisted.contains("show_cgb_infrared_helper = false"));
+    }
+
+    #[test]
+    fn cgb_ir_same_game_action_loads_the_primary_rom_as_the_secondary_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-same-game", false, false, false);
+        let primary_rom_path = open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH,
+            height: super::FRAMEBUFFER_HEIGHT,
+        });
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![1, 2, 3];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredSameGame)
+                .expect("CGB IR SAME GAME action should activate a two-console runtime")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(harness.session.cgb_infrared_link_active());
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(primary_rom_path.as_path())
+        );
+        assert!(super::cgb_infrared_same_game_active(&harness.session));
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::CgbInfrared
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary CGB IR machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(
+            harness.runtime.frame_blending_state.mode,
+            DesktopFrameBlendingMode::Off
+        );
+        assert!(harness.runtime.frame_blending_state.dimensions.is_none());
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
+        assert!(!harness.runtime.frame_blending_state.has_previous_frame);
     }
 
     #[test]
@@ -13820,7 +14805,7 @@ mod tests {
     }
 
     #[test]
-    fn cgb_ir_menu_action_turns_active_session_off_without_opening_picker() {
+    fn cgb_ir_none_action_turns_active_session_off_without_opening_picker() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("cgb-ir-toggle-off", false, false, false);
         open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
@@ -13839,8 +14824,8 @@ mod tests {
         assert!(harness.session.cgb_infrared_link_active());
         assert!(
             harness
-                .execute_action(super::MenuAction::OpenCgbInfrared)
-                .expect("active CGB IR action should turn the pair off")
+                .execute_action(super::MenuAction::SetCgbInfraredNone)
+                .expect("CGB IR NONE action should turn the pair off")
                 .is_none()
         );
 
@@ -14044,6 +15029,32 @@ mod tests {
         );
         assert_eq!(p1_save_session.save_path(), save_root.join("battery.gbsav"));
         assert_eq!(p2_save_session.save_path(), save_root.join("battery.gbsa2"));
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
+        assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
+    }
+
+    #[test]
+    fn cgb_ir_same_game_save_sessions_use_the_primary_rom_with_the_p2_extension() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cgb-ir-same-game-save-keys", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x03, 0x02);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredSameGame)
+                .expect("CGB IR SAME GAME action should activate a two-console runtime")
+                .is_none()
+        );
+
+        let save_root = harness.root.join("saves");
+        let p1_save_session = harness.runtime.save_sessions[super::PlayerSlot::P1.index()]
+            .as_ref()
+            .expect("CGB IR SAME GAME P1 should have a save session");
+        let p2_save_session = harness.runtime.save_sessions[super::PlayerSlot::P2.index()]
+            .as_ref()
+            .expect("CGB IR SAME GAME P2 should have a save session");
+        assert_eq!(p1_save_session.save_path(), save_root.join("gold.gbsav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("gold.gbsa2"));
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
     }
@@ -14713,6 +15724,17 @@ mod tests {
                     last_observed_values: BTreeMap::new(),
                     max_records: super::DEFAULT_EDGE_TRACE_EVENTS,
                     records: VecDeque::new(),
+                },
+                cgb_ir_trace: super::DesktopCgbIrTraceCapture {
+                    output_path: None,
+                    watched_addresses: BTreeSet::new(),
+                    watched_trigger_addresses: BTreeSet::new(),
+                    max_records: super::DEFAULT_CGB_IR_TRACE_EVENTS,
+                    records: VecDeque::new(),
+                    last_p1_status: None,
+                    last_p2_status: None,
+                    last_p1_pressed_mask: None,
+                    last_p2_pressed_mask: None,
                 },
                 ch4_nr43_trace: super::DesktopCh4Nr43TraceCapture {
                     output_path: None,
@@ -16576,6 +17598,381 @@ mod tests {
                 .expect_err("zero edge trace event count should be rejected")
                 .contains("must be greater than zero")
         );
+    }
+
+    #[test]
+    fn cgb_ir_trace_parser_and_renderer_include_status_and_rp_bus_context() {
+        assert_eq!(parse_cgb_ir_trace_event_count(None), Ok(16_384));
+        assert_eq!(
+            parse_cgb_ir_trace_event_count(Some(OsStr::new("512"))),
+            Ok(512)
+        );
+        assert_eq!(
+            parse_cgb_ir_trace_watch_addresses(None),
+            Ok(BTreeSet::new())
+        );
+        assert_eq!(
+            parse_cgb_ir_trace_watch_addresses(Some(OsStr::new("D8AF,D8B0,FF8C"))),
+            Ok(BTreeSet::from([0xD8AF, 0xD8B0, 0xFF8C]))
+        );
+        assert_eq!(
+            parse_cgb_ir_trace_trigger_addresses(Some(OsStr::new("D8AF,D8B0"))),
+            Ok(BTreeSet::from([0xD8AF, 0xD8B0]))
+        );
+        assert!(
+            parse_cgb_ir_trace_event_count(Some(OsStr::new("0")))
+                .expect_err("zero CGB IR trace event count should be rejected")
+                .contains("must be greater than zero")
+        );
+        assert_eq!(
+            parse_cgb_ir_optical_delay_t_cycles(None),
+            Ok(super::DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES)
+        );
+        assert_eq!(
+            parse_cgb_ir_optical_delay_t_cycles(Some(OsStr::new("80"))),
+            Ok(80)
+        );
+        assert!(
+            parse_cgb_ir_optical_delay_t_cycles(Some(OsStr::new("0")))
+                .expect_err("zero CGB IR optical delay should be rejected")
+                .contains("must be between")
+        );
+
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.registers.a = 0x12;
+        cpu.registers.f = 0x30;
+        cpu.registers.b = 0x45;
+        cpu.registers.c = 0x67;
+        cpu.registers.d = 0x89;
+        cpu.registers.e = 0xAB;
+        cpu.registers.h = 0xCD;
+        cpu.registers.l = 0xEF;
+        cpu.registers.sp = 0xFFF0;
+        cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataWrite,
+            address: 0xFF56,
+            value: 0xC0,
+        });
+        let rp_activity = cpu.last_bus_activity.expect("test CPU has RP bus activity");
+        let status = CgbInfraredStatus {
+            rp_latch: 0xC0,
+            emitter_on: false,
+            read_enabled: true,
+            external_optical_input: false,
+            optical_input_active: false,
+            sensor_counter: 19_900,
+            sensor_warmed: true,
+            effective_signal_detected: false,
+            signal_visible_to_rp: false,
+        };
+        let participant = super::DesktopCgbIrTraceParticipantRecord {
+            status,
+            cpu,
+            joypad: machine.joypad().snapshot(),
+            rom_window: Some(CartridgeMappedRomWindow {
+                source: CartridgeMappedRomSource::Rom,
+                bank: 0x12,
+                bank_size: 0x4000,
+                bank_offset: 0x1385,
+            }),
+            watched_values: vec![
+                super::DesktopCgbIrTraceWatchedValue::Wram(DebugWramAddressSample {
+                    address: 0xD8B0,
+                    bank: 0x01,
+                    bank_offset: 0x08B0,
+                    value: 0xFF,
+                }),
+                super::DesktopCgbIrTraceWatchedValue::Hram {
+                    address: 0xFF8C,
+                    offset: 0x0C,
+                    value: 0x10,
+                },
+            ],
+        };
+        let rendered = render_desktop_cgb_ir_trace_record(&super::DesktopCgbIrTraceRecord {
+            t_cycle: 456,
+            triggers: vec![
+                super::DesktopCgbIrTraceTrigger::StatusChanged {
+                    slot: super::PlayerSlot::P1,
+                    previous: None,
+                    current: status,
+                },
+                super::DesktopCgbIrTraceTrigger::RpBusActivity {
+                    slot: super::PlayerSlot::P1,
+                    activity: rp_activity,
+                },
+                super::DesktopCgbIrTraceTrigger::WatchedBusActivity {
+                    slot: super::PlayerSlot::P2,
+                    activity: CpuBusActivitySnapshot {
+                        kind: CpuBusAccessKind::DataWrite,
+                        address: 0xD8B0,
+                        value: 0xFF,
+                    },
+                },
+            ],
+            p1: participant.clone(),
+            p2: participant,
+        });
+
+        assert!(rendered.contains("t_cycle=456"));
+        assert!(rendered.contains("P1.status("));
+        assert!(rendered.contains("P1.rp(data_write@0xFF56=0xC0)"));
+        assert!(rendered.contains("P2.watch(data_write@0xD8B0=0xFF)"));
+        assert!(rendered.contains("regs={af=0x1230 bc=0x4567 de=0x89AB hl=0xCDEF sp=0xFFF0}"));
+        assert!(rendered.contains("rom={src=rom rom_bank=0x12 bank_size=0x4000 bank_off=0x1385}"));
+        assert!(rendered.contains(
+            "watch=[0xD8B0=wram(bank=0x01,off=0x08B0,value=0xFF),0xFF8C=hram(off=0x0C,value=0x10)]"
+        ));
+        assert!(rendered.contains("ir={rp=0xC0 emit=0 rd=1"));
+        assert!(rendered.contains("ready=1"));
+    }
+
+    #[test]
+    fn cgb_ir_trace_status_trigger_ignores_counter_only_changes() {
+        let previous = CgbInfraredStatus {
+            rp_latch: 0xC0,
+            emitter_on: false,
+            read_enabled: true,
+            external_optical_input: false,
+            optical_input_active: false,
+            sensor_counter: 19_900,
+            sensor_warmed: true,
+            effective_signal_detected: false,
+            signal_visible_to_rp: false,
+        };
+        let mut current = previous;
+        current.sensor_counter = 19_901;
+        let mut triggers = Vec::new();
+
+        super::collect_cgb_ir_status_trigger(
+            &mut triggers,
+            super::PlayerSlot::P1,
+            Some(previous),
+            current,
+        );
+
+        assert!(
+            triggers.is_empty(),
+            "counter-only sensor warmup/decay changes should not saturate the IR trace"
+        );
+
+        current.effective_signal_detected = true;
+        super::collect_cgb_ir_status_trigger(
+            &mut triggers,
+            super::PlayerSlot::P1,
+            Some(previous),
+            current,
+        );
+
+        assert_eq!(triggers.len(), 1);
+    }
+
+    #[test]
+    fn cgb_ir_trace_capture_records_linked_session_context_and_writes_artifact() {
+        let root = temp_test_root("cgb-ir-trace-capture");
+        let artifact_path = root.join("nested").join("trace.txt");
+        let mut capture = super::DesktopCgbIrTraceCapture {
+            output_path: Some(artifact_path.clone()),
+            watched_addresses: BTreeSet::from([0xA000, 0xC000, 0xFF80]),
+            watched_trigger_addresses: BTreeSet::from([0xC000, 0xFF56]),
+            max_records: 1,
+            records: VecDeque::new(),
+            last_p1_status: None,
+            last_p2_status: None,
+            last_p1_pressed_mask: None,
+            last_p2_pressed_mask: None,
+        };
+        let mut session =
+            super::linked_session::DesktopEmulationSession::new_linked_cgb_infrared_two_player(
+                cgb_skip_boot_summary_machine(),
+                cgb_skip_boot_summary_machine(),
+            )
+            .expect("linked CGB IR session should build");
+
+        {
+            let p1 = session
+                .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                .expect("P1 should exist in CGB IR session");
+            p1.write_bus(0xC000, 0xAB);
+            p1.write_bus(0xFF80, 0x42);
+            p1.write_bus(0xFF56, 0xC0);
+        }
+        capture.record_t_cycle(&session);
+
+        assert_eq!(capture.records.len(), 1);
+        let first = capture.records.back().expect("first trace record");
+        assert!(first.triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::StatusChanged {
+                    slot: super::PlayerSlot::P1,
+                    previous: None,
+                    ..
+                }
+            )
+        }));
+        assert!(first.triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::JoypadPressedMaskChanged {
+                    slot: super::PlayerSlot::P1,
+                    previous: None,
+                    current: 0
+                }
+            )
+        }));
+        assert!(first.p1.watched_values.iter().any(|value| {
+            matches!(
+                value,
+                super::DesktopCgbIrTraceWatchedValue::Wram(sample)
+                    if sample.address == 0xC000 && sample.value == 0xAB
+            )
+        }));
+        assert!(first.p1.watched_values.iter().any(|value| {
+            matches!(
+                value,
+                super::DesktopCgbIrTraceWatchedValue::Hram {
+                    address: 0xFF80,
+                    offset: 0,
+                    value: 0x42
+                }
+            )
+        }));
+        assert!(first.p1.watched_values.iter().any(|value| {
+            matches!(
+                value,
+                super::DesktopCgbIrTraceWatchedValue::Unsupported { address: 0xA000 }
+            )
+        }));
+
+        let mut manual_triggers = Vec::new();
+        let manual_activity = CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataWrite,
+            address: 0xFF56,
+            value: 0xC1,
+        };
+        super::collect_cgb_ir_rp_bus_trigger(
+            &mut manual_triggers,
+            super::PlayerSlot::P1,
+            Some(manual_activity),
+        );
+        super::collect_cgb_ir_watched_bus_trigger(
+            &mut manual_triggers,
+            super::PlayerSlot::P1,
+            Some(manual_activity),
+            &BTreeSet::from([0xFF56]),
+        );
+        super::collect_cgb_ir_joypad_trigger(
+            &mut manual_triggers,
+            super::PlayerSlot::P2,
+            Some(0x01),
+            0x05,
+        );
+        assert!(manual_triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::RpBusActivity {
+                    slot: super::PlayerSlot::P1,
+                    activity
+                } if activity.address == 0xFF56
+            )
+        }));
+        assert!(manual_triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::WatchedBusActivity {
+                    slot: super::PlayerSlot::P1,
+                    activity
+                } if activity.address == 0xFF56
+            )
+        }));
+        assert!(manual_triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::JoypadPressedMaskChanged {
+                    slot: super::PlayerSlot::P2,
+                    previous: Some(0x01),
+                    current: 0x05
+                }
+            )
+        }));
+
+        let p1 = session
+            .machine_for_player_slot_mut(super::PlayerSlot::P1)
+            .expect("P1 should still exist in CGB IR session");
+        p1.write_bus(0xC000, 0xCD);
+        p1.write_bus(0xFF56, 0xC1);
+        capture.record_t_cycle(&session);
+
+        assert_eq!(capture.records.len(), 1);
+        let second = capture.records.back().expect("second trace record");
+        assert!(second.triggers.iter().any(|trigger| {
+            matches!(
+                trigger,
+                super::DesktopCgbIrTraceTrigger::StatusChanged {
+                    slot: super::PlayerSlot::P1,
+                    previous: Some(_),
+                    ..
+                }
+            )
+        }));
+        assert!(second.p1.watched_values.iter().any(|value| {
+            matches!(
+                value,
+                super::DesktopCgbIrTraceWatchedValue::Wram(sample)
+                    if sample.address == 0xC000 && sample.value == 0xCD
+            )
+        }));
+
+        let single = super::linked_session::DesktopEmulationSession::new_single(
+            cgb_skip_boot_summary_machine(),
+        );
+        capture.record_t_cycle(&single);
+        assert!(capture.last_p1_status.is_none());
+        assert!(capture.last_p2_status.is_none());
+        assert!(capture.last_p1_pressed_mask.is_none());
+        assert!(capture.last_p2_pressed_mask.is_none());
+
+        capture
+            .write_artifact()
+            .expect("CGB IR trace artifact should be writable");
+        let rendered =
+            fs::read_to_string(&artifact_path).expect("CGB IR trace artifact should be readable");
+        assert!(rendered.contains("cgb_ir.triggers="));
+        assert!(rendered.contains("0xC000=wram"));
+        assert!(rendered.contains("0xFF80=hram"));
+        assert!(rendered.contains("0xA000=unsupported"));
+    }
+
+    #[test]
+    fn current_cgb_ir_hud_snapshot_tracks_linked_status_and_ignores_single_sessions() {
+        let single = super::linked_session::DesktopEmulationSession::new_single(
+            cgb_skip_boot_summary_machine(),
+        );
+        assert_eq!(super::current_cgb_ir_hud_snapshot(&single), None);
+
+        let mut linked =
+            super::linked_session::DesktopEmulationSession::new_linked_cgb_infrared_two_player(
+                cgb_skip_boot_summary_machine(),
+                cgb_skip_boot_summary_machine(),
+            )
+            .expect("linked CGB IR session should build");
+        linked
+            .machine_for_player_slot_mut(super::PlayerSlot::P1)
+            .expect("P1 should exist in CGB IR session")
+            .write_bus(0xFF56, 0xC1);
+
+        let snapshot = super::current_cgb_ir_hud_snapshot(&linked)
+            .expect("linked CGB IR session should expose helper HUD state");
+        assert!(snapshot.p1.emitter_on);
+        assert!(snapshot.p1.read_enabled);
+        assert!(snapshot.p1.optical_input_active);
+        assert!(!snapshot.p2.emitter_on);
+        assert!(!snapshot.p2.read_enabled);
+        assert!(!snapshot.p2.optical_input_active);
     }
 
     #[test]
@@ -20119,6 +21516,13 @@ mod tests {
 
     #[test]
     fn load_initial_emulation_session_supports_direct_cgb_ir_startup() {
+        run_with_large_test_stack(
+            "direct-cgb-ir-startup",
+            load_initial_emulation_session_supports_direct_cgb_ir_startup_inner,
+        );
+    }
+
+    fn load_initial_emulation_session_supports_direct_cgb_ir_startup_inner() {
         let root = temp_test_root("direct-cgb-ir-startup");
         let primary_rom_path = write_cgb_test_rom(&root, "gold.gbc", 0x00, 0x00);
         let secondary_rom_path = write_cgb_test_rom(&root, "silver.gbc", 0x00, 0x00);
@@ -23179,6 +24583,7 @@ mod tests {
                         audio_queue_ms: Some(12.5),
                         rewind: RewindHudSnapshot::default(),
                     }),
+                    cgb_ir: None,
                     rewind_indicator: false,
                     fast_forward_indicator: false,
                 },
@@ -23334,6 +24739,7 @@ mod tests {
                 audio_queue_ms: Some(12.0),
                 rewind: RewindHudSnapshot::default(),
             }),
+            cgb_ir: None,
             rewind_indicator: false,
             fast_forward_indicator: false,
         };
@@ -23409,6 +24815,8 @@ mod tests {
             vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
         let mut indicator_frame = baseline_frame.clone();
         let mut fast_forward_indicator_frame = baseline_frame.clone();
+        let mut cgb_ir_helper_off_frame = baseline_frame.clone();
+        let mut cgb_ir_helper_on_frame = baseline_frame.clone();
         let panel_len = (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize;
         let framebuffer = vec![0_u8; panel_len];
         let layer_sources = vec![PpuFramebufferLayerSource::Background; panel_len];
@@ -23455,6 +24863,7 @@ mod tests {
                 menu_state: None,
                 hud: super::RenderHudInput {
                     performance: None,
+                    cgb_ir: None,
                     rewind_indicator: true,
                     fast_forward_indicator: false,
                 },
@@ -23478,6 +24887,7 @@ mod tests {
                 menu_state: None,
                 hud: super::RenderHudInput {
                     performance: None,
+                    cgb_ir: None,
                     rewind_indicator: false,
                     fast_forward_indicator: true,
                 },
@@ -23487,6 +24897,65 @@ mod tests {
         assert_ne!(
             fast_forward_indicator_frame, baseline_frame,
             "fast-forward indicator should render independently from the stats HUD"
+        );
+
+        let cgb_ir_snapshot = super::CgbInfraredHudSnapshot {
+            p1: super::CgbInfraredParticipantHudSnapshot {
+                read_enabled: true,
+                sensor_warmed: true,
+                ..super::CgbInfraredParticipantHudSnapshot::default()
+            },
+            p2: super::CgbInfraredParticipantHudSnapshot {
+                read_enabled: true,
+                sensor_warmed: true,
+                ..super::CgbInfraredParticipantHudSnapshot::default()
+            },
+        };
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut cgb_ir_helper_off_frame,
+            render_input(),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud: super::RenderHudInput {
+                    performance: None,
+                    cgb_ir: Some(cgb_ir_snapshot),
+                    rewind_indicator: false,
+                    fast_forward_indicator: false,
+                },
+            },
+        )
+        .expect("CGB IR helper-off frame should render");
+        assert_eq!(
+            cgb_ir_helper_off_frame, baseline_frame,
+            "CGB IR helper should not render while the video option is disabled"
+        );
+
+        video_options.show_cgb_infrared_helper = true;
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut cgb_ir_helper_on_frame,
+            render_input(),
+            &video_options,
+            super::RenderPresentationInput {
+                frame_blending_state: None,
+                menu_state: None,
+                hud: super::RenderHudInput {
+                    performance: None,
+                    cgb_ir: Some(cgb_ir_snapshot),
+                    rewind_indicator: false,
+                    fast_forward_indicator: false,
+                },
+            },
+        )
+        .expect("CGB IR helper-on frame should render");
+        assert_ne!(
+            cgb_ir_helper_on_frame, baseline_frame,
+            "CGB IR helper should render when the video option is enabled"
         );
     }
 
