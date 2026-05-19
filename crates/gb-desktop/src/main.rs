@@ -37,9 +37,9 @@ use gb_core::{
     JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
     MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineRewindBuffer,
     MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
-    PocketCameraFrame, PokemonPikachuColorGift, PokemonPikachuColorRegion, PpuAccessMode,
-    PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, SerialTickTelemetry, StartupMode,
-    TraceSummaryBuffer,
+    PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
+    PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
+    PpuStepRegion, SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -526,6 +526,9 @@ struct DesktopSession {
     cgb_infrared_link_active: bool,
     pokemon_pikachu_color_active: bool,
     pokemon_pikachu_color_gift: PokemonPikachuColorGift,
+    pokemon_mystery_gift_active: bool,
+    pokemon_mystery_gift_kind: PokemonMysteryGiftKind,
+    pokemon_mystery_gift_code: PokemonMysteryGiftCode,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
     pocket_camera_frame: Option<PocketCameraFrame>,
@@ -594,6 +597,10 @@ impl DesktopSession {
 
     fn pokemon_pikachu_color_active(&self) -> bool {
         self.pokemon_pikachu_color_active
+    }
+
+    fn pokemon_mystery_gift_active(&self) -> bool {
+        self.pokemon_mystery_gift_active
     }
 
     fn rom_directory_hint(&self) -> &Path {
@@ -5756,6 +5763,9 @@ fn run_desktop_prepared(
         cgb_infrared_link_active: false,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+        pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         pocket_camera_frame: None,
@@ -8651,10 +8661,11 @@ fn check_current_session_rebuilds_with_config(
         session.linked_secondary_rom_bytes(),
         session.cgb_infrared_link_active,
         session.pokemon_pikachu_color_active,
+        session.pokemon_mystery_gift_active,
         session.external_port_selection,
         session.dmg07_player_count,
     ) {
-        (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _, _) => {
+        (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _, _, _) => {
             load_cgb_infrared_machines_for_roms(
                 config,
                 &session.current_dir,
@@ -8664,12 +8675,16 @@ fn check_current_session_rebuilds_with_config(
             )
             .map(|_| ())
         }
-        (Some(primary_rom_bytes), _, false, true, _, _) => {
+        (Some(primary_rom_bytes), _, false, true, _, _, _) => {
+            load_machine_for_rom(config, &session.current_dir, primary_rom_bytes).map(|_| ())
+        }
+        (Some(primary_rom_bytes), _, false, false, true, _, _) => {
             load_machine_for_rom(config, &session.current_dir, primary_rom_bytes).map(|_| ())
         }
         (
             Some(primary_rom_bytes),
             Some(secondary_rom_bytes),
+            false,
             false,
             false,
             DesktopExternalPortSelection::GameLink,
@@ -8692,6 +8707,7 @@ fn check_current_session_rebuilds_with_config(
             _,
             false,
             false,
+            false,
             DesktopExternalPortSelection::FourPlayerAdapter,
             Some(player_count),
         ) => load_dmg07_machines_for_rom(
@@ -8702,11 +8718,60 @@ fn check_current_session_rebuilds_with_config(
             "checking a DMG-07 session",
         )
         .map(|_| ()),
-        (Some(rom_bytes), _, _, _, _, _) => {
+        (Some(rom_bytes), _, _, _, _, _, _) => {
             load_machine_for_rom(config, &session.current_dir, rom_bytes).map(|_| ())
         }
-        (None, _, _, _, _, _) => prepare_machine_config(config, &session.current_dir).map(|_| ()),
+        (None, _, _, _, _, _, _) => {
+            prepare_machine_config(config, &session.current_dir).map(|_| ())
+        }
     }
+}
+
+fn rebuild_pokemon_mystery_gift_for_config(
+    next_config: &DesktopConfig,
+    next_session: &DesktopSession,
+    primary_rom_bytes: &[u8],
+    battery_backed_states: &[Option<PersistentCartState>; PLAYER_SLOT_COUNT],
+    mut boot_rom_fallback_warnings: Vec<String>,
+) -> Result<RebuildMachineResult, String> {
+    let loaded = load_machine_for_rom(next_config, &next_session.current_dir, primary_rom_bytes)?;
+    write_cartridge_diagnostics(&loaded.diagnostics);
+    if let Some(warning) = loaded.boot_rom_fallback_warning {
+        boot_rom_fallback_warnings.push(warning);
+    }
+
+    let mut next_machine = DesktopEmulationSession::new_pokemon_mystery_gift(
+        loaded.machine,
+        next_session.pokemon_mystery_gift_kind,
+        next_session.pokemon_mystery_gift_code,
+    );
+    restore_battery_backed_states_by_player_slot(
+        &mut next_machine,
+        battery_backed_states,
+        "after reconfigure",
+    )?;
+    apply_session_pocket_camera_frame_to_desktop_session(next_session, &mut next_machine)?;
+
+    let effective_config = loaded.effective_config;
+    let next_save_sessions = open_save_sessions_for_session(
+        &DesktopSession {
+            config: effective_config.clone(),
+            linked_secondary_rom: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+            dmg07_player_count: None,
+            cgb_infrared_link_active: false,
+            pokemon_pikachu_color_active: false,
+            pokemon_mystery_gift_active: true,
+            ..next_session.clone()
+        },
+        &mut next_machine,
+    )?;
+    Ok((
+        effective_config,
+        boot_rom_fallback_warnings,
+        next_machine,
+        next_save_sessions,
+    ))
 }
 
 fn rebuild_machine_for_config(
@@ -8751,6 +8816,9 @@ fn rebuild_machine_for_config(
             cgb_infrared_link_active: context.session.cgb_infrared_link_active,
             pokemon_pikachu_color_active: context.session.pokemon_pikachu_color_active,
             pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+            pokemon_mystery_gift_active: context.session.pokemon_mystery_gift_active,
+            pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+            pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -8762,10 +8830,11 @@ fn rebuild_machine_for_config(
             next_session.linked_secondary_rom_bytes(),
             next_session.cgb_infrared_link_active,
             next_session.pokemon_pikachu_color_active,
+            next_session.pokemon_mystery_gift_active,
             next_session.external_port_selection,
             next_session.dmg07_player_count,
         ) {
-            (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _, _) => {
+            (Some(primary_rom_bytes), Some(secondary_rom_bytes), true, _, _, _, _) => {
                 let loaded = load_cgb_infrared_machines_for_roms(
                     next_config,
                     &context.session.current_dir,
@@ -8794,6 +8863,7 @@ fn rebuild_machine_for_config(
                         dmg07_player_count: None,
                         cgb_infrared_link_active: true,
                         pokemon_pikachu_color_active: false,
+                        pokemon_mystery_gift_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -8805,7 +8875,7 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
-            (Some(primary_rom_bytes), _, false, true, _, _) => {
+            (Some(primary_rom_bytes), _, false, true, _, _, _) => {
                 let loaded = load_machine_for_rom(
                     next_config,
                     &context.session.current_dir,
@@ -8840,6 +8910,7 @@ fn rebuild_machine_for_config(
                         dmg07_player_count: None,
                         cgb_infrared_link_active: false,
                         pokemon_pikachu_color_active: true,
+                        pokemon_mystery_gift_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -8851,9 +8922,19 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
+            (Some(primary_rom_bytes), _, false, false, true, _, _) => {
+                rebuild_pokemon_mystery_gift_for_config(
+                    next_config,
+                    &next_session,
+                    primary_rom_bytes,
+                    &battery_backed_states,
+                    boot_rom_fallback_warnings,
+                )
+            }
             (
                 Some(primary_rom_bytes),
                 Some(secondary_rom_bytes),
+                false,
                 false,
                 false,
                 DesktopExternalPortSelection::GameLink,
@@ -8903,6 +8984,7 @@ fn rebuild_machine_for_config(
                         config: effective_config.clone(),
                         cgb_infrared_link_active: false,
                         pokemon_pikachu_color_active: false,
+                        pokemon_mystery_gift_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -8917,6 +8999,7 @@ fn rebuild_machine_for_config(
             (
                 Some(primary_rom_bytes),
                 _,
+                false,
                 false,
                 false,
                 DesktopExternalPortSelection::FourPlayerAdapter,
@@ -8951,6 +9034,7 @@ fn rebuild_machine_for_config(
                         dmg07_player_count: Some(player_count),
                         cgb_infrared_link_active: false,
                         pokemon_pikachu_color_active: false,
+                        pokemon_mystery_gift_active: false,
                         ..next_session
                     },
                     &mut next_machine,
@@ -8962,7 +9046,7 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
-            (Some(rom_bytes), _, _, _, _, _) => {
+            (Some(rom_bytes), _, _, _, _, _, _) => {
                 let loaded =
                     load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
                 write_cartridge_diagnostics(&loaded.diagnostics);
@@ -8992,6 +9076,7 @@ fn rebuild_machine_for_config(
                         dmg07_player_count: None,
                         cgb_infrared_link_active: false,
                         pokemon_pikachu_color_active: false,
+                        pokemon_mystery_gift_active: false,
                         external_port_selection: next_session.external_port_selection,
                         ..next_session
                     },
@@ -9004,7 +9089,7 @@ fn rebuild_machine_for_config(
                     next_save_sessions,
                 ))
             }
-            (None, _, _, _, _, _) => {
+            (None, _, _, _, _, _, _) => {
                 let prepared = prepare_machine_config(next_config, &context.session.current_dir)?;
                 if let Some(warning) = prepared.boot_rom_fallback_warning {
                     boot_rom_fallback_warnings.push(warning);
@@ -9478,6 +9563,9 @@ fn open_selected_rom(
         cgb_infrared_link_active: false,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -9495,6 +9583,7 @@ fn open_selected_rom(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = false;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.last_open_directory = context
         .session
         .loaded_rom
@@ -9686,6 +9775,9 @@ fn activate_game_link_with_secondary_rom(
         cgb_infrared_link_active: false,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -9702,6 +9794,7 @@ fn activate_game_link_with_secondary_rom(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = false;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.last_open_directory = context
         .session
         .linked_secondary_rom
@@ -9750,6 +9843,7 @@ fn deactivate_cgb_infrared_pair(
 
     if context.machine.is_linked_cgb_infrared_two_player()
         || context.machine.is_pokemon_pikachu_color()
+        || context.machine.is_pokemon_mystery_gift()
     {
         close_runtime_save_sessions(context.runtime, context.machine)?;
         context.machine.detach_to_single_primary();
@@ -9759,6 +9853,7 @@ fn deactivate_cgb_infrared_pair(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = false;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.external_port_selection = DesktopExternalPortSelection::None;
     apply_external_port_selection_to_machine(
         context.machine.primary_machine_mut(),
@@ -9855,6 +9950,9 @@ fn activate_cgb_infrared_same_game(
         cgb_infrared_link_active: true,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -9871,6 +9969,7 @@ fn activate_cgb_infrared_same_game(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = true;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.last_open_directory = context
         .session
         .linked_secondary_rom
@@ -9955,6 +10054,9 @@ fn activate_pokemon_pikachu_color(
         cgb_infrared_link_active: false,
         pokemon_pikachu_color_active: true,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -9968,6 +10070,92 @@ fn activate_pokemon_pikachu_color(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = false;
     context.session.pokemon_pikachu_color_active = true;
+    context.session.pokemon_mystery_gift_active = false;
+    context.session.external_port_selection = DesktopExternalPortSelection::None;
+    context.runtime.save_sessions = next_save_sessions;
+    reset_frontend_timeline_state(context.runtime);
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.reset_for_session_swap(next_console_model)?;
+    }
+    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+        audio_recorder.reset_for_session_swap(next_console_model)?;
+    }
+    context.runtime.rtc_sync.resync_to_host_clock();
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+
+    Ok(())
+}
+
+fn activate_pokemon_mystery_gift(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom()
+        || context.session.config.launch.console_model != DesktopConsoleModel::GameBoyColor
+    {
+        return Ok(());
+    }
+    if context.session.pokemon_mystery_gift_active && context.machine.is_pokemon_mystery_gift() {
+        return Ok(());
+    }
+
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    close_runtime_save_sessions(context.runtime, context.machine)?;
+    clear_live_input_state(context.machine, context.runtime);
+
+    context.machine.detach_to_single_primary();
+    let current_machine =
+        std::mem::replace(context.machine, DesktopEmulationSession::Transitioning);
+    let primary_machine = current_machine.into_primary_machine();
+    *context.machine = DesktopEmulationSession::new_pokemon_mystery_gift(
+        primary_machine,
+        context.session.pokemon_mystery_gift_kind,
+        context.session.pokemon_mystery_gift_code,
+    );
+    apply_external_port_selection_to_machine(
+        context.machine.primary_machine_mut(),
+        DesktopExternalPortSelection::None,
+    );
+
+    let next_session = DesktopSession {
+        config: context.session.config.clone(),
+        test_runner: context.session.test_runner,
+        benchmark: context.session.benchmark.clone(),
+        current_dir: context.session.current_dir.clone(),
+        loaded_rom: context.session.loaded_rom.clone(),
+        linked_secondary_rom: None,
+        dmg07_player_count: None,
+        cgb_infrared_link_active: false,
+        pokemon_pikachu_color_active: false,
+        pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: true,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
+        last_open_directory: context.session.last_open_directory.clone(),
+        recent_roms: context.session.recent_roms.clone(),
+        pocket_camera_frame: context.session.pocket_camera_frame.clone(),
+        external_port_selection: DesktopExternalPortSelection::None,
+    };
+    apply_session_pocket_camera_frame_to_desktop_session(&next_session, context.machine)?;
+    let next_save_sessions = open_save_sessions_for_session(&next_session, context.machine)?;
+    let next_console_model = context.machine.primary_machine().apu().console_model();
+
+    context.session.linked_secondary_rom = None;
+    context.session.dmg07_player_count = None;
+    context.session.cgb_infrared_link_active = false;
+    context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = true;
     context.session.external_port_selection = DesktopExternalPortSelection::None;
     context.runtime.save_sessions = next_save_sessions;
     reset_frontend_timeline_state(context.runtime);
@@ -10067,6 +10255,9 @@ fn open_selected_cgb_infrared_secondary_rom(
         cgb_infrared_link_active: true,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -10083,6 +10274,7 @@ fn open_selected_cgb_infrared_secondary_rom(
     context.session.dmg07_player_count = None;
     context.session.cgb_infrared_link_active = true;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.last_open_directory = context
         .session
         .linked_secondary_rom
@@ -10172,6 +10364,9 @@ fn activate_dmg07_adapter(
         cgb_infrared_link_active: false,
         pokemon_pikachu_color_active: false,
         pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: false,
+        pokemon_mystery_gift_kind: context.session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: context.session.pokemon_mystery_gift_code,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         pocket_camera_frame: context.session.pocket_camera_frame.clone(),
@@ -10188,6 +10383,7 @@ fn activate_dmg07_adapter(
     context.session.dmg07_player_count = Some(player_count);
     context.session.cgb_infrared_link_active = false;
     context.session.pokemon_pikachu_color_active = false;
+    context.session.pokemon_mystery_gift_active = false;
     context.session.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
     if config_fell_back && !context.session.test_runner {
         context
@@ -10272,6 +10468,7 @@ fn machine_state_actions_available(
         && !machine.is_linked_dmg04_two_player()
         && !machine.is_linked_cgb_infrared_two_player()
         && !machine.is_pokemon_pikachu_color()
+        && !machine.is_pokemon_mystery_gift()
         && !machine.is_linked_dmg07()
 }
 
@@ -10285,6 +10482,7 @@ fn rewind_session_supported(session: &DesktopSession, machine: &DesktopEmulation
         && !machine.is_linked_dmg04_two_player()
         && !machine.is_linked_cgb_infrared_two_player()
         && !machine.is_pokemon_pikachu_color()
+        && !machine.is_pokemon_mystery_gift()
         && !machine.is_linked_dmg07()
 }
 
@@ -10439,6 +10637,21 @@ fn current_cgb_ir_hud_snapshot(
     if machine.is_pokemon_pikachu_color() {
         let p1 = machine.primary_machine().cgb_infrared_status()?;
         let accessory = machine.pokemon_pikachu_color_status()?;
+        return Some(CgbInfraredHudSnapshot {
+            p1: cgb_ir_participant_hud_snapshot(p1),
+            p2: CgbInfraredParticipantHudSnapshot {
+                emitter_on: accessory.emitter_on,
+                read_enabled: true,
+                optical_input_active: accessory.game_emitter_on,
+                sensor_warmed: true,
+                effective_signal_detected: accessory.game_emitter_on,
+            },
+        });
+    }
+
+    if machine.is_pokemon_mystery_gift() {
+        let p1 = machine.primary_machine().cgb_infrared_status()?;
+        let accessory = machine.pokemon_mystery_gift_status()?;
         return Some(CgbInfraredHudSnapshot {
             p1: cgb_ir_participant_hud_snapshot(p1),
             p2: CgbInfraredParticipantHudSnapshot {
@@ -11295,6 +11508,8 @@ fn execute_menu_action(
                 || context.machine.is_linked_cgb_infrared_two_player()
                 || context.session.pokemon_pikachu_color_active
                 || context.machine.is_pokemon_pikachu_color()
+                || context.session.pokemon_mystery_gift_active
+                || context.machine.is_pokemon_mystery_gift()
             {
                 deactivate_cgb_infrared_pair(canvas, context)?;
             }
@@ -11308,12 +11523,32 @@ fn execute_menu_action(
             activate_pokemon_pikachu_color(canvas, context)?;
             Ok(None)
         }
+        MenuAction::SetCgbInfraredMysteryGift => {
+            activate_pokemon_mystery_gift(canvas, context)?;
+            Ok(None)
+        }
         MenuAction::CycleCgbInfraredPikachuGift => {
             context.session.pokemon_pikachu_color_gift =
                 context.session.pokemon_pikachu_color_gift.next();
             context
                 .machine
                 .set_pokemon_pikachu_color_gift(context.session.pokemon_pikachu_color_gift);
+            Ok(None)
+        }
+        MenuAction::CycleCgbInfraredMysteryGiftKind => {
+            context.session.pokemon_mystery_gift_kind =
+                context.session.pokemon_mystery_gift_kind.next();
+            context
+                .machine
+                .set_pokemon_mystery_gift_kind(context.session.pokemon_mystery_gift_kind);
+            Ok(None)
+        }
+        MenuAction::CycleCgbInfraredMysteryGiftCode => {
+            context.session.pokemon_mystery_gift_code =
+                context.session.pokemon_mystery_gift_code.next();
+            context
+                .machine
+                .set_pokemon_mystery_gift_code(context.session.pokemon_mystery_gift_code);
             Ok(None)
         }
         MenuAction::SelectCgbInfraredSecondary => {
@@ -11353,6 +11588,7 @@ fn execute_menu_action(
                         || context.machine.is_linked_dmg07()
                         || context.machine.is_linked_cgb_infrared_two_player()
                         || context.machine.is_pokemon_pikachu_color()
+                        || context.machine.is_pokemon_mystery_gift()
                     {
                         close_runtime_save_sessions(context.runtime, context.machine)?;
                         context.machine.detach_to_single_primary();
@@ -11362,6 +11598,7 @@ fn execute_menu_action(
                     context.session.dmg07_player_count = None;
                     context.session.cgb_infrared_link_active = false;
                     context.session.pokemon_pikachu_color_active = false;
+                    context.session.pokemon_mystery_gift_active = false;
                     context.session.external_port_selection = selection;
                     apply_external_port_selection_to_machine(
                         context.machine.primary_machine_mut(),
@@ -11666,6 +11903,9 @@ fn current_menu_presentation(
         cgb_infrared_same_game_active: cgb_infrared_same_game_active(session),
         pokemon_pikachu_color_active: session.pokemon_pikachu_color_active(),
         pokemon_pikachu_color_gift: session.pokemon_pikachu_color_gift,
+        pokemon_mystery_gift_active: session.pokemon_mystery_gift_active(),
+        pokemon_mystery_gift_kind: session.pokemon_mystery_gift_kind,
+        pokemon_mystery_gift_code: session.pokemon_mystery_gift_code,
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_kind: session
             .config
@@ -12603,6 +12843,59 @@ fn menu_input_for_gamepad_binding(
     }
 }
 
+fn reset_pokemon_mystery_gift_session(
+    session: &DesktopSession,
+    rom_bytes: &[u8],
+    battery_backed_states: &[Option<PersistentCartState>; PLAYER_SLOT_COUNT],
+) -> Result<RebuildMachineResult, String> {
+    let loaded = match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+        Ok(result) => result,
+        Err(error) => {
+            return Err(format_display_error(
+                "failed to reload cartridge during Pokemon Mystery Gift reset",
+                &error,
+            ));
+        }
+    };
+    let mut boot_rom_fallback_warnings = Vec::new();
+    if let Some(warning) = loaded.boot_rom_fallback_warning {
+        boot_rom_fallback_warnings.push(warning);
+    }
+    write_cartridge_diagnostics(&loaded.diagnostics);
+    let mut reset_machine = DesktopEmulationSession::new_pokemon_mystery_gift(
+        loaded.machine,
+        session.pokemon_mystery_gift_kind,
+        session.pokemon_mystery_gift_code,
+    );
+    restore_battery_backed_states_by_player_slot(
+        &mut reset_machine,
+        battery_backed_states,
+        "after reset",
+    )?;
+    apply_session_pocket_camera_frame_to_desktop_session(session, &mut reset_machine)?;
+
+    let effective_config = loaded.effective_config;
+    let next_save_sessions = open_save_sessions_for_session(
+        &DesktopSession {
+            config: effective_config.clone(),
+            linked_secondary_rom: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+            dmg07_player_count: None,
+            cgb_infrared_link_active: false,
+            pokemon_pikachu_color_active: false,
+            pokemon_mystery_gift_active: true,
+            ..session.clone()
+        },
+        &mut reset_machine,
+    )?;
+    Ok((
+        effective_config,
+        boot_rom_fallback_warnings,
+        reset_machine,
+        next_save_sessions,
+    ))
+}
+
 fn reset_machine(
     main_window: &Window,
     session: &mut DesktopSession,
@@ -12624,10 +12917,11 @@ fn reset_machine(
         session.linked_secondary_rom_bytes(),
         session.cgb_infrared_link_active,
         session.pokemon_pikachu_color_active,
+        session.pokemon_mystery_gift_active,
         session.external_port_selection,
         session.dmg07_player_count,
     ) {
-        (Some(secondary_rom_bytes), true, _, _, _) => {
+        (Some(secondary_rom_bytes), true, _, _, _, _) => {
             let loaded = load_cgb_infrared_machines_for_roms(
                 &session.config,
                 &session.current_dir,
@@ -12653,6 +12947,7 @@ fn reset_machine(
                     dmg07_player_count: None,
                     cgb_infrared_link_active: true,
                     pokemon_pikachu_color_active: false,
+                    pokemon_mystery_gift_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -12664,7 +12959,14 @@ fn reset_machine(
                 next_save_sessions,
             )
         }
-        (Some(secondary_rom_bytes), false, false, DesktopExternalPortSelection::GameLink, _) => {
+        (
+            Some(secondary_rom_bytes),
+            false,
+            false,
+            false,
+            DesktopExternalPortSelection::GameLink,
+            _,
+        ) => {
             let primary_loaded =
                 match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
                     Ok(result) => result,
@@ -12729,7 +13031,7 @@ fn reset_machine(
                 next_save_sessions,
             )
         }
-        (_, false, true, _, _) => {
+        (_, false, true, _, _, _) => {
             let loaded =
                 match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
                     Ok(result) => result,
@@ -12766,6 +13068,7 @@ fn reset_machine(
                     dmg07_player_count: None,
                     cgb_infrared_link_active: false,
                     pokemon_pikachu_color_active: true,
+                    pokemon_mystery_gift_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -12777,7 +13080,17 @@ fn reset_machine(
                 next_save_sessions,
             )
         }
-        (_, false, false, DesktopExternalPortSelection::FourPlayerAdapter, Some(player_count)) => {
+        (_, false, false, true, _, _) => {
+            reset_pokemon_mystery_gift_session(session, rom_bytes, &battery_backed_states)?
+        }
+        (
+            _,
+            false,
+            false,
+            false,
+            DesktopExternalPortSelection::FourPlayerAdapter,
+            Some(player_count),
+        ) => {
             let loaded = load_dmg07_machines_for_rom(
                 &session.config,
                 &session.current_dir,
@@ -12804,6 +13117,7 @@ fn reset_machine(
                     dmg07_player_count: Some(player_count),
                     cgb_infrared_link_active: false,
                     pokemon_pikachu_color_active: false,
+                    pokemon_mystery_gift_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -12851,6 +13165,7 @@ fn reset_machine(
                     dmg07_player_count: None,
                     cgb_infrared_link_active: false,
                     pokemon_pikachu_color_active: false,
+                    pokemon_mystery_gift_active: false,
                     ..session.clone()
                 },
                 &mut reset_machine,
@@ -14031,10 +14346,10 @@ mod tests {
         DesktopSettingsStore, GamepadActionBindingTarget, GamepadBindingTarget,
         GamepadMenuBindingTarget, HostRtcSync, HotkeyAction, KeyboardBindingTarget,
         KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
-        PokemonPikachuColorGift, ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot,
-        assign_gamepad_action_binding, assign_gamepad_binding, assign_gamepad_menu_binding,
-        assign_keyboard_binding, assign_keyboard_menu_binding,
-        assignable_key_for_binding_target_from_key_event,
+        PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
+        ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_action_binding,
+        assign_gamepad_binding, assign_gamepad_menu_binding, assign_keyboard_binding,
+        assign_keyboard_menu_binding, assignable_key_for_binding_target_from_key_event,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_key_event, desktop_key_from_keycode, desktop_key_from_scancode,
@@ -15495,6 +15810,305 @@ mod tests {
     }
 
     #[test]
+    fn pokemon_mystery_gift_action_activates_an_accessory_session() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness =
+            FrontendHarness::new("pokemon-mystery-gift-activate", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        harness.runtime.frame_blending_state.mode = DesktopFrameBlendingMode::On;
+        harness.runtime.frame_blending_state.dimensions = Some(super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH,
+            height: super::FRAMEBUFFER_HEIGHT,
+        });
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![1, 2, 3];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(!harness.session.pokemon_pikachu_color_active());
+        assert!(harness.session.pokemon_mystery_gift_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::PokemonMysteryGift
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(
+            harness.runtime.frame_blending_state.mode,
+            DesktopFrameBlendingMode::Off
+        );
+        assert!(harness.runtime.frame_blending_state.dimensions.is_none());
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
+        assert!(!harness.runtime.frame_blending_state.has_previous_frame);
+        assert!(!super::machine_state_actions_available(
+            &harness.session,
+            &harness.machine
+        ));
+        assert!(!super::rewind_session_supported(
+            &harness.session,
+            &harness.machine
+        ));
+    }
+
+    #[test]
+    fn pokemon_mystery_gift_actions_update_the_accessory() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("pokemon-mystery-gift-select", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        harness.session.pokemon_mystery_gift_kind = PokemonMysteryGiftKind::Decoration;
+        harness.session.pokemon_mystery_gift_code = PokemonMysteryGiftCode::new(0x24).unwrap();
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+        let status = harness
+            .machine
+            .pokemon_mystery_gift_status()
+            .expect("Pokemon Mystery Gift status should be exposed");
+        assert_eq!(status.kind, PokemonMysteryGiftKind::Decoration);
+        assert_eq!(status.code, PokemonMysteryGiftCode::new(0x24).unwrap());
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleCgbInfraredMysteryGiftKind)
+                .expect("gift-kind action should cycle the accessory gift kind")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleCgbInfraredMysteryGiftCode)
+                .expect("gift-code action should cycle the accessory gift code")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.pokemon_mystery_gift_kind,
+            PokemonMysteryGiftKind::Item
+        );
+        assert_eq!(
+            harness.session.pokemon_mystery_gift_code,
+            PokemonMysteryGiftCode::new(0x00).unwrap()
+        );
+        let status = harness
+            .machine
+            .pokemon_mystery_gift_status()
+            .expect("Pokemon Mystery Gift status should stay exposed");
+        assert_eq!(status.kind, PokemonMysteryGiftKind::Item);
+        assert_eq!(status.code, PokemonMysteryGiftCode::new(0x00).unwrap());
+    }
+
+    #[test]
+    fn cgb_ir_none_action_turns_pokemon_mystery_gift_off() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("pokemon-mystery-gift-none", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredNone)
+                .expect("CGB IR NONE action should turn the accessory off")
+                .is_none()
+        );
+
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(!harness.session.pokemon_mystery_gift_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+    }
+
+    #[test]
+    fn pokemon_mystery_gift_is_mutually_exclusive_with_other_cgb_ir_modes() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness =
+            FrontendHarness::new("pokemon-mystery-gift-exclusive", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredSameGame)
+                .expect("CGB IR SAME GAME should replace the accessory runtime")
+                .is_none()
+        );
+        assert!(!harness.session.pokemon_mystery_gift_active());
+        assert!(harness.session.cgb_infrared_link_active());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift should replace the CGB IR pair")
+                .is_none()
+        );
+        assert!(harness.session.pokemon_mystery_gift_active());
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::PokemonMysteryGift
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredPikachuColor)
+                .expect("Pokemon Pikachu Color should replace Pokemon Mystery Gift")
+                .is_none()
+        );
+        assert!(harness.session.pokemon_pikachu_color_active());
+        assert!(!harness.session.pokemon_mystery_gift_active());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::PokemonPikachuColor
+        );
+    }
+
+    #[test]
+    fn reset_keeps_the_pokemon_mystery_gift_runtime_active() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("pokemon-mystery-gift-reset", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x00, 0x00);
+        harness.session.pokemon_mystery_gift_kind = PokemonMysteryGiftKind::Decoration;
+        harness.session.pokemon_mystery_gift_code = PokemonMysteryGiftCode::new(0x0D).unwrap();
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+        let reset_baseline = harness.machine.read_bus(0xC000);
+        harness.machine.write_bus(0xC000, 0xA5);
+
+        super::reset_machine(
+            harness.canvas.window(),
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("Pokemon Mystery Gift reset should rebuild a fresh accessory runtime");
+
+        assert!(harness.session.pokemon_mystery_gift_active());
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::PokemonMysteryGift
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), reset_baseline);
+        let status = harness
+            .machine
+            .pokemon_mystery_gift_status()
+            .expect("Pokemon Mystery Gift status should be exposed after reset");
+        assert_eq!(status.kind, PokemonMysteryGiftKind::Decoration);
+        assert_eq!(status.code, PokemonMysteryGiftCode::new(0x0D).unwrap());
+    }
+
+    #[test]
+    fn reconfigure_keeps_the_pokemon_mystery_gift_runtime_active() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness =
+            FrontendHarness::new("pokemon-mystery-gift-reconfigure", false, false, false);
+        open_cgb_primary_rom(&mut harness, "gold.gbc", 0x03, 0x02);
+        harness.session.pokemon_mystery_gift_kind = PokemonMysteryGiftKind::Decoration;
+        harness.session.pokemon_mystery_gift_code = PokemonMysteryGiftCode::new(0x0D).unwrap();
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetCgbInfraredMysteryGift)
+                .expect("Pokemon Mystery Gift action should activate an accessory runtime")
+                .is_none()
+        );
+
+        assert!(
+            harness.runtime.save_sessions[super::PlayerSlot::P1.index()].is_some(),
+            "P1 save session should exist before reconfigure"
+        );
+        assert!(
+            harness.runtime.save_sessions[super::PlayerSlot::P2.index()].is_none(),
+            "Pokemon Mystery Gift should not open a P2 save session"
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleSavePolicy)
+                .expect("save policy change should rebuild the accessory runtime")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.config.saves.flush_policy,
+            DesktopSaveFlushPolicy::Manual
+        );
+        assert!(harness.session.pokemon_mystery_gift_active());
+        assert!(!harness.session.cgb_infrared_link_active());
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::PokemonMysteryGift
+        );
+        let status = harness
+            .machine
+            .pokemon_mystery_gift_status()
+            .expect("Pokemon Mystery Gift status should be exposed after reconfigure");
+        assert_eq!(status.kind, PokemonMysteryGiftKind::Decoration);
+        assert_eq!(status.code, PokemonMysteryGiftCode::new(0x0D).unwrap());
+        assert!(
+            harness.runtime.save_sessions[super::PlayerSlot::P1.index()].is_some(),
+            "P1 save session should remain open after reconfigure"
+        );
+        assert!(
+            harness.runtime.save_sessions[super::PlayerSlot::P2.index()].is_none(),
+            "Accessory reconfigure must not create a P2 save session"
+        );
+    }
+
+    #[test]
     fn cgb_ir_save_sessions_use_the_secondary_rom_with_the_p2_extension() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("cgb-ir-save-keys", false, false, false);
@@ -16143,6 +16757,9 @@ mod tests {
                 cgb_infrared_link_active: false,
                 pokemon_pikachu_color_active: false,
                 pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+                pokemon_mystery_gift_active: false,
+                pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+                pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
                 pocket_camera_frame: None,
@@ -20239,6 +20856,9 @@ mod tests {
             cgb_infrared_link_active: false,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             last_open_directory: None,
             recent_roms: vec![primary_path.clone()],
             pocket_camera_frame: None,
@@ -21804,6 +22424,9 @@ mod tests {
             cgb_infrared_link_active: false,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -22062,6 +22685,9 @@ mod tests {
             cgb_infrared_link_active: false,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -22109,6 +22735,9 @@ mod tests {
             cgb_infrared_link_active: true,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,
@@ -27006,6 +27635,9 @@ mod tests {
             cgb_infrared_link_active: false,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
             pocket_camera_frame: None,

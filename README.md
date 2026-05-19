@@ -13,10 +13,10 @@ A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, 
 | DMA / bus / memory | Requester-aware arbitration with DMG and CGB OAM DMA policies, native-CGB VRAM/WRAM banking, GDMA/HDMA, blocked VRAM/OAM semantics, and explicit MMIO ownership. |
 | Timer / speed / interrupts | Falling-edge timer model with delayed `TIMA` reload/request timing, native-CGB `KEY1` normal/double-speed domains, centralized `IF` / `IE` ownership, and scheduler-visible IRQ aggregation. |
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF, and host-facing sample export. |
-| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, `SC`, and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, explicit link / IR endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, `DMG-07` 2/3/4-player topology, native CGB-to-CGB infrared sessions, and the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color Mystery Gift accessory model. |
+| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, `SC`, and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, explicit link / IR endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, `DMG-07` 2/3/4-player topology, native CGB-to-CGB infrared sessions, the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color Mystery Gift accessory model, and a selectable western GSC Mystery Gift sender accessory. |
 | Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, flash / EEPROM / accelerometer paths, rumble-capable metadata, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family and CGB-family models, including CGB boot-window routing, header-driven native/compatibility mode selection, and coherent first post-boot timer, PPU, and APU state. |
-| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
+| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, custom GSC Mystery Gift item/decoration sends, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
 | Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
@@ -73,7 +73,7 @@ cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
 # Desktop: launch a local DMG-04 two-player Game Link session
 cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
 
-# Desktop: CGB infrared and Pokémon Pikachu 2 are selected at runtime from the overlay GBC IR submenu
+# Desktop: CGB infrared, Pokémon Pikachu 2, and GSC Mystery Gift are selected at runtime from the overlay GBC IR submenu
 cargo run --release -p gb-desktop -- path/to/pokemon-crystal.gbc --model CGB
 
 # Benchmarks: create a sample portable case and run a case directory through desktop
@@ -83,17 +83,63 @@ scripts/run-benchmark.sh path/to/benchmark-cases
 
 See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.md](docs/frontends/DESKTOP.md) for full usage details.
 
-## CGB infrared and Pokémon Pikachu 2
+## CGB infrared, Pokémon Pikachu 2, and GSC Mystery Gift
 
 `gb-core` models CGB infrared as bus-owned `RP` state plus explicit optical topologies. Native CGB-to-CGB IR sessions route light between two independent `Machine` instances, while accessory sessions pair one CGB `Machine` with a protocol device that only injects external IR light into the sensor.
 
-`gb-desktop` exposes CGB infrared through the `GBC IR` overlay submenu when `CONFIG -> SYSTEM -> MODEL GB COLOR` is active. The root label reports `IR: NONE`, `IR: SAME GAME`, `IR: SELECT GAME`, or `IR: PIKACHU 2`; the submenu marks the active mode with `✓`, keeps `HELPER ON/OFF` for the top-right IR timing helper, and disables save states / rewind while an IR session is active.
+`gb-desktop` exposes CGB infrared through the `GBC IR` overlay submenu when `CONFIG -> SYSTEM -> MODEL GB COLOR` is active. The root label reports `IR: NONE`, `IR: SAME GAME`, `IR: SELECT GAME`, `IR: PIKACHU 2`, or `IR: MYSTERY GIFT`; the submenu marks the active mode with `✓`, keeps `HELPER ON/OFF` for the top-right IR timing helper, and disables save states / rewind while an IR session is active.
 
 `IR -> SAME GAME` clones the loaded CGB ROM into a fresh second console with an isolated P2 save slot. `IR -> SELECT GAME` asks for a second CGB ROM and supports different Gold / Silver / Crystal cartridges on the two IR sides, matching Mystery Gift station and two-console flows without treating IR as a Game Link cable mode.
+
+The native CGB-to-CGB infrared path has been locally tested successfully with Pokémon Gold / Silver / Crystal, Super Mario Bros. DX, Pokémon Trading Card Game, Donkey Kong Country, Pokémon Pinball, and Perfect Dark.
 
 `IR -> PIKACHU 2` enables the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color accessory model for western Pokémon Gold, Silver, and Crystal. The implementation generates the PP2 Mystery Gift protocol rather than replaying external waveform data, acts as PP2 role A, mirrors the receiving game's supported western region code (`0x90`, `0x96`, `0x99`, `0x9A`, or `0x9F`), re-arms after each successful send, and currently leaves Japanese / Korean validation as future work.
 
 The `PIKACHU 2` gift selector is enabled only after `PIKACHU 2 ✓` is active and cycles the documented watt tiers: `1W EON MAIL`, `100W BERRY`, `200W BITTER BERRY`, `300W GREAT BALL`, `400W MAX REPEL`, `500W ETHER`, `600W MIRACLEBERRY`, `700W GOLD BERRY`, `800W ELIXIR`, `900W REVIVE`, and `999W RARE CANDY`.
+
+`IR -> MYSTERY GIFT` enables a custom western Pokémon Gold / Silver / Crystal Mystery Gift sender. It uses the same generated role-A IR protocol helper as `PIKACHU 2`, sends only the first 20-byte payload with version `0x03`, ID `0x0000`, trainer name `GB-CYCLE`, western region auto-detection, and no Trainer House team payload. `GIFT ITEM` / `GIFT DECORATION` selects the payload type and the gift selector cycles the documented `0x00..=0x24` table by name only, such as `BERRY`, `EON MAIL`, `WEEDLE DOLL`, and `TENTACOOL DOLL`; long labels scroll in the same way as `PIKACHU 2`.
+
+The custom Mystery Gift selector displays only these uppercase names, without the internal gift code:
+
+| `GIFT ITEM` | `GIFT DECORATION` |
+| --- | --- |
+| `BERRY` | `JIGGLYPUFF DOLL` |
+| `PRZCUREBERRY` | `POLIWAG DOLL` |
+| `MINT BERRY` | `DIGLETT DOLL` |
+| `ICE BERRY` | `STARYU DOLL` |
+| `BURNT BERRY` | `MAGIKARP DOLL` |
+| `PSNCUREBERRY` | `ODDISH DOLL` |
+| `GUARD SPEC.` | `GENGAR DOLL` |
+| `X DEFEND` | `SHELLDER DOLL` |
+| `X ATTACK` | `GRIMER DOLL` |
+| `BITTER BERRY` | `VOLTORB DOLL` |
+| `DIRE HIT` | `CLEFAIRY POSTER` |
+| `X SPECIAL` | `JIGGLYPUFF POSTER` |
+| `X ACCURACY` | `SUPER NES` |
+| `EON MAIL` | `WEEDLE DOLL` |
+| `MORPH MAIL` | `GEODUDE DOLL` |
+| `MUSIC MAIL` | `MACHOP DOLL` |
+| `MIRACLEBERRY` | `MAGNA PLANT` |
+| `GOLD BERRY` | `TROPIC PLANT` |
+| `REVIVE` | `NES` |
+| `GREAT BALL` | `NINTENDO 64` |
+| `SUPER REPEL` | `BULBASAUR DOLL` |
+| `MAX REPEL` | `SQUIRTLE DOLL` |
+| `ELIXIR` | `PINK BED` |
+| `ETHER` | `POLKADOT BED` |
+| `WATER STONE` | `RED CARPET` |
+| `FIRE STONE` | `BLUE CARPET` |
+| `LEAF STONE` | `YELLOW CARPET` |
+| `THUNDERSTONE` | `GREEN CARPET` |
+| `MAX ETHER` | `JUMBO PLANT` |
+| `MAX ELIXIR` | `VIRTUAL BOY` |
+| `MAX REVIVE` | `BIG ONIX DOLL` |
+| `SCOPE LENS` | `PIKACHU POSTER` |
+| `HP UP` | `BIG LAPRAS DOLL` |
+| `PP UP` | `SURF PIKACHU DOLL` |
+| `RARE CANDY` | `PIKACHU BED` |
+| `BLUESKY MAIL` | `UNOWN DOLL` |
+| `MIRAGE MAIL` | `TENTACOOL DOLL` |
 
 ## Release packages
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable, the active `DMG-07` 4-Player Adapter, the native-CGB IR optical pair, and single-cartridge CGB IR accessory sessions such as `PokemonPikachuColor`. Own shared T-cycle coordination when a link topology or accessory session must route clocks, data, or optical emitter state between one or more `Machine` instances and explicit external hardware models. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, `RP` / `FF56` sensor state, printer command parsing, or frontend session UX.
+Own passive and active external-port topologies that span more than one console, including the two-console `DMG-04` Game Link Cable, the active `DMG-07` 4-Player Adapter, the native-CGB IR optical pair, and single-cartridge CGB IR accessory sessions such as `PokemonPikachuColor` and `PokemonMysteryGift`. Own shared T-cycle coordination when a link topology or accessory session must route clocks, data, or optical emitter state between one or more `Machine` instances and explicit external hardware models. Do not own `SB` / `SC` MMIO semantics, per-bit serial shifting, `RP` / `FF56` sensor state, printer command parsing, or frontend session UX.
 
 ## Responsibilities
 
@@ -61,10 +61,11 @@ Own passive and active external-port topologies that span more than one console,
 ## CGB infrared accessory model
 
 - Model external IR accessories as explicit devices paired with a single `Machine`, not as second CGB consoles and not as `external_port` attachments.
-- `PokemonPikachuColorSession` owns one `Machine` plus one `PokemonPikachuColor` accessory. On each T-cycle it samples the game's bus-owned `RP` emitter latch, advances the accessory protocol, and applies the accessory's delayed optical output to the CGB sensor during `ExternalEventIngress` before the machine executes the rest of the cycle.
+- `PokemonPikachuColorSession` and `PokemonMysteryGiftSession` each own one `Machine` plus one explicit accessory. On each T-cycle the session samples the game's bus-owned `RP` emitter latch, advances the accessory protocol, and applies the accessory's delayed optical output to the CGB sensor during `ExternalEventIngress` before the machine executes the rest of the cycle.
 - The accessory only injects external light. `RP` remains bus-owned: read enable, self-emitter visibility, warmup, fade, and effective-signal readback stay in the CGB sensor model rather than moving into the accessory.
-- `PokemonPikachuColor` implements the Pokémon Pikachu 2 / Pocket Pikachu Color Mystery Gift protocol as generated pulses and parsed blocks rather than replaying GBE+ waveform data. The v1 payload is the 20-byte western PP2 gift payload with version `0x03`, ID `0x0000`, name `PIKACHU`, zeroed decoration/status/counter fields, and one of the documented 11 item bytes.
-- PP2 pulse durations follow the Pokémon Gold/Silver/Crystal Mystery Gift IR routines: the hello uses the fast IR timer cadence with long/mid/short off windows, data messages use the same preamble/trailer shape as `SendIRDataMessage`, and payload bits are MSB-first with a short mark plus a zero/one off duration. `PokemonPikachuColor` models PP2 as protocol role A: it emits hello messages, waits for the game's hello response before sending each data block, retries with a short cadence instead of answering unrelated initial game hellos, and re-arms after a successful exchange so an active frontend accessory can serve a later Mystery Gift attempt without being detached and attached again.
+- `PokemonPikachuColor` implements the Pokémon Pikachu 2 / Pocket Pikachu Color Mystery Gift payload on top of the shared generated-pulse and parsed-block protocol helper rather than replaying GBE+ waveform data. The PP2 payload is the 20-byte western gift payload with version `0x03`, ID `0x0000`, name `PIKACHU`, zeroed decoration/status/counter fields, and one of the documented 11 item bytes.
+- `PokemonMysteryGift` uses the same role-A protocol helper for a custom western Pokémon Gold/Silver/Crystal sender. Its payload is version `0x03`, ID `0x0000`, trainer name `GB-CYCLE`, the selected gift type byte (`0x00` item or `0x01` decoration), and the selected `0x00..=0x24` gift code copied into both item and decoration fields. It intentionally sends only the first 20-byte payload and does not send Trainer House team data, so the game-side daily/ID counting behavior associated with that second payload remains outside this accessory.
+- Mystery Gift pulse durations follow the Pokémon Gold/Silver/Crystal Mystery Gift IR routines: the hello uses the fast IR timer cadence with long/mid/short off windows, data messages use the same preamble/trailer shape as `SendIRDataMessage`, and payload bits are MSB-first with a short mark plus a zero/one off duration. The shared helper models protocol role A: it emits hello messages, waits for the game's hello response before sending each data block, retries with a short cadence instead of answering unrelated initial game hellos, and re-arms after a successful exchange or when the selected payload changes so an active frontend accessory can serve a later Mystery Gift attempt without being detached and attached again.
 - Region handling defaults to `Auto` for the validated western Gold/Silver/Crystal region codes `0x90`, `0x96`, `0x99`, `0x9A`, and `0x9F`. Japanese and Korean variants remain deferred until hardware traces or ROM-level validation prove the correct protocol behavior.
 - Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and other title-specific external protocols require their own device/protocol ownership before they can share the optical accessory seam.
 
@@ -92,6 +93,8 @@ Own passive and active external-port topologies that span more than one console,
 - Pan Docs — 4-Player Adapter
 - Dan Docs — CGB IR port
 - Dan Docs — DMG-07 4-Player Adapter
+- ProjectPokemon — "Mystery Gift: Reverse Engineering of IR Protocol"
+- Bulbapedia — "Character encoding (Generation II)"
 - Shonumi, "Edge of Emulation: Game Boy 4-Player Adapter"
 
 ## Tests
@@ -103,4 +106,5 @@ Concrete cases live in link unit/integration tests plus the `gb-test-runner` lin
 - `DMG-07` transmission timing, packet length, high-/low-nibble `RATE` effects, one-packet delayed double-buffer behavior, first stale packet, zero-filled absent-port slots, and deterministic 2-, 3-, and 4-console linked sessions
 - `CGB IR` pair validation, exact two-participant attach behavior, native-CGB-only `RP` participation, peer emitter sampling, self-emitter visibility, sensor warmup/fade/recovery, warmed-sensor short-pulse visibility, and one retained internal linked-session smoke suite using synthetic CGB ROMs
 - `PokemonPikachuColor` gift table coverage, PP2 payload bytes, block checksum/ACK/empty-block encoding, western region auto-detection, accessory-to-sensor optical ingress, and `into_machine()` cleanup
+- `PokemonMysteryGift` full `0x00..=0x24` item/decoration table coverage, UI-facing labels without hex codes, exact `GB-CYCLE` payload bytes, gift-type/code payload selection, checksum coverage, restart-on-selection-change behavior, accessory-to-sensor optical ingress, and `into_machine()` cleanup
 - shared linked-session stepping on one T-cycle timeline, with frontend or harness tests limited to topology construction, input routing, artifacts, and presentation rather than redefining serial or adapter hardware rules
