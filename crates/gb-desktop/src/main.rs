@@ -50,13 +50,12 @@ use gb_desktop::{
     SaveDirectoryPolicy, VideoOptions,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveFileExtension, CartridgeSaveKey, CartridgeSaveTimeSource,
+    CartridgeSaveFileExtension, CartridgeSaveKey, CartridgeSaveTimeSource,
     EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError, ExternalSaveExportFormat,
-    FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
-    MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource,
-    decode_machine_save_state_envelope, encode_external_cartridge_save,
-    encode_machine_save_state_envelope, import_external_cartridge_save,
-    uses_battery_backed_hardware_persistence,
+    FilesystemCartridgeSaveStore, FixedCartridgeSaveTimeSource, MACHINE_SAVE_STATE_FILE_EXTENSION,
+    MachineSaveStateEnvelope, SystemCartridgeSaveTimeSource, decode_machine_save_state_envelope,
+    encode_external_cartridge_save, encode_machine_save_state_envelope,
+    import_external_cartridge_save, uses_battery_backed_hardware_persistence,
 };
 use input::{
     FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_axis,
@@ -9213,21 +9212,21 @@ fn import_external_save_for_current_rom(
         return Err(error);
     }
 
-    let mut backend = FilesystemCartridgeSaveBackend::with_time_source(
+    let mut store = FilesystemCartridgeSaveStore::with_time_source(
         save_root,
         FixedCartridgeSaveTimeSource::new(import_unix_seconds),
     );
-    let save_path = backend.path_for_key(&save_key);
-    let save_result = backend.save(&save_key, metadata, &imported_state);
+    let save_path = store.preferred_path_for_state(&save_key, metadata, &imported_state);
+    let save_result = store.save(&save_key, metadata, &imported_state);
     match save_result {
-        Ok(_) => {
+        Ok(write) => {
             context.runtime.save_sessions[PlayerSlot::P1.index()] = None;
-            Ok(save_path)
+            Ok(write.path)
         }
         Err(error) => {
             context.runtime.save_sessions[PlayerSlot::P1.index()] = previous_primary_save_session;
             Err(format_path_error(
-                "failed to write imported internal save",
+                "failed to write imported save",
                 &save_path,
                 &error.to_string(),
             ))
@@ -13831,8 +13830,7 @@ mod tests {
         GamepadRumbleMode, MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
     };
     use gb_persistence::{
-        CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
-        decode_machine_save_state_envelope,
+        CartridgeSaveKey, FilesystemCartridgeSaveStore, decode_machine_save_state_envelope,
     };
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
@@ -14984,8 +14982,8 @@ mod tests {
         let p2_save_session = harness.runtime.save_sessions[super::PlayerSlot::P2.index()]
             .as_ref()
             .expect("CGB IR P2 should have a save session");
-        assert_eq!(p1_save_session.save_path(), save_root.join("gold.gbsav"));
-        assert_eq!(p2_save_session.save_path(), save_root.join("silver.gbsa2"));
+        assert_eq!(p1_save_session.save_path(), save_root.join("gold.sav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("silver.sa2"));
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
     }
@@ -15027,8 +15025,8 @@ mod tests {
             harness.session.linked_secondary_rom_path(),
             Some(rom_path.as_path())
         );
-        assert_eq!(p1_save_session.save_path(), save_root.join("battery.gbsav"));
-        assert_eq!(p2_save_session.save_path(), save_root.join("battery.gbsa2"));
+        assert_eq!(p1_save_session.save_path(), save_root.join("battery.sav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("battery.sa2"));
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
     }
@@ -15053,8 +15051,8 @@ mod tests {
         let p2_save_session = harness.runtime.save_sessions[super::PlayerSlot::P2.index()]
             .as_ref()
             .expect("CGB IR SAME GAME P2 should have a save session");
-        assert_eq!(p1_save_session.save_path(), save_root.join("gold.gbsav"));
-        assert_eq!(p2_save_session.save_path(), save_root.join("gold.gbsa2"));
+        assert_eq!(p1_save_session.save_path(), save_root.join("gold.sav"));
+        assert_eq!(p2_save_session.save_path(), save_root.join("gold.sa2"));
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P3.index()].is_none());
         assert!(harness.runtime.save_sessions[super::PlayerSlot::P4.index()].is_none());
     }
@@ -15391,10 +15389,10 @@ mod tests {
 
         let save_root = harness.root.join("saves");
         let expected_paths = [
-            save_root.join("battery.gbsav"),
-            save_root.join("battery.gbsa2"),
-            save_root.join("battery.gbsa3"),
-            save_root.join("battery.gbsa4"),
+            save_root.join("battery.sav"),
+            save_root.join("battery.sa2"),
+            save_root.join("battery.sa3"),
+            save_root.join("battery.sa4"),
         ];
         for (slot, expected_path) in super::PlayerSlot::ALL.into_iter().zip(expected_paths) {
             let save_session = harness.runtime.save_sessions[slot.index()]
@@ -22173,7 +22171,7 @@ mod tests {
     }
 
     #[test]
-    fn external_save_dialogs_export_current_state_and_import_internal_save() {
+    fn external_save_dialogs_export_current_state_and_import_runtime_save() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("external-save-dialogs", false, false, false);
         let rom_name = "battery.gb";
@@ -22254,17 +22252,10 @@ mod tests {
             .resolve_key(&rom_path)
             .expect("save key should resolve")
             .expect("save key should be enabled");
-        let backend = FilesystemCartridgeSaveBackend::new(save_root);
-        let envelope = backend
-            .load(&save_key)
-            .expect("imported internal save should load")
-            .expect("imported internal save should exist");
-        assert_eq!(
-            envelope.persistent_state,
-            PersistentCartState::NoMbcRam {
-                ram: vec![0x34; 8 * 1024]
-            }
-        );
+        let store = FilesystemCartridgeSaveStore::new(save_root);
+        let imported_save = fs::read(store.external_path_for_key(&save_key))
+            .expect("imported external-primary save should exist");
+        assert_eq!(imported_save, vec![0x34; 8 * 1024]);
 
         harness
             .runtime
@@ -23462,12 +23453,12 @@ mod tests {
             let valid_import_path = context.session.current_dir.join("valid-import.sav");
             fs::write(&valid_import_path, vec![0x44; 8 * 1024])
                 .expect("valid external save should be writable");
-            let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-            let target_save_path = backend.path_for_key(&save_key);
+            let store = FilesystemCartridgeSaveStore::new(&save_root);
+            let target_save_path = store.external_path_for_key(&save_key);
             let mut blocked_temp_path = target_save_path.as_os_str().to_os_string();
             blocked_temp_path.push(".tmp");
             fs::create_dir_all(PathBuf::from(blocked_temp_path))
-                .expect("blocked internal save temp path should be creatable");
+                .expect("blocked save temp path should be creatable");
             let close_error = super::import_external_save_for_current_rom(
                 valid_import_path.clone(),
                 &mut context,
@@ -23482,9 +23473,9 @@ mod tests {
             context.runtime.save_sessions[super::PlayerSlot::P1.index()] = None;
             let import_write_error =
                 super::import_external_save_for_current_rom(valid_import_path, &mut context)
-                    .expect_err("internal save backend errors should surface");
+                    .expect_err("runtime save store errors should surface");
             assert!(
-                import_write_error.contains("failed to write imported internal save"),
+                import_write_error.contains("failed to write imported save"),
                 "{import_write_error}"
             );
         }

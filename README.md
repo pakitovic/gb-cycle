@@ -35,7 +35,7 @@ crates/
   gb-benchmark/    Portable benchmark TOML parsing, deterministic joypad stimuli, shared artifact paths, and frontend-neutral stats
   gb-cli/          Headless CLI frontend, ROM inspection, save conversion, and `.gbstate` run tooling
   gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link sessions, printer, Pocket Camera, audio/video diagnostics, save states, rewind, and Fast Forward
-  gb-persistence/  Host-side `.gbsav`, external `.sav`, and `.gbstate` envelope formats
+  gb-persistence/  Host-side cartridge save storage (`.sav/.saN` primary plus `.gbsav/.gbsaN` fallback), external conversion, and `.gbstate` envelope formats
 
 docs/              Architecture, roadmap, testing, frontend, hardware, and reference documentation
 Makefile           Local verification pipeline, ROM-suite helpers, CGB gates, and Phase 9 differential/determinism utilities

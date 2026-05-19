@@ -4,15 +4,16 @@ use gb_core::{
 };
 use gb_desktop::{DEFAULT_SAVE_FLUSH_DEBOUNCE, DesktopSaveFlushPolicy};
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveFileExtension, CartridgeSaveKey,
-    FilesystemCartridgeSaveBackend, uses_battery_backed_hardware_persistence,
+    CartridgeSaveFileExtension, CartridgeSaveKey, FilesystemCartridgeSaveStore,
+    uses_battery_backed_hardware_persistence,
 };
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub struct DesktopSaveSession {
-    backend: FilesystemCartridgeSaveBackend,
+    backend: FilesystemCartridgeSaveStore,
     key: CartridgeSaveKey,
+    save_path: PathBuf,
     flush_policy: DesktopSaveFlushPolicy,
     last_saved_state: PersistentCartState,
     pending_debounced_flush_deadline: Option<Instant>,
@@ -54,20 +55,19 @@ impl DesktopSaveSession {
             return Ok(None);
         };
 
-        let backend =
-            FilesystemCartridgeSaveBackend::with_file_extension(save_root, file_extension);
-        let load_result = backend.load(&key).map_err(|error| {
-            format!(
-                "failed to load save {}: {error}",
-                backend.path_for_key(&key).display()
-            )
-        })?;
+        let backend = FilesystemCartridgeSaveStore::with_file_extension(save_root, file_extension);
+        let target_state = machine.cartridge().persistent_state();
+        let mut save_path = backend.preferred_path_for_state(&key, metadata, &target_state);
+        let load_result = backend
+            .load(&key, metadata, &target_state)
+            .map_err(|error| format!("failed to load save {}: {error}", save_path.display()))?;
 
-        if let Some(envelope) = load_result {
+        if let Some(load) = load_result {
+            save_path = load.path;
             let elapsed_seconds = backend
                 .current_unix_seconds()
-                .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
-            let mut restored_state = envelope.persistent_state;
+                .saturating_sub(load.envelope.backend_metadata.saved_at_unix_seconds);
+            let mut restored_state = load.envelope.persistent_state;
             apply_elapsed_off_session_seconds(&mut restored_state, elapsed_seconds);
             machine
                 .restore_cartridge_persistent_state(&restored_state)
@@ -78,14 +78,16 @@ impl DesktopSaveSession {
         Ok(Some(Self {
             backend,
             key,
+            save_path,
             flush_policy,
             last_saved_state,
             pending_debounced_flush_deadline: None,
         }))
     }
 
+    #[allow(dead_code)]
     pub fn save_path(&self) -> PathBuf {
-        self.backend.path_for_key(&self.key)
+        self.save_path.clone()
     }
 
     pub fn flush_policy(&self) -> DesktopSaveFlushPolicy {
@@ -158,7 +160,13 @@ impl DesktopSaveSession {
             return Ok(false);
         }
 
-        self.backend
+        let save_path = self.backend.preferred_path_for_state(
+            &self.key,
+            machine.cartridge().persistence_metadata(),
+            &current_state,
+        );
+        let write = self
+            .backend
             .save(
                 &self.key,
                 machine.cartridge().persistence_metadata(),
@@ -167,9 +175,10 @@ impl DesktopSaveSession {
             .map_err(|error| {
                 format!(
                     "failed to save cartridge persistence ({reason}) to {}: {error}",
-                    self.save_path().display()
+                    save_path.display()
                 )
             })?;
+        self.save_path = write.path;
         self.last_saved_state = current_state;
         self.pending_debounced_flush_deadline = None;
         Ok(true)
@@ -202,6 +211,7 @@ fn _cartridge(_slot: &CartridgeSlot) {}
 mod tests {
     use super::*;
     use gb_core::{ConsoleModel, MachineConfig};
+    use gb_persistence::{CartridgeSaveBackend, FilesystemCartridgeSaveBackend};
     use std::env;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -322,8 +332,8 @@ mod tests {
         mutate_mbc2_persistent_state(&mut saved_machine, 0x0A);
         let expected_state = saved_machine.cartridge().persistent_state();
 
-        let mut backend = FilesystemCartridgeSaveBackend::new(&root);
-        backend
+        let mut store = FilesystemCartridgeSaveStore::new(&root);
+        store
             .save(
                 &key,
                 saved_machine.cartridge().persistence_metadata(),
@@ -343,7 +353,7 @@ mod tests {
 
         assert_eq!(
             session.save_path(),
-            root.join(format!("{}.gbsav", key.as_str()))
+            root.join(format!("{}.sav", key.as_str()))
         );
         assert_eq!(
             restored_machine.cartridge().persistent_state(),
@@ -395,7 +405,7 @@ mod tests {
         );
         assert_eq!(
             session.save_path(),
-            root.join(format!("{}.gbsa2", key.as_str()))
+            root.join(format!("{}.sa2", key.as_str()))
         );
         mutate_mbc2_persistent_state(&mut restored_machine, 0x0B);
         session
@@ -411,8 +421,8 @@ mod tests {
     fn open_surfaces_corrupt_existing_save_files() {
         let root = temp_save_root();
         let key = CartridgeSaveKey::new("corrupt".to_string()).expect("key should be valid");
-        let backend = FilesystemCartridgeSaveBackend::new(&root);
-        fs::write(backend.path_for_key(&key), b"not-a-valid-save")
+        let store = FilesystemCartridgeSaveStore::new(&root);
+        fs::write(store.external_path_for_key(&key), b"not-a-valid-save")
             .expect("corrupt save payload should write");
         let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
 
@@ -425,7 +435,7 @@ mod tests {
         .err()
         .expect("corrupt save payloads should surface as load errors");
         assert!(error.contains("failed to load save"));
-        assert!(error.contains(".gbsav"));
+        assert!(error.contains(".sav"));
 
         fs::remove_dir_all(root).expect("temp save root should be removable");
     }
@@ -509,14 +519,14 @@ mod tests {
         .expect("battery-backed cartridge should create a session");
         let blocking_root = root.join("not-a-directory");
         fs::write(&blocking_root, b"occupied").expect("blocking file should exist");
-        session.backend = FilesystemCartridgeSaveBackend::new(&blocking_root);
+        session.backend = FilesystemCartridgeSaveStore::new(&blocking_root);
         mutate_mbc2_persistent_state(&mut machine, 0x0B);
 
         let error = session
             .flush_if_changed(&machine, "test-save")
             .expect_err("save failures should surface through the desktop session");
         assert!(error.contains("failed to save cartridge persistence (test-save)"));
-        assert!(error.contains(".gbsav"));
+        assert!(error.contains(".sav"));
 
         fs::remove_dir_all(root).expect("temp save root should be removable");
     }
@@ -615,7 +625,7 @@ mod tests {
         assert_eq!(session.flush_policy(), DesktopSaveFlushPolicy::Manual);
         assert_eq!(
             session.save_path(),
-            root.join(format!("{}.gbsav", key.as_str()))
+            root.join(format!("{}.sav", key.as_str()))
         );
         assert!(
             !session

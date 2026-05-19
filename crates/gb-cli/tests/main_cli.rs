@@ -5,9 +5,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_core::{BootRomAssets, BootRomKind, PersistentCartState};
-use gb_persistence::{
-    CartridgeSaveBackend, FilesystemCartridgeSaveBackend, decode_machine_save_state_envelope,
-};
+use gb_persistence::{FilesystemCartridgeSaveStore, decode_machine_save_state_envelope};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
@@ -202,8 +200,8 @@ fn binary_run_with_artifacts_and_persistence_covers_headless_paths() {
     fs::create_dir_all(&save_root).expect("save root should be creatable");
     let save_key =
         gb_persistence::CartridgeSaveKey::new("battery").expect("save key should be valid");
-    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    backend
+    let mut store = FilesystemCartridgeSaveStore::new(&save_root);
+    store
         .save(
             &save_key,
             gb_core::CartridgePersistenceMetadata {
