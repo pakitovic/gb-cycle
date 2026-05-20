@@ -3998,6 +3998,72 @@ oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
 
 [[case]]
+id = "gbmicrotest-dma-dma-0x1000"
+rom = "dma/dma_0x1000.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0x1000.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
+id = "gbmicrotest-dma-dma-0x9000"
+rom = "dma/dma_0x9000.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0x9000.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
+id = "gbmicrotest-dma-dma-0xa000"
+rom = "dma/dma_0xA000.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xA000.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
+id = "gbmicrotest-dma-dma-0xc000"
+rom = "dma/dma_0xC000.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xC000.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
+id = "gbmicrotest-dma-dma-0xe000"
+rom = "dma/dma_0xE000.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xE000.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
+id = "gbmicrotest-dma-dma-timing-a"
+rom = "dma/dma_timing_a.gb"
+source_id = "docboy"
+source_path = "tests/roms/dmg/gbmicrotest/dma/dma_timing_a.gb"
+console = "dmg"
+execution_mode = "strict"
+timeout_tcycles = 1000000
+oracle = "memory-byte-equals"
+memory = [{ address = 65410, value = 1 }]
+
+[[case]]
 id = "gbmicrotest-stat-write-bug-stat-write-glitch-l0-a"
 rom = "stat_write_bug/stat_write_glitch_l0_a.gb"
 source_id = "docboy"

@@ -2652,7 +2652,7 @@ mod tests {
         assert_eq!(suite.name, "gbmicrotest-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("gbmicrotest"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 432);
+        assert_eq!(suite.cases.len(), 438);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
                 && case.startup_mode == StartupMode::SkipBoot
@@ -2664,12 +2664,28 @@ mod tests {
                 && case.failure_artifacts.contains(CaptureKind::MemoryBytes)
                 && case.failure_artifacts.contains(CaptureKind::Snapshot)
                 && case.rom_path.starts_with("gbmicrotest")
-                && !case.rom_path.starts_with("gbmicrotest/dma")
                 && case.pass_condition
                     == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(
                         0xFF82, 0x01,
                     )])
         }));
+        let dma_rows = [
+            "gbmicrotest/dma/dma_0x1000.gb",
+            "gbmicrotest/dma/dma_0x9000.gb",
+            "gbmicrotest/dma/dma_0xA000.gb",
+            "gbmicrotest/dma/dma_0xC000.gb",
+            "gbmicrotest/dma/dma_0xE000.gb",
+            "gbmicrotest/dma/dma_timing_a.gb",
+        ];
+        for rom_path in dma_rows {
+            assert!(
+                suite
+                    .cases
+                    .iter()
+                    .any(|case| case.rom_path == Path::new(rom_path)),
+                "{rom_path} should be materialized from DocBoy's on-disk gbmicrotest/dma ROMs"
+            );
+        }
         let long_spin_if_ime0 = suite
             .cases
             .iter()
@@ -2679,13 +2695,6 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.id == long_spin_if_ime0.id || case.timeout == Timeout::TCycles(1_000_000)
         }));
-        assert!(
-            !suite
-                .cases
-                .iter()
-                .any(|case| case.rom_path.starts_with("gbmicrotest/dma")),
-            "DocBoy dmg.json excludes the six gbmicrotest/dma ROMs"
-        );
         assert!(suite_uses_extra_test_report("gbmicrotest-dmg-extra"));
     }
 
