@@ -4,7 +4,7 @@ Read the matching file directly; this index is a routing guide plus a summary of
 
 ## Mandatory external-ROM regression workflow
 
-When working on already-known external ROM failures or rerunning curated ROM suites to evaluate a timing-sensitive change, always capture a baseline copy of the matching persisted report before the work, capture the final report again after the run, and compare the two before deciding whether the change is worth keeping. Use `/.roms/test/test-report.md` for promoted suites and `/.roms/test/test-report-extra.md` for extra/exploratory suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio`; see `TESTING.md` for the authoritative workflow details.
+When working on already-known external ROM failures or rerunning curated ROM suites to evaluate a timing-sensitive change, always capture a baseline copy of the matching persisted report before the work, capture the final report again after the run, and compare the two before deciding whether the change is worth keeping. Use `/.roms/test/test-report.md` for promoted suites, `/.roms/test/test-report-extra.md` for non-DocBoy extra/exploratory suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio`, and `/.roms/test/test-report-docboy.md` for the large experimental DocBoy single-machine suites; see `TESTING.md` for the authoritative workflow details.
 
 ## Global docs
 

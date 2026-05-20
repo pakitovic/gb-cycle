@@ -10,7 +10,6 @@ rom = "halt/halt_bug.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/halt/halt_bug.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -21,7 +20,6 @@ rom = "halt/halt_op_dupe.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/halt/halt_op_dupe.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -32,7 +30,6 @@ rom = "ppu/hblank_int_di_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_di_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -43,7 +40,6 @@ rom = "ppu/hblank_int_di_timing_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_di_timing_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -54,7 +50,6 @@ rom = "ppu/hblank_int_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -65,7 +60,6 @@ rom = "ppu/hblank_int_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -76,7 +70,6 @@ rom = "ppu/hblank_int_l0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_l0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -87,7 +80,6 @@ rom = "ppu/hblank_int_l1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_l1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -98,7 +90,6 @@ rom = "ppu/hblank_int_l2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_l2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -109,7 +100,6 @@ rom = "ppu/hblank_int_scx0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -120,7 +110,6 @@ rom = "ppu/hblank_int_scx0_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -131,7 +120,6 @@ rom = "ppu/hblank_int_scx0_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -142,7 +130,6 @@ rom = "ppu/hblank_int_scx0_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -153,7 +140,6 @@ rom = "ppu/hblank_int_scx0_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -164,7 +150,6 @@ rom = "ppu/hblank_int_scx1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -175,7 +160,6 @@ rom = "ppu/hblank_int_scx1_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -186,7 +170,6 @@ rom = "ppu/hblank_int_scx1_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -197,7 +180,6 @@ rom = "ppu/hblank_int_scx1_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -208,7 +190,6 @@ rom = "ppu/hblank_int_scx1_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -219,7 +200,6 @@ rom = "ppu/hblank_int_scx1_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -230,7 +210,6 @@ rom = "ppu/hblank_int_scx1_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -241,7 +220,6 @@ rom = "ppu/hblank_int_scx2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -252,7 +230,6 @@ rom = "ppu/hblank_int_scx2_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -263,7 +240,6 @@ rom = "ppu/hblank_int_scx2_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -274,7 +250,6 @@ rom = "ppu/hblank_int_scx2_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -285,7 +260,6 @@ rom = "ppu/hblank_int_scx2_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -296,7 +270,6 @@ rom = "ppu/hblank_int_scx2_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -307,7 +280,6 @@ rom = "ppu/hblank_int_scx2_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -318,7 +290,6 @@ rom = "ppu/hblank_int_scx3.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -329,7 +300,6 @@ rom = "ppu/hblank_int_scx3_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -340,7 +310,6 @@ rom = "ppu/hblank_int_scx3_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -351,7 +320,6 @@ rom = "ppu/hblank_int_scx3_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -362,7 +330,6 @@ rom = "ppu/hblank_int_scx3_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -373,7 +340,6 @@ rom = "ppu/hblank_int_scx3_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -384,7 +350,6 @@ rom = "ppu/hblank_int_scx3_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -395,7 +360,6 @@ rom = "ppu/hblank_int_scx4.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -406,7 +370,6 @@ rom = "ppu/hblank_int_scx4_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -417,7 +380,6 @@ rom = "ppu/hblank_int_scx4_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -428,7 +390,6 @@ rom = "ppu/hblank_int_scx4_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -439,7 +400,6 @@ rom = "ppu/hblank_int_scx4_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -450,7 +410,6 @@ rom = "ppu/hblank_int_scx4_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -461,7 +420,6 @@ rom = "ppu/hblank_int_scx4_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -472,7 +430,6 @@ rom = "ppu/hblank_int_scx5.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -483,7 +440,6 @@ rom = "ppu/hblank_int_scx5_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -494,7 +450,6 @@ rom = "ppu/hblank_int_scx5_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -505,7 +460,6 @@ rom = "ppu/hblank_int_scx5_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -516,7 +470,6 @@ rom = "ppu/hblank_int_scx5_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -527,7 +480,6 @@ rom = "ppu/hblank_int_scx5_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -538,7 +490,6 @@ rom = "ppu/hblank_int_scx5_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -549,7 +500,6 @@ rom = "ppu/hblank_int_scx6.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -560,7 +510,6 @@ rom = "ppu/hblank_int_scx6_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -571,7 +520,6 @@ rom = "ppu/hblank_int_scx6_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -582,7 +530,6 @@ rom = "ppu/hblank_int_scx6_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -593,7 +540,6 @@ rom = "ppu/hblank_int_scx6_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -604,7 +550,6 @@ rom = "ppu/hblank_int_scx6_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -615,7 +560,6 @@ rom = "ppu/hblank_int_scx6_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -626,7 +570,6 @@ rom = "ppu/hblank_int_scx7.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -637,7 +580,6 @@ rom = "ppu/hblank_int_scx7_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -648,7 +590,6 @@ rom = "ppu/hblank_int_scx7_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -659,7 +600,6 @@ rom = "ppu/hblank_int_scx7_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -670,7 +610,6 @@ rom = "ppu/hblank_int_scx7_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -681,7 +620,6 @@ rom = "ppu/hblank_int_scx7_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -692,7 +630,6 @@ rom = "ppu/hblank_int_scx7_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -703,7 +640,6 @@ rom = "ppu/hblank_scx2_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx2_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -714,7 +650,6 @@ rom = "ppu/hblank_scx3_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -725,7 +660,6 @@ rom = "ppu/hblank_scx3_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -736,7 +670,6 @@ rom = "ppu/hblank_scx3_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -747,7 +680,6 @@ rom = "ppu/hblank_scx3_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -758,7 +690,6 @@ rom = "ppu/hblank_scx3_int_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_int_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -769,7 +700,6 @@ rom = "ppu/hblank_scx3_int_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_scx3_int_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -780,7 +710,6 @@ rom = "ppu/int_hblank_halt_bug_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_bug_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -791,7 +720,6 @@ rom = "ppu/int_hblank_halt_bug_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_bug_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -802,7 +730,6 @@ rom = "ppu/int_hblank_halt_scx0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -813,7 +740,6 @@ rom = "ppu/int_hblank_halt_scx1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -824,7 +750,6 @@ rom = "ppu/int_hblank_halt_scx2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -835,7 +760,6 @@ rom = "ppu/int_hblank_halt_scx3.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx3.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -846,7 +770,6 @@ rom = "ppu/int_hblank_halt_scx4.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx4.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -857,7 +780,6 @@ rom = "ppu/int_hblank_halt_scx5.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx5.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -868,7 +790,6 @@ rom = "ppu/int_hblank_halt_scx6.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx6.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -879,7 +800,6 @@ rom = "ppu/int_hblank_halt_scx7.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_halt_scx7.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -890,7 +810,6 @@ rom = "ppu/int_hblank_incs_scx0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -901,7 +820,6 @@ rom = "ppu/int_hblank_incs_scx1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -912,7 +830,6 @@ rom = "ppu/int_hblank_incs_scx2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -923,7 +840,6 @@ rom = "ppu/int_hblank_incs_scx3.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx3.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -934,7 +850,6 @@ rom = "ppu/int_hblank_incs_scx4.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx4.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -945,7 +860,6 @@ rom = "ppu/int_hblank_incs_scx5.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx5.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -956,7 +870,6 @@ rom = "ppu/int_hblank_incs_scx6.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx6.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -967,7 +880,6 @@ rom = "ppu/int_hblank_incs_scx7.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_incs_scx7.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -978,7 +890,6 @@ rom = "ppu/int_hblank_nops_scx0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -989,7 +900,6 @@ rom = "ppu/int_hblank_nops_scx1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1000,7 +910,6 @@ rom = "ppu/int_hblank_nops_scx2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1011,7 +920,6 @@ rom = "ppu/int_hblank_nops_scx3.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx3.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1022,7 +930,6 @@ rom = "ppu/int_hblank_nops_scx4.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx4.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1033,7 +940,6 @@ rom = "ppu/int_hblank_nops_scx5.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx5.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1044,7 +950,6 @@ rom = "ppu/int_hblank_nops_scx6.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx6.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1055,7 +960,6 @@ rom = "ppu/int_hblank_nops_scx7.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_hblank_nops_scx7.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1066,7 +970,6 @@ rom = "ppu/int_lyc_halt.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_lyc_halt.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1077,7 +980,6 @@ rom = "ppu/int_lyc_incs.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_lyc_incs.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1088,7 +990,6 @@ rom = "ppu/int_lyc_nops.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_lyc_nops.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1099,7 +1000,6 @@ rom = "ppu/int_oam_halt.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_oam_halt.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1110,7 +1010,6 @@ rom = "ppu/int_oam_incs.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_oam_incs.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1121,7 +1020,6 @@ rom = "ppu/int_oam_nops.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_oam_nops.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1132,7 +1030,6 @@ rom = "ppu/int_timer_halt.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_timer_halt.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1143,7 +1040,6 @@ rom = "ppu/int_vblank1_halt.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank1_halt.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1154,7 +1050,6 @@ rom = "ppu/int_vblank1_incs.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank1_incs.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1165,7 +1060,6 @@ rom = "ppu/int_vblank1_nops.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank1_nops.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1176,7 +1070,6 @@ rom = "ppu/int_vblank2_halt.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank2_halt.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1187,7 +1080,6 @@ rom = "ppu/int_vblank2_incs.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank2_incs.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1198,7 +1090,6 @@ rom = "ppu/int_vblank2_nops.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/int_vblank2_nops.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1209,7 +1100,6 @@ rom = "ppu/lcdon_halt_to_vblank_int_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_halt_to_vblank_int_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1220,7 +1110,6 @@ rom = "ppu/lcdon_halt_to_vblank_int_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_halt_to_vblank_int_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1231,7 +1120,6 @@ rom = "ppu/lcdon_nops_to_vblank_int_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_nops_to_vblank_int_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1242,7 +1130,6 @@ rom = "ppu/lcdon_nops_to_vblank_int_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_nops_to_vblank_int_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1253,7 +1140,6 @@ rom = "ppu/lcdon_to_if_oam_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_if_oam_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1264,7 +1150,6 @@ rom = "ppu/lcdon_to_if_oam_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_if_oam_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1275,7 +1160,6 @@ rom = "ppu/lcdon_to_ly1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1286,7 +1170,6 @@ rom = "ppu/lcdon_to_ly1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1297,7 +1180,6 @@ rom = "ppu/lcdon_to_ly2_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly2_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1308,7 +1190,6 @@ rom = "ppu/lcdon_to_ly2_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly2_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1319,7 +1200,6 @@ rom = "ppu/lcdon_to_ly3_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly3_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1330,7 +1210,6 @@ rom = "ppu/lcdon_to_ly3_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_ly3_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1341,7 +1220,6 @@ rom = "ppu/lcdon_to_lyc1_int.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_lyc1_int.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1352,7 +1230,6 @@ rom = "ppu/lcdon_to_lyc2_int.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_lyc2_int.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1363,7 +1240,6 @@ rom = "ppu/lcdon_to_lyc3_int.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_lyc3_int.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1374,7 +1250,6 @@ rom = "ppu/lcdon_to_oam_int_l0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_int_l0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1385,7 +1260,6 @@ rom = "ppu/lcdon_to_oam_int_l1.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_int_l1.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1396,7 +1270,6 @@ rom = "ppu/lcdon_to_oam_int_l2.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_int_l2.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1407,7 +1280,6 @@ rom = "ppu/lcdon_to_oam_unlock_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_unlock_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1418,7 +1290,6 @@ rom = "ppu/lcdon_to_oam_unlock_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_unlock_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1429,7 +1300,6 @@ rom = "ppu/lcdon_to_oam_unlock_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_unlock_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1440,7 +1310,6 @@ rom = "ppu/lcdon_to_oam_unlock_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_oam_unlock_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1451,7 +1320,6 @@ rom = "ppu/lcdon_to_stat0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1462,7 +1330,6 @@ rom = "ppu/lcdon_to_stat0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1473,7 +1340,6 @@ rom = "ppu/lcdon_to_stat0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1484,7 +1350,6 @@ rom = "ppu/lcdon_to_stat0_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat0_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1495,7 +1360,6 @@ rom = "ppu/lcdon_to_stat1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1506,7 +1370,6 @@ rom = "ppu/lcdon_to_stat1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1517,7 +1380,6 @@ rom = "ppu/lcdon_to_stat1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1528,7 +1390,6 @@ rom = "ppu/lcdon_to_stat1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1539,7 +1400,6 @@ rom = "ppu/lcdon_to_stat1_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat1_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1550,7 +1410,6 @@ rom = "ppu/lcdon_to_stat2_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat2_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1561,7 +1420,6 @@ rom = "ppu/lcdon_to_stat2_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat2_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1572,7 +1430,6 @@ rom = "ppu/lcdon_to_stat2_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat2_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1583,7 +1440,6 @@ rom = "ppu/lcdon_to_stat2_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat2_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1594,7 +1450,6 @@ rom = "ppu/lcdon_to_stat3_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat3_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1605,7 +1460,6 @@ rom = "ppu/lcdon_to_stat3_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat3_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1616,7 +1470,6 @@ rom = "ppu/lcdon_to_stat3_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat3_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1627,7 +1480,6 @@ rom = "ppu/lcdon_to_stat3_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lcdon_to_stat3_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1638,7 +1490,6 @@ rom = "ppu/line_144_oam_int_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_144_oam_int_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1649,7 +1500,6 @@ rom = "ppu/line_144_oam_int_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_144_oam_int_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1660,7 +1510,6 @@ rom = "ppu/line_144_oam_int_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_144_oam_int_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1671,7 +1520,6 @@ rom = "ppu/line_144_oam_int_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_144_oam_int_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1682,7 +1530,6 @@ rom = "ppu/line_153_ly_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1693,7 +1540,6 @@ rom = "ppu/line_153_ly_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1704,7 +1550,6 @@ rom = "ppu/line_153_ly_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1715,7 +1560,6 @@ rom = "ppu/line_153_ly_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1726,7 +1570,6 @@ rom = "ppu/line_153_ly_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1737,7 +1580,6 @@ rom = "ppu/line_153_ly_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_ly_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1748,7 +1590,6 @@ rom = "ppu/line_153_lyc0_int_inc_sled.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_int_inc_sled.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1759,7 +1600,6 @@ rom = "ppu/line_153_lyc0_stat_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1770,7 +1610,6 @@ rom = "ppu/line_153_lyc0_stat_timing_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1781,7 +1620,6 @@ rom = "ppu/line_153_lyc0_stat_timing_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1792,7 +1630,6 @@ rom = "ppu/line_153_lyc0_stat_timing_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1803,7 +1640,6 @@ rom = "ppu/line_153_lyc0_stat_timing_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1814,7 +1650,6 @@ rom = "ppu/line_153_lyc0_stat_timing_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1825,7 +1660,6 @@ rom = "ppu/line_153_lyc0_stat_timing_g.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_g.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1836,7 +1670,6 @@ rom = "ppu/line_153_lyc0_stat_timing_h.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_h.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1847,7 +1680,6 @@ rom = "ppu/line_153_lyc0_stat_timing_i.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_i.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1858,7 +1690,6 @@ rom = "ppu/line_153_lyc0_stat_timing_j.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_j.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1869,7 +1700,6 @@ rom = "ppu/line_153_lyc0_stat_timing_k.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_k.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1880,7 +1710,6 @@ rom = "ppu/line_153_lyc0_stat_timing_l.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_l.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1891,7 +1720,6 @@ rom = "ppu/line_153_lyc0_stat_timing_m.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_m.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1902,7 +1730,6 @@ rom = "ppu/line_153_lyc0_stat_timing_n.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc0_stat_timing_n.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1913,7 +1740,6 @@ rom = "ppu/line_153_lyc153_stat_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1924,7 +1750,6 @@ rom = "ppu/line_153_lyc153_stat_timing_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1935,7 +1760,6 @@ rom = "ppu/line_153_lyc153_stat_timing_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1946,7 +1770,6 @@ rom = "ppu/line_153_lyc153_stat_timing_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1957,7 +1780,6 @@ rom = "ppu/line_153_lyc153_stat_timing_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1968,7 +1790,6 @@ rom = "ppu/line_153_lyc153_stat_timing_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc153_stat_timing_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1979,7 +1800,6 @@ rom = "ppu/line_153_lyc_int_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc_int_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1990,7 +1810,6 @@ rom = "ppu/line_153_lyc_int_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_153_lyc_int_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2001,7 +1820,6 @@ rom = "ppu/line_65_ly.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_65_ly.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2012,7 +1830,6 @@ rom = "ppu/lyc1_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2023,7 +1840,6 @@ rom = "ppu/lyc1_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2034,7 +1850,6 @@ rom = "ppu/lyc1_int_if_edge_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_if_edge_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2045,7 +1860,6 @@ rom = "ppu/lyc1_int_if_edge_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_if_edge_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2056,7 +1870,6 @@ rom = "ppu/lyc1_int_if_edge_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_if_edge_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2067,7 +1880,6 @@ rom = "ppu/lyc1_int_if_edge_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_if_edge_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2078,7 +1890,6 @@ rom = "ppu/lyc1_int_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2089,7 +1900,6 @@ rom = "ppu/lyc1_int_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_int_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2100,7 +1910,6 @@ rom = "ppu/lyc1_write_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_write_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2111,7 +1920,6 @@ rom = "ppu/lyc1_write_timing_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_write_timing_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2122,7 +1930,6 @@ rom = "ppu/lyc1_write_timing_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_write_timing_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2133,7 +1940,6 @@ rom = "ppu/lyc1_write_timing_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc1_write_timing_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2144,7 +1950,6 @@ rom = "ppu/lyc2_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc2_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2155,7 +1960,6 @@ rom = "ppu/lyc2_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc2_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2166,7 +1970,6 @@ rom = "ppu/lyc_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2177,7 +1980,6 @@ rom = "ppu/lyc_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/lyc_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2188,7 +1990,6 @@ rom = "ppu/oam_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2199,7 +2000,6 @@ rom = "ppu/oam_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2210,7 +2010,6 @@ rom = "ppu/oam_int_if_edge_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_edge_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2221,7 +2020,6 @@ rom = "ppu/oam_int_if_edge_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_edge_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2232,7 +2030,6 @@ rom = "ppu/oam_int_if_edge_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_edge_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2243,7 +2040,6 @@ rom = "ppu/oam_int_if_edge_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_edge_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2254,7 +2050,6 @@ rom = "ppu/oam_int_if_level_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_level_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2265,7 +2060,6 @@ rom = "ppu/oam_int_if_level_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_if_level_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2276,7 +2070,6 @@ rom = "ppu/oam_int_inc_sled.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_inc_sled.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2287,7 +2080,6 @@ rom = "ppu/oam_int_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2298,7 +2090,6 @@ rom = "ppu/oam_int_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_int_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2309,7 +2100,6 @@ rom = "ppu/oam_read_l0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2320,7 +2110,6 @@ rom = "ppu/oam_read_l0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2331,7 +2120,6 @@ rom = "ppu/oam_read_l0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2342,7 +2130,6 @@ rom = "ppu/oam_read_l0_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l0_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2353,7 +2140,6 @@ rom = "ppu/oam_read_l1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2364,7 +2150,6 @@ rom = "ppu/oam_read_l1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2375,7 +2160,6 @@ rom = "ppu/oam_read_l1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2386,7 +2170,6 @@ rom = "ppu/oam_read_l1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2397,7 +2180,6 @@ rom = "ppu/oam_read_l1_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2408,7 +2190,6 @@ rom = "ppu/oam_read_l1_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_read_l1_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2419,7 +2200,6 @@ rom = "ppu/oam_write_l0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2430,7 +2210,6 @@ rom = "ppu/oam_write_l0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2441,7 +2220,6 @@ rom = "ppu/oam_write_l0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2452,7 +2230,6 @@ rom = "ppu/oam_write_l0_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l0_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2463,7 +2240,6 @@ rom = "ppu/oam_write_l0_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l0_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2474,7 +2250,6 @@ rom = "ppu/oam_write_l1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2485,7 +2260,6 @@ rom = "ppu/oam_write_l1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2496,7 +2270,6 @@ rom = "ppu/oam_write_l1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2507,7 +2280,6 @@ rom = "ppu/oam_write_l1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2518,7 +2290,6 @@ rom = "ppu/oam_write_l1_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2529,7 +2300,6 @@ rom = "ppu/oam_write_l1_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/oam_write_l1_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2540,7 +2310,6 @@ rom = "ppu/vblank2_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2551,7 +2320,6 @@ rom = "ppu/vblank2_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2562,7 +2330,6 @@ rom = "ppu/vblank2_int_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2573,7 +2340,6 @@ rom = "ppu/vblank2_int_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2584,7 +2350,6 @@ rom = "ppu/vblank2_int_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2595,7 +2360,6 @@ rom = "ppu/vblank2_int_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2606,7 +2370,6 @@ rom = "ppu/vblank2_int_inc_sled.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_inc_sled.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2617,7 +2380,6 @@ rom = "ppu/vblank2_int_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2628,7 +2390,6 @@ rom = "ppu/vblank2_int_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank2_int_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2639,7 +2400,6 @@ rom = "ppu/vblank_int_halt_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_halt_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2650,7 +2410,6 @@ rom = "ppu/vblank_int_halt_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_halt_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2661,7 +2420,6 @@ rom = "ppu/vblank_int_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_if_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2672,7 +2430,6 @@ rom = "ppu/vblank_int_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_if_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2683,7 +2440,6 @@ rom = "ppu/vblank_int_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_if_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2694,7 +2450,6 @@ rom = "ppu/vblank_int_if_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_if_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2705,7 +2460,6 @@ rom = "ppu/vblank_int_inc_sled.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_inc_sled.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2716,7 +2470,6 @@ rom = "ppu/vblank_int_nops_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_nops_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2727,7 +2480,6 @@ rom = "ppu/vblank_int_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vblank_int_nops_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2738,7 +2490,6 @@ rom = "ppu/vram_read_l0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2749,7 +2500,6 @@ rom = "ppu/vram_read_l0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2760,7 +2510,6 @@ rom = "ppu/vram_read_l0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2771,7 +2520,6 @@ rom = "ppu/vram_read_l0_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l0_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2782,7 +2530,6 @@ rom = "ppu/vram_read_l1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2793,7 +2540,6 @@ rom = "ppu/vram_read_l1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2804,7 +2550,6 @@ rom = "ppu/vram_read_l1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2815,7 +2560,6 @@ rom = "ppu/vram_read_l1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_read_l1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2826,7 +2570,6 @@ rom = "ppu/vram_write_l0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2837,7 +2580,6 @@ rom = "ppu/vram_write_l0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2848,7 +2590,6 @@ rom = "ppu/vram_write_l0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2859,7 +2600,6 @@ rom = "ppu/vram_write_l0_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l0_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2870,7 +2610,6 @@ rom = "ppu/vram_write_l1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2881,7 +2620,6 @@ rom = "ppu/vram_write_l1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2892,7 +2630,6 @@ rom = "ppu/vram_write_l1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2903,7 +2640,6 @@ rom = "ppu/vram_write_l1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/vram_write_l1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2914,7 +2650,6 @@ rom = "ppu/win0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2925,7 +2660,6 @@ rom = "ppu/win0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2936,7 +2670,6 @@ rom = "ppu/win0_scx3_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win0_scx3_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2947,7 +2680,6 @@ rom = "ppu/win0_scx3_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win0_scx3_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2958,7 +2690,6 @@ rom = "ppu/win10_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win10_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2969,7 +2700,6 @@ rom = "ppu/win10_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win10_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2980,7 +2710,6 @@ rom = "ppu/win10_scx3_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win10_scx3_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -2991,7 +2720,6 @@ rom = "ppu/win10_scx3_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win10_scx3_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3002,7 +2730,6 @@ rom = "ppu/win11_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win11_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3013,7 +2740,6 @@ rom = "ppu/win11_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win11_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3024,7 +2750,6 @@ rom = "ppu/win12_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win12_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3035,7 +2760,6 @@ rom = "ppu/win12_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win12_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3046,7 +2770,6 @@ rom = "ppu/win13_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win13_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3057,7 +2780,6 @@ rom = "ppu/win13_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win13_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3068,7 +2790,6 @@ rom = "ppu/win14_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win14_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3079,7 +2800,6 @@ rom = "ppu/win14_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win14_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3090,7 +2810,6 @@ rom = "ppu/win15_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win15_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3101,7 +2820,6 @@ rom = "ppu/win15_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win15_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3112,7 +2830,6 @@ rom = "ppu/win1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3123,7 +2840,6 @@ rom = "ppu/win1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3134,7 +2850,6 @@ rom = "ppu/win2_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win2_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3145,7 +2860,6 @@ rom = "ppu/win2_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win2_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3156,7 +2870,6 @@ rom = "ppu/win3_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win3_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3167,7 +2880,6 @@ rom = "ppu/win3_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win3_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3178,7 +2890,6 @@ rom = "ppu/win4_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win4_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3189,7 +2900,6 @@ rom = "ppu/win4_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win4_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3200,7 +2910,6 @@ rom = "ppu/win5_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win5_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3211,7 +2920,6 @@ rom = "ppu/win5_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win5_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3222,7 +2930,6 @@ rom = "ppu/win6_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win6_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3233,7 +2940,6 @@ rom = "ppu/win6_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win6_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3244,7 +2950,6 @@ rom = "ppu/win7_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win7_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3255,7 +2960,6 @@ rom = "ppu/win7_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win7_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3266,7 +2970,6 @@ rom = "ppu/win8_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win8_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3277,7 +2980,6 @@ rom = "ppu/win8_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win8_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3288,7 +2990,6 @@ rom = "ppu/win9_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win9_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3299,7 +3000,6 @@ rom = "ppu/win9_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/win9_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3310,7 +3010,6 @@ rom = "mbc/mbc1_ram_banks.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/mbc/mbc1_ram_banks.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3321,7 +3020,6 @@ rom = "boot/poweron_bgp_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_bgp_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3332,7 +3030,6 @@ rom = "boot/poweron_div_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3343,7 +3040,6 @@ rom = "boot/poweron_div_004.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_004.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3354,7 +3050,6 @@ rom = "boot/poweron_div_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_005.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3365,7 +3060,6 @@ rom = "boot/poweron_dma_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_dma_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3376,7 +3070,6 @@ rom = "boot/poweron_if_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_if_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3387,7 +3080,6 @@ rom = "boot/poweron_joy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_joy_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3398,7 +3090,6 @@ rom = "boot/poweron_lcdc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_lcdc_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3409,7 +3100,6 @@ rom = "boot/poweron_ly_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3420,7 +3110,6 @@ rom = "boot/poweron_ly_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_119.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3431,7 +3120,6 @@ rom = "boot/poweron_ly_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_120.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3442,7 +3130,6 @@ rom = "boot/poweron_ly_233.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_233.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3453,7 +3140,6 @@ rom = "boot/poweron_ly_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_234.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3464,7 +3150,6 @@ rom = "boot/poweron_lyc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_lyc_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3475,7 +3160,6 @@ rom = "boot/poweron_oam_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3486,7 +3170,6 @@ rom = "boot/poweron_oam_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_005.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3497,7 +3180,6 @@ rom = "boot/poweron_oam_006.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_006.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3508,7 +3190,6 @@ rom = "boot/poweron_oam_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_069.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3519,7 +3200,6 @@ rom = "boot/poweron_oam_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_070.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3530,7 +3210,6 @@ rom = "boot/poweron_oam_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_119.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3541,7 +3220,6 @@ rom = "boot/poweron_oam_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_120.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3552,7 +3230,6 @@ rom = "boot/poweron_oam_121.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_121.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3563,7 +3240,6 @@ rom = "boot/poweron_oam_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_183.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3574,7 +3250,6 @@ rom = "boot/poweron_oam_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_184.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3585,7 +3260,6 @@ rom = "boot/poweron_oam_233.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_233.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3596,7 +3270,6 @@ rom = "boot/poweron_oam_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_234.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3607,7 +3280,6 @@ rom = "boot/poweron_oam_235.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_235.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3618,7 +3290,6 @@ rom = "boot/poweron_sb_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_sb_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3629,7 +3300,6 @@ rom = "boot/poweron_sc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_sc_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3640,7 +3310,6 @@ rom = "boot/poweron_scx_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_scx_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3651,7 +3320,6 @@ rom = "boot/poweron_scy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_scy_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3662,7 +3330,6 @@ rom = "boot/poweron_stat_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3673,7 +3340,6 @@ rom = "boot/poweron_stat_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_005.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3684,7 +3350,6 @@ rom = "boot/poweron_stat_006.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_006.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3695,7 +3360,6 @@ rom = "boot/poweron_stat_007.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_007.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3706,7 +3370,6 @@ rom = "boot/poweron_stat_026.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_026.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3717,7 +3380,6 @@ rom = "boot/poweron_stat_027.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_027.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3728,7 +3390,6 @@ rom = "boot/poweron_stat_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_069.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3739,7 +3400,6 @@ rom = "boot/poweron_stat_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_070.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3750,7 +3410,6 @@ rom = "boot/poweron_stat_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_119.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3761,7 +3420,6 @@ rom = "boot/poweron_stat_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_120.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3772,7 +3430,6 @@ rom = "boot/poweron_stat_121.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_121.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3783,7 +3440,6 @@ rom = "boot/poweron_stat_140.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_140.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3794,7 +3450,6 @@ rom = "boot/poweron_stat_141.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_141.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3805,7 +3460,6 @@ rom = "boot/poweron_stat_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_183.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3816,7 +3470,6 @@ rom = "boot/poweron_stat_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_184.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3827,7 +3480,6 @@ rom = "boot/poweron_stat_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_234.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3838,7 +3490,6 @@ rom = "boot/poweron_stat_235.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_235.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3849,7 +3500,6 @@ rom = "boot/poweron_tac_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tac_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3860,7 +3510,6 @@ rom = "boot/poweron_tima_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tima_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3871,7 +3520,6 @@ rom = "boot/poweron_tma_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tma_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3882,7 +3530,6 @@ rom = "boot/poweron_vram_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3893,7 +3540,6 @@ rom = "boot/poweron_vram_025.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_025.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3904,7 +3550,6 @@ rom = "boot/poweron_vram_026.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_026.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3915,7 +3560,6 @@ rom = "boot/poweron_vram_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_069.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3926,7 +3570,6 @@ rom = "boot/poweron_vram_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_070.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3937,7 +3580,6 @@ rom = "boot/poweron_vram_139.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_139.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3948,7 +3590,6 @@ rom = "boot/poweron_vram_140.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_140.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3959,7 +3600,6 @@ rom = "boot/poweron_vram_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_183.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3970,7 +3610,6 @@ rom = "boot/poweron_vram_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_184.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3981,7 +3620,6 @@ rom = "boot/poweron_wx_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_wx_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3992,7 +3630,6 @@ rom = "boot/poweron_wy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_wy_000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4003,7 +3640,6 @@ rom = "dma/dma_0x1000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0x1000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4014,7 +3650,6 @@ rom = "dma/dma_0x9000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0x9000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4025,7 +3660,6 @@ rom = "dma/dma_0xA000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xA000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4036,7 +3670,6 @@ rom = "dma/dma_0xC000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xC000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4047,7 +3680,6 @@ rom = "dma/dma_0xE000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_0xE000.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4058,7 +3690,6 @@ rom = "dma/dma_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/dma/dma_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4069,7 +3700,6 @@ rom = "stat_write_bug/stat_write_glitch_l0_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l0_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4080,7 +3710,6 @@ rom = "stat_write_bug/stat_write_glitch_l0_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l0_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4091,7 +3720,6 @@ rom = "stat_write_bug/stat_write_glitch_l0_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l0_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4102,7 +3730,6 @@ rom = "stat_write_bug/stat_write_glitch_l143_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l143_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4113,7 +3740,6 @@ rom = "stat_write_bug/stat_write_glitch_l143_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l143_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4124,7 +3750,6 @@ rom = "stat_write_bug/stat_write_glitch_l143_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l143_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4135,7 +3760,6 @@ rom = "stat_write_bug/stat_write_glitch_l143_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l143_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4146,7 +3770,6 @@ rom = "stat_write_bug/stat_write_glitch_l154_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l154_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4157,7 +3780,6 @@ rom = "stat_write_bug/stat_write_glitch_l154_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l154_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4168,7 +3790,6 @@ rom = "stat_write_bug/stat_write_glitch_l154_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l154_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4179,7 +3800,6 @@ rom = "stat_write_bug/stat_write_glitch_l1_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l1_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4190,7 +3810,6 @@ rom = "stat_write_bug/stat_write_glitch_l1_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l1_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4201,7 +3820,6 @@ rom = "stat_write_bug/stat_write_glitch_l1_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l1_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4212,7 +3830,6 @@ rom = "stat_write_bug/stat_write_glitch_l1_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/stat_write_bug/stat_write_glitch_l1_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4223,7 +3840,6 @@ rom = "timers/div_inc_timing_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/div_inc_timing_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4234,7 +3850,6 @@ rom = "timers/div_inc_timing_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/div_inc_timing_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4245,7 +3860,6 @@ rom = "timers/int_timer_halt_div_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_halt_div_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4256,7 +3870,6 @@ rom = "timers/int_timer_halt_div_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_halt_div_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4267,7 +3880,6 @@ rom = "timers/int_timer_incs.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_incs.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4278,7 +3890,6 @@ rom = "timers/int_timer_nops.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_nops.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4289,7 +3900,6 @@ rom = "timers/int_timer_nops_div_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_nops_div_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4300,7 +3910,6 @@ rom = "timers/int_timer_nops_div_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/int_timer_nops_div_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4311,7 +3920,6 @@ rom = "timers/timer_div_phase_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_div_phase_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4322,7 +3930,6 @@ rom = "timers/timer_div_phase_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_div_phase_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4333,7 +3940,6 @@ rom = "timers/timer_tima_inc_256k_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4344,7 +3950,6 @@ rom = "timers/timer_tima_inc_256k_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4355,7 +3960,6 @@ rom = "timers/timer_tima_inc_256k_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4366,7 +3970,6 @@ rom = "timers/timer_tima_inc_256k_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4377,7 +3980,6 @@ rom = "timers/timer_tima_inc_256k_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4388,7 +3990,6 @@ rom = "timers/timer_tima_inc_256k_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4399,7 +4000,6 @@ rom = "timers/timer_tima_inc_256k_g.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_g.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4410,7 +4010,6 @@ rom = "timers/timer_tima_inc_256k_h.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_h.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4421,7 +4020,6 @@ rom = "timers/timer_tima_inc_256k_i.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_i.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4432,7 +4030,6 @@ rom = "timers/timer_tima_inc_256k_j.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_j.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4443,7 +4040,6 @@ rom = "timers/timer_tima_inc_256k_k.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_256k_k.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4454,7 +4050,6 @@ rom = "timers/timer_tima_inc_64k_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_64k_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4465,7 +4060,6 @@ rom = "timers/timer_tima_inc_64k_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_64k_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4476,7 +4070,6 @@ rom = "timers/timer_tima_inc_64k_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_64k_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4487,7 +4080,6 @@ rom = "timers/timer_tima_inc_64k_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_inc_64k_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4498,7 +4090,6 @@ rom = "timers/timer_tima_phase_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4509,7 +4100,6 @@ rom = "timers/timer_tima_phase_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4520,7 +4110,6 @@ rom = "timers/timer_tima_phase_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4531,7 +4120,6 @@ rom = "timers/timer_tima_phase_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4542,7 +4130,6 @@ rom = "timers/timer_tima_phase_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4553,7 +4140,6 @@ rom = "timers/timer_tima_phase_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4564,7 +4150,6 @@ rom = "timers/timer_tima_phase_g.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_g.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4575,7 +4160,6 @@ rom = "timers/timer_tima_phase_h.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_h.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4586,7 +4170,6 @@ rom = "timers/timer_tima_phase_i.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_i.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4597,7 +4180,6 @@ rom = "timers/timer_tima_phase_j.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_phase_j.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4608,7 +4190,6 @@ rom = "timers/timer_tima_reload_256k_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4619,7 +4200,6 @@ rom = "timers/timer_tima_reload_256k_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4630,7 +4210,6 @@ rom = "timers/timer_tima_reload_256k_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4641,7 +4220,6 @@ rom = "timers/timer_tima_reload_256k_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4652,7 +4230,6 @@ rom = "timers/timer_tima_reload_256k_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4663,7 +4240,6 @@ rom = "timers/timer_tima_reload_256k_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4674,7 +4250,6 @@ rom = "timers/timer_tima_reload_256k_g.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_g.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4685,7 +4260,6 @@ rom = "timers/timer_tima_reload_256k_h.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_h.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4696,7 +4270,6 @@ rom = "timers/timer_tima_reload_256k_i.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_i.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4707,7 +4280,6 @@ rom = "timers/timer_tima_reload_256k_j.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_j.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4718,7 +4290,6 @@ rom = "timers/timer_tima_reload_256k_k.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_reload_256k_k.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4729,7 +4300,6 @@ rom = "timers/timer_tima_write_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4740,7 +4310,6 @@ rom = "timers/timer_tima_write_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4751,7 +4320,6 @@ rom = "timers/timer_tima_write_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_c.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4762,7 +4330,6 @@ rom = "timers/timer_tima_write_d.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_d.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4773,7 +4340,6 @@ rom = "timers/timer_tima_write_e.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_e.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4784,7 +4350,6 @@ rom = "timers/timer_tima_write_f.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tima_write_f.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4795,7 +4360,6 @@ rom = "timers/timer_tma_write_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tma_write_a.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4806,7 +4370,6 @@ rom = "timers/timer_tma_write_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/timers/timer_tma_write_b.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -4817,7 +4380,6 @@ rom = "interrupts/is_if_set_during_ime0.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/interrupts/is_if_set_during_ime0.gb"
 console = "dmg"
-execution_mode = "strict"
 timeout_tcycles = 2000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]

@@ -658,6 +658,9 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         }
         crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
         crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
+        crate::PassCondition::FramebufferRgb555FixtureUntilMatch { .. } => {
+            "framebuffer-rgb555-fixture-until-match"
+        }
         crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
             "framebuffer-rgb555-grayscale-fixture"
         }
