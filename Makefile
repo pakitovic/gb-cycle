@@ -3,7 +3,7 @@
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-little-things-gb run-gbmicrotest run-docboy run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-little-things-gb run-gbmicrotest run-docboy run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -29,6 +29,7 @@ help:
 	@echo "  make run-little-things-gb Fetch and run the extra little-things-gb DMG suite"
 	@echo "  make run-gbmicrotest      Fetch and run the extra DocBoy gbmicrotest DMG suite"
 	@echo "  make run-docboy           Fetch and run the extra DocBoy docboy/* DMG suite"
+	@echo "  make run-docboy-cgb-dmg Fetch and run the DocBoy CGB GB-compatible suite"
 	@echo "  make run-docboy-cgb-dmg-ext Fetch and run the experimental DocBoy CGB DMG-ext suite"
 	@echo "  make run-blargg           Fetch and run the curated Blargg DMG suite"
 	@echo "  make run-blargg-cpu-instrs Fetch and run the Blargg CPU instruction chunk"
@@ -153,9 +154,11 @@ test-roms-cgb-real-boot: require-boot-rom-root
 test-roms-cgb-extra:
 	$(MAKE) run-cgb-boot-hwio
 	$(MAKE) run-docboy-cgb-dmg-ext
+	$(MAKE) run-docboy-cgb-dmg
 
 test-roms-cgb-extra-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg-ext
 
 fetch-test-roms:
@@ -188,6 +191,10 @@ run-docboy:
 	$(MAKE) fetch-test-roms FAMILIES=docboy
 	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-dmg-extra --failure-artifact-root .artifacts/docboy
 	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_linked_session -- --suite docboy-dmg-linked-extra --failure-artifact-root .artifacts/docboy-linked
+
+run-docboy-cgb-dmg:
+	$(MAKE) fetch-test-roms FAMILIES=docboy-cgb-dmg
+	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-extra --failure-artifact-root .artifacts/docboy-cgb-dmg
 
 run-docboy-cgb-dmg-ext:
 	$(MAKE) fetch-test-roms FAMILIES=docboy-cgb-dmg-ext

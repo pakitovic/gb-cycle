@@ -1082,6 +1082,10 @@ pub fn docboy_dmg_extra_suite() -> RomSuite {
     curated_test_roms::docboy_dmg_extra_suite()
 }
 
+pub fn docboy_cgb_dmg_extra_suite() -> RomSuite {
+    curated_test_roms::docboy_cgb_dmg_extra_suite()
+}
+
 pub fn docboy_cgb_dmg_ext_extra_suite() -> RomSuite {
     curated_test_roms::docboy_cgb_dmg_ext_extra_suite()
 }
@@ -1102,6 +1106,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         little_things_gb_dmg_extra_suite(),
         gbmicrotest_dmg_extra_suite(),
         docboy_dmg_extra_suite(),
+        docboy_cgb_dmg_extra_suite(),
         docboy_cgb_dmg_ext_extra_suite(),
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
@@ -2259,10 +2264,9 @@ impl RomRunner {
         }
 
         if case.capture_plan.contains(CaptureKind::Framebuffer) {
+            artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
             if let Some(framebuffer_rgb555) = machine.cgb_framebuffer_rgb555() {
                 artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.to_vec());
-            } else {
-                artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
             }
         }
 

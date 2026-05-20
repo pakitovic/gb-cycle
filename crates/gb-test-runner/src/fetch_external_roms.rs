@@ -555,8 +555,8 @@ mod tests {
         cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
         cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
         curated_test_rom_families, curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite,
-        docboy_dmg_extra_suite, external_rom_store_root, gbmicrotest_dmg_extra_suite,
-        samesuite_dmg_extra_suite, test_rom_store_root,
+        docboy_cgb_dmg_extra_suite, docboy_dmg_extra_suite, external_rom_store_root,
+        gbmicrotest_dmg_extra_suite, samesuite_dmg_extra_suite, test_rom_store_root,
     };
 
     use super::{
@@ -817,6 +817,17 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
+        for case in docboy_cgb_dmg_extra_suite().cases {
+            let rom = case
+                .rom_path
+                .strip_prefix("docboy-cgb-dmg")
+                .expect("DocBoy CGB DMG manifest ROMs should stay under their family");
+            write_required_file(
+                root,
+                &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
+                case.id.as_bytes(),
+            );
+        }
         for case in docboy_cgb_dmg_ext_extra_suite().cases {
             let rom = case
                 .rom_path
@@ -832,6 +843,18 @@ mod tests {
             write_required_file(
                 root,
                 &format!("tests/roms/dmg/{}", rom_path.display()),
+                rom_path.to_string_lossy().as_bytes(),
+            );
+        }
+        for rom_path in
+            crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb-dmg")
+        {
+            let rom = rom_path
+                .strip_prefix("docboy-cgb-dmg")
+                .expect("DocBoy CGB DMG disabled ROMs should stay under their family");
+            write_required_file(
+                root,
+                &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
                 rom_path.to_string_lossy().as_bytes(),
             );
         }
@@ -916,6 +939,18 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
+            .chain(docboy_cgb_dmg_extra_suite().cases.into_iter().map(|case| {
+                let rom = case
+                    .rom_path
+                    .strip_prefix("docboy-cgb-dmg")
+                    .expect("DocBoy CGB DMG manifest ROMs should stay under their family");
+                let rom = rom.display().to_string();
+                required_file(
+                    &format!("tests/roms/cgb_dmg_mode/{rom}"),
+                    "docboy-cgb-dmg",
+                    Some(rom.as_str()),
+                )
+            }))
             .chain(
                 docboy_cgb_dmg_ext_extra_suite()
                     .cases
@@ -944,6 +979,22 @@ mod tests {
                         required_file(
                             &format!("tests/roms/dmg/{}", rom_path.display()),
                             "docboy",
+                            Some(rom.as_str()),
+                        )
+                    }),
+            )
+            .chain(
+                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb-dmg")
+                    .into_iter()
+                    .map(|rom_path| {
+                        let rom = rom_path
+                            .strip_prefix("docboy-cgb-dmg")
+                            .expect("DocBoy CGB DMG disabled ROMs should stay under their family")
+                            .display()
+                            .to_string();
+                        required_file(
+                            &format!("tests/roms/cgb_dmg_mode/{rom}"),
+                            "docboy-cgb-dmg",
                             Some(rom.as_str()),
                         )
                     }),

@@ -17,7 +17,7 @@ Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, `cgb-boot-hwio`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `gbmicrotest`, `docboy`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -72,6 +72,11 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   source family: `mooneye`
   current status: exploratory local-only
   oracle: Mooneye breakpoint/register result plus retained serial output
+- `docboy-cgb-dmg-extra`
+  source family: `docboy-cgb-dmg`
+  current status: CGB extra/internal local-only
+  oracle mix: memory-byte and framebuffer until-match fixtures
+  fixture ownership: committed DocBoy `tests/results/cgb_dmg_mode` PNG fixtures under `docboy-cgb-dmg/`; the upstream-disabled Mealybug `m3_lcdc_win_en_change_multiple_wx` row has no committed fixture and remains disabled in the manifest
 
 ## Commands
 
@@ -102,7 +107,7 @@ make run-mooneye
 make run-little-things-gb
 ```
 
-Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `little-things-gb`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
+Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
 
 Run one curated family directly and update the report:
 
