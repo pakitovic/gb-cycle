@@ -5,8 +5,10 @@ use gb_core::{
     DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Dmg07Participant, Dmg07Port, LinkedMachines,
     LinkedMachinesError, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
     MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineStepObserver,
-    PokemonPikachuColor, PokemonPikachuColorGift, PokemonPikachuColorRegion,
-    PokemonPikachuColorSession, PokemonPikachuColorStatus, TraceSummaryBuffer,
+    PokemonMysteryGift, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonMysteryGiftSession,
+    PokemonMysteryGiftStatus, PokemonPikachuColor, PokemonPikachuColorGift,
+    PokemonPikachuColorRegion, PokemonPikachuColorSession, PokemonPikachuColorStatus,
+    TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -17,6 +19,7 @@ pub enum DesktopEmulationSessionKind {
     LinkedDmg04TwoPlayer,
     LinkedCgbInfraredTwoPlayer,
     PokemonPikachuColor,
+    PokemonMysteryGift,
     LinkedDmg07 {
         player_count: DesktopDmg07PlayerCount,
     },
@@ -30,6 +33,7 @@ pub enum DesktopEmulationSession {
     LinkedDmg04TwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
     LinkedCgbInfraredTwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
     PokemonPikachuColor(Box<PokemonPikachuColorSession<TraceSummaryBuffer>>),
+    PokemonMysteryGift(Box<PokemonMysteryGiftSession<TraceSummaryBuffer>>),
     LinkedDmg07 {
         linked: Box<LinkedMachines<TraceSummaryBuffer>>,
         player_count: DesktopDmg07PlayerCount,
@@ -49,6 +53,17 @@ impl DesktopEmulationSession {
         Self::PokemonPikachuColor(Box::new(PokemonPikachuColorSession::new(
             machine,
             PokemonPikachuColor::new(gift, region),
+        )))
+    }
+
+    pub fn new_pokemon_mystery_gift(
+        machine: Machine<TraceSummaryBuffer>,
+        kind: PokemonMysteryGiftKind,
+        code: PokemonMysteryGiftCode,
+    ) -> Self {
+        Self::PokemonMysteryGift(Box::new(PokemonMysteryGiftSession::new(
+            machine,
+            PokemonMysteryGift::new(kind, code),
         )))
     }
 
@@ -186,6 +201,7 @@ impl DesktopEmulationSession {
                 DesktopEmulationSessionKind::LinkedCgbInfraredTwoPlayer
             }
             Self::PokemonPikachuColor(_) => DesktopEmulationSessionKind::PokemonPikachuColor,
+            Self::PokemonMysteryGift(_) => DesktopEmulationSessionKind::PokemonMysteryGift,
             Self::LinkedDmg07 { player_count, .. } => DesktopEmulationSessionKind::LinkedDmg07 {
                 player_count: *player_count,
             },
@@ -200,6 +216,7 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => linked.topology_kind(),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.topology_kind(),
             Self::PokemonPikachuColor(_) => LinkedTopologyKind::None,
+            Self::PokemonMysteryGift(_) => LinkedTopologyKind::None,
             Self::LinkedDmg07 { linked, .. } => linked.topology_kind(),
         }
     }
@@ -217,6 +234,7 @@ impl DesktopEmulationSession {
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
             Self::PokemonPikachuColor(session) => session.machine(),
+            Self::PokemonMysteryGift(session) => session.machine(),
             Self::LinkedDmg07 { linked, .. } => linked
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
@@ -236,6 +254,7 @@ impl DesktopEmulationSession {
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
             Self::PokemonPikachuColor(session) => session.machine_mut(),
+            Self::PokemonMysteryGift(session) => session.machine_mut(),
             Self::LinkedDmg07 { linked, .. } => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
@@ -247,6 +266,7 @@ impl DesktopEmulationSession {
             Self::Transitioning => None,
             Self::Single(_) => None,
             Self::PokemonPikachuColor(_) => None,
+            Self::PokemonMysteryGift(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine(1),
@@ -258,6 +278,7 @@ impl DesktopEmulationSession {
             Self::Transitioning => None,
             Self::Single(_) => None,
             Self::PokemonPikachuColor(_) => None,
+            Self::PokemonMysteryGift(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedCgbInfraredTwoPlayer(linked) => linked.machine_mut(1),
             Self::LinkedDmg07 { linked, .. } => linked.machine_mut(1),
@@ -276,6 +297,7 @@ impl DesktopEmulationSession {
                 Self::Transitioning
                 | Self::Single(_)
                 | Self::PokemonPikachuColor(_)
+                | Self::PokemonMysteryGift(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -294,6 +316,7 @@ impl DesktopEmulationSession {
                 Self::Transitioning
                 | Self::Single(_)
                 | Self::PokemonPikachuColor(_)
+                | Self::PokemonMysteryGift(_)
                 | Self::LinkedDmg04TwoPlayer(_)
                 | Self::LinkedCgbInfraredTwoPlayer(_) => None,
             },
@@ -312,6 +335,10 @@ impl DesktopEmulationSession {
         matches!(self, Self::PokemonPikachuColor(_))
     }
 
+    pub const fn is_pokemon_mystery_gift(&self) -> bool {
+        matches!(self, Self::PokemonMysteryGift(_))
+    }
+
     pub fn set_pokemon_pikachu_color_gift(&mut self, gift: PokemonPikachuColorGift) {
         if let Self::PokemonPikachuColor(session) = self {
             session.pokemon_pikachu_color_mut().set_gift(gift);
@@ -325,12 +352,32 @@ impl DesktopEmulationSession {
         }
     }
 
+    pub fn set_pokemon_mystery_gift_kind(&mut self, kind: PokemonMysteryGiftKind) {
+        if let Self::PokemonMysteryGift(session) = self {
+            session.pokemon_mystery_gift_mut().set_kind(kind);
+        }
+    }
+
+    pub fn set_pokemon_mystery_gift_code(&mut self, code: PokemonMysteryGiftCode) {
+        if let Self::PokemonMysteryGift(session) = self {
+            session.pokemon_mystery_gift_mut().set_code(code);
+        }
+    }
+
+    pub fn pokemon_mystery_gift_status(&self) -> Option<PokemonMysteryGiftStatus> {
+        match self {
+            Self::PokemonMysteryGift(session) => Some(session.pokemon_mystery_gift().status()),
+            _ => None,
+        }
+    }
+
     pub const fn dmg07_player_count(&self) -> Option<DesktopDmg07PlayerCount> {
         match self {
             Self::LinkedDmg07 { player_count, .. } => Some(*player_count),
             Self::Transitioning
             | Self::Single(_)
             | Self::PokemonPikachuColor(_)
+            | Self::PokemonMysteryGift(_)
             | Self::LinkedDmg04TwoPlayer(_)
             | Self::LinkedCgbInfraredTwoPlayer(_) => None,
         }
@@ -370,6 +417,12 @@ impl DesktopEmulationSession {
             Self::PokemonPikachuColor(_) => {
                 return Err(
                     "desktop emulation session is already running a Pokemon Pikachu Color runtime"
+                        .to_string(),
+                );
+            }
+            Self::PokemonMysteryGift(_) => {
+                return Err(
+                    "desktop emulation session is already running a Pokemon Mystery Gift runtime"
                         .to_string(),
                 );
             }
@@ -443,6 +496,12 @@ impl DesktopEmulationSession {
                         .to_string(),
                 );
             }
+            Self::PokemonMysteryGift(_) => {
+                return Err(
+                    "desktop emulation session is already running a Pokemon Mystery Gift runtime"
+                        .to_string(),
+                );
+            }
         };
         let found = secondary_machine.next_t_cycle();
         if found != expected {
@@ -496,6 +555,9 @@ impl DesktopEmulationSession {
             Self::PokemonPikachuColor(session) => {
                 session.advance_t_cycle();
             }
+            Self::PokemonMysteryGift(session) => {
+                session.advance_t_cycle();
+            }
             Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle();
             }
@@ -517,6 +579,9 @@ impl DesktopEmulationSession {
                 linked.advance_t_cycle_with_observer(observer);
             }
             Self::PokemonPikachuColor(session) => {
+                session.advance_t_cycle_with_observer(observer);
+            }
+            Self::PokemonMysteryGift(session) => {
                 session.advance_t_cycle_with_observer(observer);
             }
             Self::LinkedDmg07 { linked, .. } => {
@@ -548,6 +613,7 @@ impl DesktopEmulationSession {
                     .expect("linked desktop session should keep the primary machine")
             }
             Self::PokemonPikachuColor(session) => session.into_machine(),
+            Self::PokemonMysteryGift(session) => session.into_machine(),
             Self::LinkedDmg07 { mut linked, .. } => {
                 linked.detach_link_topology();
                 linked

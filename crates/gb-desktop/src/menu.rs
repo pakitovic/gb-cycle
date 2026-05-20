@@ -1,6 +1,7 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{
-    ApuRecordedChannel, BootRomKind, ExecutionMode, PokemonPikachuColorGift, StartupMode,
+    ApuRecordedChannel, BootRomKind, ExecutionMode, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
+    PokemonPikachuColorGift, StartupMode,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -165,12 +166,15 @@ const FOUR_PLAYER_ADAPTER_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FourPlayerAdapterFourPlayers,
     MenuItem::Return,
 ];
-const CGB_INFRARED_MENU_ITEMS: [MenuItem; 7] = [
+const CGB_INFRARED_MENU_ITEMS: [MenuItem; 10] = [
     MenuItem::CgbInfraredNone,
     MenuItem::CgbInfraredSameGame,
     MenuItem::CgbInfraredSelectGame,
     MenuItem::CgbInfraredPikachuColor,
     MenuItem::CgbInfraredPikachuGift,
+    MenuItem::CgbInfraredMysteryGift,
+    MenuItem::CgbInfraredMysteryGiftKind,
+    MenuItem::CgbInfraredMysteryGiftSelection,
     MenuItem::CgbInfraredHelper,
     MenuItem::Return,
 ];
@@ -353,6 +357,9 @@ pub enum MenuAction {
     SelectCgbInfraredSecondary,
     SetCgbInfraredPikachuColor,
     CycleCgbInfraredPikachuGift,
+    SetCgbInfraredMysteryGift,
+    CycleCgbInfraredMysteryGiftKind,
+    CycleCgbInfraredMysteryGiftCode,
     ToggleCgbInfraredHelper,
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
@@ -579,6 +586,9 @@ pub struct MenuPresentation {
     pub cgb_infrared_same_game_active: bool,
     pub pokemon_pikachu_color_active: bool,
     pub pokemon_pikachu_color_gift: PokemonPikachuColorGift,
+    pub pokemon_mystery_gift_active: bool,
+    pub pokemon_mystery_gift_kind: PokemonMysteryGiftKind,
+    pub pokemon_mystery_gift_code: PokemonMysteryGiftCode,
     pub show_cgb_infrared_helper: bool,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_kind: BootRomKind,
@@ -670,6 +680,9 @@ impl MenuPresentation {
             | MenuItem::CgbInfraredSelectGame
             | MenuItem::CgbInfraredPikachuColor
             | MenuItem::CgbInfraredPikachuGift
+            | MenuItem::CgbInfraredMysteryGift
+            | MenuItem::CgbInfraredMysteryGiftKind
+            | MenuItem::CgbInfraredMysteryGiftSelection
             | MenuItem::CgbInfraredHelper => {
                 self.console_model == DesktopConsoleModel::GameBoyColor
             }
@@ -726,7 +739,7 @@ impl MenuPresentation {
                     && self.console_model == DesktopConsoleModel::GameBoyColor
                     && !self.any_dialog_pending
             }
-            MenuItem::CgbInfraredPikachuColor => {
+            MenuItem::CgbInfraredPikachuColor | MenuItem::CgbInfraredMysteryGift => {
                 self.rom_loaded
                     && self.console_model == DesktopConsoleModel::GameBoyColor
                     && !self.any_dialog_pending
@@ -737,6 +750,10 @@ impl MenuPresentation {
             MenuItem::CgbInfraredPikachuGift => {
                 self.console_model == DesktopConsoleModel::GameBoyColor
                     && self.pokemon_pikachu_color_active
+            }
+            MenuItem::CgbInfraredMysteryGiftKind | MenuItem::CgbInfraredMysteryGiftSelection => {
+                self.console_model == DesktopConsoleModel::GameBoyColor
+                    && self.pokemon_mystery_gift_active
             }
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
             MenuItem::AudioRecord => self.rom_loaded,
@@ -913,12 +930,17 @@ impl MenuPresentation {
                     "IR: SELECT GAME".to_string()
                 } else if self.pokemon_pikachu_color_active {
                     "IR: PIKACHU 2".to_string()
+                } else if self.pokemon_mystery_gift_active {
+                    "IR: MYSTERY GIFT".to_string()
                 } else {
                     "IR: NONE".to_string()
                 }
             }
             MenuItem::CgbInfraredNone => {
-                if self.cgb_infrared_link_active || self.pokemon_pikachu_color_active {
+                if self.cgb_infrared_link_active
+                    || self.pokemon_pikachu_color_active
+                    || self.pokemon_mystery_gift_active
+                {
                     "NONE".to_string()
                 } else {
                     checked_menu_label("NONE")
@@ -948,6 +970,20 @@ impl MenuPresentation {
             MenuItem::CgbInfraredPikachuGift => {
                 pokemon_pikachu_color_gift_menu_label(self.pokemon_pikachu_color_gift).to_string()
             }
+            MenuItem::CgbInfraredMysteryGift => {
+                if self.pokemon_mystery_gift_active {
+                    checked_menu_label("MYSTERY GIFT")
+                } else {
+                    "MYSTERY GIFT".to_string()
+                }
+            }
+            MenuItem::CgbInfraredMysteryGiftKind => {
+                self.pokemon_mystery_gift_kind.label().to_string()
+            }
+            MenuItem::CgbInfraredMysteryGiftSelection => self
+                .pokemon_mystery_gift_code
+                .label(self.pokemon_mystery_gift_kind)
+                .to_string(),
             MenuItem::CgbInfraredHelper => {
                 if self.show_cgb_infrared_helper {
                     "HELPER ON".to_string()
@@ -1553,6 +1589,9 @@ enum MenuItem {
     CgbInfraredSelectGame,
     CgbInfraredPikachuColor,
     CgbInfraredPikachuGift,
+    CgbInfraredMysteryGift,
+    CgbInfraredMysteryGiftKind,
+    CgbInfraredMysteryGiftSelection,
     CgbInfraredHelper,
     KeyboardMenu,
     KeyboardMenuControls,
@@ -2307,6 +2346,13 @@ impl OverlayMenuState {
             MenuItem::CgbInfraredSelectGame => Some(MenuAction::SelectCgbInfraredSecondary),
             MenuItem::CgbInfraredPikachuColor => Some(MenuAction::SetCgbInfraredPikachuColor),
             MenuItem::CgbInfraredPikachuGift => Some(MenuAction::CycleCgbInfraredPikachuGift),
+            MenuItem::CgbInfraredMysteryGift => Some(MenuAction::SetCgbInfraredMysteryGift),
+            MenuItem::CgbInfraredMysteryGiftKind => {
+                Some(MenuAction::CycleCgbInfraredMysteryGiftKind)
+            }
+            MenuItem::CgbInfraredMysteryGiftSelection => {
+                Some(MenuAction::CycleCgbInfraredMysteryGiftCode)
+            }
             MenuItem::CgbInfraredHelper => Some(MenuAction::ToggleCgbInfraredHelper),
             MenuItem::ExternalPortFourPlayerAdapter => {
                 self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
@@ -3070,7 +3116,10 @@ fn rendered_item_label(
     selection_elapsed: Duration,
 ) -> String {
     let label = presentation.item_label(item);
-    if item == MenuItem::CgbInfraredPikachuGift {
+    if matches!(
+        item,
+        MenuItem::CgbInfraredPikachuGift | MenuItem::CgbInfraredMysteryGiftSelection
+    ) {
         return rendered_menu_item_label(&label, selected, selection_elapsed);
     }
 
@@ -3535,7 +3584,10 @@ mod tests {
         visible_item_at, visible_item_count,
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
-    use gb_core::{BootRomKind, ExecutionMode, PokemonPikachuColorGift, StartupMode};
+    use gb_core::{
+        BootRomKind, ExecutionMode, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
+        PokemonPikachuColorGift, StartupMode,
+    };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
         DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
@@ -3558,6 +3610,9 @@ mod tests {
             cgb_infrared_same_game_active: false,
             pokemon_pikachu_color_active: false,
             pokemon_pikachu_color_gift: PokemonPikachuColorGift::default(),
+            pokemon_mystery_gift_active: false,
+            pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
+            pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             show_cgb_infrared_helper: false,
             boot_rom_uses_default_path: true,
             boot_rom_kind: BootRomKind::Dmg,
@@ -4741,6 +4796,42 @@ mod tests {
     }
 
     #[test]
+    fn pokemon_mystery_gift_labels_use_names_without_codes_and_scroll() {
+        let mut presentation = test_presentation();
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        presentation.pokemon_mystery_gift_active = true;
+        presentation.pokemon_mystery_gift_kind = PokemonMysteryGiftKind::Decoration;
+        presentation.pokemon_mystery_gift_code = PokemonMysteryGiftCode::new(0x21).unwrap();
+
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGiftKind),
+            "GIFT DECORATION"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGiftSelection),
+            "SURF PIKACHU DOLL"
+        );
+        assert_eq!(
+            rendered_item_label(
+                MenuItem::CgbInfraredMysteryGiftSelection,
+                false,
+                presentation,
+                Duration::from_millis(2_000)
+            ),
+            "SURF PIKACHU DO"
+        );
+        assert_eq!(
+            rendered_item_label(
+                MenuItem::CgbInfraredMysteryGiftSelection,
+                true,
+                presentation,
+                Duration::from_millis(1_050)
+            ),
+            "URF PIKACHU DOL"
+        );
+    }
+
+    #[test]
     fn root_config_and_video_menu_order_matches_the_overlay_contract() {
         assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::CameraLive);
         assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraImage);
@@ -4818,8 +4909,17 @@ mod tests {
             MenuItem::CgbInfraredPikachuColor
         );
         assert_eq!(CGB_INFRARED_MENU_ITEMS[4], MenuItem::CgbInfraredPikachuGift);
-        assert_eq!(CGB_INFRARED_MENU_ITEMS[5], MenuItem::CgbInfraredHelper);
-        assert_eq!(CGB_INFRARED_MENU_ITEMS[6], MenuItem::Return);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[5], MenuItem::CgbInfraredMysteryGift);
+        assert_eq!(
+            CGB_INFRARED_MENU_ITEMS[6],
+            MenuItem::CgbInfraredMysteryGiftKind
+        );
+        assert_eq!(
+            CGB_INFRARED_MENU_ITEMS[7],
+            MenuItem::CgbInfraredMysteryGiftSelection
+        );
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[8], MenuItem::CgbInfraredHelper);
+        assert_eq!(CGB_INFRARED_MENU_ITEMS[9], MenuItem::Return);
 
         assert_eq!(KEYBOARD_MENU_ITEMS[0], MenuItem::KeyboardUp);
         assert_eq!(KEYBOARD_MENU_ITEMS[8], MenuItem::Return);
@@ -5283,6 +5383,18 @@ mod tests {
             presentation.item_label(MenuItem::CgbInfraredPikachuGift),
             "1W EON MAIL"
         );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGift),
+            "MYSTERY GIFT"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGiftKind),
+            "GIFT ITEM"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGiftSelection),
+            "BERRY"
+        );
         assert!(!presentation.item_visible(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
         let cgb_no_rom_presentation = MenuPresentation {
@@ -5304,14 +5416,20 @@ mod tests {
         assert!(presentation.item_visible(MenuItem::CgbInfraredSelectGame));
         assert!(presentation.item_visible(MenuItem::CgbInfraredPikachuColor));
         assert!(presentation.item_visible(MenuItem::CgbInfraredPikachuGift));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredMysteryGift));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredMysteryGiftKind));
+        assert!(presentation.item_visible(MenuItem::CgbInfraredMysteryGiftSelection));
         assert!(presentation.item_visible(MenuItem::CgbInfraredHelper));
         presentation.any_dialog_pending = true;
         assert!(!presentation.item_enabled(MenuItem::CgbInfrared));
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredSameGame));
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredSelectGame));
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredPikachuColor));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredMysteryGift));
         presentation.any_dialog_pending = false;
         assert!(!presentation.item_enabled(MenuItem::CgbInfraredPikachuGift));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredMysteryGiftKind));
+        assert!(!presentation.item_enabled(MenuItem::CgbInfraredMysteryGiftSelection));
         assert!(presentation.item_enabled(MenuItem::CgbInfraredHelper));
         presentation.show_cgb_infrared_helper = true;
         assert_eq!(
@@ -5358,6 +5476,24 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::CgbInfraredPikachuGift),
             "999W RARE CANDY"
+        );
+        presentation.pokemon_pikachu_color_active = false;
+        presentation.pokemon_mystery_gift_active = true;
+        presentation.pokemon_mystery_gift_kind = PokemonMysteryGiftKind::Decoration;
+        presentation.pokemon_mystery_gift_code = PokemonMysteryGiftCode::new(0x0D).unwrap();
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfrared),
+            "IR: MYSTERY GIFT"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGift),
+            "MYSTERY GIFT ✓"
+        );
+        assert!(presentation.item_enabled(MenuItem::CgbInfraredMysteryGiftKind));
+        assert!(presentation.item_enabled(MenuItem::CgbInfraredMysteryGiftSelection));
+        assert_eq!(
+            presentation.item_label(MenuItem::CgbInfraredMysteryGiftSelection),
+            "WEEDLE DOLL"
         );
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
@@ -5834,6 +5970,18 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::CgbInfraredPikachuGift, presentation),
             Some(MenuAction::CycleCgbInfraredPikachuGift)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredMysteryGift, presentation),
+            Some(MenuAction::SetCgbInfraredMysteryGift)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredMysteryGiftKind, presentation),
+            Some(MenuAction::CycleCgbInfraredMysteryGiftKind)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CgbInfraredMysteryGiftSelection, presentation),
+            Some(MenuAction::CycleCgbInfraredMysteryGiftCode)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::CgbInfraredHelper, presentation),

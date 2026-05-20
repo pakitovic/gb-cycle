@@ -8,4 +8,4 @@ Both ROMs are direct-start `NoMBC` CGB-capable fixtures with `0x0143 = 0x80`, ca
 
 `receiver.gb` executes `LD A,$C0; LDH ($56),A; LDH A,($56); BIT 1,A; JR NZ,$0104; LD A,$B2; LDH ($01),A; LD A,$81; LDH ($02),A; JP $0112`, which enables `RP` readback, waits until the linked CGB IR sensor reports a signal, emits serial byte `$B2`, and then idles.
 
-These fixtures validate only the core CGB-to-CGB optical topology and read-enabled `RP` sensor path; Pokémon Pikachu 2, Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and title-specific external protocols remain outside this fixture contract.
+These fixtures validate only the core CGB-to-CGB optical topology and read-enabled `RP` sensor path; the Pokémon Pikachu 2 and custom GSC Mystery Gift accessory protocols are validated separately, while Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, and other title-specific external protocols remain outside this fixture contract.
