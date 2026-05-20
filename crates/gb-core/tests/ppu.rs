@@ -5,9 +5,9 @@ use common::synthetic_cartridge::{
     HEADER_MINIMUM_ROM_LEN, build_nom_bc_test_rom, build_nom_bc_test_rom_with_program_entry,
 };
 use gb_core::{
-    ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, Machine,
-    MachineConfig, OperatingMode, PpuAccessMode, PpuBgFetcherSource, PpuLcdState,
-    PpuObjFetcherStage, PpuSnapshot, PpuVisibleOutputState, StartupMode,
+    CompatibilityPolicy, ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection,
+    CpuBusAccessKind, Machine, MachineConfig, OperatingMode, PpuAccessMode, PpuBgFetcherSource,
+    PpuLcdState, PpuObjFetcherStage, PpuSnapshot, PpuVisibleOutputState, StartupMode,
 };
 
 include!("ppu/ppu_setup.rs");
@@ -61,6 +61,21 @@ fn cgb_native_machine() -> Machine {
     machine
         .load_cartridge(rom)
         .expect("CGB native test ROM should load");
+    machine
+}
+
+fn cgb_dmg_ext_machine() -> Machine {
+    let mut rom = build_test_rom(&[0x18, 0xFE], 0x00);
+    rom[0x0143] = 0x88;
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_compatibility(CompatibilityPolicy::experimental())
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("CGB DMG-ext test ROM should load under the experimental policy");
+    assert_eq!(machine.config().operating_mode, OperatingMode::CgbDmgExt);
     machine
 }
 
@@ -194,6 +209,37 @@ fn cgb_palette_data_ports_block_only_data_during_cpu_visible_mode3() {
         0x9A,
         "palette data writes outside Mode 3 remain visible"
     );
+}
+
+#[test]
+fn cgb_dmg_ext_palette_ports_expose_indexes_but_block_palette_ram_data() {
+    let mut machine = cgb_dmg_ext_machine();
+
+    machine.write_bus(0xFF68, 0x85);
+    assert_eq!(machine.read_bus(0xFF68), 0xC5);
+    assert_eq!(machine.read_bus(0xFF69), 0xFF);
+    machine.write_bus(0xFF69, 0x56);
+    assert_eq!(
+        machine.read_bus(0xFF68),
+        0xC5,
+        "DMG-ext must not auto-increment BCPS through blocked BCPD writes"
+    );
+    assert_eq!(machine.read_bus(0xFF69), 0xFF);
+
+    machine.write_bus(0xFF6A, 0x83);
+    assert_eq!(machine.read_bus(0xFF6A), 0xC3);
+    assert_eq!(machine.read_bus(0xFF6B), 0xFF);
+    machine.write_bus(0xFF6B, 0x34);
+    assert_eq!(
+        machine.read_bus(0xFF6A),
+        0xC3,
+        "DMG-ext must not auto-increment OCPS through blocked OCPD writes"
+    );
+    assert_eq!(machine.read_bus(0xFF6B), 0xFF);
+
+    assert_eq!(machine.read_bus(0xFF6C), 0xFF);
+    machine.write_bus(0xFF6C, 0x00);
+    assert_eq!(machine.read_bus(0xFF6C), 0xFE);
 }
 
 #[test]

@@ -366,11 +366,13 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - Still out of scope: Pokémon Mystery Gift Trainer House team payloads, Japanese/Korean PP2 validation, Pocket Sakura, TV remotes, lamps, Chee Chai Alien, HuC1/HuC3-to-CGB IR, title-specific external workflows, hardware-revision-specific analog calibration, and any protocol that needs more than the native CGB peer-emitter seam or the current explicit Pokémon Mystery Gift accessory devices.
 - Promote broader IR only when there is a concrete validation target, such as a commercial title or dedicated IR test ROM, plus an explicit host-input/oracle artifact model; until then, keep non-CGB-to-CGB IR as a documented hardware seam rather than speculative emulation.
 
-## Post-Slice 10 — Out-of-scope PGB / PSM NMI research
+## Post-Slice 10 — Experimental CGB DMG-ext and deferred PGB / PSM research
 
-- PGB mode, PSM NMI behavior, boot-ROM remap side effects after normal handoff, and undocumented `KEY0` / `OPRI` interactions beyond ordinary `$80` / `$C0` CGB behavior are explicitly outside Phase 10.
-- Phase 10 must not silently enable PGB behavior from unusual header bits, direct `KEY0` values, or post-boot `OPRI` writes that would imply unverified visual priority switching; classify those cases as unsupported or experimental until hardware research, Pan Docs updates, and dedicated tests define a concrete model.
-- Ordinary CGB native mode, CGB compatibility mode, `OPRI` boot defaults/readback, and boot-latched object-priority behavior remain Phase 10 scope; only the poorly researched PGB/PSM extension path and unverified post-boot `OPRI` visual effects are deferred.
+- Experimental `OperatingMode::CgbDmgExt` is now supported only under the explicit experimental compatibility policy: direct-boot CGB header bit `3` (`0x88..0x8F`) and real-boot `KEY0` bit `3` select a CGB-family DMG software-contract mode, bit `3` wins over bit `2`, strict/permissive noncanonical CGB flags preserve their existing native-CGB fallback, and runtime `KEY0` remains unavailable after lock (`$FF` reads, ignored writes).
+- The CGB DMG-ext contract is intentionally narrow and DocBoy-driven: it exposes `BCPS`, `OCPS`, `OPRI` latch/readback, `VBK`, `SVBK`, `KEY1`, `RP`, serial `SC.1`, `PCM12`/`PCM34`, and `FF72`-`FF75`, blocks `BCPD`, `OCPD`, and `HDMA1..HDMA5`, keeps DMG-style OBJ/OBJ priority, and prevents native CGB tile attributes, native CGB palette data mutation, PSM NMI, boot-ROM remap side effects, external-LCD/PGB visuals, and live post-boot `OPRI` visual switching.
+- The extra suite `docboy-cgb-dmg-ext-extra` validates the first implementation against DocBoy `tests/config/cgb_dmg_ext_mode.json` with 26 `tests/roms/cgb_dmg_ext_mode/docboy/...` cases on `console = "cgb"`, `execution_mode = "experimental"`, and the memory oracle `$FFF0 == $01` / fail-fast `$FFF0 == $02`; it is available through `make run-docboy-cgb-dmg-ext` and included only in `make test-roms-cgb-extra`, not the promoted `make test-roms-cgb` gate.
+- SameBoy and ares are recorded as corroborating implementation references because SameBoy exposes `KEY0`, `OPRI`, `PSM`, `PSWX`, `PSWY`, `PSW`, and PGB-adjacent register hooks while ares treats `KEY0` bit `3` as an `opriEnable` / PGB-like gate; these references do not replace hardware truth or broaden the gb-cycle model beyond the DocBoy-validated register subset.
+- Full PGB mode, PSM NMI behavior, boot-ROM remap side effects after normal handoff, external-LCD/PGB visual behavior, and undocumented live `KEY0` / `OPRI` interactions beyond the implemented latch/readback baseline remain deferred until hardware research, Pan Docs updates, and dedicated tests define a concrete model.
 
 ## Post-Slice 10 — Out-of-scope AGB / GBA / GBP host behavior
 
@@ -454,7 +456,7 @@ Practical header distinction: GB-compatible / CGB-enhanced dual-mode titles norm
 - SGB is out of scope for this roadmap.
 - CGB revision variants are out of scope until the base CGB implementation is stable.
 - AGB/AGS/GBA and Game Boy Player host behavior are out of scope for Phase 10 even when a reference-only smoke title contains GBA-detection logic.
-- PGB mode, PSM NMI, and unusual undocumented `KEY0` flows are out of scope until a post-Slice 10 research effort defines dedicated hardware evidence and validation targets.
+- Full PGB mode, PSM NMI, boot-ROM remap side effects, external-LCD/PGB visuals, and unusual undocumented `KEY0` / `OPRI` flows remain out of scope beyond the experimental DocBoy-validated CGB DMG-ext register subset until a post-Slice 10 research effort defines dedicated hardware evidence and validation targets.
 - `cgb-acid-hell` is a closure gate, not an initial architecture gate.
 - ROM paths already passed on DMG may reappear as CGB-mode tests when they validate model/mode separation.
 - Healthy progress means the active CGB slice is green and the DMG suite remains `167/167`.

@@ -727,6 +727,10 @@ impl Ppu {
         self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::GbCompatible
     }
 
+    pub(super) fn is_cgb_dmg_ext_mode(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::CgbDmgExt
+    }
+
     fn read_cgb_opri(&self) -> u8 {
         if !self.console_model.is_cgb_family() {
             return 0xFF;
@@ -766,7 +770,11 @@ impl Ppu {
         value: u8,
         source: PpuRegisterWriteSource,
     ) {
-        if !self.is_cgb_native_mode() {
+        if register.is_data() && !self.is_cgb_native_mode() {
+            return;
+        }
+
+        if register.is_index() && !self.is_cgb_native_mode() && !self.is_cgb_dmg_ext_mode() {
             return;
         }
 

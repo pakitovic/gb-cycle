@@ -13,7 +13,7 @@ mod view;
 mod wram;
 
 use crate::cartridge::{CartridgeHeader, CgbFlag};
-use crate::model::{ConsoleModel, OperatingMode, StartupMode};
+use crate::model::{ConsoleModel, HeuristicPolicy, OperatingMode, StartupMode};
 pub use infrared::CgbInfraredStatus;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
@@ -121,6 +121,19 @@ impl Bus {
         self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
     }
 
+    pub fn cgb_infrared_register_enabled(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_infrared_register()
+    }
+
+    pub(crate) fn io_register_info_is_live(&self, info: IoRegisterInfo) -> bool {
+        iohram::io_register_kind_is_available(
+            info.kind(),
+            info.availability(),
+            self.console_model,
+            self.operating_mode,
+        )
+    }
+
     pub fn status(&self) -> BusStatus {
         self.status
     }
@@ -213,14 +226,17 @@ impl Bus {
         }
     }
 
-    pub(crate) fn lock_cgb_real_boot_key0_at_handoff(&mut self) -> Option<OperatingMode> {
+    pub(crate) fn lock_cgb_real_boot_key0_at_handoff(
+        &mut self,
+        heuristic_policy: HeuristicPolicy,
+    ) -> Option<OperatingMode> {
         if !self.console_model.is_cgb_family() {
             return None;
         }
 
         let operating_mode = self
             .iohram
-            .lock_cgb_real_boot_key0_at_handoff(self.console_model);
+            .lock_cgb_real_boot_key0_at_handoff(self.console_model, heuristic_policy);
         self.operating_mode = operating_mode;
         Some(operating_mode)
     }
@@ -233,28 +249,28 @@ impl Bus {
     }
 
     pub(crate) fn tick_cgb_infrared_t_cycle(&mut self) {
-        if self.cgb_extensions_enabled() {
+        if self.cgb_infrared_register_enabled() {
             self.iohram.tick_cgb_infrared_t_cycle();
         }
     }
 
     pub(crate) fn set_cgb_infrared_external_input(&mut self, active: bool) {
-        let active = self.cgb_extensions_enabled() && active;
+        let active = self.cgb_infrared_register_enabled() && active;
         self.iohram.set_cgb_infrared_external_input(active);
     }
 
     pub(crate) fn cgb_infrared_emitter_on(&self) -> bool {
-        self.cgb_extensions_enabled() && self.iohram.cgb_infrared_emitter_on()
+        self.cgb_infrared_register_enabled() && self.iohram.cgb_infrared_emitter_on()
     }
 
     pub fn cgb_infrared_status(&self) -> Option<CgbInfraredStatus> {
-        self.cgb_extensions_enabled()
+        self.cgb_infrared_register_enabled()
             .then(|| self.iohram.cgb_infrared_status())
     }
 
     #[cfg(test)]
     pub(crate) fn cgb_infrared_effective_signal_detected(&self) -> bool {
-        self.cgb_extensions_enabled() && self.iohram.cgb_infrared_effective_signal_detected()
+        self.cgb_infrared_register_enabled() && self.iohram.cgb_infrared_effective_signal_detected()
     }
 }
 

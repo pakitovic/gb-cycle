@@ -140,7 +140,7 @@ impl SpeedController {
     }
 
     pub fn cgb_speed_switch_enabled(&self) -> bool {
-        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
+        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_speed_switch()
     }
 
     pub fn reset_for_model_axes(
@@ -222,7 +222,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn key1_is_unavailable_outside_native_cgb_mode() {
+    fn key1_is_unavailable_outside_native_cgb_and_dmg_ext_modes() {
         let mut dmg = SpeedController::new(ConsoleModel::GameBoy, OperatingMode::Dmg);
         dmg.write_key1(0x01);
         assert_eq!(dmg.read_key1(), 0xFF);
@@ -239,19 +239,21 @@ mod tests {
 
     #[test]
     fn key1_tracks_prepare_bit_and_current_speed() {
-        let mut speed = SpeedController::new(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+        for operating_mode in [OperatingMode::Cgb, OperatingMode::CgbDmgExt] {
+            let mut speed = SpeedController::new(ConsoleModel::GameBoyColor, operating_mode);
 
-        assert_eq!(speed.read_key1(), 0x7E);
-        speed.write_key1(0x01);
-        assert_eq!(speed.read_key1(), 0x7F);
-        assert!(speed.begin_prepared_speed_switch());
-        assert_eq!(speed.read_key1(), 0xFE);
-        assert!(!speed.begin_prepared_speed_switch());
-        speed.write_key1(0x00);
-        assert_eq!(speed.read_key1(), 0xFE);
-        speed.write_key1(0x01);
-        assert!(speed.begin_prepared_speed_switch());
-        assert_eq!(speed.read_key1(), 0x7E);
+            assert_eq!(speed.read_key1(), 0x7E);
+            speed.write_key1(0x01);
+            assert_eq!(speed.read_key1(), 0x7F);
+            assert!(speed.begin_prepared_speed_switch());
+            assert_eq!(speed.read_key1(), 0xFE);
+            assert!(!speed.begin_prepared_speed_switch());
+            speed.write_key1(0x00);
+            assert_eq!(speed.read_key1(), 0xFE);
+            speed.write_key1(0x01);
+            assert!(speed.begin_prepared_speed_switch());
+            assert_eq!(speed.read_key1(), 0x7E);
+        }
     }
 
     #[test]

@@ -2208,6 +2208,7 @@ fn encode_operating_mode(value: OperatingMode) -> u8 {
         OperatingMode::Dmg => 0,
         OperatingMode::Cgb => 1,
         OperatingMode::GbCompatible => 2,
+        OperatingMode::CgbDmgExt => 3,
     }
 }
 
@@ -2219,6 +2220,7 @@ fn decode_operating_mode(
         0 => Ok(OperatingMode::Dmg),
         1 => Ok(OperatingMode::Cgb),
         2 => Ok(OperatingMode::GbCompatible),
+        3 => Ok(OperatingMode::CgbDmgExt),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2949,6 +2951,7 @@ mod tests {
             OperatingMode::Dmg,
             OperatingMode::Cgb,
             OperatingMode::GbCompatible,
+            OperatingMode::CgbDmgExt,
         ] {
             assert_eq!(
                 decode_operating_mode(encode_operating_mode(value), "operating_mode")

@@ -4,7 +4,7 @@ use crate::cartridge::CgbFlag;
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::model::{ConsoleModel, OperatingMode};
+use crate::model::{ConsoleModel, HeuristicPolicy, OperatingMode};
 use crate::ppu::Ppu;
 use crate::serial::Serial;
 use crate::speed::{CgbSpeedMode, SpeedController};
@@ -109,8 +109,10 @@ impl IoHramDomain {
     pub(crate) fn lock_cgb_real_boot_key0_at_handoff(
         &mut self,
         console_model: ConsoleModel,
+        heuristic_policy: HeuristicPolicy,
     ) -> OperatingMode {
-        self.key0.lock_real_boot_handoff(console_model)
+        self.key0
+            .lock_real_boot_handoff(console_model, heuristic_policy)
     }
 
     pub(crate) fn read_cgb_misc_io(&self, address: u16) -> u8 {
@@ -442,6 +444,7 @@ pub(crate) struct CgbKey0State {
 
 impl CgbKey0State {
     const DMG_COMPATIBILITY_MODE_BIT: u8 = 0x04;
+    const DMG_EXT_MODE_BIT: u8 = 0x08;
 
     const fn new() -> Self {
         Self {
@@ -460,7 +463,19 @@ impl CgbKey0State {
         }
 
         let value = if matches!(operating_mode, OperatingMode::GbCompatible) {
-            Self::DMG_COMPATIBILITY_MODE_BIT
+            match cgb_flag {
+                CgbFlag::SupportedNonCanonical(value)
+                    if value & Self::DMG_COMPATIBILITY_MODE_BIT != 0 =>
+                {
+                    value
+                }
+                _ => Self::DMG_COMPATIBILITY_MODE_BIT,
+            }
+        } else if matches!(operating_mode, OperatingMode::CgbDmgExt) {
+            match cgb_flag {
+                CgbFlag::SupportedNonCanonical(value) => value,
+                _ => 0x80 | Self::DMG_EXT_MODE_BIT,
+            }
         } else {
             match cgb_flag {
                 CgbFlag::Supported => 0x80,
@@ -487,6 +502,8 @@ impl CgbKey0State {
         Self {
             value: if matches!(operating_mode, OperatingMode::GbCompatible) {
                 Self::DMG_COMPATIBILITY_MODE_BIT
+            } else if matches!(operating_mode, OperatingMode::CgbDmgExt) {
+                Self::DMG_EXT_MODE_BIT
             } else {
                 0
             },
@@ -515,7 +532,11 @@ impl CgbKey0State {
         }
     }
 
-    pub(crate) fn lock_real_boot_handoff(&mut self, console_model: ConsoleModel) -> OperatingMode {
+    pub(crate) fn lock_real_boot_handoff(
+        &mut self,
+        console_model: ConsoleModel,
+        heuristic_policy: HeuristicPolicy,
+    ) -> OperatingMode {
         if !console_model.is_cgb_family() {
             self.value = 0;
             self.locked = true;
@@ -523,18 +544,23 @@ impl CgbKey0State {
         }
 
         self.locked = true;
-        self.boot_selected_operating_mode(console_model)
+        self.boot_selected_operating_mode(console_model, heuristic_policy)
     }
 
     pub(crate) const fn boot_selected_operating_mode(
         self,
         console_model: ConsoleModel,
+        heuristic_policy: HeuristicPolicy,
     ) -> OperatingMode {
         if !console_model.is_cgb_family() {
             return OperatingMode::Dmg;
         }
 
-        if self.value & Self::DMG_COMPATIBILITY_MODE_BIT != 0 {
+        if matches!(heuristic_policy, HeuristicPolicy::AllowExperimental)
+            && self.value & Self::DMG_EXT_MODE_BIT != 0
+        {
+            OperatingMode::CgbDmgExt
+        } else if self.value & Self::DMG_COMPATIBILITY_MODE_BIT != 0 {
             OperatingMode::GbCompatible
         } else {
             OperatingMode::Cgb
@@ -609,6 +635,25 @@ fn cgb_io_register_is_available(
 
     if operating_mode.enables_cgb_extensions() {
         return true;
+    }
+
+    if matches!(operating_mode, OperatingMode::CgbDmgExt) {
+        return matches!(
+            kind,
+            IoRegisterKind::Key1
+                | IoRegisterKind::Vbk
+                | IoRegisterKind::Rp
+                | IoRegisterKind::Bcps
+                | IoRegisterKind::Ocps
+                | IoRegisterKind::Opri
+                | IoRegisterKind::Svbk
+                | IoRegisterKind::CgbUndocumented72
+                | IoRegisterKind::CgbUndocumented73
+                | IoRegisterKind::CgbUndocumented74
+                | IoRegisterKind::CgbUndocumented75
+                | IoRegisterKind::Pcm12
+                | IoRegisterKind::Pcm34
+        );
     }
 
     // CGB-family compatibility mode is not DMG silicon. Keep the small set of

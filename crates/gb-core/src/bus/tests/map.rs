@@ -365,7 +365,7 @@ fn native_cgb_rp_register_exposes_only_the_phase10_infrared_latches() {
 }
 
 #[test]
-fn native_cgb_infrared_status_is_available_only_with_cgb_extensions() {
+fn cgb_infrared_status_is_available_for_native_cgb_and_dmg_ext_profiles() {
     const IR_WARMUP_T_CYCLES: usize = 19_900;
 
     let dmg = Bus::new(ConsoleModel::GameBoy);
@@ -376,6 +376,12 @@ fn native_cgb_infrared_status_is_available_only_with_cgb_extensions() {
         crate::model::OperatingMode::GbCompatible,
     );
     assert_eq!(cgb_compat.cgb_infrared_status(), None);
+
+    let cgb_dmg_ext = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+    assert!(cgb_dmg_ext.cgb_infrared_status().is_some());
 
     let mut bus =
         Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
@@ -548,6 +554,272 @@ fn cgb_compatibility_mode_exposes_boot_hwio_visible_register_subset() {
 }
 
 #[test]
+fn cgb_dmg_ext_mode_exposes_docboy_register_subset_without_native_palette_or_hdma_data() {
+    let mut bus = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::CgbDmgExt);
+    let mut speed = crate::speed::SpeedController::new(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+    let mut dma = crate::dma::DmaController::new(ConsoleModel::GameBoyColor);
+    let apu = crate::apu::Apu::new(ConsoleModel::GameBoyColor);
+
+    assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
+    assert_eq!(
+        bus.read_io_target(
+            0xFF4D,
+            BusIoReadView {
+                speed: Some(&speed),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x7E
+    );
+    bus.write_with_context(
+        0xFF4D,
+        0x01,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            speed: Some(&mut speed),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF4D,
+            BusIoReadView {
+                speed: Some(&speed),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x7F
+    );
+
+    assert_eq!(bus.read_io_target(0xFF4F, BusIoReadView::default()), 0xFE);
+    bus.write_with_context(
+        0xFF4F,
+        0x01,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.read_io_target(0xFF4F, BusIoReadView::default()), 0xFF);
+
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0x3E);
+    bus.write_with_context(
+        0xFF56,
+        0xC1,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+
+    assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xF8);
+    bus.write_with_context(
+        0xFF70,
+        0x05,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xFD);
+
+    for (address, value, expected) in [
+        (0xFF72, 0x12, 0x12),
+        (0xFF73, 0x23, 0x23),
+        (0xFF74, 0x34, 0x34),
+        (0xFF75, 0x70, 0xFF),
+    ] {
+        bus.write_with_context(
+            address,
+            value,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoWriteView::default(),
+        );
+        assert_eq!(
+            bus.read_io_target(address, BusIoReadView::default()),
+            expected
+        );
+    }
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF68,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x40
+    );
+    bus.write_with_context(
+        0xFF68,
+        0x85,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            ppu: Some(&mut ppu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF68,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xC5
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF69,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
+    bus.write_with_context(
+        0xFF69,
+        0xA5,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            ppu: Some(&mut ppu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF68,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xC5,
+        "DMG-ext BCPD writes are blocked and must not auto-increment BCPS"
+    );
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6A,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x40
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6B,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFF
+    );
+    bus.write_with_context(
+        0xFF6C,
+        0x00,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView {
+            ppu: Some(&mut ppu),
+            ..BusIoWriteView::default()
+        },
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF6C,
+            BusIoReadView {
+                ppu: Some(&ppu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0xFE
+    );
+
+    let hdma_registers_before = dma.vram_dma_registers();
+    for address in 0xFF51..=0xFF55 {
+        bus.write_with_context(
+            address,
+            0x12,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoWriteView {
+                dma: Some(&mut dma),
+                ..BusIoWriteView::default()
+            },
+        );
+        assert_eq!(
+            bus.read_io_target(
+                address,
+                BusIoReadView {
+                    dma: Some(&dma),
+                    ..BusIoReadView::default()
+                }
+            ),
+            0xFF,
+            "DMG-ext should block HDMA register {address:#06X}"
+        );
+    }
+    assert_eq!(dma.vram_dma_registers(), hdma_registers_before);
+
+    assert_eq!(
+        bus.read_io_target(
+            0xFF76,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+    assert_eq!(
+        bus.read_io_target(
+            0xFF77,
+            BusIoReadView {
+                apu: Some(&apu),
+                ..BusIoReadView::default()
+            }
+        ),
+        0x00
+    );
+}
+
+#[test]
 fn native_cgb_palette_registers_route_to_ppu_owner() {
     let bus =
         Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
@@ -624,6 +896,14 @@ fn cgb_key0_direct_boot_state_tracks_header_policy_without_runtime_mutability() 
     custom_boot.apply_cgb_startup_state(crate::model::StartupMode::CustomBoot, None);
     assert_eq!(custom_boot.iohram.key0_state().value(), 0x80);
     assert!(custom_boot.iohram.key0_state().is_locked());
+
+    let mut cgb_dmg_ext = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+    cgb_dmg_ext.apply_cgb_startup_state(crate::model::StartupMode::SkipBoot, None);
+    assert_eq!(cgb_dmg_ext.iohram.key0_state().value(), 0x88);
+    assert!(cgb_dmg_ext.iohram.key0_state().is_locked());
 }
 
 #[test]
@@ -647,7 +927,7 @@ fn cgb_key0_real_boot_handoff_locks_boot_written_compatibility_mode() {
     assert!(!bus.iohram.key0_state().is_locked());
 
     assert_eq!(
-        bus.lock_cgb_real_boot_key0_at_handoff(),
+        bus.lock_cgb_real_boot_key0_at_handoff(crate::model::HeuristicPolicy::Disabled),
         Some(crate::model::OperatingMode::GbCompatible)
     );
     assert_eq!(
@@ -677,12 +957,57 @@ fn cgb_key0_real_boot_handoff_locks_boot_written_native_mode() {
     );
 
     assert_eq!(
-        bus.lock_cgb_real_boot_key0_at_handoff(),
+        bus.lock_cgb_real_boot_key0_at_handoff(crate::model::HeuristicPolicy::Disabled),
         Some(crate::model::OperatingMode::Cgb)
     );
     assert_eq!(bus.operating_mode(), crate::model::OperatingMode::Cgb);
     assert_eq!(bus.iohram.key0_state().value(), 0x80);
     assert!(bus.iohram.key0_state().is_locked());
+}
+
+#[test]
+fn cgb_key0_real_boot_handoff_uses_experimental_gate_for_dmg_ext_bit() {
+    let mut strict_bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    strict_bus.apply_cgb_startup_state(crate::model::StartupMode::RealBoot, None);
+    strict_bus.write_with_context(
+        0xFF4C,
+        0x08,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(
+        strict_bus.lock_cgb_real_boot_key0_at_handoff(crate::model::HeuristicPolicy::Disabled),
+        Some(crate::model::OperatingMode::Cgb)
+    );
+
+    let mut experimental_bus =
+        Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, crate::model::OperatingMode::Cgb);
+    experimental_bus.apply_cgb_startup_state(crate::model::StartupMode::RealBoot, None);
+    experimental_bus.write_with_context(
+        0xFF4C,
+        0x0C,
+        BusRequester::Cpu,
+        &BusArbitrationState::default(),
+        None,
+        BusIoWriteView::default(),
+    );
+    assert_eq!(
+        experimental_bus
+            .lock_cgb_real_boot_key0_at_handoff(crate::model::HeuristicPolicy::AllowExperimental),
+        Some(crate::model::OperatingMode::CgbDmgExt)
+    );
+    assert_eq!(
+        experimental_bus.operating_mode(),
+        crate::model::OperatingMode::CgbDmgExt
+    );
+    assert_eq!(experimental_bus.iohram.key0_state().value(), 0x0C);
+    assert!(experimental_bus.iohram.key0_state().is_locked());
+
+    experimental_bus.iohram.write_key0(0x00);
+    assert_eq!(experimental_bus.iohram.key0_state().value(), 0x0C);
 }
 
 #[test]

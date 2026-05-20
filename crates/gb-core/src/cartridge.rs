@@ -201,6 +201,20 @@ impl CgbFlag {
     pub const fn is_cgb_only(self) -> bool {
         matches!(self, Self::Only)
     }
+
+    pub const fn requests_cgb_dmg_ext_mode(self) -> bool {
+        match self {
+            Self::SupportedNonCanonical(value) => value & 0x08 != 0,
+            _ => false,
+        }
+    }
+
+    pub const fn requests_cgb_dmg_compatibility_mode(self) -> bool {
+        match self {
+            Self::SupportedNonCanonical(value) => value & 0x04 != 0,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

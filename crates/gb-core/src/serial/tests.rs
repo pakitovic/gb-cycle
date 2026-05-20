@@ -61,7 +61,7 @@ fn scheduler_trace_message_reports_cycle_phase_and_console_model() {
 }
 
 #[test]
-fn cgb_native_mode_latches_sc1_while_dmg_compatible_modes_keep_it_forced_high() {
+fn cgb_native_and_dmg_ext_modes_latch_sc1_while_compatibility_keeps_it_forced_high() {
     let mut cgb = Serial::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
 
     cgb.write_sc(0x81);
@@ -78,6 +78,14 @@ fn cgb_native_mode_latches_sc1_while_dmg_compatible_modes_keep_it_forced_high() 
 
     cgb.write_sc(0x83);
     assert_eq!(cgb.read_sc(), 0xFF);
+    assert!(!cgb.cgb_high_speed_clock());
+
+    cgb.apply_operating_mode_state(OperatingMode::CgbDmgExt);
+    cgb.write_sc(0x83);
+    assert_eq!(cgb.read_sc(), 0xFF);
+    assert!(cgb.cgb_high_speed_clock());
+    cgb.write_sc(0x81);
+    assert_eq!(cgb.read_sc(), 0xFD);
     assert!(!cgb.cgb_high_speed_clock());
 
     let mut dmg = Serial::new(ConsoleModel::GameBoy);
