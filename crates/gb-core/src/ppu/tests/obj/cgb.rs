@@ -76,6 +76,21 @@ fn cgb_compatibility_obj_priority_mode_prefers_lower_x_without_dmg_silicon() {
 }
 
 #[test]
+fn cgb_dmg_ext_obj_priority_mode_prefers_lower_x_and_latches_opri_readback_only() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::CgbDmgExt);
+    let current = priority_test_obj_pixel(1, 20, 0);
+    let candidate = priority_test_obj_pixel(2, 18, 1);
+
+    assert_eq!(ppu.read_register(0xFF6C), 0xFF);
+    assert!(ppu.obj_pixel_has_priority(candidate, current));
+
+    ppu.write_register(0xFF6C, 0x00);
+    assert_eq!(ppu.read_register(0xFF6C), 0xFE);
+    assert!(ppu.obj_pixel_has_priority(candidate, current));
+}
+
+#[test]
 fn cgb_opri_write_updates_latch_without_runtime_visual_priority_mutation() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     let current = priority_test_obj_pixel(1, 20, 0);

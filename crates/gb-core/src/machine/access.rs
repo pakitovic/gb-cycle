@@ -12,6 +12,7 @@ use crate::debugger::TraceSink;
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
+use crate::model::OperatingMode;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
@@ -205,7 +206,11 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub(super) fn apply_startup_configuration(&mut self, host_joypad_pressed_mask: u8) {
-        if let Some(startup_state) = self.boot.machine_skip_boot_state(Some(&self.cartridge)) {
+        if let Some(mut startup_state) = self.boot.machine_skip_boot_state(Some(&self.cartridge)) {
+            if self.config.operating_mode == OperatingMode::CgbDmgExt {
+                // DocBoy's CGB DMG-ext direct-boot profile starts with the boot-logo pulse residue inactive while keeping the ordinary powered APU register image. Keep this narrow to the experimental mode so promoted CGB startup audio state stays unchanged.
+                startup_state.apu.channel_active_mask = 0;
+            }
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);

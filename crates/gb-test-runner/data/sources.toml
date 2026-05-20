@@ -20989,3 +20989,159 @@ sha256 = "c1387864c4edc9e25ec09940b9e2c6dcfcc8a93d58d04abb2cd56feadfd2f2a7"
 path = "tests/results/dmg/docboy/ppu/window_wx9.png"
 family = "docboy"
 sha256 = "bd380f08f5f7e4c02ab4e5e55c99f347131726096c8daf169c49e1a162a3b689"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/apu/pcm12_ch1_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/apu/pcm12_ch1_read.gb"
+sha256 = "519103e8c64f941328d2692b91ed396d7cae2677ed3cfed75b18ee70b6774f19"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/apu/pcm12_ch2_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/apu/pcm12_ch2_read.gb"
+sha256 = "fb4cf6e6aefa33e272ecea481d587a46b6645126abb4f74a02162b3e999a3839"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/banks/svbk_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/banks/svbk_write_read.gb"
+sha256 = "380299e7f149db805dc275db7cf7324be27c4768c0d5605bca14e681b671852c"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/banks/vbk_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/banks/vbk_write_read.gb"
+sha256 = "261808927b9cf201b84755df70a952179b4ec4a62687e6efd9dc5b670c3b2ecc"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/hdma/gdma_basic_transfer.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/hdma/gdma_basic_transfer.gb"
+sha256 = "ef94b0a7771331653cd35f8e978dcc352a41314389bc73c1d9c03d45fec4a590"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/hdma/hdma_basic_transfer.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/hdma/hdma_basic_transfer.gb"
+sha256 = "c158650ebef7a2f16c29cd95bb49e495345d700fe73d6563e39ed8809ccbc22f"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ir/rp_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ir/rp_write_read.gb"
+sha256 = "564093013708a4e8af6ea6088b2d127050db0f31aef56b8427308386f01fb21c"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/key1/key1_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/key1/key1_write_read.gb"
+sha256 = "baf3e0c559ea2ea779e7242e92c96f6f4c0dd1b0b687ef7dd5e7cda6fe50d141"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8a.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8a.gb"
+sha256 = "8863b0c86a7fcf52f0baf89daab88eac17f95d42283af5609699969d27bc07e4"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8b.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8b.gb"
+sha256 = "d48576e3a4f768d6c39dc3509a7265a464c89ecb67e03578decf8f1ef457597f"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8c.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8c.gb"
+sha256 = "b76ad070105c711c2117016cce32e9b146bcac9048023973f893bb04c7945f50"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8d.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8d.gb"
+sha256 = "22249158b6e3a7d101ddb9f8f16ae4231cd454b63b6a56e8b02cd52ac8ccfb9b"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8e.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8e.gb"
+sha256 = "b369b0d3f8cd92a2da78d77ce30d15941337f27f547f86a8bdbf3ed0f7891041"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_8f.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_8f.gb"
+sha256 = "fc4210a0fb8e64d4d3b08bba9255d1442beb3cd5dad7393a3e769afb6b211813"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_88.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_88.gb"
+sha256 = "6e5bc9a80edf4e937506c0079062dd8e27ce7119a094d53e1b2ec3c8d5ca535b"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/mode/mode_cgb_flag_89.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/mode/mode_cgb_flag_89.gb"
+sha256 = "cab4ca14d9bacd9343a025808a6892ea3cedc8e001b4cc2e001b9b3ff63041f0"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ppu/bcpd_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ppu/bcpd_write_read.gb"
+sha256 = "6d66d7db6f649edc59c8a5efd02b4099d053dd1f07e7be99bf57906d07a4286c"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ppu/bcps_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ppu/bcps_write_read.gb"
+sha256 = "45f17352b057617a2c2a0d80468f77dd873fdb69d693c060f5c157c2d1de4a4b"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ppu/ocpd_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ppu/ocpd_write_read.gb"
+sha256 = "50796dac453198ceb3130e4462f8d78fbd842617d684585f040dfabbdce6b13d"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ppu/ocps_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ppu/ocps_write_read.gb"
+sha256 = "6a986b9c0cefa00d2fc1ef388d0b8b6f080be21db022ba83763b7830120c2aaa"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/ppu/opri_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/ppu/opri_write_read.gb"
+sha256 = "2baf9d588626bf5af8cd783a1440ec0b7f00a8ce6f2e4df53db9a9f7c23f9190"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/serial/sc_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/serial/sc_write_read.gb"
+sha256 = "ee26768938f16077012abf141d303edf2f3bacb05146663df7563c6173884550"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/undocumented/ff72_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/undocumented/ff72_write_read.gb"
+sha256 = "20ffe00b1e84ef8fea4642ce3977286afad480a440445e9b76ffb3c828fc0e49"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/undocumented/ff73_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/undocumented/ff73_write_read.gb"
+sha256 = "17a8adf324c0b2ba88c5fe50d58b90613f87da6c859f3615e1c3019c647db050"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/undocumented/ff74_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/undocumented/ff74_write_read.gb"
+sha256 = "57016978b38966df6a92433ef8dac93808f5d5181470010907f76d8c12cd43b1"
+
+[[source.required_file]]
+path = "tests/roms/cgb_dmg_ext_mode/docboy/undocumented/ff75_write_read.gb"
+family = "docboy-cgb-dmg-ext"
+rom = "docboy/undocumented/ff75_write_read.gb"
+sha256 = "c1af205120a4dfbc6bb689754d71ce5a309a4bd6fb925d8a7eed72115ac6e4e2"

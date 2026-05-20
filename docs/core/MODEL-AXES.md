@@ -33,6 +33,7 @@ Examples:
 - `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `BootRomKind::Mgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot profile
 - `ConsoleModel::GameBoyColor` + `OperatingMode::Cgb` = native CGB
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
+- `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
 - `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
 
 `CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
@@ -49,12 +50,12 @@ This table is an informative reference for aligning the public axes with the har
 | false | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
 | true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
 | true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
-| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
-| false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
-| false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
-| true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
-| false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
-| false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB | CGB color; GB with CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
+| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
+| false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
+| false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
+| true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
+| false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
+| false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
 | true | Super Game Boy | Sgb1 | `SGB-CPU 01` | `sgb_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB1 host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side. |
 | false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB2 host; NTSC/JPN case; corrected clock versus SGB1; boot identifies SGB2 separately. |
 | false | Game Boy Advance | Handheld | `CPU AGB` | `gba_bios.bin` + `cgb_agb0_boot.bin` | AGB; GB/GBC Compatible on AGB0 | AGB color; GB/GBC with AGB0 profile | Initial CPU without suffix; early AGB. `AGB0` refers to the CGB-compatible boot ROM variant, not a confirmed separate native GBA BIOS here. |
@@ -100,8 +101,11 @@ Typical uses:
 - mode-dependent palette behavior
 - mode-dependent boot handoff on CGB-family hardware
 - policy that should differ between "CGB hardware running CGB software" and "CGB hardware running DMG software"
+- experimental CGB DMG-ext policy where the software contract remains DMG-like but a small set of CGB-family registers stays visible for DocBoy `dmg_ext_mode` validation
 
 Do not treat `OperatingMode::GbCompatible` as shorthand for DMG silicon. The software contract may look DMG-like while the underlying hardware family is still CGB.
+
+Do not treat `OperatingMode::CgbDmgExt` as native CGB or as full PGB/PSM support. It is a CGB-family experimental mode with a DMG software contract, CGB silicon quirks, and only the documented narrow register profile enabled.
 
 ### Use `HostPlatform` when the question is about the outer shell, not the GB silicon
 
@@ -124,6 +128,7 @@ Use it when the question is semantic:
 
 - "does DMG software contract apply?"
 - "are CGB extensions enabled?"
+- "is the experimental CGB DMG-ext register subset enabled?"
 - "do DMG-family silicon quirks apply?"
 - "are SGB host enhancements active?"
 
@@ -171,6 +176,7 @@ Use `OperatingMode` or a capability derived from it for:
 - whether CGB palette hardware is actively exposed
 - whether CGB-only tile attributes participate in rendering
 - whether a CGB running a DMG title should follow DMG-visible rendering rules
+- whether the experimental CGB DMG-ext register subset should be exposed without enabling native CGB rendering
 
 Use `HostPlatform` or a capability derived from it for:
 
@@ -195,6 +201,7 @@ This keeps behavior-neutral refactors small and makes later CGB bring-up easier 
 
 - Do not use `ConsoleModel::GameBoy` as a synonym for "DMG-visible behavior".
 - Do not use `OperatingMode::GbCompatible` as a synonym for "DMG-family silicon".
+- Do not use `OperatingMode::CgbDmgExt` as a synonym for native CGB, full PGB, PSM NMI, or live post-boot `OPRI` visual switching.
 - Do not put SGB host-shell policy behind random `ConsoleModel` checks.
 - Do not re-derive the same semantic meaning from the raw axes in several subsystems.
 - Do not add a second emulator path just because one raw axis is insufficient.
@@ -208,3 +215,4 @@ When a change adds model-aware behavior, verify:
 - silicon-only quirks are not accidentally keyed off `OperatingMode`
 - host-shell behavior is not leaking into handheld-core logic
 - CGB compatibility mode is not being confused with DMG silicon
+- experimental CGB DMG-ext behavior is gated explicitly and does not silently broaden native CGB, PGB, or PSM behavior

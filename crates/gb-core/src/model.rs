@@ -76,7 +76,7 @@ impl ConsoleModel {
             ConsoleFamily::Cgb => {
                 matches!(
                     operating_mode,
-                    OperatingMode::Cgb | OperatingMode::GbCompatible
+                    OperatingMode::Cgb | OperatingMode::GbCompatible | OperatingMode::CgbDmgExt
                 )
             }
         }
@@ -94,6 +94,29 @@ impl ConsoleModel {
             }
         }
     }
+
+    pub const fn direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+        self,
+        cgb_flag: CgbFlag,
+        heuristic_policy: HeuristicPolicy,
+    ) -> OperatingMode {
+        match self.family() {
+            ConsoleFamily::Dmg => OperatingMode::Dmg,
+            ConsoleFamily::Cgb => {
+                if matches!(heuristic_policy, HeuristicPolicy::AllowExperimental)
+                    && cgb_flag.requests_cgb_dmg_ext_mode()
+                {
+                    OperatingMode::CgbDmgExt
+                } else if matches!(heuristic_policy, HeuristicPolicy::AllowExperimental)
+                    && cgb_flag.requests_cgb_dmg_compatibility_mode()
+                {
+                    OperatingMode::GbCompatible
+                } else {
+                    self.direct_boot_operating_mode_for_cgb_flag(cgb_flag)
+                }
+            }
+        }
+    }
 }
 
 #[derive(
@@ -104,15 +127,28 @@ pub enum OperatingMode {
     Dmg,
     Cgb,
     GbCompatible,
+    CgbDmgExt,
 }
 
 impl OperatingMode {
     pub const fn uses_dmg_software_contract(self) -> bool {
-        matches!(self, Self::Dmg | Self::GbCompatible)
+        matches!(self, Self::Dmg | Self::GbCompatible | Self::CgbDmgExt)
     }
 
     pub const fn enables_cgb_extensions(self) -> bool {
         matches!(self, Self::Cgb)
+    }
+
+    pub const fn enables_cgb_speed_switch(self) -> bool {
+        matches!(self, Self::Cgb | Self::CgbDmgExt)
+    }
+
+    pub const fn enables_cgb_high_speed_serial(self) -> bool {
+        matches!(self, Self::Cgb | Self::CgbDmgExt)
+    }
+
+    pub const fn enables_cgb_infrared_register(self) -> bool {
+        matches!(self, Self::Cgb | Self::CgbDmgExt)
     }
 }
 
@@ -410,7 +446,10 @@ impl MachineConfig {
             .forced_operating_mode
             .unwrap_or_else(|| {
                 self.console_model
-                    .direct_boot_operating_mode_for_cgb_flag(cgb_flag)
+                    .direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+                        cgb_flag,
+                        self.compatibility.heuristic_policy,
+                    )
             });
     }
 

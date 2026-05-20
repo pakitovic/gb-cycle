@@ -62,7 +62,9 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
         return;
     }
 
-    if let Some(operating_mode) = bus.lock_cgb_real_boot_key0_at_handoff() {
+    if let Some(operating_mode) =
+        bus.lock_cgb_real_boot_key0_at_handoff(config.compatibility.heuristic_policy)
+    {
         config.operating_mode = operating_mode;
         bus.apply_operating_mode_state(operating_mode);
         serial.apply_operating_mode_state(operating_mode);
@@ -187,7 +189,16 @@ pub(super) fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
     match info.availability() {
         crate::bus::IoRegisterAvailability::Shared
         | crate::bus::IoRegisterAvailability::DmgCompatible => true,
-        crate::bus::IoRegisterAvailability::CgbOnly => bus.cgb_extensions_enabled(),
+        crate::bus::IoRegisterAvailability::CgbOnly => match info.kind() {
+            crate::bus::IoRegisterKind::Bcps | crate::bus::IoRegisterKind::Ocps => {
+                bus.cgb_extensions_enabled()
+                    || bus.operating_mode() == crate::model::OperatingMode::CgbDmgExt
+            }
+            crate::bus::IoRegisterKind::Bcpd | crate::bus::IoRegisterKind::Ocpd => {
+                bus.cgb_extensions_enabled()
+            }
+            _ => bus.io_register_info_is_live(info),
+        },
     }
 }
 

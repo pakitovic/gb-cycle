@@ -9,7 +9,7 @@ use crate::debugger::BreakpointCondition;
 use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
-use crate::model::{ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
+use crate::model::{CompatibilityPolicy, ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
 use crate::ppu::{
     PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
 };
@@ -46,6 +46,12 @@ fn build_test_rom_with_vector(program: &[u8], vector: u16, handler: &[u8]) -> Ve
 fn build_cgb_native_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = build_test_rom(program);
     rom[0x0143] = 0x80;
+    rom
+}
+
+fn build_cgb_dmg_ext_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0143] = 0x88;
     rom
 }
 
@@ -927,6 +933,43 @@ fn cgb_real_boot_ff50_handoff_applies_boot_selected_compatible_mode() {
 }
 
 #[test]
+fn cgb_real_boot_ff50_handoff_selects_dmg_ext_only_with_experimental_policy() {
+    let mut strict_machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
+    );
+    strict_machine.write_bus(0xFF4C, 0x08);
+    strict_machine.write_bus(0xFF50, 0x01);
+    assert_eq!(strict_machine.config().operating_mode, OperatingMode::Cgb);
+    assert_ne!(strict_machine.read_bus(0xFF4D), 0xFF);
+
+    let mut experimental_machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_compatibility(CompatibilityPolicy::experimental()),
+    );
+    experimental_machine.write_bus(0xFF4C, 0x0C);
+    experimental_machine.write_bus(0xFF50, 0x01);
+
+    assert!(!experimental_machine.boot().is_boot_rom_mapped());
+    assert_eq!(
+        experimental_machine.config().operating_mode,
+        OperatingMode::CgbDmgExt
+    );
+    assert_eq!(
+        experimental_machine.bus().operating_mode(),
+        OperatingMode::CgbDmgExt
+    );
+    assert_eq!(
+        experimental_machine.speed().operating_mode(),
+        OperatingMode::CgbDmgExt
+    );
+    assert_eq!(experimental_machine.read_bus(0xFF4C), 0xFF);
+    assert_eq!(experimental_machine.read_bus(0xFF4D), 0x7E);
+    assert_eq!(experimental_machine.read_bus(0xFF56), 0x3E);
+    assert_eq!(experimental_machine.read_bus(0xFF55), 0xFF);
+}
+
+#[test]
 fn cgb_real_boot_ff50_handoff_keeps_native_mode_when_boot_selects_cgb() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
@@ -941,6 +984,35 @@ fn cgb_real_boot_ff50_handoff_keeps_native_mode_when_boot_selects_cgb() {
     assert_eq!(machine.speed().operating_mode(), OperatingMode::Cgb);
     assert_ne!(machine.read_bus(0xFF4D), 0xFF);
     assert_ne!(machine.read_bus(0xFF4F), 0xFF);
+}
+
+#[test]
+fn cgb_dmg_ext_direct_boot_header_requires_experimental_policy() {
+    let mut strict_machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    strict_machine
+        .load_cartridge(build_cgb_dmg_ext_test_rom(&[0x00]))
+        .expect("strict noncanonical CGB header should load with diagnostics");
+    assert_eq!(strict_machine.config().operating_mode, OperatingMode::Cgb);
+    assert_ne!(strict_machine.read_bus(0xFF4D), 0xFF);
+
+    let mut experimental_machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor)
+            .with_startup_mode(StartupMode::SkipBoot)
+            .with_compatibility(CompatibilityPolicy::experimental()),
+    );
+    experimental_machine
+        .load_cartridge(build_cgb_dmg_ext_test_rom(&[0x00]))
+        .expect("experimental noncanonical CGB header should load");
+    assert_eq!(
+        experimental_machine.config().operating_mode,
+        OperatingMode::CgbDmgExt
+    );
+    assert_eq!(experimental_machine.read_bus(0xFF4D), 0x7E);
+    assert_eq!(experimental_machine.read_bus(0xFF76), 0x00);
+    assert_eq!(experimental_machine.read_bus(0xFF69), 0xFF);
+    assert_eq!(experimental_machine.read_bus(0xFF55), 0xFF);
 }
 
 #[test]
@@ -2486,6 +2558,10 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
 fn cgb_palette_ppu_mmio_commit_route_is_native_cgb_only() {
     let native =
         crate::bus::Bus::new_with_operating_mode(ConsoleModel::GameBoyColor, OperatingMode::Cgb);
+    let cgb_dmg_ext = crate::bus::Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyColor,
+        OperatingMode::CgbDmgExt,
+    );
     let compatible = crate::bus::Bus::new_with_operating_mode(
         ConsoleModel::GameBoyColor,
         OperatingMode::GbCompatible,
@@ -2494,6 +2570,11 @@ fn cgb_palette_ppu_mmio_commit_route_is_native_cgb_only() {
 
     assert!(cpu_write_targets_ppu_mmio(&native, 0xFF68));
     assert!(cpu_write_targets_ppu_mmio(&native, 0xFF69));
+    assert!(cpu_write_targets_ppu_mmio(&cgb_dmg_ext, 0xFF68));
+    assert!(!cpu_write_targets_ppu_mmio(&cgb_dmg_ext, 0xFF69));
+    assert!(cpu_write_targets_ppu_mmio(&cgb_dmg_ext, 0xFF6A));
+    assert!(!cpu_write_targets_ppu_mmio(&cgb_dmg_ext, 0xFF6B));
+    assert!(cpu_write_targets_ppu_mmio(&cgb_dmg_ext, 0xFF6C));
     assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF68));
     assert!(!cpu_write_targets_ppu_mmio(&compatible, 0xFF69));
     assert!(!cpu_write_targets_ppu_mmio(&dmg, 0xFF68));

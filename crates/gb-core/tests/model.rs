@@ -80,12 +80,55 @@ fn direct_boot_cgb_header_policy_keeps_model_and_mode_axes_separate() {
     );
     assert_eq!(
         ConsoleModel::GameBoyColor
-            .direct_boot_operating_mode_for_cgb_flag(CgbFlag::SupportedNonCanonical(0xA0)),
+            .direct_boot_operating_mode_for_cgb_flag(CgbFlag::SupportedNonCanonical(0x88)),
+        OperatingMode::Cgb
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyColor
+            .direct_boot_operating_mode_for_cgb_flag(CgbFlag::SupportedNonCanonical(0x8C)),
         OperatingMode::Cgb
     );
     assert_eq!(
         ConsoleModel::GameBoy.direct_boot_operating_mode_for_cgb_flag(CgbFlag::Supported),
         OperatingMode::Dmg
+    );
+}
+
+#[test]
+fn experimental_cgb_header_policy_maps_dmg_ext_without_changing_strict_policy() {
+    for value in 0x88..=0x8F {
+        assert_eq!(
+            ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+                CgbFlag::SupportedNonCanonical(value),
+                HeuristicPolicy::AllowExperimental,
+            ),
+            OperatingMode::CgbDmgExt,
+            "experimental header value {value:#04X} should request CGB DMG-ext"
+        );
+        assert_eq!(
+            ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+                CgbFlag::SupportedNonCanonical(value),
+                HeuristicPolicy::Disabled,
+            ),
+            OperatingMode::Cgb,
+            "strict header value {value:#04X} must keep the current native-CGB fallback"
+        );
+    }
+
+    assert_eq!(
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x84),
+            HeuristicPolicy::AllowExperimental,
+        ),
+        OperatingMode::GbCompatible
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x8C),
+            HeuristicPolicy::AllowExperimental,
+        ),
+        OperatingMode::CgbDmgExt,
+        "bit 3 wins over bit 2 under the experimental policy"
     );
 }
 
@@ -98,15 +141,24 @@ fn cgb_flag_reports_native_mode_request_without_implying_special_hardware() {
     assert!(CgbFlag::SupportedNonCanonical(0xA0).enables_cgb_native_mode());
     assert!(CgbFlag::Only.is_cgb_only());
     assert!(!CgbFlag::SupportedNonCanonical(0xA0).is_cgb_only());
+    assert!(CgbFlag::SupportedNonCanonical(0x88).requests_cgb_dmg_ext_mode());
+    assert!(!CgbFlag::SupportedNonCanonical(0x84).requests_cgb_dmg_ext_mode());
+    assert!(CgbFlag::SupportedNonCanonical(0x84).requests_cgb_dmg_compatibility_mode());
+    assert!(!CgbFlag::SupportedNonCanonical(0x88).requests_cgb_dmg_compatibility_mode());
 }
 
 #[test]
 fn public_model_api_exposes_operating_modes_and_host_platforms() {
     assert!(OperatingMode::Dmg.uses_dmg_software_contract());
     assert!(OperatingMode::GbCompatible.uses_dmg_software_contract());
+    assert!(OperatingMode::CgbDmgExt.uses_dmg_software_contract());
     assert!(!OperatingMode::Cgb.uses_dmg_software_contract());
     assert!(OperatingMode::Cgb.enables_cgb_extensions());
     assert!(!OperatingMode::GbCompatible.enables_cgb_extensions());
+    assert!(!OperatingMode::CgbDmgExt.enables_cgb_extensions());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_speed_switch());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_high_speed_serial());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_infrared_register());
     assert!(HostPlatform::Sgb1.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());

@@ -517,7 +517,7 @@ impl Serial {
     }
 
     fn cgb_high_speed_serial_enabled(&self) -> bool {
-        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_extensions()
+        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_high_speed_serial()
     }
 
     fn read_sc_high_speed_bit(&self) -> u8 {

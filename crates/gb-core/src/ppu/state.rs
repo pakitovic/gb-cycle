@@ -166,6 +166,10 @@ impl CgbPaletteRegister {
     pub(super) const fn is_data(self) -> bool {
         matches!(self, Self::BgData | Self::ObjData)
     }
+
+    pub(super) const fn is_index(self) -> bool {
+        matches!(self, Self::BgIndex | Self::ObjIndex)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

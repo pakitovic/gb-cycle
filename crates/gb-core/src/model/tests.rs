@@ -15,7 +15,9 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
         OperatingMode::Cgb
     );
     assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::GbCompatible));
+    assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::CgbDmgExt));
     assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::GbCompatible));
+    assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::CgbDmgExt));
 }
 
 #[test]
@@ -46,12 +48,61 @@ fn console_models_publish_default_and_allowed_boot_rom_kinds() {
 fn operating_modes_and_host_platforms_keep_silicon_and_host_axes_separate() {
     assert!(OperatingMode::Dmg.uses_dmg_software_contract());
     assert!(OperatingMode::GbCompatible.uses_dmg_software_contract());
+    assert!(OperatingMode::CgbDmgExt.uses_dmg_software_contract());
     assert!(!OperatingMode::Cgb.uses_dmg_software_contract());
     assert!(OperatingMode::Cgb.enables_cgb_extensions());
     assert!(!OperatingMode::GbCompatible.enables_cgb_extensions());
+    assert!(!OperatingMode::CgbDmgExt.enables_cgb_extensions());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_speed_switch());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_high_speed_serial());
+    assert!(OperatingMode::CgbDmgExt.enables_cgb_infrared_register());
     assert!(HostPlatform::Sgb1.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());
+}
+
+#[test]
+fn experimental_cgb_header_policy_selects_dmg_ext_from_noncanonical_bit3_only() {
+    assert_eq!(
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x88),
+            HeuristicPolicy::Disabled,
+        ),
+        OperatingMode::Cgb
+    );
+
+    for value in 0x88..=0x8F {
+        assert_eq!(
+            ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+                CgbFlag::SupportedNonCanonical(value),
+                HeuristicPolicy::AllowExperimental,
+            ),
+            OperatingMode::CgbDmgExt,
+            "header value {value:#04X} should request CGB DMG-ext experimentally"
+        );
+    }
+
+    assert_eq!(
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x84),
+            HeuristicPolicy::AllowExperimental,
+        ),
+        OperatingMode::GbCompatible
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyColor.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x8C),
+            HeuristicPolicy::AllowExperimental,
+        ),
+        OperatingMode::CgbDmgExt
+    );
+    assert_eq!(
+        ConsoleModel::GameBoy.direct_boot_operating_mode_for_cgb_flag_with_heuristic(
+            CgbFlag::SupportedNonCanonical(0x88),
+            HeuristicPolicy::AllowExperimental,
+        ),
+        OperatingMode::Dmg
+    );
 }
 
 #[test]
@@ -73,6 +124,15 @@ fn capability_sets_distinguish_cgb_compatibility_from_dmg_silicon() {
     assert!(!cgb_compat.dmg_family_quirks_enabled());
     assert!(!dmg.cgb_extensions_enabled());
     assert!(!cgb_compat.cgb_extensions_enabled());
+
+    let cgb_dmg_ext = CapabilitySet::from_model_axes(
+        ConsoleModel::GameBoyColor,
+        OperatingMode::CgbDmgExt,
+        HostPlatform::Handheld,
+    );
+    assert!(cgb_dmg_ext.dmg_software_contract());
+    assert!(!cgb_dmg_ext.dmg_family_quirks_enabled());
+    assert!(!cgb_dmg_ext.cgb_extensions_enabled());
 }
 
 #[test]

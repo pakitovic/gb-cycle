@@ -45,12 +45,13 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 12] = [
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 6] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 7] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "samesuite-dmg-extra",
     "gbmicrotest-dmg-extra",
     "docboy-dmg-extra",
+    "docboy-cgb-dmg-ext-extra",
     "little-things-gb-dmg-extra",
 ];
 const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
@@ -245,6 +246,10 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
 
 pub fn docboy_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("docboy-dmg-extra")
+}
+
+pub fn docboy_cgb_dmg_ext_extra_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-cgb-dmg-ext-extra")
 }
 
 pub fn blargg_dmg_curated_suite() -> RomSuite {
@@ -1104,7 +1109,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 22] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 23] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1129,6 +1134,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 22] {
         (
             "crates/gb-test-runner/data/docboy.toml",
             include_str!("../data/docboy.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/docboy-cgb-dmg-ext.toml",
+            include_str!("../data/docboy-cgb-dmg-ext.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-audio-blargg.toml",
@@ -1956,8 +1965,8 @@ mod tests {
         cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
         cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
-        curated_test_rom_manifests, discover_test_rom_store_root, docboy_dmg_extra_suite,
-        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
+        curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
+        docboy_dmg_extra_suite, failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
         little_things_gb_dmg_extra_suite, load_persisted_suite_status,
         manifest_case_report_rom_display, manifest_case_to_rom_test_case,
         materialize_curated_test_rom_families, materialize_curated_test_rom_store,
@@ -2773,6 +2782,42 @@ mod tests {
     }
 
     #[test]
+    fn docboy_cgb_dmg_ext_extra_suite_tracks_experimental_cgb_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy-cgb-dmg-ext.toml");
+        assert!(
+            !manifest_text.contains("startup ="),
+            "DocBoy CGB DMG-ext manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
+        );
+
+        let suite = docboy_cgb_dmg_ext_extra_suite();
+
+        assert_eq!(suite.name, "docboy-cgb-dmg-ext-extra");
+        assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg-ext"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 26);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.startup_ppu_profile.is_none()
+                && case.execution_mode == crate::ExecutionMode::Experimental
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("docboy-cgb-dmg-ext/docboy")
+        }));
+        assert!(suite.cases.iter().all(|case| {
+            case.pass_condition
+                == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::with_fail_value(
+                    0xFFF0, 0x01, 0x02,
+                )])
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "docboy-cgb-dmg-ext-mode-mode-cgb-flag-8c"
+                && case.rom_path.as_path()
+                    == Path::new("docboy-cgb-dmg-ext/docboy/mode/mode_cgb_flag_8c.gb")
+        }));
+        assert!(suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
+    }
+
+    #[test]
     fn cgb_audio_blargg_suite_tracks_the_full_cgb_sound_lane() {
         let suite = cgb_audio_blargg_suite();
 
@@ -3180,6 +3225,7 @@ mod tests {
                 "cpp".to_string(),
                 "daid".to_string(),
                 "docboy".to_string(),
+                "docboy-cgb-dmg-ext".to_string(),
                 "gbmicrotest".to_string(),
                 "hacktix".to_string(),
                 "little-things-gb".to_string(),
