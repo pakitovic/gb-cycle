@@ -1900,6 +1900,42 @@ rom = "boot/poweron_wy_000.gb"
 sha256 = "53cf8951c898febc7c26808fc445449a36c60e8700a3257c8a99675b4756f74a"
 
 [[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_0x1000.gb"
+family = "gbmicrotest"
+rom = "dma/dma_0x1000.gb"
+sha256 = "c6f52be71977162293a91bbd2324733ec8e01b425d20b11cac97bd64dd57127c"
+
+[[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_0x9000.gb"
+family = "gbmicrotest"
+rom = "dma/dma_0x9000.gb"
+sha256 = "736046c51b1ef6aaa1abb01f098e616d6e92151c22c57de95b670d7c5ae62ea4"
+
+[[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_0xA000.gb"
+family = "gbmicrotest"
+rom = "dma/dma_0xA000.gb"
+sha256 = "ce8f7808ccc1a12173882b47654348f7539a9f931c68f6643880c6d7c69623b3"
+
+[[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_0xC000.gb"
+family = "gbmicrotest"
+rom = "dma/dma_0xC000.gb"
+sha256 = "23c3b77eebdfd20e865890f0a8727cd557c4bf919f2fd465cd0e446faa23c85a"
+
+[[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_0xE000.gb"
+family = "gbmicrotest"
+rom = "dma/dma_0xE000.gb"
+sha256 = "96b00b8f8c4398c734a2180eb81a68209125c0c457b2ff69815341b38092646d"
+
+[[source.required_file]]
+path = "tests/roms/dmg/gbmicrotest/dma/dma_timing_a.gb"
+family = "gbmicrotest"
+rom = "dma/dma_timing_a.gb"
+sha256 = "157cceb5c15b5274bed4e27ae407b1f406feed4294c1c5ac7dfee2a7875db312"
+
+[[source.required_file]]
 path = "tests/roms/dmg/gbmicrotest/halt/halt_bug.gb"
 family = "gbmicrotest"
 rom = "halt/halt_bug.gb"
