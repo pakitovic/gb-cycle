@@ -21615,72 +21615,6 @@ rom = "mealybug/m3_wx_6_change.gb"
 sha256 = "efa65cf7a570add7cfcb6d25d7c314359f2a0e6eadcde2e44d53f81d6ba44b0d"
 
 [[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/hblank_ly_scx_timing-GS.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/hblank_ly_scx_timing-GS.gb"
-sha256 = "5dc408f856f59b12ce63e4433355bfb48c2b2eba5a0db78644212f4081d8958a"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/intr_1_2_timing-GS.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/intr_1_2_timing-GS.gb"
-sha256 = "5a9afb64c8cd972a3b4fa63122e09d24f14cc8d6ad98d85acbf38fea876b54d5"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/intr_2_0_timing.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/intr_2_0_timing.gb"
-sha256 = "dcd7d144be6879368777412993d94c303fcb21fe1e052485f88e658ba8bc02fb"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/intr_2_mode0_timing_sprites.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/intr_2_mode0_timing_sprites.gb"
-sha256 = "f8a1b92942389ed4afecaadc32a3620931f829c2ba503f96022357fd59881028"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/intr_2_mode3_timing.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/intr_2_mode3_timing.gb"
-sha256 = "17ccc6ca0036ffaa75ed47bc20a59ea8f68dd1e383c1719827055483f14ae0b8"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/intr_2_oam_ok_timing.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/intr_2_oam_ok_timing.gb"
-sha256 = "d1138307a25d8eff8566e670ee39330f7a863cac792d47de269f3f0c34c85167"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/lcdon_timing-GS.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/lcdon_timing-GS.gb"
-sha256 = "dc3644c90c1d598b64a86d00abbf219794f96dc79a188e50c9fbe53e18df1ee4"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/lcdon_write_timing-GS.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/lcdon_write_timing-GS.gb"
-sha256 = "a4aafb523d4beb8e6a1f37a76b29b54a38355bc1b683be1a36c0ad24ddbd3eb7"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/stat_irq_blocking.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/stat_irq_blocking.gb"
-sha256 = "4e061537ea80148b99bf70fdb9a22b44aec921cbbe4477b6249b2bccee97e0ec"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/stat_lyc_onoff.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/stat_lyc_onoff.gb"
-sha256 = "32af6a9df7fe833c6115e25f0008a8b826035d9177fe73057fd9026df944a6ef"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/ppu/vblank_stat_intr-GS.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/ppu/vblank_stat_intr-GS.gb"
-sha256 = "db7ee2865689f53290e3a1a653d72d1fa8f2226766bad9005f3ad6ff17ce8342"
-
-[[source.required_file]]
 path = "tests/roms/cgb_dmg_mode/docboy/ppu/bcpd_write_read.gb"
 family = "docboy-cgb-dmg"
 rom = "docboy/ppu/bcpd_write_read.gb"
@@ -24308,51 +24242,6 @@ sha256 = "6120abeb8b5953fd54924309a5cef87221dcfde12f19e0ed67c9d1978006f085"
 path = "tests/results/cgb_dmg_mode/mealybug/m3_wx_6_change.png"
 family = "docboy-cgb-dmg"
 sha256 = "47b8366224a61be1c2b70b95e854392bbf1b92e848aa4bf87389b52f0f7ff04e"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/hblank_ly_scx_timing-GS.png"
-family = "docboy-cgb-dmg"
-sha256 = "06862ba067bc1936be8b696d394d8a96b91d291157d9b8a51f55d8e32dbe4fec"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/intr_1_2_timing-GS.png"
-family = "docboy-cgb-dmg"
-sha256 = "a31e3b1d27747ddc623bdef62550a46f76ccce6a227f703ba6cf5c3896ad1a96"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/intr_2_0_timing.png"
-family = "docboy-cgb-dmg"
-sha256 = "1b5c35f065ac8375c6c8d49e37199ed3630e96042140b01a8f6d14fa06930fa1"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/ok.png"
-family = "docboy-cgb-dmg"
-sha256 = "78963b55e7e184b315b22166ed25d749e026df80e1d6fcc64d0fd3361f88fc1f"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/intr_2_mode3_timing.png"
-family = "docboy-cgb-dmg"
-sha256 = "5c7db0ef08ab2a0a13135519cbadae4d48b23a89acc4915c37a4874b710639ba"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/intr_2_oam_ok_timing.png"
-family = "docboy-cgb-dmg"
-sha256 = "4f191dc55263733522cd68bc7b10e9c5eac17304e9b0403abf2f31be190ddde7"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/lcdon_timing-GS.png"
-family = "docboy-cgb-dmg"
-sha256 = "e8c282b758190155be448b3ea30dd358e0b827e5f41cd45c4cae260416c2f2a4"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/lcdon_write_timing-GS.png"
-family = "docboy-cgb-dmg"
-sha256 = "ec8839c3613a254b5469e7a447c10f257f2729e048d5e7c56ba6146c190620e9"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/ppu/vblank_stat_intr-GS.png"
-family = "docboy-cgb-dmg"
-sha256 = "206fc944403b190436f319debbcf97a283dcf7e8ea00350b44d26d9e88721b43"
 
 [[source.required_file]]
 path = "tests/results/cgb_dmg_mode/docboy/ppu/bg_obj_overlap_bg_win_off.png"

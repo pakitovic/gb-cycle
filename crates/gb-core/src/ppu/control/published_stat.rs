@@ -1065,9 +1065,13 @@ impl Ppu {
             matches!(transfer_plus_fifo, 128 | 160)
         };
         let early_push_transfer_sum = if min_x == 4 { 136 } else { 128 };
+        let cgb_fifo_tail_ready_without_pending_push = self.is_cgb_compatibility_mode()
+            && transfer_plus_fifo == early_push_transfer_sum
+            && !self.runtime.bg_pipeline_state.push.pending;
         let push_tail_ready = if transfer_plus_fifo == early_push_transfer_sum {
-            self.runtime.bg_pipeline_state.push.pending
-                && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0
+            (self.runtime.bg_pipeline_state.push.pending
+                && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0)
+                || cgb_fifo_tail_ready_without_pending_push
         } else {
             !self.runtime.bg_pipeline_state.push.pending
         };

@@ -1123,6 +1123,10 @@ pub fn cgb_rtc_suite() -> RomSuite {
     curated_test_roms::cgb_rtc_suite()
 }
 
+pub fn mooneye_cgb_extra_suite() -> RomSuite {
+    curated_test_roms::mooneye_cgb_extra_suite()
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     let mut suites = vec![
         phase_2_cpu_timing_suite(),
@@ -1144,6 +1148,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_smoke_suite(),
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
+        mooneye_cgb_extra_suite(),
         cgb_audio_blargg_suite(),
         cgb_audio_samesuite_suite(),
         cgb_speed_suite(),
@@ -3341,9 +3346,10 @@ mod tests {
         cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
         external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
         little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
-        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
-        render_memory_text_output, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
+        memory_text_output_completion_reached, mooneye_cgb_extra_suite,
+        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
+        mooneye_result_for_signature, render_memory_text_output, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3580,6 +3586,37 @@ mod tests {
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Serial));
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+    }
+
+    #[test]
+    fn mooneye_cgb_extra_suite_is_manifest_backed_internal_ppu_gate() {
+        let suite = mooneye_cgb_extra_suite();
+
+        assert_eq!(suite.name, "mooneye-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("mooneye"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 10);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("mooneye/acceptance/ppu")
+                && case.pass_condition == PassCondition::MooneyeResult
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-intr-2-mode0-timing"
+                && case.rom_path == Path::new("mooneye/acceptance/ppu/intr_2_mode0_timing.gb")
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-intr-2-mode0-timing-sprites"
+                && case.rom_path
+                    == Path::new("mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb")
+        }));
+        assert!(suite.cases.iter().all(|case| {
+            case.id != "mooneye-cgb-ppu-lcdon-timing-gs"
+                && case.id != "mooneye-cgb-ppu-vblank-stat-intr-gs"
+        }));
+        assert!(built_in_rom_suite_by_name("mooneye-cgb-extra").is_some());
     }
 
     #[test]
