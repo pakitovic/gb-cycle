@@ -172,6 +172,20 @@ impl Ppu {
         }
     }
 
+    pub(in crate::ppu) fn apply_cgb_lcdc5_live_window_enable_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_cgb_family()
+            || !write_context.lcdc_changed(LCDC_WINDOW_ENABLE_BIT)
+        {
+            return;
+        }
+
+        self.runtime.bg_pipeline_state.window_lcdc5_latch =
+            write_context.current_lcdc() & LCDC_WINDOW_ENABLE_BIT != 0;
+    }
+
     pub(in crate::ppu) fn apply_dmg_lcdc0_live_bg_enable_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,

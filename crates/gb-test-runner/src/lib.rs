@@ -56,7 +56,8 @@ pub use curated_test_roms::{
     cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
     curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
     hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
+    materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite, test_rom_store_root,
+    update_curated_test_report,
 };
 pub use determinism::{
     DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
@@ -1138,6 +1139,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         samesuite_dmg_extra_suite(),
         samesuite_cgb_extra_suite(),
         magen_cgb_extra_suite(),
+        mealybug_tearoom_cgb_extra_suite(),
         little_things_gb_dmg_extra_suite(),
         little_things_gb_cgb_extra_suite(),
         gbmicrotest_dmg_extra_suite(),
@@ -4560,6 +4562,39 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mealybug-m3-lcdc-bg-en-change")
         );
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_mealybug_cgb_extra_suite() {
+        let suite = built_in_rom_suite_by_name("mealybug-tearoom-cgb-extra")
+            .expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
+        assert_eq!(suite.cases.len(), 24);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.timeout == Timeout::TCycles(5_000_000)
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.capture_plan.contains(CaptureKind::Framebuffer)
+                && case.capture_plan.contains(CaptureKind::Snapshot)
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferFixtureUntilMatch { .. }
+                )
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
+                && matches!(
+                    &case.pass_condition,
+                    PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. }
+                        if fixture_path
+                            == Path::new(
+                                "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
+                            )
+                )
+        }));
     }
 
     #[test]
