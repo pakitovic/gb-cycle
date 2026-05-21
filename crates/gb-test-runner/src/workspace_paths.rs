@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use gb_core::{BootRomAssets, BootRomKind, ConsoleModel};
+use gb_core::{BootRomAssets, ConsoleModel, HardwareRevision};
 
 pub const BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 pub const ORACLE_STORE_DIR: &str = ".oracles";
@@ -29,16 +29,12 @@ pub fn sameboy_case_bundle_oracle_root(workspace_root: &Path) -> PathBuf {
     oracle_layout_root(workspace_root, "sameboy", "case-bundle")
 }
 
-pub fn boot_rom_kind_for_console_model(console_model: ConsoleModel) -> Option<BootRomKind> {
-    match console_model {
-        ConsoleModel::GameBoy => Some(BootRomKind::Dmg),
-        ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => Some(BootRomKind::Mgb),
-        ConsoleModel::GameBoyColor => Some(BootRomKind::Cgb),
-    }
+pub fn boot_rom_revision_for_console_model(console_model: ConsoleModel) -> HardwareRevision {
+    console_model.default_revision()
 }
 
-pub fn boot_rom_image_path(root: &Path, kind: BootRomKind) -> PathBuf {
-    root.join(BootRomAssets::filename(kind))
+pub fn boot_rom_image_path(root: &Path, revision: HardwareRevision) -> PathBuf {
+    root.join(BootRomAssets::filename(revision))
 }
 
 #[cfg(test)]
@@ -46,11 +42,11 @@ mod tests {
     use std::env;
     use std::path::Path;
 
-    use gb_core::{BootRomKind, ConsoleModel};
+    use gb_core::{ConsoleModel, HardwareRevision};
 
     use super::{
         BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
-        boot_rom_kind_for_console_model, discover_boot_rom_root, oracle_layout_root,
+        boot_rom_revision_for_console_model, discover_boot_rom_root, oracle_layout_root,
         sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
     };
 
@@ -109,23 +105,23 @@ mod tests {
         let root = Path::new("/tmp/gb-cycle/bootroms");
 
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::GameBoy),
-            Some(BootRomKind::Dmg)
+            boot_rom_revision_for_console_model(ConsoleModel::GameBoy),
+            HardwareRevision::DmgCpuC
         );
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::GameBoyPocket),
-            Some(BootRomKind::Mgb)
+            boot_rom_revision_for_console_model(ConsoleModel::GameBoyPocket),
+            HardwareRevision::CpuMgb
         );
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::GameBoyLight),
-            Some(BootRomKind::Mgb)
+            boot_rom_revision_for_console_model(ConsoleModel::GameBoyLight),
+            HardwareRevision::CpuMgb
         );
         assert_eq!(
-            boot_rom_kind_for_console_model(ConsoleModel::GameBoyColor),
-            Some(BootRomKind::Cgb)
+            boot_rom_revision_for_console_model(ConsoleModel::GameBoyColor),
+            HardwareRevision::CpuCgbC
         );
         assert_eq!(
-            boot_rom_image_path(root, BootRomKind::Dmg),
+            boot_rom_image_path(root, HardwareRevision::DmgCpuC),
             root.join("dmg_boot.bin")
         );
     }

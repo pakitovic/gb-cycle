@@ -5,7 +5,7 @@ use common::synthetic_cartridge::{
     HEADER_MINIMUM_ROM_LEN, PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
 };
 use gb_core::{
-    BootRomAssets, BootRomKind, ConsoleModel, CpuExecutionState, JoypadButton, Machine,
+    BootRomAssets, ConsoleModel, CpuExecutionState, HardwareRevision, JoypadButton, Machine,
     MachineConfig, StartupMode,
 };
 

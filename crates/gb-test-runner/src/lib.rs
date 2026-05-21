@@ -38,8 +38,9 @@ use framebuffer_oracle::{
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
     CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap, CpuExecutionState,
-    CpuSnapshot, ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
-    MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer, TraceSummaryBuffer,
+    CpuSnapshot, ExecutionMode, HardwareRevision, JoypadButton, Machine, MachineConfig,
+    MachineSaveState, MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer,
+    TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
@@ -108,24 +109,29 @@ pub use sameboy_tester::{
     SameBoyTesterSuiteReport,
 };
 pub use workspace_paths::{
-    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path, boot_rom_kind_for_console_model,
-    discover_boot_rom_root, oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
-    sameboy_tester_oracle_root,
+    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
+    boot_rom_revision_for_console_model, discover_boot_rom_root, oracle_layout_root,
+    oracle_store_root, sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
 };
 
-pub(crate) fn boot_rom_kind_is_required_for_runner_gate(kind: gb_core::BootRomKind) -> bool {
+pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
     matches!(
-        kind,
-        gb_core::BootRomKind::Dmg0
-            | gb_core::BootRomKind::Dmg
-            | gb_core::BootRomKind::Mgb
-            | gb_core::BootRomKind::Cgb
+        revision,
+        HardwareRevision::DmgCpuA
+            | HardwareRevision::DmgCpuB
+            | HardwareRevision::DmgCpuC
+            | HardwareRevision::CpuMgb
+            | HardwareRevision::CpuCgbA
+            | HardwareRevision::CpuCgbB
+            | HardwareRevision::CpuCgbC
+            | HardwareRevision::CpuCgbD
+            | HardwareRevision::CpuCgbE
     )
 }
 
 pub(crate) fn enforce_missing_boot_rom_root_verification(
     mode: BootRomVerificationMode,
-    kind: gb_core::BootRomKind,
+    revision: HardwareRevision,
 ) -> Result<(), BootRomVerificationIssue> {
     match mode {
         BootRomVerificationMode::Off => Ok(()),
@@ -133,14 +139,14 @@ pub(crate) fn enforce_missing_boot_rom_root_verification(
             eprintln!(
                 "warning: {}",
                 BootRomVerificationIssue::MissingRoot {
-                    kind,
+                    revision,
                     env_var: BOOT_ROM_ROOT_ENV_VAR,
                 }
             );
             Ok(())
         }
         BootRomVerificationMode::Strict => Err(BootRomVerificationIssue::MissingRoot {
-            kind,
+            revision,
             env_var: BOOT_ROM_ROOT_ENV_VAR,
         }),
     }
@@ -512,6 +518,7 @@ pub struct RomTestCase {
     pub rom_path: PathBuf,
     pub external_rom_root_key: Option<String>,
     pub console_model: ConsoleModel,
+    pub revision: HardwareRevision,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub startup_cartridge_rtc_seconds: Option<u64>,
@@ -541,6 +548,7 @@ impl RomTestCase {
             rom_path: rom_path.into(),
             external_rom_root_key: None,
             console_model: ConsoleModel::GameBoy,
+            revision: ConsoleModel::GameBoy.default_revision(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
@@ -558,6 +566,12 @@ impl RomTestCase {
 
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
+        self.revision = console_model.default_revision();
+        self
+    }
+
+    pub fn with_revision(mut self, revision: HardwareRevision) -> Self {
+        self.revision = revision;
         self
     }
 
@@ -1591,6 +1605,7 @@ impl DeterministicMbc3RtcClock {
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
+            .with_revision(case.revision)
             .with_startup_mode(case.startup_mode)
             .with_compatibility(compatibility_for_execution_mode(case.execution_mode))
             .with_boot_rom_assets(boot_rom_assets);
@@ -2100,22 +2115,23 @@ impl RomRunner {
             return Ok(BootRomAssets::none());
         }
 
-        let Some(kind) = boot_rom_kind_for_console_model(case.console_model) else {
-            return Ok(BootRomAssets::none());
-        };
+        let revision = case.revision;
 
         let Some(root) = self.boot_rom_root.clone().or_else(discover_boot_rom_root) else {
-            if boot_rom_kind_is_required_for_runner_gate(kind) {
-                enforce_missing_boot_rom_root_verification(self.boot_rom_verification_mode, kind)
-                    .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+            if boot_rom_revision_is_required_for_runner_gate(revision) {
+                enforce_missing_boot_rom_root_verification(
+                    self.boot_rom_verification_mode,
+                    revision,
+                )
+                .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
             }
             return Ok(BootRomAssets::none());
         };
-        let image_path = boot_rom_image_path(&root, kind);
-        if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
+        let image_path = boot_rom_image_path(&root, revision);
+        if !boot_rom_revision_is_required_for_runner_gate(revision) && !image_path.is_file() {
             return Ok(BootRomAssets::none());
         }
-        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, kind)
+        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, revision)
             .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
         if !root.is_dir() {
             return Ok(BootRomAssets::none());

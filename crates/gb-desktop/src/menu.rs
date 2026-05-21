@@ -1,7 +1,7 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{
-    ApuRecordedChannel, BootRomKind, ExecutionMode, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
-    PokemonPikachuColorGift, StartupMode,
+    ApuRecordedChannel, ExecutionMode, HardwareRevision, PokemonMysteryGiftCode,
+    PokemonMysteryGiftKind, PokemonPikachuColorGift, StartupMode,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -236,8 +236,9 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 9] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 10] = [
     MenuItem::ConsoleModel,
+    MenuItem::HardwareRevision,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
     MenuItem::BootRomMenu,
@@ -262,10 +263,7 @@ const FAST_FORWARD_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::FastForwardDefaults,
     MenuItem::Return,
 ];
-const BOOT_ROM_MENU_ITEMS: [MenuItem; 6] = [
-    MenuItem::BootRomKind,
-    MenuItem::BootRomDefaultPath,
-    MenuItem::BootRomFilePath,
+const BOOT_ROM_MENU_ITEMS: [MenuItem; 3] = [
     MenuItem::BootRomDirectoryPath,
     MenuItem::BootRomVerify,
     MenuItem::Return,
@@ -307,6 +305,7 @@ pub enum MenuAction {
     ResetCameraImage,
     SaveScreenshot,
     CycleConsoleModel,
+    CycleHardwareRevision,
     CycleStartupMode,
     CycleExecutionMode,
     ToggleRewindEnabled,
@@ -318,9 +317,6 @@ pub enum MenuAction {
     ToggleFastForwardEnabled,
     CycleFastForwardSpeed,
     ResetFastForwardDefaults,
-    ClearBootRomPath,
-    CycleBootRomKind,
-    SelectBootRomFilePath,
     SelectBootRomDirectoryPath,
     CycleBootRomVerify,
     ToggleSavesEnabled,
@@ -579,6 +575,7 @@ pub struct MenuPresentation {
     pub recent_rom_count: u8,
     pub recent_rom_labels: [CompactRecentRomLabel; RECENT_ROM_MENU_CAPACITY],
     pub console_model: DesktopConsoleModel,
+    pub revision: HardwareRevision,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
@@ -590,8 +587,6 @@ pub struct MenuPresentation {
     pub pokemon_mystery_gift_kind: PokemonMysteryGiftKind,
     pub pokemon_mystery_gift_code: PokemonMysteryGiftCode,
     pub show_cgb_infrared_helper: bool,
-    pub boot_rom_uses_default_path: bool,
-    pub boot_rom_kind: BootRomKind,
     pub boot_rom_verification: BootRomVerificationMode,
     pub saves_enabled: bool,
     pub save_flush_policy: DesktopSaveFlushPolicy,
@@ -719,7 +714,6 @@ impl MenuPresentation {
             | MenuItem::RecentRom10
             | MenuItem::RecentRom11
             | MenuItem::RecentRom12
-            | MenuItem::BootRomFilePath
             | MenuItem::BootRomDirectoryPath
             | MenuItem::SaveDirectoryPath
             | MenuItem::CameraImage
@@ -841,8 +835,6 @@ impl MenuPresentation {
             | MenuItem::FastForwardEnabled
             | MenuItem::FastForwardSpeed
             | MenuItem::FastForwardDefaults
-            | MenuItem::BootRomKind
-            | MenuItem::BootRomDefaultPath
             | MenuItem::BootRomVerify
             | MenuItem::SavesEnabled
             | MenuItem::SavePolicy
@@ -865,6 +857,9 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
+            MenuItem::HardwareRevision => {
+                self.console_model.console_model().active_revisions().len() > 1
+            }
             MenuItem::ExtPortMenu => self.rom_loaded,
             MenuItem::ExternalPortGameLink
             | MenuItem::GameLinkSameGame
@@ -1006,6 +1001,9 @@ impl MenuPresentation {
                 DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
                 DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
             },
+            MenuItem::HardwareRevision => {
+                format!("REV {}", hardware_revision_menu_name(self.revision))
+            }
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
                 StartupMode::CustomBoot => "START CUSTOM".to_string(),
@@ -1054,22 +1052,6 @@ impl MenuPresentation {
                 )
             }
             MenuItem::FastForwardDefaults => "DEFAULTS".to_string(),
-            MenuItem::BootRomKind => match self.boot_rom_kind {
-                BootRomKind::Dmg0 => "ROM DMG0".to_string(),
-                BootRomKind::Dmg => "ROM DMG".to_string(),
-                BootRomKind::Mgb => "ROM MGB".to_string(),
-                BootRomKind::Cgb0 => "ROM CGB0".to_string(),
-                BootRomKind::Cgb => "ROM CGB".to_string(),
-                BootRomKind::CgbE => "ROM CGB-E".to_string(),
-            },
-            MenuItem::BootRomDefaultPath => {
-                if self.boot_rom_uses_default_path {
-                    "BOOT AUTO ON".to_string()
-                } else {
-                    "BOOT AUTO OFF".to_string()
-                }
-            }
-            MenuItem::BootRomFilePath => "BOOT FILE".to_string(),
             MenuItem::BootRomDirectoryPath => "BOOT DIR".to_string(),
             MenuItem::BootRomVerify => match self.boot_rom_verification {
                 BootRomVerificationMode::Off => "VERIFY OFF".to_string(),
@@ -1604,11 +1586,9 @@ enum MenuItem {
     RewindMenu,
     FastForwardMenu,
     ConsoleModel,
+    HardwareRevision,
     StartupMode,
     ExecutionMode,
-    BootRomKind,
-    BootRomDefaultPath,
-    BootRomFilePath,
     BootRomDirectoryPath,
     BootRomVerify,
     ExportSave,
@@ -2399,6 +2379,7 @@ impl OverlayMenuState {
                 None
             }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
+            MenuItem::HardwareRevision => Some(MenuAction::CycleHardwareRevision),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
             MenuItem::RewindEnabled => Some(MenuAction::ToggleRewindEnabled),
@@ -2410,9 +2391,6 @@ impl OverlayMenuState {
             MenuItem::FastForwardEnabled => Some(MenuAction::ToggleFastForwardEnabled),
             MenuItem::FastForwardSpeed => Some(MenuAction::CycleFastForwardSpeed),
             MenuItem::FastForwardDefaults => Some(MenuAction::ResetFastForwardDefaults),
-            MenuItem::BootRomKind => Some(MenuAction::CycleBootRomKind),
-            MenuItem::BootRomDefaultPath => Some(MenuAction::ClearBootRomPath),
-            MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
             MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
             MenuItem::BootRomVerify => Some(MenuAction::CycleBootRomVerify),
             MenuItem::ExportSave => Some(MenuAction::ExportSave),
@@ -3093,6 +3071,22 @@ fn checked_menu_label(label: &str) -> String {
     format!("{label} ✓")
 }
 
+fn hardware_revision_menu_name(revision: HardwareRevision) -> &'static str {
+    match revision {
+        HardwareRevision::DmgCpu => "DMG-CPU",
+        HardwareRevision::DmgCpuA => "DMG-CPU A",
+        HardwareRevision::DmgCpuB => "DMG-CPU B",
+        HardwareRevision::DmgCpuC => "DMG-CPU C",
+        HardwareRevision::CpuMgb => "CPU MGB",
+        HardwareRevision::CpuCgb => "CPU CGB",
+        HardwareRevision::CpuCgbA => "CPU CGB A",
+        HardwareRevision::CpuCgbB => "CPU CGB B",
+        HardwareRevision::CpuCgbC => "CPU CGB C",
+        HardwareRevision::CpuCgbD => "CPU CGB D",
+        HardwareRevision::CpuCgbE => "CPU CGB E",
+    }
+}
+
 fn pokemon_pikachu_color_gift_menu_label(gift: PokemonPikachuColorGift) -> &'static str {
     match gift {
         PokemonPikachuColorGift::Watts1 => "1W EON MAIL",
@@ -3585,7 +3579,7 @@ mod tests {
     };
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{
-        BootRomKind, ExecutionMode, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
+        ExecutionMode, HardwareRevision, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
         PokemonPikachuColorGift, StartupMode,
     };
     use gb_desktop::{
@@ -3603,6 +3597,7 @@ mod tests {
             recent_rom_count: 0,
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
             console_model: DesktopConsoleModel::GameBoy,
+            revision: HardwareRevision::DmgCpuC,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
@@ -3614,8 +3609,6 @@ mod tests {
             pokemon_mystery_gift_kind: PokemonMysteryGiftKind::default(),
             pokemon_mystery_gift_code: PokemonMysteryGiftCode::default(),
             show_cgb_infrared_helper: false,
-            boot_rom_uses_default_path: true,
-            boot_rom_kind: BootRomKind::Dmg,
             boot_rom_verification: BootRomVerificationMode::Strict,
             saves_enabled: true,
             save_flush_policy: DesktopSaveFlushPolicy::Debounced,
@@ -4048,7 +4041,7 @@ mod tests {
     }
 
     #[test]
-    fn system_submenu_cycles_model_startup_and_execution_mode() {
+    fn system_submenu_cycles_model_revision_startup_and_execution_mode() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
         open_system_menu(&mut menu, presentation);
@@ -4056,14 +4049,24 @@ mod tests {
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleConsoleModel)
         );
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        let cgb_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::GameBoyColor,
+            ..presentation
+        };
+        open_system_menu(&mut menu, cgb_presentation);
+        assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
         assert_eq!(
-            menu.handle_input(MenuInput::Confirm, presentation),
+            menu.handle_input(MenuInput::Confirm, cgb_presentation),
+            Some(MenuAction::CycleHardwareRevision)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, cgb_presentation),
             Some(MenuAction::CycleStartupMode)
         );
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
         assert_eq!(
-            menu.handle_input(MenuInput::Confirm, presentation),
+            menu.handle_input(MenuInput::Confirm, cgb_presentation),
             Some(MenuAction::CycleExecutionMode)
         );
     }
@@ -4074,21 +4077,6 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         open_boot_rom_menu(&mut menu, presentation);
 
-        assert_eq!(
-            menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::CycleBootRomKind)
-        );
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(
-            menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::ClearBootRomPath)
-        );
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(
-            menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::SelectBootRomFilePath)
-        );
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::SelectBootRomDirectoryPath)
@@ -4939,14 +4927,15 @@ mod tests {
         assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
 
         assert_eq!(SYSTEM_MENU_ITEMS[0], MenuItem::ConsoleModel);
-        assert_eq!(SYSTEM_MENU_ITEMS[1], MenuItem::StartupMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::ExecutionMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::BootRomMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::SaveMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::RewindMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::FastForwardMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::Reset);
-        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::Return);
+        assert_eq!(SYSTEM_MENU_ITEMS[1], MenuItem::HardwareRevision);
+        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::StartupMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::ExecutionMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::BootRomMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::SaveMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::RewindMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::FastForwardMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[9], MenuItem::Return);
         assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(REWIND_MENU_ITEMS[0], MenuItem::RewindEnabled);
@@ -4962,12 +4951,9 @@ mod tests {
         assert_eq!(FAST_FORWARD_MENU_ITEMS[2], MenuItem::FastForwardDefaults);
         assert_eq!(FAST_FORWARD_MENU_ITEMS[3], MenuItem::Return);
 
-        assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomKind);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomDefaultPath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::BootRomFilePath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[3], MenuItem::BootRomDirectoryPath);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[4], MenuItem::BootRomVerify);
-        assert_eq!(BOOT_ROM_MENU_ITEMS[5], MenuItem::Return);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDirectoryPath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomVerify);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::Return);
         assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::ConsoleModel));
         assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::StartupMode));
 
@@ -5067,6 +5053,21 @@ mod tests {
             presentation.item_label(MenuItem::ConsoleModel),
             "MODEL GB COLOR"
         );
+        presentation.revision = HardwareRevision::CpuCgbC;
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV CPU CGB C"
+        );
+        presentation.revision = HardwareRevision::CpuCgbD;
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV CPU CGB D"
+        );
+        presentation.revision = HardwareRevision::CpuCgbE;
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV CPU CGB E"
+        );
 
         presentation.startup_mode = StartupMode::RealBoot;
         assert_eq!(presentation.item_label(MenuItem::StartupMode), "START REAL");
@@ -5083,17 +5084,6 @@ mod tests {
         presentation.execution_mode = ExecutionMode::Experimental;
         assert_eq!(presentation.item_label(MenuItem::ExecutionMode), "MODE EXP");
 
-        presentation.boot_rom_uses_default_path = false;
-        assert_eq!(
-            presentation.item_label(MenuItem::BootRomDefaultPath),
-            "BOOT AUTO OFF"
-        );
-        presentation.boot_rom_kind = BootRomKind::Dmg0;
-        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM DMG0");
-        presentation.boot_rom_kind = BootRomKind::Mgb;
-        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM MGB");
-        presentation.boot_rom_kind = BootRomKind::CgbE;
-        assert_eq!(presentation.item_label(MenuItem::BootRomKind), "ROM CGB-E");
         presentation.boot_rom_verification = BootRomVerificationMode::Warn;
         assert_eq!(
             presentation.item_label(MenuItem::BootRomVerify),

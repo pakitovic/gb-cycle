@@ -43,14 +43,14 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Console models
 
-`run` exposes the hardware-profile model names `DMG`, `MGB`, `LGB`, and `CGB` through `--model`; the previous product names `game-boy`, `pocket`, `light`, and `color`, plus the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb`, are not accepted. The selected model chooses the default `RealBoot` firmware kind for that product (`dmg_boot.bin`, `mgb_boot.bin`, or `cgb_boot.bin`), while concrete boot-ROM image handling remains owned by the boot-ROM search path and verification options.
+`run` exposes the hardware-profile model names `DMG`, `MGB`, `LGB`, and `CGB` through `--model`; the previous product names `game-boy`, `pocket`, `light`, and `color`, plus the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb`, are not accepted. `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>` selects the active hardware revision for the chosen model; invalid model/revision pairs are rejected, so `--model CGB --revision cpu-cgb-e` is valid and `--model DMG --revision cpu-cgb-e` is not. `RealBoot` derives the concrete firmware filename from the effective model/revision pair (`dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`) and `--boot-rom` no longer exists; a CGB-E RealBoot validation uses `--model CGB --revision cpu-cgb-e --boot-rom-dir <private-dir>` with a directory containing `cgbE_boot.bin`.
 
 ## Startup and compatibility
 
 - `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
 - `--mode permissive` may load explicit supported MBC5 homebrew/public-domain ROMs whose `0x0148` ROM-size metadata is unsupported or contradicts the file length; the core emits loader diagnostics, pads missing ROM bytes with `0xFF`, and keeps MBC5 banking semantics unchanged. Keep `strict` for oracle runs, differential comparisons, and accuracy claims.
 - `custom-boot` is a direct-start path for boot-logo-inspecting ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot` and overlays the DMG boot-logo VRAM/map seed without loading a boot ROM asset.
-- `real-boot` looks for boot ROM assets only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`.
+- `real-boot` looks for the revision-derived boot ROM asset only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`. `skip-boot` and `custom-boot` do not read boot-ROM bytes; they use the direct-start state for the selected model/revision.
 
 ## Output options
 

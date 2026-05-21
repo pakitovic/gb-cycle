@@ -3,7 +3,7 @@ mod common;
 use common::synthetic_cartridge::{
     PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
 };
-use gb_core::{BootRomKind, ConsoleModel, Machine, MachineConfig, StartupMode};
+use gb_core::{ConsoleModel, HardwareRevision, Machine, MachineConfig, StartupMode};
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE4;
 const SENTINEL_ADDRESS: u16 = 0xC010;
@@ -221,7 +221,7 @@ fn run_fixture_rom(
     trace_name: &str,
     expected_rom: &[u8],
     console_model: ConsoleModel,
-    boot_rom_kind: BootRomKind,
+    revision: HardwareRevision,
     max_steps: usize,
 ) -> Machine {
     let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
@@ -233,7 +233,7 @@ fn run_fixture_rom(
 
     let mut machine = Machine::new(
         MachineConfig::new(console_model)
-            .with_boot_rom_kind(boot_rom_kind)
+            .with_revision(revision)
             .with_startup_mode(StartupMode::SkipBoot),
     );
 

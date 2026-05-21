@@ -3,9 +3,9 @@ mod common;
 use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{
-    BootRomAssets, BootRomKind, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
-    CpuAddressUpdateDirection, CpuDiagnosticTrap, CpuExecutionState, JoypadButton, Machine,
-    MachineConfig, SerialTransferState, StartupMode,
+    BootRomAssets, ConsoleModel, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
+    CpuDiagnosticTrap, CpuExecutionState, HardwareRevision, JoypadButton, Machine, MachineConfig,
+    SerialTransferState, StartupMode,
 };
 
 const BOOT_ROM_LEN: usize = 0x0100;

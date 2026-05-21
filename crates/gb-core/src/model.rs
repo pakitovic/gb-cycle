@@ -1,4 +1,4 @@
-use crate::boot::{BootRomAssets, BootRomKind};
+use crate::boot::BootRomAssets;
 use crate::cartridge::{CartridgeHeader, CgbFlag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -26,35 +26,6 @@ impl ConsoleModel {
         }
     }
 
-    pub const fn default_boot_rom_kind(self) -> BootRomKind {
-        match self {
-            Self::GameBoy => BootRomKind::Dmg,
-            Self::GameBoyPocket | Self::GameBoyLight => BootRomKind::Mgb,
-            Self::GameBoyColor => BootRomKind::Cgb,
-        }
-    }
-
-    pub const fn allowed_boot_rom_kinds(self) -> &'static [BootRomKind] {
-        match self {
-            Self::GameBoy => &[BootRomKind::Dmg0, BootRomKind::Dmg],
-            Self::GameBoyPocket | Self::GameBoyLight => &[BootRomKind::Mgb],
-            Self::GameBoyColor => &[BootRomKind::Cgb0, BootRomKind::Cgb, BootRomKind::CgbE],
-        }
-    }
-
-    pub const fn supports_boot_rom_kind(self, boot_rom_kind: BootRomKind) -> bool {
-        match self {
-            Self::GameBoy => matches!(boot_rom_kind, BootRomKind::Dmg0 | BootRomKind::Dmg),
-            Self::GameBoyPocket | Self::GameBoyLight => matches!(boot_rom_kind, BootRomKind::Mgb),
-            Self::GameBoyColor => {
-                matches!(
-                    boot_rom_kind,
-                    BootRomKind::Cgb0 | BootRomKind::Cgb | BootRomKind::CgbE
-                )
-            }
-        }
-    }
-
     pub const fn is_dmg_family(self) -> bool {
         matches!(self.family(), ConsoleFamily::Dmg)
     }
@@ -67,6 +38,35 @@ impl ConsoleModel {
         match self.family() {
             ConsoleFamily::Dmg => OperatingMode::Dmg,
             ConsoleFamily::Cgb => OperatingMode::Cgb,
+        }
+    }
+
+    pub const fn default_revision(self) -> HardwareRevision {
+        match self {
+            Self::GameBoy => HardwareRevision::DmgCpuC,
+            Self::GameBoyPocket | Self::GameBoyLight => HardwareRevision::CpuMgb,
+            Self::GameBoyColor => HardwareRevision::CpuCgbC,
+        }
+    }
+
+    pub const fn active_revisions(self) -> &'static [HardwareRevision] {
+        match self {
+            Self::GameBoy => &ACTIVE_DMG_REVISIONS,
+            Self::GameBoyPocket | Self::GameBoyLight => &ACTIVE_MGB_REVISIONS,
+            Self::GameBoyColor => &ACTIVE_CGB_REVISIONS,
+        }
+    }
+
+    pub const fn supports_revision(self, revision: HardwareRevision) -> bool {
+        match self {
+            Self::GameBoy => matches!(revision, HardwareRevision::DmgCpuC),
+            Self::GameBoyPocket | Self::GameBoyLight => {
+                matches!(revision, HardwareRevision::CpuMgb)
+            }
+            Self::GameBoyColor => matches!(
+                revision,
+                HardwareRevision::CpuCgbC | HardwareRevision::CpuCgbD | HardwareRevision::CpuCgbE
+            ),
         }
     }
 
@@ -116,6 +116,84 @@ impl ConsoleModel {
                 }
             }
         }
+    }
+}
+
+const ACTIVE_DMG_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::DmgCpuC];
+const ACTIVE_MGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuMgb];
+const ACTIVE_CGB_REVISIONS: [HardwareRevision; 3] = [
+    HardwareRevision::CpuCgbC,
+    HardwareRevision::CpuCgbD,
+    HardwareRevision::CpuCgbE,
+];
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum HardwareRevision {
+    DmgCpu,
+    DmgCpuA,
+    DmgCpuB,
+    #[default]
+    DmgCpuC,
+    CpuMgb,
+    CpuCgb,
+    CpuCgbA,
+    CpuCgbB,
+    CpuCgbC,
+    CpuCgbD,
+    CpuCgbE,
+}
+
+impl HardwareRevision {
+    pub const fn boot_rom_filename(self) -> &'static str {
+        match self {
+            Self::DmgCpu => "dmg0_boot.bin",
+            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => "dmg_boot.bin",
+            Self::CpuMgb => "mgb_boot.bin",
+            Self::CpuCgb => "cgb0_boot.bin",
+            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => "cgb_boot.bin",
+            Self::CpuCgbE => "cgbE_boot.bin",
+        }
+    }
+
+    pub const fn boot_rom_expected_sha256(self) -> &'static str {
+        match self {
+            Self::DmgCpu => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
+            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => {
+                "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7"
+            }
+            Self::CpuMgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
+            Self::CpuCgb => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
+            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => {
+                "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7"
+            }
+            Self::CpuCgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
+        }
+    }
+
+    pub const fn boot_rom_expected_size(self) -> usize {
+        match self {
+            Self::DmgCpu | Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC | Self::CpuMgb => 0x0100,
+            Self::CpuCgb
+            | Self::CpuCgbA
+            | Self::CpuCgbB
+            | Self::CpuCgbC
+            | Self::CpuCgbD
+            | Self::CpuCgbE => 0x0900,
+        }
+    }
+
+    pub const fn uses_cgb_boot_rom(self) -> bool {
+        matches!(
+            self,
+            Self::CpuCgb
+                | Self::CpuCgbA
+                | Self::CpuCgbB
+                | Self::CpuCgbC
+                | Self::CpuCgbD
+                | Self::CpuCgbE
+        )
     }
 }
 
@@ -367,9 +445,9 @@ impl Default for CompatibilityPolicy {
 pub struct MachineConfig {
     pub console_model: ConsoleModel,
     pub operating_mode: OperatingMode,
+    pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
     pub startup_mode: StartupMode,
-    pub boot_rom_kind: BootRomKind,
     pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
 }
@@ -379,7 +457,7 @@ impl MachineConfig {
         Self {
             console_model,
             operating_mode: console_model.default_operating_mode(),
-            boot_rom_kind: console_model.default_boot_rom_kind(),
+            revision: console_model.default_revision(),
             ..Self::default()
         }
     }
@@ -389,14 +467,19 @@ impl MachineConfig {
         if !console_model.supports_operating_mode(self.operating_mode) {
             self.operating_mode = console_model.default_operating_mode();
         }
-        if !console_model.supports_boot_rom_kind(self.boot_rom_kind) {
-            self.boot_rom_kind = console_model.default_boot_rom_kind();
+        if !console_model.supports_revision(self.revision) {
+            self.revision = console_model.default_revision();
         }
         self
     }
 
     pub fn with_operating_mode(mut self, operating_mode: OperatingMode) -> Self {
         self.operating_mode = operating_mode;
+        self
+    }
+
+    pub fn with_revision(mut self, revision: HardwareRevision) -> Self {
+        self.revision = revision;
         self
     }
 
@@ -407,11 +490,6 @@ impl MachineConfig {
 
     pub fn with_startup_mode(mut self, startup_mode: StartupMode) -> Self {
         self.startup_mode = startup_mode;
-        self
-    }
-
-    pub fn with_boot_rom_kind(mut self, boot_rom_kind: BootRomKind) -> Self {
-        self.boot_rom_kind = boot_rom_kind;
         self
     }
 
@@ -456,9 +534,7 @@ impl MachineConfig {
     pub const fn model_axes_are_coherent(&self) -> bool {
         self.console_model
             .supports_operating_mode(self.operating_mode)
-            && self
-                .console_model
-                .supports_boot_rom_kind(self.boot_rom_kind)
+            && self.console_model.supports_revision(self.revision)
     }
 }
 
@@ -467,9 +543,9 @@ impl Default for MachineConfig {
         Self {
             console_model: ConsoleModel::GameBoy,
             operating_mode: ConsoleModel::GameBoy.default_operating_mode(),
+            revision: ConsoleModel::GameBoy.default_revision(),
             host_platform: HostPlatform::Handheld,
             startup_mode: StartupMode::SkipBoot,
-            boot_rom_kind: ConsoleModel::GameBoy.default_boot_rom_kind(),
             boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),
         }

@@ -1,13 +1,13 @@
 use gb_core::{
-    BootRomKind, CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy,
-    ExecutionMode, HeuristicPolicy, HostPlatform, OperatingMode, OverridePolicy, StartupMode,
-    TCycle, ValidationPolicy,
-};
-use gb_core::{
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
     CartridgeRamPayloadKind, CartridgeSlot, Huc3RtcPersistentState, MachineSaveState,
     MachineSaveStateMetadata, Mbc3RtcPersistentState, PersistentCartState,
     SaveStateByteFingerprint,
+};
+use gb_core::{
+    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, ExecutionMode,
+    HardwareRevision, HeuristicPolicy, HostPlatform, OperatingMode, OverridePolicy, StartupMode,
+    TCycle, ValidationPolicy,
 };
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -2031,6 +2031,7 @@ fn encode_machine_save_state_metadata(
 ) -> Result<(), CartridgeSaveBackendError> {
     bytes.push(encode_console_model(metadata.console_model));
     bytes.push(encode_operating_mode(metadata.operating_mode));
+    bytes.push(encode_revision(metadata.revision));
     bytes.push(encode_host_platform(metadata.host_platform));
     bytes.push(encode_startup_mode(metadata.startup_mode));
     encode_compatibility_policy(bytes, &metadata.compatibility);
@@ -2038,7 +2039,6 @@ fn encode_machine_save_state_metadata(
     bytes.push(encode_cartridge_slot_state(metadata.cartridge.state));
     encode_fingerprint(bytes, metadata.cartridge.rom_fingerprint);
     bytes.push(encode_startup_mode(metadata.boot.startup_mode));
-    bytes.push(encode_boot_rom_kind(metadata.boot.boot_rom_kind));
     write_bool(bytes, metadata.boot.boot_rom_mapped);
     encode_fingerprint(bytes, metadata.boot.boot_rom_fingerprint);
     Ok(())
@@ -2049,6 +2049,7 @@ fn decode_machine_save_state_metadata(
 ) -> Result<MachineSaveStateMetadata, CartridgeSaveBackendError> {
     let console_model = decode_console_model(cursor.read_u8()?, "console_model")?;
     let operating_mode = decode_operating_mode(cursor.read_u8()?, "operating_mode")?;
+    let revision = decode_revision(cursor.read_u8()?, "revision")?;
     let host_platform = decode_host_platform(cursor.read_u8()?, "host_platform")?;
     let startup_mode = decode_startup_mode(cursor.read_u8()?, "startup_mode")?;
     let compatibility = decode_compatibility_policy(cursor)?;
@@ -2056,13 +2057,13 @@ fn decode_machine_save_state_metadata(
     let cartridge_state = decode_cartridge_slot_state(cursor.read_u8()?, "cartridge.state")?;
     let rom_fingerprint = decode_fingerprint(cursor, "cartridge.rom_fingerprint")?;
     let boot_startup_mode = decode_startup_mode(cursor.read_u8()?, "boot.startup_mode")?;
-    let boot_rom_kind = decode_boot_rom_kind(cursor.read_u8()?, "boot.boot_rom_kind")?;
     let boot_rom_mapped = cursor.read_bool("boot.boot_rom_mapped")?;
     let boot_rom_fingerprint = decode_fingerprint(cursor, "boot.boot_rom_fingerprint")?;
 
     Ok(MachineSaveStateMetadata {
         console_model,
         operating_mode,
+        revision,
         host_platform,
         startup_mode,
         compatibility,
@@ -2073,7 +2074,6 @@ fn decode_machine_save_state_metadata(
         },
         boot: gb_core::MachineBootSaveStateMetadata {
             startup_mode: boot_startup_mode,
-            boot_rom_kind,
             boot_rom_mapped,
             boot_rom_fingerprint,
         },
@@ -2221,6 +2221,42 @@ fn decode_operating_mode(
         1 => Ok(OperatingMode::Cgb),
         2 => Ok(OperatingMode::GbCompatible),
         3 => Ok(OperatingMode::CgbDmgExt),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_revision(value: HardwareRevision) -> u8 {
+    match value {
+        HardwareRevision::DmgCpu => 0,
+        HardwareRevision::DmgCpuA => 1,
+        HardwareRevision::DmgCpuB => 2,
+        HardwareRevision::DmgCpuC => 3,
+        HardwareRevision::CpuMgb => 4,
+        HardwareRevision::CpuCgb => 5,
+        HardwareRevision::CpuCgbA => 6,
+        HardwareRevision::CpuCgbB => 7,
+        HardwareRevision::CpuCgbC => 8,
+        HardwareRevision::CpuCgbD => 9,
+        HardwareRevision::CpuCgbE => 10,
+    }
+}
+
+fn decode_revision(
+    tag: u8,
+    field: &'static str,
+) -> Result<HardwareRevision, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(HardwareRevision::DmgCpu),
+        1 => Ok(HardwareRevision::DmgCpuA),
+        2 => Ok(HardwareRevision::DmgCpuB),
+        3 => Ok(HardwareRevision::DmgCpuC),
+        4 => Ok(HardwareRevision::CpuMgb),
+        5 => Ok(HardwareRevision::CpuCgb),
+        6 => Ok(HardwareRevision::CpuCgbA),
+        7 => Ok(HardwareRevision::CpuCgbB),
+        8 => Ok(HardwareRevision::CpuCgbC),
+        9 => Ok(HardwareRevision::CpuCgbD),
+        10 => Ok(HardwareRevision::CpuCgbE),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2379,32 +2415,6 @@ fn decode_cartridge_slot_state(
         10 => Ok(CartridgeSlotState::PocketCamera),
         11 => Ok(CartridgeSlotState::Mbc6),
         12 => Ok(CartridgeSlotState::Mbc7),
-        _ => unsupported_machine_save_state_tag(field, tag),
-    }
-}
-
-fn encode_boot_rom_kind(value: BootRomKind) -> u8 {
-    match value {
-        BootRomKind::Dmg0 => 0,
-        BootRomKind::Dmg => 1,
-        BootRomKind::Mgb => 2,
-        BootRomKind::Cgb0 => 4,
-        BootRomKind::Cgb => 3,
-        BootRomKind::CgbE => 5,
-    }
-}
-
-fn decode_boot_rom_kind(
-    tag: u8,
-    field: &'static str,
-) -> Result<BootRomKind, CartridgeSaveBackendError> {
-    match tag {
-        0 => Ok(BootRomKind::Dmg0),
-        1 => Ok(BootRomKind::Dmg),
-        2 => Ok(BootRomKind::Mgb),
-        3 => Ok(BootRomKind::Cgb),
-        4 => Ok(BootRomKind::Cgb0),
-        5 => Ok(BootRomKind::CgbE),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -2929,8 +2939,8 @@ mod tests {
     fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         for value in [
             ConsoleModel::GameBoy,
-            ConsoleModel::GameBoy,
             ConsoleModel::GameBoyPocket,
+            ConsoleModel::GameBoyLight,
             ConsoleModel::GameBoyColor,
         ] {
             assert_eq!(
@@ -2961,6 +2971,30 @@ mod tests {
         }
         assert!(matches!(
             decode_operating_mode(0xFF, "operating_mode"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            HardwareRevision::DmgCpu,
+            HardwareRevision::DmgCpuA,
+            HardwareRevision::DmgCpuB,
+            HardwareRevision::DmgCpuC,
+            HardwareRevision::CpuMgb,
+            HardwareRevision::CpuCgb,
+            HardwareRevision::CpuCgbA,
+            HardwareRevision::CpuCgbB,
+            HardwareRevision::CpuCgbC,
+            HardwareRevision::CpuCgbD,
+            HardwareRevision::CpuCgbE,
+        ] {
+            assert_eq!(
+                decode_revision(encode_revision(value), "revision")
+                    .expect("hardware revision tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_revision(0xFF, "revision"),
             Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
         ));
 
@@ -3085,26 +3119,10 @@ mod tests {
             Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
         ));
 
-        for value in [
-            BootRomKind::Dmg0,
-            BootRomKind::Dmg,
-            BootRomKind::Mgb,
-            BootRomKind::Cgb,
-        ] {
-            assert_eq!(
-                decode_boot_rom_kind(encode_boot_rom_kind(value), "boot.boot_rom_kind")
-                    .expect("boot ROM kind tag should decode"),
-                value
-            );
-        }
-        assert!(matches!(
-            decode_boot_rom_kind(0xFF, "boot.boot_rom_kind"),
-            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
-        ));
-
         let metadata = MachineSaveStateMetadata {
             console_model: ConsoleModel::GameBoyColor,
             operating_mode: OperatingMode::GbCompatible,
+            revision: HardwareRevision::CpuCgbE,
             host_platform: HostPlatform::Sgb2,
             startup_mode: StartupMode::RealBoot,
             compatibility: CompatibilityPolicy {
@@ -3129,7 +3147,6 @@ mod tests {
             },
             boot: gb_core::MachineBootSaveStateMetadata {
                 startup_mode: StartupMode::RealBoot,
-                boot_rom_kind: BootRomKind::Cgb,
                 boot_rom_mapped: true,
                 boot_rom_fingerprint: Some(SaveStateByteFingerprint {
                     len: 0x900,

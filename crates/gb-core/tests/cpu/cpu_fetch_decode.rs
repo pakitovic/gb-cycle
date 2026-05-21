@@ -39,7 +39,7 @@ fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_boot_rom_image(0xD3))
+                    .with_bytes(HardwareRevision::DmgCpuC, build_boot_rom_image(0xD3))
                     .expect("DMG boot ROM image should validate"),
             ),
     );

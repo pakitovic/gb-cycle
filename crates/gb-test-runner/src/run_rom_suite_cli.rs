@@ -440,12 +440,13 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
             writeln_checked(
                 output,
                 &format!(
-                    "  case={} family={} source={} oracle={} console={} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
+                    "  case={} family={} source={} oracle={} console={} revision={:?} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
                     case.id,
                     case_catalog_family(&suite, case),
                     case_source_name(case),
                     pass_condition_name(&case.pass_condition),
                     console_model_name(case.console_model),
+                    case.revision,
                     startup_mode_name(case.startup_mode),
                     execution_mode_name(case.execution_mode),
                     timeout_name(case.timeout),

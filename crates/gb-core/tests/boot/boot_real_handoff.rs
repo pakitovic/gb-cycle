@@ -7,7 +7,7 @@ fn real_boot_reads_boot_rom_at_0000_until_ff50_handoff_restores_cartridge_visibi
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_boot_rom_image(0x99))
+                    .with_bytes(HardwareRevision::DmgCpuC, build_boot_rom_image(0x99))
                     .expect("configured DMG boot ROM should validate"),
             ),
     );
@@ -41,7 +41,10 @@ fn real_boot_executes_a_boot_rom_handoff_and_fetches_the_cartridge_entry_next() 
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .with_bytes(
+                        HardwareRevision::DmgCpuC,
+                        build_phase_2_boot_rom(0xCE, 0x7F),
+                    )
                     .expect("phase 2.4 synthetic DMG boot ROM should validate"),
             ),
     );
@@ -88,7 +91,7 @@ fn real_boot_can_source_boot_rom_assets_from_a_directory() {
     let directory = unique_temp_dir();
     fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
     fs::write(
-        directory.join(BootRomAssets::filename(BootRomKind::Dmg)),
+        directory.join(BootRomAssets::filename(HardwareRevision::DmgCpuC)),
         build_boot_rom_image(0x66),
     )
     .expect("boot ROM asset file should be writable");

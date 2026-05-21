@@ -126,6 +126,7 @@ impl Apu {
                 register,
                 value,
                 self.console_model,
+                self.revision,
                 speed_mode,
                 step,
             );

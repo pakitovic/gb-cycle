@@ -7,7 +7,7 @@ mod output;
 mod registers;
 mod sample_capture;
 
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, HardwareRevision};
 use crate::scheduler::{CycleContext, DerivedEdge};
 use crate::speed::CgbSpeedMode;
 
@@ -245,6 +245,7 @@ pub struct ApuCh4DebugSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Apu {
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     status: ApuStatus,
     master: MasterControlState,
     frame_sequencer: FrameSequencerState,
@@ -263,6 +264,7 @@ pub struct Apu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSaveState {
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     status: ApuStatus,
     master: MasterControlState,
     frame_sequencer: FrameSequencerState,
@@ -287,6 +289,7 @@ impl ApuSaveState {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSnapshot {
     pub console_model: ConsoleModel,
+    pub revision: HardwareRevision,
     pub status: ApuStatus,
     pub powered: bool,
     pub nr50: u8,
@@ -313,10 +316,15 @@ impl ApuOutputResolution {
 
 impl Apu {
     pub fn new(console_model: ConsoleModel) -> Self {
+        Self::new_with_revision(console_model, console_model.default_revision())
+    }
+
+    pub fn new_with_revision(console_model: ConsoleModel, revision: HardwareRevision) -> Self {
         let wave_ram_startup_policy = WaveRamStartupPolicy::DeterministicZeroed;
 
         Self {
             console_model,
+            revision,
             status: ApuStatus::Ready,
             master: MasterControlState::default(),
             frame_sequencer: FrameSequencerState::default(),
@@ -333,6 +341,7 @@ impl Apu {
     pub(crate) fn capture_save_state(&self) -> ApuSaveState {
         ApuSaveState {
             console_model: self.console_model,
+            revision: self.revision,
             status: self.status,
             master: self.master,
             frame_sequencer: self.frame_sequencer,
@@ -348,6 +357,7 @@ impl Apu {
 
     pub(crate) fn restore_save_state(&mut self, state: &ApuSaveState) {
         self.console_model = state.console_model;
+        self.revision = state.revision;
         self.status = state.status;
         self.master = state.master;
         self.frame_sequencer = state.frame_sequencer;
@@ -362,6 +372,10 @@ impl Apu {
 
     pub fn console_model(&self) -> ConsoleModel {
         self.console_model
+    }
+
+    pub fn revision(&self) -> HardwareRevision {
+        self.revision
     }
 
     pub fn status(&self) -> ApuStatus {
@@ -435,6 +449,7 @@ impl Apu {
 
         ApuSnapshot {
             console_model: self.console_model,
+            revision: self.revision,
             status: self.status,
             powered: self.master.powered,
             nr50: self.master.nr50,

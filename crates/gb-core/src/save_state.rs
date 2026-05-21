@@ -1,7 +1,6 @@
 use std::{fmt, mem};
 
 pub use crate::apu::ApuSaveState;
-use crate::boot::BootRomKind;
 pub use crate::boot::BootSaveState;
 pub use crate::bus::BusSaveState;
 use crate::cartridge::CartridgeSlotState;
@@ -11,7 +10,9 @@ pub use crate::dma::DmaSaveState;
 pub use crate::external_port::ExternalPortSaveState;
 pub use crate::interrupts::InterruptSaveState;
 pub use crate::joypad::JoypadSaveState;
-use crate::model::{CompatibilityPolicy, ConsoleModel, HostPlatform, OperatingMode, StartupMode};
+use crate::model::{
+    CompatibilityPolicy, ConsoleModel, HardwareRevision, HostPlatform, OperatingMode, StartupMode,
+};
 pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
 pub use crate::serial::SerialSaveState;
@@ -51,7 +52,6 @@ pub struct MachineCartridgeSaveStateMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MachineBootSaveStateMetadata {
     pub startup_mode: StartupMode,
-    pub boot_rom_kind: BootRomKind,
     pub boot_rom_mapped: bool,
     pub boot_rom_fingerprint: Option<SaveStateByteFingerprint>,
 }
@@ -60,6 +60,7 @@ pub struct MachineBootSaveStateMetadata {
 pub struct MachineSaveStateMetadata {
     pub console_model: ConsoleModel,
     pub operating_mode: OperatingMode,
+    pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
     pub startup_mode: StartupMode,
     pub compatibility: CompatibilityPolicy,
@@ -161,6 +162,10 @@ pub enum MachineSaveStateRestoreError {
         expected: OperatingMode,
         actual: OperatingMode,
     },
+    HardwareRevisionMismatch {
+        expected: HardwareRevision,
+        actual: HardwareRevision,
+    },
     HostPlatformMismatch {
         expected: HostPlatform,
         actual: HostPlatform,
@@ -192,6 +197,11 @@ impl fmt::Display for MachineSaveStateRestoreError {
             Self::OperatingModeMismatch { expected, actual } => write!(
                 f,
                 "save-state operating mode mismatch: expected {:?}, got {:?}",
+                expected, actual
+            ),
+            Self::HardwareRevisionMismatch { expected, actual } => write!(
+                f,
+                "save-state hardware revision mismatch: expected {:?}, got {:?}",
                 expected, actual
             ),
             Self::HostPlatformMismatch { expected, actual } => write!(
@@ -281,7 +291,6 @@ mod tests {
     fn boot_metadata() -> MachineBootSaveStateMetadata {
         MachineBootSaveStateMetadata {
             startup_mode: StartupMode::SkipBoot,
-            boot_rom_kind: BootRomKind::Dmg,
             boot_rom_mapped: false,
             boot_rom_fingerprint: None,
         }
@@ -307,7 +316,6 @@ mod tests {
         let actual_cartridge = cartridge_metadata();
         let expected_boot = MachineBootSaveStateMetadata {
             startup_mode: StartupMode::RealBoot,
-            boot_rom_kind: BootRomKind::Mgb,
             boot_rom_mapped: true,
             boot_rom_fingerprint: Some(SaveStateByteFingerprint {
                 len: 0x100,
@@ -330,6 +338,13 @@ mod tests {
                     actual: OperatingMode::GbCompatible,
                 },
                 "operating mode mismatch",
+            ),
+            (
+                MachineSaveStateRestoreError::HardwareRevisionMismatch {
+                    expected: HardwareRevision::CpuCgbC,
+                    actual: HardwareRevision::CpuCgbE,
+                },
+                "hardware revision mismatch",
             ),
             (
                 MachineSaveStateRestoreError::HostPlatformMismatch {

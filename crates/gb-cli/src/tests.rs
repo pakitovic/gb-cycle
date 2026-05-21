@@ -108,10 +108,13 @@ fn build_loaded_machine(rom: Vec<u8>, capture_trace: bool) -> CliMachine {
     machine
 }
 
-fn write_fake_boot_rom(dir: &Path, kind: BootRomKind, fill: u8) {
+fn write_fake_boot_rom(dir: &Path, revision: HardwareRevision, fill: u8) {
     fs::create_dir_all(dir).expect("boot ROM directory should be creatable");
-    fs::write(dir.join(BootRomAssets::filename(kind)), vec![fill; 0x0100])
-        .expect("boot ROM image should be writable");
+    fs::write(
+        dir.join(BootRomAssets::filename(revision)),
+        vec![fill; revision.boot_rom_expected_size()],
+    )
+    .expect("boot ROM image should be writable");
 }
 
 #[derive(Default)]
@@ -1031,6 +1034,8 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         "demo.gb",
         "--model",
         "CGB",
+        "--revision",
+        "cpu-cgb-e",
         "--startup",
         "real-boot",
         "--mode",
@@ -1070,6 +1075,8 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         CliAction::Run(options) => {
             assert_eq!(options.rom_path, PathBuf::from("demo.gb"));
             assert_eq!(options.model, RunModel::Color);
+            assert_eq!(options.revision, HardwareRevision::CpuCgbE);
+            assert_eq!(options.effective_revision(), HardwareRevision::CpuCgbE);
             assert_eq!(options.startup_mode, StartupMode::RealBoot);
             assert_eq!(options.execution_mode, ExecutionMode::Permissive);
             assert_eq!(options.boot_rom_dir, Some(PathBuf::from("boot-assets")));
@@ -1306,6 +1313,7 @@ fn parse_run_arguments_applies_grey_palette_only_for_the_final_dmg_model() {
 fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     let missing_value_cases = [
         (vec!["demo.gb", "--model"], "--model requires a value"),
+        (vec!["demo.gb", "--revision"], "--revision requires a value"),
         (vec!["demo.gb", "--startup"], "--startup requires a value"),
         (vec!["demo.gb", "--mode"], "--mode requires a value"),
         (
@@ -1388,6 +1396,21 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
         parse_run_arguments(["demo.gb", "--palette", "green"])
             .expect_err("unsupported palettes should fail"),
         "unsupported --palette value \"green\"; expected grey"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--revision", "cpu-cgb-e"])
+            .expect_err("CGB-E hardware requires CGB model"),
+        "--revision cpu-cgb-e is not supported by --model DMG; expected one of: dmg-cpu-c"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--cgb-revision", "cgb-e"])
+            .expect_err("legacy CGB revision flags should fail"),
+        "unknown run option \"--cgb-revision\"; run `gb-cli run --help`"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--boot-rom", "cgbE"])
+            .expect_err("legacy boot ROM kind flags should fail"),
+        "unknown run option \"--boot-rom\"; run `gb-cli run --help`"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "other.gb"])
@@ -1972,9 +1995,9 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
     fs::create_dir_all(&explicit_dir).expect("explicit dir should be creatable");
     fs::create_dir_all(&short_dir).expect("short dir should be creatable");
     fs::write(&not_dir, b"file").expect("blocking file should be writable");
-    write_fake_boot_rom(&explicit_dir, BootRomKind::Dmg, 0xAA);
+    write_fake_boot_rom(&explicit_dir, HardwareRevision::DmgCpuC, 0xAA);
     fs::write(
-        short_dir.join(BootRomAssets::filename(BootRomKind::Dmg)),
+        short_dir.join(BootRomAssets::filename(HardwareRevision::DmgCpuC)),
         vec![0x00; 0x10],
     )
     .expect("short boot ROM image should be writable");
@@ -1991,7 +2014,7 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
     options.boot_rom_verify = BootRomVerificationMode::Warn;
     let warned_assets = load_boot_rom_assets(&options, &current_dir, &mut stderr)
         .expect("warn mode should still load assets");
-    assert!(warned_assets.has_image(BootRomKind::Dmg));
+    assert!(warned_assets.has_image(HardwareRevision::DmgCpuC));
     assert!(
         String::from_utf8(stderr.clone())
             .expect("stderr should be UTF-8")
@@ -2009,7 +2032,7 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
     options.boot_rom_verify = BootRomVerificationMode::Off;
     let unchecked_assets = load_boot_rom_assets(&options, &current_dir, &mut stderr)
         .expect("off mode should skip verification");
-    assert!(unchecked_assets.has_image(BootRomKind::Dmg));
+    assert!(unchecked_assets.has_image(HardwareRevision::DmgCpuC));
     assert!(stderr.is_empty());
 
     options.boot_rom_verify = BootRomVerificationMode::Strict;
@@ -2086,8 +2109,9 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
     validate_explicit_directory_input("--boot-rom-dir", None, &explicit_dir)
         .expect("missing explicit paths should be ignored");
 
-    let missing_verify = verify_boot_rom_file(&temp_dir.join("missing.bin"), BootRomKind::Dmg)
-        .expect_err("missing boot ROM files should fail");
+    let missing_verify =
+        verify_boot_rom_file(&temp_dir.join("missing.bin"), HardwareRevision::DmgCpuC)
+            .expect_err("missing boot ROM files should fail");
     assert!(missing_verify.contains("failed to read boot ROM asset"));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
@@ -2103,13 +2127,25 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::Light.console_model(), ConsoleModel::GameBoyLight);
     assert_eq!(RunModel::Color.console_model(), ConsoleModel::GameBoyColor);
     assert_eq!(RunModel::GameBoy.name(), "DMG");
-    assert_eq!(RunModel::GameBoy.boot_rom_kind(), BootRomKind::Dmg);
-    assert_eq!(RunModel::Pocket.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(
+        RunModel::GameBoy.console_model().default_revision(),
+        HardwareRevision::DmgCpuC
+    );
     assert_eq!(RunModel::Pocket.name(), "MGB");
-    assert_eq!(RunModel::Light.boot_rom_kind(), BootRomKind::Mgb);
+    assert_eq!(
+        RunModel::Pocket.console_model().default_revision(),
+        HardwareRevision::CpuMgb
+    );
     assert_eq!(RunModel::Light.name(), "LGB");
-    assert_eq!(RunModel::Color.boot_rom_kind(), BootRomKind::Cgb);
+    assert_eq!(
+        RunModel::Light.console_model().default_revision(),
+        HardwareRevision::CpuMgb
+    );
     assert_eq!(RunModel::Color.name(), "CGB");
+    assert_eq!(
+        RunModel::Color.console_model().default_revision(),
+        HardwareRevision::CpuCgbC
+    );
     assert_eq!(SavePolicy::Manual.name(), "manual");
     assert_eq!(SavePolicy::OnClose.name(), "on-close");
     assert_eq!(SavePolicy::OnWrite.name(), "on-write");
@@ -2207,6 +2243,37 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         parse_run_model("sgb")
             .expect_err("unsupported models should fail")
             .contains("unsupported --model value")
+    );
+    assert_eq!(parse_revision("dmg-cpu-c"), Ok(HardwareRevision::DmgCpuC));
+    assert_eq!(parse_revision("cpu-mgb"), Ok(HardwareRevision::CpuMgb));
+    assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
+    assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
+    assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+    assert!(
+        parse_revision("cpu-cgb-b")
+            .expect_err("inactive revisions should fail")
+            .contains("unsupported --revision value")
+    );
+    assert_eq!(
+        revision_argument_name(HardwareRevision::DmgCpuC),
+        "dmg-cpu-c"
+    );
+    assert_eq!(revision_argument_name(HardwareRevision::CpuMgb), "cpu-mgb");
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgbC),
+        "cpu-cgb-c"
+    );
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgbD),
+        "cpu-cgb-d"
+    );
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgbE),
+        "cpu-cgb-e"
+    );
+    assert_eq!(
+        supported_revision_names(ConsoleModel::GameBoyColor),
+        "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
     );
     assert_eq!(parse_display_palette("grey"), Ok(RunDisplayPalette::Grey));
     assert_eq!(
@@ -2368,12 +2435,21 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(sgb_flag_name(SgbFlag::Unknown(0x03)), "unknown(0x03)");
     assert_eq!(optional_usize_name(Some(8)), "8");
     assert_eq!(optional_usize_name(None), "unknown");
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg0).len(), 64);
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::Dmg).len(), 64);
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::Mgb).len(), 64);
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb0).len(), 64);
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::Cgb).len(), 64);
-    assert_eq!(expected_boot_rom_sha256(BootRomKind::CgbE).len(), 64);
+    for revision in [
+        HardwareRevision::DmgCpu,
+        HardwareRevision::DmgCpuA,
+        HardwareRevision::DmgCpuB,
+        HardwareRevision::DmgCpuC,
+        HardwareRevision::CpuMgb,
+        HardwareRevision::CpuCgb,
+        HardwareRevision::CpuCgbA,
+        HardwareRevision::CpuCgbB,
+        HardwareRevision::CpuCgbC,
+        HardwareRevision::CpuCgbD,
+        HardwareRevision::CpuCgbE,
+    ] {
+        assert_eq!(revision.boot_rom_expected_sha256().len(), 64);
+    }
     assert_eq!(
         sha256_hex(b"abc"),
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

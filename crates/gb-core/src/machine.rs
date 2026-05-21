@@ -269,8 +269,8 @@ impl<S: TraceSink> Machine<S> {
     pub fn with_tracer(config: MachineConfig, tracer: Tracer<S>) -> Self {
         let console_model = config.console_model;
         let operating_mode = config.operating_mode;
+        let revision = config.revision;
         let startup_mode = config.startup_mode;
-        let boot_rom_kind = config.boot_rom_kind;
         let boot_rom_assets = config.boot_rom_assets.clone();
 
         let mut machine = Self {
@@ -280,14 +280,14 @@ impl<S: TraceSink> Machine<S> {
             debug_controls: DebugControl::new(),
             cpu: CpuCore::new(console_model),
             bus: Bus::new_with_operating_mode(console_model, operating_mode),
-            apu: Apu::new(console_model),
+            apu: Apu::new_with_revision(console_model, revision),
             ppu: Ppu::new(console_model),
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new_with_operating_mode(console_model, operating_mode),
             speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
-            boot: BootController::new(console_model, startup_mode, boot_rom_kind, boot_rom_assets),
+            boot: BootController::new(console_model, revision, startup_mode, boot_rom_assets),
             interrupts: InterruptController::new(console_model),
             joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),
@@ -572,6 +572,7 @@ impl<S: TraceSink> Machine<S> {
         MachineSaveStateMetadata {
             console_model: self.config.console_model,
             operating_mode: self.config.operating_mode,
+            revision: self.config.revision,
             host_platform: self.config.host_platform,
             startup_mode: self.config.startup_mode,
             compatibility: self.config.compatibility.clone(),
@@ -591,7 +592,6 @@ impl<S: TraceSink> Machine<S> {
     fn boot_save_state_metadata(&self) -> MachineBootSaveStateMetadata {
         MachineBootSaveStateMetadata {
             startup_mode: self.boot.startup_mode(),
-            boot_rom_kind: self.boot.boot_rom_kind(),
             boot_rom_mapped: self.boot.is_boot_rom_mapped(),
             boot_rom_fingerprint: self.boot.boot_rom_fingerprint(),
         }
@@ -611,6 +611,12 @@ impl<S: TraceSink> Machine<S> {
             return Err(MachineSaveStateRestoreError::OperatingModeMismatch {
                 expected: metadata.operating_mode,
                 actual: self.config.operating_mode,
+            });
+        }
+        if metadata.revision != self.config.revision {
+            return Err(MachineSaveStateRestoreError::HardwareRevisionMismatch {
+                expected: metadata.revision,
+                actual: self.config.revision,
             });
         }
         if metadata.host_platform != self.config.host_platform {
@@ -748,7 +754,6 @@ fn boot_save_state_metadata_is_compatible(
     actual: &MachineBootSaveStateMetadata,
 ) -> bool {
     expected.startup_mode == actual.startup_mode
-        && expected.boot_rom_kind == actual.boot_rom_kind
         && expected.boot_rom_fingerprint == actual.boot_rom_fingerprint
 }
 
