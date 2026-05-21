@@ -1,0 +1,92 @@
+version = 1
+family = "mooneye"
+suite_name = "mooneye-cgb-extra"
+subsystem = "Ppu"
+
+[[case]]
+id = "mooneye-cgb-ppu-hblank-ly-scx-timing-gs"
+rom = "acceptance/ppu/hblank_ly_scx_timing-GS.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-1-2-timing-gs"
+rom = "acceptance/ppu/intr_1_2_timing-GS.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-2-0-timing"
+rom = "acceptance/ppu/intr_2_0_timing.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-2-mode0-timing"
+rom = "acceptance/ppu/intr_2_mode0_timing.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-2-mode0-timing-sprites"
+rom = "acceptance/ppu/intr_2_mode0_timing_sprites.gb"
+console = "cgb"
+timeout_frames = 660
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-2-mode3-timing"
+rom = "acceptance/ppu/intr_2_mode3_timing.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-intr-2-oam-ok-timing"
+rom = "acceptance/ppu/intr_2_oam_ok_timing.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-lcdon-timing-gs"
+rom = "acceptance/ppu/lcdon_timing-GS.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+disabled = true
+comment = "Expected CGB red: upstream declares fail on CGB/AGB/AGS; local capture fails STAT LYC=1 at cycle $6F with expected $80 and actual $84."
+
+[[case]]
+id = "mooneye-cgb-ppu-lcdon-write-timing-gs"
+rom = "acceptance/ppu/lcdon_write_timing-GS.gb"
+console = "cgb"
+timeout_frames = 240
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-stat-irq-blocking"
+rom = "acceptance/ppu/stat_irq_blocking.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-stat-lyc-onoff"
+rom = "acceptance/ppu/stat_lyc_onoff.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+
+[[case]]
+id = "mooneye-cgb-ppu-vblank-stat-intr-gs"
+rom = "acceptance/ppu/vblank_stat_intr-GS.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "mooneye-result"
+disabled = true
+comment = "Expected CGB red: upstream declares fail on CGB/AGB/AGS; local capture reports D=$12 where the DMG-family expectation is D=$01."

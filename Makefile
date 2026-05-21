@@ -3,7 +3,7 @@
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-hacktix run-cpp run-mealybug run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -46,6 +46,7 @@ help:
 	@echo "  make run-mooneye-acceptance Fetch and run the Mooneye acceptance/manual chunk"
 	@echo "  make run-mooneye-mbc1-mbc5 Fetch and run the Mooneye emulator-only MBC1/MBC5 chunk"
 	@echo "  make run-mooneye-mbc2     Fetch and run the Mooneye emulator-only MBC2 chunk"
+	@echo "  make run-mooneye-cgb      Fetch and run the exploratory/internal Mooneye CGB PPU suite"
 	@echo "  make run-hacktix          Fetch and run the curated Hacktix DMG suite"
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
@@ -174,6 +175,7 @@ test-roms-cgb-real-boot: require-boot-rom-root
 test-roms-cgb-extra:
 	@status=0; \
 	$(MAKE) run-cgb-boot-hwio || status=$$?; \
+	$(MAKE) run-mooneye-cgb || status=$$?; \
 	$(MAKE) run-samesuite-cgb || status=$$?; \
 	$(MAKE) run-magen-cgb || status=$$?; \
 	$(MAKE) run-little-things-gb-cgb || status=$$?; \
@@ -182,6 +184,7 @@ test-roms-cgb-extra:
 test-roms-cgb-extra-real-boot: require-boot-rom-root
 	@status=0; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cgb-boot-hwio || status=$$?; \
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mooneye-cgb || status=$$?; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite-cgb || status=$$?; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-magen-cgb || status=$$?; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-little-things-gb-cgb || status=$$?; \
@@ -307,6 +310,10 @@ run-cgb-boot-div:
 run-cgb-boot-hwio:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
 	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-hwio --failure-artifact-root .artifacts/cgb-boot-hwio
+
+run-mooneye-cgb:
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite mooneye-cgb-extra --failure-artifact-root .artifacts/mooneye-cgb
 
 run-cgb-speed:
 	$(MAKE) fetch-test-roms FAMILIES="daid blargg"

@@ -51,9 +51,10 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 8] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 9] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
+    "mooneye-cgb-extra",
     "samesuite-dmg-extra",
     "samesuite-cgb-extra",
     "magen-cgb-extra",
@@ -1049,6 +1050,7 @@ fn manifest_report_metadata_for_persisted_suite_case(
         .iter()
         .filter(|manifest| manifest.suite_name == suite_name)
         .flat_map(|manifest| manifest.cases.iter())
+        .filter(|case| !case.disabled)
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
         .map(manifest_case_report_metadata)
 }
@@ -1060,6 +1062,7 @@ fn manifest_report_metadata_for_any_persisted_case(
     curated_test_rom_manifest_catalog()
         .iter()
         .flat_map(|manifest| manifest.cases.iter())
+        .filter(|case| !case.disabled)
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
         .map(manifest_case_report_metadata)
 }
@@ -1101,7 +1104,7 @@ fn manifest_case_order_for_suite(
     for (case_manifest_order, case) in suite_manifest
         .cases
         .iter()
-        .filter(|case| case.family == family)
+        .filter(|case| case.family == family && !case.disabled)
         .enumerate()
     {
         if persisted_case_matches_manifest_case(family, rom, case) {
@@ -1122,7 +1125,7 @@ fn manifest_case_order_for_any_suite(family: &str, rom: &str) -> Option<ReportCa
     for (case_manifest_order, case) in curated_test_rom_manifest_catalog()
         .iter()
         .flat_map(|manifest| manifest.cases.iter())
-        .filter(|case| case.family == family)
+        .filter(|case| case.family == family && !case.disabled)
         .enumerate()
     {
         if persisted_case_matches_manifest_case(family, rom, case) {
@@ -1185,6 +1188,10 @@ pub fn cgb_boot_div_suite() -> RomSuite {
 
 pub fn cgb_boot_hwio_suite() -> RomSuite {
     manifest_suite_by_name("cgb-boot-hwio")
+}
+
+pub fn mooneye_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("mooneye-cgb-extra")
 }
 
 pub fn cgb_audio_blargg_suite() -> RomSuite {
@@ -1254,7 +1261,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 28] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 29] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1367,6 +1374,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 28] {
         (
             "crates/gb-test-runner/data/mooneye.toml",
             include_str!("../data/mooneye.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/mooneye-cgb.toml",
+            include_str!("../data/mooneye-cgb.toml"),
         ),
     ]
 }
@@ -2180,11 +2191,12 @@ mod tests {
         load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
-        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_case,
-        parse_manifest_console_model, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite, sort_persisted_case_statuses, suite_uses_docboy_test_report,
-        suite_uses_extra_test_report, test_rom_store_root, update_curated_test_report,
+        mealybug_tearoom_dmg_sameboy_differential_suite, mooneye_cgb_extra_suite,
+        parse_manifest_case, parse_manifest_console_model, parse_manifest_subsystem,
+        render_markdown_report, report_rom_display, report_status_display,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, sort_persisted_case_statuses,
+        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
+        update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -2476,6 +2488,73 @@ mod tests {
             suite.cases[0].pass_condition,
             PassCondition::MooneyeResult
         ));
+    }
+
+    #[test]
+    fn mooneye_cgb_extra_suite_runs_the_ppu_acceptance_rows_on_cgb() {
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "mooneye-cgb-extra")
+            .expect("Mooneye CGB manifest should exist");
+        assert_eq!(manifest.cases.len(), 12);
+        assert_eq!(
+            manifest.cases.iter().filter(|case| case.disabled).count(),
+            2
+        );
+        assert!(manifest.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-lcdon-timing-gs"
+                && case.disabled
+                && case.comment.as_deref().is_some_and(|comment| {
+                    comment.contains("Expected CGB red")
+                        && comment.contains("STAT LYC=1")
+                        && comment.contains("$6F")
+                })
+        }));
+        assert!(manifest.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-vblank-stat-intr-gs"
+                && case.disabled
+                && case.comment.as_deref().is_some_and(|comment| {
+                    comment.contains("Expected CGB red")
+                        && comment.contains("D=$12")
+                        && comment.contains("D=$01")
+                })
+        }));
+
+        let suite = mooneye_cgb_extra_suite();
+
+        assert_eq!(suite.name, "mooneye-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("mooneye"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 10);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case
+                    .rom_path
+                    .starts_with(Path::new("mooneye/acceptance/ppu"))
+                && matches!(case.pass_condition, PassCondition::MooneyeResult)
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-intr-2-mode0-timing"
+                && case.rom_path == Path::new("mooneye/acceptance/ppu/intr_2_mode0_timing.gb")
+                && case.timeout == Timeout::Frames(180)
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-intr-2-mode0-timing-sprites"
+                && case.timeout == Timeout::Frames(660)
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mooneye-cgb-ppu-lcdon-write-timing-gs"
+                && case.timeout == Timeout::Frames(240)
+        }));
+        assert!(suite.cases.iter().all(|case| {
+            case.id != "mooneye-cgb-ppu-lcdon-timing-gs"
+                && case.id != "mooneye-cgb-ppu-vblank-stat-intr-gs"
+        }));
+        assert!(crate::built_in_rom_suite_by_name("mooneye-cgb-extra").is_some());
+        assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
+        assert!(!suite_uses_docboy_test_report("mooneye-cgb-extra"));
     }
 
     #[test]
@@ -3252,11 +3331,17 @@ mod tests {
             .find(|manifest| manifest.suite_name == "docboy-cgb-dmg-extra")
             .expect("DocBoy CGB DMG manifest should exist");
         assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb-dmg"));
-        assert_eq!(manifest.cases.len(), 502);
+        assert_eq!(manifest.cases.len(), 491);
         assert_eq!(
             manifest.cases.iter().filter(|case| case.disabled).count(),
             1
         );
+        assert!(manifest.cases.iter().all(|case| {
+            !case.rom.starts_with(Path::new("mooneye/ppu"))
+                && !case
+                    .source_path
+                    .starts_with(Path::new("tests/roms/cgb_dmg_mode/mooneye/ppu"))
+        }));
         assert!(manifest.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-mealybug-m3-lcdc-win-en-change-multiple-wx"
                 && case.disabled
@@ -3268,7 +3353,7 @@ mod tests {
         assert_eq!(suite.name, "docboy-cgb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 501);
+        assert_eq!(suite.cases.len(), 490);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
@@ -3307,7 +3392,7 @@ mod tests {
                     PassCondition::FramebufferFixtureUntilMatch { .. }
                 ))
                 .count(),
-            433
+            422
         );
         assert!(suite.cases.iter().all(|case| {
             case.id != "docboy-cgb-dmg-mooneye-boot-div-cgbabcde"
@@ -4353,6 +4438,64 @@ mod tests {
     }
 
     #[test]
+    fn curated_test_report_prunes_disabled_manifest_rows_from_suite_status() {
+        let workspace_root = unique_temp_dir("report-disabled-prune");
+        let status_root = test_rom_store_root(&workspace_root).join(TEST_ROM_STATUS_DIR_NAME);
+        fs::create_dir_all(&status_root).expect("status root should be creatable");
+        fs::write(
+            status_root.join("mooneye-cgb-extra.toml"),
+            r#"version = 1
+suite_name = "mooneye-cgb-extra"
+family = "mooneye"
+
+[[cases]]
+rom = "acceptance/ppu/intr_2_mode0_timing.gb"
+status = "PASS"
+
+[[cases]]
+rom = "acceptance/ppu/lcdon_timing-GS.gb"
+status = "FAIL"
+
+[[cases]]
+rom = "acceptance/ppu/vblank_stat_intr-GS.gb"
+status = "FAIL"
+"#,
+        )
+        .expect("stale Mooneye CGB status should be writable");
+
+        let report = RomSuiteReport {
+            suite_name: "mooneye-cgb-extra".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::Ppu,
+            cases: vec![report_case(
+                "mooneye-cgb-ppu-intr-2-mode0-timing",
+                "mooneye/acceptance/ppu/intr_2_mode0_timing.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &report)
+            .expect("Mooneye CGB extra report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let suite_status = fs::read_to_string(status_root.join("mooneye-cgb-extra.toml"))
+            .expect("Mooneye CGB status should be readable");
+        assert!(suite_status.contains("intr_2_mode0_timing.gb"));
+        assert!(!suite_status.contains("lcdon_timing-GS.gb"));
+        assert!(!suite_status.contains("vblank_stat_intr-GS.gb"));
+
+        let rendered_report =
+            fs::read_to_string(report_path).expect("extra report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (1/1)\n"));
+        assert!(rendered_report.contains(&format!(
+            "| mooneye | acceptance/ppu/intr_2_mode0_timing.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered_report.contains("lcdon_timing-GS.gb"));
+        assert!(!rendered_report.contains("vblank_stat_intr-GS.gb"));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
     fn curated_test_report_routes_extra_suites_to_extra_markdown_file() {
         let workspace_root = unique_temp_dir("report-cgb-extra");
         fs::create_dir_all(test_rom_store_root(&workspace_root))
@@ -4416,6 +4559,20 @@ mod tests {
         };
         update_curated_test_report(&workspace_root, &cgb_boot_hwio_report)
             .expect("CGB boot HWIO report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let mooneye_cgb_report = RomSuiteReport {
+            suite_name: "mooneye-cgb-extra".to_string(),
+            family: Some("mooneye".to_string()),
+            subsystem: TestSubsystem::Ppu,
+            cases: vec![report_case(
+                "mooneye-cgb-ppu-intr-2-mode0-timing",
+                "mooneye/acceptance/ppu/intr_2_mode0_timing.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &mooneye_cgb_report)
+            .expect("Mooneye CGB extra report should write")
             .expect("extra curated suite should emit a report path");
 
         let ax6_report = RomSuiteReport {
@@ -4555,6 +4712,7 @@ mod tests {
             "| samesuite | apu/div_write_trigger_10.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(!standard_report.contains("boot_hwio-C.gb"));
+        assert!(!standard_report.contains("intr_2_mode0_timing.gb"));
         assert!(!standard_report.contains("div_write_trigger.gb (DMG)"));
         assert!(!standard_report.contains("div_write_trigger_10.gb (DMG)"));
         assert!(!standard_report.contains("ei_delay_halt.gb"));
@@ -4563,7 +4721,7 @@ mod tests {
 
         let extra_report =
             fs::read_to_string(report_path).expect("extra report should be readable");
-        assert!(extra_report.starts_with("# Test Report (12/12)\n"));
+        assert!(extra_report.starts_with("# Test Report (13/13)\n"));
         assert!(extra_report.contains(&format!(
             "| ax6 | rtc3test-1.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -4575,6 +4733,9 @@ mod tests {
         )));
         assert!(extra_report.contains(&format!(
             "| mooneye | misc/boot_hwio-C.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| mooneye | acceptance/ppu/intr_2_mode0_timing.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(extra_report.contains(&format!(
             "| samesuite | apu/div_write_trigger.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
@@ -5328,6 +5489,7 @@ status = "PASS"
         assert_eq!(TEST_ROM_DOCBOY_REPORT_FILE_NAME, "test-report-docboy.md");
         assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
+        assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
         assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
         assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));

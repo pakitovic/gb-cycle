@@ -439,3 +439,54 @@ fn cpu_stat_read_publishes_hblank_for_ten_sprite_step8_preterminal_tails() {
         );
     }
 }
+
+#[test]
+fn cgb_cpu_stat_read_publishes_hblank_for_ten_sprite_step8_fifo_tail_without_pending_push() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x93,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 99;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 127;
+    ppu.bg_pipeline_state.visible_pixels_output = 119;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.line_dot = MODE0_START_DOT + 68;
+
+    for sprite_slot in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 4 + sprite_slot * 8,
+            tile_index: sprite_slot,
+            attributes: 0,
+        });
+    }
+
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert!(!ppu.bg_pipeline_state.push.pending);
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00,
+        "CGB compatibility-mode STAT should publish HBlank for the step-8 FIFO tail before the internal OBJ-extended Mode3 tail drains"
+    );
+}
