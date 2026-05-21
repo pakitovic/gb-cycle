@@ -263,7 +263,7 @@ fn run_lcd_reenable_line1_mode0_counter(scx: u8) -> u8 {
     run_until_halted(&mut machine, 1_000_000)
 }
 
-fn build_skip_boot_startup_mode0_if_probe_rom(
+fn build_custom_boot_startup_mode0_if_probe_rom(
     scx: u8,
     delay_nops: usize,
     vector_passthrough: bool,
@@ -300,22 +300,21 @@ fn build_skip_boot_startup_mode0_if_probe_rom(
     build_nom_bc_test_rom(&program, 0x00, &[(0x0048, vector.as_slice())])
 }
 
-fn run_skip_boot_startup_mode0_if_probe(
+fn run_custom_boot_startup_mode0_if_probe(
     scx: u8,
     delay_nops: usize,
     vector_passthrough: bool,
 ) -> u8 {
     let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::CustomBoot),
     );
     machine
-        .load_cartridge(build_skip_boot_startup_mode0_if_probe_rom(
+        .load_cartridge(build_custom_boot_startup_mode0_if_probe_rom(
             scx,
             delay_nops,
             vector_passthrough,
         ))
         .expect("probe ROM should load");
-    machine.apply_dmg_skip_boot_power_on_ppu_phase();
     run_until_halted(&mut machine, 1_000_000)
 }
 
@@ -540,13 +539,13 @@ fn lcd_reenable_first_frame_mode0_stat_suppresses_pretrigger_and_keeps_scx_seams
 }
 
 #[test]
-fn skip_boot_startup_mode0_stat_uses_the_boot_phase_for_if_visibility() {
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 34, false), 0xE0);
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 35, true), 0xE0);
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 36, true), 0xE2);
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(0, 37, true), 0x00);
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(3, 35, true), 0xE0);
-    assert_eq!(run_skip_boot_startup_mode0_if_probe(7, 35, true), 0xE0);
+fn custom_boot_startup_mode0_stat_uses_the_boot_phase_for_if_visibility() {
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(0, 34, false), 0xE0);
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(0, 35, true), 0xE0);
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(0, 36, true), 0xE2);
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(0, 37, true), 0x00);
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(3, 35, true), 0xE0);
+    assert_eq!(run_custom_boot_startup_mode0_if_probe(7, 35, true), 0xE0);
 }
 
 #[test]

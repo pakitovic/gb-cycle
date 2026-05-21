@@ -489,11 +489,6 @@ impl FailureArtifactPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StartupPpuProfile {
-    DmgPowerOn,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RomCaseValidationError {
     EmptyCaseId,
@@ -523,7 +518,6 @@ pub struct RomTestCase {
     pub execution_mode: ExecutionMode,
     pub startup_cartridge_rtc_seconds: Option<u64>,
     pub startup_timer_state: Option<TimerStartupState>,
-    pub startup_ppu_profile: Option<StartupPpuProfile>,
     pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
@@ -553,7 +547,6 @@ impl RomTestCase {
             execution_mode: ExecutionMode::Strict,
             startup_cartridge_rtc_seconds: None,
             startup_timer_state: None,
-            startup_ppu_profile: None,
             startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
@@ -592,11 +585,6 @@ impl RomTestCase {
 
     pub fn with_startup_timer_state(mut self, startup_timer_state: TimerStartupState) -> Self {
         self.startup_timer_state = Some(startup_timer_state);
-        self
-    }
-
-    pub fn with_startup_ppu_profile(mut self, startup_ppu_profile: StartupPpuProfile) -> Self {
-        self.startup_ppu_profile = Some(startup_ppu_profile);
         self
     }
 
@@ -1832,15 +1820,6 @@ impl RunnerMachine {
             Self::Summary(machine) => machine.apply_timer_startup_state(startup_timer_state),
         }
     }
-
-    fn apply_startup_ppu_profile(&mut self, startup_ppu_profile: StartupPpuProfile) {
-        match startup_ppu_profile {
-            StartupPpuProfile::DmgPowerOn => match self {
-                Self::Buffered(machine) => machine.apply_dmg_skip_boot_power_on_ppu_phase(),
-                Self::Summary(machine) => machine.apply_dmg_skip_boot_power_on_ppu_phase(),
-            },
-        }
-    }
 }
 
 impl Default for RomRunner {
@@ -1934,7 +1913,6 @@ impl RomRunner {
         if startup_failure.is_none() {
             self.apply_startup_cartridge_state(case, &mut machine);
             self.apply_startup_timer_state(case, &mut machine);
-            self.apply_startup_ppu_profile(case, &mut machine);
             self.apply_startup_memory_writes(case, &mut machine);
         }
 
@@ -2283,16 +2261,6 @@ impl RomRunner {
     fn apply_startup_timer_state(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
         if let Some(startup_timer_state) = case.startup_timer_state {
             machine.apply_timer_startup_state(startup_timer_state);
-        }
-    }
-
-    fn apply_startup_ppu_profile(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
-        if !case.startup_mode.uses_direct_boot_state() {
-            return;
-        }
-
-        if let Some(startup_ppu_profile) = case.startup_ppu_profile {
-            machine.apply_startup_ppu_profile(startup_ppu_profile);
         }
     }
 

@@ -130,11 +130,6 @@ impl<S: TraceSink> Machine<S> {
             .apply_div_apu_startup_phase_from_system_counter(startup_state.system_counter);
     }
 
-    /// Applies the DMG-family synthetic power-on PPU phase used by tests that intentionally start at reset-facing LCD timing rather than at the verified cartridge-entry handoff.
-    pub fn apply_dmg_skip_boot_power_on_ppu_phase(&mut self) {
-        self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
-    }
-
     pub fn load_cartridge(
         &mut self,
         rom_bytes: Vec<u8>,
@@ -217,6 +212,10 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
+            if self.config.startup_mode == crate::model::StartupMode::CustomBoot {
+                // DMG-family CustomBoot exposes reset-facing PPU publication only through CPU-bus reads; its memory policy adds logo data on top of the same direct CPU/I/O baseline as SkipBoot.
+                self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
+            }
             if self.config.console_model.is_cgb_family()
                 && self.config.startup_mode == crate::model::StartupMode::CustomBoot
             {

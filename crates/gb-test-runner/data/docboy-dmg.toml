@@ -2,7 +2,6 @@ version = 1
 family = "docboy-dmg"
 suite_name = "docboy-dmg-extra"
 subsystem = "CrossSubsystem"
-startup_ppu_profile = "dmg-power-on"
 
 [[case]]
 id = "docboy-cpu-cb-interrupt"

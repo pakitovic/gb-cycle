@@ -2,7 +2,6 @@ version = 1
 family = "gbmicrotest"
 suite_name = "gbmicrotest-dmg-extra"
 subsystem = "CrossSubsystem"
-startup_ppu_profile = "dmg-power-on"
 
 [[case]]
 id = "gbmicrotest-halt-halt-bug"
@@ -3020,6 +3019,7 @@ rom = "boot/poweron_bgp_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_bgp_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3030,6 +3030,7 @@ rom = "boot/poweron_div_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3040,6 +3041,7 @@ rom = "boot/poweron_div_004.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_004.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3050,6 +3052,7 @@ rom = "boot/poweron_div_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_div_005.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3060,6 +3063,7 @@ rom = "boot/poweron_dma_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_dma_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3070,6 +3074,7 @@ rom = "boot/poweron_if_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_if_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3080,6 +3085,7 @@ rom = "boot/poweron_joy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_joy_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3090,6 +3096,7 @@ rom = "boot/poweron_lcdc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_lcdc_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3100,6 +3107,7 @@ rom = "boot/poweron_ly_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3110,6 +3118,7 @@ rom = "boot/poweron_ly_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_119.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3120,6 +3129,7 @@ rom = "boot/poweron_ly_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_120.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3130,6 +3140,7 @@ rom = "boot/poweron_ly_233.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_233.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3140,6 +3151,7 @@ rom = "boot/poweron_ly_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_ly_234.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3150,6 +3162,7 @@ rom = "boot/poweron_lyc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_lyc_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3160,6 +3173,7 @@ rom = "boot/poweron_oam_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3170,6 +3184,7 @@ rom = "boot/poweron_oam_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_005.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3180,6 +3195,7 @@ rom = "boot/poweron_oam_006.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_006.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3190,6 +3206,7 @@ rom = "boot/poweron_oam_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_069.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3200,6 +3217,7 @@ rom = "boot/poweron_oam_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_070.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3210,6 +3228,7 @@ rom = "boot/poweron_oam_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_119.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3220,6 +3239,7 @@ rom = "boot/poweron_oam_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_120.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3230,6 +3250,7 @@ rom = "boot/poweron_oam_121.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_121.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3240,6 +3261,7 @@ rom = "boot/poweron_oam_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_183.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3250,6 +3272,7 @@ rom = "boot/poweron_oam_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_184.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3260,6 +3283,7 @@ rom = "boot/poweron_oam_233.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_233.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3270,6 +3294,7 @@ rom = "boot/poweron_oam_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_234.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3280,6 +3305,7 @@ rom = "boot/poweron_oam_235.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_oam_235.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3290,6 +3316,7 @@ rom = "boot/poweron_sb_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_sb_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3300,6 +3327,7 @@ rom = "boot/poweron_sc_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_sc_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3310,6 +3338,7 @@ rom = "boot/poweron_scx_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_scx_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3320,6 +3349,7 @@ rom = "boot/poweron_scy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_scy_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3330,6 +3360,7 @@ rom = "boot/poweron_stat_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3340,6 +3371,7 @@ rom = "boot/poweron_stat_005.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_005.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3350,6 +3382,7 @@ rom = "boot/poweron_stat_006.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_006.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3360,6 +3393,7 @@ rom = "boot/poweron_stat_007.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_007.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3370,6 +3404,7 @@ rom = "boot/poweron_stat_026.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_026.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3380,6 +3415,7 @@ rom = "boot/poweron_stat_027.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_027.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3390,6 +3426,7 @@ rom = "boot/poweron_stat_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_069.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3400,6 +3437,7 @@ rom = "boot/poweron_stat_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_070.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3410,6 +3448,7 @@ rom = "boot/poweron_stat_119.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_119.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3420,6 +3459,7 @@ rom = "boot/poweron_stat_120.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_120.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3430,6 +3470,7 @@ rom = "boot/poweron_stat_121.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_121.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3440,6 +3481,7 @@ rom = "boot/poweron_stat_140.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_140.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3450,6 +3492,7 @@ rom = "boot/poweron_stat_141.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_141.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3460,6 +3503,7 @@ rom = "boot/poweron_stat_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_183.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3470,6 +3514,7 @@ rom = "boot/poweron_stat_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_184.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3480,6 +3525,7 @@ rom = "boot/poweron_stat_234.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_234.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3490,6 +3536,7 @@ rom = "boot/poweron_stat_235.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_stat_235.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3500,6 +3547,7 @@ rom = "boot/poweron_tac_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tac_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3510,6 +3558,7 @@ rom = "boot/poweron_tima_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tima_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3520,6 +3569,7 @@ rom = "boot/poweron_tma_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_tma_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3530,6 +3580,7 @@ rom = "boot/poweron_vram_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3540,6 +3591,7 @@ rom = "boot/poweron_vram_025.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_025.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3550,6 +3602,7 @@ rom = "boot/poweron_vram_026.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_026.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3560,6 +3613,7 @@ rom = "boot/poweron_vram_069.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_069.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3570,6 +3624,7 @@ rom = "boot/poweron_vram_070.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_070.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3580,6 +3635,7 @@ rom = "boot/poweron_vram_139.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_139.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3590,6 +3646,7 @@ rom = "boot/poweron_vram_140.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_140.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3600,6 +3657,7 @@ rom = "boot/poweron_vram_183.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_183.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3610,6 +3668,7 @@ rom = "boot/poweron_vram_184.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_vram_184.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3620,6 +3679,7 @@ rom = "boot/poweron_wx_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_wx_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -3630,6 +3690,7 @@ rom = "boot/poweron_wy_000.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/boot/poweron_wy_000.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
