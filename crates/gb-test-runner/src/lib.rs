@@ -4172,7 +4172,7 @@ mod tests {
             );
             assert!(matches!(
                 case.pass_condition,
-                PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
+                PassCondition::FramebufferRgb555Fixture(_)
             ));
         }
 

@@ -10,7 +10,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/bg_oam_priority.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/bg_oam_priority.png"
 
 [[case]]
@@ -20,7 +20,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/hblank_vram_dma.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
 
 [[case]]
@@ -30,7 +30,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/key0_lock_after_boot.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
 
 [[case]]
@@ -40,7 +40,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc1.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
 
 [[case]]
@@ -50,7 +50,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc3.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
 
 [[case]]
@@ -60,7 +60,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc5.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
 
 [[case]]
@@ -70,7 +70,7 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/oam_internal_priority.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/oam_internal_priority.png"
 
 [[case]]
@@ -80,5 +80,5 @@ source_id = "docboy"
 source_path = "tests/roms/cgb/magen/ppu_disabled_state.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
-oracle = "framebuffer-rgb555-fixture-until-match"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
