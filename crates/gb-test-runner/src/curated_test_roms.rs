@@ -3497,7 +3497,7 @@ mod tests {
                 && case.rom_path.starts_with("magen")
                 && matches!(
                     case.pass_condition,
-                    PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
+                    PassCondition::FramebufferRgb555Fixture(_)
                 )
         }));
         assert!(suite.cases.iter().any(|case| {
