@@ -51,13 +51,14 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 9] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 10] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "mooneye-cgb-extra",
     "samesuite-dmg-extra",
     "samesuite-cgb-extra",
     "magen-cgb-extra",
+    "mealybug-tearoom-cgb-extra",
     "gbmicrotest-dmg-extra",
     "little-things-gb-dmg-extra",
     "little-things-gb-cgb-extra",
@@ -359,6 +360,10 @@ pub fn cpp_dmg_curated_suite() -> RomSuite {
 
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     manifest_suite("mealybug-tearoom-tests")
+}
+
+pub fn mealybug_tearoom_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("mealybug-tearoom-cgb-extra")
 }
 
 pub fn mealybug_tearoom_dmg_sameboy_differential_suite() -> RomSuite {
@@ -1261,7 +1266,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 29] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1370,6 +1375,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 29] {
         (
             "crates/gb-test-runner/data/mealybug-tearoom-tests.toml",
             include_str!("../data/mealybug-tearoom-tests.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/mealybug-tearoom-tests-cgb.toml",
+            include_str!("../data/mealybug-tearoom-tests-cgb.toml"),
         ),
         (
             "crates/gb-test-runner/data/mooneye.toml",
@@ -2190,13 +2199,13 @@ mod tests {
         little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
         load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
-        materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
-        mealybug_tearoom_dmg_sameboy_differential_suite, mooneye_cgb_extra_suite,
-        parse_manifest_case, parse_manifest_console_model, parse_manifest_subsystem,
-        render_markdown_report, report_rom_display, report_status_display,
-        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, sort_persisted_case_statuses,
-        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
-        update_curated_test_report,
+        materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
+        mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
+        mooneye_cgb_extra_suite, parse_manifest_case, parse_manifest_console_model,
+        parse_manifest_subsystem, render_markdown_report, report_rom_display,
+        report_status_display, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
+        sort_persisted_case_statuses, suite_uses_docboy_test_report, suite_uses_extra_test_report,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -3331,10 +3340,17 @@ mod tests {
             .find(|manifest| manifest.suite_name == "docboy-cgb-dmg-extra")
             .expect("DocBoy CGB DMG manifest should exist");
         assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb-dmg"));
-        assert_eq!(manifest.cases.len(), 491);
+        assert_eq!(manifest.cases.len(), 467);
         assert_eq!(
             manifest.cases.iter().filter(|case| case.disabled).count(),
-            1
+            0
+        );
+        assert!(
+            manifest
+                .cases
+                .iter()
+                .all(|case| !case.rom.starts_with("mealybug")),
+            "Mealybug rows should live in mealybug-tearoom-cgb-extra, not DocBoy"
         );
         assert!(manifest.cases.iter().all(|case| {
             !case.rom.starts_with(Path::new("mooneye/ppu"))
@@ -3342,18 +3358,13 @@ mod tests {
                     .source_path
                     .starts_with(Path::new("tests/roms/cgb_dmg_mode/mooneye/ppu"))
         }));
-        assert!(manifest.cases.iter().any(|case| {
-            case.id == "docboy-cgb-dmg-mealybug-m3-lcdc-win-en-change-multiple-wx"
-                && case.disabled
-                && case.comment.as_deref() == Some("Different from DMG: SameBoy is wrong as well")
-        }));
 
         let suite = docboy_cgb_dmg_extra_suite();
 
         assert_eq!(suite.name, "docboy-cgb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 490);
+        assert_eq!(suite.cases.len(), 467);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
@@ -3392,15 +3403,18 @@ mod tests {
                     PassCondition::FramebufferFixtureUntilMatch { .. }
                 ))
                 .count(),
-            422
+            399
         );
         assert!(suite.cases.iter().all(|case| {
             case.id != "docboy-cgb-dmg-mooneye-boot-div-cgbabcde"
                 && case.id != "docboy-cgb-dmg-mooneye-boot-regs-cgb"
         }));
-        assert!(suite.cases.iter().all(|case| {
-            case.id != "docboy-cgb-dmg-mealybug-m3-lcdc-win-en-change-multiple-wx"
-        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| { !case.rom_path.starts_with("docboy/cgb-dmg/mealybug") })
+        );
         assert_eq!(
             suite
                 .cases
@@ -3421,6 +3435,67 @@ mod tests {
         }));
         assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-extra"));
         assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
+    }
+
+    #[test]
+    fn mealybug_tearoom_cgb_extra_suite_owns_the_cgb_mealybug_rows() {
+        let manifest_text = include_str!("../data/mealybug-tearoom-tests-cgb.toml");
+        assert!(
+            !manifest_text.contains("startup ="),
+            "Mealybug CGB extra rows should use the default CGB SkipBoot path"
+        );
+
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "mealybug-tearoom-cgb-extra")
+            .expect("Mealybug CGB extra manifest should exist");
+        assert_eq!(
+            manifest.suite_family.as_deref(),
+            Some("mealybug-tearoom-tests")
+        );
+        assert_eq!(manifest.cases.len(), 24);
+        assert!(manifest.cases.iter().all(|case| {
+            case.family == "mealybug-tearoom-tests"
+                && case.source_id == GBEMU_SHOOTOUT_SOURCE_ID
+                && case
+                    .source_path
+                    .starts_with("testroms/mealybug-tearoom-tests/ppu")
+                && case.report_model_suffix
+                && case.console_model == ConsoleModel::GameBoyColor
+                && !case.disabled
+        }));
+
+        let suite = mealybug_tearoom_cgb_extra_suite();
+
+        assert_eq!(suite.name, "mealybug-tearoom-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 24);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.execution_mode == crate::ExecutionMode::Strict
+                && case.timeout == Timeout::TCycles(5_000_000)
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("mealybug-tearoom-tests/ppu")
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferFixtureUntilMatch { .. }
+                )
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
+                && matches!(
+                    &case.pass_condition,
+                    PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. }
+                        if fixture_path
+                            == Path::new(
+                                "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
+                            )
+                )
+        }));
+        assert!(suite_uses_extra_test_report("mealybug-tearoom-cgb-extra"));
+        assert!(!suite_uses_docboy_test_report("mealybug-tearoom-cgb-extra"));
     }
 
     #[test]
@@ -5491,6 +5566,7 @@ status = "PASS"
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
         assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
+        assert!(suite_uses_extra_test_report("mealybug-tearoom-cgb-extra"));
         assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
         assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));
         assert!(suite_uses_docboy_test_report("docboy-cgb-extra"));

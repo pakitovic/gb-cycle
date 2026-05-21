@@ -188,6 +188,7 @@ fn dmg_custom_boot_uses_boot_power_on_ppu_publication_phase() {
         0xE0, 0x81, // ldh ($81),a
         0x18, 0xFE, // jr .
     ]);
+
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::CustomBoot),
     );
@@ -204,6 +205,34 @@ fn dmg_custom_boot_uses_boot_power_on_ppu_publication_phase() {
         matches!(stat, 0x84 | 0x85),
         "CustomBoot must publish the DMG power-on pre-OAM STAT window, got {stat:#04X}"
     );
+}
+
+#[test]
+fn dmg_skip_boot_keeps_plain_synthetic_ppu_readback() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0xF0, 0x41, // ldh a,($41)
+            0xE0, 0x80, // ldh ($80),a
+            0xF0, 0x44, // ldh a,($44)
+            0xE0, 0x81, // ldh ($81),a
+            0x3E, 0xA5, // ld a,$A5
+            0xE0, 0x82, // ldh ($82),a
+            0x18, 0xFE, // jr .
+        ]))
+        .expect("NoMBC test ROM should load");
+
+    step_until(
+        &mut machine,
+        512,
+        "SkipBoot PPU readback sample",
+        |machine| machine.debug_hram_bytes()[0x02] == 0xA5,
+    );
+
+    assert_eq!(machine.debug_hram_bytes()[0x00], 0x86);
+    assert_eq!(machine.debug_hram_bytes()[0x01], 0x00);
 }
 
 fn step_t_cycles(machine: &mut Machine, t_cycles: u64) {

@@ -32,8 +32,8 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep DMG VBlank `STAT` write quirk effects separate from ordinary LYC sources: nonzero writes can still generate the quirk pulse in VBlank/coincidence windows, and the quirk can block the repeated line-`153` `LYC=0` source without disabling the ordinary line-`153` path when no VBlank quirk occurred.
 - Do not let nonzero STAT enable writes reuse the zero-write OAM/HBlank/restart quirk windows; `gbmicrotest` LYC1 setup depends on `STAT=$40` during LCD restart line `0` not leaving IF STAT pending before the line-`1` coincidence edge.
 - Keep the DMG `WX = 0 && (SCX & 7) == 3` terminal readback seam ahead of generic terminal-tail early-HBlank publication; this is a CPU-visible `STAT` seam, not a renderer-only detail.
-- Keep DMG `CustomBoot` startup Mode `0` STAT IRQ phase explicit and boot-gated; do not leak that first-frame hidden phase into ordinary `SkipBoot`, PPU startup-state unit tests, or LCD off/on restart timing.
-- Keep DMG `CustomBoot` first-frame `FF44` readback lag separate from the internal synthetic raster line; changing the internal machine direct-start `LY=0` state to direct-boot `LY=153` or applying the lag to ordinary `SkipBoot` would reopen unrelated startup seams.
+- Keep the DMG reset-facing startup Mode `0` STAT IRQ phase explicit and boot-gated for `CustomBoot` and verified `RealBoot` handoff; do not leak that first-frame hidden phase into plain `SkipBoot`, PPU startup-state unit tests, pre-handoff `RealBoot`, or LCD off/on restart timing.
+- Keep the DMG direct-boot first-frame `FF44`/`FF41` CPU-bus overlay separate from the internal synthetic raster line; changing the internal machine direct-start `LY=0` state to direct-boot `LY=153` would reopen unrelated startup seams.
 - Keep DMG-family boot-facing `poweron_*` publication tables as CPU-bus overlays for early `FF41` / `FF44` reads and OAM/VRAM access; `CustomBoot` uses the synthetic frame-origin base, verified `RealBoot` uses its own handoff-relative base, and neither path should be satisfied by moving the internal raster, changing `BootController::direct_boot_state()`, changing LCD restart, or changing renderer / sprite-selection state.
 - LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state. The first blank frame after re-enable is panel behavior, not a delayed internal scheduler start.
 
@@ -54,6 +54,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 - Keep sprite-phased live-write hypotheses declarative through observed policy tables, not ad hoc imperative branches.
 - Keep `current_transfer_x`-style ownership explicit for Mode `3` arbitration.
 - Keep the `WY` latch and runtime `WX` trigger distinct.
+- Keep the CGB-family `LCDC.5` line-local activation latch separate from DMG same-line window restart seams: Mode `2` writes affect the next scanline's latch, while Mode `3` writes can update the current latch and feed the active fetcher.
 - Keep the DMG same-line window restart / retarget seam grouped under one owner with `arm / clear / expire / followup` transitions.
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.

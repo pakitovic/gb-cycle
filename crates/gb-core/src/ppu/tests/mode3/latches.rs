@@ -114,7 +114,8 @@ fn mode3_fetch_and_window_helper_contexts_keep_addressing_rules_explicit() {
     assert_eq!(window_fetch.tile_data_address(0x05, 1), 0x0055);
     assert!(window_fetch.uses_unsigned_tile_data());
 
-    let activation = PpuMode3WindowActivationState::new(registers, false);
+    let activation =
+        PpuMode3WindowActivationState::new(registers, registers.window_enabled(), false);
     assert!(activation.runtime_enabled());
     assert!(activation.is_wx_zero());
     assert!(!activation.is_wx_166());
@@ -125,6 +126,7 @@ fn mode3_fetch_and_window_helper_contexts_keep_addressing_rules_explicit() {
             wx: 166,
             ..registers
         },
+        registers.window_enabled(),
         false,
     );
     assert!(wx166.is_wx_166());
@@ -135,6 +137,7 @@ fn mode3_fetch_and_window_helper_contexts_keep_addressing_rules_explicit() {
             wx: 166,
             ..registers
         },
+        registers.window_enabled(),
         true,
     );
     assert_eq!(forced_x0.trigger_x(), Some(0));
@@ -157,6 +160,7 @@ fn cgb_window_activation_does_not_treat_lcdc0_as_bg_window_disable() {
 
     let activation = PpuMode3WindowActivationState::new(
         latches.window_activation_registers(ConsoleModel::GameBoyColor),
+        visible.window_enabled(),
         false,
     );
 

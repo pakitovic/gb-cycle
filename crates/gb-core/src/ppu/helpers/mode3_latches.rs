@@ -374,22 +374,25 @@ impl PpuMode3WindowFetchContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3WindowActivationState {
     registers: PpuVisibleRegisters,
+    window_enabled: bool,
     force_x0_this_line: bool,
 }
 
 impl PpuMode3WindowActivationState {
     pub(in crate::ppu) const fn new(
         registers: PpuVisibleRegisters,
+        window_enabled: bool,
         force_x0_this_line: bool,
     ) -> Self {
         Self {
             registers,
+            window_enabled,
             force_x0_this_line,
         }
     }
 
     pub(in crate::ppu) const fn runtime_enabled(self) -> bool {
-        self.registers.window_enabled() && self.registers.bg_enabled()
+        self.window_enabled && self.registers.bg_enabled()
     }
 
     pub(in crate::ppu) const fn is_wx_zero(self) -> bool {

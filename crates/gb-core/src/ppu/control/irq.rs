@@ -6,6 +6,7 @@ impl Ppu {
             return;
         }
 
+        let window_lcdc5_latch = self.window_activation_registers().window_enabled();
         let prepared_line = self.mode3_window_policy().prepare_line(
             self.ly,
             self.runtime.window_state.wy_triggered,
@@ -13,9 +14,11 @@ impl Ppu {
         );
         self.runtime.window_state.wy_triggered = prepared_line.wy_triggered();
         self.runtime.window_state.pending_wx166_next_line = false;
-        self.runtime
-            .bg_pipeline_state
-            .prepare_window_line(prepared_line.wy_latch(), prepared_line.force_x0_this_line());
+        self.runtime.bg_pipeline_state.prepare_window_line(
+            prepared_line.wy_latch(),
+            window_lcdc5_latch,
+            prepared_line.force_x0_this_line(),
+        );
     }
 
     pub(in crate::ppu) fn live_lyc_coincidence(&self) -> bool {

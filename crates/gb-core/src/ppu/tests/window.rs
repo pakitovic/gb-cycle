@@ -8,6 +8,13 @@ mod trigger_glitch;
 const DMG_WINDOW_TEST_LCDC: u8 = 0xF3;
 const DMG_WINDOW_TEST_STAT: u8 = 0x83;
 const DMG_WINDOW_TEST_BGP: u8 = 0xE4;
+const CGB_WINDOW_TEST_LCDC: u8 = LCDC_ENABLE_BIT
+    | LCDC_WINDOW_ENABLE_BIT
+    | LCDC_WINDOW_TILE_MAP_BIT
+    | LCDC_BG_WINDOW_TILE_DATA_BIT
+    | LCDC_BG_ENABLE_BIT;
+const CGB_WINDOW_DISABLED_LCDC: u8 =
+    LCDC_ENABLE_BIT | LCDC_WINDOW_TILE_MAP_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT | LCDC_BG_ENABLE_BIT;
 
 fn dmg_window_startup(wx: u8) -> PpuTestRig {
     let mut ppu = PpuTestRig::dmg();
@@ -57,6 +64,77 @@ fn arm_previsible_retarget_fixture(wx: u8, line_dot: u16, active_line_counter: u
     ppu.bg_pipeline_state.visible_pixels_output = 0;
     ppu.bg_pipeline_state.fetcher = make_window_fetcher_state(PpuBgFetcherStage::TileIndex, 0, 0);
     ppu
+}
+
+fn cgb_window_activation_startup(lcdc: u8) -> PpuTestRig {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.write_bg_tile_row(0, 0, 0x00, 0x00);
+    ppu.write_bg_tile_row(1, 0, 0xFF, 0xFF);
+    ppu.write_bg_tilemap_entry(0, 0, 0);
+    ppu.write_window_tilemap_entry(0, 0, 1);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: DMG_WINDOW_TEST_BGP,
+        wy: 0x00,
+        wx: 0x07,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu
+}
+
+#[test]
+fn cgb_mode2_lcdc5_disable_does_not_cancel_current_line_window_activation() {
+    let mut ppu = cgb_window_activation_startup(CGB_WINDOW_TEST_LCDC);
+
+    ppu.tick();
+    assert_eq!(ppu.snapshot().line_dot, 1);
+    ppu.write_register(0xFF40, CGB_WINDOW_DISABLED_LCDC);
+
+    ppu.advance_until_hblank();
+    let snapshot = ppu.snapshot();
+    assert!(snapshot.window_started_this_line);
+    assert_eq!(&snapshot.current_scanline_pixels[..8], &[3; 8]);
+}
+
+#[test]
+fn cgb_mode2_lcdc5_enable_waits_until_the_next_line_window_activation() {
+    let mut ppu = cgb_window_activation_startup(CGB_WINDOW_DISABLED_LCDC);
+
+    ppu.tick();
+    assert_eq!(ppu.snapshot().line_dot, 1);
+    ppu.write_register(0xFF40, CGB_WINDOW_TEST_LCDC);
+
+    ppu.advance_until_hblank();
+    let first_line = ppu.snapshot();
+    assert!(!first_line.window_started_this_line);
+    assert_eq!(&first_line.current_scanline_pixels[..8], &[0; 8]);
+
+    ppu.advance_until_line_start(1);
+    ppu.advance_until_hblank();
+    let second_line = ppu.snapshot();
+    assert!(second_line.window_started_this_line);
+    assert_eq!(&second_line.current_scanline_pixels[..8], &[3; 8]);
+}
+
+#[test]
+fn cgb_mode3_lcdc5_writes_update_the_current_line_window_latch() {
+    let mut ppu = cgb_window_activation_startup(CGB_WINDOW_DISABLED_LCDC);
+
+    while ppu.snapshot().mode != PpuAccessMode::Drawing {
+        ppu.tick();
+    }
+    assert!(!ppu.bg_pipeline_state.window_lcdc5_latch);
+
+    ppu.write_register(0xFF40, CGB_WINDOW_TEST_LCDC);
+    assert!(ppu.bg_pipeline_state.window_lcdc5_latch);
+
+    ppu.write_register(0xFF40, CGB_WINDOW_DISABLED_LCDC);
+    assert!(!ppu.bg_pipeline_state.window_lcdc5_latch);
 }
 
 #[test]

@@ -335,6 +335,7 @@ fn cgb_window_restart_latches_window_attrs_instead_of_stale_bg_attrs() {
         ..PpuVisibleRegisters::default()
     };
     ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(registers));
+    ppu.bg_pipeline_state.window_lcdc5_latch = true;
     let stale_bg_attrs = CgbBgTileAttributes::new(0x01 | CGB_BG_ATTR_PRIORITY_BIT);
     let window_attrs = CgbBgTileAttributes::new(0x02 | CGB_BG_ATTR_VRAM_BANK_BIT);
     ppu.bg_pipeline_state.fetcher.cgb_bg_attrs = Some(stale_bg_attrs);
@@ -386,6 +387,7 @@ fn cgb_window_fetch_uses_y_flip_attrs_for_both_tile_data_planes() {
         ..PpuVisibleRegisters::default()
     };
     ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(registers));
+    ppu.bg_pipeline_state.window_lcdc5_latch = true;
     ppu.window_state.window_line_counter = 8;
     ppu.runtime.bg_pipeline_state.window_active_line_counter = 8;
     ppu.start_window_fetcher_restart();

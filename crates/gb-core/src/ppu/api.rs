@@ -346,6 +346,7 @@ impl Ppu {
             );
         self.bg_pipeline_state
             .apply_window_activation_tilemap_select_latch_to_seam_slices();
+        self.apply_cgb_lcdc5_live_window_enable_write(route.write_context);
         self.apply_dmg_lcdc3_live_bg_tilemap_write(route.write_context);
         self.apply_dmg_lcdc4_live_bg_tiledata_write(route.write_context);
         self.apply_cgb_lcdc4_same_cycle_tiledata_glitch(route.write_context);

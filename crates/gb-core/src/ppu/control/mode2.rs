@@ -310,16 +310,32 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn window_activation_state(&self) -> PpuMode3WindowActivationState {
+        let registers = self.window_activation_registers();
+        let window_enabled = if self.console_model.is_cgb_family() {
+            self.runtime.bg_pipeline_state.window_lcdc5_latch
+        } else {
+            registers.window_enabled()
+        };
+
         PpuMode3WindowActivationState::new(
-            self.window_activation_registers(),
+            registers,
+            window_enabled,
             self.runtime.bg_pipeline_state.window_force_x0_this_line,
         )
     }
 
     pub(in crate::ppu) fn mode3_window_policy(&self) -> PpuMode3WindowPolicy {
+        let visible_registers = self.mode3_register_latches().visible();
+        let fetcher_window_enabled = if self.console_model.is_cgb_family() {
+            self.runtime.bg_pipeline_state.window_lcdc5_latch
+        } else {
+            visible_registers.window_enabled()
+        };
+
         PpuMode3WindowPolicy::new(
-            self.mode3_register_latches().visible(),
+            visible_registers,
             self.window_activation_state(),
+            fetcher_window_enabled,
             self.runtime.bg_pipeline_state.window_wy_latch,
             self.runtime.bg_pipeline_state.window_started_this_line,
         )

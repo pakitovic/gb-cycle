@@ -217,6 +217,7 @@ impl PpuMode3LineTimingPolicy {
 pub(in crate::ppu) struct PpuMode3WindowPolicy {
     visible_registers: PpuVisibleRegisters,
     activation: PpuMode3WindowActivationState,
+    fetcher_window_enabled: bool,
     wy_latch: bool,
     started_this_line: bool,
 }
@@ -225,12 +226,14 @@ impl PpuMode3WindowPolicy {
     pub(in crate::ppu) const fn new(
         visible_registers: PpuVisibleRegisters,
         activation: PpuMode3WindowActivationState,
+        fetcher_window_enabled: bool,
         wy_latch: bool,
         started_this_line: bool,
     ) -> Self {
         Self {
             visible_registers,
             activation,
+            fetcher_window_enabled,
             wy_latch,
             started_this_line,
         }
@@ -250,7 +253,7 @@ impl PpuMode3WindowPolicy {
     }
 
     pub(in crate::ppu) const fn fetcher_should_stay_windowed(self) -> bool {
-        self.visible_registers.window_enabled()
+        self.fetcher_window_enabled
     }
 
     pub(in crate::ppu) fn can_apply_wx0_shortening(

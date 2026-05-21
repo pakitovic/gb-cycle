@@ -213,7 +213,7 @@ impl<S: TraceSink> Machine<S> {
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
             if self.config.startup_mode == crate::model::StartupMode::CustomBoot {
-                // DMG-family CustomBoot exposes reset-facing PPU publication only through CPU-bus reads; its memory policy adds logo data on top of the same direct CPU/I/O baseline as SkipBoot.
+                // DMG-family CustomBoot exposes reset-facing PPU publication only through CPU-bus reads; ordinary SkipBoot keeps the plain cartridge-entry HWIO snapshot used by Mooneye boot_hwio.
                 self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
             }
             if self.config.console_model.is_cgb_family()

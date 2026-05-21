@@ -861,6 +861,7 @@ pub(super) struct BgPipelineState {
     pub(super) visible_pixels_output: u8,
     pub(super) saw_right_edge_visible_same_x_cluster_this_line: bool,
     pub(super) window_wy_latch: bool,
+    pub(super) window_lcdc5_latch: bool,
     pub(super) window_force_x0_this_line: bool,
     pub(super) window_started_this_line: bool,
     pub(super) window_active_line_counter: u8,
@@ -1550,6 +1551,7 @@ impl BgPipelineState {
         self.visible_pixels_output = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.window_wy_latch = false;
+        self.window_lcdc5_latch = false;
         self.window_force_x0_this_line = false;
         self.window_started_this_line = false;
         self.window_active_line_counter = 0;
@@ -1636,8 +1638,14 @@ impl BgPipelineState {
         }
     }
 
-    pub(super) fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
+    pub(super) fn prepare_window_line(
+        &mut self,
+        wy_latch: bool,
+        lcdc5_latch: bool,
+        force_x0_this_line: bool,
+    ) {
         self.window_wy_latch = wy_latch;
+        self.window_lcdc5_latch = lcdc5_latch;
         self.window_force_x0_this_line = force_x0_this_line;
         self.window_started_this_line = false;
         self.wx0_scx_shortening_applied = false;
@@ -2344,6 +2352,7 @@ impl Default for BgPipelineState {
             visible_pixels_output: 0,
             saw_right_edge_visible_same_x_cluster_this_line: false,
             window_wy_latch: false,
+            window_lcdc5_latch: false,
             window_force_x0_this_line: false,
             window_started_this_line: false,
             window_active_line_counter: 0,
