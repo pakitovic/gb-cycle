@@ -32,7 +32,7 @@ fn phase_2_trace_shows_boot_handoff_before_the_first_cartridge_fetch() {
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_phase_2_trace_boot_rom())
+                    .with_bytes(HardwareRevision::DmgCpuC, build_phase_2_trace_boot_rom())
                     .expect("phase 2 boot-trace ROM should validate"),
             ),
     );
@@ -52,7 +52,7 @@ fn phase_2_trace_shows_boot_handoff_before_the_first_cartridge_fetch() {
         &[
             "subsystem=cpu level=trace message=\"t_cycle=39 phase=cpu_micro_operation",
             "last_bus_activity=data_write@0xFF50=",
-            "subsystem=boot level=trace message=\"t_cycle=39 phase=mmio_side_effect_commit console_model=GameBoy startup_mode=RealBoot status=Ready boot_rom_kind=Dmg boot_rom_mapped=false\"",
+            "subsystem=boot level=trace message=\"t_cycle=39 phase=mmio_side_effect_commit console_model=GameBoy revision=DmgCpuC startup_mode=RealBoot status=Ready boot_rom_mapped=false\"",
             "subsystem=cpu level=trace message=\"t_cycle=43 phase=cpu_micro_operation",
             "last_bus_activity=opcode_fetch@0x0100=0xD3",
         ],

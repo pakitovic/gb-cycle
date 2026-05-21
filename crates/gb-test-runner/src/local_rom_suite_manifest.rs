@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
+use gb_core::{ConsoleModel, ExecutionMode, HardwareRevision, JoypadButton, StartupMode};
 use serde::Deserialize;
 
 use crate::{
@@ -75,6 +75,7 @@ struct LocalRomSuiteCase {
     rom: PathBuf,
     external_rom_root_key: Option<String>,
     console: Option<String>,
+    revision: Option<String>,
     startup: Option<String>,
     mode: Option<String>,
     timeout_frames: Option<u32>,
@@ -238,11 +239,23 @@ fn build_case_from_manifest(
         },
     )?;
 
+    let console_model = parse_console_model(case.console.as_deref().unwrap_or("dmg"), &case_id)?;
+    let revision = case
+        .revision
+        .as_deref()
+        .map(|revision| parse_revision(revision, &case_id))
+        .transpose()?
+        .unwrap_or_else(|| console_model.default_revision());
+    if !console_model.supports_revision(revision) {
+        return Err(format!(
+            "case {case_id} uses revision {:?} with unsupported console {:?}",
+            revision, console_model
+        ));
+    }
+
     let mut rom_case = RomTestCase::new(case_id.clone(), rom_path, timeout, pass_condition.clone())
-        .with_console_model(parse_console_model(
-            case.console.as_deref().unwrap_or("dmg"),
-            &case_id,
-        )?)
+        .with_console_model(console_model)
+        .with_revision(revision)
         .with_startup_mode(parse_startup_mode(
             case.startup.as_deref().unwrap_or("skip-boot"),
             &case_id,
@@ -422,6 +435,19 @@ fn parse_console_model(console: &str, case_id: &str) -> Result<ConsoleModel, Str
         "light" => Ok(ConsoleModel::GameBoyLight),
         "color" | "cgb" => Ok(ConsoleModel::GameBoyColor),
         other => Err(format!("case {case_id} uses unsupported console {other:?}")),
+    }
+}
+
+fn parse_revision(revision: &str, case_id: &str) -> Result<HardwareRevision, String> {
+    match revision {
+        "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
+        "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
+        "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
+        "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
+        "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        other => Err(format!(
+            "case {case_id} uses unsupported hardware revision {other:?}"
+        )),
     }
 }
 

@@ -1,7 +1,7 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, CapabilitySet, CgbFlag, CompatibilityPolicy, ConsoleFamily,
-    ConsoleModel, DiagnosticPolicy, ExecutionMode, HeuristicPolicy, HostPlatform, MachineConfig,
-    OperatingMode, OverridePolicy, StartupMode, ValidationPolicy,
+    BootRomAssets, CapabilitySet, CgbFlag, CompatibilityPolicy, ConsoleFamily, ConsoleModel,
+    DiagnosticPolicy, ExecutionMode, HardwareRevision, HeuristicPolicy, HostPlatform,
+    MachineConfig, OperatingMode, OverridePolicy, StartupMode, ValidationPolicy,
 };
 
 #[test]
@@ -10,9 +10,9 @@ fn default_machine_config_is_dmg_skip_boot_and_strict() {
 
     assert_eq!(config.console_model, ConsoleModel::GameBoy);
     assert_eq!(config.operating_mode, OperatingMode::Dmg);
+    assert_eq!(config.revision, HardwareRevision::DmgCpuC);
     assert_eq!(config.host_platform, HostPlatform::Handheld);
     assert_eq!(config.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(config.boot_rom_kind, BootRomKind::Dmg);
     assert!(config.boot_rom_assets.is_empty());
     assert_eq!(config.compatibility.execution_mode, ExecutionMode::Strict);
     assert_eq!(
@@ -38,25 +38,32 @@ fn public_model_api_exposes_dmg_and_cgb_families() {
 }
 
 #[test]
-fn public_model_api_exposes_boot_rom_defaults_and_allowed_sets() {
+fn public_model_api_exposes_revision_defaults_and_active_sets() {
     assert_eq!(
-        ConsoleModel::GameBoy.default_boot_rom_kind(),
-        BootRomKind::Dmg
-    );
-    assert!(ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Dmg0));
-    assert!(ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Dmg));
-    assert!(!ConsoleModel::GameBoy.supports_boot_rom_kind(BootRomKind::Mgb));
-    assert_eq!(
-        ConsoleModel::GameBoyPocket.allowed_boot_rom_kinds(),
-        &[BootRomKind::Mgb]
+        ConsoleModel::GameBoy.default_revision(),
+        HardwareRevision::DmgCpuC
     );
     assert_eq!(
-        ConsoleModel::GameBoyLight.allowed_boot_rom_kinds(),
-        &[BootRomKind::Mgb]
+        ConsoleModel::GameBoyPocket.active_revisions(),
+        &[HardwareRevision::CpuMgb]
     );
     assert_eq!(
-        ConsoleModel::GameBoyColor.allowed_boot_rom_kinds(),
-        &[BootRomKind::Cgb0, BootRomKind::Cgb, BootRomKind::CgbE]
+        ConsoleModel::GameBoyLight.default_revision(),
+        HardwareRevision::CpuMgb
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyColor.active_revisions(),
+        &[
+            HardwareRevision::CpuCgbC,
+            HardwareRevision::CpuCgbD,
+            HardwareRevision::CpuCgbE
+        ]
+    );
+    assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
+    assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
+    assert_eq!(
+        HardwareRevision::CpuCgbE.boot_rom_filename(),
+        "cgbE_boot.bin"
     );
 }
 
@@ -277,11 +284,11 @@ fn machine_config_can_replace_the_full_compatibility_policy() {
 #[test]
 fn machine_config_can_carry_explicit_boot_rom_assets() {
     let boot_rom_assets = BootRomAssets::none()
-        .with_bytes(BootRomKind::Dmg, vec![0xAA; 0x0100])
+        .with_bytes(HardwareRevision::DmgCpuC, vec![0xAA; 0x0100])
         .expect("dmg boot ROM asset should validate");
     let config = MachineConfig::new(ConsoleModel::GameBoy).with_boot_rom_assets(boot_rom_assets);
 
-    assert!(config.boot_rom_assets.has_image(BootRomKind::Dmg));
+    assert!(config.boot_rom_assets.has_image(HardwareRevision::DmgCpuC));
 }
 
 #[test]

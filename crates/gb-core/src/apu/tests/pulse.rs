@@ -429,6 +429,86 @@ fn cgb_double_speed_pulse_generation_timers_tick_on_the_normal_speed_domain() {
 }
 
 #[test]
+fn pulse_period_low_write_during_just_sampled_window_reloads_timer() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.trigger_delay_t_cycles = 0;
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.period_timer = 1;
+
+    apu.channels.channel_2.tick_fast_timer();
+    assert!(apu.channels.channel_2.pulse.just_sampled);
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x07FF)
+    );
+
+    apu.write_register(0xFF18, 0xFC);
+
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x07FC)
+    );
+}
+
+#[test]
+fn dmg_pulse_period_low_write_during_just_sampled_window_does_not_reload_timer() {
+    let mut apu = Apu::new(ConsoleModel::GameBoy);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.trigger_delay_t_cycles = 0;
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.period_timer = 1;
+
+    apu.channels.channel_2.tick_fast_timer();
+    assert!(apu.channels.channel_2.pulse.just_sampled);
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x07FF)
+    );
+
+    apu.write_register(0xFF18, 0xFC);
+
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x07FF)
+    );
+}
+
+#[test]
+fn pulse_period_high_write_during_late_just_sampled_window_reloads_timer() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+    apu.channels.channel_2.pulse.trigger_delay_t_cycles = 0;
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_2.pulse.period_timer = 1;
+
+    apu.channels.channel_2.tick_fast_timer();
+    for _ in 0..2 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+    assert!(apu.channels.channel_2.pulse.just_sampled);
+
+    apu.write_register(0xFF19, 0x06);
+
+    assert_eq!(
+        apu.channels.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x06FF)
+    );
+}
+
+#[test]
 fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress_output() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
@@ -1081,7 +1161,15 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
 }
 
 fn prime_cgb_shift_zero_sweep_restart_overflow() -> Apu {
-    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+    prime_cgb_shift_zero_sweep_restart_overflow_for_revision(HardwareRevision::CpuCgbC)
+}
+
+fn prime_cgb_e_shift_zero_sweep_restart_overflow() -> Apu {
+    prime_cgb_shift_zero_sweep_restart_overflow_for_revision(HardwareRevision::CpuCgbE)
+}
+
+fn prime_cgb_shift_zero_sweep_restart_overflow_for_revision(revision: HardwareRevision) -> Apu {
+    let mut apu = Apu::new_with_revision(ConsoleModel::GameBoyColor, revision);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x10);
     apu.write_register(0xFF11, 0x80);
@@ -1167,14 +1255,34 @@ fn cgb_channel_1_sweep_delayed_overflow_check_survives_save_state() {
 }
 
 #[test]
-fn cgb_channel_1_shift_zero_sweep_restart_hold_defers_boundary_overflow() {
+fn cgb_standard_channel_1_shift_zero_sweep_restart_hold_uses_long_window() {
     let mut apu = prime_cgb_shift_zero_sweep_restart_overflow();
+
+    assert_eq!(
+        apu.channels.channel_1.sweep.restart_hold_t_cycles,
+        CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+    );
+
+    for _ in 0..CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES {
+        apu.channels.channel_1.tick_fast_timer();
+    }
+    apu.channels
+        .channel_1
+        .clock_sweep(ConsoleModel::GameBoyColor);
+
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.sweep.delayed_calculation_t_cycles, 0);
+}
+
+#[test]
+fn cgb_e_channel_1_shift_zero_sweep_restart_hold_defers_boundary_overflow() {
+    let mut apu = prime_cgb_e_shift_zero_sweep_restart_overflow();
 
     assert_eq!(apu.channels.channel_1.period_value(), 0x07FF);
     assert!(apu.channels.channel_1.pulse.runtime.active);
     assert_eq!(
         apu.channels.channel_1.sweep.restart_hold_t_cycles,
-        CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+        CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES
     );
 
     apu.channels
@@ -1184,7 +1292,7 @@ fn cgb_channel_1_shift_zero_sweep_restart_hold_defers_boundary_overflow() {
     assert!(apu.channels.channel_1.pulse.runtime.active);
     assert_eq!(apu.channels.channel_1.sweep.delayed_calculation_t_cycles, 0);
 
-    for _ in 0..(CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES - 1) {
+    for _ in 0..(CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES - 1) {
         apu.channels.channel_1.tick_fast_timer();
     }
     apu.channels
@@ -1216,14 +1324,15 @@ fn cgb_channel_1_shift_zero_sweep_restart_hold_defers_boundary_overflow() {
 }
 
 #[test]
-fn cgb_channel_1_shift_zero_sweep_restart_hold_survives_save_state() {
-    let mut uninterrupted = prime_cgb_shift_zero_sweep_restart_overflow();
+fn cgb_e_channel_1_shift_zero_sweep_restart_hold_survives_save_state() {
+    let mut uninterrupted = prime_cgb_e_shift_zero_sweep_restart_overflow();
     for _ in 0..4 {
         uninterrupted.channels.channel_1.tick_fast_timer();
     }
 
     let saved = uninterrupted.capture_save_state();
-    let mut restored = Apu::new(ConsoleModel::GameBoyColor);
+    let mut restored =
+        Apu::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE);
     restored.restore_save_state(&saved);
 
     uninterrupted
@@ -1246,13 +1355,8 @@ fn cgb_channel_1_shift_zero_sweep_restart_hold_survives_save_state() {
         uninterrupted.capture_save_state()
     );
 
-    for _ in 0..(CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES
-        - 4
-        - CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES)
-    {
-        uninterrupted.channels.channel_1.tick_fast_timer();
-        restored.channels.channel_1.tick_fast_timer();
-    }
+    uninterrupted.channels.channel_1.tick_fast_timer();
+    restored.channels.channel_1.tick_fast_timer();
     uninterrupted
         .channels
         .channel_1
@@ -1298,7 +1402,7 @@ fn cgb_channel_1_trigger_sweep_overflow_check_is_delayed() {
 }
 
 #[test]
-fn cgb_channel_1_decreasing_sweep_writeback_extends_active_retrigger_hold() {
+fn cgb_channel_1_decreasing_sweep_writeback_keeps_base_active_retrigger_hold() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF10, 0x1F);
@@ -1315,7 +1419,7 @@ fn cgb_channel_1_decreasing_sweep_writeback_extends_active_retrigger_hold() {
 
     apu.write_register(0xFF14, 0x87);
 
-    assert_eq!(apu.channels.channel_1.pulse.trigger_delay_t_cycles, 8);
+    assert_eq!(apu.channels.channel_1.pulse.trigger_delay_t_cycles, 4);
 }
 
 #[test]
@@ -1340,7 +1444,7 @@ fn cgb_channel_1_increasing_sweep_writeback_keeps_base_active_retrigger_hold() {
 }
 
 #[test]
-fn cgb_channel_1_decreasing_sweep_restart_hold_survives_save_state() {
+fn cgb_channel_1_decreasing_sweep_base_retrigger_hold_survives_save_state() {
     let mut uninterrupted = Apu::new(ConsoleModel::GameBoyColor);
     uninterrupted.write_register(0xFF26, 0x80);
     uninterrupted.write_register(0xFF10, 0x1F);
@@ -1369,7 +1473,7 @@ fn cgb_channel_1_decreasing_sweep_restart_hold_survives_save_state() {
         restored.capture_save_state(),
         uninterrupted.capture_save_state()
     );
-    assert_eq!(restored.channels.channel_1.pulse.trigger_delay_t_cycles, 8);
+    assert_eq!(restored.channels.channel_1.pulse.trigger_delay_t_cycles, 4);
 }
 
 #[test]

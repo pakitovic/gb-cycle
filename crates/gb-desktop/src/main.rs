@@ -28,13 +28,13 @@ use gb_benchmark::{
 use gb_core::{
     ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
-    BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeMappedRomSource,
+    CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeMappedRomSource,
     CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
     CpuExecutionState, CpuRegisters, CpuSnapshot,
     DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_SECOND,
-    DebugWramAddressSample, ExecutionMode, InterruptControllerSnapshot, JoypadButton,
-    JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    DebugWramAddressSample, ExecutionMode, HardwareRevision, InterruptControllerSnapshot,
+    JoypadButton, JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
     MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineRewindBuffer,
     MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
     PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
@@ -329,16 +329,6 @@ const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
         pattern: "*",
     },
 ];
-const BOOT_ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
-    DialogFileFilter {
-        name: "Boot ROM dumps",
-        pattern: "bin;rom",
-    },
-    DialogFileFilter {
-        name: "All files",
-        pattern: "*",
-    },
-];
 const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "PNG images",
@@ -491,7 +481,6 @@ struct FrontendRuntime {
     open_rom_dialog_mode: OpenRomDialogMode,
     camera_image_dialog: PathSelectionDialog,
     pocket_camera_live: PocketCameraLiveInput,
-    boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
     external_save_export_dialog: PathSelectionDialog,
@@ -1155,7 +1144,6 @@ impl FrontendRuntime {
     fn any_dialog_pending(&self) -> bool {
         self.open_rom_dialog.is_pending()
             || self.camera_image_dialog.is_pending()
-            || self.boot_rom_file_dialog.is_pending()
             || self.boot_rom_directory_dialog.is_pending()
             || self.save_directory_dialog.is_pending()
             || self.external_save_export_dialog.is_pending()
@@ -5906,7 +5894,6 @@ fn run_desktop_prepared(
                 &error.to_string(),
             )
         })),
-        boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
         external_save_export_dialog: PathSelectionDialog::new(),
@@ -5983,7 +5970,6 @@ fn run_desktop_prepared(
             process_pending_open_rom_dialog(&event_pump, &mut canvas, &mut context)?;
             process_pending_camera_image_dialog(&mut canvas, &mut context)?;
             process_pocket_camera_live_frame(&mut canvas, &mut context);
-            process_pending_boot_rom_file_dialog(&mut canvas, &mut context)?;
             process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
             process_pending_save_directory_dialog(&mut canvas, &mut context)?;
             process_pending_external_save_export_dialog(&mut canvas, &mut context)?;
@@ -6521,16 +6507,14 @@ fn prepare_machine_config(
     current_dir: &Path,
 ) -> Result<PreparedMachineConfig, String> {
     let mut effective_config = config.clone();
-    effective_config
-        .boot_rom
-        .normalize_kind_for_model(effective_config.launch.console_model);
-    let boot_rom_kind = effective_config.boot_rom.kind;
+    effective_config.launch.normalize_revision_for_model();
     let boot_rom_fallback_warning =
         maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
+    let revision = effective_config.launch.effective_revision();
     let boot_rom_assets = load_boot_rom_assets(
         effective_config.boot_rom.search_path.as_deref(),
         effective_config.boot_rom.verification,
-        boot_rom_kind,
+        revision,
         effective_config.launch.startup_mode,
         current_dir,
     )?;
@@ -6538,8 +6522,8 @@ fn prepare_machine_config(
     Ok(PreparedMachineConfig {
         machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
             .with_startup_mode(effective_config.launch.startup_mode)
+            .with_revision(revision)
             .with_compatibility(effective_config.launch.compatibility_policy())
-            .with_boot_rom_kind(boot_rom_kind)
             .with_boot_rom_assets(boot_rom_assets),
         effective_config,
         boot_rom_fallback_warning,
@@ -6554,12 +6538,9 @@ fn maybe_apply_missing_boot_rom_fallback(
         return Ok(None);
     }
 
-    config
-        .boot_rom
-        .normalize_kind_for_model(config.launch.console_model);
     let Some(missing_asset) = missing_boot_rom_asset(
         config.boot_rom.search_path.as_deref(),
-        config.boot_rom.kind,
+        config.launch.effective_revision(),
         current_dir,
     )?
     else {
@@ -6857,10 +6838,7 @@ fn apply_benchmark_case_to_desktop_options(
         benchmark_case.duration_seconds,
     )));
     options.config.launch.console_model = desktop_model_from_benchmark(benchmark_case.model);
-    options
-        .config
-        .boot_rom
-        .normalize_kind_for_model(options.config.launch.console_model);
+    options.config.launch.normalize_revision_for_model();
     options.config.launch.startup_mode = startup_mode_from_benchmark(benchmark_case.startup);
     options.config.launch.execution_mode = execution_mode_from_benchmark(benchmark_case.mode);
     if options.config.launch.console_model == DesktopConsoleModel::GameBoy
@@ -8407,35 +8385,6 @@ fn process_pocket_camera_live_frame(
             eprintln!("warning: {error}");
         }
     }
-}
-
-fn process_pending_boot_rom_file_dialog(
-    canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_>,
-) -> Result<(), String> {
-    let Some(result) = context.runtime.boot_rom_file_dialog.take_result() else {
-        return Ok(());
-    };
-
-    match result {
-        PathDialogResult::Selected(path) => {
-            apply_machine_settings_change(canvas, context, "Boot ROM file", |config| {
-                config.boot_rom.search_path = Some(path);
-            })?;
-        }
-        PathDialogResult::Canceled => {}
-        PathDialogResult::Failed(error) => {
-            show_error_message(
-                Some(canvas.window()),
-                "Boot ROM file",
-                &format!("failed to complete SDL3 boot ROM file dialog: {error}"),
-            );
-            eprintln!("warning: failed to complete SDL3 boot ROM file dialog: {error}");
-        }
-    }
-
-    restore_window_after_native_dialog(canvas);
-    Ok(())
 }
 
 fn process_pending_boot_rom_directory_dialog(
@@ -11006,9 +10955,7 @@ fn execute_menu_action(
             let previous_model = context.session.config.launch.console_model;
             apply_machine_settings_change(canvas, context, "Console model", |config| {
                 config.launch.console_model = next_console_model(config.launch.console_model);
-                config
-                    .boot_rom
-                    .normalize_kind_for_model(config.launch.console_model);
+                config.launch.normalize_revision_for_model();
             })?;
             let next_model = context.session.config.launch.console_model;
             if next_model != previous_model {
@@ -11020,10 +10967,12 @@ fn execute_menu_action(
             }
             Ok(None)
         }
-        MenuAction::CycleBootRomKind => {
-            apply_machine_settings_change(canvas, context, "Boot ROM kind", |config| {
-                config.boot_rom.kind =
-                    next_boot_rom_kind(config.launch.console_model, config.boot_rom.kind);
+        MenuAction::CycleHardwareRevision => {
+            apply_machine_settings_change(canvas, context, "Hardware revision", |config| {
+                config.launch.revision = next_revision(
+                    config.launch.console_model,
+                    config.launch.effective_revision(),
+                );
             })?;
             Ok(None)
         }
@@ -11035,24 +10984,6 @@ fn execute_menu_action(
         }
         MenuAction::CycleExecutionMode => {
             apply_execution_mode_cycle_change(canvas, context)?;
-            Ok(None)
-        }
-        MenuAction::ClearBootRomPath => {
-            apply_machine_settings_change(canvas, context, "Boot ROM path", |config| {
-                config.boot_rom.search_path = None;
-            })?;
-            Ok(None)
-        }
-        MenuAction::SelectBootRomFilePath => {
-            let default_location = boot_rom_dialog_default_location(context.session);
-            if let Err(error) = context.runtime.boot_rom_file_dialog.show_file(
-                &BOOT_ROM_FILE_DIALOG_FILTERS,
-                canvas.window(),
-                &default_location,
-            ) {
-                show_warning_message(Some(canvas.window()), "Boot ROM file", &error);
-                eprintln!("warning: {error}");
-            }
             Ok(None)
         }
         MenuAction::SelectBootRomDirectoryPath => {
@@ -11896,6 +11827,7 @@ fn current_menu_presentation(
         recent_rom_count: session.recent_roms().len().min(RECENT_ROM_MENU_CAPACITY) as u8,
         recent_rom_labels,
         console_model: session.config.launch.console_model,
+        revision: session.config.launch.effective_revision(),
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
@@ -11906,11 +11838,6 @@ fn current_menu_presentation(
         pokemon_mystery_gift_active: session.pokemon_mystery_gift_active(),
         pokemon_mystery_gift_kind: session.pokemon_mystery_gift_kind,
         pokemon_mystery_gift_code: session.pokemon_mystery_gift_code,
-        boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
-        boot_rom_kind: session
-            .config
-            .boot_rom
-            .effective_boot_rom_kind(session.config.launch.console_model),
         boot_rom_verification: session.config.boot_rom.verification,
         saves_enabled: session.config.saves.enabled,
         save_flush_policy: session.config.saves.flush_policy,
@@ -12022,22 +11949,16 @@ fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel
     }
 }
 
-fn next_boot_rom_kind(
+fn next_revision(
     console_model: DesktopConsoleModel,
-    boot_rom_kind: BootRomKind,
-) -> BootRomKind {
-    let core_model = console_model.console_model();
-    let allowed = core_model.allowed_boot_rom_kinds();
-    let current_index = allowed
+    revision: HardwareRevision,
+) -> HardwareRevision {
+    let active = console_model.console_model().active_revisions();
+    let current_index = active
         .iter()
-        .position(|candidate| *candidate == boot_rom_kind)
-        .unwrap_or_else(|| {
-            allowed
-                .iter()
-                .position(|candidate| *candidate == core_model.default_boot_rom_kind())
-                .unwrap_or(0)
-        });
-    allowed[(current_index + 1) % allowed.len()]
+        .position(|candidate| *candidate == revision)
+        .unwrap_or(0);
+    active[(current_index + 1) % active.len()]
 }
 
 fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
@@ -14342,14 +14263,14 @@ fn display_palette_for_desktop_palette(display_palette: DesktopDisplayPalette) -
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DesktopRunOptions,
-        DesktopSettingsStore, GamepadActionBindingTarget, GamepadBindingTarget,
-        GamepadMenuBindingTarget, HostRtcSync, HotkeyAction, KeyboardBindingTarget,
-        KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
-        PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
-        ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot, assign_gamepad_action_binding,
-        assign_gamepad_binding, assign_gamepad_menu_binding, assign_keyboard_binding,
-        assign_keyboard_menu_binding, assignable_key_for_binding_target_from_key_event,
+        CAMERA_IMAGE_FILE_DIALOG_FILTERS, DesktopRunOptions, DesktopSettingsStore,
+        GamepadActionBindingTarget, GamepadBindingTarget, GamepadMenuBindingTarget, HostRtcSync,
+        HotkeyAction, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
+        PerformanceHudSnapshot, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
+        PokemonPikachuColorGift, ROM_FILE_DIALOG_FILTERS, RewindHudSnapshot,
+        assign_gamepad_action_binding, assign_gamepad_binding, assign_gamepad_menu_binding,
+        assign_keyboard_binding, assign_keyboard_menu_binding,
+        assignable_key_for_binding_target_from_key_event,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_key_event, desktop_key_from_keycode, desktop_key_from_scancode,
@@ -14360,9 +14281,9 @@ mod tests {
         load_machine_state_slot, machine_state_actions_available,
         machine_state_slot_load_available, machine_state_slot_path, map_path_dialog_result,
         menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
-        next_boot_rom_kind, next_boot_rom_verification_mode, next_console_model,
-        next_execution_mode, next_fast_forward_speed_multiplier, next_gamepad_directional_source,
-        next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot,
+        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
+        next_fast_forward_speed_multiplier, next_gamepad_directional_source,
+        next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot, next_revision,
         next_save_flush_policy, next_startup_mode, next_window_scale,
         parse_cgb_ir_optical_delay_t_cycles, parse_cgb_ir_trace_event_count,
         parse_cgb_ir_trace_trigger_addresses, parse_cgb_ir_trace_watch_addresses,
@@ -14385,15 +14306,15 @@ mod tests {
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
-        ApuSampleCapture, BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+        ApuSampleCapture, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
         CartridgeMappedRomSource, CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode,
         ConsoleModel, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
         CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, DebugWramAddressSample,
         Dmg07Port, ExecutionMode, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
-        JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine, MachineConfig,
-        MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuFramebufferLayerSource,
-        PpuStepRegion, PpuVisibleOutputState, PrinterCommand, SerialTickTelemetry, StartupMode,
-        TraceSummaryBuffer,
+        HardwareRevision, JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
+        MachineConfig, MachineStepRegion, PersistentCartState, PocketCameraFrame,
+        PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState, PrinterCommand,
+        SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -16847,7 +16768,6 @@ mod tests {
                 pocket_camera_live: super::PocketCameraLiveInput::unavailable_for_tests(
                     "test camera backend disabled",
                 ),
-                boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
                 external_save_export_dialog: super::PathSelectionDialog::new(),
@@ -17002,18 +16922,6 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::process_pending_open_rom_dialog(&self.event_pump, &mut self.canvas, &mut context)
-        }
-
-        fn process_pending_boot_rom_file_dialog(&mut self) -> Result<(), String> {
-            let mut context = super::FrontendActionContext {
-                session: &mut self.session,
-                machine: &mut self.machine,
-                runtime: &mut self.runtime,
-                performance_counter: &mut self.performance_counter,
-                frame_pacer: &mut self.frame_pacer,
-                settings_store: &mut self.settings_store,
-            };
-            super::process_pending_boot_rom_file_dialog(&mut self.canvas, &mut context)
         }
 
         fn process_pending_camera_image_dialog(&mut self) -> Result<(), String> {
@@ -20825,12 +20733,6 @@ mod tests {
     }
 
     #[test]
-    fn boot_rom_file_dialog_filters_include_common_dump_extensions() {
-        assert_eq!(BOOT_ROM_FILE_DIALOG_FILTERS[0].name, "Boot ROM dumps");
-        assert_eq!(BOOT_ROM_FILE_DIALOG_FILTERS[0].pattern, "bin;rom");
-    }
-
-    #[test]
     fn camera_image_dialog_filters_include_png_and_all_files() {
         assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].name, "PNG images");
         assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].pattern, "png");
@@ -20930,24 +20832,24 @@ mod tests {
             DesktopConsoleModel::GameBoy
         );
         assert_eq!(
-            next_boot_rom_kind(DesktopConsoleModel::GameBoy, BootRomKind::Dmg),
-            BootRomKind::Dmg0
+            next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgbC),
+            HardwareRevision::CpuCgbD
         );
         assert_eq!(
-            next_boot_rom_kind(DesktopConsoleModel::GameBoy, BootRomKind::Dmg0),
-            BootRomKind::Dmg
+            next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgbD),
+            HardwareRevision::CpuCgbE
         );
         assert_eq!(
-            next_boot_rom_kind(DesktopConsoleModel::GameBoyPocket, BootRomKind::Dmg),
-            BootRomKind::Mgb
+            next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE),
+            HardwareRevision::CpuCgbC
         );
         assert_eq!(
-            next_boot_rom_kind(DesktopConsoleModel::GameBoyColor, BootRomKind::Cgb),
-            BootRomKind::CgbE
+            next_revision(DesktopConsoleModel::GameBoy, HardwareRevision::DmgCpuC),
+            HardwareRevision::DmgCpuC
         );
         assert_eq!(
-            next_boot_rom_kind(DesktopConsoleModel::GameBoyColor, BootRomKind::CgbE),
-            BootRomKind::Cgb0
+            next_revision(DesktopConsoleModel::GameBoyPocket, HardwareRevision::CpuMgb),
+            HardwareRevision::CpuMgb
         );
         assert_eq!(
             next_startup_mode(StartupMode::SkipBoot),
@@ -22327,7 +22229,7 @@ mod tests {
             options.config.launch.console_model,
             DesktopConsoleModel::GameBoy
         );
-        assert_eq!(options.config.boot_rom.kind, BootRomKind::Dmg);
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
         assert_eq!(options.config.launch.startup_mode, StartupMode::CustomBoot);
         assert_eq!(
             options.config.launch.execution_mode,
@@ -22394,7 +22296,10 @@ mod tests {
             cgb_options.config.launch.console_model,
             DesktopConsoleModel::GameBoyColor
         );
-        assert_eq!(cgb_options.config.boot_rom.kind, BootRomKind::Cgb);
+        assert_eq!(
+            cgb_options.config.launch.revision,
+            HardwareRevision::CpuCgbC
+        );
         assert_eq!(
             cgb_options.config.video.display_palette,
             DesktopDisplayPalette::Light
@@ -23188,10 +23093,8 @@ mod tests {
             build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
         )
         .expect("dialog test ROM should be writable");
-        let boot_file = harness.root.join("custom-boot.bin");
         let boot_dir = harness.root.join("boot-assets");
         let save_dir = harness.root.join("save-root");
-        fs::write(&boot_file, vec![0_u8; 0x0100]).expect("boot file should be writable");
         fs::create_dir_all(&boot_dir).expect("boot directory should be creatable");
         fs::create_dir_all(&save_dir).expect("save directory should be creatable");
 
@@ -23249,39 +23152,6 @@ mod tests {
         harness
             .process_pending_open_rom_dialog()
             .expect("failed ROM dialog should be reported");
-
-        harness
-            .runtime
-            .boot_rom_file_dialog
-            .sender
-            .send(PathDialogResult::Selected(boot_file.clone()))
-            .expect("boot ROM file selection should send");
-        harness
-            .process_pending_boot_rom_file_dialog()
-            .expect("selected boot ROM file should update the config");
-        assert_eq!(
-            harness.session.config.boot_rom.search_path.as_deref(),
-            Some(boot_file.as_path())
-        );
-
-        harness
-            .runtime
-            .boot_rom_file_dialog
-            .sender
-            .send(PathDialogResult::Failed("boot file failed".to_string()))
-            .expect("boot ROM file failure should send");
-        harness
-            .process_pending_boot_rom_file_dialog()
-            .expect("failed boot ROM file dialog should be reported");
-        harness
-            .runtime
-            .boot_rom_file_dialog
-            .sender
-            .send(PathDialogResult::Canceled)
-            .expect("boot ROM file cancel should send");
-        harness
-            .process_pending_boot_rom_file_dialog()
-            .expect("canceled boot ROM file dialog should be ignored");
 
         harness
             .runtime
@@ -27702,7 +27572,10 @@ mod tests {
             harness.session.config.launch.console_model,
             DesktopConsoleModel::GameBoyPocket
         );
-        assert_eq!(harness.session.config.boot_rom.kind, BootRomKind::Mgb);
+        assert_eq!(
+            harness.session.config.launch.revision,
+            HardwareRevision::CpuMgb
+        );
         assert_eq!(
             harness.runtime.video_options.display_palette,
             DesktopDisplayPalette::Pocket
@@ -27738,25 +27611,8 @@ mod tests {
             harness.session.config.launch.execution_mode,
             ExecutionMode::Permissive
         );
-        harness.session.config.boot_rom.search_path = Some(harness.root.join("boot.bin"));
-        assert!(
-            harness
-                .execute_action(super::MenuAction::ClearBootRomPath)
-                .unwrap()
-                .is_none()
-        );
-        assert!(harness.session.config.boot_rom.search_path.is_none());
-        assert_eq!(
-            harness.session.config.launch.startup_mode,
-            StartupMode::SkipBoot
-        );
-        assert!(
-            harness
-                .execute_action(super::MenuAction::CycleBootRomKind)
-                .unwrap()
-                .is_none()
-        );
-        assert_eq!(harness.session.config.boot_rom.kind, BootRomKind::Mgb);
+        harness.session.config.launch.startup_mode = StartupMode::SkipBoot;
+        harness.session.config.boot_rom.verification = BootRomVerificationMode::Off;
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleBootRomVerify)
@@ -28376,7 +28232,7 @@ mod tests {
         let persisted = fs::read_to_string(&harness.settings_path)
             .expect("actions test should persist settings");
         assert!(persisted.contains("console_model = \"pocket\""));
-        assert!(persisted.contains("kind = \"mgb\""));
+        assert!(persisted.contains("revision = \"cpu-mgb\""));
         assert!(persisted.contains("startup_mode = \"skip-boot\""));
     }
 }

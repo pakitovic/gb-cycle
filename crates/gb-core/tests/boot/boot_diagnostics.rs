@@ -7,7 +7,10 @@ fn real_boot_with_an_invalid_logo_stays_mapped_and_never_reaches_cartridge_entry
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .with_bytes(
+                        HardwareRevision::DmgCpuC,
+                        build_phase_2_boot_rom(0xCE, 0x7F),
+                    )
                     .expect("phase 2.4 synthetic DMG boot ROM should validate"),
             ),
     );
@@ -32,7 +35,10 @@ fn real_boot_with_an_invalid_checksum_stays_mapped_and_never_reaches_cartridge_e
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .with_bytes(
+                        HardwareRevision::DmgCpuC,
+                        build_phase_2_boot_rom(0xCE, 0x7F),
+                    )
                     .expect("phase 2.4 synthetic DMG boot ROM should validate"),
             ),
     );

@@ -11,37 +11,37 @@ fn phase_4_inc_hl_rom_fixture_matches_expected_oam_state_and_traces_for_all_mode
     let trace_cases = [
         (
             ConsoleModel::GameBoy,
-            BootRomKind::Dmg0,
+            HardwareRevision::DmgCpu,
             INC_HL_DMG0_TRACE_NAME,
             true,
         ),
         (
             ConsoleModel::GameBoy,
-            BootRomKind::Dmg,
+            HardwareRevision::DmgCpuC,
             INC_HL_DMG_TRACE_NAME,
             true,
         ),
         (
             ConsoleModel::GameBoyPocket,
-            BootRomKind::Mgb,
+            HardwareRevision::CpuMgb,
             INC_HL_MGB_TRACE_NAME,
             true,
         ),
         (
             ConsoleModel::GameBoyColor,
-            BootRomKind::Cgb,
+            HardwareRevision::CpuCgbC,
             INC_HL_CGB_TRACE_NAME,
             false,
         ),
     ];
 
-    for (console_model, boot_rom_kind, trace_name, expect_corruption) in trace_cases {
+    for (console_model, revision, trace_name, expect_corruption) in trace_cases {
         let mut machine = run_fixture_rom(
             INC_HL_ROM_NAME,
             trace_name,
             &expected_rom,
             console_model,
-            boot_rom_kind,
+            revision,
             2_048,
         );
 
@@ -77,7 +77,7 @@ fn phase_4_hli_hld_rom_fixture_matches_expected_oam_state_and_trace() {
         HLI_HLD_TRACE_NAME,
         &expected_rom,
         ConsoleModel::GameBoy,
-        BootRomKind::Dmg,
+        HardwareRevision::DmgCpuC,
         4_096,
     );
 

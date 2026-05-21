@@ -1,6 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
-use crate::boot::{BootRomAssets, BootRomKind};
+use crate::boot::BootRomAssets;
 use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -9,7 +9,9 @@ use crate::debugger::BreakpointCondition;
 use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
-use crate::model::{CompatibilityPolicy, ConsoleModel, ExecutionMode, OperatingMode, StartupMode};
+use crate::model::{
+    CompatibilityPolicy, ConsoleModel, ExecutionMode, HardwareRevision, OperatingMode, StartupMode,
+};
 use crate::ppu::{
     PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
 };
@@ -1072,7 +1074,7 @@ fn cgb_real_boot_overlay_gap_routes_cartridge_header_for_compact_and_sparse_imag
             boot_image[0x0200] = 0x33;
         }
         let assets = BootRomAssets::none()
-            .with_bytes(BootRomKind::Cgb, boot_image)
+            .with_bytes(HardwareRevision::CpuCgbC, boot_image)
             .expect("synthetic CGB boot image should be accepted");
 
         let mut machine = Machine::new(

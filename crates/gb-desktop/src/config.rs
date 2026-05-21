@@ -1,6 +1,7 @@
 use gb_core::{
-    BootRomAssetError, BootRomAssets, BootRomKind, CompatibilityPolicy, ConsoleModel,
-    ExecutionMode, MachineConfig, MachineRewindConfig, MachineRewindSubframeCadence, StartupMode,
+    BootRomAssetError, BootRomAssets, CompatibilityPolicy, ConsoleModel, ExecutionMode,
+    HardwareRevision, MachineConfig, MachineRewindConfig, MachineRewindSubframeCadence,
+    StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
@@ -36,17 +37,15 @@ pub struct DesktopConfig {
 
 impl DesktopConfig {
     pub fn machine_config(&self) -> Result<MachineConfig, DesktopConfigError> {
-        let boot_rom_kind = self
-            .boot_rom
-            .effective_boot_rom_kind(self.launch.console_model);
+        let revision = self.launch.effective_revision();
         let boot_rom_assets = self
             .boot_rom
-            .load_assets(self.launch.startup_mode, boot_rom_kind)?;
+            .load_assets(self.launch.startup_mode, revision)?;
 
         Ok(
             MachineConfig::new(self.launch.console_model.console_model())
                 .with_startup_mode(self.launch.startup_mode)
-                .with_boot_rom_kind(boot_rom_kind)
+                .with_revision(revision)
                 .with_boot_rom_assets(boot_rom_assets)
                 .with_compatibility(self.launch.compatibility_policy()),
         )
@@ -115,10 +114,6 @@ impl DesktopConsoleModel {
         }
     }
 
-    pub fn default_boot_rom_kind(self) -> BootRomKind {
-        self.console_model().default_boot_rom_kind()
-    }
-
     pub fn name(self) -> &'static str {
         match self {
             Self::GameBoy => "DMG",
@@ -179,11 +174,28 @@ impl DesktopFrameBlendingMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchOptions {
     pub console_model: DesktopConsoleModel,
+    pub revision: HardwareRevision,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
 }
 
 impl LaunchOptions {
+    pub fn effective_revision(&self) -> HardwareRevision {
+        if self
+            .console_model
+            .console_model()
+            .supports_revision(self.revision)
+        {
+            self.revision
+        } else {
+            self.console_model.console_model().default_revision()
+        }
+    }
+
+    pub fn normalize_revision_for_model(&mut self) {
+        self.revision = self.effective_revision();
+    }
+
     pub fn compatibility_policy(&self) -> CompatibilityPolicy {
         match self.execution_mode {
             ExecutionMode::Strict => CompatibilityPolicy::strict(),
@@ -197,6 +209,9 @@ impl Default for LaunchOptions {
     fn default() -> Self {
         Self {
             console_model: DesktopConsoleModel::GameBoy,
+            revision: DesktopConsoleModel::GameBoy
+                .console_model()
+                .default_revision(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
         }
@@ -213,7 +228,6 @@ pub enum BootRomVerificationMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootRomOptions {
-    pub kind: BootRomKind,
     pub search_path: Option<PathBuf>,
     pub verification: BootRomVerificationMode,
 }
@@ -226,7 +240,7 @@ impl BootRomOptions {
     pub fn load_assets(
         &self,
         startup_mode: StartupMode,
-        boot_rom_kind: BootRomKind,
+        revision: HardwareRevision,
     ) -> Result<BootRomAssets, BootRomAssetError> {
         if !startup_mode.requires_boot_rom() {
             return Ok(BootRomAssets::none());
@@ -240,30 +254,16 @@ impl BootRomOptions {
                 path: path.clone(),
                 source,
             })?;
-            return BootRomAssets::none().with_bytes(boot_rom_kind, bytes);
+            return BootRomAssets::none().with_bytes(revision, bytes);
         }
 
         BootRomAssets::from_directory(path)
-    }
-
-    pub fn effective_boot_rom_kind(&self, console_model: DesktopConsoleModel) -> BootRomKind {
-        let model = console_model.console_model();
-        if model.supports_boot_rom_kind(self.kind) {
-            self.kind
-        } else {
-            model.default_boot_rom_kind()
-        }
-    }
-
-    pub fn normalize_kind_for_model(&mut self, console_model: DesktopConsoleModel) {
-        self.kind = self.effective_boot_rom_kind(console_model);
     }
 }
 
 impl Default for BootRomOptions {
     fn default() -> Self {
         Self {
-            kind: DesktopConsoleModel::default().default_boot_rom_kind(),
             search_path: None,
             verification: BootRomVerificationMode::Strict,
         }
@@ -905,7 +905,7 @@ mod tests {
         let config = DesktopConfig::default();
 
         assert_eq!(config.launch.console_model, DesktopConsoleModel::GameBoy);
-        assert_eq!(config.boot_rom.kind, BootRomKind::Dmg);
+        assert_eq!(config.launch.revision, HardwareRevision::DmgCpuC);
         assert_eq!(config.launch.startup_mode, StartupMode::SkipBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Strict);
         assert!(config.saves.enabled);
@@ -1039,6 +1039,7 @@ mod tests {
             .expect("skip-boot should not load firmware");
 
         assert_eq!(machine_config.console_model, ConsoleModel::GameBoy);
+        assert_eq!(machine_config.revision, HardwareRevision::default());
         assert_eq!(machine_config.startup_mode, StartupMode::SkipBoot);
         assert_eq!(
             machine_config.compatibility.execution_mode,
@@ -1048,6 +1049,26 @@ mod tests {
             machine_config.compatibility.validation_policy,
             gb_core::ValidationPolicy::Warn
         );
+    }
+
+    #[test]
+    fn machine_config_applies_revision_for_selected_model() {
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = DesktopConsoleModel::GameBoyColor;
+        config.launch.revision = HardwareRevision::CpuCgbE;
+
+        let cgb_config = config
+            .machine_config()
+            .expect("skip-boot should not load firmware");
+        assert_eq!(cgb_config.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(cgb_config.revision, HardwareRevision::CpuCgbE);
+
+        config.launch.console_model = DesktopConsoleModel::GameBoy;
+        let dmg_config = config
+            .machine_config()
+            .expect("skip-boot should not load firmware");
+        assert_eq!(dmg_config.console_model, ConsoleModel::GameBoy);
+        assert_eq!(dmg_config.revision, HardwareRevision::DmgCpuC);
     }
 
     #[test]
@@ -1166,22 +1187,6 @@ mod tests {
             DesktopConsoleModel::GameBoyColor.console_model(),
             ConsoleModel::GameBoyColor
         );
-        assert_eq!(
-            DesktopConsoleModel::GameBoy.default_boot_rom_kind(),
-            BootRomKind::Dmg
-        );
-        assert_eq!(
-            DesktopConsoleModel::GameBoyPocket.default_boot_rom_kind(),
-            BootRomKind::Mgb
-        );
-        assert_eq!(
-            DesktopConsoleModel::GameBoyLight.default_boot_rom_kind(),
-            BootRomKind::Mgb
-        );
-        assert_eq!(
-            DesktopConsoleModel::GameBoyColor.default_boot_rom_kind(),
-            BootRomKind::Cgb
-        );
         assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
         assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "MGB");
         assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "LGB");
@@ -1230,27 +1235,6 @@ mod tests {
             VideoOptions::default_for_console_model(DesktopConsoleModel::GameBoyColor)
                 .display_palette,
             DesktopDisplayPalette::Grey
-        );
-    }
-
-    #[test]
-    fn boot_rom_options_normalize_kind_against_the_visible_console_model() {
-        let mut options = BootRomOptions {
-            kind: BootRomKind::CgbE,
-            ..BootRomOptions::default()
-        };
-
-        assert_eq!(
-            options.effective_boot_rom_kind(DesktopConsoleModel::GameBoy),
-            BootRomKind::Dmg
-        );
-        options.normalize_kind_for_model(DesktopConsoleModel::GameBoyPocket);
-        assert_eq!(options.kind, BootRomKind::Mgb);
-
-        options.kind = BootRomKind::Cgb0;
-        assert_eq!(
-            options.effective_boot_rom_kind(DesktopConsoleModel::GameBoyColor),
-            BootRomKind::Cgb0
         );
     }
 
@@ -1370,7 +1354,7 @@ mod tests {
 
         assert!(
             options
-                .load_assets(StartupMode::SkipBoot, BootRomKind::Dmg)
+                .load_assets(StartupMode::SkipBoot, HardwareRevision::DmgCpuC)
                 .expect("skip-boot should not attempt to read firmware")
                 .is_empty()
         );
@@ -1383,14 +1367,13 @@ mod tests {
         fs::write(&image_path, vec![0x11; 0x100]).expect("test boot ROM image should be writable");
 
         let options = BootRomOptions {
-            kind: BootRomKind::Dmg,
             search_path: Some(image_path.clone()),
             verification: BootRomVerificationMode::Off,
         };
         let assets = options
-            .load_assets(StartupMode::RealBoot, BootRomKind::Dmg)
+            .load_assets(StartupMode::RealBoot, HardwareRevision::DmgCpuC)
             .expect("exact boot ROM file should load");
-        assert_eq!(assets.read_byte(BootRomKind::Dmg, 0), Some(0x11));
+        assert_eq!(assets.read_byte(HardwareRevision::DmgCpuC, 0), Some(0x11));
 
         fs::remove_dir_all(root).expect("temp boot ROM root should be removable");
     }
@@ -1428,6 +1411,16 @@ mod tests {
 
     #[test]
     fn launch_option_helpers_cover_strict_and_experimental_compatibility_modes() {
+        let mut cgb = LaunchOptions {
+            console_model: DesktopConsoleModel::GameBoyColor,
+            revision: HardwareRevision::CpuCgbE,
+            ..LaunchOptions::default()
+        };
+        assert_eq!(cgb.effective_revision(), HardwareRevision::CpuCgbE);
+        cgb.console_model = DesktopConsoleModel::GameBoy;
+        cgb.normalize_revision_for_model();
+        assert_eq!(cgb.revision, HardwareRevision::default());
+
         let strict = LaunchOptions {
             execution_mode: ExecutionMode::Strict,
             ..LaunchOptions::default()

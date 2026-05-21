@@ -1,7 +1,7 @@
 use crate::audio_recording::{
     DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecordingOptions,
 };
-use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
+use gb_core::{ApuRecordedChannel, ExecutionMode, HardwareRevision, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
     DesktopDisplayPalette, DesktopFrameBlendingMode, DesktopSaveFlushPolicy, GamepadButtonBinding,
@@ -67,6 +67,7 @@ where
     let mut audio_recording_sample_rate_overridden = false;
     let mut audio_recording_stem_channels = Vec::new();
     let mut requested_display_palette = None;
+    let mut explicit_revision = None;
     let mut test_runner = false;
     let mut test_runner_overrides = TestRunnerExplicitOverrides::default();
 
@@ -90,9 +91,17 @@ where
                     return Err("--model requires a value".to_string());
                 };
                 config.launch.console_model = parse_console_model(value.as_ref())?;
-                config
-                    .boot_rom
-                    .normalize_kind_for_model(config.launch.console_model);
+                if explicit_revision.is_none() {
+                    config.launch.normalize_revision_for_model();
+                }
+            }
+            "--revision" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--revision requires a value".to_string());
+                };
+                let revision = parse_revision(value.as_ref())?;
+                explicit_revision = Some(revision);
+                config.launch.revision = revision;
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -296,6 +305,8 @@ where
                 .to_string(),
         );
     }
+    validate_model_axes(&config)?;
+    config.launch.normalize_revision_for_model();
 
     if config.launch.console_model == DesktopConsoleModel::GameBoy
         && let Some(display_palette) = requested_display_palette
@@ -340,6 +351,20 @@ where
     })))
 }
 
+fn validate_model_axes(config: &DesktopConfig) -> Result<(), String> {
+    let console_model = config.launch.console_model.console_model();
+    if !console_model.supports_revision(config.launch.revision) {
+        return Err(format!(
+            "--revision {} is not supported by --model {}; expected one of: {}",
+            revision_argument_name(config.launch.revision),
+            config.launch.console_model.name(),
+            supported_revision_names(console_model)
+        ));
+    }
+
+    Ok(())
+}
+
 fn apply_test_runner_defaults(config: &mut DesktopConfig, explicit: TestRunnerExplicitOverrides) {
     if !explicit.saves {
         config.saves.enabled = false;
@@ -377,10 +402,12 @@ pub fn help_text() -> &'static str {
         "\n",
         "Options:\n",
         "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
+        "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
+        "                                         Select the active hardware revision for --model\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
-        "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+        "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
         "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
         "  --benchmark <path>                     Run one portable benchmark case TOML\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
@@ -446,6 +473,19 @@ fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
     }
 }
 
+fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
+    match value {
+        "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
+        "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
+        "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
+        "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
+        "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        _ => Err(format!(
+            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+        )),
+    }
+}
+
 fn parse_startup_mode(value: &str) -> Result<StartupMode, String> {
     match value {
         "skip-boot" => Ok(StartupMode::SkipBoot),
@@ -477,6 +517,31 @@ fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMo
             "unsupported --boot-rom-verify value {value:?}; expected off, warn, or strict"
         )),
     }
+}
+
+fn revision_argument_name(revision: HardwareRevision) -> &'static str {
+    match revision {
+        HardwareRevision::DmgCpu => "dmg-cpu",
+        HardwareRevision::DmgCpuA => "dmg-cpu-a",
+        HardwareRevision::DmgCpuB => "dmg-cpu-b",
+        HardwareRevision::DmgCpuC => "dmg-cpu-c",
+        HardwareRevision::CpuMgb => "cpu-mgb",
+        HardwareRevision::CpuCgb => "cpu-cgb",
+        HardwareRevision::CpuCgbA => "cpu-cgb-a",
+        HardwareRevision::CpuCgbB => "cpu-cgb-b",
+        HardwareRevision::CpuCgbC => "cpu-cgb-c",
+        HardwareRevision::CpuCgbD => "cpu-cgb-d",
+        HardwareRevision::CpuCgbE => "cpu-cgb-e",
+    }
+}
+
+fn supported_revision_names(console_model: gb_core::ConsoleModel) -> String {
+    console_model
+        .active_revisions()
+        .iter()
+        .map(|revision| revision_argument_name(*revision))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn parse_display_palette(value: &str) -> Result<DesktopDisplayPalette, String> {
@@ -673,7 +738,6 @@ fn parse_audio_recording_stems(value: &str) -> Result<Vec<ApuRecordedChannel>, S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gb_core::BootRomKind;
     use gb_desktop::{DesktopFrameBlendingMode, PreferredGamepadIdentity};
 
     #[test]
@@ -692,7 +756,7 @@ mod tests {
             options.config.launch.console_model,
             DesktopConsoleModel::GameBoy
         );
-        assert_eq!(options.config.boot_rom.kind, BootRomKind::Dmg);
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
         assert_eq!(options.config.launch.startup_mode, StartupMode::SkipBoot);
         assert_eq!(options.config.launch.execution_mode, ExecutionMode::Strict);
         assert!(options.config.saves.enabled);
@@ -1073,6 +1137,9 @@ mod tests {
 
         assert!(text.contains("Usage:"));
         assert!(text.contains("--boot-rom-dir <dir>"));
+        assert!(text.contains("--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>"));
+        assert!(!text.contains("--cgb-revision"));
+        assert!(!text.contains("--boot-rom <"));
         assert!(text.contains("--test-runner"));
         assert!(text.contains("--benchmark <path>"));
         assert!(text.contains("--save-key <key>"));
@@ -1138,7 +1205,7 @@ mod tests {
             options.config.launch.console_model,
             DesktopConsoleModel::GameBoyPocket
         );
-        assert_eq!(options.config.boot_rom.kind, BootRomKind::Mgb);
+        assert_eq!(options.config.launch.revision, HardwareRevision::CpuMgb);
         assert_eq!(
             options.config.launch.execution_mode,
             ExecutionMode::Experimental
@@ -1169,6 +1236,22 @@ mod tests {
                 ..DesktopConfig::default().audio
             }
         );
+    }
+
+    #[test]
+    fn parse_supports_revision_overrides() {
+        let action = parse_cli_arguments(["demo.gb", "--model", "CGB", "--revision", "cpu-cgb-e"])
+            .expect("CGB revision override should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::GameBoyColor
+        );
+        assert_eq!(options.config.launch.revision, HardwareRevision::CpuCgbE);
     }
 
     #[test]
@@ -1292,6 +1375,21 @@ mod tests {
             assert!(!error.contains("game-boy, pocket, light, color"));
         }
         assert!(parse_console_model("sgb").is_err());
+
+        assert_eq!(parse_revision("dmg-cpu-c"), Ok(HardwareRevision::DmgCpuC));
+        assert_eq!(parse_revision("cpu-mgb"), Ok(HardwareRevision::CpuMgb));
+        assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
+        assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
+        assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+        assert!(parse_revision("cpu-cgb-b").is_err());
+        assert_eq!(
+            revision_argument_name(HardwareRevision::CpuCgbE),
+            "cpu-cgb-e"
+        );
+        assert_eq!(
+            supported_revision_names(gb_core::ConsoleModel::GameBoyColor),
+            "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
+        );
 
         assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));
         assert_eq!(
@@ -1502,6 +1600,10 @@ mod tests {
             "--model requires a value"
         );
         assert_eq!(
+            parse_cli_arguments(["--revision"]).expect_err("missing revision values should fail"),
+            "--revision requires a value"
+        );
+        assert_eq!(
             parse_cli_arguments(["--mode"]).expect_err("missing mode values should fail"),
             "--mode requires a value"
         );
@@ -1603,8 +1705,12 @@ mod tests {
         );
 
         assert!(parse_cli_arguments(["--model", "gba"]).is_err());
+        assert!(parse_cli_arguments(["--cgb-revision", "cgb-e"]).is_err());
+        assert!(parse_cli_arguments(["--model", "DMG", "--revision", "cpu-cgb-e"]).is_err());
+        assert!(parse_cli_arguments(["--model", "DMG", "--boot-rom", "cgbE"]).is_err());
         assert!(parse_cli_arguments(["--startup", "warm-boot"]).is_err());
         assert!(parse_cli_arguments(["--mode", "fast"]).is_err());
+        assert!(parse_cli_arguments(["--boot-rom", "sgb"]).is_err());
         assert!(parse_cli_arguments(["--boot-rom-verify", "lenient"]).is_err());
         assert!(parse_cli_arguments(["--save-key", "bad/key"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());

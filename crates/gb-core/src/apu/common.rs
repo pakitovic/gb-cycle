@@ -1,4 +1,4 @@
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, HardwareRevision};
 use crate::speed::CgbSpeedMode;
 
 use super::frame_sequencer::{
@@ -83,8 +83,8 @@ pub(super) const CGB_SWEEP_DELAYED_CALCULATION_MIN_T_CYCLES: u16 = 8;
 pub(super) const CGB_SWEEP_UNSHIFTED_DELAYED_CALCULATION_T_CYCLES: u16 = 4;
 pub(super) const CGB_SWEEP_DELAYED_CALCULATION_T_CYCLES_PER_SHIFT_STEP: u16 = 4;
 pub(super) const CGB_SWEEP_TRIGGER_DELAYED_CALCULATION_EXTRA_T_CYCLES: u16 = 4;
-pub(super) const CGB_CH1_SWEEP_DECREASE_RESTART_HOLD_T_CYCLES: u16 = 4;
-pub(super) const CGB_CH1_SWEEP_RESTART_HOLD_T_CYCLES: u16 = 9;
+pub(super) const CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES: u16 = 9;
+pub(super) const CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES: u16 = 5;
 pub(super) const DMG_SWEEP_RESTART_DELAY_T_CYCLES: u16 = 5;
 #[cfg(test)]
 pub(super) const DMG_SWEEP_RECALC_TICK_T_CYCLES: u16 = 4;
@@ -109,6 +109,16 @@ pub(super) const MAX_ENVELOPE_VOLUME: u8 = 0x0F;
 pub(super) const WAVE_RAM_LEN: usize = 0x10;
 pub(super) const WAVE_SAMPLE_COUNT: u8 = 32;
 pub(super) const WAVE_RAM_INACCESSIBLE_READ_VALUE: u8 = 0xFF;
+
+pub(super) const fn cgb_ch1_sweep_restart_hold_t_cycles(revision: HardwareRevision) -> u16 {
+    match revision {
+        HardwareRevision::CpuCgbE => CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES,
+        HardwareRevision::CpuCgbC | HardwareRevision::CpuCgbD => {
+            CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+        }
+        _ => CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES,
+    }
+}
 pub(super) const WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES: u16 = 6;
 pub(super) const WAVE_SAMPLE_BYTE_SHIFT: u8 = 1;
 pub(super) const WAVE_SAMPLE_LOW_BIT: u8 = 0x01;

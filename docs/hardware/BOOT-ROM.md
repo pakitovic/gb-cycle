@@ -8,14 +8,14 @@ Own boot ROM assets, boot-ROM enable/disable state, power-up sequencing, direct-
 
 Distinguish clearly between running through boot ROM code and starting from an already initialized state. DMG and CGB must not share assumed initial state without evidence.
 
-Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` firmware-visible differences into one generic startup profile if observable differences matter. The public `ConsoleModel` axis names the visible product model (`GameBoy`, `GameBoyPocket`, `GameBoyLight`, `GameBoyColor`), while `BootRomKind` names the concrete firmware image selected for `RealBoot` (`Dmg0`, `Dmg`, `Mgb`, `Cgb0`, `Cgb`, `CgbE`). For DMG-family support, prefer one shared hardware core with product-level direct-boot profiles and explicit boot ROM images rather than separate emulator implementations per model. Treat the CGB boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes. The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses. Real boot should start CPU execution at `0x0000` with the selected internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. `SkipBoot` and `CustomBoot` should be separate explicit direct-start initialization paths rather than partially executed or silently shortened boot ROM flows, and neither should require a boot ROM asset.
+Within the DMG family, do not collapse `DMG-CPU`, later `DMG-CPU A/B/C`, and `CPU MGB` firmware-visible differences into one generic startup profile if observable differences matter. The public `ConsoleModel` axis names the visible product model (`GameBoy`, `GameBoyPocket`, `GameBoyLight`, `GameBoyColor`), while `HardwareRevision` names the CPU revision profile and derives the concrete firmware image selected for `RealBoot`. For DMG-family support, prefer one shared hardware core with revision-aware direct-boot profiles and explicit boot ROM images rather than separate emulator implementations per model. Treat the CGB boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes. The boot subsystem should own revision-derived firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses. Real boot should start CPU execution at `0x0000` with the selected internal boot ROM mapped over the low cartridge region, and hand off to cartridge code only after a real write to `FF50` changes the mapping. `SkipBoot` and `CustomBoot` should be separate explicit direct-start initialization paths rather than partially executed or silently shortened boot ROM flows, and neither should require a boot ROM asset.
 
 ## Responsibilities
 
 - select between explicit real-boot, skip-boot, and custom-boot startup modes
 - boot ROM enable/disable behavior
 - boot ROM mapping policy and state exposed to the bus
-- boot ROM kind selection as an explicit `RealBoot` firmware axis
+- revision-derived boot ROM image selection for `RealBoot`
 - product-specific direct-boot initial register and memory state
 - revision-aware startup configuration
 - DMG-family differentiation where boot ROM or startup-visible behavior differs
@@ -26,16 +26,25 @@ Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` firmware-v
 
 ## Product and firmware profiles
 
-`ConsoleModel` is the visible console product exposed to frontends and persisted settings. CPU hardware revision strings remain documentation only for now and must not gate behavior until a tested hardware difference requires it. `BootRomKind` is the selected firmware image for `RealBoot`; if the selected firmware is not valid for the current product model, frontends and configuration loaders normalize it back to the model default.
+`ConsoleModel` is the visible console product exposed to frontends and persisted settings. `HardwareRevision` is the CPU/revision profile for that model; it is the only public/configurable revision axis and `RealBoot` always derives the boot ROM filename, expected size, and expected SHA-256 from it. A separate boot-ROM-kind axis is not public configuration: if a small private implementation descriptor is useful internally, it must be derived from `HardwareRevision` and must not be persisted, exposed in manifests, or accepted as a frontend setting. `SkipBoot` and `CustomBoot` use the selected revision for silicon/direct-start behavior but do not load or emulate boot-ROM bytes.
 
-| ConsoleModel | Default BootRomKind | Allowed BootRomKind values | Direct-start profile |
-|---|---|---|---|
-| `GameBoy` | `Dmg` | `Dmg0`, `Dmg` | standard DMG post-boot profile |
-| `GameBoyPocket` | `Mgb` | `Mgb` | MGB post-boot profile |
-| `GameBoyLight` | `Mgb` | `Mgb` | MGB post-boot profile with a distinct desktop display palette |
-| `GameBoyColor` | `Cgb` | `Cgb0`, `Cgb`, `CgbE` | CGB post-boot profile aligned to standard `cgb_boot.bin` handoff |
+| ConsoleModel | Active revisions | Default revision | RealBoot filename from default | Direct-start profile |
+|---|---|---|---|---|
+| `GameBoy` | `DmgCpuC` | `DmgCpuC` | `dmg_boot.bin` | standard DMG post-boot profile |
+| `GameBoyPocket` | `CpuMgb` | `CpuMgb` | `mgb_boot.bin` | MGB post-boot profile |
+| `GameBoyLight` | `CpuMgb` | `CpuMgb` | `mgb_boot.bin` | MGB post-boot profile with a distinct desktop display palette |
+| `GameBoyColor` | `CpuCgbC`, `CpuCgbD`, `CpuCgbE` | `CpuCgbC` | `cgb_boot.bin` | CGB post-boot profile aligned to standard `cgb_boot.bin` handoff |
 
-Informative hardware-profile defaults for the current product rows are `DMG-CPU B` with `dmg_boot.bin` for `GameBoy`, `CPU MGB` with `mgb_boot.bin` for `GameBoyPocket` and `GameBoyLight`, and `CPU CGB C` with `cgb_boot.bin` for `GameBoyColor`. These revision names are not represented as functional enums yet.
+| HardwareRevision | RealBoot filename | Expected size | Expected SHA-256 profile |
+|---|---|---:|---|
+| `DmgCpu` | `dmg0_boot.bin` | `256` | DMG0 |
+| `DmgCpuA` / `DmgCpuB` / `DmgCpuC` | `dmg_boot.bin` | `256` | standard DMG |
+| `CpuMgb` | `mgb_boot.bin` | `256` | MGB |
+| `CpuCgb` | `cgb0_boot.bin` | `2304` | CGB0 |
+| `CpuCgbA` / `CpuCgbB` / `CpuCgbC` / `CpuCgbD` | `cgb_boot.bin` | `2304` | standard CGB |
+| `CpuCgbE` | `cgbE_boot.bin` | `2304` | CGB-E |
+
+The current active set is intentionally narrower than the modeled enum: DMG exposes only `DmgCpuC`, MGB/LGB expose only `CpuMgb`, and CGB exposes `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`. Earlier DMG and CGB revision variants remain modeled so real-boot assets, save-state metadata, and future hardware validation do not need another rename when they become active.
 
 ## Registers / MMIO
 
@@ -53,7 +62,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 - Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
 - The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first.
 - In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`; in both forms only `0000-00FF` and `0200-08FF` are boot-overlay windows, and `0100-01FF` routes to cartridge/header bytes while boot ROM remains mapped.
-- Strict RealBoot validation for the standard CGB path requires canonical `cgb_boot.bin` as a `2304`-byte sparse asset with SHA-256 `b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7`; `cgb0_boot.bin` and `cgbE_boot.bin` are recognized and hash-checked as future revision assets but do not change the Phase 10 default behavior.
+- Strict RealBoot validation for the standard CGB path requires canonical `cgb_boot.bin` as a `2304`-byte sparse asset with SHA-256 `b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7`; `cgb0_boot.bin` and `cgbE_boot.bin` are recognized and hash-checked as revision-derived assets, and `CpuCgbE` selects `cgbE_boot.bin` automatically. The Phase 10 default remains the standard `CpuCgbC` / `cgb_boot.bin` profile.
 
 ## Boot mode baseline
 
@@ -68,7 +77,7 @@ Informative hardware-profile defaults for the current product rows are `DMG-CPU 
 
 ## DMG-family boot baseline
 
-- DMG-family boot ROM selection should remain explicit through a `BootRomKind`-style concept covering at least `DMG0`, `DMG`, and `MGB`.
+- DMG-family boot ROM selection should remain explicit through `HardwareRevision` values covering at least `DmgCpu`, `DmgCpuA/B/C`, and `CpuMgb`, with the concrete filename derived rather than independently configured.
 - Those DMG-family boot ROMs should run on the same DMG hardware core without scattered model-specific CPU branches.
 - During real DMG-family boot, the boot ROM should read the cartridge logo/header bytes, perform its documented checks, drive the visible animation through ordinary CPU and bus activity, and withhold cartridge handoff when those checks fail.
 - The visible boot logo should come from the cartridge header bytes at `0x0104-0x0133`, not from a frontend animation script or emulator-side asset.

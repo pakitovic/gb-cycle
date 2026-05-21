@@ -21,6 +21,10 @@ pub(in crate::apu) struct PulseChannelState {
     pub(in crate::apu) suppress_initial_trigger_output: bool,
     pub(in crate::apu) trigger_delay_t_cycles: u16,
     #[serde(default)]
+    pub(in crate::apu) just_sampled: bool,
+    #[serde(default)]
+    just_sampled_reload_clocks_remaining: u8,
+    #[serde(default)]
     pub(in crate::apu) timer_stopped_by_dac_disable: bool,
     pub(in crate::apu) period_timer: u16,
     pub(in crate::apu) length_counter: u8,
@@ -54,6 +58,8 @@ impl PulseChannelState {
         self.power_on_phase = 0;
         self.suppress_initial_trigger_output = false;
         self.trigger_delay_t_cycles = 0;
+        self.just_sampled = false;
+        self.just_sampled_reload_clocks_remaining = 0;
         self.timer_stopped_by_dac_disable = !self.runtime.dac_enabled;
     }
 
@@ -93,6 +99,8 @@ impl PulseChannelState {
         if !dac_enabled {
             self.timer_stopped_by_dac_disable = true;
             self.trigger_delay_t_cycles = 0;
+            self.just_sampled = false;
+            self.just_sampled_reload_clocks_remaining = 0;
         }
 
         self.runtime.set_dac_enabled(dac_enabled);
@@ -138,6 +146,8 @@ impl PulseChannelState {
         if !self.first_trigger_after_power_on_pending {
             self.power_on_phase = 0;
         }
+        self.just_sampled = false;
+        self.just_sampled_reload_clocks_remaining = 0;
     }
 
     pub(in crate::apu) fn apply_channel_startup(
@@ -208,8 +218,10 @@ impl PulseChannelState {
         reloaded_zero_length
     }
 
-    pub(in crate::apu) fn extend_trigger_delay(&mut self, t_cycles: u16) {
-        self.trigger_delay_t_cycles = self.trigger_delay_t_cycles.saturating_add(t_cycles);
+    pub(in crate::apu) fn reload_period_after_write_if_just_sampled(&mut self, period_value: u16) {
+        if self.just_sampled {
+            self.period_timer = pulse_timer_reload(period_value);
+        }
     }
 
     pub(in crate::apu) fn tick_fast_timer_with_clock_gate(
@@ -217,6 +229,14 @@ impl PulseChannelState {
         period_value: u16,
         clock_period_timer: bool,
     ) {
+        if clock_period_timer && self.just_sampled {
+            self.just_sampled_reload_clocks_remaining =
+                self.just_sampled_reload_clocks_remaining.saturating_sub(1);
+            if self.just_sampled_reload_clocks_remaining == 0 {
+                self.just_sampled = false;
+            }
+        }
+
         if self.first_trigger_after_power_on_pending {
             self.power_on_phase =
                 (self.power_on_phase + 1) & super::super::common::CGB_PULSE_POWER_ON_PHASE_MASK;
@@ -247,6 +267,8 @@ impl PulseChannelState {
                 self.duty = pending_duty;
             }
             self.suppress_initial_trigger_output = false;
+            self.just_sampled = true;
+            self.just_sampled_reload_clocks_remaining = 3;
         }
     }
 

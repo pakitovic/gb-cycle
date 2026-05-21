@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gb_core::{BootRomAssets, BootRomKind, PersistentCartState};
+use gb_core::{BootRomAssets, HardwareRevision, PersistentCartState};
 use gb_persistence::{FilesystemCartridgeSaveStore, decode_machine_save_state_envelope};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -86,10 +86,13 @@ fn set_header_flags(rom: &mut [u8], cgb_flag: u8, sgb_flag: u8) {
     rom[0x0146] = sgb_flag;
 }
 
-fn write_fake_boot_rom(dir: &PathBuf, kind: BootRomKind, fill: u8) {
+fn write_fake_boot_rom(dir: &PathBuf, revision: HardwareRevision, fill: u8) {
     fs::create_dir_all(dir).expect("boot ROM dir should be creatable");
-    fs::write(dir.join(BootRomAssets::filename(kind)), vec![fill; 0x0100])
-        .expect("boot ROM file should be writable");
+    fs::write(
+        dir.join(BootRomAssets::filename(revision)),
+        vec![fill; revision.boot_rom_expected_size()],
+    )
+    .expect("boot ROM file should be writable");
 }
 
 #[test]
@@ -381,7 +384,7 @@ fn binary_real_boot_warns_for_mismatched_boot_rom_assets() {
     let rom_path = temp_dir.join("serial.gb");
     let boot_dir = temp_dir.join("bootroms");
     fs::write(&rom_path, build_single_byte_serial_rom(b'B')).expect("plain ROM should be writable");
-    write_fake_boot_rom(&boot_dir, BootRomKind::Dmg, 0x00);
+    write_fake_boot_rom(&boot_dir, HardwareRevision::DmgCpuC, 0x00);
 
     let output = Command::new(env!("CARGO_BIN_EXE_gb-cli"))
         .args([
@@ -403,7 +406,7 @@ fn binary_real_boot_warns_for_mismatched_boot_rom_assets() {
     assert!(
         String::from_utf8(output.stderr)
             .expect("stderr should be UTF-8")
-            .contains("warning: boot ROM asset Dmg")
+            .contains("warning: boot ROM asset for DmgCpuC")
     );
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");

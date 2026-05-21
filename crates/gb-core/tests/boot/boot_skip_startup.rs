@@ -6,7 +6,7 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    assert_eq!(machine.boot().boot_rom_kind(), BootRomKind::Dmg);
+    assert_eq!(machine.boot().revision(), HardwareRevision::DmgCpuC);
     assert!(!machine.boot().is_boot_rom_mapped());
     assert_eq!(machine.cpu().startup_state().pc, 0x0100);
     assert_eq!(machine.cpu().startup_state().a, 0x01);

@@ -39,7 +39,7 @@ impl Channel2State {
         match register {
             Channel2Register::Nr21 => self.write_nr21(value),
             Channel2Register::Nr22 => self.write_nr22(value, console_model),
-            Channel2Register::Nr23 => self.write_nr23(value),
+            Channel2Register::Nr23 => self.write_nr23(value, console_model),
             Channel2Register::Nr24 => {
                 self.write_nr24(value, console_model, speed_mode, next_frame_sequencer_step)
             }
@@ -81,8 +81,12 @@ impl Channel2State {
         self.pulse.apply_dac_enabled(self.derived_dac_enabled());
     }
 
-    fn write_nr23(&mut self, value: u8) {
+    fn write_nr23(&mut self, value: u8, console_model: ConsoleModel) {
         self.nr23 = value;
+        if console_model.is_cgb_family() {
+            self.pulse
+                .reload_period_after_write_if_just_sampled(self.period_value());
+        }
     }
 
     fn write_nr24(
@@ -107,6 +111,9 @@ impl Channel2State {
                 write_plan.context.next_step_clocks_envelope,
             ));
             write_plan.observe_length_enabled_after_trigger(self.pulse.length_enabled);
+        } else if console_model.is_cgb_family() {
+            self.pulse
+                .reload_period_after_write_if_just_sampled(self.period_value());
         }
 
         self.pulse.length_enabled = write_plan.context.length_enabled;

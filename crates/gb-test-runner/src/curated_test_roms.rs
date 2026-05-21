@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use gb_core::{ConsoleModel, JoypadButton, StartupMode};
+use gb_core::{ConsoleModel, HardwareRevision, JoypadButton, StartupMode};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -116,6 +116,7 @@ struct CuratedTestRomCaseFile {
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<CuratedRomStimulusFile>,
     console: Option<String>,
+    revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
@@ -166,6 +167,7 @@ struct CuratedTestRomCase {
     memory: Vec<MemoryByteExpectation>,
     stimuli: Vec<ExternalStimulus>,
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     startup_mode: StartupMode,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
@@ -1421,6 +1423,17 @@ fn parse_manifest_case(
         &case.id,
         case.console.as_deref().unwrap_or("dmg"),
     );
+    let revision = case
+        .revision
+        .as_deref()
+        .map(|revision| parse_manifest_revision(source_path, &case.id, revision))
+        .unwrap_or_else(|| console_model.default_revision());
+    if !console_model.supports_revision(revision) {
+        panic!(
+            "curated case {} in {source_path} uses revision {:?} with unsupported console {:?}",
+            case.id, revision, console_model
+        );
+    }
     let startup_mode = parse_manifest_startup_mode(
         source_path,
         &case.id,
@@ -1479,6 +1492,7 @@ fn parse_manifest_case(
             .map(|stimulus| parse_manifest_stimulus(&source_path, &case_id, stimulus))
             .collect(),
         console_model,
+        revision,
         startup_mode,
         execution_mode: case.execution_mode,
         stop_condition: case.stop_condition,
@@ -1556,6 +1570,19 @@ fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str)
     }
 }
 
+fn parse_manifest_revision(source_path: &str, case_id: &str, revision: &str) -> HardwareRevision {
+    match revision {
+        "dmg-cpu-c" => HardwareRevision::DmgCpuC,
+        "cpu-mgb" => HardwareRevision::CpuMgb,
+        "cpu-cgb-c" => HardwareRevision::CpuCgbC,
+        "cpu-cgb-d" => HardwareRevision::CpuCgbD,
+        "cpu-cgb-e" => HardwareRevision::CpuCgbE,
+        other => panic!(
+            "unsupported hardware revision {other:?} for curated case {case_id} in {source_path}"
+        ),
+    }
+}
+
 fn parse_manifest_startup_mode(source_path: &str, case_id: &str, startup: &str) -> StartupMode {
     match startup {
         "skip-boot" => StartupMode::SkipBoot,
@@ -1618,6 +1645,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         memory,
         stimuli,
         console_model,
+        revision,
         startup_mode,
         execution_mode,
         stop_condition,
@@ -1691,6 +1719,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     )
     .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR)
     .with_console_model(console_model)
+    .with_revision(revision)
     .with_startup_mode(startup_mode)
     .with_capture_plan(capture_plan)
     .with_failure_artifacts(failure_artifacts);
@@ -2187,7 +2216,7 @@ mod tests {
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
         RomCaseOutcome, RomCaseReport, RomSuiteReport, StartupPpuProfile, TestSubsystem, Timeout,
     };
-    use gb_core::{ConsoleModel, StartupMode};
+    use gb_core::{ConsoleModel, HardwareRevision, StartupMode};
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -5120,6 +5149,7 @@ status = "PASS"
                 memory: Vec::new(),
                 stimuli: Vec::new(),
                 console: None,
+                revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
@@ -5155,6 +5185,7 @@ status = "PASS"
                 memory: Vec::new(),
                 stimuli: Vec::new(),
                 console: Some("dmg".to_string()),
+                revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
@@ -5197,6 +5228,7 @@ status = "PASS"
                 memory: Vec::new(),
                 stimuli: Vec::new(),
                 console: Some("dmg".to_string()),
+                revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
@@ -5228,6 +5260,7 @@ status = "PASS"
             memory: Vec::new(),
             stimuli: Vec::new(),
             console_model: ConsoleModel::GameBoy,
+            revision: HardwareRevision::DmgCpuC,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
@@ -5258,6 +5291,7 @@ status = "PASS"
             memory: vec![MemoryByteExpectation::new(0xFF82, 0x01)],
             stimuli: Vec::new(),
             console_model: ConsoleModel::GameBoy,
+            revision: HardwareRevision::DmgCpuC,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,

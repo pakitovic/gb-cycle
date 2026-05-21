@@ -5,10 +5,10 @@ use gb_benchmark::{
     target_frames_for_duration, target_tcycles_for_duration,
 };
 use gb_core::{
-    BootRomAssetError, BootRomAssets, BootRomKind, CartridgeDiagnostic,
-    CartridgeDiagnosticSeverity, CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError,
-    CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
-    ConsoleModel, ExecutionMode, JoypadButton, Machine, MachineConfig, MachineSaveState,
+    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+    CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError, CartridgePersistentStateError,
+    CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy, ConsoleModel, ExecutionMode,
+    HardwareRevision, JoypadButton, Machine, MachineConfig, MachineSaveState,
     MachineSaveStateRestoreError, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
     TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
@@ -50,10 +50,12 @@ const RUN_HELP_TEXT: &str = concat!(
     "\n",
     "Options:\n",
     "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
+    "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
+    "                                         Select the active hardware revision for --model\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
-    "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+    "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
     "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
     "  --benchmark <path>                     Run one portable benchmark case TOML\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
@@ -126,14 +128,6 @@ impl RunModel {
             Self::Pocket => ConsoleModel::GameBoyPocket,
             Self::Light => ConsoleModel::GameBoyLight,
             Self::Color => ConsoleModel::GameBoyColor,
-        }
-    }
-
-    fn boot_rom_kind(self) -> BootRomKind {
-        match self {
-            Self::GameBoy => BootRomKind::Dmg,
-            Self::Pocket | Self::Light => BootRomKind::Mgb,
-            Self::Color => BootRomKind::Cgb,
         }
     }
 
@@ -231,6 +225,7 @@ impl DefaultRunBudget {
 struct RunOptions {
     rom_path: PathBuf,
     model: RunModel,
+    revision: HardwareRevision,
     startup_mode: StartupMode,
     execution_mode: ExecutionMode,
     boot_rom_dir: Option<PathBuf>,
@@ -257,6 +252,7 @@ impl RunOptions {
         Self {
             rom_path,
             model: RunModel::default(),
+            revision: RunModel::default().console_model().default_revision(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             boot_rom_dir: None,
@@ -285,6 +281,10 @@ impl RunOptions {
         } else {
             None
         }
+    }
+
+    fn effective_revision(&self) -> HardwareRevision {
+        self.revision
     }
 }
 
@@ -535,6 +535,7 @@ where
     let mut benchmark_path = None;
     let mut test_runner_requested = false;
     let mut save_policy_explicit = false;
+    let mut revision_explicit = false;
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -544,7 +545,19 @@ where
                     return Err("--model requires a value".to_string());
                 };
                 ensure_run_options_initialized(&mut options, &rom_path)?;
-                options.as_mut().unwrap().model = parse_run_model(value.as_ref())?;
+                let options = options.as_mut().unwrap();
+                options.model = parse_run_model(value.as_ref())?;
+                if !revision_explicit {
+                    options.revision = options.model.console_model().default_revision();
+                }
+            }
+            "--revision" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--revision requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().revision = parse_revision(value.as_ref())?;
+                revision_explicit = true;
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -727,8 +740,23 @@ where
     if options.model != RunModel::GameBoy {
         options.display_palette = None;
     }
+    validate_run_model_axes(&options)?;
 
     Ok(CliAction::Run(Box::new(options)))
+}
+
+fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
+    let console_model = options.model.console_model();
+    if !console_model.supports_revision(options.revision) {
+        return Err(format!(
+            "--revision {} is not supported by --model {}; expected one of: {}",
+            revision_argument_name(options.revision),
+            options.model.name(),
+            supported_revision_names(console_model)
+        ));
+    }
+
+    Ok(())
 }
 
 fn parse_inspect_rom_arguments<I, S>(arguments: I) -> Result<CliAction, String>
@@ -890,6 +918,9 @@ fn run_benchmark_case(
     let run_options = RunOptions {
         rom_path: benchmark_case.rom.clone(),
         model: run_model_from_benchmark(benchmark_case.model),
+        revision: run_model_from_benchmark(benchmark_case.model)
+            .console_model()
+            .default_revision(),
         startup_mode: startup_mode_from_benchmark(benchmark_case.startup),
         execution_mode: execution_mode_from_benchmark(benchmark_case.mode),
         boot_rom_dir: None,
@@ -928,7 +959,7 @@ fn run_command(
     let boot_rom_assets = load_boot_rom_assets(&options, &current_dir, stderr)?;
     let config = MachineConfig::new(options.model.console_model())
         .with_startup_mode(options.startup_mode)
-        .with_boot_rom_kind(options.model.boot_rom_kind())
+        .with_revision(options.effective_revision())
         .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
         .with_boot_rom_assets(boot_rom_assets);
     let mut machine = CliMachine::new(config, options.trace_out.is_some());
@@ -1639,16 +1670,17 @@ fn load_boot_rom_assets(
         return Ok(BootRomAssets::none());
     };
     validate_explicit_directory_input("--boot-rom-dir", options.boot_rom_dir.as_deref(), &root)?;
-    let image_path = root.join(BootRomAssets::filename(options.model.boot_rom_kind()));
+    let revision = options.effective_revision();
+    let image_path = root.join(BootRomAssets::filename(revision));
     match options.boot_rom_verify {
         BootRomVerificationMode::Off => {}
         BootRomVerificationMode::Warn => {
-            if let Err(error) = verify_boot_rom_file(&image_path, options.model.boot_rom_kind()) {
+            if let Err(error) = verify_boot_rom_file(&image_path, revision) {
                 writeln_checked(stderr, &format!("warning: {error}"))?;
             }
         }
         BootRomVerificationMode::Strict => {
-            verify_boot_rom_file(&image_path, options.model.boot_rom_kind())?;
+            verify_boot_rom_file(&image_path, revision)?;
         }
     }
 
@@ -1830,6 +1862,19 @@ fn parse_run_model(value: &str) -> Result<RunModel, String> {
     }
 }
 
+fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
+    match value {
+        "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
+        "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
+        "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
+        "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
+        "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        _ => Err(format!(
+            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+        )),
+    }
+}
+
 fn parse_display_palette(value: &str) -> Result<RunDisplayPalette, String> {
     match value {
         "grey" => Ok(RunDisplayPalette::Grey),
@@ -1870,6 +1915,31 @@ fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMo
             "unsupported --boot-rom-verify value {value:?}; expected off, warn, or strict"
         )),
     }
+}
+
+fn revision_argument_name(revision: HardwareRevision) -> &'static str {
+    match revision {
+        HardwareRevision::DmgCpu => "dmg-cpu",
+        HardwareRevision::DmgCpuA => "dmg-cpu-a",
+        HardwareRevision::DmgCpuB => "dmg-cpu-b",
+        HardwareRevision::DmgCpuC => "dmg-cpu-c",
+        HardwareRevision::CpuMgb => "cpu-mgb",
+        HardwareRevision::CpuCgb => "cpu-cgb",
+        HardwareRevision::CpuCgbA => "cpu-cgb-a",
+        HardwareRevision::CpuCgbB => "cpu-cgb-b",
+        HardwareRevision::CpuCgbC => "cpu-cgb-c",
+        HardwareRevision::CpuCgbD => "cpu-cgb-d",
+        HardwareRevision::CpuCgbE => "cpu-cgb-e",
+    }
+}
+
+fn supported_revision_names(console_model: ConsoleModel) -> String {
+    console_model
+        .active_revisions()
+        .iter()
+        .map(|revision| revision_argument_name(*revision))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn parse_save_policy(value: &str) -> Result<SavePolicy, String> {
@@ -2118,38 +2188,36 @@ fn format_boot_rom_asset_load_error(root: &Path, error: BootRomAssetError) -> St
     )
 }
 
-fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {
+fn verify_boot_rom_file(path: &Path, revision: HardwareRevision) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|error| {
         format!(
-            "failed to read boot ROM asset {:?} at {}: {}",
-            kind,
+            "failed to read boot ROM asset for {:?} at {}: {}",
+            revision,
             path.display(),
             error
         )
     })?;
+    if bytes.len() != revision.boot_rom_expected_size() {
+        return Err(format!(
+            "boot ROM asset for {:?} at {} has unexpected size: expected {}, got {}",
+            revision,
+            path.display(),
+            revision.boot_rom_expected_size(),
+            bytes.len()
+        ));
+    }
     let actual_sha256 = sha256_hex(&bytes);
-    let expected_sha256 = expected_boot_rom_sha256(kind);
+    let expected_sha256 = revision.boot_rom_expected_sha256();
     if actual_sha256 != expected_sha256 {
         return Err(format!(
-            "boot ROM asset {:?} at {} has unexpected sha256: expected {}, got {}",
-            kind,
+            "boot ROM asset for {:?} at {} has unexpected sha256: expected {}, got {}",
+            revision,
             path.display(),
             expected_sha256,
             actual_sha256
         ));
     }
     Ok(())
-}
-
-fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
-    match kind {
-        BootRomKind::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
-        BootRomKind::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
-        BootRomKind::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
-        BootRomKind::Cgb0 => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
-        BootRomKind::Cgb => "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7",
-        BootRomKind::CgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
-    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

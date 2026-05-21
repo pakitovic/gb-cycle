@@ -9,7 +9,7 @@ use gb_core::{
 };
 use gb_test_runner::{
     RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
-    boot_rom_kind_for_console_model, built_in_rom_suite_by_name, cpp_dmg_curated_suite,
+    boot_rom_revision_for_console_model, built_in_rom_suite_by_name, cpp_dmg_curated_suite,
     daid_dmg_curated_suite, discover_boot_rom_root, discover_test_rom_store_root,
     hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, update_curated_test_report, verify_boot_rom_file,
@@ -401,11 +401,9 @@ fn load_verified_boot_rom_assets(console_model: ConsoleModel) -> Option<BootRomA
         eprintln!("skipping ignored test because GB_CYCLE_BOOT_ROM_ROOT is not configured");
         return None;
     };
-    let Some(kind) = boot_rom_kind_for_console_model(console_model) else {
-        panic!("expected a boot-ROM-backed console model, got {console_model:?}");
-    };
-    let image_path = boot_rom_image_path(&root, kind);
-    verify_boot_rom_file(&image_path, kind).unwrap_or_else(|_| {
+    let revision = boot_rom_revision_for_console_model(console_model);
+    let image_path = boot_rom_image_path(&root, revision);
+    verify_boot_rom_file(&image_path, revision).unwrap_or_else(|_| {
         panic!(
             "verified boot ROM asset should be readable: {}",
             image_path.display()

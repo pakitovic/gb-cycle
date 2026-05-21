@@ -17,21 +17,21 @@ If this file conflicts with a subsystem handbook about hardware truth, the subsy
 
 ## Mental model
 
-Treat the public model surface as independent axes, with `BootRomKind` deliberately kept outside the model identity:
+Treat the public model surface as independent axes, with firmware image selection derived from the hardware revision instead of configured as a separate public axis:
 
 ```text
-ConsoleModel   = visible product model selected by users and frontends
-OperatingMode  = which GB-visible mode the software is currently running under
-HostPlatform   = which outer host shell surrounds the shared GB core
-BootRomKind    = which firmware image RealBoot executes
+ConsoleModel     = visible product model selected by users and frontends
+HardwareRevision = CPU/revision profile selected within that model; RealBoot derives firmware from it
+OperatingMode    = which GB-visible mode the software is currently running under
+HostPlatform     = which outer host shell surrounds the shared GB core
 ```
 
 Examples:
 
-- `ConsoleModel::GameBoy` + `BootRomKind::Dmg` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = ordinary Game Boy with the standard DMG boot ROM
-- `ConsoleModel::GameBoy` + `BootRomKind::Dmg0` = the same visible Game Boy product model with the earlier DMG0 firmware selected for `RealBoot`
-- `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `BootRomKind::Mgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot profile
-- `ConsoleModel::GameBoyColor` + `OperatingMode::Cgb` = native CGB
+- `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpuC` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = active ordinary Game Boy profile with the standard DMG boot ROM derived for `RealBoot`
+- `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpu` = the same visible Game Boy product model with the earlier DMG0 firmware profile, modeled for future activation and local hardware validation
+- `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `HardwareRevision::CpuMgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot/direct-start profile
+- `ConsoleModel::GameBoyColor` + `HardwareRevision::CpuCgbE` + `OperatingMode::Cgb` = CGB-family silicon on the active CGB-E profile, with `cgbE_boot.bin` selected automatically for `RealBoot`
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
 - `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
@@ -40,14 +40,14 @@ Examples:
 
 ## Reference model profiles
 
-This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. CPU revision strings such as `DMG-CPU B` or `CPU CGB C` are documentation-only in this phase; they must not become behavior gates until a tested revision-specific difference is intentionally modeled. Rows that do not have current Rust enum variants are forward-looking documentation-only. `BootRomKind` defaults, allowed firmware sets, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
+This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, and `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
 
 | Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
 |---:|---|---:|---|---|---|---|---|
 | false | Game Boy | Handheld | `DMG-CPU` | `dmg0_boot.bin` | DMG | DMG green palette | Initial CPU without suffix; early DMG/DMG0-class unit. |
 | false | Game Boy | Handheld | `DMG-CPU A` | `dmg_boot.bin` | DMG | DMG green palette | Later DMG revision; standard DMG boot ROM. |
-| true | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
-| false | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
+| false | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
+| true | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
 | true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
 | true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
 | false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
@@ -80,15 +80,15 @@ Typical uses:
 - product-specific desktop presentation such as DMG, MGB, or Game Boy Light display palette
 - raw family classification when a subsystem is defining a derived capability
 
-Do not model CPU revision suffixes such as `DMG-CPU B` or `CPU CGB C` as functional enum values until a tested hardware behavior actually needs them. Keep those revision notes in documentation and choose the closest product-level default.
+Do not branch on a revision simply because it exists in the enum. A `HardwareRevision` branch should correspond to a modeled firmware/direct-start contract or a tested hardware behavior; otherwise prefer the derived capability or model-level default.
 
 Do not use `ConsoleModel` just because it is nearby in the API. If the real question is "is this feature enabled right now?", `ConsoleModel` is usually too low-level.
 
-### Use `BootRomKind` when the question is about firmware
+### Use `HardwareRevision` when the question is about CPU revision or revision-derived firmware
 
-Reach for `BootRomKind` when the code needs to load, verify, route, or execute a concrete boot ROM image. `BootRomKind` is selected explicitly for `RealBoot`; `SkipBoot` does not require an asset and instead uses the synthetic startup profile for the selected `ConsoleModel`, with cartridge-header-derived refinements where the boot handoff contract is validated.
+Reach for `HardwareRevision` when the code needs to know the selected CPU/revision profile, load or verify the `RealBoot` firmware image derived from that profile, persist save-state metadata, or gate a tested revision-specific silicon behavior. Do not add a separate user-facing boot-ROM-kind setting: `RealBoot` firmware filename, expected size, and expected SHA-256 are derived from `HardwareRevision`, while `SkipBoot` and `CustomBoot` do not read boot-ROM bytes.
 
-The authoritative default/allowed firmware matrix and the matching `SkipBoot` profiles live in [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles). Keep this file focused on which axis production code should consult, not on duplicating boot-profile data.
+The authoritative default/active revision matrix and the matching boot-ROM filenames live in [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles). Keep this file focused on which axis production code should consult, not on duplicating boot-profile data.
 
 ### Use `OperatingMode` when the question is about the active software-visible GB mode
 
@@ -161,15 +161,15 @@ Use `CapabilitySet::dmg_family_quirks_enabled()` for:
 
 Use `ConsoleModel` directly for:
 
-- deriving the default and allowed `BootRomKind` set
+- deriving the default and active `HardwareRevision` set
 - product-specific skip-boot startup presets
 - product-specific desktop display palette selection
 
-Use `BootRomKind` directly for:
+Use `HardwareRevision` directly for:
 
-- boot ROM asset filenames and hashes
-- `RealBoot` firmware selection
-- boot ROM mapping payload lookup
+- boot ROM asset filenames, expected sizes, and hashes
+- `RealBoot` firmware payload lookup after the model/revision pair is validated
+- revision-specific hardware behavior with a concrete oracle, such as the CGB-E CH1 sweep-restart timing seam
 
 Use `OperatingMode` or a capability derived from it for:
 

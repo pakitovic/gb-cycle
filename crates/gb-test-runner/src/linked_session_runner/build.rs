@@ -9,8 +9,8 @@ use super::{
     LoadedParticipantMachine, RunnerLinkedMachines,
 };
 use crate::{
-    ExternalStimulusAction, LinkedSessionCase, boot_rom_kind_for_console_model,
-    boot_rom_kind_is_required_for_runner_gate, compatibility_for_execution_mode,
+    ExternalStimulusAction, LinkedSessionCase, boot_rom_revision_for_console_model,
+    boot_rom_revision_is_required_for_runner_gate, compatibility_for_execution_mode,
     discover_boot_rom_root, enforce_boot_rom_verification,
     enforce_missing_boot_rom_root_verification,
 };
@@ -160,9 +160,7 @@ impl LinkedSessionRunner {
             return Ok(BootRomAssets::none());
         }
 
-        let Some(kind) = boot_rom_kind_for_console_model(participant.console_model) else {
-            return Ok(BootRomAssets::none());
-        };
+        let revision = boot_rom_revision_for_console_model(participant.console_model);
 
         let Some(root) = self
             .runner
@@ -170,10 +168,10 @@ impl LinkedSessionRunner {
             .clone()
             .or_else(discover_boot_rom_root)
         else {
-            if boot_rom_kind_is_required_for_runner_gate(kind) {
+            if boot_rom_revision_is_required_for_runner_gate(revision) {
                 enforce_missing_boot_rom_root_verification(
                     self.runner.boot_rom_verification_mode,
-                    kind,
+                    revision,
                 )
                 .map_err(|issue| {
                     LinkedSessionExecutionError::BootRomVerification {
@@ -183,14 +181,18 @@ impl LinkedSessionRunner {
             }
             return Ok(BootRomAssets::none());
         };
-        let image_path = crate::boot_rom_image_path(&root, kind);
-        if !boot_rom_kind_is_required_for_runner_gate(kind) && !image_path.is_file() {
+        let image_path = crate::boot_rom_image_path(&root, revision);
+        if !boot_rom_revision_is_required_for_runner_gate(revision) && !image_path.is_file() {
             return Ok(BootRomAssets::none());
         }
-        enforce_boot_rom_verification(self.runner.boot_rom_verification_mode, &image_path, kind)
-            .map_err(|issue| LinkedSessionExecutionError::BootRomVerification {
-                issue: Box::new(issue),
-            })?;
+        enforce_boot_rom_verification(
+            self.runner.boot_rom_verification_mode,
+            &image_path,
+            revision,
+        )
+        .map_err(|issue| LinkedSessionExecutionError::BootRomVerification {
+            issue: Box::new(issue),
+        })?;
         if !root.is_dir() {
             return Ok(BootRomAssets::none());
         }

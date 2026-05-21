@@ -29,7 +29,7 @@ pub use apu::{
 };
 pub use boot::{
     BootAudioSnapshot, BootController, BootDirectBootState, BootIoSnapshot, BootRomAssetError,
-    BootRomAssets, BootRomKind, BootSnapshot, BootStatus, StartupMemoryPolicy,
+    BootRomAssets, BootSnapshot, BootStatus, StartupMemoryPolicy,
 };
 pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
@@ -93,8 +93,8 @@ pub use machine::{
 };
 pub use model::{
     CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy,
-    ExecutionMode, HeuristicPolicy, HostPlatform, MachineConfig, OperatingMode, OverridePolicy,
-    StartupMode, ValidationPolicy,
+    ExecutionMode, HardwareRevision, HeuristicPolicy, HostPlatform, MachineConfig, OperatingMode,
+    OverridePolicy, StartupMode, ValidationPolicy,
 };
 pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
