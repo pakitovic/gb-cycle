@@ -3702,10 +3702,7 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
             ))
         );
-        assert_eq!(
-            case.stop_condition,
-            Some(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 })
-        );
+        assert_eq!(case.stop_condition, None);
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
