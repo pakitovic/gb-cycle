@@ -10,4 +10,3 @@ console = "cgb"
 timeout_frames = 180
 oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
-stop_condition = "ld-b-b"

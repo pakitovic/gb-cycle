@@ -2160,15 +2160,15 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 mod tests {
     use super::{
         CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
-        ExecutionStopCondition, GBEMU_SHOOTOUT_SOURCE_ID,
-        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
-        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
-        TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
-        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
-        ax6_dmg_extra_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
-        blargg_memory_text_output_spec, capture_plan_for_pass_condition, cgb_audio_blargg_suite,
-        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
+        GBEMU_SHOOTOUT_SOURCE_ID, MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus,
+        PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
+        REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
+        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
+        TEST_ROM_STATUS_DIR_NAME, ax6_dmg_extra_suite, blargg_dmg_curated_suite,
+        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
+        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
         docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
@@ -2575,10 +2575,7 @@ mod tests {
                 "crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png"
             ))
         );
-        assert_eq!(
-            case.stop_condition,
-            Some(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 })
-        );
+        assert_eq!(case.stop_condition, None);
     }
 
     #[test]
