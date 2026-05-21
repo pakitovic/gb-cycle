@@ -1,6 +1,8 @@
 use super::snapshot::*;
 use super::*;
 
+const CGB_BOOT_ENTRY_LINE_DOT: u16 = 173;
+
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct PpuMode3LiveBackgroundWriteRoute {
     register: PpuMode3LiveBackgroundRegister,
@@ -876,6 +878,28 @@ impl Ppu {
             self.stat_state.startup_mode0_irq_phase_active = true;
             self.stat_state.irq_line = self.compute_stat_irq_line(false);
         }
+    }
+
+    pub(crate) fn apply_cgb_custom_boot_entry_phase(&mut self) {
+        if self.console_model.is_cgb_family() && self.lcd_state.is_enabled() {
+            self.ly = VISIBLE_SCANLINES;
+            self.line_dot = CGB_BOOT_ENTRY_LINE_DOT;
+            self.startup_mode_latch = None;
+            self.stat_state.irq_line = self.compute_stat_irq_line(false);
+        }
+    }
+
+    pub(crate) fn apply_cgb_boot_handoff_raster_correction(&mut self, t_cycles: u16) {
+        if !self.console_model.is_cgb_family() || !self.lcd_state.is_enabled() {
+            return;
+        }
+
+        debug_assert!(
+            u32::from(self.line_dot) + u32::from(t_cycles)
+                < u32::from(self.current_scanline_length())
+        );
+        self.line_dot = self.line_dot.wrapping_add(t_cycles);
+        self.stat_state.irq_line = self.compute_stat_irq_line(false);
     }
 
     #[cfg(test)]

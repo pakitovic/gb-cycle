@@ -380,6 +380,17 @@ fn cgb_direct_start_system_counter_uses_native_non_nintendo_header_bucket() {
 }
 
 #[test]
+fn cgb_direct_start_system_counter_uses_native_binary_zero_new_licensee_header_bucket() {
+    let header = test_header_with_cgb_header(0x80, 0x33, [0x00, 0x00]);
+
+    assert_eq!(
+        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&header)),
+        0x1E98
+    );
+    assert_eq!(cgb_real_boot_handoff_correction_t_cycles(Some(&header)), 24);
+}
+
+#[test]
 fn cgb_direct_start_system_counter_keeps_mooneye_baseline_for_missing_or_dmg_headers() {
     let dmg_compatible_header = test_header_with_cgb_header(0x00, 0x33, *b"ZZ");
     let cgb_new_licensee_header = test_header_with_cgb_header(0x80, 0x33, *b"00");

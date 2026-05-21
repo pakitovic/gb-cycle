@@ -51,6 +51,21 @@ fn startup_state_recreates_the_documented_post_boot_lcd_snapshot() {
 }
 
 #[test]
+fn cgb_real_boot_handoff_correction_advances_enabled_raster_within_line() {
+    let mut ppu = cgb_lcd_rig(0x91, 0x81, 0x90, 0x00, 0xFC);
+    ppu.tick_n(173);
+
+    let before = ppu.snapshot();
+    assert_eq!(before.lcd_state, PpuLcdState::Enabled);
+
+    ppu.apply_cgb_boot_handoff_raster_correction(24);
+
+    let after = ppu.snapshot();
+    assert_eq!(after.ly, before.ly);
+    assert_eq!(after.line_dot, before.line_dot + 24);
+}
+
+#[test]
 fn skip_boot_mode_latch_preserves_the_published_stat_mode_until_the_first_dot() {
     let mut ppu = dmg_lcd_rig(0x91, 0x08, 0x00, 0x00, 0xFC);
 

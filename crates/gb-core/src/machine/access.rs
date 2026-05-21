@@ -1,7 +1,7 @@
 use super::Machine;
 use super::step::{
-    PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio,
-    finalize_cgb_real_boot_handoff_if_needed,
+    PendingPpuMmioWrite, RealBootHandoffParts, commit_pending_ppu_mmio_write,
+    cpu_write_targets_ppu_mmio, finalize_cgb_real_boot_handoff_if_needed,
 };
 use crate::apu::Apu;
 use crate::boot::BootController;
@@ -97,12 +97,16 @@ impl<S: TraceSink> Machine<S> {
             },
         );
         finalize_cgb_real_boot_handoff_if_needed(
-            &mut self.config,
-            &mut self.bus,
-            &mut self.ppu,
-            &mut self.serial,
-            &mut self.speed,
-            &self.boot,
+            RealBootHandoffParts {
+                config: &mut self.config,
+                bus: &mut self.bus,
+                ppu: &mut self.ppu,
+                serial: &mut self.serial,
+                speed: &mut self.speed,
+                timer: &mut self.timer,
+                cartridge: &self.cartridge,
+                boot: &self.boot,
+            },
             boot_rom_newly_unmapped,
         );
         self.bus.route_cpu_address_event(
@@ -214,6 +218,11 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
+            if self.config.console_model.is_cgb_family()
+                && self.config.startup_mode == crate::model::StartupMode::CustomBoot
+            {
+                self.ppu.apply_cgb_custom_boot_entry_phase();
+            }
             self.timer.apply_startup_state(startup_state.timer);
             self.serial.apply_startup_state(startup_state.serial);
             self.dma.apply_startup_state(startup_state.dma);

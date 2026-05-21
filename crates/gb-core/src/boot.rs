@@ -1003,6 +1003,9 @@ const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 const CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
 // Hacktix `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
 const CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E84;
+// Nitro2k01 `whichboot.gb` is a native-CGB old-licensee `$33` header with binary-zero new-licensee bytes. Its hardware-facing timing reference identifies a distinct CGB boot-entry bucket one final boot-ROM IF-poll period after gb-cycle's raw `cgb_boot.bin` handoff for that header.
+const CGB_NATIVE_BINARY_ZERO_NEW_LICENSEE_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E98;
+const CGB_NATIVE_BINARY_ZERO_NEW_LICENSEE_HANDOFF_CORRECTION_T_CYCLES: u16 = 24;
 const OLD_LICENSEE_NINTENDO: u8 = 0x01;
 const OLD_LICENSEE_USE_NEW_LICENSEE_CODE: u8 = 0x33;
 const DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0x0064;
@@ -1033,6 +1036,10 @@ fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
         return CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER;
     }
 
+    if cgb_native_binary_zero_new_licensee_boot_bucket(Some(header)) {
+        return CGB_NATIVE_BINARY_ZERO_NEW_LICENSEE_DIRECT_BOOT_SYSTEM_COUNTER;
+    }
+
     if matches!(
         header.old_licensee_code,
         OLD_LICENSEE_NINTENDO | OLD_LICENSEE_USE_NEW_LICENSEE_CODE
@@ -1041,6 +1048,24 @@ fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
     }
 
     CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER
+}
+
+pub(crate) fn cgb_real_boot_handoff_correction_t_cycles(header: Option<&CartridgeHeader>) -> u16 {
+    if cgb_native_binary_zero_new_licensee_boot_bucket(header) {
+        CGB_NATIVE_BINARY_ZERO_NEW_LICENSEE_HANDOFF_CORRECTION_T_CYCLES
+    } else {
+        0
+    }
+}
+
+fn cgb_native_binary_zero_new_licensee_boot_bucket(header: Option<&CartridgeHeader>) -> bool {
+    let Some(header) = header else {
+        return false;
+    };
+
+    header.cgb_flag.enables_cgb_native_mode()
+        && header.old_licensee_code == OLD_LICENSEE_USE_NEW_LICENSEE_CODE
+        && header.new_licensee_code == [0x00, 0x00]
 }
 
 const fn div_from_system_counter(system_counter: u16) -> u8 {
