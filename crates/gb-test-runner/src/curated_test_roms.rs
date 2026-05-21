@@ -2900,11 +2900,47 @@ mod tests {
     }
 
     #[test]
-    fn gbmicrotest_dmg_extra_suite_tracks_docboy_memory_oracles_with_custom_boot_poweron_rows() {
+    fn gbmicrotest_dmg_extra_suite_marks_only_reset_facing_rows_custom_boot() {
+        const CUSTOM_BOOT_PPU_TIMING_ROMS: &[&str] = &[
+            "gbmicrotest/ppu/hblank_int_scx0_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx0_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx0_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx1_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx1_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx1_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx1_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx2_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx2_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx2_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx2_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx3_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx3_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx3_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx3_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx4_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx4_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx4_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx4_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx5_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx5_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx5_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx5_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx6_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx6_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx6_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx6_nops_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx7_if_a.gb",
+            "gbmicrotest/ppu/hblank_int_scx7_if_b.gb",
+            "gbmicrotest/ppu/hblank_int_scx7_if_c.gb",
+            "gbmicrotest/ppu/hblank_int_scx7_nops_b.gb",
+            "gbmicrotest/ppu/line_65_ly.gb",
+        ];
+
         let manifest_text = include_str!("../data/gbmicrotest.toml");
         assert!(
-            manifest_text.matches("startup = \"custom-boot\"").count() == 62,
-            "gbmicrotest should use CustomBoot only for reset-facing poweron rows"
+            manifest_text.matches("startup = \"custom-boot\"").count()
+                == 62 + CUSTOM_BOOT_PPU_TIMING_ROMS.len(),
+            "gbmicrotest should use CustomBoot only for reset-facing PPU rows"
         );
         assert!(
             !manifest_text.contains("startup_ppu_profile"),
@@ -2944,12 +2980,29 @@ mod tests {
                 .count(),
             62
         );
+        assert_eq!(
+            suite
+                .cases
+                .iter()
+                .filter(|case| {
+                    CUSTOM_BOOT_PPU_TIMING_ROMS
+                        .iter()
+                        .any(|rom_path| case.rom_path == Path::new(rom_path))
+                        && case.startup_mode == StartupMode::CustomBoot
+                })
+                .count(),
+            CUSTOM_BOOT_PPU_TIMING_ROMS.len()
+        );
         assert!(suite.cases.iter().all(|case| {
+            let reset_facing_ppu_timing_row = CUSTOM_BOOT_PPU_TIMING_ROMS
+                .iter()
+                .any(|rom_path| case.rom_path == Path::new(rom_path));
             case.startup_mode
                 == if case
                     .rom_path
                     .to_string_lossy()
                     .starts_with("gbmicrotest/boot/poweron_")
+                    || reset_facing_ppu_timing_row
                 {
                     StartupMode::CustomBoot
                 } else {

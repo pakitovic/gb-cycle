@@ -109,6 +109,7 @@ rom = "ppu/hblank_int_scx0_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -119,6 +120,7 @@ rom = "ppu/hblank_int_scx0_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -129,6 +131,7 @@ rom = "ppu/hblank_int_scx0_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx0_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -159,6 +162,7 @@ rom = "ppu/hblank_int_scx1_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -169,6 +173,7 @@ rom = "ppu/hblank_int_scx1_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -179,6 +184,7 @@ rom = "ppu/hblank_int_scx1_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -209,6 +215,7 @@ rom = "ppu/hblank_int_scx1_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx1_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -229,6 +236,7 @@ rom = "ppu/hblank_int_scx2_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -239,6 +247,7 @@ rom = "ppu/hblank_int_scx2_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -249,6 +258,7 @@ rom = "ppu/hblank_int_scx2_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -279,6 +289,7 @@ rom = "ppu/hblank_int_scx2_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx2_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -299,6 +310,7 @@ rom = "ppu/hblank_int_scx3_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -309,6 +321,7 @@ rom = "ppu/hblank_int_scx3_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -319,6 +332,7 @@ rom = "ppu/hblank_int_scx3_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -349,6 +363,7 @@ rom = "ppu/hblank_int_scx3_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx3_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -369,6 +384,7 @@ rom = "ppu/hblank_int_scx4_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -379,6 +395,7 @@ rom = "ppu/hblank_int_scx4_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -389,6 +406,7 @@ rom = "ppu/hblank_int_scx4_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -419,6 +437,7 @@ rom = "ppu/hblank_int_scx4_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx4_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -439,6 +458,7 @@ rom = "ppu/hblank_int_scx5_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -449,6 +469,7 @@ rom = "ppu/hblank_int_scx5_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -459,6 +480,7 @@ rom = "ppu/hblank_int_scx5_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -489,6 +511,7 @@ rom = "ppu/hblank_int_scx5_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx5_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -509,6 +532,7 @@ rom = "ppu/hblank_int_scx6_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -519,6 +543,7 @@ rom = "ppu/hblank_int_scx6_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -529,6 +554,7 @@ rom = "ppu/hblank_int_scx6_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -559,6 +585,7 @@ rom = "ppu/hblank_int_scx6_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx6_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -579,6 +606,7 @@ rom = "ppu/hblank_int_scx7_if_a.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_a.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -589,6 +617,7 @@ rom = "ppu/hblank_int_scx7_if_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -599,6 +628,7 @@ rom = "ppu/hblank_int_scx7_if_c.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_if_c.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -629,6 +659,7 @@ rom = "ppu/hblank_int_scx7_nops_b.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/hblank_int_scx7_nops_b.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
@@ -1819,6 +1850,7 @@ rom = "ppu/line_65_ly.gb"
 source_id = "docboy"
 source_path = "tests/roms/dmg/gbmicrotest/ppu/line_65_ly.gb"
 console = "dmg"
+startup = "custom-boot"
 timeout_tcycles = 1000000
 oracle = "memory-byte-equals"
 memory = [{ address = 65410, value = 1 }]
