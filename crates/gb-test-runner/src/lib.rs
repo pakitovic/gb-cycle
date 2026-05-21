@@ -48,8 +48,8 @@ pub use boot_rom_verification::{
     expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
 };
 pub use curated_test_roms::{
-    TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
-    TEST_ROM_STORE_DIR, acid_dmg_curated_suite, blargg_dmg_curated_suite,
+    TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME,
+    TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite, blargg_dmg_curated_suite,
     blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
     cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
     cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
@@ -389,6 +389,11 @@ pub enum PassCondition {
     },
     FramebufferGrayscaleFixture(PathBuf),
     FramebufferRgb555Fixture(PathBuf),
+    FramebufferRgb555FixtureUntilMatch {
+        fixture_path: PathBuf,
+        check_interval_tcycles: u64,
+        check_at_tcycles: Option<u64>,
+    },
     FramebufferRgb555GrayscaleFixture(PathBuf),
     FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
@@ -408,6 +413,7 @@ impl PassCondition {
             | Self::FramebufferFixtureUntilMatch { .. }
             | Self::FramebufferGrayscaleFixture(_)
             | Self::FramebufferRgb555Fixture(_)
+            | Self::FramebufferRgb555FixtureUntilMatch { .. }
             | Self::FramebufferRgb555GrayscaleFixture(_)
             | Self::FramebufferFixtureSet(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
@@ -645,6 +651,11 @@ impl RomTestCase {
         }
 
         if let PassCondition::FramebufferFixtureUntilMatch {
+            check_interval_tcycles,
+            check_at_tcycles,
+            ..
+        }
+        | PassCondition::FramebufferRgb555FixtureUntilMatch {
             check_interval_tcycles,
             check_at_tcycles,
             ..
@@ -1070,8 +1081,20 @@ pub fn samesuite_dmg_extra_suite() -> RomSuite {
     curated_test_roms::samesuite_dmg_extra_suite()
 }
 
+pub fn samesuite_cgb_extra_suite() -> RomSuite {
+    curated_test_roms::samesuite_cgb_extra_suite()
+}
+
+pub fn magen_cgb_extra_suite() -> RomSuite {
+    curated_test_roms::magen_cgb_extra_suite()
+}
+
 pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
     curated_test_roms::little_things_gb_dmg_extra_suite()
+}
+
+pub fn little_things_gb_cgb_extra_suite() -> RomSuite {
+    curated_test_roms::little_things_gb_cgb_extra_suite()
 }
 
 pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
@@ -1080,6 +1103,10 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
 
 pub fn docboy_dmg_extra_suite() -> RomSuite {
     curated_test_roms::docboy_dmg_extra_suite()
+}
+
+pub fn docboy_cgb_extra_suite() -> RomSuite {
+    curated_test_roms::docboy_cgb_extra_suite()
 }
 
 pub fn docboy_cgb_dmg_extra_suite() -> RomSuite {
@@ -1103,9 +1130,13 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_6_mbc6_oracle_suite(),
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
+        samesuite_cgb_extra_suite(),
+        magen_cgb_extra_suite(),
         little_things_gb_dmg_extra_suite(),
+        little_things_gb_cgb_extra_suite(),
         gbmicrotest_dmg_extra_suite(),
         docboy_dmg_extra_suite(),
+        docboy_cgb_extra_suite(),
         docboy_cgb_dmg_extra_suite(),
         docboy_cgb_dmg_ext_extra_suite(),
         cgb_smoke_suite(),
@@ -1151,7 +1182,7 @@ const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[
     ),
     (
         "docboy-dmg-linked-extra",
-        "crates/gb-test-runner/data/docboy-linked.toml",
+        "crates/gb-test-runner/data/docboy-dmg-linked.toml",
     ),
 ];
 
@@ -1519,12 +1550,19 @@ struct DeterministicMbc3RtcClock {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FramebufferUntilMatchOracle {
+    source: FramebufferUntilMatchSource,
     expected: NormalizedFramebuffer,
     check_interval_tcycles: u64,
     check_at_tcycles: Option<u64>,
     pending_periodic_check: bool,
     matched: bool,
     check_at_reached: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FramebufferUntilMatchSource {
+    Dmg,
+    Rgb555,
 }
 
 impl DeterministicMbc3RtcClock {
@@ -2099,14 +2137,30 @@ impl RomRunner {
         &self,
         case: &RomTestCase,
     ) -> Result<Option<FramebufferUntilMatchOracle>, RomExecutionError> {
-        let PassCondition::FramebufferFixtureUntilMatch {
-            fixture_path,
-            check_interval_tcycles,
-            check_at_tcycles,
-        } = &case.pass_condition
-        else {
-            return Ok(None);
-        };
+        let (source, fixture_path, check_interval_tcycles, check_at_tcycles) =
+            match &case.pass_condition {
+                PassCondition::FramebufferFixtureUntilMatch {
+                    fixture_path,
+                    check_interval_tcycles,
+                    check_at_tcycles,
+                } => (
+                    FramebufferUntilMatchSource::Dmg,
+                    fixture_path,
+                    *check_interval_tcycles,
+                    *check_at_tcycles,
+                ),
+                PassCondition::FramebufferRgb555FixtureUntilMatch {
+                    fixture_path,
+                    check_interval_tcycles,
+                    check_at_tcycles,
+                } => (
+                    FramebufferUntilMatchSource::Rgb555,
+                    fixture_path,
+                    *check_interval_tcycles,
+                    *check_at_tcycles,
+                ),
+                _ => return Ok(None),
+            };
         let resolved_fixture = self.resolve_path(fixture_path);
         let expected = decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
             let path = error.path.clone();
@@ -2118,9 +2172,10 @@ impl RomRunner {
         })?;
 
         Ok(Some(FramebufferUntilMatchOracle {
+            source,
             expected,
-            check_interval_tcycles: *check_interval_tcycles,
-            check_at_tcycles: *check_at_tcycles,
+            check_interval_tcycles,
+            check_at_tcycles,
             pending_periodic_check: false,
             matched: false,
             check_at_reached: false,
@@ -2460,6 +2515,11 @@ impl RomRunner {
                 fixture_path,
                 check_at_tcycles,
                 ..
+            }
+            | PassCondition::FramebufferRgb555FixtureUntilMatch {
+                fixture_path,
+                check_at_tcycles,
+                ..
             } => {
                 if evaluation.framebuffer_until_match_matched {
                     RomCaseOutcome::Passed
@@ -2472,29 +2532,63 @@ impl RomRunner {
                     })
                 } else {
                     let resolved_fixture = self.resolve_path(fixture_path);
-                    let actual = decode_local_pgm_framebuffer(
-                        case.id.as_str(),
-                        evaluation
-                            .artifacts
-                            .framebuffer_pgm
-                            .as_deref()
-                            .ok_or_else(|| RomExecutionError::ReadFile {
-                                path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
-                                operation: "decode local framebuffer artifact",
-                                source: io::Error::new(
-                                    io::ErrorKind::InvalidData,
-                                    "missing local framebuffer capture",
-                                ),
-                            })?,
-                    )
-                    .map_err(|error| {
-                        let path = error.path.clone();
-                        RomExecutionError::ReadFile {
-                            path,
-                            operation: "decode local framebuffer artifact",
-                            source: error.into_invalid_data_error(),
+                    let actual = match &case.pass_condition {
+                        PassCondition::FramebufferFixtureUntilMatch { .. } => {
+                            decode_local_pgm_framebuffer(
+                                case.id.as_str(),
+                                evaluation.artifacts.framebuffer_pgm.as_deref().ok_or_else(
+                                    || RomExecutionError::ReadFile {
+                                        path: PathBuf::from(format!(
+                                            "<local framebuffer for {}>",
+                                            case.id
+                                        )),
+                                        operation: "decode local framebuffer artifact",
+                                        source: io::Error::new(
+                                            io::ErrorKind::InvalidData,
+                                            "missing local framebuffer capture",
+                                        ),
+                                    },
+                                )?,
+                            )
+                            .map_err(|error| {
+                                let path = error.path.clone();
+                                RomExecutionError::ReadFile {
+                                    path,
+                                    operation: "decode local framebuffer artifact",
+                                    source: error.into_invalid_data_error(),
+                                }
+                            })?
                         }
-                    })?;
+                        PassCondition::FramebufferRgb555FixtureUntilMatch { .. } => {
+                            decode_local_rgb555_framebuffer(
+                                case.id.as_str(),
+                                evaluation
+                                    .artifacts
+                                    .framebuffer_rgb555
+                                    .as_deref()
+                                    .ok_or_else(|| RomExecutionError::ReadFile {
+                                        path: PathBuf::from(format!(
+                                            "<local CGB RGB555 framebuffer for {}>",
+                                            case.id
+                                        )),
+                                        operation: "decode local CGB RGB555 framebuffer artifact",
+                                        source: io::Error::new(
+                                            io::ErrorKind::InvalidData,
+                                            "missing local CGB RGB555 framebuffer capture",
+                                        ),
+                                    })?,
+                            )
+                            .map_err(|error| {
+                                let path = error.path.clone();
+                                RomExecutionError::ReadFile {
+                                    path,
+                                    operation: "decode local CGB RGB555 framebuffer artifact",
+                                    source: error.into_invalid_data_error(),
+                                }
+                            })?
+                        }
+                        _ => unreachable!("matched until-match pass condition"),
+                    };
                     let expected =
                         decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
                             let path = error.path.clone();
@@ -2921,7 +3015,7 @@ fn framebuffer_until_match_poll_due(
     if let Some(check_at_tcycles) = oracle.check_at_tcycles {
         if executed_t_cycles == check_at_tcycles {
             oracle.check_at_reached = true;
-            oracle.matched = framebuffer_matches_fixture(case_id, machine, &oracle.expected)?;
+            oracle.matched = framebuffer_matches_fixture(case_id, machine, oracle)?;
             return Ok(true);
         }
         return Ok(false);
@@ -2933,7 +3027,7 @@ fn framebuffer_until_match_poll_due(
 
     if oracle.pending_periodic_check && machine.in_vblank() {
         oracle.pending_periodic_check = false;
-        if framebuffer_matches_fixture(case_id, machine, &oracle.expected)? {
+        if framebuffer_matches_fixture(case_id, machine, oracle)? {
             oracle.matched = true;
             return Ok(true);
         }
@@ -2945,17 +3039,44 @@ fn framebuffer_until_match_poll_due(
 fn framebuffer_matches_fixture(
     case_id: &str,
     machine: &RunnerMachine,
-    expected: &NormalizedFramebuffer,
+    oracle: &FramebufferUntilMatchOracle,
 ) -> Result<bool, RomExecutionError> {
-    let actual = normalize_dmg_framebuffer(case_id, machine.framebuffer()).map_err(|error| {
-        let path = error.path.clone();
-        RomExecutionError::ReadFile {
-            path,
-            operation: "normalize local framebuffer",
-            source: error.into_invalid_data_error(),
+    let actual = match oracle.source {
+        FramebufferUntilMatchSource::Dmg => {
+            normalize_dmg_framebuffer(case_id, machine.framebuffer()).map_err(|error| {
+                let path = error.path.clone();
+                RomExecutionError::ReadFile {
+                    path,
+                    operation: "normalize local framebuffer",
+                    source: error.into_invalid_data_error(),
+                }
+            })?
         }
-    })?;
-    Ok(&actual == expected)
+        FramebufferUntilMatchSource::Rgb555 => {
+            let framebuffer_rgb555 =
+                machine
+                    .cgb_framebuffer_rgb555()
+                    .ok_or_else(|| RomExecutionError::ReadFile {
+                        path: PathBuf::from(format!(
+                            "<local CGB RGB555 framebuffer for {case_id}>"
+                        )),
+                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        source: io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "missing local CGB RGB555 framebuffer capture",
+                        ),
+                    })?;
+            decode_local_rgb555_framebuffer(case_id, framebuffer_rgb555).map_err(|error| {
+                let path = error.path.clone();
+                RomExecutionError::ReadFile {
+                    path,
+                    operation: "decode local CGB RGB555 framebuffer artifact",
+                    source: error.into_invalid_data_error(),
+                }
+            })?
+        }
+    };
+    Ok(actual == oracle.expected)
 }
 
 fn memory_text_output_completion_candidate(
@@ -3235,9 +3356,10 @@ mod tests {
         cgb_dma_suite, cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite,
         cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
         external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        little_things_gb_dmg_extra_suite, memory_text_output_completion_reached,
-        mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output, samesuite_dmg_extra_suite,
+        little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
+        memory_text_output_completion_reached, mooneye_dmg_curated_split_suites,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3842,6 +3964,42 @@ mod tests {
     }
 
     #[test]
+    fn little_things_gb_cgb_extra_suite_runs_whichboot_on_cgb() {
+        let suite = little_things_gb_cgb_extra_suite();
+
+        assert_eq!(suite.name, "little-things-gb-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "little-things-gb-cgb-whichboot");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/little-things-gb-cgb/whichboot.png"
+            ))
+        );
+        assert_eq!(
+            case.rom_path,
+            PathBuf::from("little-things-gb/whichboot.gb")
+        );
+        assert_eq!(case.startup_mode, StartupMode::CustomBoot);
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        assert!(built_in_rom_suite_by_name("little-things-gb-cgb-extra").is_some());
+    }
+
+    #[test]
     fn deterministic_mbc3_rtc_clock_scales_with_cgb_speed_mode() {
         let mut clock = DeterministicMbc3RtcClock::default();
 
@@ -3953,6 +4111,80 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "cgb-audio-samesuite-channel-2-nrx2-speed-change")
+        );
+    }
+
+    #[test]
+    fn samesuite_cgb_extra_suite_tracks_docboy_sourced_cgb_variants() {
+        let suite = samesuite_cgb_extra_suite();
+
+        assert_eq!(suite.name, "samesuite-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 10);
+
+        for case in &suite.cases {
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert!(
+                case.rom_path.starts_with("samesuite/apu"),
+                "{} should point at samesuite/apu",
+                case.rom_path.display()
+            );
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert!(matches!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555Fixture(_)
+            ));
+        }
+
+        assert!(
+            built_in_rom_suite_by_name("samesuite-cgb-extra")
+                .expect("SameSuite CGB extra suite should be built in")
+                .cases
+                .iter()
+                .any(|case| {
+                    case.id == "samesuite-cgb-apu-channel-3-channel-3-wave-ram-dac-on-rw"
+                })
+        );
+    }
+
+    #[test]
+    fn magen_cgb_extra_suite_tracks_docboy_sourced_cgb_rows() {
+        let suite = magen_cgb_extra_suite();
+
+        assert_eq!(suite.name, "magen-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("magen"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 8);
+
+        for case in &suite.cases {
+            assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+            assert_eq!(case.timeout, Timeout::TCycles(5_000_000));
+            assert!(
+                case.rom_path.starts_with("magen"),
+                "{} should point at magen",
+                case.rom_path.display()
+            );
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert!(matches!(
+                case.pass_condition,
+                PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
+            ));
+        }
+
+        assert!(
+            built_in_rom_suite_by_name("magen-cgb-extra")
+                .expect("Magen CGB extra suite should be built in")
+                .cases
+                .iter()
+                .any(|case| case.id == "magen-cgb-bg-oam-priority")
         );
     }
 

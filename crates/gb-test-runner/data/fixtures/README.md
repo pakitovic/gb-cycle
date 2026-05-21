@@ -13,11 +13,13 @@ This directory documents the repo-managed contract for redistributable external 
 Most redistributable suite assets come from `GBEmulatorShootout`; source-specific exceptions such as DocBoy are also pinned in `sources.toml` and must declare their materialized family/ROM alias explicitly. The runnable store keeps only the ROMs currently listed in the family manifests under `crates/gb-test-runner/data/*.toml`.
 The repo-managed framebuffer fixtures checked into this tree are stored as human-visible `PNG` images; the runner still accepts legacy `PGM` fixtures during the transition, but `PNG` is now the default checked-in oracle format.
 
+DocBoy logical families use `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, and `docboy-cgb-dmg-ext` in reports and manifests, while their runnable ROMs live together under `/.roms/test/docboy/{dmg,cgb,cgb-dmg,cgb-dmg-ext}/` so the experimental upstream matrix stays grouped on disk.
+
 Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, `cgb-boot-hwio`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/.roms/test/test-report-extra.md`; both reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `gbmicrotest`, `docboy`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/.roms/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -43,11 +45,26 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
   fixture ownership: shares the upstream SameSuite `div_write_trigger*.png` PNG references with `cgb-audio-samesuite`; DocBoy `interrupt/ei_delay_halt.png` is committed locally
+- `samesuite-cgb-extra`
+  source family: `samesuite`
+  current status: extra/internal local-only
+  oracle mix: RGB555 framebuffer fixture
+  fixture ownership: committed DocBoy-sourced CGB SameSuite PNG fixtures under `samesuite-cgb/`
+- `magen-cgb-extra`
+  source family: `magen`
+  current status: extra/internal local-only
+  oracle mix: RGB555 framebuffer until-match fixtures
+  fixture ownership: committed DocBoy-sourced Magen CGB PNG fixtures under `magen/`
 - `little-things-gb-dmg-extra`
   source family: `little-things-gb`
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
   fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses `startup = "custom-boot"` so its boot-logo/map checks see the core DMG boot-logo VRAM seed without requiring private boot ROM assets
+- `little-things-gb-cgb-extra`
+  source family: `little-things-gb`
+  current status: extra/internal local-only
+  oracle mix: framebuffer fixture
+  fixture ownership: committed DocBoy CGB `whichboot.png` fixture under `little-things-gb-cgb/`; `whichboot.gb` uses `startup = "custom-boot"` on `console = "cgb"` and reports as `whichboot.gb (GBC)`
 - `daid-dmg-curated`
   source family: `daid`
   current status: exploratory local-only
@@ -72,11 +89,26 @@ The runner updates `/.roms/test/test-report.md` with a simple `family | rom | st
   source family: `mooneye`
   current status: exploratory local-only
   oracle: Mooneye breakpoint/register result plus retained serial output
+- `docboy-dmg-extra`
+  source family: `docboy-dmg`
+  current status: DocBoy extra/internal local-only
+  oracle mix: memory-byte and framebuffer until-match fixtures
+  fixture ownership: committed DocBoy `tests/results/dmg/docboy` PNG fixtures under `docboy-dmg/`; linked-session DocBoy rows retain participant artifacts but do not write markdown report rows
+- `docboy-cgb-extra`
+  source family: `docboy-cgb`
+  current status: DocBoy CGB extra/internal local-only
+  oracle mix: memory-byte and RGB555 framebuffer until-match fixtures
+  fixture ownership: committed DocBoy `tests/results/cgb` PNG fixtures under `docboy-cgb/`; upstream-disabled rows without runnable ROM or fixture coverage stay disabled in the manifest
 - `docboy-cgb-dmg-extra`
   source family: `docboy-cgb-dmg`
-  current status: CGB extra/internal local-only
+  current status: DocBoy CGB extra/internal local-only
   oracle mix: memory-byte and framebuffer until-match fixtures
   fixture ownership: committed DocBoy `tests/results/cgb_dmg_mode` PNG fixtures under `docboy-cgb-dmg/`; the upstream-disabled Mealybug `m3_lcdc_win_en_change_multiple_wx` row has no committed fixture and remains disabled in the manifest
+- `docboy-cgb-dmg-ext-extra`
+  source family: `docboy-cgb-dmg-ext`
+  current status: DocBoy CGB extra/internal local-only
+  oracle mix: memory-byte
+  fixture ownership: no framebuffer fixtures; the suite exercises the narrow DocBoy CGB DMG-ext memory-result rows
 
 ## Commands
 
@@ -105,9 +137,17 @@ make run-hacktix
 make run-mealybug
 make run-mooneye
 make run-little-things-gb
+make run-little-things-gb-cgb
+make run-samesuite-cgb
+make run-magen-cgb
+make run-docboy-dmg
+make run-docboy-cgb
+make run-docboy-cgb-dmg
+make run-docboy-cgb-dmg-ext
+make test-roms-docboy
 ```
 
-Each `make run-*` target materializes its own family before executing and updates either `/.roms/test/test-report.md` for promoted suites or `/.roms/test/test-report-extra.md` for extra/internal suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite`.
+Each `make run-*` target materializes its own family before executing and updates `/.roms/test/test-report.md` for promoted suites, `/.roms/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/.roms/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite` (DMG and CGB extra variants).
 
 Run one curated family directly and update the report:
 

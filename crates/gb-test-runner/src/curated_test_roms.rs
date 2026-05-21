@@ -19,6 +19,7 @@ pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
 pub const TEST_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_ROOT";
 pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
 pub const TEST_ROM_EXTRA_REPORT_FILE_NAME: &str = "test-report-extra.md";
+pub const TEST_ROM_DOCBOY_REPORT_FILE_NAME: &str = "test-report-docboy.md";
 
 const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const CURATED_TEST_ROM_MANIFEST_VERSION: u32 = 1;
@@ -31,15 +32,19 @@ const REPORT_STATUS_FAIL_EMOJI: &str = "❌";
 const REPORT_STATUS_INFO_EMOJI: &str = "ℹ️";
 static CURATED_TEST_ROM_MANIFEST_CACHE: OnceLock<Vec<CuratedTestRomManifest>> = OnceLock::new();
 static CURATED_SOURCE_ROM_PATH_CACHE: OnceLock<Vec<(String, PathBuf)>> = OnceLock::new();
-const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 14] = [
+static CURATED_SOURCE_ROM_ORDER_CACHE: OnceLock<BTreeMap<(String, PathBuf), usize>> =
+    OnceLock::new();
+const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "acid",
     "blargg",
     "daid",
     "ax6",
     "mooneye",
     "samesuite",
+    "magen",
     "gbmicrotest",
-    "docboy",
+    "docboy-dmg",
+    "docboy-cgb",
     "docboy-cgb-dmg",
     "docboy-cgb-dmg-ext",
     "hacktix",
@@ -51,11 +56,17 @@ const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 8] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "samesuite-dmg-extra",
+    "samesuite-cgb-extra",
+    "magen-cgb-extra",
     "gbmicrotest-dmg-extra",
+    "little-things-gb-dmg-extra",
+    "little-things-gb-cgb-extra",
+];
+const DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
     "docboy-dmg-extra",
+    "docboy-cgb-extra",
     "docboy-cgb-dmg-extra",
     "docboy-cgb-dmg-ext-extra",
-    "little-things-gb-dmg-extra",
 ];
 const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
     ["mooneye-acceptance-dmg-curated"];
@@ -227,6 +238,20 @@ pub fn discover_test_rom_store_root(workspace_root: &Path) -> Option<PathBuf> {
     default_root.exists().then_some(default_root)
 }
 
+pub(crate) fn curated_family_store_prefix(family: &str) -> PathBuf {
+    match family {
+        "docboy-dmg" => PathBuf::from("docboy").join("dmg"),
+        "docboy-cgb" => PathBuf::from("docboy").join("cgb"),
+        "docboy-cgb-dmg" => PathBuf::from("docboy").join("cgb-dmg"),
+        "docboy-cgb-dmg-ext" => PathBuf::from("docboy").join("cgb-dmg-ext"),
+        _ => PathBuf::from(family),
+    }
+}
+
+pub(crate) fn curated_case_store_relative_path(family: &str, rom: &Path) -> PathBuf {
+    curated_family_store_prefix(family).join(rom)
+}
+
 pub fn acid_dmg_curated_suite() -> RomSuite {
     manifest_suite("acid")
 }
@@ -239,8 +264,20 @@ pub fn samesuite_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("samesuite-dmg-extra")
 }
 
+pub fn samesuite_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("samesuite-cgb-extra")
+}
+
+pub fn magen_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("magen-cgb-extra")
+}
+
 pub fn little_things_gb_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("little-things-gb-dmg-extra")
+}
+
+pub fn little_things_gb_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("little-things-gb-cgb-extra")
 }
 
 pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
@@ -249,6 +286,10 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
 
 pub fn docboy_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("docboy-dmg-extra")
+}
+
+pub fn docboy_cgb_extra_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-cgb-extra")
 }
 
 pub fn docboy_cgb_dmg_extra_suite() -> RomSuite {
@@ -406,7 +447,7 @@ pub(crate) fn disabled_curated_rom_paths_for_family(family: &str) -> Vec<PathBuf
         .into_iter()
         .flat_map(|manifest| manifest.cases.into_iter())
         .filter(|case| case.family == family && case.disabled)
-        .map(|case| PathBuf::from(&case.family).join(&case.rom))
+        .map(|case| curated_case_store_relative_path(&case.family, &case.rom))
         .collect()
 }
 
@@ -490,7 +531,7 @@ fn replace_curated_test_rom_family_roots(
     let mut materialized_families = BTreeSet::new();
     for family in selected_cases_by_family.keys() {
         materialized_families.insert(family.clone());
-        let family_root = store_root.join(family);
+        let family_root = store_root.join(curated_family_store_prefix(family));
         if family_root.exists() {
             fs::remove_dir_all(&family_root).map_err(|error| {
                 format!(
@@ -552,8 +593,8 @@ fn materialize_curated_test_rom_source_filtered(
     let mut copied_targets = BTreeSet::new();
     for (_, cases) in curated_test_rom_cases_by_family_from_source(selected_families, source_id) {
         for case in cases.into_values() {
-            let family_root = store_root.join(&case.family);
-            let target_path = family_root.join(&case.rom);
+            let target_path =
+                store_root.join(curated_case_store_relative_path(&case.family, &case.rom));
             copy_curated_source_rom(source_root, &case.source_path, &target_path)?;
             copied_targets.insert(target_path);
         }
@@ -562,7 +603,7 @@ fn materialize_curated_test_rom_source_filtered(
         for (family, source_path, rom) in
             curated_explicit_required_roms_for_source(source_id, selected_families)
         {
-            let target_path = store_root.join(family).join(rom);
+            let target_path = store_root.join(curated_case_store_relative_path(&family, &rom));
             if copied_targets.insert(target_path.clone()) {
                 copy_curated_source_rom(source_root, &source_path, &target_path)?;
             }
@@ -691,30 +732,29 @@ pub fn update_curated_test_report(
         )
     })?;
 
-    let suite_status_path = status_root.join(format!("{}.toml", report.suite_name));
-    let mut merged_case_statuses = load_persisted_suite_status(&suite_status_path)?
-        .filter(|persisted| {
-            persisted.suite_name == report.suite_name && persisted.family == *family
-        })
-        .map_or_else(Vec::new, |persisted| persisted.cases);
+    let suite_status_path = status_root.join(format!(
+        "{}.toml",
+        suite_status_file_stem(&report.suite_name)
+    ));
+    let mut merged_case_statuses = Vec::new();
+    if let Some(persisted) = load_persisted_suite_status(&suite_status_path)?.filter(|persisted| {
+        persisted.suite_name == report.suite_name && persisted.family == *family
+    }) {
+        merge_persisted_case_statuses(&mut merged_case_statuses, family, persisted.cases);
+    }
 
     for case in &report.cases {
         let metadata = report_case_metadata(&report.suite_name, family, case);
-        let legacy_rom = report_rom_display(family, &case.rom_path);
-        let legacy_full_rom = case.rom_path.to_string_lossy();
         let status = case.outcome.report_status().to_string();
 
-        merged_case_statuses.retain(|entry| {
-            let entry_family = entry.family.as_deref().unwrap_or(family);
-            !(entry_family == metadata.family && entry.rom == metadata.rom
-                || entry.family.is_none() && entry.rom == legacy_rom
-                || entry.family.is_none() && entry.rom == legacy_full_rom.as_ref())
-        });
-        merged_case_statuses.push(PersistedCaseStatus {
+        let persisted_status = PersistedCaseStatus {
             family: (metadata.family != *family).then_some(metadata.family),
             rom: metadata.rom,
             status,
-        });
+        };
+        merged_case_statuses
+            .retain(|entry| !persisted_case_statuses_match(family, entry, &persisted_status));
+        merged_case_statuses.push(persisted_status);
     }
     sort_persisted_case_statuses(&report.suite_name, family, &mut merged_case_statuses);
 
@@ -750,60 +790,81 @@ pub fn update_curated_test_report(
                 status_root.display()
             )
         })?;
-        if entry.path().extension().and_then(|ext| ext.to_str()) != Some("toml") {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("toml") {
             continue;
         }
-        let text = fs::read_to_string(entry.path()).map_err(|error| {
+        let text = fs::read_to_string(&path).map_err(|error| {
             format!(
                 "failed to read curated test ROM status {}: {error}",
-                entry.path().display()
+                path.display()
             )
         })?;
         let persisted: PersistedSuiteStatus = toml::from_str(&text).map_err(|error| {
             format!(
                 "failed to parse curated test ROM status {}: {error}",
-                entry.path().display()
+                path.display()
             )
         })?;
-        suites.push(normalize_persisted_suite_status(persisted));
+        if !suite_status_path_matches_suite(&path, &persisted.suite_name) {
+            continue;
+        }
+        push_or_merge_persisted_suite_status(
+            &mut suites,
+            normalize_persisted_suite_status(persisted),
+        );
     }
 
     suites.sort_by(compare_report_suites);
 
-    let standard_suites = report_suites_for_extra_flag(&suites, false);
-    let extra_suites = report_suites_for_extra_flag(&suites, true);
-    let standard_report_path =
-        write_markdown_report_file(&store_root, TEST_ROM_REPORT_FILE_NAME, &standard_suites)?;
-    let extra_report_path = if extra_suites.is_empty() {
-        None
-    } else {
-        Some(write_markdown_report_file(
-            &store_root,
-            TEST_ROM_EXTRA_REPORT_FILE_NAME,
-            &extra_suites,
-        )?)
-    };
+    let standard_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Standard);
+    let extra_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Extra);
+    let docboy_suites = report_suites_for_kind(&suites, CuratedTestReportKind::DocBoy);
+    let standard_report_path = write_markdown_report_file_if_needed(
+        &store_root,
+        TEST_ROM_REPORT_FILE_NAME,
+        &standard_suites,
+    )?;
+    let extra_report_path = write_markdown_report_file_if_needed(
+        &store_root,
+        TEST_ROM_EXTRA_REPORT_FILE_NAME,
+        &extra_suites,
+    )?;
+    let docboy_report_path = write_markdown_report_file_if_needed(
+        &store_root,
+        TEST_ROM_DOCBOY_REPORT_FILE_NAME,
+        &docboy_suites,
+    )?;
 
     let report_path = if suite_uses_status_only_test_report(&report.suite_name) {
         None
+    } else if suite_uses_docboy_test_report(&report.suite_name) {
+        docboy_report_path
     } else if suite_uses_extra_test_report(&report.suite_name) {
-        Some(extra_report_path.unwrap_or_else(|| store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME)))
+        extra_report_path
     } else {
-        Some(standard_report_path)
+        standard_report_path
     };
 
     Ok(report_path)
 }
 
-fn report_suites_for_extra_flag(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CuratedTestReportKind {
+    Standard,
+    Extra,
+    DocBoy,
+}
+
+fn report_suites_for_kind(
     suites: &[PersistedSuiteStatus],
-    extra_report: bool,
+    report_kind: CuratedTestReportKind,
 ) -> Vec<PersistedSuiteStatus> {
     suites
         .iter()
         .filter(|suite| {
             !suite_uses_status_only_test_report(&suite.suite_name)
-                && suite_uses_extra_test_report(&suite.suite_name) == extra_report
+                && suite_test_report_kind(&suite.suite_name) == report_kind
         })
         .cloned()
         .collect()
@@ -811,6 +872,20 @@ fn report_suites_for_extra_flag(
 
 fn suite_uses_extra_test_report(suite_name: &str) -> bool {
     EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
+fn suite_uses_docboy_test_report(suite_name: &str) -> bool {
+    DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
+fn suite_test_report_kind(suite_name: &str) -> CuratedTestReportKind {
+    if suite_uses_docboy_test_report(suite_name) {
+        CuratedTestReportKind::DocBoy
+    } else if suite_uses_extra_test_report(suite_name) {
+        CuratedTestReportKind::Extra
+    } else {
+        CuratedTestReportKind::Standard
+    }
 }
 
 fn suite_uses_status_only_test_report(suite_name: &str) -> bool {
@@ -831,6 +906,81 @@ fn write_markdown_report_file(
     })?;
 
     Ok(report_path)
+}
+
+fn write_markdown_report_file_if_needed(
+    store_root: &Path,
+    file_name: &str,
+    suites: &[PersistedSuiteStatus],
+) -> Result<Option<PathBuf>, String> {
+    if suites.is_empty() {
+        let report_path = store_root.join(file_name);
+        remove_markdown_report_file_if_present(&report_path)?;
+        return Ok(None);
+    }
+
+    write_markdown_report_file(store_root, file_name, suites).map(Some)
+}
+
+fn remove_markdown_report_file_if_present(report_path: &Path) -> Result<(), String> {
+    match fs::remove_file(report_path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "failed to remove empty curated test ROM report {}: {error}",
+            report_path.display()
+        )),
+    }
+}
+
+fn suite_status_file_stem(suite_name: &str) -> &str {
+    match suite_name {
+        "docboy-dmg-extra" => "docboy-dmg",
+        "docboy-cgb-extra" => "docboy-cgb",
+        "docboy-cgb-dmg-extra" => "docboy-cgb-dmg",
+        "docboy-cgb-dmg-ext-extra" => "docboy-cgb-dmg-ext",
+        _ => suite_name,
+    }
+}
+
+fn suite_status_path_matches_suite(path: &Path, suite_name: &str) -> bool {
+    path.file_stem().and_then(|stem| stem.to_str()) == Some(suite_status_file_stem(suite_name))
+}
+
+fn merge_persisted_case_statuses(
+    target: &mut Vec<PersistedCaseStatus>,
+    default_family: &str,
+    cases: Vec<PersistedCaseStatus>,
+) {
+    for case in cases {
+        target.retain(|existing| !persisted_case_statuses_match(default_family, existing, &case));
+        target.push(case);
+    }
+}
+
+fn persisted_case_statuses_match(
+    default_family: &str,
+    left: &PersistedCaseStatus,
+    right: &PersistedCaseStatus,
+) -> bool {
+    left.family.as_deref().unwrap_or(default_family)
+        == right.family.as_deref().unwrap_or(default_family)
+        && left.rom == right.rom
+}
+
+fn push_or_merge_persisted_suite_status(
+    suites: &mut Vec<PersistedSuiteStatus>,
+    suite: PersistedSuiteStatus,
+) {
+    if let Some(existing) = suites
+        .iter_mut()
+        .find(|existing| existing.suite_name == suite.suite_name && existing.family == suite.family)
+    {
+        merge_persisted_case_statuses(&mut existing.cases, &suite.family, suite.cases);
+        sort_persisted_case_statuses(&suite.suite_name, &suite.family, &mut existing.cases);
+    } else {
+        suites.push(suite);
+    }
 }
 
 fn load_persisted_suite_status(path: &Path) -> Result<Option<PersistedSuiteStatus>, String> {
@@ -886,9 +1036,9 @@ fn normalize_persisted_suite_status(mut persisted: PersistedSuiteStatus) -> Pers
     persisted
 }
 
-fn curated_manifest_for_suite(suite_name: &str) -> Option<CuratedTestRomManifest> {
-    curated_test_rom_manifests()
-        .into_iter()
+fn curated_manifest_for_suite(suite_name: &str) -> Option<&'static CuratedTestRomManifest> {
+    curated_test_rom_manifest_catalog()
+        .iter()
         .find(|manifest| manifest.suite_name == suite_name)
 }
 
@@ -897,10 +1047,10 @@ fn manifest_report_metadata_for_persisted_suite_case(
     family: &str,
     rom: &str,
 ) -> Option<ReportCaseMetadata> {
-    curated_test_rom_manifests()
-        .into_iter()
+    curated_test_rom_manifest_catalog()
+        .iter()
         .filter(|manifest| manifest.suite_name == suite_name)
-        .flat_map(|manifest| manifest.cases)
+        .flat_map(|manifest| manifest.cases.iter())
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
         .map(manifest_case_report_metadata)
 }
@@ -909,17 +1059,17 @@ fn manifest_report_metadata_for_any_persisted_case(
     family: &str,
     rom: &str,
 ) -> Option<ReportCaseMetadata> {
-    curated_test_rom_manifests()
-        .into_iter()
-        .flat_map(|manifest| manifest.cases)
+    curated_test_rom_manifest_catalog()
+        .iter()
+        .flat_map(|manifest| manifest.cases.iter())
         .find(|case| persisted_case_matches_manifest_case(family, rom, case))
         .map(manifest_case_report_metadata)
 }
 
-fn manifest_case_report_metadata(case: CuratedTestRomCase) -> ReportCaseMetadata {
+fn manifest_case_report_metadata(case: &CuratedTestRomCase) -> ReportCaseMetadata {
     ReportCaseMetadata {
         family: case.family.clone(),
-        rom: manifest_case_report_rom_display(&case),
+        rom: manifest_case_report_rom_display(case),
     }
 }
 
@@ -928,13 +1078,13 @@ fn persisted_case_matches_manifest_case(
     rom: &str,
     case: &CuratedTestRomCase,
 ) -> bool {
-    let rom_path = PathBuf::from(&case.family).join(&case.rom);
-    let family_matches = case.family == family;
+    let rom_path = curated_case_store_relative_path(&case.family, &case.rom);
+    let family_matches = family == case.family;
     let display_matches = report_rom_display(&case.family, &rom_path) == rom
         || manifest_case_report_rom_display(case) == rom;
     let full_path_matches = rom_path.to_string_lossy() == rom;
 
-    family_matches && display_matches || full_path_matches
+    family_matches && (display_matches || full_path_matches)
 }
 
 fn manifest_case_order(suite_name: &str, family: &str, rom: &str) -> Option<ReportCaseOrder> {
@@ -947,8 +1097,7 @@ fn manifest_case_order_for_suite(
     family: &str,
     rom: &str,
 ) -> Option<ReportCaseOrder> {
-    let manifests = curated_test_rom_manifests();
-    let suite_manifest = manifests
+    let suite_manifest = curated_test_rom_manifest_catalog()
         .iter()
         .find(|manifest| manifest.suite_name == suite_name)?;
     for (case_manifest_order, case) in suite_manifest
@@ -972,13 +1121,13 @@ fn manifest_case_order_for_suite(
 }
 
 fn manifest_case_order_for_any_suite(family: &str, rom: &str) -> Option<ReportCaseOrder> {
-    for (case_manifest_order, case) in curated_test_rom_manifests()
-        .into_iter()
-        .flat_map(|manifest| manifest.cases)
+    for (case_manifest_order, case) in curated_test_rom_manifest_catalog()
+        .iter()
+        .flat_map(|manifest| manifest.cases.iter())
         .filter(|case| case.family == family)
         .enumerate()
     {
-        if persisted_case_matches_manifest_case(family, rom, &case) {
+        if persisted_case_matches_manifest_case(family, rom, case) {
             let source_order = curated_source_rom_order(&case.family, &case.rom);
             return Some(ReportCaseOrder {
                 source_order_missing: source_order.is_none(),
@@ -997,27 +1146,18 @@ fn sort_persisted_case_statuses(
     family: &str,
     case_statuses: &mut [PersistedCaseStatus],
 ) {
-    case_statuses.sort_by(|left, right| {
-        let left_family = left.family.as_deref().unwrap_or(family);
-        let right_family = right.family.as_deref().unwrap_or(family);
-        let left_rank = report_family_rank(left_family);
-        let right_rank = report_family_rank(right_family);
-        let left_order = manifest_case_order(suite_name, left_family, &left.rom);
-        let right_order = manifest_case_order(suite_name, right_family, &right.rom);
-        (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
-            .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
-            .then_with(|| left_family.cmp(right_family))
-            .then_with(|| {
-                (
-                    left_order.is_none(),
-                    left_order.unwrap_or(ReportCaseOrder::fallback()),
-                )
-                    .cmp(&(
-                        right_order.is_none(),
-                        right_order.unwrap_or(ReportCaseOrder::fallback()),
-                    ))
-            })
-            .then_with(|| left.rom.cmp(&right.rom))
+    case_statuses.sort_by_cached_key(|entry| {
+        let entry_family = entry.family.as_deref().unwrap_or(family);
+        let rank = report_family_rank(entry_family);
+        let order = manifest_case_order(suite_name, entry_family, &entry.rom);
+        (
+            rank.is_none(),
+            rank.unwrap_or(usize::MAX),
+            entry_family.to_string(),
+            order.is_none(),
+            order.unwrap_or(ReportCaseOrder::fallback()),
+            entry.rom.clone(),
+        )
     });
 }
 
@@ -1116,7 +1256,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 24] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 28] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1131,16 +1271,32 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 24] {
             include_str!("../data/samesuite.toml"),
         ),
         (
+            "crates/gb-test-runner/data/samesuite-cgb.toml",
+            include_str!("../data/samesuite-cgb.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/magen.toml",
+            include_str!("../data/magen.toml"),
+        ),
+        (
             "crates/gb-test-runner/data/little-things-gb.toml",
             include_str!("../data/little-things-gb.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/little-things-gb-cgb.toml",
+            include_str!("../data/little-things-gb-cgb.toml"),
         ),
         (
             "crates/gb-test-runner/data/gbmicrotest.toml",
             include_str!("../data/gbmicrotest.toml"),
         ),
         (
-            "crates/gb-test-runner/data/docboy.toml",
-            include_str!("../data/docboy.toml"),
+            "crates/gb-test-runner/data/docboy-dmg.toml",
+            include_str!("../data/docboy-dmg.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/docboy-cgb.toml",
+            include_str!("../data/docboy-cgb.toml"),
         ),
         (
             "crates/gb-test-runner/data/docboy-cgb-dmg.toml",
@@ -1508,6 +1664,14 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         "framebuffer-rgb555-fixture" => PassCondition::FramebufferRgb555Fixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-rgb555-fixture-until-match" => {
+            PassCondition::FramebufferRgb555FixtureUntilMatch {
+                fixture_path: fixture
+                    .unwrap_or_else(|| panic!("missing fixture path for case {id}")),
+                check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
+                check_at_tcycles,
+            }
+        }
         "framebuffer-rgb555-grayscale-fixture" => PassCondition::FramebufferRgb555GrayscaleFixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
@@ -1521,7 +1685,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     let failure_artifacts = failure_artifacts_for_pass_condition(&pass_condition);
     let mut rom_case = RomTestCase::new(
         id,
-        PathBuf::from(&family).join(rom),
+        curated_case_store_relative_path(&family, &rom),
         timeout,
         pass_condition,
     )
@@ -1621,6 +1785,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
@@ -1658,6 +1823,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
@@ -1834,6 +2000,13 @@ fn report_case_metadata(
 }
 
 fn split_curated_rom_path(default_family: &str, rom_path: &Path) -> (String, PathBuf) {
+    for family in curated_test_rom_families() {
+        let store_prefix = curated_family_store_prefix(&family);
+        if let Ok(rom_without_family) = rom_path.strip_prefix(&store_prefix) {
+            return (family, rom_without_family.to_path_buf());
+        }
+    }
+
     let mut components = rom_path.components();
     let Some(first) = components.next() else {
         return (default_family.to_string(), PathBuf::new());
@@ -1872,7 +2045,10 @@ fn manifest_case_report_rom_display(case: &CuratedTestRomCase) -> String {
         return report_label.clone();
     }
 
-    let rom = report_rom_display(&case.family, &PathBuf::from(&case.family).join(&case.rom));
+    let rom = report_rom_display(
+        &case.family,
+        &curated_case_store_relative_path(&case.family, &case.rom),
+    );
     if case.report_model_suffix {
         format!("{rom} ({})", console_report_suffix(case.console_model))
     } else {
@@ -1892,9 +2068,19 @@ impl ReportCaseOrder {
 }
 
 fn curated_source_rom_order(family: &str, rom: &Path) -> Option<usize> {
-    curated_source_rom_path_catalog()
-        .iter()
-        .position(|(source_family, source_rom)| source_family == family && source_rom == rom)
+    curated_source_rom_order_catalog()
+        .get(&(family.to_string(), rom.to_path_buf()))
+        .copied()
+}
+
+fn curated_source_rom_order_catalog() -> &'static BTreeMap<(String, PathBuf), usize> {
+    CURATED_SOURCE_ROM_ORDER_CACHE.get_or_init(|| {
+        curated_source_rom_path_catalog()
+            .iter()
+            .enumerate()
+            .map(|(order, (family, rom))| ((family.clone(), rom.clone()), order))
+            .collect()
+    })
 }
 
 fn curated_source_rom_path_catalog() -> &'static [(String, PathBuf)] {
@@ -1954,6 +2140,14 @@ fn console_report_order(console_model: ConsoleModel) -> usize {
 }
 
 fn report_rom_display(family: &str, rom_path: &Path) -> String {
+    let store_prefix = curated_family_store_prefix(family);
+    if let Ok(stripped) = rom_path.strip_prefix(&store_prefix) {
+        return stripped
+            .to_string_lossy()
+            .trim_start_matches('/')
+            .to_string();
+    }
+
     rom_path
         .strip_prefix(family)
         .unwrap_or(rom_path)
@@ -1969,23 +2163,25 @@ mod tests {
         ExecutionStopCondition, GBEMU_SHOOTOUT_SOURCE_ID,
         MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
-        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
-        TEST_ROM_STATUS_DIR_NAME, ax6_dmg_extra_suite, blargg_dmg_curated_suite,
-        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
-        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
+        TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
+        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
+        ax6_dmg_extra_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
+        blargg_memory_text_output_spec, capture_plan_for_pass_condition, cgb_audio_blargg_suite,
+        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
+        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
-        docboy_cgb_dmg_extra_suite, docboy_dmg_extra_suite, failure_artifacts_for_pass_condition,
-        gbmicrotest_dmg_extra_suite, little_things_gb_dmg_extra_suite, load_persisted_suite_status,
-        manifest_case_report_rom_display, manifest_case_to_rom_test_case,
-        materialize_curated_test_rom_families, materialize_curated_test_rom_store,
-        mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
-        parse_manifest_case, parse_manifest_console_model, parse_manifest_subsystem,
-        render_markdown_report, report_rom_display, report_status_display,
-        samesuite_dmg_extra_suite, sort_persisted_case_statuses, suite_uses_extra_test_report,
-        test_rom_store_root, update_curated_test_report,
+        docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
+        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
+        little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
+        load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
+        manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
+        materialize_curated_test_rom_store, mealybug_tearoom_dmg_curated_suite,
+        mealybug_tearoom_dmg_sameboy_differential_suite, parse_manifest_case,
+        parse_manifest_console_model, parse_manifest_subsystem, render_markdown_report,
+        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite, sort_persisted_case_statuses, suite_uses_docboy_test_report,
+        suite_uses_extra_test_report, test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -2651,6 +2847,59 @@ mod tests {
     }
 
     #[test]
+    fn little_things_gb_cgb_extra_suite_runs_whichboot_on_cgb() {
+        let suite = little_things_gb_cgb_extra_suite();
+
+        assert_eq!(suite.name, "little-things-gb-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "little-things-gb-cgb-whichboot");
+        assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(
+            case.rom_path,
+            PathBuf::from("little-things-gb/whichboot.gb")
+        );
+        assert_eq!(case.timeout, Timeout::Frames(180));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/little-things-gb-cgb/whichboot.png"
+            ))
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        assert_eq!(case.startup_mode, StartupMode::CustomBoot);
+        assert!(case.startup_memory_writes.is_empty());
+
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "little-things-gb-cgb-extra")
+            .expect("little-things-gb CGB extra manifest should exist");
+        assert_eq!(manifest.cases.len(), 1);
+        assert_eq!(manifest.cases[0].source_id, "docboy");
+        assert_eq!(
+            manifest.cases[0].source_path,
+            Path::new("tests/roms/dmg/little-things-gb/whichboot.gb")
+        );
+        assert!(manifest.cases[0].report_model_suffix);
+        assert_eq!(
+            manifest_case_report_rom_display(&manifest.cases[0]),
+            "whichboot.gb (GBC)"
+        );
+        assert!(suite_uses_extra_test_report("little-things-gb-cgb-extra"));
+        assert!(!suite_uses_docboy_test_report("little-things-gb-cgb-extra"));
+    }
+
+    #[test]
     fn gbmicrotest_dmg_extra_suite_tracks_docboy_memory_oracles_without_startup_override() {
         let manifest_text = include_str!("../data/gbmicrotest.toml");
         assert!(
@@ -2711,7 +2960,7 @@ mod tests {
 
     #[test]
     fn docboy_dmg_extra_suite_tracks_single_machine_docboy_rows() {
-        let manifest_text = include_str!("../data/docboy.toml");
+        let manifest_text = include_str!("../data/docboy-dmg.toml");
         assert!(
             !manifest_text.contains("startup ="),
             "docboy manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
@@ -2720,7 +2969,7 @@ mod tests {
         let suite = docboy_dmg_extra_suite();
 
         assert_eq!(suite.name, "docboy-dmg-extra");
-        assert_eq!(suite.family.as_deref(), Some("docboy"));
+        assert_eq!(suite.family.as_deref(), Some("docboy-dmg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2326);
         assert!(suite.cases.iter().all(|case| {
@@ -2729,7 +2978,7 @@ mod tests {
                 && case.startup_ppu_profile == Some(StartupPpuProfile::DmgPowerOn)
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.rom_path.starts_with("docboy")
+                && case.rom_path.starts_with("docboy/dmg")
         }));
         assert_eq!(
             suite
@@ -2798,7 +3047,114 @@ mod tests {
                 "{case_id} timeout {timeout_tcycles} must reach check_at_tcycles {check_at_tcycles}"
             );
         }
-        assert!(suite_uses_extra_test_report("docboy-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-dmg-extra"));
+    }
+
+    #[test]
+    fn docboy_cgb_extra_suite_tracks_native_cgb_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy-cgb.toml");
+        assert!(
+            !manifest_text.contains("startup ="),
+            "DocBoy CGB manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
+        );
+
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "docboy-cgb-extra")
+            .expect("DocBoy CGB manifest should exist");
+        assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb"));
+        assert_eq!(manifest.cases.len(), 6815);
+        assert_eq!(
+            manifest.cases.iter().filter(|case| case.disabled).count(),
+            643
+        );
+
+        let suite = docboy_cgb_extra_suite();
+
+        assert_eq!(suite.name, "docboy-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("docboy-cgb"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 6172);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.startup_ppu_profile.is_none()
+                && case.execution_mode == crate::ExecutionMode::Strict
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("docboy/cgb")
+        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| !case.rom_path.starts_with("docboy/cgb/blargg/cgb_sound"))
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| !case.rom_path.starts_with("docboy/cgb/samesuite"))
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| !case.rom_path.starts_with("docboy/cgb/magen"))
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| !case.rom_path.starts_with("docboy/cgb/daid"))
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.rom_path != Path::new("docboy/cgb/mattcurrie/cgb-acid2.gbc"))
+        );
+        assert!(suite.cases.iter().all(|case| {
+            case.rom_path != Path::new("docboy/cgb/little-things-gb/whichboot.gb")
+        }));
+        assert_eq!(
+            suite
+                .cases
+                .iter()
+                .filter(|case| matches!(case.pass_condition, PassCondition::MemoryBytesEqual(_)))
+                .count(),
+            6099
+        );
+        assert_eq!(
+            suite
+                .cases
+                .iter()
+                .filter(|case| matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
+                ))
+                .count(),
+            73
+        );
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "docboy-cgb-docboy-ppu-visual-stop-ly42-during-hblank-01-stop-ly42-during-hblank-a"
+                && case.rom_path.as_path()
+                    == Path::new("docboy/cgb/ppu/visual/stop_ly42_during_hblank.gbc")
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555FixtureUntilMatch {
+                        check_at_tcycles: Some(4_739_304),
+                        ..
+                    }
+                )
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id
+                == "docboy-cgb-docboy-double-speed-interactive-stop-key1-joypad0-interrupt1-ime0"
+                && !case.external_stimuli.stimuli().is_empty()
+        }));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-extra"));
     }
 
     #[test]
@@ -2835,9 +3191,23 @@ mod tests {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.startup_ppu_profile.is_none()
-                && case.execution_mode == crate::ExecutionMode::Experimental
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.rom_path.starts_with("docboy-cgb-dmg")
+                && case.rom_path.starts_with("docboy/cgb-dmg")
+        }));
+        let experimental_case_ids = [
+            "docboy-cgb-dmg-mode-mode-cgb-flag-84",
+            "docboy-cgb-dmg-mode-mode-cgb-flag-85",
+            "docboy-cgb-dmg-mode-mode-cgb-flag-86",
+            "docboy-cgb-dmg-mode-mode-cgb-flag-87",
+        ];
+        assert!(suite.cases.iter().all(|case| {
+            let needs_experimental = experimental_case_ids.contains(&case.id.as_str());
+            case.execution_mode
+                == if needs_experimental {
+                    crate::ExecutionMode::Experimental
+                } else {
+                    crate::ExecutionMode::Strict
+                }
         }));
         assert_eq!(
             suite
@@ -2865,7 +3235,7 @@ mod tests {
             suite
                 .cases
                 .iter()
-                .filter(|case| case.rom_path == Path::new("docboy-cgb-dmg/docboy/boot/boot_vram.gb"))
+                .filter(|case| case.rom_path == Path::new("docboy/cgb-dmg/docboy/boot/boot_vram.gb"))
                 .count(),
             1,
             "DocBoy cgb_dmg_mode.json carries one exact boot_vram duplicate that should not create duplicate runnable rows"
@@ -2873,17 +3243,18 @@ mod tests {
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-mode-mode-cgb-flag-84"
                 && case.rom_path.as_path()
-                    == Path::new("docboy-cgb-dmg/docboy/mode/mode_cgb_flag_84.gb")
+                    == Path::new("docboy/cgb-dmg/docboy/mode/mode_cgb_flag_84.gb")
                 && case.pass_condition
                     == PassCondition::MemoryBytesEqual(vec![
                         MemoryByteExpectation::with_fail_value(0xFFF0, 0x01, 0x02),
                     ])
         }));
-        assert!(suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
     }
 
     #[test]
-    fn docboy_cgb_dmg_ext_extra_suite_tracks_experimental_cgb_docboy_rows() {
+    fn docboy_cgb_dmg_ext_extra_suite_tracks_mixed_strict_and_experimental_docboy_rows() {
         let manifest_text = include_str!("../data/docboy-cgb-dmg-ext.toml");
         assert!(
             !manifest_text.contains("startup ="),
@@ -2900,9 +3271,23 @@ mod tests {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.startup_ppu_profile.is_none()
-                && case.execution_mode == crate::ExecutionMode::Experimental
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.rom_path.starts_with("docboy-cgb-dmg-ext/docboy")
+                && case.rom_path.starts_with("docboy/cgb-dmg-ext")
+        }));
+        let experimental_case_ids = [
+            "docboy-cgb-dmg-ext-apu-pcm12-ch2-read",
+            "docboy-cgb-dmg-ext-hdma-gdma-basic-transfer",
+            "docboy-cgb-dmg-ext-hdma-hdma-basic-transfer",
+            "docboy-cgb-dmg-ext-ppu-ocpd-write-read",
+        ];
+        assert!(suite.cases.iter().all(|case| {
+            let needs_experimental = experimental_case_ids.contains(&case.id.as_str());
+            case.execution_mode
+                == if needs_experimental {
+                    crate::ExecutionMode::Experimental
+                } else {
+                    crate::ExecutionMode::Strict
+                }
         }));
         assert!(suite.cases.iter().all(|case| {
             case.pass_condition
@@ -2913,9 +3298,10 @@ mod tests {
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-ext-mode-mode-cgb-flag-8c"
                 && case.rom_path.as_path()
-                    == Path::new("docboy-cgb-dmg-ext/docboy/mode/mode_cgb_flag_8c.gb")
+                    == Path::new("docboy/cgb-dmg-ext/mode/mode_cgb_flag_8c.gb")
         }));
-        assert!(suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
     }
 
     #[test]
@@ -3042,6 +3428,87 @@ mod tests {
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
+    }
+
+    #[test]
+    fn samesuite_cgb_extra_suite_tracks_docboy_sourced_cgb_variants() {
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "samesuite-cgb-extra")
+            .expect("SameSuite CGB manifest should exist");
+        assert_eq!(manifest.suite_family.as_deref(), Some("samesuite"));
+        assert_eq!(manifest.cases.len(), 10);
+        assert!(manifest.cases.iter().all(|case| {
+            case.source_id == "docboy"
+                && case.source_path.starts_with("tests/roms/cgb/samesuite")
+                && case.report_model_suffix
+        }));
+
+        let suite = samesuite_cgb_extra_suite();
+
+        assert_eq!(suite.name, "samesuite-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::Apu);
+        assert_eq!(suite.cases.len(), 10);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.execution_mode == crate::ExecutionMode::Strict
+                && case.timeout == Timeout::Frames(180)
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("samesuite/apu")
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555Fixture(_)
+                )
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "samesuite-cgb-apu-channel-3-channel-3-wave-ram-dac-on-rw"
+                && case.rom_path
+                    == Path::new("samesuite/apu/channel_3/channel_3_wave_ram_dac_on_rw.gb")
+        }));
+        assert!(suite_uses_extra_test_report("samesuite-cgb-extra"));
+        assert!(!suite_uses_docboy_test_report("samesuite-cgb-extra"));
+    }
+
+    #[test]
+    fn magen_cgb_extra_suite_tracks_docboy_sourced_cgb_rows() {
+        let manifest = curated_test_rom_manifests()
+            .into_iter()
+            .find(|manifest| manifest.suite_name == "magen-cgb-extra")
+            .expect("Magen CGB manifest should exist");
+        assert_eq!(manifest.suite_family.as_deref(), Some("magen"));
+        assert_eq!(manifest.cases.len(), 8);
+        assert!(manifest.cases.iter().all(|case| {
+            case.source_id == "docboy"
+                && case.source_path.starts_with("tests/roms/cgb/magen")
+                && !case.report_model_suffix
+        }));
+
+        let suite = magen_cgb_extra_suite();
+
+        assert_eq!(suite.name, "magen-cgb-extra");
+        assert_eq!(suite.family.as_deref(), Some("magen"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 8);
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoyColor
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.execution_mode == crate::ExecutionMode::Strict
+                && case.timeout == Timeout::TCycles(5_000_000)
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.rom_path.starts_with("magen")
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
+                )
+        }));
+        assert!(suite.cases.iter().any(|case| {
+            case.id == "magen-cgb-bg-oam-priority"
+                && case.rom_path == Path::new("magen/bg_oam_priority.gbc")
+        }));
+        assert!(suite_uses_extra_test_report("magen-cgb-extra"));
+        assert!(!suite_uses_docboy_test_report("magen-cgb-extra"));
     }
 
     #[test]
@@ -3325,12 +3792,14 @@ mod tests {
                 "blargg".to_string(),
                 "cpp".to_string(),
                 "daid".to_string(),
-                "docboy".to_string(),
+                "docboy-cgb".to_string(),
                 "docboy-cgb-dmg".to_string(),
                 "docboy-cgb-dmg-ext".to_string(),
+                "docboy-dmg".to_string(),
                 "gbmicrotest".to_string(),
                 "hacktix".to_string(),
                 "little-things-gb".to_string(),
+                "magen".to_string(),
                 "mealybug-tearoom-tests".to_string(),
                 "mooneye".to_string(),
                 "samesuite".to_string(),
@@ -3917,6 +4386,34 @@ mod tests {
             .expect("SameSuite DMG extra report should write")
             .expect("extra curated suite should emit a report path");
 
+        let samesuite_cgb_report = RomSuiteReport {
+            suite_name: "samesuite-cgb-extra".to_string(),
+            family: Some("samesuite".to_string()),
+            subsystem: TestSubsystem::Apu,
+            cases: vec![report_case(
+                "samesuite-cgb-apu-channel-1-channel-1-align-12-cgbe",
+                "samesuite/apu/channel_1/channel_1_align_12-cgbE.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let _report_path = update_curated_test_report(&workspace_root, &samesuite_cgb_report)
+            .expect("SameSuite CGB extra report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let magen_report = RomSuiteReport {
+            suite_name: "magen-cgb-extra".to_string(),
+            family: Some("magen".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "magen-cgb-bg-oam-priority",
+                "magen/bg_oam_priority.gbc",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let _report_path = update_curated_test_report(&workspace_root, &magen_report)
+            .expect("Magen CGB extra report should write")
+            .expect("extra curated suite should emit a report path");
+
         let little_things_report = RomSuiteReport {
             suite_name: "little-things-gb-dmg-extra".to_string(),
             family: Some("little-things-gb".to_string()),
@@ -3934,8 +4431,22 @@ mod tests {
                 ),
             ],
         };
-        let report_path = update_curated_test_report(&workspace_root, &little_things_report)
+        let _report_path = update_curated_test_report(&workspace_root, &little_things_report)
             .expect("little-things-gb DMG extra report should write")
+            .expect("extra curated suite should emit a report path");
+
+        let little_things_cgb_report = RomSuiteReport {
+            suite_name: "little-things-gb-cgb-extra".to_string(),
+            family: Some("little-things-gb".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "little-things-gb-cgb-whichboot",
+                "little-things-gb/whichboot.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &little_things_cgb_report)
+            .expect("little-things-gb CGB extra report should write")
             .expect("extra curated suite should emit a report path");
         assert_eq!(
             report_path,
@@ -3968,7 +4479,7 @@ mod tests {
 
         let extra_report =
             fs::read_to_string(report_path).expect("extra report should be readable");
-        assert!(extra_report.starts_with("# Test Report (9/9)\n"));
+        assert!(extra_report.starts_with("# Test Report (12/12)\n"));
         assert!(extra_report.contains(&format!(
             "| ax6 | rtc3test-1.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -3991,12 +4502,147 @@ mod tests {
             "| samesuite | interrupt/ei_delay_halt.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(extra_report.contains(&format!(
+            "| samesuite | apu/channel_1/channel_1_align_12-cgbE.gb (GBC) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
+            "| magen | bg_oam_priority.gbc | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(extra_report.contains(&format!(
             "| little-things-gb | double-halt-cancel.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
         assert!(extra_report.contains(&format!(
             "| little-things-gb | whichboot.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
+        assert!(extra_report.contains(&format!(
+            "| little-things-gb | whichboot.gb (GBC) | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
         assert!(!extra_report.contains("boot_regs-cgb.gb"));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_omits_empty_standard_and_extra_markdown_files_for_docboy_only_runs() {
+        let workspace_root = unique_temp_dir("report-docboy-only");
+        let store_root = test_rom_store_root(&workspace_root);
+        fs::create_dir_all(&store_root).expect("test rom store root should be creatable");
+        fs::write(
+            store_root.join(TEST_ROM_REPORT_FILE_NAME),
+            "# Test Report (0/0)\n",
+        )
+        .expect("stale standard report should be writable");
+        fs::write(
+            store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME),
+            "# Test Report (0/0)\n",
+        )
+        .expect("stale extra report should be writable");
+
+        let docboy_report = RomSuiteReport {
+            suite_name: "docboy-cgb-extra".to_string(),
+            family: Some("docboy-cgb".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "docboy-cgb-docboy-boot-boot-bg-palettes",
+                "docboy/cgb/boot/boot_bg_palettes.gbc",
+                RomCaseOutcome::Passed,
+            )],
+        };
+
+        let report_path = update_curated_test_report(&workspace_root, &docboy_report)
+            .expect("DocBoy report should write")
+            .expect("DocBoy suite should emit a report path");
+
+        assert_eq!(
+            report_path,
+            store_root.join(TEST_ROM_DOCBOY_REPORT_FILE_NAME)
+        );
+        assert!(report_path.exists());
+        assert!(!store_root.join(TEST_ROM_REPORT_FILE_NAME).exists());
+        assert!(!store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME).exists());
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_routes_docboy_suites_to_docboy_markdown_file() {
+        let workspace_root = unique_temp_dir("report-docboy");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let cgb_smoke_report = RomSuiteReport {
+            suite_name: "cgb-smoke".to_string(),
+            family: Some("cgb-smoke".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "cgb-smoke-boot-regs-cgb",
+                "mooneye/misc/boot_regs-cgb.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &cgb_smoke_report)
+            .expect("CGB smoke report should write");
+
+        let extra_report = RomSuiteReport {
+            suite_name: "gbmicrotest-dmg-extra".to_string(),
+            family: Some("gbmicrotest".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "gbmicrotest-boot-poweron-bgp-000",
+                "gbmicrotest/boot/poweron_bgp_000.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        update_curated_test_report(&workspace_root, &extra_report)
+            .expect("extra report should write");
+
+        let docboy_report = RomSuiteReport {
+            suite_name: "docboy-cgb-extra".to_string(),
+            family: Some("docboy-cgb".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![
+                report_case(
+                    "docboy-cgb-docboy-boot-boot-bg-palettes",
+                    "docboy/cgb/boot/boot_bg_palettes.gbc",
+                    RomCaseOutcome::Passed,
+                ),
+                report_case(
+                    "docboy-cgb-docboy-boot-boot-bg-palettes-fail",
+                    "docboy/cgb/boot/boot_bg_palettes.gbc",
+                    RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded),
+                ),
+            ],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &docboy_report)
+            .expect("DocBoy report should write")
+            .expect("DocBoy suite should emit a report path");
+        assert_eq!(
+            report_path,
+            test_rom_store_root(&workspace_root).join(TEST_ROM_DOCBOY_REPORT_FILE_NAME)
+        );
+
+        let standard_report = fs::read_to_string(
+            test_rom_store_root(&workspace_root).join(TEST_ROM_REPORT_FILE_NAME),
+        )
+        .expect("standard report should be readable");
+        assert!(standard_report.contains("boot_regs-cgb.gb"));
+        assert!(!standard_report.contains("boot_bg_palettes.gbc"));
+        assert!(!standard_report.contains("poweron_bgp_000.gb"));
+
+        let rendered_extra = fs::read_to_string(
+            test_rom_store_root(&workspace_root).join(TEST_ROM_EXTRA_REPORT_FILE_NAME),
+        )
+        .expect("extra report should be readable");
+        assert!(rendered_extra.contains("poweron_bgp_000.gb"));
+        assert!(!rendered_extra.contains("boot_bg_palettes.gbc"));
+
+        let rendered_docboy =
+            fs::read_to_string(report_path).expect("DocBoy report should be readable");
+        assert!(rendered_docboy.starts_with("# Test Report (0/1)\n"));
+        assert!(rendered_docboy.contains(&format!(
+            "| docboy-cgb | boot/boot_bg_palettes.gbc | {REPORT_STATUS_FAIL_EMOJI} |"
+        )));
+        assert!(!rendered_docboy.contains("boot_regs-cgb.gb"));
+        assert!(!rendered_docboy.contains("poweron_bgp_000.gb"));
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
@@ -4056,7 +4702,7 @@ status = "PASS"
     }
 
     #[test]
-    fn render_markdown_report_preserves_family_from_legacy_full_path_rows() {
+    fn render_markdown_report_does_not_infer_family_from_mismatched_full_path_rows() {
         let rendered = render_markdown_report(&[PersistedSuiteStatus {
             version: 1,
             suite_name: "cgb-smoke".to_string(),
@@ -4068,12 +4714,12 @@ status = "PASS"
             }],
         }]);
 
-        assert!(rendered.starts_with("# Test Report (1/1)\n"));
-        assert!(rendered.contains(&format!(
-            "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
-        )));
+        assert!(rendered.starts_with("# Test Report (0/0)\n"));
         assert!(!rendered.contains(&format!(
             "| cgb-smoke | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(!rendered.contains(&format!(
+            "| mooneye | misc/boot_regs-cgb.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
     }
 
@@ -4491,7 +5137,7 @@ status = "PASS"
     fn parse_manifest_case_preserves_disabled_case_comment() {
         let case = parse_manifest_case(
             "test-manifest.toml",
-            Some("docboy"),
+            Some("docboy-dmg"),
             None,
             CuratedTestRomCaseFile {
                 family: None,
@@ -4533,7 +5179,7 @@ status = "PASS"
     fn parse_manifest_case_rejects_disabled_case_without_comment() {
         let _ = parse_manifest_case(
             "test-manifest.toml",
-            Some("docboy"),
+            Some("docboy-dmg"),
             None,
             CuratedTestRomCaseFile {
                 family: None,
@@ -4628,13 +5274,19 @@ status = "PASS"
     fn report_file_name_stays_stable() {
         assert_eq!(TEST_ROM_REPORT_FILE_NAME, "test-report.md");
         assert_eq!(TEST_ROM_EXTRA_REPORT_FILE_NAME, "test-report-extra.md");
+        assert_eq!(TEST_ROM_DOCBOY_REPORT_FILE_NAME, "test-report-docboy.md");
         assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
-        assert!(suite_uses_extra_test_report("docboy-dmg-extra"));
-        assert!(suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
-        assert!(suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
         assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
         assert!(!suite_uses_extra_test_report("cgb-smoke"));
     }
 }

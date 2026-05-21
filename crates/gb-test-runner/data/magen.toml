@@ -1,0 +1,84 @@
+version = 1
+family = "magen"
+suite_name = "magen-cgb-extra"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "magen-cgb-bg-oam-priority"
+rom = "bg_oam_priority.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/bg_oam_priority.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/bg_oam_priority.png"
+
+[[case]]
+id = "magen-cgb-hblank-vram-dma"
+rom = "hblank_vram_dma.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/hblank_vram_dma.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
+
+[[case]]
+id = "magen-cgb-key0-lock-after-boot"
+rom = "key0_lock_after_boot.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/key0_lock_after_boot.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc1"
+rom = "mbc_oob_sram_mbc1.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc1.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc3"
+rom = "mbc_oob_sram_mbc3.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc3.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc5"
+rom = "mbc_oob_sram_mbc5.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/mbc_oob_sram_mbc5.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"
+
+[[case]]
+id = "magen-cgb-oam-internal-priority"
+rom = "oam_internal_priority.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/oam_internal_priority.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/oam_internal_priority.png"
+
+[[case]]
+id = "magen-cgb-ppu-disabled-state"
+rom = "ppu_disabled_state.gbc"
+source_id = "docboy"
+source_path = "tests/roms/cgb/magen/ppu_disabled_state.gbc"
+console = "cgb"
+timeout_tcycles = 5000000
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "crates/gb-test-runner/data/fixtures/magen/green.png"

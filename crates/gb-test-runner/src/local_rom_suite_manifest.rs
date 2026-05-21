@@ -82,6 +82,8 @@ struct LocalRomSuiteCase {
     oracle: Option<String>,
     expected: Option<String>,
     fixture: Option<PathBuf>,
+    check_interval_tcycles: Option<u64>,
+    check_at_tcycles: Option<u64>,
     #[serde(default)]
     fixtures: Vec<PathBuf>,
     #[serde(default)]
@@ -98,6 +100,17 @@ struct LocalMemoryByteExpectation {
     address: u16,
     value: u8,
     fail_value: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalPassConditionFields {
+    oracle: Option<String>,
+    expected: Option<String>,
+    fixture: Option<PathBuf>,
+    check_interval_tcycles: Option<u64>,
+    check_at_tcycles: Option<u64>,
+    fixtures: Vec<PathBuf>,
+    memory: Vec<LocalMemoryByteExpectation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -214,11 +227,15 @@ fn build_case_from_manifest(
     let pass_condition = parse_pass_condition(
         manifest_dir,
         &case_id,
-        case.oracle.as_deref().unwrap_or(DEFAULT_LOCAL_ORACLE),
-        case.expected,
-        case.fixture,
-        case.fixtures,
-        case.memory,
+        LocalPassConditionFields {
+            oracle: case.oracle,
+            expected: case.expected,
+            fixture: case.fixture,
+            check_interval_tcycles: case.check_interval_tcycles,
+            check_at_tcycles: case.check_at_tcycles,
+            fixtures: case.fixtures,
+            memory: case.memory,
+        },
     )?;
 
     let mut rom_case = RomTestCase::new(case_id.clone(), rom_path, timeout, pass_condition.clone())
@@ -268,12 +285,19 @@ fn parse_timeout(
 fn parse_pass_condition(
     manifest_dir: &Path,
     case_id: &str,
-    oracle: &str,
-    expected: Option<String>,
-    fixture: Option<PathBuf>,
-    fixtures: Vec<PathBuf>,
-    memory: Vec<LocalMemoryByteExpectation>,
+    fields: LocalPassConditionFields,
 ) -> Result<PassCondition, String> {
+    let LocalPassConditionFields {
+        oracle,
+        expected,
+        fixture,
+        check_interval_tcycles,
+        check_at_tcycles,
+        fixtures,
+        memory,
+    } = fields;
+    let oracle = oracle.as_deref().unwrap_or(DEFAULT_LOCAL_ORACLE);
+
     match oracle {
         "serial-contains" => Ok(PassCondition::SerialContains(
             expected.ok_or_else(|| format!("case {case_id} is missing expected for {oracle}"))?,
@@ -321,8 +345,8 @@ fn parse_pass_condition(
                 manifest_dir,
                 fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
             ),
-            check_interval_tcycles: 100_000,
-            check_at_tcycles: None,
+            check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
+            check_at_tcycles,
         }),
         "framebuffer-grayscale-fixture" => Ok(PassCondition::FramebufferGrayscaleFixture(
             resolve_fixture_path(
@@ -336,6 +360,17 @@ fn parse_pass_condition(
                 fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
             ),
         )),
+        "framebuffer-rgb555-fixture-until-match" => {
+            Ok(PassCondition::FramebufferRgb555FixtureUntilMatch {
+                fixture_path: resolve_fixture_path(
+                    manifest_dir,
+                    fixture
+                        .ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                ),
+                check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
+                check_at_tcycles,
+            })
+        }
         "framebuffer-rgb555-grayscale-fixture" => Ok(
             PassCondition::FramebufferRgb555GrayscaleFixture(resolve_fixture_path(
                 manifest_dir,
@@ -469,6 +504,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
@@ -500,6 +536,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         | PassCondition::FramebufferFixtureUntilMatch { .. }
         | PassCondition::FramebufferGrayscaleFixture(_)
         | PassCondition::FramebufferRgb555Fixture(_)
+        | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
@@ -809,6 +846,16 @@ rom = "commercial/framebuffer-until-match.gb"
 timeout_tcycles = 8192
 oracle = "framebuffer-fixture-until-match"
 fixture = "fixtures/until-match.png"
+
+[[case]]
+id = "cgb-rgb555-framebuffer-until-match"
+rom = "commercial/cgb-framebuffer-until-match.gbc"
+console = "cgb"
+timeout_tcycles = 16384
+oracle = "framebuffer-rgb555-fixture-until-match"
+fixture = "fixtures/rgb555-until-match.png"
+check_interval_tcycles = 2048
+check_at_tcycles = 8192
 "#,
                 absolute_fixture = absolute_fixture.display()
             ),
@@ -819,7 +866,7 @@ fixture = "fixtures/until-match.png"
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
-        assert_eq!(suite.cases.len(), 7);
+        assert_eq!(suite.cases.len(), 8);
 
         let serial_case = &suite.cases[0];
         assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
@@ -934,6 +981,30 @@ fixture = "fixtures/until-match.png"
         );
         assert!(
             framebuffer_until_match_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
+
+        let rgb555_framebuffer_until_match_case = &suite.cases[7];
+        assert_eq!(
+            rgb555_framebuffer_until_match_case.console_model,
+            ConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            rgb555_framebuffer_until_match_case.pass_condition,
+            PassCondition::FramebufferRgb555FixtureUntilMatch {
+                fixture_path: workspace.join("fixtures").join("rgb555-until-match.png"),
+                check_interval_tcycles: 2048,
+                check_at_tcycles: Some(8192),
+            }
+        );
+        assert!(
+            rgb555_framebuffer_until_match_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            rgb555_framebuffer_until_match_case
                 .failure_artifacts
                 .contains(CaptureKind::Framebuffer)
         );

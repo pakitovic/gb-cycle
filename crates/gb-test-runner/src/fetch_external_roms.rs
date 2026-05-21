@@ -555,8 +555,9 @@ mod tests {
         cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
         cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
         curated_test_rom_families, curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite,
-        docboy_cgb_dmg_extra_suite, docboy_dmg_extra_suite, external_rom_store_root,
-        gbmicrotest_dmg_extra_suite, samesuite_dmg_extra_suite, test_rom_store_root,
+        docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
+        external_rom_store_root, gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, test_rom_store_root,
     };
 
     use super::{
@@ -708,6 +709,7 @@ mod tests {
                 cgb_rtc_suite(),
                 cgb_audio_blargg_suite(),
                 cgb_audio_samesuite_suite(),
+                samesuite_cgb_extra_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| ExternalRomRequiredFile {
@@ -745,6 +747,7 @@ mod tests {
             cgb_rtc_suite(),
             cgb_audio_blargg_suite(),
             cgb_audio_samesuite_suite(),
+            samesuite_cgb_extra_suite(),
         ]) {
             for case in suite.cases {
                 let source_path = root.join("testroms").join(&case.rom_path);
@@ -772,6 +775,46 @@ mod tests {
         sha256_hex(bytes)
     }
 
+    fn strip_curated_store_prefix<'a>(rom_path: &'a Path, family: &str) -> &'a Path {
+        rom_path
+            .strip_prefix(crate::curated_test_roms::curated_family_store_prefix(
+                family,
+            ))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "{family} manifest ROM {} should stay under its curated store prefix",
+                    rom_path.display()
+                )
+            })
+    }
+
+    fn docboy_cgb_source_rom_path(rom: &str) -> String {
+        if rom.starts_with("mattcurrie/") {
+            format!("tests/roms/cgb/{rom}")
+        } else {
+            format!("tests/roms/cgb/docboy/{rom}")
+        }
+    }
+
+    fn docboy_cgb_dmg_ext_source_rom_path(rom: &str) -> String {
+        format!("tests/roms/cgb_dmg_ext_mode/docboy/{rom}")
+    }
+
+    fn docboy_samesuite_cgb_roms() -> &'static [&'static str] {
+        &[
+            "apu/channel_1/channel_1_align_12-cgbE.gb",
+            "apu/channel_1/channel_1_align_25-cgbE.gb",
+            "apu/channel_1/channel_1_align_75-cgbE.gb",
+            "apu/channel_1/channel_1_freq_change_timing-cgbDE.gb",
+            "apu/channel_1/channel_1_stop_div-cgbE.gb",
+            "apu/channel_1/channel_1_sweep-cgbE.gb",
+            "apu/channel_1/channel_1_sweep_restart-cgbE.gb",
+            "apu/channel_1/channel_1_sweep_restart_2-cgbE.gb",
+            "apu/channel_1/channel_1_volume_div-cgbE.gb",
+            "apu/channel_3/channel_3_wave_ram_dac_on_rw.gb",
+        ]
+    }
+
     fn write_docboy_repo(root: &Path) {
         write_required_file(
             root,
@@ -783,6 +826,39 @@ mod tests {
             "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png",
             b"docboy-ei-delay-halt-png",
         );
+        for rom in docboy_samesuite_cgb_roms() {
+            write_required_file(
+                root,
+                &format!("tests/roms/cgb/samesuite/{rom}"),
+                rom.as_bytes(),
+            );
+            let png = rom.replace(".gb", ".png");
+            write_required_file(
+                root,
+                &format!("tests/results/cgb/samesuite/{png}"),
+                png.as_bytes(),
+            );
+        }
+        for case in magen_cgb_extra_suite().cases {
+            let rom = strip_curated_store_prefix(&case.rom_path, "magen");
+            let rom = rom.display().to_string();
+            write_required_file(
+                root,
+                &format!("tests/roms/cgb/magen/{rom}"),
+                case.id.as_bytes(),
+            );
+        }
+        for fixture in [
+            "bg_oam_priority.png",
+            "green.png",
+            "oam_internal_priority.png",
+        ] {
+            write_required_file(
+                root,
+                &format!("tests/results/cgb/magen/{fixture}"),
+                fixture.as_bytes(),
+            );
+        }
         write_required_file(
             root,
             "tests/roms/dmg/little-things-gb/double-halt-cancel.gb",
@@ -803,6 +879,11 @@ mod tests {
             "tests/results/dmg/little-things-gb/whichboot.png",
             b"docboy-whichboot-png",
         );
+        write_required_file(
+            root,
+            "tests/results/cgb/little-things-gb/whichboot.png",
+            b"docboy-cgb-whichboot-png",
+        );
         for case in gbmicrotest_dmg_extra_suite().cases {
             write_required_file(
                 root,
@@ -811,17 +892,23 @@ mod tests {
             );
         }
         for case in docboy_dmg_extra_suite().cases {
+            let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
             write_required_file(
                 root,
-                &format!("tests/roms/dmg/{}", case.rom_path.display()),
+                &format!("tests/roms/dmg/docboy/{}", rom.display()),
+                case.id.as_bytes(),
+            );
+        }
+        for case in docboy_cgb_extra_suite().cases {
+            let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb");
+            write_required_file(
+                root,
+                &docboy_cgb_source_rom_path(&rom.display().to_string()),
                 case.id.as_bytes(),
             );
         }
         for case in docboy_cgb_dmg_extra_suite().cases {
-            let rom = case
-                .rom_path
-                .strip_prefix("docboy-cgb-dmg")
-                .expect("DocBoy CGB DMG manifest ROMs should stay under their family");
+            let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
             write_required_file(
                 root,
                 &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
@@ -829,29 +916,37 @@ mod tests {
             );
         }
         for case in docboy_cgb_dmg_ext_extra_suite().cases {
-            let rom = case
-                .rom_path
-                .strip_prefix("docboy-cgb-dmg-ext")
-                .expect("DocBoy CGB DMG-ext manifest ROMs should stay under their family");
+            let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg-ext");
             write_required_file(
                 root,
-                &format!("tests/roms/cgb_dmg_ext_mode/{}", rom.display()),
+                &docboy_cgb_dmg_ext_source_rom_path(&rom.display().to_string()),
                 case.id.as_bytes(),
             );
         }
-        for rom_path in crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy") {
+        for rom_path in
+            crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-dmg")
+        {
+            let rom = strip_curated_store_prefix(&rom_path, "docboy-dmg");
             write_required_file(
                 root,
-                &format!("tests/roms/dmg/{}", rom_path.display()),
+                &format!("tests/roms/dmg/docboy/{}", rom.display()),
+                rom_path.to_string_lossy().as_bytes(),
+            );
+        }
+        for rom_path in
+            crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb")
+        {
+            let rom = strip_curated_store_prefix(&rom_path, "docboy-cgb");
+            write_required_file(
+                root,
+                &docboy_cgb_source_rom_path(&rom.display().to_string()),
                 rom_path.to_string_lossy().as_bytes(),
             );
         }
         for rom_path in
             crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb-dmg")
         {
-            let rom = rom_path
-                .strip_prefix("docboy-cgb-dmg")
-                .expect("DocBoy CGB DMG disabled ROMs should stay under their family");
+            let rom = strip_curated_store_prefix(&rom_path, "docboy-cgb-dmg");
             write_required_file(
                 root,
                 &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
@@ -893,6 +988,44 @@ mod tests {
                     "samesuite",
                     None,
                 ),
+            ]
+            .into_iter()
+            .chain(docboy_samesuite_cgb_roms().iter().flat_map(|rom| {
+                let png = rom.replace(".gb", ".png");
+                [
+                    required_file(
+                        &format!("tests/roms/cgb/samesuite/{rom}"),
+                        "samesuite",
+                        Some(rom),
+                    ),
+                    required_file(
+                        &format!("tests/results/cgb/samesuite/{png}"),
+                        "samesuite",
+                        None,
+                    ),
+                ]
+            }))
+            .chain(magen_cgb_extra_suite().cases.into_iter().map(|case| {
+                let rom = strip_curated_store_prefix(&case.rom_path, "magen");
+                let rom = rom.display().to_string();
+                required_file(
+                    &format!("tests/roms/cgb/magen/{rom}"),
+                    "magen",
+                    Some(rom.as_str()),
+                )
+            }))
+            .chain(
+                [
+                    "bg_oam_priority.png",
+                    "green.png",
+                    "oam_internal_priority.png",
+                ]
+                .into_iter()
+                .map(|fixture| {
+                    required_file(&format!("tests/results/cgb/magen/{fixture}"), "magen", None)
+                }),
+            )
+            .chain([
                 required_file(
                     "tests/roms/dmg/little-things-gb/double-halt-cancel.gb",
                     "little-things-gb",
@@ -913,8 +1046,12 @@ mod tests {
                     "little-things-gb",
                     None,
                 ),
-            ]
-            .into_iter()
+                required_file(
+                    "tests/results/cgb/little-things-gb/whichboot.png",
+                    "little-things-gb",
+                    None,
+                ),
+            ])
             .chain(gbmicrotest_dmg_extra_suite().cases.into_iter().map(|case| {
                 let rom = case
                     .rom_path
@@ -928,22 +1065,25 @@ mod tests {
                 )
             }))
             .chain(docboy_dmg_extra_suite().cases.into_iter().map(|case| {
-                let rom = case
-                    .rom_path
-                    .strip_prefix("docboy")
-                    .expect("docboy manifest ROMs should stay under the docboy family");
+                let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
                 let rom = rom.display().to_string();
                 required_file(
-                    &format!("tests/roms/dmg/{}", case.rom_path.display()),
-                    "docboy",
+                    &format!("tests/roms/dmg/docboy/{rom}"),
+                    "docboy-dmg",
+                    Some(rom.as_str()),
+                )
+            }))
+            .chain(docboy_cgb_extra_suite().cases.into_iter().map(|case| {
+                let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb");
+                let rom = rom.display().to_string();
+                required_file(
+                    &docboy_cgb_source_rom_path(&rom),
+                    "docboy-cgb",
                     Some(rom.as_str()),
                 )
             }))
             .chain(docboy_cgb_dmg_extra_suite().cases.into_iter().map(|case| {
-                let rom = case
-                    .rom_path
-                    .strip_prefix("docboy-cgb-dmg")
-                    .expect("DocBoy CGB DMG manifest ROMs should stay under their family");
+                let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
                 let rom = rom.display().to_string();
                 required_file(
                     &format!("tests/roms/cgb_dmg_mode/{rom}"),
@@ -956,29 +1096,39 @@ mod tests {
                     .cases
                     .into_iter()
                     .map(|case| {
-                        let rom = case.rom_path.strip_prefix("docboy-cgb-dmg-ext").expect(
-                            "DocBoy CGB DMG-ext manifest ROMs should stay under their family",
-                        );
+                        let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg-ext");
                         let rom = rom.display().to_string();
                         required_file(
-                            &format!("tests/roms/cgb_dmg_ext_mode/{rom}"),
+                            &docboy_cgb_dmg_ext_source_rom_path(&rom),
                             "docboy-cgb-dmg-ext",
                             Some(rom.as_str()),
                         )
                     }),
             )
             .chain(
-                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy")
+                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-dmg")
                     .into_iter()
                     .map(|rom_path| {
-                        let rom = rom_path
-                            .strip_prefix("docboy")
-                            .expect("docboy disabled ROMs should stay under the docboy family")
+                        let rom = strip_curated_store_prefix(&rom_path, "docboy-dmg")
                             .display()
                             .to_string();
                         required_file(
-                            &format!("tests/roms/dmg/{}", rom_path.display()),
-                            "docboy",
+                            &format!("tests/roms/dmg/docboy/{rom}"),
+                            "docboy-dmg",
+                            Some(rom.as_str()),
+                        )
+                    }),
+            )
+            .chain(
+                crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb")
+                    .into_iter()
+                    .map(|rom_path| {
+                        let rom = strip_curated_store_prefix(&rom_path, "docboy-cgb")
+                            .display()
+                            .to_string();
+                        required_file(
+                            &docboy_cgb_source_rom_path(&rom),
+                            "docboy-cgb",
                             Some(rom.as_str()),
                         )
                     }),
@@ -987,9 +1137,7 @@ mod tests {
                 crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-cgb-dmg")
                     .into_iter()
                     .map(|rom_path| {
-                        let rom = rom_path
-                            .strip_prefix("docboy-cgb-dmg")
-                            .expect("DocBoy CGB DMG disabled ROMs should stay under their family")
+                        let rom = strip_curated_store_prefix(&rom_path, "docboy-cgb-dmg")
                             .display()
                             .to_string();
                         required_file(
@@ -1007,7 +1155,11 @@ mod tests {
                 ]
                 .into_iter()
                 .map(|rom| {
-                    required_file(&format!("tests/roms/dmg/docboy/{rom}"), "docboy", Some(rom))
+                    required_file(
+                        &format!("tests/roms/dmg/docboy/{rom}"),
+                        "docboy-dmg",
+                        Some(rom),
+                    )
                 }),
             )
             .collect(),
@@ -1252,6 +1404,29 @@ mod tests {
             "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png",
             b"docboy-ei-delay-halt-png",
         );
+        let mut docboy_samesuite_cgb_required_files = String::new();
+        for rom in docboy_samesuite_cgb_roms() {
+            let rom_path = format!("tests/roms/cgb/samesuite/{rom}");
+            let rom_sha = write_required_file(&docboy_root, &rom_path, rom.as_bytes());
+            let png = rom.replace(".gb", ".png");
+            let png_path = format!("tests/results/cgb/samesuite/{png}");
+            let png_sha = write_required_file(&docboy_root, &png_path, png.as_bytes());
+            let _ = write!(
+                &mut docboy_samesuite_cgb_required_files,
+                concat!(
+                    "\n[[source.required_file]]\n",
+                    "path = {:?}\n",
+                    "family = \"samesuite\"\n",
+                    "rom = {:?}\n",
+                    "sha256 = {:?}\n",
+                    "\n[[source.required_file]]\n",
+                    "path = {:?}\n",
+                    "family = \"samesuite\"\n",
+                    "sha256 = {:?}\n",
+                ),
+                rom_path, rom, rom_sha, png_path, png_sha,
+            );
+        }
 
         let gbemu_rev = commit_upstream_repo(&gbemu_root);
         let docboy_rev = commit_upstream_repo(&docboy_root);
@@ -1299,6 +1474,7 @@ sha256 = "{}"
 path = "tests/results/dmg/samesuite/interrupt/ei_delay_halt.png"
 family = "samesuite"
 sha256 = "{}"
+{}
 "#,
                 gbemu_root.display(),
                 gbemu_rev,
@@ -1308,6 +1484,7 @@ sha256 = "{}"
                 docboy_rev,
                 ei_delay_halt_sha,
                 ei_delay_halt_png_sha,
+                docboy_samesuite_cgb_required_files,
             ),
         )
         .expect("manifest should be writable");
