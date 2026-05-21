@@ -2,7 +2,7 @@ use super::{
     Machine, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver, PendingExternalEvents,
 };
 use crate::apu::Apu;
-use crate::boot::BootController;
+use crate::boot::{BootController, cgb_real_boot_handoff_correction_t_cycles};
 use crate::bus::{
     Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester, DmaBusState,
     DmaMemoryRegionImpact,
@@ -37,15 +37,32 @@ pub(super) struct PendingPpuMmioWrite {
     pub(super) value: u8,
 }
 
+pub(super) struct RealBootHandoffParts<'a> {
+    pub(super) config: &'a mut MachineConfig,
+    pub(super) bus: &'a mut Bus,
+    pub(super) ppu: &'a mut Ppu,
+    pub(super) serial: &'a mut Serial,
+    pub(super) speed: &'a mut SpeedController,
+    pub(super) timer: &'a mut Timer,
+    pub(super) cartridge: &'a CartridgeSlot,
+    pub(super) boot: &'a BootController,
+}
+
 pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
-    config: &mut MachineConfig,
-    bus: &mut Bus,
-    ppu: &mut Ppu,
-    serial: &mut Serial,
-    speed: &mut SpeedController,
-    boot: &BootController,
+    parts: RealBootHandoffParts<'_>,
     boot_rom_newly_unmapped: bool,
 ) {
+    let RealBootHandoffParts {
+        config,
+        bus,
+        ppu,
+        serial,
+        speed,
+        timer,
+        cartridge,
+        boot,
+    } = parts;
+
     if boot_rom_newly_unmapped
         && !boot.is_boot_rom_mapped()
         && config.startup_mode == StartupMode::RealBoot
@@ -70,6 +87,12 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
         serial.apply_operating_mode_state(operating_mode);
         speed.apply_operating_mode_state(operating_mode);
         ppu.apply_operating_mode_state(operating_mode);
+    }
+
+    let correction_t_cycles = cgb_real_boot_handoff_correction_t_cycles(cartridge.header());
+    if correction_t_cycles != 0 {
+        timer.apply_boot_handoff_counter_correction(correction_t_cycles);
+        ppu.apply_cgb_boot_handoff_raster_correction(correction_t_cycles);
     }
 }
 
@@ -730,12 +753,16 @@ impl MachinePhaseRunner<'_> {
                             },
                         );
                         finalize_cgb_real_boot_handoff_if_needed(
-                            config,
-                            bus,
-                            ppu,
-                            serial,
-                            speed,
-                            boot,
+                            RealBootHandoffParts {
+                                config,
+                                bus,
+                                ppu,
+                                serial,
+                                speed,
+                                timer,
+                                cartridge,
+                                boot,
+                            },
                             boot_rom_newly_unmapped,
                         );
                     }

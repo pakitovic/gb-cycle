@@ -219,6 +219,11 @@ impl Timer {
         self.apu_fs_offset = 0;
     }
 
+    pub(crate) fn apply_boot_handoff_counter_correction(&mut self, t_cycles: u16) {
+        self.system_counter = self.system_counter.wrapping_add(t_cycles);
+        self.previous_timer_signal = self.current_timer_signal();
+    }
+
     pub fn snapshot(&self) -> TimerSnapshot {
         TimerSnapshot {
             console_model: self.console_model,

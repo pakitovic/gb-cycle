@@ -49,6 +49,14 @@ fn build_cgb_native_test_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn build_cgb_native_binary_zero_new_licensee_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_cgb_native_test_rom(program);
+    rom[0x0144] = 0x00;
+    rom[0x0145] = 0x00;
+    rom[0x014B] = 0x33;
+    rom
+}
+
 fn build_cgb_dmg_ext_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = build_test_rom(program);
     rom[0x0143] = 0x88;
@@ -152,6 +160,20 @@ fn timer_startup_state_override_keeps_apu_div_phase_coherent() {
     assert_eq!(timer.tma, 0x34);
     assert_eq!(timer.tac, 0x00);
     assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+}
+
+#[test]
+fn cgb_custom_boot_uses_cartridge_entry_timer_and_raster_phase() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::CustomBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_binary_zero_new_licensee_test_rom(&[0x00]))
+        .expect("CGB native binary-zero-new-licensee test ROM should load");
+
+    assert_eq!(machine.timer().snapshot().system_counter, 0x1E98);
+    assert_eq!(machine.ppu().snapshot().ly, 0x90);
+    assert_eq!(machine.ppu().snapshot().line_dot, 173);
 }
 
 fn step_t_cycles(machine: &mut Machine, t_cycles: u64) {
@@ -984,6 +1006,29 @@ fn cgb_real_boot_ff50_handoff_keeps_native_mode_when_boot_selects_cgb() {
     assert_eq!(machine.speed().operating_mode(), OperatingMode::Cgb);
     assert_ne!(machine.read_bus(0xFF4D), 0xFF);
     assert_ne!(machine.read_bus(0xFF4F), 0xFF);
+}
+
+#[test]
+fn cgb_real_boot_ff50_handoff_applies_binary_zero_licensee_timer_correction() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::RealBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_binary_zero_new_licensee_test_rom(&[0x00]))
+        .expect("CGB native binary-zero-new-licensee test ROM should load");
+
+    let timer_before = machine.timer().snapshot().system_counter;
+    let ppu_before = machine.ppu().snapshot();
+
+    machine.write_bus(0xFF4C, 0x80);
+    machine.write_bus(0xFF50, 0x01);
+
+    let timer_after = machine.timer().snapshot();
+    let ppu_after = machine.ppu().snapshot();
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(timer_after.system_counter, timer_before.wrapping_add(24));
+    assert_eq!(ppu_after.ly, ppu_before.ly);
+    assert_eq!(ppu_after.line_dot, ppu_before.line_dot);
 }
 
 #[test]
