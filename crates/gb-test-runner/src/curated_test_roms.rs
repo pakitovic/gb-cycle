@@ -3252,7 +3252,7 @@ mod tests {
             .find(|manifest| manifest.suite_name == "docboy-cgb-dmg-extra")
             .expect("DocBoy CGB DMG manifest should exist");
         assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb-dmg"));
-        assert_eq!(manifest.cases.len(), 504);
+        assert_eq!(manifest.cases.len(), 502);
         assert_eq!(
             manifest.cases.iter().filter(|case| case.disabled).count(),
             1
@@ -3268,7 +3268,7 @@ mod tests {
         assert_eq!(suite.name, "docboy-cgb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 503);
+        assert_eq!(suite.cases.len(), 501);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
@@ -3307,8 +3307,12 @@ mod tests {
                     PassCondition::FramebufferFixtureUntilMatch { .. }
                 ))
                 .count(),
-            435
+            433
         );
+        assert!(suite.cases.iter().all(|case| {
+            case.id != "docboy-cgb-dmg-mooneye-boot-div-cgbabcde"
+                && case.id != "docboy-cgb-dmg-mooneye-boot-regs-cgb"
+        }));
         assert!(suite.cases.iter().all(|case| {
             case.id != "docboy-cgb-dmg-mealybug-m3-lcdc-win-en-change-multiple-wx"
         }));
