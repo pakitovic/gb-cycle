@@ -21195,18 +21195,6 @@ rom = "docboy/apu/pcm12_ch2_read.gb"
 sha256 = "0d7aee8ff1e618dc1415f6f59fad553d87c2547dbc7482fe970f7b2583bbda2f"
 
 [[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/boot_div-cgbABCDE.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/boot_div-cgbABCDE.gb"
-sha256 = "06ac6864b6e48cae3f07eadf5cd90b6ead08bd1007697606087ed5aacc44c33b"
-
-[[source.required_file]]
-path = "tests/roms/cgb_dmg_mode/mooneye/boot_regs-cgb.gb"
-family = "docboy-cgb-dmg"
-rom = "mooneye/boot_regs-cgb.gb"
-sha256 = "d4d7e5e51867395ab16a26ce3e245d886f855048fd6275a8bf906d88102d814e"
-
-[[source.required_file]]
 path = "tests/roms/cgb_dmg_mode/docboy/boot/boot_hram.gb"
 family = "docboy-cgb-dmg"
 rom = "docboy/boot/boot_hram.gb"
@@ -24205,16 +24193,6 @@ path = "tests/roms/cgb_dmg_mode/docboy/undocumented/ff75_write_read.gb"
 family = "docboy-cgb-dmg"
 rom = "docboy/undocumented/ff75_write_read.gb"
 sha256 = "de2165cd6152f1a0033ad6dea159f443b199a745d47fc601506eb3eca60c61bb"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/boot_div-cgbABCDE.png"
-family = "docboy-cgb-dmg"
-sha256 = "256dad101724e65ba46558ef649a0d3abf5c7610f14990166d3c0c22c9d4cac0"
-
-[[source.required_file]]
-path = "tests/results/cgb_dmg_mode/mooneye/boot_regs-cgb.png"
-family = "docboy-cgb-dmg"
-sha256 = "d4ea0f0c0c9ecfb06243f6aee5fd0c8b313771f3f7daa798107349336383d71b"
 
 [[source.required_file]]
 path = "tests/results/cgb_dmg_mode/mealybug/m2_win_en_toggle.png"

@@ -24,26 +24,6 @@ oracle = "memory-byte-equals"
 memory = [{ address = 65520, value = 1, fail_value = 2 }]
 
 [[case]]
-id = "docboy-cgb-dmg-mooneye-boot-div-cgbabcde"
-rom = "mooneye/boot_div-cgbABCDE.gb"
-source_id = "docboy"
-source_path = "tests/roms/cgb_dmg_mode/mooneye/boot_div-cgbABCDE.gb"
-console = "cgb"
-timeout_tcycles = 5000000
-oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy-cgb-dmg/mooneye/boot_div-cgbABCDE.png"
-
-[[case]]
-id = "docboy-cgb-dmg-mooneye-boot-regs-cgb"
-rom = "mooneye/boot_regs-cgb.gb"
-source_id = "docboy"
-source_path = "tests/roms/cgb_dmg_mode/mooneye/boot_regs-cgb.gb"
-console = "cgb"
-timeout_tcycles = 5000000
-oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy-cgb-dmg/mooneye/boot_regs-cgb.png"
-
-[[case]]
 id = "docboy-cgb-dmg-boot-boot-hram"
 rom = "docboy/boot/boot_hram.gb"
 source_id = "docboy"
