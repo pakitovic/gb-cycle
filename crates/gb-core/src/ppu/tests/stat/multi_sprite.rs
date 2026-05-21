@@ -440,9 +440,9 @@ fn cpu_stat_read_publishes_hblank_for_ten_sprite_step8_preterminal_tails() {
     }
 }
 
-#[test]
-fn cgb_cpu_stat_read_publishes_hblank_for_ten_sprite_step8_fifo_tail_without_pending_push() {
+fn cgb_ten_sprite_step8_fifo_tail_without_pending_push(operating_mode: OperatingMode) -> Ppu {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(operating_mode);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
         stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
@@ -484,9 +484,27 @@ fn cgb_cpu_stat_read_publishes_hblank_for_ten_sprite_step8_fifo_tail_without_pen
         Some(Mode3TransferReadiness::Ready(_))
     ));
     assert!(!ppu.bg_pipeline_state.push.pending);
+    ppu
+}
+
+#[test]
+fn cgb_compat_stat_publishes_hblank_for_step8_fifo_tail_without_pending_push() {
+    let ppu = cgb_ten_sprite_step8_fifo_tail_without_pending_push(OperatingMode::GbCompatible);
+
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
         0x00,
         "CGB compatibility-mode STAT should publish HBlank for the step-8 FIFO tail before the internal OBJ-extended Mode3 tail drains"
+    );
+}
+
+#[test]
+fn cgb_native_stat_keeps_drawing_for_step8_fifo_tail_without_pending_push() {
+    let ppu = cgb_ten_sprite_step8_fifo_tail_without_pending_push(OperatingMode::Cgb);
+
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03,
+        "native CGB STAT should not reuse the compatibility-mode step-8 FIFO tail publication seam"
     );
 }
