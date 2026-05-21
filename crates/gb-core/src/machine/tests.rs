@@ -178,6 +178,34 @@ fn cgb_custom_boot_uses_cartridge_entry_timer_and_raster_phase() {
     assert_eq!(machine.ppu().snapshot().line_dot, 173);
 }
 
+#[test]
+fn dmg_custom_boot_uses_boot_power_on_ppu_publication_phase() {
+    let mut program = vec![0x00; 12];
+    program.extend_from_slice(&[
+        0xF0, 0x41, // ldh a,($41)
+        0xE0, 0x80, // ldh ($80),a
+        0x3E, 0xA5, // ld a,$A5
+        0xE0, 0x81, // ldh ($81),a
+        0x18, 0xFE, // jr .
+    ]);
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::CustomBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&program))
+        .expect("NoMBC test ROM should load");
+
+    step_until(&mut machine, 512, "STAT publication sample", |machine| {
+        machine.debug_hram_bytes()[0x01] == 0xA5
+    });
+
+    let stat = machine.debug_hram_bytes()[0x00];
+    assert!(
+        matches!(stat, 0x84 | 0x85),
+        "CustomBoot must publish the DMG power-on pre-OAM STAT window, got {stat:#04X}"
+    );
+}
+
 fn step_t_cycles(machine: &mut Machine, t_cycles: u64) {
     for _ in 0..t_cycles {
         machine.step_t_cycle();

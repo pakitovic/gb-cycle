@@ -49,7 +49,7 @@ Both commands load the ROM first, then validate the save payload against the car
 
 - `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
 - `--mode permissive` may load explicit supported MBC5 homebrew/public-domain ROMs whose `0x0148` ROM-size metadata is unsupported or contradicts the file length; the core emits loader diagnostics, pads missing ROM bytes with `0xFF`, and keeps MBC5 banking semantics unchanged. Keep `strict` for oracle runs, differential comparisons, and accuracy claims.
-- `custom-boot` is a direct-start path for boot-logo-inspecting ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot` and overlays the DMG boot-logo VRAM/map seed without loading a boot ROM asset.
+- `custom-boot` is a direct-start path for boot-logo- or reset-facing ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot`, then overlays the DMG boot-logo VRAM/map seed and DMG-family boot-facing PPU CPU-bus publication phase without loading a boot ROM asset.
 - `real-boot` looks for the revision-derived boot ROM asset only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`. `skip-boot` and `custom-boot` do not read boot-ROM bytes; they use the direct-start state for the selected model/revision.
 
 ## Output options

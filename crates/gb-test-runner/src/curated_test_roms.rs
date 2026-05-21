@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
     ExternalStimulusAction, FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec,
-    PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupPpuProfile, TestSubsystem,
-    Timeout,
+    PassCondition, RomSuite, RomSuiteReport, RomTestCase, TestSubsystem, Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
@@ -89,7 +88,6 @@ struct CuratedTestRomManifestFile {
     family: Option<String>,
     suite_name: String,
     subsystem: String,
-    startup_ppu_profile: Option<String>,
     #[serde(rename = "case")]
     cases: Vec<CuratedTestRomCaseFile>,
 }
@@ -120,7 +118,6 @@ struct CuratedTestRomCaseFile {
     startup: Option<String>,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
-    startup_ppu_profile: Option<String>,
     #[serde(default)]
     disabled: bool,
     comment: Option<String>,
@@ -171,7 +168,6 @@ struct CuratedTestRomCase {
     startup_mode: StartupMode,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
-    startup_ppu_profile: Option<String>,
     disabled: bool,
     comment: Option<String>,
 }
@@ -1390,14 +1386,7 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
         cases: parsed
             .cases
             .into_iter()
-            .map(|case| {
-                parse_manifest_case(
-                    source_path,
-                    parsed.family.as_deref(),
-                    parsed.startup_ppu_profile.as_deref(),
-                    case,
-                )
-            })
+            .map(|case| parse_manifest_case(source_path, parsed.family.as_deref(), case))
             .collect(),
     }
 }
@@ -1405,7 +1394,6 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
 fn parse_manifest_case(
     source_path: &str,
     manifest_family: Option<&str>,
-    manifest_startup_ppu_profile: Option<&str>,
     case: CuratedTestRomCaseFile,
 ) -> CuratedTestRomCase {
     let manifest_path = source_path;
@@ -1496,9 +1484,6 @@ fn parse_manifest_case(
         startup_mode,
         execution_mode: case.execution_mode,
         stop_condition: case.stop_condition,
-        startup_ppu_profile: case
-            .startup_ppu_profile
-            .or_else(|| manifest_startup_ppu_profile.map(str::to_string)),
         disabled: case.disabled,
         comment,
     }
@@ -1649,7 +1634,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         startup_mode,
         execution_mode,
         stop_condition,
-        startup_ppu_profile,
         disabled: _,
         comment: _,
     } = case;
@@ -1744,16 +1728,6 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
 
     for stimulus in stimuli {
         rom_case = rom_case.with_external_stimulus(stimulus);
-    }
-
-    if let Some(profile) = startup_ppu_profile.as_deref() {
-        rom_case = match profile {
-            "dmg-power-on" => rom_case.with_startup_ppu_profile(StartupPpuProfile::DmgPowerOn),
-            other => panic!(
-                "unsupported startup PPU profile {other:?} for curated case {}",
-                rom_case.id
-            ),
-        };
     }
 
     rom_case
@@ -2214,7 +2188,7 @@ mod tests {
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
-        RomCaseOutcome, RomCaseReport, RomSuiteReport, StartupPpuProfile, TestSubsystem, Timeout,
+        RomCaseOutcome, RomCaseReport, RomSuiteReport, TestSubsystem, Timeout,
     };
     use gb_core::{ConsoleModel, HardwareRevision, StartupMode};
     use std::env;
@@ -2926,11 +2900,15 @@ mod tests {
     }
 
     #[test]
-    fn gbmicrotest_dmg_extra_suite_tracks_docboy_memory_oracles_without_startup_override() {
+    fn gbmicrotest_dmg_extra_suite_tracks_docboy_memory_oracles_with_custom_boot_poweron_rows() {
         let manifest_text = include_str!("../data/gbmicrotest.toml");
         assert!(
-            !manifest_text.contains("startup ="),
-            "gbmicrotest manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
+            manifest_text.matches("startup = \"custom-boot\"").count() == 62,
+            "gbmicrotest should use CustomBoot only for reset-facing poweron rows"
+        );
+        assert!(
+            !manifest_text.contains("startup_ppu_profile"),
+            "gbmicrotest should rely on core CustomBoot PPU publication instead of runner profiles"
         );
 
         let suite = gbmicrotest_dmg_extra_suite();
@@ -2941,8 +2919,6 @@ mod tests {
         assert_eq!(suite.cases.len(), 438);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
-                && case.startup_mode == StartupMode::SkipBoot
-                && case.startup_ppu_profile == Some(StartupPpuProfile::DmgPowerOn)
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.capture_plan.contains(CaptureKind::MemoryBytes)
@@ -2954,6 +2930,31 @@ mod tests {
                     == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(
                         0xFF82, 0x01,
                     )])
+        }));
+        assert_eq!(
+            suite
+                .cases
+                .iter()
+                .filter(|case| {
+                    case.rom_path
+                        .to_string_lossy()
+                        .starts_with("gbmicrotest/boot/poweron_")
+                        && case.startup_mode == StartupMode::CustomBoot
+                })
+                .count(),
+            62
+        );
+        assert!(suite.cases.iter().all(|case| {
+            case.startup_mode
+                == if case
+                    .rom_path
+                    .to_string_lossy()
+                    .starts_with("gbmicrotest/boot/poweron_")
+                {
+                    StartupMode::CustomBoot
+                } else {
+                    StartupMode::SkipBoot
+                }
         }));
         let dma_rows = [
             "gbmicrotest/dma/dma_0x1000.gb",
@@ -2991,6 +2992,10 @@ mod tests {
             !manifest_text.contains("startup ="),
             "docboy manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
         );
+        assert!(
+            !manifest_text.contains("startup_ppu_profile"),
+            "docboy-dmg should not rely on runner-only PPU profiles"
+        );
 
         let suite = docboy_dmg_extra_suite();
 
@@ -3001,7 +3006,6 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
                 && case.startup_mode == StartupMode::SkipBoot
-                && case.startup_ppu_profile == Some(StartupPpuProfile::DmgPowerOn)
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("docboy/dmg")
@@ -3105,7 +3109,6 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
-                && case.startup_ppu_profile.is_none()
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("docboy/cgb")
@@ -3216,7 +3219,6 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
-                && case.startup_ppu_profile.is_none()
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("docboy/cgb-dmg")
         }));
@@ -3296,7 +3298,6 @@ mod tests {
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
-                && case.startup_ppu_profile.is_none()
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("docboy/cgb-dmg-ext")
         }));
@@ -5129,7 +5130,6 @@ status = "PASS"
         let _ = parse_manifest_case(
             "test-manifest.toml",
             None,
-            None,
             CuratedTestRomCaseFile {
                 family: None,
                 id: "familyless".to_string(),
@@ -5153,7 +5153,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_ppu_profile: None,
                 disabled: false,
                 comment: None,
             },
@@ -5165,7 +5164,6 @@ status = "PASS"
         let case = parse_manifest_case(
             "test-manifest.toml",
             Some("docboy-dmg"),
-            None,
             CuratedTestRomCaseFile {
                 family: None,
                 id: "disabled-with-comment".to_string(),
@@ -5189,7 +5187,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_ppu_profile: None,
                 disabled: true,
                 comment: Some("  hardware-incompatible oracle  ".to_string()),
             },
@@ -5208,7 +5205,6 @@ status = "PASS"
         let _ = parse_manifest_case(
             "test-manifest.toml",
             Some("docboy-dmg"),
-            None,
             CuratedTestRomCaseFile {
                 family: None,
                 id: "disabled-without-comment".to_string(),
@@ -5232,7 +5228,6 @@ status = "PASS"
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                startup_ppu_profile: None,
                 disabled: true,
                 comment: Some("   ".to_string()),
             },
@@ -5264,38 +5259,6 @@ status = "PASS"
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,
             stop_condition: None,
-            startup_ppu_profile: None,
-            disabled: false,
-            comment: None,
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "unsupported startup PPU profile")]
-    fn manifest_case_to_rom_test_case_rejects_unknown_startup_ppu_profiles() {
-        let _ = manifest_case_to_rom_test_case(CuratedTestRomCase {
-            family: "gbmicrotest".to_string(),
-            id: "bad-ppu-profile".to_string(),
-            rom: PathBuf::from("bad.gb"),
-            source_id: "docboy".to_string(),
-            source_path: PathBuf::from("tests/roms/dmg/gbmicrotest/bad.gb"),
-            report_model_suffix: false,
-            report_label: None,
-            timeout: Timeout::TCycles(1),
-            oracle: "memory-byte-equals".to_string(),
-            expected: None,
-            fixture: None,
-            fixtures: None,
-            check_interval_tcycles: None,
-            check_at_tcycles: None,
-            memory: vec![MemoryByteExpectation::new(0xFF82, 0x01)],
-            stimuli: Vec::new(),
-            console_model: ConsoleModel::GameBoy,
-            revision: HardwareRevision::DmgCpuC,
-            startup_mode: StartupMode::SkipBoot,
-            execution_mode: None,
-            stop_condition: None,
-            startup_ppu_profile: Some("unknown-profile".to_string()),
             disabled: false,
             comment: None,
         });
