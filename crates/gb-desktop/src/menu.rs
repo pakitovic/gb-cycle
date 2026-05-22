@@ -699,7 +699,7 @@ impl MenuPresentation {
             }
             MenuItem::StateSlot => self.rom_loaded,
             MenuItem::StateAutoloadSlot => self.rom_loaded && !self.any_dialog_pending,
-            MenuItem::DisplayPalette => self.console_model != DesktopConsoleModel::GameBoyColor,
+            MenuItem::DisplayPalette => self.console_model.allows_display_palette(),
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -1000,10 +1000,13 @@ impl MenuPresentation {
                 DesktopConsoleModel::GameBoyPocket => "MODEL GB POCKET".to_string(),
                 DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
                 DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
+                DesktopConsoleModel::SuperGameBoy => "MODEL SUPER GB".to_string(),
+                DesktopConsoleModel::SuperGameBoy2 => "MODEL SUPER GB 2".to_string(),
             },
-            MenuItem::HardwareRevision => {
-                format!("REV {}", hardware_revision_menu_name(self.revision))
-            }
+            MenuItem::HardwareRevision => match self.console_model.sgb_profile() {
+                Some(profile) => format!("REV {}", profile.revision_label()),
+                None => format!("REV {}", hardware_revision_menu_name(self.revision)),
+            },
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
                 StartupMode::CustomBoot => "START CUSTOM".to_string(),
@@ -1113,7 +1116,9 @@ impl MenuPresentation {
                 DesktopFrameBlendingMode::On => "BLEND ON".to_string(),
             },
             MenuItem::DisplayPalette => {
-                if self.console_model == DesktopConsoleModel::GameBoyColor {
+                if let Some(profile) = self.console_model.sgb_profile() {
+                    format!("PALETTE {}", profile.machine_profile_name())
+                } else if self.console_model == DesktopConsoleModel::GameBoyColor {
                     "PALETTE RGB555".to_string()
                 } else {
                     match self.display_palette {
@@ -3867,20 +3872,27 @@ mod tests {
     }
 
     #[test]
-    fn video_submenu_disables_display_palette_for_game_boy_color() {
+    fn video_submenu_disables_display_palette_for_rgb555_models() {
         let mut presentation = test_presentation();
-        presentation.console_model = DesktopConsoleModel::GameBoyColor;
-        presentation.display_palette = DesktopDisplayPalette::Grey;
 
-        assert!(!presentation.item_enabled(MenuItem::DisplayPalette));
-        assert_eq!(
-            presentation.item_label(MenuItem::DisplayPalette),
-            "PALETTE RGB555"
-        );
-        assert_eq!(
-            super::next_enabled_index(MenuScreen::Video, 1, presentation),
-            2
-        );
+        for (console_model, expected_label) in [
+            (DesktopConsoleModel::GameBoyColor, "PALETTE RGB555"),
+            (DesktopConsoleModel::SuperGameBoy, "PALETTE SGB"),
+            (DesktopConsoleModel::SuperGameBoy2, "PALETTE SGB2"),
+        ] {
+            presentation.console_model = console_model;
+            presentation.display_palette = DesktopDisplayPalette::Grey;
+
+            assert!(!presentation.item_enabled(MenuItem::DisplayPalette));
+            assert_eq!(
+                presentation.item_label(MenuItem::DisplayPalette),
+                expected_label
+            );
+            assert_eq!(
+                super::next_enabled_index(MenuScreen::Video, 1, presentation),
+                2
+            );
+        }
     }
 
     #[test]
@@ -5053,6 +5065,25 @@ mod tests {
             presentation.item_label(MenuItem::ConsoleModel),
             "MODEL GB COLOR"
         );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL SUPER GB"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV SGB-CPU 01"
+        );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL SUPER GB 2"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV CPU SGB2"
+        );
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
         presentation.revision = HardwareRevision::CpuCgbC;
         assert_eq!(
             presentation.item_label(MenuItem::HardwareRevision),
@@ -5224,6 +5255,16 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::DisplayPalette),
             "PALETTE RGB555"
+        );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE SGB"
+        );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE SGB2"
         );
         presentation.console_model = DesktopConsoleModel::GameBoy;
         for (display_palette, expected_label) in [

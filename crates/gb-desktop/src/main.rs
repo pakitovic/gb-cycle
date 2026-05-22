@@ -39,7 +39,8 @@ use gb_core::{
     MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
     PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
     PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
+    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, StartupMode,
+    TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -113,6 +114,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
+const SGB_HOST_FRAMEBUFFER_WIDTH: u32 = SGB_FRAME_WIDTH as u32;
+const SGB_HOST_FRAMEBUFFER_HEIGHT: u32 = SGB_FRAME_HEIGHT as u32;
 #[cfg(test)]
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
@@ -140,8 +143,9 @@ struct FramebufferDimensions {
     height: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FramebufferPanelInput<'a> {
+    dimensions: FramebufferDimensions,
     framebuffer: &'a [u8],
     framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
     bgwin_framebuffer: &'a [u8],
@@ -149,9 +153,10 @@ struct FramebufferPanelInput<'a> {
     bgwin_framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
     display_palette: DisplayPalette,
     cgb_framebuffer_rgb555: Option<&'a [u16]>,
+    sgb_framebuffer_rgb555: Option<Vec<u16>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FramebufferRenderInput<'a> {
     dimensions: FramebufferDimensions,
     panels: [Option<FramebufferPanelInput<'a>>; PLAYER_SLOT_COUNT],
@@ -6510,11 +6515,7 @@ fn prepare_machine_config(
     effective_config.launch.normalize_revision_for_model();
     let boot_rom_fallback_warning =
         maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
-    let revision = effective_config.launch.effective_revision();
-    let machine_config = MachineConfig::new(effective_config.launch.console_model.console_model())
-        .with_startup_mode(effective_config.launch.startup_mode)
-        .with_revision(revision)
-        .with_compatibility(effective_config.launch.compatibility_policy());
+    let machine_config = effective_config.machine_config_without_boot_rom_assets();
     let boot_rom_assets = load_boot_rom_assets(
         effective_config.boot_rom.search_path.as_deref(),
         effective_config.boot_rom.verification,
@@ -6538,8 +6539,7 @@ fn maybe_apply_missing_boot_rom_fallback(
         return Ok(None);
     }
 
-    let machine_config = MachineConfig::new(config.launch.console_model.console_model())
-        .with_revision(config.launch.effective_revision());
+    let machine_config = config.machine_config_without_boot_rom_assets();
     let Some(missing_asset) = missing_boot_rom_asset(
         config.boot_rom.search_path.as_deref(),
         machine_config.boot_rom_asset_kind(),
@@ -11947,7 +11947,9 @@ fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel
         DesktopConsoleModel::GameBoy => DesktopConsoleModel::GameBoyPocket,
         DesktopConsoleModel::GameBoyPocket => DesktopConsoleModel::GameBoyLight,
         DesktopConsoleModel::GameBoyLight => DesktopConsoleModel::GameBoyColor,
-        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::GameBoy,
+        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::SuperGameBoy,
+        DesktopConsoleModel::SuperGameBoy => DesktopConsoleModel::SuperGameBoy2,
+        DesktopConsoleModel::SuperGameBoy2 => DesktopConsoleModel::GameBoy,
     }
 }
 
@@ -13371,10 +13373,68 @@ fn sync_fast_forward_host_pacing_state(
 
 fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
+    let cell_dimensions = framebuffer_cell_dimensions_for_session(machine);
     FramebufferDimensions {
-        width: FRAMEBUFFER_WIDTH * layout.columns as u32,
-        height: FRAMEBUFFER_HEIGHT * layout.rows as u32,
+        width: cell_dimensions.width * layout.columns as u32,
+        height: cell_dimensions.height * layout.rows as u32,
     }
+}
+
+fn framebuffer_cell_dimensions_for_session(
+    machine: &DesktopEmulationSession,
+) -> FramebufferDimensions {
+    let layout = view_layout_for_session(player_session_kind(machine));
+    layout
+        .slots
+        .into_iter()
+        .flatten()
+        .filter_map(|slot| machine.machine_for_player_slot(slot))
+        .map(framebuffer_panel_dimensions_for_machine)
+        .fold(
+            FramebufferDimensions {
+                width: FRAMEBUFFER_WIDTH,
+                height: FRAMEBUFFER_HEIGHT,
+            },
+            |acc, dimensions| FramebufferDimensions {
+                width: acc.width.max(dimensions.width),
+                height: acc.height.max(dimensions.height),
+            },
+        )
+}
+
+fn framebuffer_panel_dimensions_for_machine(
+    machine: &Machine<TraceSummaryBuffer>,
+) -> FramebufferDimensions {
+    if machine.sgb_host().profile().is_some() {
+        FramebufferDimensions {
+            width: SGB_HOST_FRAMEBUFFER_WIDTH,
+            height: SGB_HOST_FRAMEBUFFER_HEIGHT,
+        }
+    } else {
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        }
+    }
+}
+
+fn framebuffer_cell_dimensions_for_panels(
+    panels: &[Option<FramebufferPanelInput<'_>>; PLAYER_SLOT_COUNT],
+) -> FramebufferDimensions {
+    panels
+        .iter()
+        .filter_map(|panel| panel.as_ref())
+        .map(|panel| panel.dimensions)
+        .fold(
+            FramebufferDimensions {
+                width: FRAMEBUFFER_WIDTH,
+                height: FRAMEBUFFER_HEIGHT,
+            },
+            |acc, dimensions| FramebufferDimensions {
+                width: acc.width.max(dimensions.width),
+                height: acc.height.max(dimensions.height),
+            },
+        )
 }
 
 fn framebuffer_panel_input_for_player_slot(
@@ -13383,7 +13443,17 @@ fn framebuffer_panel_input_for_player_slot(
     display_palette: DisplayPalette,
 ) -> Option<FramebufferPanelInput<'_>> {
     let machine = machine.machine_for_player_slot(slot)?;
+    let sgb_framebuffer_rgb555 = machine.sgb_framebuffer_rgb555();
+    let dimensions = if sgb_framebuffer_rgb555.is_some() {
+        FramebufferDimensions {
+            width: SGB_HOST_FRAMEBUFFER_WIDTH,
+            height: SGB_HOST_FRAMEBUFFER_HEIGHT,
+        }
+    } else {
+        framebuffer_panel_dimensions_for_machine(machine)
+    };
     Some(FramebufferPanelInput {
+        dimensions,
         framebuffer: machine.ppu().framebuffer(),
         framebuffer_layer_sources: machine.ppu().framebuffer_layer_sources(),
         bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -13391,6 +13461,7 @@ fn framebuffer_panel_input_for_player_slot(
         bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
         display_palette,
         cgb_framebuffer_rgb555: machine.ppu().cgb_framebuffer_rgb555(),
+        sgb_framebuffer_rgb555,
     })
 }
 
@@ -13602,12 +13673,25 @@ fn write_framebuffer_region(
     source_panel: FramebufferPanelInput<'_>,
     video_options: &VideoOptions,
 ) {
-    if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
-        write_cgb_rgb555_framebuffer_region(
+    if let Some(sgb_framebuffer_rgb555) = source_panel.sgb_framebuffer_rgb555.as_deref() {
+        write_rgb555_framebuffer_region(
             target_rgb_frame,
             target_dimensions,
             target_origin_x,
             target_origin_y,
+            source_panel.dimensions,
+            sgb_framebuffer_rgb555,
+        );
+        return;
+    }
+
+    if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
+        write_rgb555_framebuffer_region(
+            target_rgb_frame,
+            target_dimensions,
+            target_origin_x,
+            target_origin_y,
+            source_panel.dimensions,
             cgb_framebuffer_rgb555,
         );
         return;
@@ -13623,27 +13707,30 @@ fn write_framebuffer_region(
     );
 }
 
-fn write_cgb_rgb555_framebuffer_region(
+fn write_rgb555_framebuffer_region(
     target_rgb_frame: &mut [u8],
     target_dimensions: FramebufferDimensions,
     target_origin_x: usize,
     target_origin_y: usize,
-    cgb_framebuffer_rgb555: &[u16],
+    source_dimensions: FramebufferDimensions,
+    framebuffer_rgb555: &[u16],
 ) {
     let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
     let target_width = target_dimensions.width as usize;
     let target_height = target_dimensions.height as usize;
-    for y in 0..FRAMEBUFFER_HEIGHT as usize {
+    let source_width = source_dimensions.width as usize;
+    let source_height = source_dimensions.height as usize;
+    for y in 0..source_height {
         if target_origin_y + y >= target_height {
             break;
         }
-        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+        for x in 0..source_width {
             if target_origin_x + x >= target_width {
                 break;
             }
 
-            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
-            let Some(&rgb555_pixel) = cgb_framebuffer_rgb555.get(source_index) else {
+            let source_index = y * source_width + x;
+            let Some(&rgb555_pixel) = framebuffer_rgb555.get(source_index) else {
                 continue;
             };
             let target_pixel_index =
@@ -13682,24 +13769,46 @@ fn write_monochrome_framebuffer_region(
     let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
     let target_width = target_dimensions.width as usize;
     let target_height = target_dimensions.height as usize;
-    for y in 0..FRAMEBUFFER_HEIGHT as usize {
+    let source_width = source_panel.dimensions.width as usize;
+    let source_height = source_panel.dimensions.height as usize;
+    for y in 0..source_height {
         if target_origin_y + y >= target_height {
             break;
         }
-        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+        for x in 0..source_width {
             if target_origin_x + x >= target_width {
                 break;
             }
 
-            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
+            let source_index = y * source_width + x;
+            let Some(&framebuffer_shade) = source_panel.framebuffer.get(source_index) else {
+                continue;
+            };
+            let Some(&framebuffer_source) =
+                source_panel.framebuffer_layer_sources.get(source_index)
+            else {
+                continue;
+            };
+            let Some(&bgwin_shade) = source_panel.bgwin_framebuffer.get(source_index) else {
+                continue;
+            };
+            let Some(&bgwin_source) = source_panel
+                .bgwin_framebuffer_layer_sources
+                .get(source_index)
+            else {
+                continue;
+            };
+            let Some(&backdrop_shade) = source_panel.backdrop_framebuffer.get(source_index) else {
+                continue;
+            };
             let target_pixel_index =
                 (target_origin_y + y) * target_pitch_bytes + ((target_origin_x + x) * 3);
             let panel_shade = composite_framebuffer_panel_shade(
-                source_panel.framebuffer[source_index],
-                source_panel.framebuffer_layer_sources[source_index],
-                source_panel.bgwin_framebuffer[source_index],
-                source_panel.bgwin_framebuffer_layer_sources[source_index],
-                source_panel.backdrop_framebuffer[source_index],
+                framebuffer_shade,
+                framebuffer_source,
+                bgwin_shade,
+                bgwin_source,
+                backdrop_shade,
                 video_options,
             );
             let [r, g, b] = source_panel.display_palette.shade_rgb(panel_shade);
@@ -13727,7 +13836,8 @@ fn render_frame(
     apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
     sync_framebuffer_texture_video_options(texture, video_options);
     rgb_frame.fill(0);
-    let columns = (framebuffer.dimensions.width / FRAMEBUFFER_WIDTH).max(1) as usize;
+    let cell_dimensions = framebuffer_cell_dimensions_for_panels(&framebuffer.panels);
+    let columns = (framebuffer.dimensions.width / cell_dimensions.width).max(1) as usize;
     for (panel_index, panel) in framebuffer.panels.into_iter().enumerate() {
         let Some(panel) = panel else {
             continue;
@@ -13737,8 +13847,8 @@ fn render_frame(
         write_framebuffer_region(
             rgb_frame,
             framebuffer.dimensions,
-            column * FRAMEBUFFER_WIDTH as usize,
-            row * FRAMEBUFFER_HEIGHT as usize,
+            column * cell_dimensions.width as usize,
+            row * cell_dimensions.height as usize,
             panel,
             video_options,
         );
@@ -14308,7 +14418,7 @@ mod tests {
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
-        ApuSampleCapture, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+        ApuSampleCapture, BootRomAssetKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
         CartridgeMappedRomSource, CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode,
         ConsoleModel, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
         CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, DebugWramAddressSample,
@@ -14316,7 +14426,7 @@ mod tests {
         HardwareRevision, JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
         MachineConfig, MachineStepRegion, PersistentCartState, PocketCameraFrame,
         PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState, PrinterCommand,
-        SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
+        SerialTickTelemetry, SgbHostProfile, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -14417,6 +14527,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer,
                     framebuffer_layer_sources: layer_sources,
                     bgwin_framebuffer: framebuffer,
@@ -14424,6 +14538,7 @@ mod tests {
                     bgwin_framebuffer_layer_sources: layer_sources,
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -20831,6 +20946,14 @@ mod tests {
         );
         assert_eq!(
             next_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::SuperGameBoy),
+            DesktopConsoleModel::SuperGameBoy2
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::SuperGameBoy2),
             DesktopConsoleModel::GameBoy
         );
         assert_eq!(
@@ -22064,9 +22187,47 @@ mod tests {
             &video_options,
         );
 
-        let panel = render_input.panels[0].expect("primary panel should be populated");
+        let panel = render_input.panels[0]
+            .as_ref()
+            .expect("primary panel should be populated");
         assert_eq!(panel.display_palette, super::GBL_DISPLAY_PALETTE);
         assert!(render_input.panels[1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn framebuffer_render_input_uses_sgb_host_frame_dimensions_and_rgb555_output() {
+        let machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::SgbNtsc),
+        ));
+        let dimensions = super::framebuffer_dimensions_for_session(&machine);
+
+        let render_input = super::framebuffer_render_input_for_session(
+            &machine,
+            dimensions,
+            &gb_desktop::VideoOptions::default(),
+        );
+
+        assert_eq!(
+            dimensions,
+            super::FramebufferDimensions {
+                width: super::SGB_HOST_FRAMEBUFFER_WIDTH,
+                height: super::SGB_HOST_FRAMEBUFFER_HEIGHT,
+            }
+        );
+        let panel = render_input.panels[0]
+            .as_ref()
+            .expect("SGB panel should be populated");
+        assert_eq!(panel.dimensions, dimensions);
+        assert_eq!(
+            panel
+                .sgb_framebuffer_rgb555
+                .as_ref()
+                .expect("SGB panel should carry host RGB555 output")
+                .len(),
+            (super::SGB_HOST_FRAMEBUFFER_WIDTH * super::SGB_HOST_FRAMEBUFFER_HEIGHT) as usize
+        );
     }
 
     #[test]
@@ -22090,6 +22251,10 @@ mod tests {
             0,
             0,
             super::FramebufferPanelInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
                 framebuffer: &framebuffer,
                 framebuffer_layer_sources: &layer_sources,
                 bgwin_framebuffer: &framebuffer,
@@ -22097,6 +22262,7 @@ mod tests {
                 bgwin_framebuffer_layer_sources: &layer_sources,
                 display_palette: super::GBL_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
+                sgb_framebuffer_rgb555: None,
             },
             &gb_desktop::VideoOptions {
                 display_palette: DesktopDisplayPalette::Light,
@@ -22686,6 +22852,38 @@ mod tests {
                 .boot_rom_fallback_warning
                 .as_deref()
                 .is_some_and(|warning| warning.contains("falling back to skip-boot"))
+        );
+    }
+
+    #[test]
+    fn prepare_machine_config_uses_sgb_boot_asset_identity_before_real_boot_fallback() {
+        let root = temp_test_root("missing-sgb2-bootrom-fallback");
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+        config.boot_rom.search_path = Some(root.clone());
+
+        let prepared = super::prepare_machine_config(&config, &root)
+            .expect("missing SGB2 boot ROM paths should degrade to skip-boot");
+
+        assert_eq!(
+            prepared.effective_config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
+        assert_eq!(
+            prepared.machine_config.sgb_profile,
+            Some(SgbHostProfile::Sgb2Ntsc)
+        );
+        assert_eq!(
+            prepared.machine_config.boot_rom_asset_kind(),
+            BootRomAssetKind::Sgb2
+        );
+        assert!(
+            prepared
+                .boot_rom_fallback_warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("sgb2_boot.bin"))
         );
     }
 
@@ -25559,6 +25757,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: harness.machine.ppu().framebuffer(),
                         framebuffer_layer_sources: harness
                             .machine
@@ -25575,6 +25777,7 @@ mod tests {
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -25604,6 +25807,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: harness.machine.ppu().framebuffer(),
                         framebuffer_layer_sources: harness
                             .machine
@@ -25620,6 +25827,7 @@ mod tests {
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -25885,6 +26093,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer: &framebuffer,
                     framebuffer_layer_sources: &layer_sources,
                     bgwin_framebuffer: &framebuffer,
@@ -25892,6 +26104,7 @@ mod tests {
                     bgwin_framebuffer_layer_sources: &layer_sources,
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -26329,6 +26542,10 @@ mod tests {
                 dimensions: linked_dimensions,
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &left_framebuffer,
                         framebuffer_layer_sources: &left_sources,
                         bgwin_framebuffer: &left_framebuffer,
@@ -26336,8 +26553,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &left_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &right_framebuffer,
                         framebuffer_layer_sources: &right_sources,
                         bgwin_framebuffer: &right_framebuffer,
@@ -26345,6 +26567,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &right_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26415,6 +26638,10 @@ mod tests {
                 dimensions,
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_0,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_0,
@@ -26422,8 +26649,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_1,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_1,
@@ -26431,8 +26663,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_2,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_2,
@@ -26440,8 +26677,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_3,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_3,
@@ -26449,6 +26691,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                 ],
             },
@@ -26511,6 +26754,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &framebuffer,
                         framebuffer_layer_sources: &layer_sources,
                         bgwin_framebuffer: &bgwin_framebuffer,
@@ -26518,6 +26765,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26600,6 +26848,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &framebuffer,
                         framebuffer_layer_sources: &layer_sources,
                         bgwin_framebuffer: &bgwin_framebuffer,
@@ -26607,6 +26859,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26644,6 +26897,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer: harness.machine.ppu().framebuffer(),
                     framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
                     bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -26654,6 +26911,7 @@ mod tests {
                         .framebuffer_bgwin_layer_sources(),
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -26667,7 +26925,7 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            framebuffer,
+            framebuffer.clone(),
             &video_options,
             super::RenderPresentationInput::default(),
         )
@@ -27421,6 +27679,14 @@ mod tests {
             ),
             (
                 DesktopConsoleModel::GameBoyColor,
+                DesktopDisplayPalette::Grey,
+            ),
+            (
+                DesktopConsoleModel::SuperGameBoy,
+                DesktopDisplayPalette::Grey,
+            ),
+            (
+                DesktopConsoleModel::SuperGameBoy2,
                 DesktopDisplayPalette::Grey,
             ),
             (DesktopConsoleModel::GameBoy, DesktopDisplayPalette::GameBoy),

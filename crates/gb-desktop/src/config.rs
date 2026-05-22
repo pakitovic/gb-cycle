@@ -1,7 +1,7 @@
 use gb_core::{
     BootRomAssetError, BootRomAssetKind, BootRomAssets, CompatibilityPolicy, ConsoleModel,
     ExecutionMode, HardwareRevision, MachineConfig, MachineRewindConfig,
-    MachineRewindSubframeCadence, StartupMode,
+    MachineRewindSubframeCadence, SgbHostProfile, StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
@@ -36,12 +36,12 @@ pub struct DesktopConfig {
 }
 
 impl DesktopConfig {
+    pub fn machine_config_without_boot_rom_assets(&self) -> MachineConfig {
+        self.launch.machine_config_without_boot_rom_assets()
+    }
+
     pub fn machine_config(&self) -> Result<MachineConfig, DesktopConfigError> {
-        let revision = self.launch.effective_revision();
-        let machine_config = MachineConfig::new(self.launch.console_model.console_model())
-            .with_startup_mode(self.launch.startup_mode)
-            .with_revision(revision)
-            .with_compatibility(self.launch.compatibility_policy());
+        let machine_config = self.machine_config_without_boot_rom_assets();
         let boot_rom_assets = self.boot_rom.load_assets(
             self.launch.startup_mode,
             machine_config.boot_rom_asset_kind(),
@@ -101,6 +101,8 @@ pub enum DesktopConsoleModel {
     GameBoyPocket,
     GameBoyLight,
     GameBoyColor,
+    SuperGameBoy,
+    SuperGameBoy2,
 }
 
 impl DesktopConsoleModel {
@@ -110,7 +112,27 @@ impl DesktopConsoleModel {
             Self::GameBoyPocket => ConsoleModel::GameBoyPocket,
             Self::GameBoyLight => ConsoleModel::GameBoyLight,
             Self::GameBoyColor => ConsoleModel::GameBoyColor,
+            Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
         }
+    }
+
+    pub const fn sgb_profile(self) -> Option<SgbHostProfile> {
+        match self {
+            Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
+            Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+        }
+    }
+
+    pub const fn uses_rgb555_output(self) -> bool {
+        matches!(
+            self,
+            Self::GameBoyColor | Self::SuperGameBoy | Self::SuperGameBoy2
+        )
+    }
+
+    pub const fn allows_display_palette(self) -> bool {
+        !self.uses_rgb555_output()
     }
 
     pub fn name(self) -> &'static str {
@@ -119,6 +141,8 @@ impl DesktopConsoleModel {
             Self::GameBoyPocket => "MGB",
             Self::GameBoyLight => "LGB",
             Self::GameBoyColor => "CGB",
+            Self::SuperGameBoy => "SGB",
+            Self::SuperGameBoy2 => "SGB2",
         }
     }
 }
@@ -139,7 +163,9 @@ impl DesktopDisplayPalette {
             DesktopConsoleModel::GameBoy => Self::GameBoy,
             DesktopConsoleModel::GameBoyPocket => Self::Pocket,
             DesktopConsoleModel::GameBoyLight => Self::Light,
-            DesktopConsoleModel::GameBoyColor => Self::Grey,
+            DesktopConsoleModel::GameBoyColor
+            | DesktopConsoleModel::SuperGameBoy
+            | DesktopConsoleModel::SuperGameBoy2 => Self::Grey,
         }
     }
 
@@ -200,6 +226,19 @@ impl LaunchOptions {
             ExecutionMode::Strict => CompatibilityPolicy::strict(),
             ExecutionMode::Permissive => CompatibilityPolicy::permissive(),
             ExecutionMode::Experimental => CompatibilityPolicy::experimental(),
+        }
+    }
+
+    pub fn machine_config_without_boot_rom_assets(&self) -> MachineConfig {
+        let revision = self.effective_revision();
+        let machine_config = MachineConfig::new(self.console_model.console_model())
+            .with_startup_mode(self.startup_mode)
+            .with_revision(revision)
+            .with_compatibility(self.compatibility_policy());
+        if let Some(profile) = self.console_model.sgb_profile() {
+            machine_config.with_sgb_profile(profile)
+        } else {
+            machine_config
         }
     }
 }
@@ -1072,6 +1111,30 @@ mod tests {
     }
 
     #[test]
+    fn machine_config_maps_visible_sgb_models_to_dmg_core_plus_host_profile() {
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        config.launch.revision = HardwareRevision::CpuCgbE;
+
+        let sgb_config = config
+            .machine_config()
+            .expect("skip-boot should not load firmware");
+        assert_eq!(sgb_config.console_model, ConsoleModel::GameBoy);
+        assert_eq!(sgb_config.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(sgb_config.sgb_profile, Some(SgbHostProfile::SgbNtsc));
+        assert_eq!(sgb_config.boot_rom_asset_kind(), BootRomAssetKind::Sgb);
+
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
+        let sgb2_config = config
+            .machine_config()
+            .expect("skip-boot should not load firmware");
+        assert_eq!(sgb2_config.console_model, ConsoleModel::GameBoy);
+        assert_eq!(sgb2_config.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(sgb2_config.sgb_profile, Some(SgbHostProfile::Sgb2Ntsc));
+        assert_eq!(sgb2_config.boot_rom_asset_kind(), BootRomAssetKind::Sgb2);
+    }
+
+    #[test]
     fn default_save_directory_lives_under_a_saves_subdirectory_next_to_the_rom() {
         let rom_path = Path::new("/tmp/roms/Tetris.gb");
         let save_options = SaveOptions::default();
@@ -1187,10 +1250,31 @@ mod tests {
             DesktopConsoleModel::GameBoyColor.console_model(),
             ConsoleModel::GameBoyColor
         );
+        assert_eq!(
+            DesktopConsoleModel::SuperGameBoy.console_model(),
+            ConsoleModel::GameBoy
+        );
+        assert_eq!(
+            DesktopConsoleModel::SuperGameBoy2.console_model(),
+            ConsoleModel::GameBoy
+        );
+        assert_eq!(
+            DesktopConsoleModel::SuperGameBoy.sgb_profile(),
+            Some(SgbHostProfile::SgbNtsc)
+        );
+        assert_eq!(
+            DesktopConsoleModel::SuperGameBoy2.sgb_profile(),
+            Some(SgbHostProfile::Sgb2Ntsc)
+        );
+        assert!(DesktopConsoleModel::GameBoy.allows_display_palette());
+        assert!(!DesktopConsoleModel::GameBoyColor.allows_display_palette());
+        assert!(!DesktopConsoleModel::SuperGameBoy.allows_display_palette());
         assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
         assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "MGB");
         assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "LGB");
         assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "CGB");
+        assert_eq!(DesktopConsoleModel::SuperGameBoy.name(), "SGB");
+        assert_eq!(DesktopConsoleModel::SuperGameBoy2.name(), "SGB2");
         assert_eq!(
             DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoy),
             DesktopDisplayPalette::GameBoy
@@ -1205,6 +1289,14 @@ mod tests {
         );
         assert_eq!(
             DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::SuperGameBoy),
+            DesktopDisplayPalette::Grey
+        );
+        assert_eq!(
+            DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::SuperGameBoy2),
             DesktopDisplayPalette::Grey
         );
         assert_eq!(

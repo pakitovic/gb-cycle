@@ -21,6 +21,8 @@ The host implementation must remain pluggable. Early implementation may use a de
 
 `MODEL: SGB` and `MODEL: SGB2` are user-facing machine profiles that resolve into explicit model axes. They must not become independent duplicated cores. The internal profile descriptor is `SgbHostProfile`: `SgbNtsc` and `SgbPal` require `HostPlatform::Sgb`, while `Sgb2Ntsc` requires `HostPlatform::Sgb2`; impossible combinations such as PAL SGB2 are rejected by model-axis coherence and save-state metadata validation instead of being normalized silently.
 
+`gb-desktop` and `gb-cli` expose `SGB` and `SGB2` through the same public model/profile selector as handheld models. The first frontend selector maps `SGB` to `SgbHostProfile::SgbNtsc` and `SGB2` to `SgbHostProfile::Sgb2Ntsc`; `SgbPal` remains a core/profile capability that should be surfaced through an explicit video-standard/profile selector rather than by introducing `SGB1` naming.
+
 ## Boot and startup
 
 SGB/SGB2 must support `SkipBoot` and `RealBoot` as distinct startup paths. `RealBoot` executes the SGB-profile-derived boot ROM on the shared CPU/bus/scheduler path with the boot ROM mapped until the real handoff; `SkipBoot` synthesizes a coherent post-boot handoff state and does not require boot ROM bytes.

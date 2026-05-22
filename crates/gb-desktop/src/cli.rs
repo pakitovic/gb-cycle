@@ -401,7 +401,7 @@ pub fn help_text() -> &'static str {
         "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
-        "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
+        "  --model <DMG|MGB|LGB|CGB|SGB|SGB2>    Select the console model/profile (default: DMG)\n",
         "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
         "                                         Select the active hardware revision for --model\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
@@ -467,8 +467,10 @@ fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
         "MGB" => Ok(DesktopConsoleModel::GameBoyPocket),
         "LGB" => Ok(DesktopConsoleModel::GameBoyLight),
         "CGB" => Ok(DesktopConsoleModel::GameBoyColor),
+        "SGB" => Ok(DesktopConsoleModel::SuperGameBoy),
+        "SGB2" => Ok(DesktopConsoleModel::SuperGameBoy2),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, SGB, SGB2"
         )),
     }
 }
@@ -1255,6 +1257,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_accepts_sgb_profiles_as_dmg_core_models() {
+        let action =
+            parse_cli_arguments(["demo.gb", "--model", "SGB"]).expect("SGB model should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(
+            options.config.launch.console_model.sgb_profile(),
+            Some(gb_core::SgbHostProfile::SgbNtsc)
+        );
+
+        let action =
+            parse_cli_arguments(["demo.gb", "--model", "SGB2"]).expect("SGB2 model should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::SuperGameBoy2
+        );
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(
+            options.config.launch.console_model.sgb_profile(),
+            Some(gb_core::SgbHostProfile::Sgb2Ntsc)
+        );
+    }
+
+    #[test]
     fn parse_applies_grey_palette_only_for_the_final_dmg_model() {
         let action = parse_cli_arguments(["demo.gb", "--model", "DMG", "--palette", "grey"])
             .expect("DMG grey palette override should parse");
@@ -1366,12 +1401,20 @@ mod tests {
             parse_console_model("CGB"),
             Ok(DesktopConsoleModel::GameBoyColor)
         );
+        assert_eq!(
+            parse_console_model("SGB"),
+            Ok(DesktopConsoleModel::SuperGameBoy)
+        );
+        assert_eq!(
+            parse_console_model("SGB2"),
+            Ok(DesktopConsoleModel::SuperGameBoy2)
+        );
         for previous in [
             "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
         ] {
             let error = parse_console_model(previous).expect_err("previous models should fail");
             assert!(error.contains("unsupported --model value"));
-            assert!(error.contains("DMG, MGB, LGB, CGB"));
+            assert!(error.contains("DMG, MGB, LGB, CGB, SGB, SGB2"));
             assert!(!error.contains("game-boy, pocket, light, color"));
         }
         assert!(parse_console_model("sgb").is_err());

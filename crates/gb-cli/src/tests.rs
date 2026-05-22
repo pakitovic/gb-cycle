@@ -109,10 +109,14 @@ fn build_loaded_machine(rom: Vec<u8>, capture_trace: bool) -> CliMachine {
 }
 
 fn write_fake_boot_rom(dir: &Path, revision: HardwareRevision, fill: u8) {
+    write_fake_boot_rom_asset(dir, BootRomAssetKind::from_revision(revision), fill);
+}
+
+fn write_fake_boot_rom_asset(dir: &Path, asset: BootRomAssetKind, fill: u8) {
     fs::create_dir_all(dir).expect("boot ROM directory should be creatable");
     fs::write(
-        dir.join(BootRomAssets::filename(revision)),
-        vec![fill; revision.boot_rom_expected_size()],
+        dir.join(asset.filename()),
+        vec![fill; asset.expected_size()],
     )
     .expect("boot ROM image should be writable");
 }
@@ -975,9 +979,14 @@ fn saves_commands_surface_output_writer_failures() {
 
 #[test]
 fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
-    let encoded =
-        encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3], None, None)
-            .expect("PGM encoding should succeed");
+    let encoded = encode_framebuffer_artifact(
+        Path::new("framebuffer.pgm"),
+        &[0, 1, 2, 3],
+        None,
+        None,
+        None,
+    )
+    .expect("PGM encoding should succeed");
 
     assert!(encoded.starts_with(b"P5\n160 144\n3\n"));
 }
@@ -1102,6 +1111,29 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
         }
         other => panic!("expected run action, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
+    let action =
+        parse_run_arguments(["demo.gb", "--model", "SGB"]).expect("SGB model should parse");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::SuperGameBoy);
+    assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
+    assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::SgbNtsc));
+    assert_eq!(options.revision, HardwareRevision::DmgCpuC);
+
+    let action =
+        parse_run_arguments(["demo.gb", "--model", "SGB2"]).expect("SGB2 model should parse");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::SuperGameBoy2);
+    assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
+    assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::Sgb2Ntsc));
+    assert_eq!(options.revision, HardwareRevision::DmgCpuC);
 }
 
 #[test]
@@ -2035,6 +2067,19 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
     assert!(unchecked_assets.has_image(HardwareRevision::DmgCpuC));
     assert!(stderr.is_empty());
 
+    write_fake_boot_rom_asset(&explicit_dir, BootRomAssetKind::Sgb, 0xBB);
+    options.model = RunModel::SuperGameBoy;
+    let sgb_assets = load_boot_rom_assets(&options, &current_dir, &mut stderr)
+        .expect("SGB real-boot should resolve sgb_boot.bin");
+    assert!(sgb_assets.has_asset(BootRomAssetKind::Sgb));
+
+    write_fake_boot_rom_asset(&explicit_dir, BootRomAssetKind::Sgb2, 0xCC);
+    options.model = RunModel::SuperGameBoy2;
+    let sgb2_assets = load_boot_rom_assets(&options, &current_dir, &mut stderr)
+        .expect("SGB2 real-boot should resolve sgb2_boot.bin");
+    assert!(sgb2_assets.has_asset(BootRomAssetKind::Sgb2));
+    options.model = RunModel::GameBoy;
+
     options.boot_rom_verify = BootRomVerificationMode::Strict;
     let strict_error = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
         .expect_err("strict verification should reject mismatched assets");
@@ -2126,6 +2171,22 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     );
     assert_eq!(RunModel::Light.console_model(), ConsoleModel::GameBoyLight);
     assert_eq!(RunModel::Color.console_model(), ConsoleModel::GameBoyColor);
+    assert_eq!(
+        RunModel::SuperGameBoy.console_model(),
+        ConsoleModel::GameBoy
+    );
+    assert_eq!(
+        RunModel::SuperGameBoy2.console_model(),
+        ConsoleModel::GameBoy
+    );
+    assert_eq!(
+        RunModel::SuperGameBoy.sgb_profile(),
+        Some(SgbHostProfile::SgbNtsc)
+    );
+    assert_eq!(
+        RunModel::SuperGameBoy2.sgb_profile(),
+        Some(SgbHostProfile::Sgb2Ntsc)
+    );
     assert_eq!(RunModel::GameBoy.name(), "DMG");
     assert_eq!(
         RunModel::GameBoy.console_model().default_revision(),
@@ -2146,6 +2207,8 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         RunModel::Color.console_model().default_revision(),
         HardwareRevision::CpuCgbC
     );
+    assert_eq!(RunModel::SuperGameBoy.name(), "SGB");
+    assert_eq!(RunModel::SuperGameBoy2.name(), "SGB2");
     assert_eq!(SavePolicy::Manual.name(), "manual");
     assert_eq!(SavePolicy::OnClose.name(), "on-close");
     assert_eq!(SavePolicy::OnWrite.name(), "on-write");
@@ -2231,12 +2294,14 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(parse_run_model("MGB"), Ok(RunModel::Pocket));
     assert_eq!(parse_run_model("LGB"), Ok(RunModel::Light));
     assert_eq!(parse_run_model("CGB"), Ok(RunModel::Color));
+    assert_eq!(parse_run_model("SGB"), Ok(RunModel::SuperGameBoy));
+    assert_eq!(parse_run_model("SGB2"), Ok(RunModel::SuperGameBoy2));
     for previous in [
         "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
     ] {
         let error = parse_run_model(previous).expect_err("previous models should fail");
         assert!(error.contains("unsupported --model value"));
-        assert!(error.contains("DMG, MGB, LGB, CGB"));
+        assert!(error.contains("DMG, MGB, LGB, CGB, SGB, SGB2"));
         assert!(!error.contains("game-boy, pocket, light, color"));
     }
     assert!(
@@ -2597,12 +2662,14 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
         None,
         None,
+        None,
     )
     .expect("PNG encoding should succeed");
     assert!(png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
     let palette_pgm_artifact = encode_framebuffer_artifact(
         Path::new("framebuffer.pgm"),
         &[0, 1, 2, 3, 9],
+        None,
         None,
         Some(DMG_GREY_DISPLAY_PALETTE),
     )
@@ -2615,6 +2682,7 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         Path::new("framebuffer.png"),
         &vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
         None,
+        None,
         Some(DMG_GREY_DISPLAY_PALETTE),
     )
     .expect("palette PNG encoding should succeed");
@@ -2622,11 +2690,25 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let rgb555_png_artifact = encode_framebuffer_artifact(
         Path::new("framebuffer.png"),
         &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
         Some(&vec![0x7FFF; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
         Some(DMG_GREY_DISPLAY_PALETTE),
     )
     .expect("CGB RGB555 PNG encoding should succeed");
     assert!(rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let sgb_rgb555_png_artifact = encode_framebuffer_artifact(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        Some(&vec![
+            0x7FFF;
+            SGB_HOST_FRAMEBUFFER_WIDTH
+                * SGB_HOST_FRAMEBUFFER_HEIGHT
+        ]),
+        Some(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("SGB RGB555 PNG encoding should succeed");
+    assert!(sgb_rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));
@@ -2636,9 +2718,12 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     )
     .expect("direct palette PNG encoding should succeed");
     assert!(direct_palette_png.starts_with(b"\x89PNG\r\n\x1A\n"));
-    let direct_rgb_png =
-        encode_rgb555_framebuffer_png(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
-            .expect("direct CGB RGB555 PNG encoding should succeed");
+    let direct_rgb_png = encode_rgb555_framebuffer_png(
+        FRAMEBUFFER_WIDTH,
+        FRAMEBUFFER_HEIGHT,
+        &vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+    )
+    .expect("direct CGB RGB555 PNG encoding should succeed");
     assert!(direct_rgb_png.starts_with(b"\x89PNG\r\n\x1A\n"));
     let grayscale_png =
         encode_grayscale_png(2, 2, &[0, 170, 85, 255]).expect("small grayscale PNG should encode");

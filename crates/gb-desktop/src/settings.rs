@@ -762,6 +762,10 @@ enum PersistedDesktopConsoleModel {
     GameBoyLight,
     #[serde(rename = "color")]
     GameBoyColor,
+    #[serde(rename = "super-gb")]
+    SuperGameBoy,
+    #[serde(rename = "super-gb-2")]
+    SuperGameBoy2,
     #[serde(rename = "dmg0")]
     LegacyDmg0,
     #[serde(rename = "dmg")]
@@ -779,6 +783,8 @@ impl PersistedDesktopConsoleModel {
             gb_desktop::DesktopConsoleModel::GameBoyPocket => Self::GameBoyPocket,
             gb_desktop::DesktopConsoleModel::GameBoyLight => Self::GameBoyLight,
             gb_desktop::DesktopConsoleModel::GameBoyColor => Self::GameBoyColor,
+            gb_desktop::DesktopConsoleModel::SuperGameBoy => Self::SuperGameBoy,
+            gb_desktop::DesktopConsoleModel::SuperGameBoy2 => Self::SuperGameBoy2,
         }
     }
 
@@ -790,6 +796,8 @@ impl PersistedDesktopConsoleModel {
             Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
             Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
             Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+            Self::SuperGameBoy => gb_desktop::DesktopConsoleModel::SuperGameBoy,
+            Self::SuperGameBoy2 => gb_desktop::DesktopConsoleModel::SuperGameBoy2,
         }
     }
 }
@@ -1935,6 +1943,20 @@ max_memory_mib = 128
             )
             .to_external(),
             gb_desktop::DesktopConsoleModel::GameBoyPocket
+        );
+        assert_eq!(
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::SuperGameBoy
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::SuperGameBoy2
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::SuperGameBoy2
         );
         assert_eq!(
             PersistedHardwareRevision::from_external(HardwareRevision::CpuCgbE).to_external(),

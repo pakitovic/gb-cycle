@@ -1,6 +1,6 @@
 # gb-cli
 
-Headless CLI runner for Game Boy and Game Boy Color product models.
+Headless CLI runner for Game Boy, Game Boy Color, and Super Game Boy machine profiles.
 
 ## Subcommands
 
@@ -43,19 +43,19 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Console models
 
-`run` exposes the hardware-profile model names `DMG`, `MGB`, `LGB`, and `CGB` through `--model`; the previous product names `game-boy`, `pocket`, `light`, and `color`, plus the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb`, are not accepted. `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>` selects the active hardware revision for the chosen model; invalid model/revision pairs are rejected, so `--model CGB --revision cpu-cgb-e` is valid and `--model DMG --revision cpu-cgb-e` is not. `RealBoot` derives the concrete firmware filename from the effective model/revision pair (`dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`) and `--boot-rom` no longer exists; a CGB-E RealBoot validation uses `--model CGB --revision cpu-cgb-e --boot-rom-dir <private-dir>` with a directory containing `cgbE_boot.bin`.
+`run` exposes the hardware-profile model names `DMG`, `MGB`, `LGB`, `CGB`, `SGB`, and `SGB2` through `--model`; the previous product names `game-boy`, `pocket`, `light`, and `color`, plus the legacy aliases `dmg0`, `dmg`, `mgb`, and `cgb`, are not accepted. `SGB` and `SGB2` are public machine profiles resolved to the existing DMG-compatible GB core plus `SgbHostProfile::SgbNtsc` or `SgbHostProfile::Sgb2Ntsc`; they are not CGB mode and do not fork the GB core. `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>` selects the active handheld hardware revision for the chosen model/profile; invalid pairs are rejected, so `--model CGB --revision cpu-cgb-e` is valid and `--model DMG --revision cpu-cgb-e` is not, while `--model SGB` and `--model SGB2` use the DMG-compatible `dmg-cpu-c` GB core revision behind the SGB host shell. `RealBoot` derives the concrete firmware filename from the effective model/revision/profile (`dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `sgb_boot.bin`, or `sgb2_boot.bin`) and `--boot-rom` no longer exists; a CGB-E RealBoot validation uses `--model CGB --revision cpu-cgb-e --boot-rom-dir <private-dir>` with a directory containing `cgbE_boot.bin`, while SGB/SGB2 RealBoot uses `--model SGB --startup real-boot --boot-rom-dir <private-dir>` or `--model SGB2 --startup real-boot --boot-rom-dir <private-dir>` with `sgb_boot.bin` or `sgb2_boot.bin`.
 
 ## Startup and compatibility
 
 - `run` supports `skip-boot`, `custom-boot`, and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes.
 - `--mode permissive` may load explicit supported MBC5 homebrew/public-domain ROMs whose `0x0148` ROM-size metadata is unsupported or contradicts the file length; the core emits loader diagnostics, pads missing ROM bytes with `0xFF`, and keeps MBC5 banking semantics unchanged. Keep `strict` for oracle runs, differential comparisons, and accuracy claims.
 - `custom-boot` is a direct-start path for boot-logo- or reset-facing ROMs: it uses the same CPU/IO/hidden startup baseline as `skip-boot`, then overlays the DMG boot-logo VRAM/map seed and DMG-family boot-facing PPU CPU-bus publication phase without loading a boot ROM asset.
-- `real-boot` looks for the revision-derived boot ROM asset only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`. `skip-boot` and `custom-boot` do not read boot-ROM bytes; they use the direct-start state for the selected model/revision.
+- `real-boot` looks for the model/revision/profile-derived boot ROM asset only in `GB_CYCLE_BOOT_ROM_ROOT` or an explicit `--boot-rom-dir`; `--boot-rom-verify <off|warn|strict>` controls whether a missing boot-ROM root or expected SHA-256 mismatch is ignored, reported as a warning, or rejected, and defaults to `strict`. `skip-boot` and `custom-boot` do not read boot-ROM bytes; they use the direct-start state for the selected model/revision/profile.
 
 ## Output options
 
-- `--framebuffer-out` writes the final `160x144` framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`.
-- `--palette grey` maps DMG-family framebuffer shade indices through the same `DMG_GREY_DISPLAY_PALETTE` grey RGB values used by `gb-desktop`, but only when the final effective `--model` is `DMG`; the option is parsed and ignored for `MGB`, `LGB`, and `CGB`. For PGM artifacts the override writes an 8-bit grey PGM (`maxval 255`) instead of the default raw shade-index PGM (`maxval 3`), while CGB PNG output continues to use the core RGB555 framebuffer directly.
+- `--framebuffer-out` writes the final `160x144` GB LCD framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`; SGB/SGB2 PNG artifacts use the `256x224` SGB host RGB555 frame, while non-PNG SGB/SGB2 artifacts retain the legacy `160x144` shade-index PGM path for automation compatibility.
+- `--palette grey` maps DMG-family framebuffer shade indices through the same `DMG_GREY_DISPLAY_PALETTE` grey RGB values used by `gb-desktop`, but only when the final effective `--model` is `DMG`; the option is parsed and ignored for `MGB`, `LGB`, `CGB`, `SGB`, and `SGB2`. For PGM artifacts the override writes an 8-bit grey PGM (`maxval 255`) instead of the default raw shade-index PGM (`maxval 3`), while CGB and SGB-family PNG output continues to use RGB555 framebuffers directly.
 - `--serial-out` writes captured serial output to a file.
 - `--serial-stdout` streams completed serial bytes to stdout as they arrive.
 - `--trace-out` writes the in-memory scheduler trace text for the run.
