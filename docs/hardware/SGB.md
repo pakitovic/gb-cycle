@@ -19,7 +19,7 @@ The host implementation must remain pluggable. Early implementation may use a de
 | `SUPER GB` | `SGB` | `Sgb` | DMG-compatible | `SGB-CPU 01` | `skip-boot`, `real-boot` | `sgb_boot.bin` | `PAL` or `NTSC` | SGB command host, palettes, borders, multiplayer, host audio, SNES-side command/data path; no physical Game Link port. |
 | `SUPER GB 2` | `SGB2` | `Sgb2` | DMG-compatible | `CPU SGB2` | `skip-boot`, `real-boot` | `sgb2_boot.bin` | `NTSC` | SGB command host, palettes, borders, multiplayer, host audio, corrected clock versus SGB, physical Game Link support. |
 
-`MODEL: SGB` and `MODEL: SGB2` are user-facing machine profiles that resolve into explicit model axes. They must not become independent duplicated cores. If future code needs an internal profile descriptor, it should derive from the selected host platform, revision, startup mode, and video standard rather than becoming a loose collection of flags.
+`MODEL: SGB` and `MODEL: SGB2` are user-facing machine profiles that resolve into explicit model axes. They must not become independent duplicated cores. The internal profile descriptor is `SgbHostProfile`: `SgbNtsc` and `SgbPal` require `HostPlatform::Sgb`, while `Sgb2Ntsc` requires `HostPlatform::Sgb2`; impossible combinations such as PAL SGB2 are rejected by model-axis coherence and save-state metadata validation instead of being normalized silently.
 
 ## Boot and startup
 
@@ -67,8 +67,10 @@ Packet transport state is part of `SgbHostSaveState`: last line state, active tr
 | Attributes | `ATTR_BLK`, `ATTR_LIN`, `ATTR_DIV`, `ATTR_CHR`, `ATTR_TRN`, `ATTR_SET` | SGB host 20×18 attribute map and loaded attribute buffers | Keep separate from GB PPU tile metadata and CGB attributes. |
 | Borders and masks | `MASK_EN`, `CHR_TRN`, `PCT_TRN` | SGB host border tiles, tilemap/attributes, palettes, mask state | Consume the shared 4 KiB transfer path and compose outside the GB LCD image. |
 | Multiplayer | `MLT_REQ` | SGB host controller mux | Support one/two/four-player modes and P1 player-ID cycling; separate from Game Link. |
-| Host audio | `SOUND`, `SOU_TRN` | SGB host audio event/state | Keep ordinary GB APU separate; allow deterministic HLE first and later S-APU-capable backend. |
-| System/data/execution | `DATA_SND`, `DATA_TRN`, `JUMP` | Pluggable SNES/SFC host backend | Final-stage behavior; avoid game-specific shortcuts and leave room for 65C816 execution. |
+| Host audio | `SOUND`, `SOU_TRN` | SGB host audio event/state plus pluggable host backend request | Keep ordinary GB APU separate; allow deterministic HLE first and later S-APU-capable backend. |
+| System/data/execution | `DATA_SND`, `DATA_TRN`, `JUMP` | Pluggable SNES/SFC host backend request/state | Final-stage behavior; avoid game-specific shortcuts and leave room for SNES RAM, VRAM-transfer targets, and 65C816 execution. |
+
+The Slice 0 hardening contract defines typed `SgbHostBackendRequest` events before Slice 7/8 implementation: `SOUND` records an inline host-audio request, `SOU_TRN` uses the shared 4 KiB VRAM-transfer seam and records a sound-transfer descriptor, `DATA_SND` records an inline SNES memory write descriptor, `DATA_TRN` uses the same 4 KiB transfer seam with an explicit SNES destination, and `JUMP` records PC/NMI handler addresses and marks host execution as entered. The deterministic HLE backend currently records these requests for save/load and tests; it does not emulate S-APU mixing, SNES RAM contents, or 65C816 instruction execution yet.
 
 ## Video and color composition
 
@@ -114,11 +116,13 @@ SGB multiplayer is not a DMG-07 four-player adapter and not a Game Link connecti
 
 The GB APU remains the shared core's ordinary audio generator. SGB special audio is host-side behavior driven by `SOUND` and `SOU_TRN`, exported or mixed through an SGB host-audio boundary.
 
-A deterministic HLE host-audio backend is acceptable for initial command/state support, but the API must leave room for a later SNES/S-APU-capable backend. Do not hardcode Donkey Kong (GB) special audio behavior as a title-specific path; use it only as a manual compatibility example.
+The typed backend contract stores `SgbHostAudioRequest::Sound` for inline `SOUND` packets and `SgbHostAudioRequest::SoundTransfer` after the shared `_TRN` capture completes for `SOU_TRN`. A deterministic HLE host-audio backend is acceptable for initial command/state support, but the API must leave room for a later SNES/S-APU-capable backend. Do not hardcode Donkey Kong (GB) special audio behavior as a title-specific path; use it only as a manual compatibility example.
 
 ## Timing / accuracy requirements
 
-Use T-cycles as the GB core timing unit as elsewhere in the project, but keep SGB host profile timing explicit. `SGB NTSC`, `SGB PAL`, and `SGB2 NTSC` must be represented as profile facts so video standard, corrected SGB2 clock behavior, and host presentation timing are not inferred from arbitrary names or frontend settings.
+Use T-cycles as the GB core timing unit as elsewhere in the project, but keep SGB host profile timing explicit. `SGB NTSC`, `SGB PAL`, and `SGB2 NTSC` are represented as profile facts so video standard, corrected SGB2 clock behavior, and host presentation timing are not inferred from arbitrary names or frontend settings.
+
+The Slice 6 baseline stores SGB profile clocks as rational profile facts rather than title-specific hacks: original SGB NTSC derives the GB master clock from a 21,477,272 Hz SNES/SFC source divided by 5, original SGB PAL derives it from a 21,281,370 Hz source divided by 5, and SGB2 NTSC uses a separate 20,971,520 Hz cartridge crystal divided by 5 for the corrected 4,194,304 Hz GB master clock. These facts describe host/wall-clock cadence and audio/video pitch; the core scheduler still advances deterministic logical T-cycles and later frontend pacing/output code should consult the profile instead of changing CPU/PPU/APU ownership.
 
 SGB2 corrected clock behavior belongs to the SGB2 profile. Original SGB may have PAL/NTSC host variants. SGB2 is NTSC in the planned public profile unless future evidence requires a broader matrix.
 
@@ -126,13 +130,13 @@ Packet decode, command side effects, transfer capture, controller multiplexing, 
 
 ## SGB2 Game Link
 
-Original SGB has no physical Game Link port. SGB2 has Game Link support and should route through the existing link topology and serial boundaries, not through the SGB command-packet layer.
+Original SGB has no physical Game Link port. SGB2 has Game Link support and routes through the existing `external_port`, `serial`, and `link::LinkedMachines` boundaries, not through the SGB command-packet layer.
 
-SGB2 link availability should be a profile/capability fact. Tests should distinguish SGB's no-link behavior from SGB2 link attachment and should prove that SGB2 link routing does not reimplement serial transfer semantics inside the SGB host.
+SGB2 link availability is a profile/capability fact. `Machine::supports_external_port_attachment` rejects physical serial-port attachments for original SGB profiles, accepts them for SGB2, and `LinkedMachines::attach_dmg04_cable` validates that fact before installing the existing `DMG-04` cable topology. This keeps serial transfer semantics owned by the existing serial/link subsystems and keeps `MLT_REQ` controller multiplexing separate from physical Game Link behavior.
 
 ## SNES-side execution
 
-`DATA_SND`, `DATA_TRN`, and `JUMP` require a host backend that can own SNES/SFC-side memory, data-transfer destinations, and execution state. A command-only HLE host is acceptable for earlier slices, but the final execution slice must be able to model 16-bit host-side execution sufficiently for software that uploads and jumps to SNES code.
+`DATA_SND`, `DATA_TRN`, and `JUMP` require a host backend that can own SNES/SFC-side memory, data-transfer destinations, and execution state. The core now represents these as typed `SgbSnesHostRequest` values: inline `DATA_SND`, 4 KiB transfer-backed `DATA_TRN`, and `JUMP` with PC/NMI handler addresses. A command-only HLE host is acceptable for earlier slices, but the final execution slice must be able to replace request recording with 16-bit host-side execution sufficiently for software that uploads and jumps to SNES code.
 
 Space Invaders should be treated as a manual compatibility example for this capability, not as a hardcoded special case.
 
@@ -149,6 +153,7 @@ Space Invaders should be treated as a manual compatibility example for this capa
 ## Primary references
 
 - Pan Docs SGB Functions: https://gbdev.io/pandocs/SGB_Functions.html
+- Pan Docs Specifications: https://gbdev.io/pandocs/Specifications.html
 - Pan Docs SGB Command Packet: https://gbdev.io/pandocs/SGB_Command_Packet.html
 - Pan Docs SGB Command Summary: https://gbdev.io/pandocs/SGB_Command_Summary.html
 - Pan Docs SGB VRAM Transfers: https://gbdev.io/pandocs/SGB_VRAM_Transfer.html
@@ -187,7 +192,7 @@ Commercial titles are manual compatibility examples only unless a future private
 - SGB should reuse the DMG-family shared path through explicit axes and capabilities, not a dedicated "SGB core".
 - SGB palette/attribute/border state must be explicit host state and must not piggyback on CGB palette or CGB tile-attribute internals.
 - Every slice that adds live host state must update typed save states before the slice is considered closed.
-- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes. Slice 2 adds persistent direct-palette state, a seven-packet command buffer for future multi-packet commands, and `SgbHost::compose_lcd_rgb555` / `Machine::sgb_lcd_framebuffer_rgb555` as the frontend-neutral base LCD color output. Slice 3 adds pending `_TRN` transfer state, the retained last 4 KiB transfer payload, border tile data, border tilemap/palette state, `MASK_EN` mask/freeze state, and `SgbHost::compose_frame_rgb555` / `Machine::sgb_framebuffer_rgb555` for the 256×224 host frame. Slice 4 adds active 20×18 screen attributes, packed ATF memory, 512 system palettes, indirect palette/attribute commands, `PAL_PRI`, and attribute-aware LCD/freeze composition. Slice 5 adds `MLT_REQ` mode state, selected-player cycling, four SGB host input slots, player-ID P1 read overlay, and pending input-slot save-state coverage; because this changes the typed whole-machine save-state payload again, the durable machine save-state format version is bumped.
+- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer state, typed host-audio and SNES-side backend request contracts, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes. Slice 2 adds persistent direct-palette state, a seven-packet command buffer for future multi-packet commands, and `SgbHost::compose_lcd_rgb555` / `Machine::sgb_lcd_framebuffer_rgb555` as the frontend-neutral base LCD color output. Slice 3 adds pending `_TRN` transfer state, the retained last 4 KiB transfer payload, border tile data, border tilemap/palette state, `MASK_EN` mask/freeze state, and `SgbHost::compose_frame_rgb555` / `Machine::sgb_framebuffer_rgb555` for the 256×224 host frame. Slice 4 adds active 20×18 screen attributes, packed ATF memory, 512 system palettes, indirect palette/attribute commands, `PAL_PRI`, and attribute-aware LCD/freeze composition. Slice 5 adds `MLT_REQ` mode state, selected-player cycling, four SGB host input slots, player-ID P1 read overlay, and pending input-slot save-state coverage. Slice 6 moves SGB profile timing into the model/profile contract, persists selected profile metadata, and gates physical external-port attachments so original SGB has no Game Link while SGB2 routes through existing link topologies; because this changes the typed whole-machine save-state metadata again, the durable machine save-state format version is bumped.
 
 ## Known pitfalls
 

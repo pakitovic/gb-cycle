@@ -6,8 +6,8 @@ use gb_core::{
 };
 use gb_core::{
     CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, ExecutionMode,
-    HardwareRevision, HeuristicPolicy, HostPlatform, OperatingMode, OverridePolicy, StartupMode,
-    TCycle, ValidationPolicy,
+    HardwareRevision, HeuristicPolicy, HostPlatform, OperatingMode, OverridePolicy, SgbHostProfile,
+    StartupMode, TCycle, ValidationPolicy,
 };
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
 const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
-pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 7;
+pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 8;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
 pub const SAVE_FILE_EXTENSION_P2: &str = "gbsa2";
 pub const SAVE_FILE_EXTENSION_P3: &str = "gbsa3";
@@ -2033,6 +2033,7 @@ fn encode_machine_save_state_metadata(
     bytes.push(encode_operating_mode(metadata.operating_mode));
     bytes.push(encode_revision(metadata.revision));
     bytes.push(encode_host_platform(metadata.host_platform));
+    encode_optional_tag(bytes, metadata.sgb_profile.map(encode_sgb_host_profile));
     bytes.push(encode_startup_mode(metadata.startup_mode));
     encode_compatibility_policy(bytes, &metadata.compatibility);
     write_u64(bytes, metadata.next_t_cycle.get());
@@ -2051,6 +2052,9 @@ fn decode_machine_save_state_metadata(
     let operating_mode = decode_operating_mode(cursor.read_u8()?, "operating_mode")?;
     let revision = decode_revision(cursor.read_u8()?, "revision")?;
     let host_platform = decode_host_platform(cursor.read_u8()?, "host_platform")?;
+    let sgb_profile = decode_optional_tag(cursor, "sgb_profile")?
+        .map(|tag| decode_sgb_host_profile(tag, "sgb_profile"))
+        .transpose()?;
     let startup_mode = decode_startup_mode(cursor.read_u8()?, "startup_mode")?;
     let compatibility = decode_compatibility_policy(cursor)?;
     let next_t_cycle = TCycle::new(cursor.read_u64()?);
@@ -2065,6 +2069,7 @@ fn decode_machine_save_state_metadata(
         operating_mode,
         revision,
         host_platform,
+        sgb_profile,
         startup_mode,
         compatibility,
         next_t_cycle,
@@ -2277,6 +2282,26 @@ fn decode_host_platform(
         0 => Ok(HostPlatform::Handheld),
         1 => Ok(HostPlatform::Sgb),
         2 => Ok(HostPlatform::Sgb2),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_sgb_host_profile(value: SgbHostProfile) -> u8 {
+    match value {
+        SgbHostProfile::SgbNtsc => 0,
+        SgbHostProfile::SgbPal => 1,
+        SgbHostProfile::Sgb2Ntsc => 2,
+    }
+}
+
+fn decode_sgb_host_profile(
+    tag: u8,
+    field: &'static str,
+) -> Result<SgbHostProfile, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(SgbHostProfile::SgbNtsc),
+        1 => Ok(SgbHostProfile::SgbPal),
+        2 => Ok(SgbHostProfile::Sgb2Ntsc),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -3015,6 +3040,22 @@ mod tests {
         ));
 
         for value in [
+            SgbHostProfile::SgbNtsc,
+            SgbHostProfile::SgbPal,
+            SgbHostProfile::Sgb2Ntsc,
+        ] {
+            assert_eq!(
+                decode_sgb_host_profile(encode_sgb_host_profile(value), "sgb_profile")
+                    .expect("SGB profile tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_sgb_host_profile(0xFF, "sgb_profile"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
             StartupMode::SkipBoot,
             StartupMode::CustomBoot,
             StartupMode::RealBoot,
@@ -3124,6 +3165,7 @@ mod tests {
             operating_mode: OperatingMode::GbCompatible,
             revision: HardwareRevision::CpuCgbE,
             host_platform: HostPlatform::Sgb2,
+            sgb_profile: Some(SgbHostProfile::Sgb2Ntsc),
             startup_mode: StartupMode::RealBoot,
             compatibility: CompatibilityPolicy {
                 execution_mode: ExecutionMode::Experimental,

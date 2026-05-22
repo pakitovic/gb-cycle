@@ -177,6 +177,7 @@ fn machine_config_builder_methods_only_update_requested_fields() {
     assert_eq!(config.operating_mode, OperatingMode::Dmg);
     assert_eq!(config.revision, HardwareRevision::CpuMgb);
     assert_eq!(config.host_platform, HostPlatform::Sgb2);
+    assert_eq!(config.sgb_profile, Some(SgbHostProfile::Sgb2Ntsc));
     assert_eq!(config.startup_mode, StartupMode::RealBoot);
     assert_eq!(
         config.compatibility.execution_mode,
@@ -225,6 +226,64 @@ fn hardware_revisions_derive_real_boot_images() {
     );
     assert_eq!(HardwareRevision::DmgCpuC.boot_rom_expected_size(), 0x0100);
     assert_eq!(HardwareRevision::CpuCgbE.boot_rom_expected_size(), 0x0900);
+}
+
+#[test]
+fn sgb_profiles_publish_timing_link_and_video_facts() {
+    assert_eq!(SgbHostProfile::ALL.len(), 3);
+    assert_eq!(
+        SgbHostProfile::default_for_host_platform(HostPlatform::Sgb),
+        Some(SgbHostProfile::SgbNtsc)
+    );
+    assert_eq!(
+        SgbHostProfile::default_for_host_platform(HostPlatform::Sgb2),
+        Some(SgbHostProfile::Sgb2Ntsc)
+    );
+    assert_eq!(
+        SgbHostProfile::default_for_host_platform(HostPlatform::Handheld),
+        None
+    );
+
+    let sgb_ntsc = SgbHostProfile::SgbNtsc.timing();
+    assert_eq!(sgb_ntsc.source_master_clock_hz.rounded_hz(), 21_477_272);
+    assert_eq!(sgb_ntsc.gb_clock_divisor, SGB_ICD2_CLOCK_DIVISOR);
+    assert_eq!(sgb_ntsc.gb_master_clock_hz.rounded_hz(), 4_295_454);
+    assert_eq!(sgb_ntsc.video_standard, SgbVideoStandard::Ntsc);
+    assert!(!sgb_ntsc.corrected_clock);
+
+    let sgb_pal = SgbHostProfile::SgbPal.timing();
+    assert_eq!(sgb_pal.source_master_clock_hz.rounded_hz(), 21_281_370);
+    assert_eq!(sgb_pal.gb_master_clock_hz.rounded_hz(), 4_256_274);
+    assert_eq!(sgb_pal.video_standard, SgbVideoStandard::Pal);
+    assert!(!SgbHostProfile::SgbPal.game_link_supported());
+
+    let sgb2 = SgbHostProfile::Sgb2Ntsc.timing();
+    assert_eq!(sgb2.source_master_clock_hz.rounded_hz(), 20_971_520);
+    assert_eq!(sgb2.gb_master_clock_hz.rounded_hz(), DMG_MASTER_CLOCK_HZ);
+    assert_eq!(sgb2.video_standard, SgbVideoStandard::Ntsc);
+    assert!(sgb2.corrected_clock);
+    assert!(SgbHostProfile::Sgb2Ntsc.game_link_supported());
+}
+
+#[test]
+fn sgb_profile_selection_tracks_and_validates_host_platform() {
+    let pal_sgb =
+        MachineConfig::new(ConsoleModel::GameBoy).with_sgb_profile(SgbHostProfile::SgbPal);
+    assert_eq!(pal_sgb.host_platform, HostPlatform::Sgb);
+    assert_eq!(pal_sgb.sgb_profile, Some(SgbHostProfile::SgbPal));
+    assert!(pal_sgb.model_axes_are_coherent());
+
+    let sgb2 = MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb2);
+    assert_eq!(sgb2.sgb_profile, Some(SgbHostProfile::Sgb2Ntsc));
+    assert!(sgb2.model_axes_are_coherent());
+
+    let mut impossible_pal_sgb2 = sgb2.clone();
+    impossible_pal_sgb2.sgb_profile = Some(SgbHostProfile::SgbPal);
+    assert!(!impossible_pal_sgb2.model_axes_are_coherent());
+
+    let mut handheld_with_sgb_profile = MachineConfig::new(ConsoleModel::GameBoy);
+    handheld_with_sgb_profile.sgb_profile = Some(SgbHostProfile::SgbNtsc);
+    assert!(!handheld_with_sgb_profile.model_axes_are_coherent());
 }
 
 #[test]

@@ -10,7 +10,8 @@ use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{
-    CompatibilityPolicy, ConsoleModel, ExecutionMode, HardwareRevision, OperatingMode, StartupMode,
+    CompatibilityPolicy, ConsoleModel, ExecutionMode, HardwareRevision, HostPlatform,
+    OperatingMode, SgbHostProfile, StartupMode,
 };
 use crate::ppu::{
     PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
@@ -2859,6 +2860,40 @@ fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
         ExternalPortAttachmentKind::Loopback
     );
     assert_eq!(machine.serial().peer(), SerialPeer::Loopback);
+}
+
+#[test]
+fn sgb_profiles_gate_physical_external_port_attachments() {
+    let mut sgb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbPal)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    let mut sgb2 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_host_platform(HostPlatform::Sgb2)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert!(!sgb.supports_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04));
+    assert!(sgb2.supports_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04));
+
+    sgb.set_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04);
+    sgb2.set_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04);
+
+    assert_eq!(
+        sgb.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::None
+    );
+    assert_eq!(
+        sgb.serial().peer(),
+        SerialPeer::Disconnected,
+        "original SGB has no physical serial/link connector"
+    );
+    assert_eq!(
+        sgb2.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::GameLinkDmg04
+    );
 }
 
 #[test]

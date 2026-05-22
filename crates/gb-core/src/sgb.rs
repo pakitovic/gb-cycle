@@ -1,6 +1,6 @@
 use crate::cartridge::{CartridgeHeader, SgbFlag};
 use crate::joypad::{JoypadButton, button_mask};
-use crate::model::{HostPlatform, StartupMode};
+use crate::model::{HostPlatform, SgbHostProfile, StartupMode};
 
 const JOYP_SELECT_BITS_MASK: u8 = 0x30;
 const SGB_JOYP_IDLE_BITS: u8 = 0x30;
@@ -38,6 +38,8 @@ pub const SGB_BORDER_TILEMAP_ENTRIES: usize =
 pub const SGB_BORDER_PALETTE_COUNT: usize = 3;
 pub const SGB_BORDER_PALETTE_COLORS: usize = 16;
 pub const SGB_CONTROLLER_COUNT: usize = 4;
+pub const SGB_DATA_SND_INLINE_BYTES: usize = 11;
+pub const SGB_SNES_DATA_TRN_BYTES: u32 = SGB_VRAM_TRANSFER_BYTES as u32;
 
 const SGB_PACKET_BYTES: usize = SGB_COMMAND_PACKET_BYTES;
 const SGB_PACKET_BITS: u8 = 128;
@@ -57,90 +59,20 @@ const SGB_COMMAND_ATTR_BLK: u8 = 0x04;
 const SGB_COMMAND_ATTR_LIN: u8 = 0x05;
 const SGB_COMMAND_ATTR_DIV: u8 = 0x06;
 const SGB_COMMAND_ATTR_CHR: u8 = 0x07;
+const SGB_COMMAND_SOUND: u8 = 0x08;
+const SGB_COMMAND_SOU_TRN: u8 = 0x09;
 const SGB_COMMAND_PAL_SET: u8 = 0x0A;
 const SGB_COMMAND_PAL_TRN: u8 = 0x0B;
+const SGB_COMMAND_DATA_SND: u8 = 0x0F;
+const SGB_COMMAND_DATA_TRN: u8 = 0x10;
 const SGB_COMMAND_CHR_TRN: u8 = 0x13;
 const SGB_COMMAND_PCT_TRN: u8 = 0x14;
 const SGB_COMMAND_ATTR_TRN: u8 = 0x15;
 const SGB_COMMAND_ATTR_SET: u8 = 0x16;
 const SGB_COMMAND_MASK_EN: u8 = 0x17;
 const SGB_COMMAND_MLT_REQ: u8 = 0x11;
+const SGB_COMMAND_JUMP: u8 = 0x12;
 const SGB_COMMAND_PAL_PRI: u8 = 0x19;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum SgbVideoStandard {
-    Ntsc,
-    Pal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum SgbHostProfile {
-    SgbNtsc,
-    SgbPal,
-    Sgb2Ntsc,
-}
-
-impl SgbHostProfile {
-    pub const ALL: [Self; 3] = [Self::SgbNtsc, Self::SgbPal, Self::Sgb2Ntsc];
-
-    pub const fn default_for_host_platform(host_platform: HostPlatform) -> Option<Self> {
-        match host_platform {
-            HostPlatform::Handheld => None,
-            HostPlatform::Sgb => Some(Self::SgbNtsc),
-            HostPlatform::Sgb2 => Some(Self::Sgb2Ntsc),
-        }
-    }
-
-    pub const fn host_platform(self) -> HostPlatform {
-        match self {
-            Self::SgbNtsc | Self::SgbPal => HostPlatform::Sgb,
-            Self::Sgb2Ntsc => HostPlatform::Sgb2,
-        }
-    }
-
-    pub const fn video_standard(self) -> SgbVideoStandard {
-        match self {
-            Self::SgbNtsc | Self::Sgb2Ntsc => SgbVideoStandard::Ntsc,
-            Self::SgbPal => SgbVideoStandard::Pal,
-        }
-    }
-
-    pub const fn ui_label(self) -> &'static str {
-        match self {
-            Self::SgbNtsc | Self::SgbPal => "SUPER GB",
-            Self::Sgb2Ntsc => "SUPER GB 2",
-        }
-    }
-
-    pub const fn machine_profile_name(self) -> &'static str {
-        match self {
-            Self::SgbNtsc | Self::SgbPal => "SGB",
-            Self::Sgb2Ntsc => "SGB2",
-        }
-    }
-
-    pub const fn revision_label(self) -> &'static str {
-        match self {
-            Self::SgbNtsc | Self::SgbPal => "SGB-CPU 01",
-            Self::Sgb2Ntsc => "CPU SGB2",
-        }
-    }
-
-    pub const fn real_boot_filename(self) -> &'static str {
-        match self {
-            Self::SgbNtsc | Self::SgbPal => "sgb_boot.bin",
-            Self::Sgb2Ntsc => "sgb2_boot.bin",
-        }
-    }
-
-    pub const fn game_link_supported(self) -> bool {
-        matches!(self, Self::Sgb2Ntsc)
-    }
-
-    pub const fn corrected_clock(self) -> bool {
-        matches!(self, Self::Sgb2Ntsc)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbRealBootAsset {
@@ -171,6 +103,13 @@ pub enum SgbHostBackendKind {
 
 pub trait SgbHostBackend {
     fn backend_kind(&self) -> SgbHostBackendKind;
+
+    fn handle_request(
+        &mut self,
+        request: SgbHostBackendRequest,
+        audio: &mut SgbAudioState,
+        snes_host: &mut SgbSnesHostState,
+    ) -> SgbHostBackendResponse;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -179,6 +118,242 @@ pub struct DeterministicHleSgbHostBackend;
 impl SgbHostBackend for DeterministicHleSgbHostBackend {
     fn backend_kind(&self) -> SgbHostBackendKind {
         SgbHostBackendKind::DeterministicHle
+    }
+
+    fn handle_request(
+        &mut self,
+        request: SgbHostBackendRequest,
+        audio: &mut SgbAudioState,
+        snes_host: &mut SgbSnesHostState,
+    ) -> SgbHostBackendResponse {
+        match request {
+            SgbHostBackendRequest::Audio(request) => audio.record_request(request),
+            SgbHostBackendRequest::Snes(request) => snes_host.record_request(request),
+        }
+        SgbHostBackendResponse {
+            backend_kind: self.backend_kind(),
+            request_kind: request.kind(),
+            accepted: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbHostBackendRequestKind {
+    Sound,
+    SoundTransfer,
+    DataSend,
+    DataTransfer,
+    Jump,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbHostBackendRequest {
+    Audio(SgbHostAudioRequest),
+    Snes(SgbSnesHostRequest),
+}
+
+impl SgbHostBackendRequest {
+    pub const fn kind(self) -> SgbHostBackendRequestKind {
+        match self {
+            Self::Audio(request) => request.kind(),
+            Self::Snes(request) => request.kind(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbHostBackendResponse {
+    pub backend_kind: SgbHostBackendKind,
+    pub request_kind: SgbHostBackendRequestKind,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbHostAudioRequest {
+    Sound(SgbSoundRequest),
+    SoundTransfer(SgbSoundTransferRequest),
+}
+
+impl SgbHostAudioRequest {
+    pub const fn kind(self) -> SgbHostBackendRequestKind {
+        match self {
+            Self::Sound(_) => SgbHostBackendRequestKind::Sound,
+            Self::SoundTransfer(_) => SgbHostBackendRequestKind::SoundTransfer,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbSnesHostRequest {
+    DataSend(SgbDataSendRequest),
+    DataTransfer(SgbDataTransferRequest),
+    Jump(SgbJumpRequest),
+}
+
+impl SgbSnesHostRequest {
+    pub const fn kind(self) -> SgbHostBackendRequestKind {
+        match self {
+            Self::DataSend(_) => SgbHostBackendRequestKind::DataSend,
+            Self::DataTransfer(_) => SgbHostBackendRequestKind::DataTransfer,
+            Self::Jump(_) => SgbHostBackendRequestKind::Jump,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbSoundEffectControl {
+    pub code: u8,
+    pub pitch: u8,
+    pub volume: u8,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbSoundRequest {
+    pub effect_a: SgbSoundEffectControl,
+    pub effect_b: SgbSoundEffectControl,
+    pub music_score: u8,
+    pub raw_attributes: u8,
+}
+
+impl SgbSoundRequest {
+    const fn from_packet(bytes: &[u8; SGB_PACKET_BYTES]) -> Self {
+        let raw_attributes = bytes[3];
+        Self {
+            effect_a: SgbSoundEffectControl {
+                code: bytes[1],
+                pitch: raw_attributes & 0x03,
+                volume: (raw_attributes >> 2) & 0x03,
+            },
+            effect_b: SgbSoundEffectControl {
+                code: bytes[2],
+                pitch: (raw_attributes >> 4) & 0x03,
+                volume: (raw_attributes >> 6) & 0x03,
+            },
+            music_score: bytes[4],
+            raw_attributes,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbApuRamAddress {
+    pub address: u16,
+}
+
+impl SgbApuRamAddress {
+    pub const fn new(address: u16) -> Self {
+        Self { address }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbSoundTransferPacket {
+    Data {
+        size: u16,
+        destination: SgbApuRamAddress,
+    },
+    Jump {
+        address: SgbApuRamAddress,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbSoundTransferRequest {
+    pub first_packet: SgbSoundTransferPacket,
+    pub payload_bytes: u32,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbSnesAddress {
+    pub bank: u8,
+    pub address: u16,
+}
+
+impl SgbSnesAddress {
+    pub const fn new(bank: u8, address: u16) -> Self {
+        Self { bank, address }
+    }
+
+    const fn from_packet_bytes(low: u8, high: u8, bank: u8) -> Self {
+        Self {
+            bank,
+            address: u16::from_le_bytes([low, high]),
+        }
+    }
+
+    pub const fn raw24(self) -> u32 {
+        (self.bank as u32) << 16 | self.address as u32
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbDataSendRequest {
+    pub destination: SgbSnesAddress,
+    pub declared_len: u8,
+    pub data: [u8; SGB_DATA_SND_INLINE_BYTES],
+}
+
+impl SgbDataSendRequest {
+    const fn from_packet(bytes: &[u8; SGB_PACKET_BYTES]) -> Self {
+        let mut data = [0; SGB_DATA_SND_INLINE_BYTES];
+        let mut index = 0;
+        while index < SGB_DATA_SND_INLINE_BYTES {
+            data[index] = bytes[5 + index];
+            index += 1;
+        }
+        Self {
+            destination: SgbSnesAddress::from_packet_bytes(bytes[1], bytes[2], bytes[3]),
+            declared_len: bytes[4],
+            data,
+        }
+    }
+
+    pub const fn payload_len(self) -> usize {
+        if self.declared_len as usize > SGB_DATA_SND_INLINE_BYTES {
+            SGB_DATA_SND_INLINE_BYTES
+        } else {
+            self.declared_len as usize
+        }
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.data[..self.payload_len()]
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbDataTransferRequest {
+    pub destination: SgbSnesAddress,
+    pub payload_bytes: u32,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbJumpRequest {
+    pub program_counter: SgbSnesAddress,
+    pub nmi_handler: SgbSnesAddress,
+}
+
+impl SgbJumpRequest {
+    const fn from_packet(bytes: &[u8; SGB_PACKET_BYTES]) -> Self {
+        Self {
+            program_counter: SgbSnesAddress::from_packet_bytes(bytes[1], bytes[2], bytes[3]),
+            nmi_handler: SgbSnesAddress::from_packet_bytes(bytes[4], bytes[5], bytes[6]),
+        }
     }
 }
 
@@ -327,6 +502,8 @@ pub enum SgbVramTransferTarget {
     Pct,
     Pal,
     Attr,
+    Sound,
+    SnesData(SgbSnesAddress),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -364,6 +541,30 @@ impl Default for SgbVramTransferBuffer {
     fn default() -> Self {
         Self {
             bytes: vec![0; SGB_VRAM_TRANSFER_BYTES],
+        }
+    }
+}
+
+impl SgbSoundTransferRequest {
+    fn from_vram_transfer_payload(payload: &SgbVramTransferBuffer) -> Self {
+        let size = u16::from_le_bytes([
+            payload.bytes.first().copied().unwrap_or(0),
+            payload.bytes.get(1).copied().unwrap_or(0),
+        ]);
+        let address = SgbApuRamAddress::new(u16::from_le_bytes([
+            payload.bytes.get(2).copied().unwrap_or(0),
+            payload.bytes.get(3).copied().unwrap_or(0),
+        ]));
+        Self {
+            first_packet: if size == 0 {
+                SgbSoundTransferPacket::Jump { address }
+            } else {
+                SgbSoundTransferPacket::Data {
+                    size,
+                    destination: address,
+                }
+            },
+            payload_bytes: payload.bytes.len() as u32,
         }
     }
 }
@@ -1262,6 +1463,10 @@ pub struct SgbMultiplayerState {
 )]
 pub struct SgbAudioState {
     pub pending_host_audio_events: u8,
+    pub last_request: Option<SgbHostAudioRequest>,
+    pub sound_command_count: u64,
+    pub sound_transfer_count: u64,
+    pub transferred_payload_bytes: u32,
 }
 
 #[derive(
@@ -1270,6 +1475,56 @@ pub struct SgbAudioState {
 pub struct SgbSnesHostState {
     pub execution_enabled: bool,
     pub uploaded_payload_bytes: u32,
+    pub last_request: Option<SgbSnesHostRequest>,
+    pub data_snd_count: u64,
+    pub data_trn_count: u64,
+    pub jump_count: u64,
+    pub program_counter: Option<SgbSnesAddress>,
+    pub nmi_handler: Option<SgbSnesAddress>,
+}
+
+impl SgbAudioState {
+    fn record_request(&mut self, request: SgbHostAudioRequest) {
+        self.last_request = Some(request);
+        self.pending_host_audio_events = self.pending_host_audio_events.saturating_add(1);
+        match request {
+            SgbHostAudioRequest::Sound(_) => {
+                self.sound_command_count = self.sound_command_count.saturating_add(1);
+            }
+            SgbHostAudioRequest::SoundTransfer(request) => {
+                self.sound_transfer_count = self.sound_transfer_count.saturating_add(1);
+                self.transferred_payload_bytes = self
+                    .transferred_payload_bytes
+                    .saturating_add(request.payload_bytes);
+            }
+        }
+    }
+}
+
+impl SgbSnesHostState {
+    fn record_request(&mut self, request: SgbSnesHostRequest) {
+        self.last_request = Some(request);
+        match request {
+            SgbSnesHostRequest::DataSend(request) => {
+                self.data_snd_count = self.data_snd_count.saturating_add(1);
+                self.uploaded_payload_bytes = self
+                    .uploaded_payload_bytes
+                    .saturating_add(request.payload_len() as u32);
+            }
+            SgbSnesHostRequest::DataTransfer(request) => {
+                self.data_trn_count = self.data_trn_count.saturating_add(1);
+                self.uploaded_payload_bytes = self
+                    .uploaded_payload_bytes
+                    .saturating_add(request.payload_bytes);
+            }
+            SgbSnesHostRequest::Jump(request) => {
+                self.jump_count = self.jump_count.saturating_add(1);
+                self.execution_enabled = true;
+                self.program_counter = Some(request.program_counter);
+                self.nmi_handler = Some(request.nmi_handler);
+            }
+        }
+    }
 }
 
 impl Default for SgbHost {
@@ -1296,9 +1551,15 @@ impl SgbHost {
         profile: Option<SgbHostProfile>,
         startup_mode: StartupMode,
     ) -> Self {
-        debug_assert!(profile.is_none_or(|profile| profile.host_platform() == host_platform));
         let active = host_platform.is_sgb();
-        let profile = active.then_some(profile).flatten();
+        let profile = if active {
+            match profile {
+                Some(profile) if profile.host_platform() == host_platform => Some(profile),
+                _ => SgbHostProfile::default_for_host_platform(host_platform),
+            }
+        } else {
+            None
+        };
         Self {
             host_platform,
             profile,
@@ -1646,6 +1907,16 @@ impl SgbHost {
                 let payload = self.command.command_payload(packet_count);
                 self.video.apply_attr_chr_command(&payload);
             }
+            SGB_COMMAND_SOUND if packet_count == 1 => {
+                self.dispatch_host_backend_request(SgbHostBackendRequest::Audio(
+                    SgbHostAudioRequest::Sound(SgbSoundRequest::from_packet(
+                        &self.command.packet_buffer[0],
+                    )),
+                ));
+            }
+            SGB_COMMAND_SOU_TRN if packet_count == 1 => {
+                self.video.request_sound_transfer(command_id);
+            }
             SGB_COMMAND_PAL_SET if packet_count == 1 => {
                 self.video
                     .apply_pal_set_command(&self.command.packet_buffer[0]);
@@ -1653,9 +1924,33 @@ impl SgbHost {
             SGB_COMMAND_PAL_TRN if packet_count == 1 => {
                 self.video.request_pal_transfer(command_id);
             }
+            SGB_COMMAND_DATA_SND if packet_count == 1 => {
+                self.dispatch_host_backend_request(SgbHostBackendRequest::Snes(
+                    SgbSnesHostRequest::DataSend(SgbDataSendRequest::from_packet(
+                        &self.command.packet_buffer[0],
+                    )),
+                ));
+            }
+            SGB_COMMAND_DATA_TRN if packet_count == 1 => {
+                self.video.request_snes_data_transfer(
+                    command_id,
+                    SgbSnesAddress::from_packet_bytes(
+                        self.command.packet_buffer[0][1],
+                        self.command.packet_buffer[0][2],
+                        self.command.packet_buffer[0][3],
+                    ),
+                );
+            }
             SGB_COMMAND_MLT_REQ if packet_count == 1 => self
                 .multiplayer
                 .apply_mlt_req_command(&self.command.packet_buffer[0]),
+            SGB_COMMAND_JUMP if packet_count == 1 => {
+                self.dispatch_host_backend_request(SgbHostBackendRequest::Snes(
+                    SgbSnesHostRequest::Jump(SgbJumpRequest::from_packet(
+                        &self.command.packet_buffer[0],
+                    )),
+                ));
+            }
             SGB_COMMAND_CHR_TRN if packet_count == 1 => self
                 .video
                 .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
@@ -1674,6 +1969,16 @@ impl SgbHost {
                 .apply_pal_pri_command(&self.command.packet_buffer[0]),
             _ => {}
         }
+    }
+
+    fn dispatch_host_backend_request(
+        &mut self,
+        request: SgbHostBackendRequest,
+    ) -> SgbHostBackendResponse {
+        let mut backend = DeterministicHleSgbHostBackend;
+        let response = backend.handle_request(request, &mut self.audio, &mut self.snes_host);
+        self.backend_kind = response.backend_kind;
+        response
     }
 
     fn record_packet_trace(&mut self, status: SgbPacketTraceStatus) {
@@ -1827,7 +2132,9 @@ impl SgbHost {
         if !self.host_platform.is_sgb() {
             return Err(SgbVramTransferError::DisabledHost);
         }
-        self.video.capture_pending_vram_transfer(vram_bytes)
+        let target = self.video.capture_pending_vram_transfer(vram_bytes)?;
+        self.dispatch_completed_vram_transfer(target);
+        Ok(target)
     }
 
     pub(crate) fn advance_frame_start(
@@ -1837,7 +2144,40 @@ impl SgbHost {
         if !self.host_platform.is_sgb() {
             return Err(SgbVramTransferError::DisabledHost);
         }
-        self.video.advance_frame_start(vram_bytes)
+        let target = self.video.advance_frame_start(vram_bytes)?;
+        self.dispatch_completed_vram_transfer(target);
+        Ok(target)
+    }
+
+    fn dispatch_completed_vram_transfer(&mut self, target: Option<SgbVramTransferTarget>) {
+        let Some(target) = target else {
+            return;
+        };
+        let Some(completed) = self.video.vram_transfer.last_completed.as_ref() else {
+            return;
+        };
+        match target {
+            SgbVramTransferTarget::Sound => {
+                let request =
+                    SgbSoundTransferRequest::from_vram_transfer_payload(&completed.payload);
+                self.dispatch_host_backend_request(SgbHostBackendRequest::Audio(
+                    SgbHostAudioRequest::SoundTransfer(request),
+                ));
+            }
+            SgbVramTransferTarget::SnesData(destination) => {
+                let payload_bytes = completed.payload.bytes.len() as u32;
+                self.dispatch_host_backend_request(SgbHostBackendRequest::Snes(
+                    SgbSnesHostRequest::DataTransfer(SgbDataTransferRequest {
+                        destination,
+                        payload_bytes,
+                    }),
+                ));
+            }
+            SgbVramTransferTarget::Chr(_)
+            | SgbVramTransferTarget::Pct
+            | SgbVramTransferTarget::Pal
+            | SgbVramTransferTarget::Attr => {}
+        }
     }
 }
 
@@ -2213,6 +2553,14 @@ impl SgbVideoState {
         self.request_vram_transfer(command_id, SgbVramTransferTarget::Attr);
     }
 
+    fn request_sound_transfer(&mut self, command_id: u8) {
+        self.request_vram_transfer(command_id, SgbVramTransferTarget::Sound);
+    }
+
+    fn request_snes_data_transfer(&mut self, command_id: u8, destination: SgbSnesAddress) {
+        self.request_vram_transfer(command_id, SgbVramTransferTarget::SnesData(destination));
+    }
+
     fn request_vram_transfer(&mut self, command_id: u8, target: SgbVramTransferTarget) {
         self.vram_transfer.pending = Some(SgbPendingVramTransfer {
             command_id,
@@ -2262,6 +2610,7 @@ impl SgbVideoState {
             SgbVramTransferTarget::Attr => {
                 self.attributes.apply_attr_trn(&payload);
             }
+            SgbVramTransferTarget::Sound | SgbVramTransferTarget::SnesData(_) => {}
         }
         self.vram_transfer.last_completed = Some(SgbCompletedVramTransfer {
             command_id: pending.command_id,
@@ -2306,6 +2655,7 @@ const fn direct_palette_command_pair(command_id: u8) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::SgbVideoStandard;
 
     fn test_header(sgb_flag: SgbFlag, old_licensee_code: u8) -> CartridgeHeader {
         CartridgeHeader {
@@ -2382,6 +2732,50 @@ mod tests {
     fn sgb_mlt_req_packet(control: u8) -> [u8; SGB_PACKET_BYTES] {
         let mut bytes = sgb_command_packet(SGB_COMMAND_MLT_REQ, 1);
         bytes[1] = control;
+        bytes
+    }
+
+    fn sgb_sound_packet() -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_SOUND, 1);
+        bytes[1] = 0x17;
+        bytes[2] = 0x24;
+        bytes[3] = 0b10_01_11_00;
+        bytes[4] = 0x05;
+        bytes
+    }
+
+    fn sgb_sou_trn_packet() -> [u8; SGB_PACKET_BYTES] {
+        sgb_command_packet(SGB_COMMAND_SOU_TRN, 1)
+    }
+
+    fn sgb_data_snd_packet() -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_DATA_SND, 1);
+        bytes[1] = 0x00;
+        bytes[2] = 0x21;
+        bytes[3] = 0x7E;
+        bytes[4] = 3;
+        bytes[5] = 0xAA;
+        bytes[6] = 0xBB;
+        bytes[7] = 0xCC;
+        bytes
+    }
+
+    fn sgb_data_trn_packet() -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_DATA_TRN, 1);
+        bytes[1] = 0x00;
+        bytes[2] = 0x22;
+        bytes[3] = 0x7E;
+        bytes
+    }
+
+    fn sgb_jump_packet() -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_JUMP, 1);
+        bytes[1] = 0x34;
+        bytes[2] = 0x12;
+        bytes[3] = 0x7E;
+        bytes[4] = 0x78;
+        bytes[5] = 0x56;
+        bytes[6] = 0x7E;
         bytes
     }
 
@@ -2508,6 +2902,27 @@ mod tests {
         assert!(SgbHostProfile::Sgb2Ntsc.game_link_supported());
         assert!(!SgbHostProfile::SgbNtsc.corrected_clock());
         assert!(SgbHostProfile::Sgb2Ntsc.corrected_clock());
+        assert_eq!(
+            SgbHostProfile::SgbNtsc
+                .timing()
+                .gb_master_clock_hz
+                .rounded_hz(),
+            4_295_454
+        );
+        assert_eq!(
+            SgbHostProfile::SgbPal
+                .timing()
+                .gb_master_clock_hz
+                .rounded_hz(),
+            4_256_274
+        );
+        assert_eq!(
+            SgbHostProfile::Sgb2Ntsc
+                .timing()
+                .gb_master_clock_hz
+                .rounded_hz(),
+            4_194_304
+        );
     }
 
     #[test]
@@ -2536,6 +2951,122 @@ mod tests {
         assert_eq!(sgb2.profile(), Some(SgbHostProfile::Sgb2Ntsc));
         assert!(sgb2.game_link_supported());
         assert!(sgb2.corrected_clock());
+    }
+
+    #[test]
+    fn host_backend_contract_records_sound_data_and_jump_requests() {
+        let mut host = accepted_sgb_host();
+
+        write_joyp_packet(&mut host, sgb_sound_packet());
+        let sound = SgbSoundRequest::from_packet(&sgb_sound_packet());
+        assert_eq!(
+            host.snapshot().audio.last_request,
+            Some(SgbHostAudioRequest::Sound(sound))
+        );
+        assert_eq!(host.snapshot().audio.sound_command_count, 1);
+        assert_eq!(host.snapshot().audio.pending_host_audio_events, 1);
+        assert_eq!(sound.effect_a.code, 0x17);
+        assert_eq!(sound.effect_a.pitch, 0);
+        assert_eq!(sound.effect_a.volume, 3);
+        assert_eq!(sound.effect_b.code, 0x24);
+        assert_eq!(sound.effect_b.pitch, 1);
+        assert_eq!(sound.effect_b.volume, 2);
+        assert_eq!(sound.music_score, 0x05);
+
+        write_joyp_packet(&mut host, sgb_data_snd_packet());
+        let data_snd = SgbDataSendRequest::from_packet(&sgb_data_snd_packet());
+        assert_eq!(data_snd.destination, SgbSnesAddress::new(0x7E, 0x2100));
+        assert_eq!(data_snd.payload(), &[0xAA, 0xBB, 0xCC]);
+        assert_eq!(
+            host.snapshot().snes_host.last_request,
+            Some(SgbSnesHostRequest::DataSend(data_snd))
+        );
+        assert_eq!(host.snapshot().snes_host.data_snd_count, 1);
+        assert_eq!(host.snapshot().snes_host.uploaded_payload_bytes, 3);
+
+        write_joyp_packet(&mut host, sgb_data_trn_packet());
+        assert_eq!(
+            host.snapshot().video.vram_transfer.pending,
+            Some(SgbPendingVramTransfer {
+                command_id: SGB_COMMAND_DATA_TRN,
+                target: SgbVramTransferTarget::SnesData(SgbSnesAddress::new(0x7E, 0x2200)),
+                frame_starts_until_capture: 1,
+            })
+        );
+        host.capture_pending_vram_transfer(&[0x42; SGB_VRAM_TRANSFER_BYTES])
+            .expect("DATA_TRN should capture through the shared 4 KiB transfer seam");
+        assert_eq!(
+            host.snapshot().snes_host.last_request,
+            Some(SgbSnesHostRequest::DataTransfer(SgbDataTransferRequest {
+                destination: SgbSnesAddress::new(0x7E, 0x2200),
+                payload_bytes: SGB_SNES_DATA_TRN_BYTES,
+            }))
+        );
+        assert_eq!(host.snapshot().snes_host.data_trn_count, 1);
+        assert_eq!(
+            host.snapshot().snes_host.uploaded_payload_bytes,
+            3 + SGB_SNES_DATA_TRN_BYTES
+        );
+
+        write_joyp_packet(&mut host, sgb_jump_packet());
+        assert_eq!(
+            host.snapshot().snes_host.last_request,
+            Some(SgbSnesHostRequest::Jump(SgbJumpRequest {
+                program_counter: SgbSnesAddress::new(0x7E, 0x1234),
+                nmi_handler: SgbSnesAddress::new(0x7E, 0x5678),
+            }))
+        );
+        assert!(host.snapshot().snes_host.execution_enabled);
+        assert_eq!(
+            host.snapshot().snes_host.program_counter,
+            Some(SgbSnesAddress::new(0x7E, 0x1234))
+        );
+        assert_eq!(host.snapshot().snes_host.jump_count, 1);
+    }
+
+    #[test]
+    fn sound_transfer_uses_the_shared_vram_transfer_backend_seam_and_survives_save_state() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_sou_trn_packet());
+        assert_eq!(
+            host.snapshot().video.vram_transfer.pending,
+            Some(SgbPendingVramTransfer {
+                command_id: SGB_COMMAND_SOU_TRN,
+                target: SgbVramTransferTarget::Sound,
+                frame_starts_until_capture: 1,
+            })
+        );
+
+        let mut payload = [0; SGB_VRAM_TRANSFER_BYTES];
+        payload[0] = 0x04;
+        payload[1] = 0x00;
+        payload[2] = 0x80;
+        payload[3] = 0x21;
+        host.capture_pending_vram_transfer(&payload)
+            .expect("SOU_TRN should capture through the shared 4 KiB transfer seam");
+
+        let expected = SgbHostAudioRequest::SoundTransfer(SgbSoundTransferRequest {
+            first_packet: SgbSoundTransferPacket::Data {
+                size: 4,
+                destination: SgbApuRamAddress::new(0x2180),
+            },
+            payload_bytes: SGB_VRAM_TRANSFER_BYTES as u32,
+        });
+        assert_eq!(host.snapshot().audio.last_request, Some(expected));
+        assert_eq!(host.snapshot().audio.sound_transfer_count, 1);
+        assert_eq!(
+            host.snapshot().audio.transferred_payload_bytes,
+            SGB_VRAM_TRANSFER_BYTES as u32
+        );
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+        assert_eq!(restored.snapshot().audio.last_request, Some(expected));
+        assert_eq!(
+            restored.snapshot().video.vram_transfer.last_completed,
+            host.snapshot().video.vram_transfer.last_completed
+        );
     }
 
     #[test]

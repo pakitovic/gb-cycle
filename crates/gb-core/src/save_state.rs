@@ -11,7 +11,8 @@ pub use crate::external_port::ExternalPortSaveState;
 pub use crate::interrupts::InterruptSaveState;
 pub use crate::joypad::JoypadSaveState;
 use crate::model::{
-    CompatibilityPolicy, ConsoleModel, HardwareRevision, HostPlatform, OperatingMode, StartupMode,
+    CompatibilityPolicy, ConsoleModel, HardwareRevision, HostPlatform, OperatingMode,
+    SgbHostProfile, StartupMode,
 };
 pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
@@ -63,6 +64,7 @@ pub struct MachineSaveStateMetadata {
     pub operating_mode: OperatingMode,
     pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
+    pub sgb_profile: Option<SgbHostProfile>,
     pub startup_mode: StartupMode,
     pub compatibility: CompatibilityPolicy,
     pub next_t_cycle: TCycle,
@@ -175,6 +177,10 @@ pub enum MachineSaveStateRestoreError {
         expected: HostPlatform,
         actual: HostPlatform,
     },
+    SgbProfileMismatch {
+        expected: Option<SgbHostProfile>,
+        actual: Option<SgbHostProfile>,
+    },
     StartupModeMismatch {
         expected: StartupMode,
         actual: StartupMode,
@@ -212,6 +218,11 @@ impl fmt::Display for MachineSaveStateRestoreError {
             Self::HostPlatformMismatch { expected, actual } => write!(
                 f,
                 "save-state host platform mismatch: expected {:?}, got {:?}",
+                expected, actual
+            ),
+            Self::SgbProfileMismatch { expected, actual } => write!(
+                f,
+                "save-state SGB profile mismatch: expected {:?}, got {:?}",
                 expected, actual
             ),
             Self::StartupModeMismatch { expected, actual } => write!(
@@ -357,6 +368,13 @@ mod tests {
                     actual: HostPlatform::Sgb,
                 },
                 "host platform mismatch",
+            ),
+            (
+                MachineSaveStateRestoreError::SgbProfileMismatch {
+                    expected: Some(SgbHostProfile::SgbNtsc),
+                    actual: Some(SgbHostProfile::SgbPal),
+                },
+                "SGB profile mismatch",
             ),
             (
                 MachineSaveStateRestoreError::StartupModeMismatch {

@@ -246,6 +246,137 @@ impl HostPlatform {
     }
 }
 
+pub const DMG_MASTER_CLOCK_HZ: u32 = 4_194_304;
+pub const SGB_ICD2_CLOCK_DIVISOR: u32 = 5;
+pub const SGB_NTSC_SOURCE_MASTER_CLOCK_HZ: u32 = 21_477_272;
+pub const SGB_PAL_SOURCE_MASTER_CLOCK_HZ: u32 = 21_281_370;
+pub const SGB2_SOURCE_MASTER_CLOCK_HZ: u32 = DMG_MASTER_CLOCK_HZ * SGB_ICD2_CLOCK_DIVISOR;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbVideoStandard {
+    Ntsc,
+    Pal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbClockRate {
+    pub numerator_hz: u64,
+    pub denominator: u32,
+}
+
+impl SgbClockRate {
+    pub const fn from_hz(hz: u32) -> Self {
+        Self {
+            numerator_hz: hz as u64,
+            denominator: 1,
+        }
+    }
+
+    pub const fn divided_by(self, divisor: u32) -> Self {
+        Self {
+            numerator_hz: self.numerator_hz,
+            denominator: self.denominator * divisor,
+        }
+    }
+
+    pub const fn rounded_hz(self) -> u32 {
+        ((self.numerator_hz + (self.denominator / 2) as u64) / self.denominator as u64) as u32
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbProfileTiming {
+    pub source_master_clock_hz: SgbClockRate,
+    pub gb_master_clock_hz: SgbClockRate,
+    pub gb_clock_divisor: u32,
+    pub video_standard: SgbVideoStandard,
+    pub corrected_clock: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbHostProfile {
+    SgbNtsc,
+    SgbPal,
+    Sgb2Ntsc,
+}
+
+impl SgbHostProfile {
+    pub const ALL: [Self; 3] = [Self::SgbNtsc, Self::SgbPal, Self::Sgb2Ntsc];
+
+    pub const fn default_for_host_platform(host_platform: HostPlatform) -> Option<Self> {
+        match host_platform {
+            HostPlatform::Handheld => None,
+            HostPlatform::Sgb => Some(Self::SgbNtsc),
+            HostPlatform::Sgb2 => Some(Self::Sgb2Ntsc),
+        }
+    }
+
+    pub const fn host_platform(self) -> HostPlatform {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => HostPlatform::Sgb,
+            Self::Sgb2Ntsc => HostPlatform::Sgb2,
+        }
+    }
+
+    pub const fn video_standard(self) -> SgbVideoStandard {
+        match self {
+            Self::SgbNtsc | Self::Sgb2Ntsc => SgbVideoStandard::Ntsc,
+            Self::SgbPal => SgbVideoStandard::Pal,
+        }
+    }
+
+    pub const fn ui_label(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SUPER GB",
+            Self::Sgb2Ntsc => "SUPER GB 2",
+        }
+    }
+
+    pub const fn machine_profile_name(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SGB",
+            Self::Sgb2Ntsc => "SGB2",
+        }
+    }
+
+    pub const fn revision_label(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SGB-CPU 01",
+            Self::Sgb2Ntsc => "CPU SGB2",
+        }
+    }
+
+    pub const fn real_boot_filename(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "sgb_boot.bin",
+            Self::Sgb2Ntsc => "sgb2_boot.bin",
+        }
+    }
+
+    pub const fn game_link_supported(self) -> bool {
+        matches!(self, Self::Sgb2Ntsc)
+    }
+
+    pub const fn corrected_clock(self) -> bool {
+        matches!(self, Self::Sgb2Ntsc)
+    }
+
+    pub const fn timing(self) -> SgbProfileTiming {
+        let source_master_clock_hz = match self {
+            Self::SgbNtsc => SgbClockRate::from_hz(SGB_NTSC_SOURCE_MASTER_CLOCK_HZ),
+            Self::SgbPal => SgbClockRate::from_hz(SGB_PAL_SOURCE_MASTER_CLOCK_HZ),
+            Self::Sgb2Ntsc => SgbClockRate::from_hz(SGB2_SOURCE_MASTER_CLOCK_HZ),
+        };
+        SgbProfileTiming {
+            source_master_clock_hz,
+            gb_master_clock_hz: source_master_clock_hz.divided_by(SGB_ICD2_CLOCK_DIVISOR),
+            gb_clock_divisor: SGB_ICD2_CLOCK_DIVISOR,
+            video_standard: self.video_standard(),
+            corrected_clock: self.corrected_clock(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CapabilitySet {
     console_model: ConsoleModel,
@@ -447,6 +578,7 @@ pub struct MachineConfig {
     pub operating_mode: OperatingMode,
     pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
+    pub sgb_profile: Option<SgbHostProfile>,
     pub startup_mode: StartupMode,
     pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
@@ -485,6 +617,13 @@ impl MachineConfig {
 
     pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
         self.host_platform = host_platform;
+        self.sgb_profile = SgbHostProfile::default_for_host_platform(host_platform);
+        self
+    }
+
+    pub fn with_sgb_profile(mut self, sgb_profile: SgbHostProfile) -> Self {
+        self.host_platform = sgb_profile.host_platform();
+        self.sgb_profile = Some(sgb_profile);
         self
     }
 
@@ -535,6 +674,21 @@ impl MachineConfig {
         self.console_model
             .supports_operating_mode(self.operating_mode)
             && self.console_model.supports_revision(self.revision)
+            && self.sgb_profile_matches_host_platform()
+    }
+
+    pub const fn sgb_profile_matches_host_platform(&self) -> bool {
+        match (self.host_platform, self.sgb_profile) {
+            (HostPlatform::Handheld, None) => true,
+            (HostPlatform::Handheld, Some(_)) => false,
+            (HostPlatform::Sgb, Some(profile)) => {
+                matches!(profile.host_platform(), HostPlatform::Sgb)
+            }
+            (HostPlatform::Sgb2, Some(profile)) => {
+                matches!(profile.host_platform(), HostPlatform::Sgb2)
+            }
+            (_, None) => false,
+        }
     }
 }
 
@@ -545,6 +699,7 @@ impl Default for MachineConfig {
             operating_mode: ConsoleModel::GameBoy.default_operating_mode(),
             revision: ConsoleModel::GameBoy.default_revision(),
             host_platform: HostPlatform::Handheld,
+            sgb_profile: None,
             startup_mode: StartupMode::SkipBoot,
             boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),

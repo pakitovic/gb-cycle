@@ -334,6 +334,7 @@ impl<S: TraceSink> Machine<S> {
         let revision = config.revision;
         let startup_mode = config.startup_mode;
         let host_platform = config.host_platform;
+        let sgb_profile = config.sgb_profile;
         let boot_rom_assets = config.boot_rom_assets.clone();
 
         let mut machine = Self {
@@ -348,7 +349,7 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new_with_operating_mode(console_model, operating_mode),
-            sgb_host: SgbHost::new_with_startup(host_platform, startup_mode),
+            sgb_host: SgbHost::new_with_profile(host_platform, sgb_profile, startup_mode),
             speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
             boot: BootController::new(console_model, revision, startup_mode, boot_rom_assets),
@@ -478,8 +479,24 @@ impl<S: TraceSink> Machine<S> {
         &mut self,
         attachment_kind: crate::external_port::ExternalPortAttachmentKind,
     ) {
+        let attachment_kind = if self.supports_external_port_attachment(attachment_kind) {
+            attachment_kind
+        } else {
+            crate::external_port::ExternalPortAttachmentKind::None
+        };
         self.external_port.set_attachment_kind(attachment_kind);
         self.sync_serial_peer_from_external_port();
+    }
+
+    pub fn supports_external_port_attachment(
+        &self,
+        attachment_kind: crate::external_port::ExternalPortAttachmentKind,
+    ) -> bool {
+        match attachment_kind {
+            crate::external_port::ExternalPortAttachmentKind::None => true,
+            _ if !self.config.host_platform.is_sgb() => true,
+            _ => self.sgb_host.game_link_supported(),
+        }
     }
 
     pub fn set_external_port_reset_policy(&mut self, reset_policy: ExternalPortResetPolicy) {
@@ -681,6 +698,7 @@ impl<S: TraceSink> Machine<S> {
             operating_mode: self.config.operating_mode,
             revision: self.config.revision,
             host_platform: self.config.host_platform,
+            sgb_profile: self.config.sgb_profile,
             startup_mode: self.config.startup_mode,
             compatibility: self.config.compatibility.clone(),
             next_t_cycle: self.scheduler.next_t_cycle(),
@@ -730,6 +748,12 @@ impl<S: TraceSink> Machine<S> {
             return Err(MachineSaveStateRestoreError::HostPlatformMismatch {
                 expected: metadata.host_platform,
                 actual: self.config.host_platform,
+            });
+        }
+        if metadata.sgb_profile != self.config.sgb_profile {
+            return Err(MachineSaveStateRestoreError::SgbProfileMismatch {
+                expected: metadata.sgb_profile,
+                actual: self.config.sgb_profile,
             });
         }
         if metadata.startup_mode != self.config.startup_mode {

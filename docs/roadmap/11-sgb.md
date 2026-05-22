@@ -38,7 +38,7 @@ Acceptance criteria:
 - A configured SGB/SGB2 machine can be constructed, reset, saved, and restored without visible SGB command effects and without regressing handheld DMG/CGB behavior.
 - Documentation identifies ownership boundaries for GB core, SGB host, frontend presentation, boot assets, and future SNES execution.
 
-Status: implemented as the Slice 0 baseline. The core now has inert but explicit `SgbHost` state with `SgbNtsc`, `SgbPal`, and `Sgb2Ntsc` profile descriptors, a deterministic-HLE backend boundary, host-profile capability facts for SGB2 corrected clock and Game Link support, machine snapshot/save-state coverage, and construction/restore tests for `HostPlatform::Sgb` and `HostPlatform::Sgb2`. PAL profile selection is represented as a descriptor but not yet exposed through a frontend setting; later slices should add the public selection path when profile timing/output behavior becomes functional. The durable machine save-state format version is bumped because Slice 0 makes SGB host state part of the whole-machine payload.
+Status: implemented as the Slice 0 baseline and later hardened to close the pluggable-host contract strictly. The core now has inert but explicit `SgbHost` state with `SgbNtsc`, `SgbPal`, and `Sgb2Ntsc` profile descriptors, a deterministic-HLE backend boundary, typed host backend requests for `SOUND`, `SOU_TRN`, `DATA_SND`, `DATA_TRN`, and `JUMP`, host-profile capability facts for SGB2 corrected clock and Game Link support, machine snapshot/save-state coverage, and construction/restore tests for `HostPlatform::Sgb` and `HostPlatform::Sgb2`. PAL profile selection started as a descriptor-only seam in Slice 0 and is exposed through the `MachineConfig` SGB profile path in Slice 6. The durable machine save-state format version is bumped because Slice 0 makes SGB host state part of the whole-machine payload.
 
 ## Slice 1 — Startup, unlock policy, and JOYP packet transport
 
@@ -147,13 +147,15 @@ Acceptance criteria:
 - SGB profile selection is persisted and rejects impossible combinations such as PAL SGB2 unless future hardware evidence requires otherwise.
 - Tests distinguish original SGB no-link behavior from SGB2 Game Link availability.
 
+Status: implemented as the Slice 6 baseline. `SgbHostProfile` now carries explicit timing facts for `SGB NTSC`, `SGB PAL`, and `SGB2 NTSC`: original SGB profiles derive their GB master clock from the SNES/SFC source divided by 5, while `SGB2 NTSC` uses the separate corrected 20,971,520 Hz cartridge crystal divided by 5 for the standard 4,194,304 Hz GB master clock. `MachineConfig` now carries an explicit SGB profile selection, `with_sgb_profile` exposes PAL/NTSC original SGB selection without inventing `SGB1`, and save-state metadata validates the selected profile so impossible or mismatched combinations such as PAL SGB2 do not restore into the wrong machine shape. Physical Game Link availability is now profile-gated: original SGB rejects external serial-port attachments, while SGB2 accepts them and `LinkedMachines::attach_dmg04_cable` reuses the existing `DMG-04` topology instead of implementing serial semantics inside the SGB host. The durable machine save-state format version is bumped again because Slice 6 adds persisted SGB profile metadata. Synthetic tests cover profile timing, profile/host-platform coherence, SGB no-link behavior, SGB2 link attachment, and direct external-port gating.
+
 ## Slice 7 — SGB special audio
 
 Scope: implement SGB host-audio commands without compromising the GB APU model.
 
 Implementation notes:
 
-- Implement `SOUND` and `SOU_TRN` through a host-audio event/state seam owned by the SGB host.
+- Implement `SOUND` and `SOU_TRN` through the typed host-audio backend request seam owned by the SGB host.
 - Keep ordinary DMG APU generation in the shared GB core; SGB special audio is mixed or exported by the host layer.
 - The first backend may be deterministic HLE/event-driven, but the interface must leave room for a later S-APU/SNES audio implementation.
 
@@ -169,7 +171,7 @@ Scope: implement the final pluggable host backend needed for SNES-side program e
 
 Implementation notes:
 
-- Implement `DATA_SND`, `DATA_TRN`, and `JUMP` against the SNES-side backend boundary defined in Slice 0.
+- Implement `DATA_SND`, `DATA_TRN`, and `JUMP` against the typed SNES-side backend request boundary defined in Slice 0.
 - Model SNES-side RAM/VRAM/data transfer ownership explicitly and avoid title-specific shortcuts for Space Invaders.
 - Move beyond command-only HLE where required: this slice needs real or equivalently pluggable 65C816/SNES-side execution semantics for compatibility with code that runs on the host.
 

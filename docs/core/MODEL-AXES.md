@@ -24,6 +24,7 @@ ConsoleModel     = visible product model selected by users and frontends
 HardwareRevision = CPU/revision profile selected within that model; RealBoot derives firmware from it
 OperatingMode    = which GB-visible mode the software is currently running under
 HostPlatform     = which outer host shell surrounds the shared GB core
+SgbHostProfile   = which SGB/SGB2 host shell timing/link profile applies when HostPlatform is Sgb/Sgb2
 ```
 
 Examples:
@@ -35,8 +36,9 @@ Examples:
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
 - `HostPlatform::Sgb` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
+- `SgbHostProfile::SgbNtsc`, `SgbHostProfile::SgbPal`, or `SgbHostProfile::Sgb2Ntsc` = the concrete SGB/SGB2 host profile used for video standard, source clock, corrected-clock fact, and physical Game Link availability; `SgbPal` is only coherent with `HostPlatform::Sgb`, and `Sgb2Ntsc` is only coherent with `HostPlatform::Sgb2`
 
-`CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
+`CapabilitySet` is the derived semantic view over the broad model axes. SGB host-profile facts currently live on `SgbHostProfile` because they are profile-specific timing/link facts rather than GB-silicon behavior; code that needs SGB2 Game Link availability or corrected clock should consult the selected SGB profile instead of duplicating `HostPlatform` checks.
 
 ## Reference model profiles
 
@@ -120,6 +122,8 @@ Typical uses:
 
 `HostPlatform` should not decide CPU, PPU, DMA, timer, or APU truth directly unless a subsystem handbook later documents a real host-platform-visible effect.
 
+Use `SgbHostProfile` when the host-shell question needs the specific SGB profile rather than merely "is this SGB?". Typical uses include choosing SGB NTSC versus SGB PAL presentation, identifying SGB2 corrected-clock behavior, selecting the SGB/SGB2 real-boot asset intent, and gating the physical Game Link port. `MachineConfig::with_sgb_profile` is the preferred profile-selection entry point because it keeps the host platform coherent with the profile.
+
 ### Use `CapabilitySet` by default for subsystem behavior gates
 
 For most production code, prefer `CapabilitySet` over directly branching on `ConsoleModel`, `OperatingMode`, and `HostPlatform`.
@@ -141,7 +145,7 @@ When adding or refactoring model-aware code:
 1. Ask whether the code really wants a semantic capability.
 2. If yes, use `CapabilitySet` or add a new derived capability there.
 3. If not, ask whether the question is about silicon, active operating mode, or host shell.
-4. Use `ConsoleModel`, `OperatingMode`, or `HostPlatform` only for that specific raw concern.
+4. Use `ConsoleModel`, `OperatingMode`, `HostPlatform`, or `SgbHostProfile` only for that specific raw concern.
 
 In short:
 
@@ -150,6 +154,7 @@ behavior gate -> CapabilitySet first
 silicon fact  -> ConsoleModel
 mode fact     -> OperatingMode
 host-shell    -> HostPlatform
+sgb profile   -> SgbHostProfile
 ```
 
 ## Concrete examples
@@ -184,6 +189,12 @@ Use `HostPlatform` or a capability derived from it for:
 - future border composition outside the handheld LCD image
 - future SGB multiplayer-controller multiplexing
 
+Use `SgbHostProfile` directly for:
+
+- SGB NTSC versus SGB PAL source-clock and video-standard facts
+- SGB2 corrected-clock and physical Game Link availability
+- validating save-state restore against the selected SGB/SGB2 profile
+
 ## Migration guidance
 
 Do not mass-rewrite the repo from `console_model` checks to the new axes in one pass.
@@ -203,6 +214,7 @@ This keeps behavior-neutral refactors small and makes later CGB bring-up easier 
 - Do not use `OperatingMode::GbCompatible` as a synonym for "DMG-family silicon".
 - Do not use `OperatingMode::CgbDmgExt` as a synonym for native CGB, full PGB, PSM NMI, or live post-boot `OPRI` visual switching.
 - Do not put SGB host-shell policy behind random `ConsoleModel` checks.
+- Do not treat `HostPlatform::Sgb2` as enough to answer NTSC/PAL or corrected-clock questions once a concrete SGB profile is available.
 - Do not re-derive the same semantic meaning from the raw axes in several subsystems.
 - Do not add a second emulator path just because one raw axis is insufficient.
 
