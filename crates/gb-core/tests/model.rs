@@ -166,7 +166,7 @@ fn public_model_api_exposes_operating_modes_and_host_platforms() {
     assert!(OperatingMode::CgbDmgExt.enables_cgb_speed_switch());
     assert!(OperatingMode::CgbDmgExt.enables_cgb_high_speed_serial());
     assert!(OperatingMode::CgbDmgExt.enables_cgb_infrared_register());
-    assert!(HostPlatform::Sgb1.is_sgb());
+    assert!(HostPlatform::Sgb.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());
 }
@@ -175,13 +175,13 @@ fn public_model_api_exposes_operating_modes_and_host_platforms() {
 fn experimental_policy_keeps_future_cgb_extension_seams_explicit() {
     let config = MachineConfig::new(ConsoleModel::GameBoyColor)
         .with_operating_mode(OperatingMode::GbCompatible)
-        .with_host_platform(HostPlatform::Sgb1)
+        .with_host_platform(HostPlatform::Sgb)
         .with_startup_mode(StartupMode::RealBoot)
         .with_compatibility(CompatibilityPolicy::experimental());
 
     assert_eq!(config.console_model, ConsoleModel::GameBoyColor);
     assert_eq!(config.operating_mode, OperatingMode::GbCompatible);
-    assert_eq!(config.host_platform, HostPlatform::Sgb1);
+    assert_eq!(config.host_platform, HostPlatform::Sgb);
     assert_eq!(config.startup_mode, StartupMode::RealBoot);
     assert_eq!(
         config.compatibility.execution_mode,
@@ -254,13 +254,13 @@ fn default_compatibility_policy_matches_the_strict_preset() {
 fn machine_config_can_replace_the_full_compatibility_policy() {
     let compatibility = CompatibilityPolicy::experimental();
     let config = MachineConfig::new(ConsoleModel::GameBoy)
-        .with_host_platform(HostPlatform::Sgb1)
+        .with_host_platform(HostPlatform::Sgb)
         .with_startup_mode(StartupMode::SkipBoot)
         .with_compatibility(compatibility.clone());
 
     assert_eq!(config.console_model, ConsoleModel::GameBoy);
     assert_eq!(config.operating_mode, OperatingMode::Dmg);
-    assert_eq!(config.host_platform, HostPlatform::Sgb1);
+    assert_eq!(config.host_platform, HostPlatform::Sgb);
     assert_eq!(config.startup_mode, StartupMode::SkipBoot);
     assert_eq!(
         config.compatibility.execution_mode,

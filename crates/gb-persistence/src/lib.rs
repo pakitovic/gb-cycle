@@ -2264,7 +2264,7 @@ fn decode_revision(
 fn encode_host_platform(value: HostPlatform) -> u8 {
     match value {
         HostPlatform::Handheld => 0,
-        HostPlatform::Sgb1 => 1,
+        HostPlatform::Sgb => 1,
         HostPlatform::Sgb2 => 2,
     }
 }
@@ -2275,7 +2275,7 @@ fn decode_host_platform(
 ) -> Result<HostPlatform, CartridgeSaveBackendError> {
     match tag {
         0 => Ok(HostPlatform::Handheld),
-        1 => Ok(HostPlatform::Sgb1),
+        1 => Ok(HostPlatform::Sgb),
         2 => Ok(HostPlatform::Sgb2),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
@@ -3000,7 +3000,7 @@ mod tests {
 
         for value in [
             HostPlatform::Handheld,
-            HostPlatform::Sgb1,
+            HostPlatform::Sgb,
             HostPlatform::Sgb2,
         ] {
             assert_eq!(
@@ -3132,7 +3132,7 @@ mod tests {
                 override_policy: OverridePolicy {
                     forced_console_model: Some(ConsoleModel::GameBoyPocket),
                     forced_operating_mode: Some(OperatingMode::Dmg),
-                    forced_host_platform: Some(HostPlatform::Sgb1),
+                    forced_host_platform: Some(HostPlatform::Sgb),
                     forced_startup_mode: Some(StartupMode::SkipBoot),
                 },
                 diagnostic_policy: DiagnosticPolicy::Verbose,

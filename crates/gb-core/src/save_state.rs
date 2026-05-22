@@ -349,7 +349,7 @@ mod tests {
             (
                 MachineSaveStateRestoreError::HostPlatformMismatch {
                     expected: HostPlatform::Handheld,
-                    actual: HostPlatform::Sgb1,
+                    actual: HostPlatform::Sgb,
                 },
                 "host platform mismatch",
             ),

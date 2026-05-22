@@ -66,7 +66,7 @@ fn operating_modes_and_host_platforms_keep_silicon_and_host_axes_separate() {
     assert!(OperatingMode::CgbDmgExt.enables_cgb_speed_switch());
     assert!(OperatingMode::CgbDmgExt.enables_cgb_high_speed_serial());
     assert!(OperatingMode::CgbDmgExt.enables_cgb_infrared_register());
-    assert!(HostPlatform::Sgb1.is_sgb());
+    assert!(HostPlatform::Sgb.is_sgb());
     assert!(HostPlatform::Sgb2.is_sgb());
     assert!(!HostPlatform::Handheld.is_sgb());
 }
@@ -253,7 +253,7 @@ fn with_console_model_resets_axes_that_the_new_model_cannot_support() {
 fn machine_config_capability_set_tracks_the_three_model_axes() {
     let config = MachineConfig::new(ConsoleModel::GameBoyColor)
         .with_operating_mode(OperatingMode::GbCompatible)
-        .with_host_platform(HostPlatform::Sgb1);
+        .with_host_platform(HostPlatform::Sgb);
 
     let capabilities = config.capability_set();
 
@@ -261,7 +261,7 @@ fn machine_config_capability_set_tracks_the_three_model_axes() {
     assert_eq!(capabilities.console_model(), ConsoleModel::GameBoyColor);
     assert_eq!(capabilities.console_family(), ConsoleFamily::Cgb);
     assert_eq!(capabilities.operating_mode(), OperatingMode::GbCompatible);
-    assert_eq!(capabilities.host_platform(), HostPlatform::Sgb1);
+    assert_eq!(capabilities.host_platform(), HostPlatform::Sgb);
     assert!(capabilities.dmg_software_contract());
     assert!(!capabilities.cgb_extensions_enabled());
     assert!(!capabilities.dmg_family_quirks_enabled());

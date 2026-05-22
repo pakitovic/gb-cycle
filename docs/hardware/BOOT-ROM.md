@@ -46,6 +46,13 @@ Within the DMG family, do not collapse `DMG-CPU`, later `DMG-CPU A/B/C`, and `CP
 
 The current active set is intentionally narrower than the modeled enum: DMG exposes only `DmgCpuC`, MGB/LGB expose only `CpuMgb`, and CGB exposes `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`. Earlier DMG and CGB revision variants remain modeled so real-boot assets, save-state metadata, and future hardware validation do not need another rename when they become active.
 
+Phase 11 SGB/SGB2 work will extend this same revision-derived asset model rather than adding an independent boot-ROM-kind setting. The planned user-facing SGB profiles are `SUPER GB` / `MODEL: SGB` with host platform `Sgb`, revision `SGB-CPU 01`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb_boot.bin`, and `PAL` or `NTSC` video standard; and `SUPER GB 2` / `MODEL: SGB2` with host platform `Sgb2`, revision `CPU SGB2`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb2_boot.bin`, `NTSC` video standard, corrected clock versus SGB, and Game Link support. A documented private boot-ROM root example for local validation is `$HOME/emu/roms/bootrom`.
+
+| Future SGB profile | Host platform | Planned revision | RealBoot filename | Video standard | Direct-start profile |
+|---|---|---|---|---|---|
+| `SUPER GB` / `SGB` | `Sgb` | `SGB-CPU 01` | `sgb_boot.bin` | `PAL` or `NTSC` | SGB post-boot profile with SGB command host active and no physical Game Link port |
+| `SUPER GB 2` / `SGB2` | `Sgb2` | `CPU SGB2` | `sgb2_boot.bin` | `NTSC` | SGB2 post-boot profile with corrected clock and physical Game Link support |
+
 ## Registers / MMIO
 
 - boot ROM mapping control

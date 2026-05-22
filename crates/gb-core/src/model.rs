@@ -236,13 +236,13 @@ impl OperatingMode {
 pub enum HostPlatform {
     #[default]
     Handheld,
-    Sgb1,
+    Sgb,
     Sgb2,
 }
 
 impl HostPlatform {
     pub const fn is_sgb(self) -> bool {
-        matches!(self, Self::Sgb1 | Self::Sgb2)
+        matches!(self, Self::Sgb | Self::Sgb2)
     }
 }
 

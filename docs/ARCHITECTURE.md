@@ -112,10 +112,10 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - The public model surface keeps three explicit axes instead of collapsing everything into one enum:
   - `ConsoleModel` for the silicon family / revision baseline
   - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
-  - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB1` / `SGB2`
+  - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB` / `SGB2`
 - The project also exposes one derived `CapabilitySet` view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
-- Future `SGB1` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
+- Future `SGB` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
 ## DMG-stable, CGB-integrated policy
 
