@@ -16,6 +16,7 @@ use crate::model::OperatingMode;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
+use crate::sgb::SgbHost;
 use crate::speed::SpeedController;
 use crate::timer::{Timer, TimerStartupState};
 
@@ -182,6 +183,7 @@ impl<S: TraceSink> Machine<S> {
         let operating_mode = self.config.operating_mode;
         let revision = self.config.revision;
         let startup_mode = self.config.startup_mode;
+        let host_platform = self.config.host_platform;
         let boot_rom_assets = self.config.boot_rom_assets.clone();
 
         self.scheduler.reset();
@@ -193,6 +195,7 @@ impl<S: TraceSink> Machine<S> {
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
         self.serial = Serial::new_with_operating_mode(console_model, operating_mode);
+        self.sgb_host = SgbHost::new(host_platform);
         self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
         self.boot = BootController::new(console_model, revision, startup_mode, boot_rom_assets);

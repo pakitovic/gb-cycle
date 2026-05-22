@@ -27,6 +27,7 @@ use crate::save_state::{
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
+use crate::sgb::SgbHost;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -140,6 +141,7 @@ pub struct Machine<S = TraceBuffer> {
     dma: DmaController,
     timer: Timer,
     serial: Serial,
+    sgb_host: SgbHost,
     speed: SpeedController,
     external_port: ExternalPort,
     boot: BootController,
@@ -163,6 +165,7 @@ pub struct MachineParts<S = TraceBuffer> {
     pub dma: DmaController,
     pub timer: Timer,
     pub serial: Serial,
+    pub sgb_host: SgbHost,
     pub speed: SpeedController,
     pub external_port: ExternalPort,
     pub boot: BootController,
@@ -255,6 +258,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
             dma: self.dma.snapshot(),
             timer: self.timer.snapshot(),
             serial: self.serial.snapshot(),
+            sgb_host: self.sgb_host.snapshot(),
             speed: self.speed.snapshot(),
             external_port: self.external_port.snapshot(),
             boot: self.boot.snapshot(),
@@ -271,6 +275,7 @@ impl<S: TraceSink> Machine<S> {
         let operating_mode = config.operating_mode;
         let revision = config.revision;
         let startup_mode = config.startup_mode;
+        let host_platform = config.host_platform;
         let boot_rom_assets = config.boot_rom_assets.clone();
 
         let mut machine = Self {
@@ -285,6 +290,7 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new_with_operating_mode(console_model, operating_mode),
+            sgb_host: SgbHost::new(host_platform),
             speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
             boot: BootController::new(console_model, revision, startup_mode, boot_rom_assets),
@@ -388,6 +394,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn speed(&self) -> &SpeedController {
         &self.speed
+    }
+
+    pub fn sgb_host(&self) -> &SgbHost {
+        &self.sgb_host
     }
 
     pub fn external_port(&self) -> &ExternalPort {
@@ -526,6 +536,7 @@ impl<S: TraceSink> Machine<S> {
                 dma: self.dma.capture_save_state(),
                 timer: self.timer.capture_save_state(),
                 serial: self.serial.capture_save_state(),
+                sgb_host: self.sgb_host.capture_save_state(),
                 speed: self.speed.capture_save_state(),
                 external_port: self.external_port.capture_save_state(),
                 boot: self.boot.capture_save_state(),
@@ -552,6 +563,7 @@ impl<S: TraceSink> Machine<S> {
         self.dma.restore_save_state(&core.dma);
         self.timer.restore_save_state(&core.timer);
         self.serial.restore_save_state(&core.serial);
+        self.sgb_host.restore_save_state(&core.sgb_host);
         self.speed.restore_save_state(&core.speed);
         self.external_port.restore_save_state(&core.external_port);
         self.boot.restore_save_state(&core.boot);
@@ -667,6 +679,7 @@ impl<S: TraceSink> Machine<S> {
             dma: self.dma,
             timer: self.timer,
             serial: self.serial,
+            sgb_host: self.sgb_host,
             speed: self.speed,
             external_port: self.external_port,
             boot: self.boot,

@@ -38,6 +38,8 @@ Acceptance criteria:
 - A configured SGB/SGB2 machine can be constructed, reset, saved, and restored without visible SGB command effects and without regressing handheld DMG/CGB behavior.
 - Documentation identifies ownership boundaries for GB core, SGB host, frontend presentation, boot assets, and future SNES execution.
 
+Status: implemented as the Slice 0 baseline. The core now has inert but explicit `SgbHost` state with `SgbNtsc`, `SgbPal`, and `Sgb2Ntsc` profile descriptors, a deterministic-HLE backend boundary, host-profile capability facts for SGB2 corrected clock and Game Link support, machine snapshot/save-state coverage, and construction/restore tests for `HostPlatform::Sgb` and `HostPlatform::Sgb2`. PAL profile selection is represented as a descriptor but not yet exposed through a frontend setting; later slices should add the public selection path when profile timing/output behavior becomes functional. The durable machine save-state format version is bumped because Slice 0 makes SGB host state part of the whole-machine payload.
+
 ## Slice 1 — Startup, unlock policy, and JOYP packet transport
 
 Scope: make SGB/SGB2 startup and packet transport observable while keeping command effects mostly inert.

@@ -152,6 +152,7 @@ Commercial titles are manual compatibility examples only unless a future private
 - SGB should reuse the DMG-family shared path through explicit axes and capabilities, not a dedicated "SGB core".
 - SGB palette/attribute/border state must be explicit host state and must not piggyback on CGB palette or CGB tile-attribute internals.
 - Every slice that adds live host state must update typed save states before the slice is considered closed.
+- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It currently owns profile descriptors, deterministic-HLE backend identity, empty packet/command/video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts without intercepting JOYP writes or mutating visible output. Because this adds a typed whole-machine save-state payload block, the durable machine save-state format version is bumped.
 
 ## Known pitfalls
 

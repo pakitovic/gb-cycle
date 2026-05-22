@@ -64,17 +64,17 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 
 #### Phase 8 implementation contract
 
-- `gb-core::save_state` owns `MachineSaveState`, `MachineSaveStateMetadata`, `MachineSaveStateRestoreError`, and typed subsystem state boundaries for scheduler, machine runtime events, CPU, bus, PPU, DMA, timer, APU, joypad, serial, boot, external port, interrupts, and cartridge runtime state.
+- `gb-core::save_state` owns `MachineSaveState`, `MachineSaveStateMetadata`, `MachineSaveStateRestoreError`, and typed subsystem state boundaries for scheduler, machine runtime events, CPU, bus, PPU, DMA, timer, APU, joypad, serial, SGB host, boot, external port, interrupts, and cartridge runtime state.
 - `Machine::capture_save_state()` captures at the stable boundary between public T-cycle steps. The scheduler portion records `next_t_cycle`; machine-local pending external events are captured separately from scheduler timing.
 - `Machine::restore_save_state()` validates metadata before mutation, then restores owned subsystem fields directly. It does not replay MMIO writes and does not apply cartridge RTC elapsed off-session time.
 - Mandatory metadata includes console model, hardware revision, operating mode, host platform, startup mode, compatibility policy / execution mode / overrides, `next_t_cycle`, loaded cartridge kind and ROM fingerprint, plus boot-ROM mapping state and fingerprint when a boot ROM applies.
-- During the current local-development contract, `.gbstate` payload DTOs are current-only even while the envelope remains version `1`; additive or schema-breaking fields may reject older local slot files, and those files should be recreated instead of migrated.
-- `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, current version `1`, extension `.gbstate`) separately from cartridge battery-save storage (`.sav/.saN` primary when lossless, `.gbsav/.gbsaN` envelope fallback otherwise). Decode rejects unsupported non-current versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
+- During the current local-development contract, `.gbstate` payload DTOs are current-only; additive or schema-breaking fields may reject older local slot files, and those files should be recreated instead of migrated.
+- `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, current version `2`, extension `.gbstate`) separately from cartridge battery-save storage (`.sav/.saN` primary when lossless, `.gbsav/.gbsaN` envelope fallback otherwise). Decode rejects unsupported non-current versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
 - Phase 8 keeps `MachineSaveState` cloneable and usable entirely in memory. That is the future rewind hook: a later phase can add a frame/subframe ring buffer, compression, deltas, and UI without adding disk or timestamp policy to `gb-core`.
 
 #### Phase 8.1 semantic hardening contract
 
-- Keep the public `MachineSaveState` API and `.gbstate` version `1` envelope stable; this hardening step must not introduce rewind UI, ring buffers, compression, deltas, or a schema-breaking DTO conversion.
+- Keep the public `MachineSaveState` API and `.gbstate` envelope stable; this hardening step must not introduce rewind UI, ring buffers, compression, deltas, or a schema-breaking DTO conversion.
 - Validate restore semantics through one reusable continuation harness that captures a save state, forks an uninterrupted continuation, dirties and restores the original machine, then compares post-restore continuation state.
 - Coverage must include CPU mid-instruction / HALT / pending IME, PPU Mode 3 fetch/FIFO/window/OBJ state, active DMA with restart state, timer overflow pipeline, serial transfers in flight, active APU output state, and representative cartridge runtime state for NoMBC, MBC1, MBC2, MBC3 RAM+RTC, MBC5, and Pocket Camera.
 - A later Phase 8.2 may convert mirror-style subsystem wrappers into explicit durable DTOs, but only after the Phase 8.1 semantic coverage is green.
@@ -83,7 +83,7 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 
 - Convert subsystem save-state wrappers from root runtime clones into explicit owner DTOs with runtime-to-DTO and DTO-to-runtime conversion paths.
 - Keep `Machine::capture_save_state`, `Machine::restore_save_state`, `MachineSaveState`, metadata, and restore error APIs stable; only the `.gbstate` payload contract changes.
-- Keep `.gbstate` at version `1` for the local development contract, keep magic/extension unchanged, and reject unsupported non-current versions instead of adding compatibility migrations.
+- Keep `.gbstate` within the local development contract, keep magic/extension unchanged, and reject unsupported non-current versions instead of adding compatibility migrations.
 - Keep rewind, ring buffers, compression, deltas, and UI out of this phase; the in-memory `MachineSaveState` remains cloneable and disk-independent.
 
 #### Phase 8.4 core rewind contract
@@ -100,7 +100,7 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 - After a ROM is loaded, `gb-desktop` exposes root-menu actions immediately below `OPEN RECENT`: `SAVE STATE`, `LOAD STATE`, `STATE SLOT N`, and `AUTOLOAD OFF` / `AUTOLOAD SLOT N`. The launcher/no-ROM root menu hides those state actions to keep startup uncluttered. The slot selector is runtime-only and cycles through slots `1` through `4` without moving the menu selection away from `STATE SLOT N`; `LOAD STATE` stays visible but disabled until the selected ROM-related slot file exists. The persisted autoload selector cycles through `OFF` and slots `1` through `4`; after `OPEN ROM` / `OPEN RECENT`, desktop restores the configured slot only when the `.gbstate` file exists and silently continues from normal boot when it does not.
 - Desktop slots are single-machine only and live next to the ROM under `<rom-dir>/states/<state-key>.slot<N>.gbstate`. The `state-key` follows the current save-key policy, including explicit keys, but does not require cartridge persistence to be enabled.
 - Desktop load reads the selected slot, decodes the current `.gbstate` format, restores through `Machine::restore_save_state()`, clears live input and audio queue state, resynchronizes host pacing/RTC bookkeeping, and does not apply elapsed RTC off-session time. Failed load leaves the machine untouched; linked `DMG-04` 2-player Game Link and `DMG-07` 4-Player Adapter sessions keep save/load state disabled by design and are not a Phase 8 target.
-- The `.gbstate` host integration boundary remains format version `1`; this local-development v1 includes the core-visible `HardwareRevision` axis and intentionally does not migrate or accept older incompatible slot files. Rewind continues to store in-memory `MachineSaveState` DTOs directly and does not depend on the host file version. Phase 8.8 reuses the same host integration boundary after the ROM-less cartridge DTO update.
+- The `.gbstate` host integration boundary is now format version `2`; this local-development v2 includes the core-visible `HardwareRevision` axis and the Slice 0 `SgbHost` payload, and intentionally does not migrate or accept older incompatible slot files. Rewind continues to store in-memory `MachineSaveState` DTOs directly and does not depend on the host file version. Phase 8.8 reused the same host integration boundary after the ROM-less cartridge DTO update.
 
 #### Phase 8.6 desktop rewind integration
 
@@ -119,7 +119,7 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 - Cartridge runtime save-state DTOs no longer embed immutable cartridge ROM bytes. They capture only mapper-owned mutable state: RAM payloads, selected banks, enable flags, RTC/camera runtime state, registers, and other cartridge-local latches needed to continue execution over the already-loaded ROM.
 - `Machine::restore_save_state()` still validates metadata first, including ROM fingerprint, cartridge kind, model, hardware revision, execution mode, overrides, startup mode, and boot-ROM fingerprint/mapping state. It then validates that the cartridge DTO matches the currently loaded device and mutable payload shapes before mutating CPU, PPU, APU, scheduler, memory, or other subsystems.
 - Restore rebuilds cartridge runtime in place over the loaded compatible ROM instead of reconstructing a cartridge device from serialized ROM bytes. Mapper mismatches, RAM-length mismatches, camera-frame shape mismatches, corrupt payloads, and wrong `.gbstate` versions fail before partially applying the restore.
-- `.gbstate` stays at version `1`, with the same `GBSTATE\0` magic and `.gbstate` extension. Unsupported non-current versions are rejected rather than migrated, so old incompatible desktop slot files must be recreated.
+- `.gbstate` keeps the same `GBSTATE\0` magic and `.gbstate` extension. Unsupported non-current versions are rejected rather than migrated, so old incompatible desktop slot files must be recreated.
 - Rewind continues to store full `MachineSaveState` snapshots in memory, but `MachineSaveState::deep_size_bytes()` now scales with mutable cartridge payloads rather than cartridge ROM size. The current memory remeasure confirms that typical MBC1/MBC3 titles fit the default `10s` / `256 MiB` / `1` subframe-per-frame policy, while RAM-heavy `128 KiB` cartridges and Pocket Camera can use the existing `MEMORY 512MB` or `SUBFR OFF` desktop options when longer history is desired.
 
 #### Phase 8.9 desktop Fast Forward and host action bindings
@@ -132,7 +132,7 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 
 #### Phase 8 closure note
 
-- Phase 8 is considered closed for the strict single-machine save-state and rewind scope: durable `.gbstate` v1 DTOs, CLI/desktop `.gbstate` save/load, desktop slot/autoload UX, core rewind buffering, desktop hold-to-rewind, desktop Fast Forward host pacing, optional controller host-action bindings, and restore-continuation validation are all in place.
+- Phase 8 is considered closed for the strict single-machine save-state and rewind scope: durable `.gbstate` DTOs, CLI/desktop `.gbstate` save/load, desktop slot/autoload UX, core rewind buffering, desktop hold-to-rewind, desktop Fast Forward host pacing, optional controller host-action bindings, and restore-continuation validation are all in place.
 - CLI rewind is intentionally not required: manual CLI rewind is not a target workflow, and rewind correctness is validated through the core and desktop rewind tests.
 - Linked-session save states and rewind for `DMG-04` 2-player Game Link and `DMG-07` 4-Player Adapter sessions are intentionally unsupported, not hidden blockers for Phase 8.
 - Compression, delta encoding, manual `.gbstate` file dialogs, and richer telemetry/settings are not Phase 8 blockers. If future measured memory pressure makes rewind optimization necessary, evaluate keyframes plus deltas first, then optional compression, then any increase to desktop memory defaults.

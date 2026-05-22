@@ -16,6 +16,7 @@ pub mod rewind;
 pub mod save_state;
 pub mod scheduler;
 pub mod serial;
+pub mod sgb;
 pub mod speed;
 pub mod timer;
 
@@ -115,7 +116,7 @@ pub use save_state::{
     InterruptSaveState, JoypadSaveState, MachineBootSaveStateMetadata,
     MachineCartridgeSaveStateMetadata, MachineSaveState, MachineSaveStateMetadata,
     MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint, SchedulerSaveState,
-    SerialSaveState, TimerSaveState,
+    SerialSaveState, SgbHostSaveState, TimerSaveState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,
@@ -124,6 +125,11 @@ pub use scheduler::{
 pub use serial::{
     Serial, SerialClockMode, SerialPeer, SerialSnapshot, SerialStartupState, SerialStatus,
     SerialTickTelemetry, SerialTransferState,
+};
+pub use sgb::{
+    DeterministicHleSgbHostBackend, SgbAudioState, SgbCommandState, SgbHost, SgbHostBackend,
+    SgbHostBackendKind, SgbHostProfile, SgbHostSnapshot, SgbHostStatus, SgbMultiplayerState,
+    SgbPacketTransportState, SgbSnesHostState, SgbVideoStandard, SgbVideoState,
 };
 pub use speed::{
     CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,

@@ -20,6 +20,7 @@ dma.console_model=GameBoy dma.status=Ready
 timer.console_model=GameBoy timer.status=Ready
 serial.console_model=GameBoy serial.status=Ready serial.sb=0x00 serial.clock_mode=External serial.transfer_state=Idle
 speed.console_model=GameBoy speed.operating_mode=Dmg speed.status=Ready speed.current_speed=Normal speed.switch_armed=false speed.cgb_speed_switch_enabled=false
+sgb.host_platform=Handheld sgb.status=Disabled sgb.profile=None sgb.backend=DeterministicHle sgb.game_link_supported=false sgb.corrected_clock=false
 external_port.attachment_kind=None external_port.reset_policy=PreserveAttachmentKind
 boot.console_model=GameBoy boot.revision=DmgCpuC boot.startup_mode=SkipBoot boot.status=Ready boot.boot_rom_mapped=false boot.asset_configured=false boot.memory_policy=DeterministicPatterned
 interrupts.console_model=GameBoy interrupts.status=Ready

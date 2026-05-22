@@ -13,6 +13,7 @@ use crate::model::MachineConfig;
 use crate::ppu::PpuSnapshot;
 use crate::scheduler::SchedulerSnapshot;
 use crate::serial::SerialSnapshot;
+use crate::sgb::SgbHostSnapshot;
 use crate::speed::SpeedSnapshot;
 use crate::timer::TimerSnapshot;
 
@@ -543,6 +544,7 @@ pub struct MachineSnapshot {
     pub dma: DmaSnapshot,
     pub timer: TimerSnapshot,
     pub serial: SerialSnapshot,
+    pub sgb_host: SgbHostSnapshot,
     pub speed: SpeedSnapshot,
     pub external_port: ExternalPortSnapshot,
     pub boot: BootSnapshot,
@@ -584,6 +586,7 @@ impl MachineSnapshot {
                 "timer.console_model={:?} timer.status={:?}\n",
                 "serial.console_model={:?} serial.status={:?} serial.sb={:#04X} serial.clock_mode={:?} serial.transfer_state={:?}\n",
                 "speed.console_model={:?} speed.operating_mode={:?} speed.status={:?} speed.current_speed={:?} speed.switch_armed={} speed.cgb_speed_switch_enabled={}\n",
+                "sgb.host_platform={:?} sgb.status={:?} sgb.profile={:?} sgb.backend={:?} sgb.game_link_supported={} sgb.corrected_clock={}\n",
                 "external_port.attachment_kind={:?} external_port.reset_policy={:?}\n",
                 "boot.console_model={:?} boot.revision={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
@@ -672,6 +675,16 @@ impl MachineSnapshot {
             self.speed.current_speed,
             self.speed.switch_armed,
             self.speed.cgb_speed_switch_enabled,
+            self.sgb_host.host_platform,
+            self.sgb_host.status,
+            self.sgb_host.profile,
+            self.sgb_host.backend_kind,
+            self.sgb_host
+                .profile
+                .is_some_and(|profile| profile.game_link_supported()),
+            self.sgb_host
+                .profile
+                .is_some_and(|profile| profile.corrected_clock()),
             self.external_port.attachment_kind(),
             self.external_port.reset_policy,
             self.boot.console_model,
