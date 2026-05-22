@@ -1504,10 +1504,17 @@ pub(in crate::ppu) struct PpuMode3Lcdc2ObjSizeObservedDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum PpuMode3Lcdc2ObjSizeObservedProfile {
+    DmgFamily,
+    CgbDmgSoftware,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc2ObjSizePhaseTable {
     sprite_x: u8,
     scx: u8,
     raw_row: u8,
+    profile: PpuMode3Lcdc2ObjSizeObservedProfile,
 }
 
 impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
@@ -1516,6 +1523,16 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             sprite_x,
             scx: scx & 0x07,
             raw_row,
+            profile: PpuMode3Lcdc2ObjSizeObservedProfile::DmgFamily,
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software(sprite_x: u8, scx: u8, raw_row: u8) -> Self {
+        Self {
+            sprite_x,
+            scx: scx & 0x07,
+            raw_row,
+            profile: PpuMode3Lcdc2ObjSizeObservedProfile::CgbDmgSoftware,
         }
     }
 
@@ -1552,6 +1569,21 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
         write_index: usize,
         active_write_visible_x: Option<u8>,
     ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        if let PpuMode3Lcdc2ObjSizeObservedProfile::CgbDmgSoftware = self.profile
+            && let Some(selection) =
+                self.cgb_dmg_software_plane_selection(write_index, active_write_visible_x)
+        {
+            return Some(selection);
+        }
+
+        self.dmg_family_plane_selection(write_index, active_write_visible_x)
+    }
+
+    fn dmg_family_plane_selection(
+        self,
+        write_index: usize,
+        active_write_visible_x: Option<u8>,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
         match (write_index, self.sprite_x, self.scx) {
             (0, 12, 4..=7) if self.raw_row >= 8 => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
             (0, 32, 0 | 4..=7) if self.raw_row < 8 => {
@@ -1578,6 +1610,27 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             (0, 24) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
             (2, 33) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High),
             (2, 40) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+            _ => None,
+        }
+    }
+
+    fn cgb_dmg_software_plane_selection(
+        self,
+        write_index: usize,
+        active_write_visible_x: Option<u8>,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        match (write_index, self.sprite_x, self.scx) {
+            (0, 16, _) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (2, 33, _) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (0, 32, 0) if matches!(self.raw_row, 2..=7) && active_write_visible_x == Some(10) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16)
+            }
+            (0, 32, 5..=7) if matches!(self.raw_row, 4..=7) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High)
+            }
+            (2, 32, 0) if matches!(self.raw_row, 4..=7) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High)
+            }
             _ => None,
         }
     }

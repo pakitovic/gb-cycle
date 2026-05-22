@@ -308,7 +308,9 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_SIZE_BIT) {
+        if !self.operating_mode.uses_dmg_software_contract()
+            || !write_context.lcdc_changed(LCDC_OBJ_SIZE_BIT)
+        {
             return;
         }
 

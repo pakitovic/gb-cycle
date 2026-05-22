@@ -2,7 +2,7 @@ use super::*;
 
 impl Ppu {
     fn active_dmg_lcdc2_obj_size_write(&self) -> Option<DmgLcdc2ActiveObjSizeWrite> {
-        if !self.console_model.is_dmg_family() {
+        if !self.operating_mode.uses_dmg_software_contract() {
             return None;
         }
 
@@ -17,7 +17,15 @@ impl Ppu {
         let scx = self.mode3_register_latches().visible().scx;
         let sprite_top = sprite.y.wrapping_sub(16);
         let raw_row = self.ly.wrapping_sub(sprite_top);
-        PpuMode3ObservedLcdc2ObjSizePhaseTable::new(sprite.x, scx, raw_row).decision(
+        let phase_table = if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            PpuMode3ObservedLcdc2ObjSizePhaseTable::cgb_dmg_software(sprite.x, scx, raw_row)
+        } else {
+            PpuMode3ObservedLcdc2ObjSizePhaseTable::new(sprite.x, scx, raw_row)
+        };
+
+        phase_table.decision(
             usize::from(active_write.write_index),
             Some(active_write.visible_x),
         )

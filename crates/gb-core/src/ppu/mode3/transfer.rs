@@ -117,9 +117,10 @@ impl Ppu {
             bg_pixel
         };
         let dmg_family = self.console_model.is_dmg_family();
+        let dmg_software_contract = self.operating_mode.uses_dmg_software_contract();
         let effective_bg_priority_pixel = if bg_enabled { bg_pixel.color } else { 0 };
         let obj_pixel = self.pop_obj_fifo_pixel();
-        let obj_pixel = if dmg_family {
+        let obj_pixel = if dmg_software_contract {
             self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram)
         } else {
             obj_pixel
