@@ -283,11 +283,58 @@ impl Ppu {
     }
 
     fn route_mode3_live_background_write(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
+        let cgb_dmg_software_scy = matches!(route.register, PpuMode3LiveBackgroundRegister::Scy)
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract();
+        if cgb_dmg_software_scy {
+            self.maybe_latch_cgb_dmg_scy_low_row_for_high_plane(route);
+            let Some(cgb_route) = self
+                .scy_obj_phase_policy()
+                .map(PpuMode3ScyObjPhasePolicy::cgb_dmg_software_live_scy_write_route)
+            else {
+                return;
+            };
+            if !cgb_route.routes_anything() {
+                return;
+            }
+            if cgb_route.pending_cached_slices() {
+                self.route_live_background_write_to_pending_cached_slices(route);
+            }
+            if cgb_route.startup_alignment_fifo() {
+                self.route_live_scy_write_to_startup_alignment_fifo(route);
+            }
+            if cgb_route.current_fetch() {
+                self.route_live_background_write_to_current_fetch(route);
+            }
+            return;
+        }
         self.route_live_background_write_to_pending_cached_slices(route);
         self.route_live_lcdc_write_to_observed_bg_seams(route);
         self.route_live_scy_write_to_startup_alignment_fifo(route);
         self.route_live_background_write_to_current_fetch(route);
         self.route_live_scx_boundary_write_effects(route);
+    }
+
+    fn maybe_latch_cgb_dmg_scy_low_row_for_high_plane(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        if !route.write_context.bg_scy_tile_data_row_changed(route.ly)
+            || self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Background
+            || !matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot
+                ),
+                (PpuBgFetcherStage::TileDataLow, 0 | 1) | (PpuBgFetcherStage::TileDataHigh, 0)
+            )
+        {
+            return;
+        }
+
+        self.bg_pipeline_state
+            .fetcher
+            .cgb_dmg_scy_high_plane_uses_low_row = true;
     }
 
     fn route_live_background_write_to_pending_cached_slices(
@@ -620,6 +667,17 @@ impl Ppu {
         &self,
         register: PpuMode3LiveBackgroundRegister,
     ) -> PpuMode3LiveScyWriteRouting {
+        if matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            return self
+                .scy_obj_phase_policy()
+                .map(PpuMode3ScyObjPhasePolicy::cgb_dmg_software_live_scy_write_route)
+                .map(PpuMode3CgbDmgLiveScyWriteRoute::scy_routing)
+                .unwrap_or_default();
+        }
+
         PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: self.scy_pending_refetch_prefers_high_plane_only(register),
             pending_tilemap_row_refetch: self.scy_pending_refetch_prefers_tilemap_row(register),

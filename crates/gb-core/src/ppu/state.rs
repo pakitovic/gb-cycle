@@ -2429,6 +2429,7 @@ pub(super) struct BgFetcherState {
     pub(super) needs_live_tile_data_current_row_refetch_on_push: bool,
     pub(super) needs_live_tile_low_current_row_refetch_on_push: bool,
     pub(super) needs_live_tile_high_current_row_refetch_on_push: bool,
+    pub(super) cgb_dmg_scy_high_plane_uses_low_row: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
@@ -2487,6 +2488,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = aligned_fetch_x;
@@ -2522,6 +2524,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = 0;
@@ -2560,6 +2563,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = self.bg_resume_fetch_pixel;

@@ -232,6 +232,141 @@ fn cgb_dmg_software_bg_fetcher_ignores_native_cgb_bg_attributes() {
     }
 }
 
+fn advance_background_fetcher_to_tile_data_high_dot0(
+    ppu: &mut Ppu,
+    vram: &mut crate::bus::VramDomain,
+) {
+    advance_background_fetcher_to_tile_data_low_dot0(ppu, vram);
+    assert!(!advance_bg_fetcher_with_cgb_vram(ppu, vram));
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.stage,
+        PpuBgFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+    assert!(!advance_bg_fetcher_with_cgb_vram(ppu, vram));
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.stage,
+        PpuBgFetcherStage::TileDataHigh
+    );
+    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+}
+
+fn advance_background_fetcher_to_tile_data_low_dot0(
+    ppu: &mut Ppu,
+    vram: &mut crate::bus::VramDomain,
+) {
+    assert!(!advance_bg_fetcher_with_cgb_vram(ppu, vram));
+    assert!(!advance_bg_fetcher_with_cgb_vram(ppu, vram));
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.stage,
+        PpuBgFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+}
+
+fn enter_drawing_for_live_register_write(ppu: &mut Ppu) {
+    let visible = ppu.mode3_register_latches().visible();
+    ppu.lcdc = visible.lcdc | LCDC_ENABLE_BIT;
+    ppu.scy = visible.scy;
+    ppu.scx = visible.scx;
+    ppu.bgp = visible.bgp;
+    ppu.lcd_state = PpuLcdState::Enabled;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.reload_mode3_register_latches_from_mmio();
+
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+}
+
+#[test]
+fn cgb_dmg_software_bg_high_plane_reuses_low_plane_scy_tiledata_row() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_bg_fetch_ppu();
+        ppu.apply_operating_mode_state(operating_mode);
+        enter_drawing_for_live_register_write(&mut ppu);
+        let mut vram = cgb_vram_domain([0; CGB_TEST_VRAM_BYTES]);
+        vram.write(0x1800, 0x01);
+        vram.write(0x10, 0x12);
+        vram.write(0x11, 0x34);
+        vram.write(0x13, 0x78);
+
+        advance_background_fetcher_to_tile_data_high_dot0(&mut ppu, &mut vram);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low_address, 0x10);
+
+        ppu.write_register(0xFF42, 1);
+        ppu.sync_visible_registers();
+        assert!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .cgb_dmg_scy_high_plane_uses_low_row
+        );
+        assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.tile_high_address, 0x11,
+            "{operating_mode:?} should keep the row used by the low plane"
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x34);
+    }
+}
+
+#[test]
+fn cgb_dmg_software_bg_low_dot_scy_write_reuses_low_plane_row_for_high_plane() {
+    let mut ppu = cgb_bg_fetch_ppu();
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::GbCompatible);
+    enter_drawing_for_live_register_write(&mut ppu);
+    let mut vram = cgb_vram_domain([0; CGB_TEST_VRAM_BYTES]);
+    vram.write(0x1800, 0x01);
+    vram.write(0x10, 0x12);
+    vram.write(0x11, 0x34);
+    vram.write(0x13, 0x78);
+
+    advance_background_fetcher_to_tile_data_low_dot0(&mut ppu, &mut vram);
+
+    ppu.write_register(0xFF42, 1);
+    ppu.sync_visible_registers();
+    assert!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .cgb_dmg_scy_high_plane_uses_low_row
+    );
+    assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low_address, 0x12);
+    assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+    assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high_address, 0x13);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x78);
+}
+
+#[test]
+fn native_cgb_bg_high_plane_keeps_live_scy_tiledata_row() {
+    let mut ppu = cgb_bg_fetch_ppu();
+    let mut vram = cgb_vram_domain([0; CGB_TEST_VRAM_BYTES]);
+    vram.write(0x1800, 0x01);
+    vram.write(0x10, 0x12);
+    vram.write(0x11, 0x34);
+    vram.write(0x13, 0x78);
+
+    advance_background_fetcher_to_tile_data_high_dot0(&mut ppu, &mut vram);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low_address, 0x10);
+
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
+        lcdc: LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        scy: 1,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    }));
+    assert!(!advance_bg_fetcher_with_cgb_vram(&mut ppu, &mut vram));
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high_address, 0x13);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x78);
+}
+
 #[test]
 fn cgb_bg_fetcher_samples_tile_number_and_attrs_on_tile_index_dot0() {
     let mut ppu = cgb_bg_fetch_ppu();

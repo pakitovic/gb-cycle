@@ -441,6 +441,52 @@ pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
+pub(in crate::ppu) struct PpuMode3CgbDmgLiveScyWriteRoute {
+    pending_cached_slices: bool,
+    startup_alignment_fifo: bool,
+    current_fetch: bool,
+    scy_routing: PpuMode3LiveScyWriteRouting,
+}
+
+impl PpuMode3CgbDmgLiveScyWriteRoute {
+    pub(in crate::ppu) const fn new(
+        pending_cached_slices: bool,
+        startup_alignment_fifo: bool,
+        current_fetch: bool,
+        scy_routing: PpuMode3LiveScyWriteRouting,
+    ) -> Self {
+        Self {
+            pending_cached_slices,
+            startup_alignment_fifo,
+            current_fetch,
+            scy_routing,
+        }
+    }
+
+    pub(in crate::ppu) const fn routes_anything(self) -> bool {
+        self.pending_cached_slices || self.startup_alignment_fifo || self.current_fetch
+    }
+
+    pub(in crate::ppu) const fn pending_cached_slices(self) -> bool {
+        self.pending_cached_slices
+    }
+
+    pub(in crate::ppu) const fn startup_alignment_fifo(self) -> bool {
+        self.startup_alignment_fifo
+    }
+
+    pub(in crate::ppu) const fn current_fetch(self) -> bool {
+        self.current_fetch
+    }
+
+    pub(in crate::ppu) const fn scy_routing(self) -> PpuMode3LiveScyWriteRouting {
+        self.scy_routing
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) struct PpuMode3LiveBackgroundWriteEffects {
     tilemap_refetch: bool,
     tilemap_full_refetch: bool,
@@ -896,6 +942,78 @@ impl PpuMode3ObservedScyObjPhaseTable {
     pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
         matches!(self.obj_match_x(), 16..=17)
     }
+
+    /// Observed CGB-family DMG-software SCY/OBJ startup phase table.
+    /// This intentionally does not reuse the DMG startup-alignment FIFO route
+    /// wholesale: CGB evidence keeps the write route and the row-retarget seams
+    /// as a separate hardware hypothesis.
+    pub(in crate::ppu) const fn cgb_dmg_software_live_scy_write_route(
+        self,
+    ) -> PpuMode3CgbDmgLiveScyWriteRoute {
+        let tilemap_row_routing = PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: false,
+            pending_tilemap_row_refetch: true,
+            startup_visible_tile2_tilemap_row_refetch: false,
+            startup_visible_tile2_phase6_tilemap_row_refetch: false,
+        };
+        let no_special_routing = PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: false,
+            pending_tilemap_row_refetch: false,
+            startup_visible_tile2_tilemap_row_refetch: false,
+            startup_visible_tile2_phase6_tilemap_row_refetch: false,
+        };
+
+        match self.obj_match_x() {
+            0 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, true, tilemap_row_routing),
+            1 | 4..=7 | 10..=16 => {
+                PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, true, tilemap_row_routing)
+            }
+            2 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, no_special_routing),
+            8 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, tilemap_row_routing),
+            _ => PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, false, no_special_routing),
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        let ly_phase = ly & (BG_TILE_WIDTH - 1);
+        let (tilemap_row_delta, tiledata_row_delta) =
+            match (self.obj_match_x(), ly_phase, pixel_index) {
+                (2, 6, 7) | (2, 7, 6) => (0, 0),
+                (2, _, _) => (0, -1),
+                (3, _, _) => (0, 2),
+                (8, 5, 6 | 7) => (0, -1),
+                (8, _, _) => (0, -2),
+                (9, 7, 4..=7) => (0, 0),
+                (9, _, _) => (0, 1),
+                (17, 7, 0) => (0, 2),
+                (17, _, _) => (0, 1),
+                _ => return None,
+            };
+
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta,
+            tiledata_row_delta,
+        })
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
+        self,
+        _ly: u8,
+        _pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        if !matches!(self.obj_match_x(), 16) {
+            return None;
+        }
+
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: -2,
+        })
+    }
 }
 
 /// Resolves the current SCY/OBJ phase owner and exposes the observed table through
@@ -966,6 +1084,31 @@ impl PpuMode3ScyObjPhasePolicy {
     pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
         self.observed_phase_table()
             .startup_visible_tile3_uses_previous_tiledata_row()
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_live_scy_write_route(
+        self,
+    ) -> PpuMode3CgbDmgLiveScyWriteRoute {
+        self.observed_phase_table()
+            .cgb_dmg_software_live_scy_write_route()
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        self.observed_phase_table()
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(ly, pixel_index)
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        self.observed_phase_table()
+            .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(ly, pixel_index)
     }
 }
 

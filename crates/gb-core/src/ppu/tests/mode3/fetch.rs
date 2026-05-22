@@ -99,6 +99,124 @@ fn observed_scy_obj_phase_table_classifies_pending_refetch_by_obj_fetch_phase() 
 }
 
 #[test]
+fn observed_scy_obj_phase_table_tracks_cgb_dmg_software_route_classes() {
+    let cases = [
+        (0, true, false, true, true),
+        (1, false, false, true, true),
+        (2, true, false, false, false),
+        (3, false, false, false, false),
+        (8, true, false, false, true),
+        (16, false, false, true, true),
+        (17, false, false, false, false),
+    ];
+
+    for (
+        sprite_x,
+        pending_cached_slices,
+        startup_alignment_fifo,
+        current_fetch,
+        pending_tilemap_row_refetch,
+    ) in cases
+    {
+        let route = observed_scy_obj_phase_table_for_sprite_x(sprite_x)
+            .cgb_dmg_software_live_scy_write_route();
+
+        assert_eq!(
+            route.pending_cached_slices(),
+            pending_cached_slices,
+            "sprite_x={sprite_x}"
+        );
+        assert_eq!(
+            route.startup_alignment_fifo(),
+            startup_alignment_fifo,
+            "sprite_x={sprite_x}"
+        );
+        assert_eq!(route.current_fetch(), current_fetch, "sprite_x={sprite_x}");
+        assert_eq!(
+            route.scy_routing().pending_tilemap_row_refetch,
+            pending_tilemap_row_refetch,
+            "sprite_x={sprite_x}"
+        );
+        assert!(!route.scy_routing().pending_high_plane_only);
+        assert!(
+            !route
+                .scy_routing()
+                .startup_visible_tile2_tilemap_row_refetch
+        );
+        assert!(
+            !route
+                .scy_routing()
+                .startup_visible_tile2_phase6_tilemap_row_refetch
+        );
+    }
+}
+
+#[test]
+fn observed_scy_obj_phase_table_tracks_cgb_dmg_software_startup_tile_retargets() {
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(2)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(0, 0),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: -1,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(2)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(6, 7),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: 0,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(3)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(0, 0),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: 2,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(8)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(5, 6),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: -1,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(9)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(7, 4),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: 0,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(16)
+            .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(0, 0),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: -2,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(17)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(7, 0),
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: 2,
+        })
+    );
+    assert_eq!(
+        observed_scy_obj_phase_table_for_sprite_x(4)
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(0, 0),
+        None
+    );
+}
+
+#[test]
 fn scy_obj_phase_policy_uses_current_transfer_x_for_owned_pending_obj_hits() {
     let policy = PpuMode3ScyObjPhasePolicy::new(PpuMode3ScyObjPhaseContext {
         phase_owner: PpuMode3ScyObjPhaseOwner::PendingHit { match_x: 8 },

@@ -353,6 +353,26 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+        {
+            let retarget = self
+                .scy_obj_phase_policy()?
+                .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(self.ly, pixel_index)?;
+
+            return Some(self.read_startup_visible_tile2_scy_retargeted_pixel(
+                cached,
+                pixel_index,
+                retarget.tilemap_row_delta,
+                retarget.tiledata_row_delta,
+                vram,
+            ));
+        }
+
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         if !matches!(
@@ -482,6 +502,26 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+        {
+            let retarget = self
+                .scy_obj_phase_policy()?
+                .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(self.ly, pixel_index)?;
+
+            return Some(self.read_startup_visible_tile2_scy_retargeted_pixel(
+                cached,
+                pixel_index,
+                retarget.tilemap_row_delta,
+                retarget.tiledata_row_delta,
+                vram,
+            ));
+        }
+
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         if !matches!(
