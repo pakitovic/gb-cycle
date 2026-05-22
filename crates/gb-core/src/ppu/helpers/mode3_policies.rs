@@ -1148,6 +1148,16 @@ impl PpuMode3SingleSpritePhasePolicy {
         }
     }
 
+    pub(in crate::ppu) const fn cgb_dmg_software_lcdc1_disable_onset_visible_x(self) -> Option<u8> {
+        const ONSETS: [u8; 16] = [0, 1, 2, 3, 4, 5, 5, 5, 4, 5, 6, 7, 8, 9, 9, 9];
+        let sprite_x = self.sprite_x() as usize;
+        if sprite_x < ONSETS.len() {
+            Some(ONSETS[sprite_x])
+        } else {
+            None
+        }
+    }
+
     pub(in crate::ppu) const fn observed_lcdc3_phase_table(
         self,
     ) -> PpuMode3ObservedLcdc3PhaseTable {

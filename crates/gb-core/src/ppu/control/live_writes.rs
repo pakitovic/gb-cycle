@@ -265,7 +265,9 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_ENABLE_BIT) {
+        if !self.operating_mode.uses_dmg_software_contract()
+            || !write_context.lcdc_changed(LCDC_OBJ_ENABLE_BIT)
+        {
             return;
         }
 
@@ -273,9 +275,15 @@ impl Ppu {
         let obj_enabled = write_context.current_lcdc() & LCDC_OBJ_ENABLE_BIT != 0;
         if previous_obj_enabled && !obj_enabled {
             let visible_pixels_output = self.runtime.bg_pipeline_state.visible_pixels_output;
-            let onset_visible_x = self
-                .dmg_single_selected_sprite_phase_policy()
-                .and_then(PpuMode3SingleSpritePhasePolicy::observed_lcdc1_disable_onset_visible_x);
+            let onset_visible_x =
+                self.dmg_single_selected_sprite_phase_policy()
+                    .and_then(|policy| {
+                        if self.console_model.is_cgb_family() {
+                            policy.cgb_dmg_software_lcdc1_disable_onset_visible_x()
+                        } else {
+                            policy.observed_lcdc1_disable_onset_visible_x()
+                        }
+                    });
 
             if let Some(onset_visible_x) = onset_visible_x {
                 let (override_enabled, hold_pixels) = if onset_visible_x <= visible_pixels_output {
@@ -387,7 +395,7 @@ impl Ppu {
         previous_obj_enabled: bool,
         hold_pixels: u8,
     ) {
-        if !self.console_model.is_dmg_family() || hold_pixels == 0 {
+        if !self.operating_mode.uses_dmg_software_contract() || hold_pixels == 0 {
             self.runtime
                 .panel
                 .dmg_panel_live_write_state
@@ -549,7 +557,7 @@ impl Ppu {
             self.runtime.bg_pipeline_state.current_transfer_x,
         );
 
-        if self.console_model.is_dmg_family() {
+        if self.operating_mode.uses_dmg_software_contract() {
             self.runtime
                 .panel
                 .dmg_panel_live_write_state

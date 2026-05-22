@@ -180,7 +180,7 @@ impl Ppu {
         if self.operating_mode.uses_dmg_software_contract() {
             self.consume_dmg_lcdc0_bg_enable_visible_hold();
         }
-        if dmg_family {
+        if self.operating_mode.uses_dmg_software_contract() {
             self.consume_dmg_lcdc1_obj_enable_visible_hold();
         }
         self.runtime.bg_pipeline_state.current_transfer_x = self

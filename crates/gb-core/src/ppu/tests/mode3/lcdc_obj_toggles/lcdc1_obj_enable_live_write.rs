@@ -72,6 +72,63 @@ fn disabling_lcdc1_uses_the_observed_hold_window_for_the_single_selected_sprite(
 }
 
 #[test]
+fn cgb_dmg_software_disabling_lcdc1_uses_the_cgb_hold_window() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));
+        ppu.mode2_scan_state.push(obj_toggle_sprite(0, 16, 2, 0, 0));
+
+        ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold
+                .override_value,
+            Some(true),
+            "{operating_mode:?}",
+        );
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold
+                .pixels_remaining,
+            2,
+            "{operating_mode:?}",
+        );
+        assert!(ppu.pixel_transfer_obj_enabled(), "{operating_mode:?}");
+    }
+}
+
+#[test]
+fn native_cgb_skips_the_dmg_software_lcdc1_visible_hold() {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));
+    ppu.mode2_scan_state.push(obj_toggle_sprite(0, 16, 2, 0, 0));
+
+    ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold
+            .override_value,
+        None,
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold
+            .pixels_remaining,
+        0,
+    );
+}
+
+#[test]
 fn disabling_lcdc1_retroactively_repaints_object_dots_from_the_observed_onset() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {

@@ -896,10 +896,17 @@ impl Ppu {
         }
 
         if desired_onset_x > visible_pixels_output {
-            self.set_dmg_bgp_cpu_commit_output_override(
-                Some(previous_visible),
-                desired_onset_x.saturating_sub(visible_pixels_output),
-            );
+            let hold_pixels = desired_onset_x.saturating_sub(visible_pixels_output);
+            if self.uses_cgb_compatibility_rgb555_adapter()
+                && previous_visible == 0x00
+                && value == 0xFF
+                && visible_pixels_output >= 140
+            {
+                self.set_dmg_bgp_cpu_commit_output_override(None, 0);
+                self.start_dmg_bgp_cpu_commit_bg_visible_hold(previous_visible, hold_pixels, value);
+            } else {
+                self.set_dmg_bgp_cpu_commit_output_override(Some(previous_visible), hold_pixels);
+            }
         } else {
             self.set_dmg_bgp_cpu_commit_output_override(Some(value), 1);
         }
@@ -1054,6 +1061,15 @@ impl Ppu {
         let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
         if sprite_x == 0 {
             return Some(visible_pixels_output.saturating_sub(6));
+        }
+        if self.uses_cgb_compatibility_rgb555_adapter() {
+            const CGB_DMG_SOFTWARE_LATE_BLACK_PULSE_ONSETS: [u8; 18] = [
+                150, 147, 148, 149, 150, 151, 151, 151, 150, 151, 152, 153, 154, 155, 155, 155,
+                150, 151,
+            ];
+            return CGB_DMG_SOFTWARE_LATE_BLACK_PULSE_ONSETS
+                .get(sprite_x)
+                .copied();
         }
         const LATE_BLACK_PULSE_ONSETS: [u8; 18] = [
             150, 147, 148, 149, 150, 151, 151, 151, 150, 151, 152, 153, 154, 155, 155, 155, 156,

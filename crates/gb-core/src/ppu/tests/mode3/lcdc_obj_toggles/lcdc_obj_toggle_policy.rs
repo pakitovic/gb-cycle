@@ -147,3 +147,29 @@ fn observed_lcdc1_disable_onset_matches_the_curated_single_sprite_windows() {
         );
     }
 }
+
+#[test]
+fn observed_cgb_dmg_software_lcdc1_disable_onset_tracks_cgb_windows() {
+    let cases = [
+        (0, Some(0)),
+        (1, Some(1)),
+        (2, Some(2)),
+        (3, Some(3)),
+        (4, Some(4)),
+        (5, Some(5)),
+        (6, Some(5)),
+        (7, Some(5)),
+        (8, Some(4)),
+        (13, Some(9)),
+        (16, None),
+    ];
+
+    for (sprite_x, expected_onset) in cases {
+        assert_eq!(
+            PpuMode3SingleSpritePhasePolicy::new(sprite_x)
+                .cgb_dmg_software_lcdc1_disable_onset_visible_x(),
+            expected_onset,
+            "sprite_x={sprite_x}",
+        );
+    }
+}
