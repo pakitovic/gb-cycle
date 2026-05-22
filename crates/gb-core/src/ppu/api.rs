@@ -396,6 +396,7 @@ impl Ppu {
         self.route_live_scx_full_refetch_boundary_write(route.write_context);
         self.route_live_scx_old_pixel_window_boundary_write();
         self.route_live_scx_next_tile_output_retarget_boundary_write();
+        self.route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write();
     }
 
     fn route_live_scx_full_refetch_boundary_write(
@@ -541,6 +542,78 @@ impl Ppu {
                 .startup_visible_tile3_scx_boundary_old_prefix_pixels
                 .max(5);
         }
+    }
+
+    fn route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write(&mut self) {
+        if !self.console_model.is_cgb_family()
+            || !self.operating_mode.uses_dmg_software_contract()
+            || !Self::cgb_dmg_software_scx_preserves_visible_tile3_old_tile(self.scx)
+        {
+            return;
+        }
+
+        if self.cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher() {
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_previous_scx =
+                Some(self.runtime.visible_registers.scx);
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+        }
+
+        if self.cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push() {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx =
+                Some(self.runtime.visible_registers.scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+        }
+    }
+
+    const fn cgb_dmg_software_scx_preserves_visible_tile3_old_tile(scx: u8) -> bool {
+        // Mealybug CGB evidence keeps the old carried VisibleTile3 slice for these two early
+        // startup high-bit bands instead of importing the tile-column refetch into the slice.
+        matches!(scx, 0x08..=0x17 | 0x48..=0x57)
+    }
+
+    fn cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher(&self) -> bool {
+        self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.fetcher.cached_origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataLow
+            && self.bg_pipeline_state.fetcher.stage_dot == 1
+            && self.bg_pipeline_state.current_transfer_x == 15
+            && self.bg_pipeline_state.visible_pixels_output == 7
+    }
+
+    fn cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push(&self) -> bool {
+        self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && matches!(self.bg_pipeline_state.current_transfer_x, 21 | 22)
+            && self.bg_pipeline_state.visible_pixels_output
+                == self.bg_pipeline_state.current_transfer_x.saturating_sub(8)
     }
 
     pub(super) fn live_scy_write_routing(

@@ -19,6 +19,24 @@ fn dmg_fetch_startup_rig(lcdc: u8) -> PpuTestRig {
     })
 }
 
+fn cgb_fetch_startup_rig(operating_mode: crate::model::OperatingMode, lcdc: u8) -> PpuTestRig {
+    let mut ppu =
+        PpuTestRig::with_model(ConsoleModel::GameBoyColor).with_startup_state(PpuStartupState {
+            lcdc,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+    ppu.apply_operating_mode_state(operating_mode);
+    ppu
+}
+
 fn push_selected_sprite_x(ppu: &mut PpuTestRig, x: u8) {
     ppu.mode2_scan_state.push(PpuSelectedSprite {
         oam_index: 0,
@@ -1184,6 +1202,113 @@ fn startup_visible_tile3_scx_next_tile_output_retarget_covers_low_band_classes()
             "SCX {scx:#04X} old-tail start"
         );
     }
+}
+
+#[test]
+fn cgb_dmg_software_scx_high_write_preserves_visible_tile3_push_old_tile() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_fetch_startup_rig(operating_mode, 0x91);
+        configure_startup_visible_tile3_push_boundary(&mut ppu, 21, 13);
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_previous_scx = None;
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
+
+        ppu.write_register(0xFF43, 0x08);
+
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx,
+            Some(0x00),
+            "{operating_mode:?} should keep the old startup tile source"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel,
+            0,
+            "{operating_mode:?} should preserve the whole carried tile"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_scx_high_write_preserves_visible_tile3_current_fetch_old_tile() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_fetch_startup_rig(operating_mode, 0x91);
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + 112;
+        ppu.bg_pipeline_state.current_transfer_x = 15;
+        ppu.bg_pipeline_state.visible_pixels_output = 7;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.cached_origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+        ppu.bg_pipeline_state.fetcher.fetch_x = BG_TILE_WIDTH as u16 * 2;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+        ppu.write_register(0xFF43, 0x10);
+
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_previous_scx,
+            Some(0x00),
+            "{operating_mode:?} should keep the old startup tile source"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel,
+            0,
+            "{operating_mode:?} should preserve the whole in-flight tile"
+        );
+    }
+}
+
+#[test]
+fn native_cgb_scx_high_write_skips_dmg_software_visible_tile3_old_tile_seam() {
+    let mut ppu = cgb_fetch_startup_rig(crate::model::OperatingMode::Cgb, 0x91);
+    configure_startup_visible_tile3_push_boundary(&mut ppu, 21, 13);
+    ppu.bg_pipeline_state
+        .push
+        .cached
+        .startup_visible_tile3_scx_boundary_previous_scx = None;
+    ppu.bg_pipeline_state
+        .push
+        .cached
+        .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
+
+    ppu.write_register(0xFF43, 0x08);
+
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_previous_scx,
+        None
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_old_tail_start_pixel,
+        BG_TILE_WIDTH
+    );
 }
 
 #[test]

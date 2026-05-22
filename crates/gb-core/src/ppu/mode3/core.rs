@@ -211,7 +211,7 @@ impl Ppu {
     }
 
     fn maybe_retune_previsible_live_scx_discard(&mut self) {
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || self.runtime.bg_pipeline_state.window_started_this_line
             || !self
                 .runtime
