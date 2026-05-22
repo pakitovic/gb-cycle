@@ -961,7 +961,7 @@ fn real_boot_with_verified_dmg_boot_rom_rejects_an_ff_filled_header_without_ff50
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(
         &blargg_dmg_repo_gated_suite(),
@@ -974,7 +974,7 @@ fn blargg_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_cpu_instrs_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("blargg-dmg-cpu-instrs")
         .expect("Blargg CPU instruction split suite should exist");
@@ -988,7 +988,7 @@ fn blargg_cpu_instrs_chunk_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_dmg_sound_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("blargg-dmg-sound")
         .expect("Blargg DMG sound split suite should exist");
@@ -1001,7 +1001,7 @@ fn blargg_dmg_sound_chunk_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_timing_memory_oam_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("blargg-dmg-timing-memory-oam")
         .expect("Blargg timing/memory/OAM split suite should exist");
@@ -1015,7 +1015,7 @@ fn blargg_timing_memory_oam_chunk_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn acid_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&acid_dmg_curated_suite(), "curated acid suite", true)
     else {
@@ -1025,7 +1025,7 @@ fn acid_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mealybug_curated_suite_passes_from_repo_store() {
     let suite = mealybug_tearoom_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
@@ -1042,7 +1042,7 @@ fn mealybug_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mooneye_curated_suite_passes_from_repo_store() {
     let suite = mooneye_acceptance_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
@@ -1055,7 +1055,7 @@ fn mooneye_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mooneye_acceptance_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("mooneye-dmg-acceptance-manual")
         .expect("Mooneye acceptance/manual split suite should exist");
@@ -1113,7 +1113,7 @@ fn mooneye_serial_boot_sclk_align_real_boot_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mooneye_mbc1_mbc5_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc1-mbc5")
         .expect("Mooneye MBC1/MBC5 split suite should exist");
@@ -1126,7 +1126,7 @@ fn mooneye_mbc1_mbc5_chunk_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mooneye_mbc2_chunk_passes_from_repo_store() {
     let suite = built_in_rom_suite_by_name("mooneye-dmg-emulator-mbc2")
         .expect("Mooneye MBC2 split suite should exist");
@@ -1139,7 +1139,7 @@ fn mooneye_mbc2_chunk_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn daid_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&daid_dmg_curated_suite(), "curated daid suite", true)
     else {
@@ -1151,7 +1151,7 @@ fn daid_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn cpp_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&cpp_dmg_curated_suite(), "curated cpp suite", true)
     else {
@@ -1163,7 +1163,7 @@ fn cpp_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn hacktix_curated_suite_passes_from_repo_store() {
     let Some(report) =
         run_curated_suite(&hacktix_dmg_curated_suite(), "curated hacktix suite", true)
@@ -1176,7 +1176,7 @@ fn hacktix_curated_suite_passes_from_repo_store() {
 }
 
 #[test]
-#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_01_special_copies_bank1_payload_to_wram_before_running() {
     let workspace_root = workspace_root();
 

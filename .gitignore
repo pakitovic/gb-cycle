@@ -15,5 +15,5 @@
 /scripts/benchmark/
 /.oracles/
 
-# Local ROM stores
-/.roms/
+# Local test ROMs
+/test/

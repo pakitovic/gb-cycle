@@ -17,7 +17,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ### Testing tooling
 
-- [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `run-docboy-dmg` now executes the DocBoy serial-link rows through `run_linked_session` and retains participant failure artifacts, but linked-session outcomes are still CLI-output-only and do not update `.roms/test/test-report-docboy.md`; if linked-session rows need aggregate report persistence, design participant-aware markdown status rows instead of flattening them into single-machine ROM rows.
+- [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `run-docboy-dmg` now executes the DocBoy serial-link rows through `run_linked_session` and retains participant failure artifacts, but linked-session outcomes are still CLI-output-only and do not update `test/test-report-docboy.md`; if linked-session rows need aggregate report persistence, design participant-aware markdown status rows instead of flattening them into single-machine ROM rows.
 - [SERIAL][DOCBOY-SC00-LINK-ORACLE] DocBoy's `serial_two_players_basic_transfer_slave_sc_00.gb` linked row asserts that a slave-side transfer can complete after writing `SC = 0`, while the current serial handbook follows Pan Docs in requiring external-clock receivers to arm with `SC.7 = 1`; keep the DocBoy row visible as a blocking extra-suite failure, but resolve the source conflict with hardware-facing evidence before changing serial gating.
 
 ### Phase 4 — Base PPU and visible pipeline

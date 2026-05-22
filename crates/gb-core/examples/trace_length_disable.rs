@@ -8,9 +8,9 @@ use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 use std::path::PathBuf;
 
 fn main() {
-    let rom_path = std::env::args().nth(1).unwrap_or_else(|| {
-        ".roms/test/docboy/apu/ch1_length_timer_while_off_delay512.gb".to_string()
-    });
+    let rom_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "test/docboy/apu/ch1_length_timer_while_off_delay512.gb".to_string());
     let rom_bytes = std::fs::read(PathBuf::from(&rom_path)).expect("read rom");
 
     let mut machine = Machine::new(

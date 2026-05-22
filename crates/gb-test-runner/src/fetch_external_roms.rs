@@ -14,7 +14,7 @@ use crate::curated_test_roms::{
     materialize_curated_test_rom_source_families, replace_curated_test_rom_families,
 };
 use crate::{
-    ExternalRomRequiredFile, ExternalRomSource, curated_test_rom_families, external_rom_store_root,
+    ExternalRomRequiredFile, ExternalRomSource, curated_test_rom_families,
     load_external_rom_source_manifest,
 };
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -41,7 +41,7 @@ pub fn fetch_external_roms_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin fetch_test_roms -- [--force] [all | family ...]\n",
         "\n",
-        "Fetches the pinned upstream ROM source(s) into temporary checkout(s), materializes the curated runnable families under .roms/test/, and removes the raw checkout afterwards.\n",
+        "Fetches the pinned upstream ROM source(s) into temporary checkout(s), materializes the curated runnable families under test/, and removes the raw checkout afterwards.\n",
         "When no family is provided, or when `all` is provided, all curated families are materialized.\n",
     )
 }
@@ -75,7 +75,6 @@ where
                         &fetched_source.temp_root,
                         &selected_families,
                     )?;
-                    remove_legacy_source_cache(workspace_root, &fetched_source.source)?;
                 }
                 if selected_families.len() == curated_test_rom_families().len() {
                     writeln_checked(
@@ -316,37 +315,6 @@ fn unique_temp_path(label: &str) -> std::path::PathBuf {
     ))
 }
 
-fn remove_legacy_source_cache(
-    workspace_root: &Path,
-    source: &ExternalRomSource,
-) -> Result<(), String> {
-    let legacy_root = external_rom_store_root(workspace_root).join(&source.local_dir);
-    remove_directory_if_present(&legacy_root, "legacy raw test ROM cache directory")?;
-
-    let legacy_store_root = external_rom_store_root(workspace_root);
-    if legacy_store_root.exists() {
-        let is_empty = fs::read_dir(&legacy_store_root)
-            .map_err(|error| {
-                format!(
-                    "failed to read legacy raw test ROM cache root {}: {error}",
-                    legacy_store_root.display()
-                )
-            })?
-            .next()
-            .is_none();
-        if is_empty {
-            fs::remove_dir(&legacy_store_root).map_err(|error| {
-                format!(
-                    "failed to remove empty legacy raw test ROM cache root {}: {error}",
-                    legacy_store_root.display()
-                )
-            })?;
-        }
-    }
-
-    Ok(())
-}
-
 fn remove_directory_if_present(path: &Path, label: &str) -> Result<(), String> {
     if path.exists() {
         fs::remove_dir_all(path)
@@ -556,8 +524,8 @@ mod tests {
         cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
         curated_test_rom_families, curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite,
         docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
-        external_rom_store_root, gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite,
-        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, test_rom_store_root,
+        gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite, test_rom_store_root,
     };
 
     use super::{
@@ -796,6 +764,10 @@ mod tests {
         }
     }
 
+    fn docboy_cgb_dmg_source_rom_path(rom: &str) -> String {
+        format!("tests/roms/cgb_dmg_mode/docboy/{rom}")
+    }
+
     fn docboy_cgb_dmg_ext_source_rom_path(rom: &str) -> String {
         format!("tests/roms/cgb_dmg_ext_mode/docboy/{rom}")
     }
@@ -911,7 +883,7 @@ mod tests {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
             write_required_file(
                 root,
-                &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
+                &docboy_cgb_dmg_source_rom_path(&rom.display().to_string()),
                 case.id.as_bytes(),
             );
         }
@@ -949,7 +921,7 @@ mod tests {
             let rom = strip_curated_store_prefix(&rom_path, "docboy-cgb-dmg");
             write_required_file(
                 root,
-                &format!("tests/roms/cgb_dmg_mode/{}", rom.display()),
+                &docboy_cgb_dmg_source_rom_path(&rom.display().to_string()),
                 rom_path.to_string_lossy().as_bytes(),
             );
         }
@@ -1086,7 +1058,7 @@ mod tests {
                 let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
                 let rom = rom.display().to_string();
                 required_file(
-                    &format!("tests/roms/cgb_dmg_mode/{rom}"),
+                    &docboy_cgb_dmg_source_rom_path(&rom),
                     "docboy-cgb-dmg",
                     Some(rom.as_str()),
                 )
@@ -1141,7 +1113,7 @@ mod tests {
                             .display()
                             .to_string();
                         required_file(
-                            &format!("tests/roms/cgb_dmg_mode/{rom}"),
+                            &docboy_cgb_dmg_source_rom_path(&rom),
                             "docboy-cgb-dmg",
                             Some(rom.as_str()),
                         )
@@ -1292,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn fetch_command_materializes_curated_store_and_removes_the_legacy_raw_cache() {
+    fn fetch_command_materializes_curated_store_from_temporary_checkouts() {
         let workspace_root = unique_temp_dir("materialize");
         let upstream_root = workspace_root.join("upstream");
         let docboy_root = workspace_root.join("docboy-upstream");
@@ -1306,11 +1278,6 @@ mod tests {
         let docboy_source =
             build_docboy_source(docboy_root.display().to_string(), docboy_rev, &docboy_root);
         write_manifest_sources(&workspace_root, &[&source, &docboy_source]);
-
-        let legacy_raw_root = external_rom_store_root(&workspace_root).join(&source.local_dir);
-        fs::create_dir_all(&legacy_raw_root).expect("legacy raw root should be creatable");
-        fs::write(legacy_raw_root.join("stale.txt"), b"old-cache")
-            .expect("legacy raw marker should be writable");
 
         let mut output = Vec::new();
         run_fetch_external_roms_command(["all"], &workspace_root, &mut output)
@@ -1326,7 +1293,6 @@ mod tests {
                 .join("little-things-gb/whichboot.gb")
                 .exists()
         );
-        assert!(!legacy_raw_root.exists());
         assert!(
             String::from_utf8(output)
                 .expect("command output should be utf-8")

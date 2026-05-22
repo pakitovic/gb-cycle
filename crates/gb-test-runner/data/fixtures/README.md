@@ -4,22 +4,22 @@ This directory documents the repo-managed contract for redistributable external 
 
 ## Stores
 
-- Curated runnable store: `/.roms/test/`
+- Curated runnable store: `/test/`
 - Curated root env var override: `GB_CYCLE_TEST_ROM_ROOT`
 
-`make fetch-test-roms` downloads the pinned upstream source(s) declared in `crates/gb-test-runner/data/sources.toml` into temporary checkout(s) and then materializes the curated runnable families under `/.roms/test/`. By default it fetches `all`, but it also accepts one or more explicit families through `FAMILIES=...`.
+`make fetch-test-roms` downloads the pinned upstream source(s) declared in `crates/gb-test-runner/data/sources.toml` into temporary checkout(s) and then materializes the curated runnable families under `/test/`. By default it fetches `all`, but it also accepts one or more explicit families through `FAMILIES=...`.
 `make test-roms` performs that fetch/materialization step automatically before running all local curated DMG suites currently wired in the `Makefile`. The GitHub `test-roms` workflow runs the workflow-managed subset of those suites.
 
 Most redistributable suite assets come from `GBEmulatorShootout`; source-specific exceptions such as DocBoy are also pinned in `sources.toml` and must declare their materialized family/ROM alias explicitly. The runnable store keeps only the ROMs currently listed in the family manifests under `crates/gb-test-runner/data/*.toml`.
 The repo-managed framebuffer fixtures checked into this tree are stored as human-visible `PNG` images; the runner still accepts legacy `PGM` fixtures during the transition, but `PNG` is now the default checked-in oracle format.
 
-DocBoy logical families use `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, and `docboy-cgb-dmg-ext` in reports and manifests, while their runnable ROMs live together under `/.roms/test/docboy/{dmg,cgb,cgb-dmg,cgb-dmg-ext}/` so the experimental upstream matrix stays grouped on disk.
+DocBoy logical families use `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, and `docboy-cgb-dmg-ext` in reports and manifests, while their runnable ROMs live together under `/test/docboy/{dmg,cgb,cgb-dmg,cgb-dmg-ext}/` so the experimental upstream matrix stays grouped on disk.
 
 Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/.roms/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/.roms/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/.roms/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -147,7 +147,7 @@ make run-docboy-cgb-dmg-ext
 make test-roms-docboy
 ```
 
-Each `make run-*` target materializes its own family before executing and updates `/.roms/test/test-report.md` for promoted suites, `/.roms/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/.roms/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite` (DMG and CGB extra variants).
+Each `make run-*` target materializes its own family before executing and updates `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite` (DMG and CGB extra variants).
 
 Run one curated family directly and update the report:
 

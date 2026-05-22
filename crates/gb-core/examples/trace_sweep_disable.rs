@@ -10,7 +10,7 @@ use std::path::PathBuf;
 fn main() {
     let rom_path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| ".roms/test/docboy/apu/ch1_period_sweep_step0_round2.gb".to_string());
+        .unwrap_or_else(|| "test/docboy/apu/ch1_period_sweep_step0_round2.gb".to_string());
     let rom_bytes = std::fs::read(PathBuf::from(&rom_path)).expect("read rom");
 
     let mut machine = Machine::new(

@@ -14,7 +14,7 @@ use crate::{
     PassCondition, RomSuite, RomSuiteReport, RomTestCase, TestSubsystem, Timeout,
 };
 
-pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
+pub const TEST_ROM_STORE_DIR: &str = "test";
 pub const TEST_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_ROOT";
 pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
 pub const TEST_ROM_EXTRA_REPORT_FILE_NAME: &str = "test-report-extra.md";
@@ -3419,15 +3419,14 @@ mod tests {
             suite
                 .cases
                 .iter()
-                .filter(|case| case.rom_path == Path::new("docboy/cgb-dmg/docboy/boot/boot_vram.gb"))
+                .filter(|case| case.rom_path == Path::new("docboy/cgb-dmg/boot/boot_vram.gb"))
                 .count(),
             1,
             "DocBoy cgb_dmg_mode.json carries one exact boot_vram duplicate that should not create duplicate runnable rows"
         );
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-mode-mode-cgb-flag-84"
-                && case.rom_path.as_path()
-                    == Path::new("docboy/cgb-dmg/docboy/mode/mode_cgb_flag_84.gb")
+                && case.rom_path.as_path() == Path::new("docboy/cgb-dmg/mode/mode_cgb_flag_84.gb")
                 && case.pass_condition
                     == PassCondition::MemoryBytesEqual(vec![
                         MemoryByteExpectation::with_fail_value(0xFFF0, 0x01, 0x02),

@@ -563,7 +563,7 @@ fn runner_resolves_roms_from_an_explicit_external_root() {
 #[test]
 fn runner_resolves_roms_from_the_default_repo_managed_test_rom_store() {
     let temp_dir = unique_temp_dir("default-test-rom-store");
-    let rom_root = temp_dir.join(".roms/test");
+    let rom_root = temp_dir.join("test");
     fs::create_dir_all(rom_root.join("blargg/cpu_instrs"))
         .expect("default test rom store directory should be creatable");
 

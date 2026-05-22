@@ -23,7 +23,7 @@ help:
 	@echo "  make test-roms-cgb-real-boot Fetch and run the promoted green local curated CGB ROM suites through verified RealBoot"
 	@echo "  make test-roms-cgb-extra  Fetch and run the exploratory/internal CGB ROM suites"
 	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
-	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned upstream source(s) using temporary checkout(s)"
+	@echo "  make fetch-test-roms      Materialize test from the pinned upstream source(s) using temporary checkout(s)"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated Acid DMG suite"
 	@echo "  make run-ax6              Fetch and run the extra AX6 DMG RTC suite"
