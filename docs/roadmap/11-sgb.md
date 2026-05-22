@@ -93,6 +93,8 @@ Acceptance criteria:
 - Transfer and border state are included in save states and deterministic replay.
 - Example-title notes cover Donkey Kong (GB), Animaniacs, Kirby’s Dream Land 2, and Killer Instinct as manual compatibility references.
 
+Status: implemented as the Slice 3 baseline. `SgbHost` now records pending `_TRN` requests, captures the first 4 KiB of GB VRAM through a shared transfer buffer at the next PPU frame-start boundary, and decodes `CHR_TRN` and `PCT_TRN` into explicit host-owned border tile data, 29-row tilemap storage, and border palettes 4-6 without treating the payload as CGB VRAM. `MASK_EN` stores cancel/freeze/blank state in the SGB video block; freeze captures the current host LCD RGB555 image at command completion, while blank modes affect host LCD composition without mutating GB PPU state. A new 256×224 host-frame composition API combines border pixels and the 160×144 GB LCD window, using border color index 0 as the transparent window path and allowing non-zero border pixels to cover the window as on SGB. Repeated `CHR_TRN` and `PCT_TRN` calls overwrite the relevant host border state so static and dynamic border updates share the same path. The durable machine save-state format version is bumped again because Slice 3 adds live transfer, border, and mask/freeze state. Manual compatibility examples for this slice are Donkey Kong (GB), Animaniacs, Kirby’s Dream Land 2, and Killer Instinct.
+
 ## Slice 4 — Advanced screen coloring
 
 Scope: implement SGB's per-region and per-character color attribute machinery.

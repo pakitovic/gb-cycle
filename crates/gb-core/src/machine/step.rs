@@ -21,6 +21,7 @@ use crate::scheduler::{
     scheduler_phase_trace_message,
 };
 use crate::serial::{Serial, SerialTickTelemetry};
+use crate::sgb::SgbHost;
 use crate::speed::CgbSpeedMode;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
@@ -275,6 +276,7 @@ struct MachinePhaseRunner<'a> {
     dma: &'a mut DmaController,
     timer: &'a mut Timer,
     serial: &'a mut Serial,
+    sgb_host: &'a mut SgbHost,
     speed: &'a mut SpeedController,
     external_port: &'a mut ExternalPort,
     boot: &'a mut BootController,
@@ -631,6 +633,11 @@ impl MachinePhaseRunner<'_> {
             .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
         if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
+        }
+        if self.ppu.ly() == 0 && self.ppu.line_dot() == 0 {
+            let _ = self
+                .sgb_host
+                .advance_frame_start(self.bus.debug_vram_bytes());
         }
         if records_regions {
             observer.end_region(MachineStepRegion::Ppu);
@@ -1028,6 +1035,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            sgb_host: &mut self.sgb_host,
             speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,
@@ -1066,6 +1074,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            sgb_host: &mut self.sgb_host,
             speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,

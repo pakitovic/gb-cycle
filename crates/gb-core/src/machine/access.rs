@@ -61,6 +61,9 @@ impl<S: TraceSink> Machine<S> {
 
         if address == 0xFF00 {
             self.sgb_host.observe_joyp_write(value);
+            let _ = self
+                .sgb_host
+                .capture_pending_lcd_freeze(self.ppu.framebuffer());
         }
 
         if cpu_write_targets_ppu_mmio(&self.bus, address) {

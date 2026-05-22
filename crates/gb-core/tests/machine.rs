@@ -46,6 +46,23 @@ fn write_sgb_palette_color(packet: &mut [u8; 16], offset: usize, rgb555: u16) {
     packet[offset + 1] = high;
 }
 
+fn step_until_sgb_transfer_count(machine: &mut Machine, expected_count: u64) {
+    for _ in 0..80_000 {
+        if machine
+            .snapshot()
+            .sgb_host
+            .video
+            .vram_transfer
+            .completed_transfer_count
+            >= expected_count
+        {
+            return;
+        }
+        machine.step_t_cycle();
+    }
+    panic!("SGB VRAM transfer did not complete before the frame budget elapsed");
+}
+
 #[test]
 fn machine_uses_a_single_step_t_cycle_entry_point() {
     let mut machine = Machine::new(
@@ -165,6 +182,52 @@ fn sgb_lcd_color_output_maps_dmg_framebuffer_without_cgb_palette_hardware() {
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.sgb_host.video.last_palette_command_id, Some(0x00));
     assert_eq!(snapshot.sgb_host.video.palette_command_count, 1);
+}
+
+#[test]
+fn sgb_vram_transfer_captures_machine_vram_on_the_next_frame_start() {
+    let mut packet = [0; 16];
+    packet[0] = (0x13 << 3) | 1;
+    packet[1] = 0;
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+
+    machine.write_bus(0xFF40, 0x00);
+    machine.write_bus(0x8000, 0xFF);
+    machine.write_bus(0xFF40, 0x91);
+    write_sgb_packet(&mut machine, packet);
+    assert_eq!(
+        machine
+            .snapshot()
+            .sgb_host
+            .video
+            .vram_transfer
+            .requested_transfer_count,
+        1
+    );
+
+    step_until_sgb_transfer_count(&mut machine, 1);
+
+    let snapshot = machine.snapshot();
+    assert!(snapshot.sgb_host.video.border.chr0_loaded);
+    assert_eq!(snapshot.sgb_host.video.border.tile_data.bytes[0], 0xFF);
+    assert_eq!(
+        snapshot
+            .sgb_host
+            .video
+            .vram_transfer
+            .last_completed
+            .as_ref()
+            .expect("machine should retain the captured SGB transfer")
+            .payload
+            .bytes[0],
+        0xFF
+    );
 }
 
 #[test]

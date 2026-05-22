@@ -11,8 +11,24 @@ pub const SGB_COMMAND_MAX_PACKETS: usize = 7;
 pub const SGB_LCD_WIDTH: usize = 160;
 pub const SGB_LCD_HEIGHT: usize = 144;
 pub const SGB_LCD_PIXELS: usize = SGB_LCD_WIDTH * SGB_LCD_HEIGHT;
+pub const SGB_FRAME_WIDTH: usize = 256;
+pub const SGB_FRAME_HEIGHT: usize = 224;
+pub const SGB_FRAME_PIXELS: usize = SGB_FRAME_WIDTH * SGB_FRAME_HEIGHT;
+pub const SGB_LCD_FRAME_ORIGIN_X: usize = 48;
+pub const SGB_LCD_FRAME_ORIGIN_Y: usize = 40;
 pub const SGB_SCREEN_PALETTE_COUNT: usize = 4;
 pub const SGB_SCREEN_PALETTE_COLORS: usize = 4;
+pub const SGB_VRAM_TRANSFER_BYTES: usize = 0x1000;
+pub const SGB_BORDER_TILE_BYTES: usize = 32;
+pub const SGB_BORDER_TILE_COUNT: usize = 256;
+pub const SGB_BORDER_TILE_DATA_BYTES: usize = SGB_BORDER_TILE_BYTES * SGB_BORDER_TILE_COUNT;
+pub const SGB_BORDER_TILEMAP_WIDTH: usize = 32;
+pub const SGB_BORDER_TILEMAP_VISIBLE_HEIGHT: usize = 28;
+pub const SGB_BORDER_TILEMAP_STORED_HEIGHT: usize = 29;
+pub const SGB_BORDER_TILEMAP_ENTRIES: usize =
+    SGB_BORDER_TILEMAP_WIDTH * SGB_BORDER_TILEMAP_STORED_HEIGHT;
+pub const SGB_BORDER_PALETTE_COUNT: usize = 3;
+pub const SGB_BORDER_PALETTE_COLORS: usize = 16;
 
 const SGB_PACKET_BYTES: usize = SGB_COMMAND_PACKET_BYTES;
 const SGB_PACKET_BITS: u8 = 128;
@@ -28,6 +44,9 @@ const SGB_COMMAND_PAL01: u8 = 0x00;
 const SGB_COMMAND_PAL23: u8 = 0x01;
 const SGB_COMMAND_PAL03: u8 = 0x02;
 const SGB_COMMAND_PAL12: u8 = 0x03;
+const SGB_COMMAND_CHR_TRN: u8 = 0x13;
+const SGB_COMMAND_PCT_TRN: u8 = 0x14;
+const SGB_COMMAND_MASK_EN: u8 = 0x17;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbVideoStandard {
@@ -212,6 +231,165 @@ pub enum SgbLcdCompositionError {
     OutputLength { expected: usize, actual: usize },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SgbFrameCompositionError {
+    DisabledHost,
+    InputLength { expected: usize, actual: usize },
+    OutputLength { expected: usize, actual: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SgbVramTransferError {
+    DisabledHost,
+    NoPendingTransfer,
+    SourceLength { expected: usize, actual: usize },
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbScreenMask {
+    #[default]
+    Cancel,
+    Freeze,
+    BlankBlack,
+    BlankColor0,
+}
+
+impl SgbScreenMask {
+    const fn from_command_byte(value: u8) -> Self {
+        match value & 0x03 {
+            0 => Self::Cancel,
+            1 => Self::Freeze,
+            2 => Self::BlankBlack,
+            _ => Self::BlankColor0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbChrTransferTileType {
+    Bg,
+    Obj,
+}
+
+impl SgbChrTransferTileType {
+    const fn from_command_byte(value: u8) -> Self {
+        if value & 0x02 == 0 {
+            Self::Bg
+        } else {
+            Self::Obj
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbChrTransferSelection {
+    pub tile_block: u8,
+    pub tile_type: SgbChrTransferTileType,
+}
+
+impl SgbChrTransferSelection {
+    const fn from_command_byte(value: u8) -> Self {
+        Self {
+            tile_block: value & 0x01,
+            tile_type: SgbChrTransferTileType::from_command_byte(value),
+        }
+    }
+
+    fn destination_offset(self) -> usize {
+        usize::from(self.tile_block) * SGB_VRAM_TRANSFER_BYTES
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbVramTransferTarget {
+    Chr(SgbChrTransferSelection),
+    Pct,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbPendingVramTransfer {
+    pub command_id: u8,
+    pub target: SgbVramTransferTarget,
+    pub frame_starts_until_capture: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbVramTransferBuffer {
+    pub bytes: Vec<u8>,
+}
+
+impl SgbVramTransferBuffer {
+    fn from_source_bytes(source: &[u8]) -> Result<Self, SgbVramTransferError> {
+        if source.len() < SGB_VRAM_TRANSFER_BYTES {
+            return Err(SgbVramTransferError::SourceLength {
+                expected: SGB_VRAM_TRANSFER_BYTES,
+                actual: source.len(),
+            });
+        }
+
+        Ok(Self {
+            bytes: source[..SGB_VRAM_TRANSFER_BYTES].to_vec(),
+        })
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+impl Default for SgbVramTransferBuffer {
+    fn default() -> Self {
+        Self {
+            bytes: vec![0; SGB_VRAM_TRANSFER_BYTES],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbCompletedVramTransfer {
+    pub command_id: u8,
+    pub target: SgbVramTransferTarget,
+    pub payload: SgbVramTransferBuffer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct SgbVramTransferState {
+    pub pending: Option<SgbPendingVramTransfer>,
+    pub last_completed: Option<SgbCompletedVramTransfer>,
+    pub requested_transfer_count: u64,
+    pub completed_transfer_count: u64,
+}
+
+impl SgbVramTransferState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.last_completed
+            .as_ref()
+            .map(|transfer| transfer.payload.dynamic_payload_bytes())
+            .unwrap_or(0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbLcdRgb555Frame {
+    pub pixels: Vec<u16>,
+}
+
+impl Default for SgbLcdRgb555Frame {
+    fn default() -> Self {
+        Self {
+            pixels: vec![0; SGB_LCD_PIXELS],
+        }
+    }
+}
+
+impl SgbLcdRgb555Frame {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.pixels.len().saturating_mul(std::mem::size_of::<u16>())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbRgb555Color {
     raw: u16,
@@ -325,6 +503,237 @@ impl Default for SgbPaletteState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbBorderTileData {
+    pub bytes: Vec<u8>,
+}
+
+impl SgbBorderTileData {
+    fn apply_chr_transfer(
+        &mut self,
+        selection: SgbChrTransferSelection,
+        payload: &SgbVramTransferBuffer,
+    ) {
+        let offset = selection.destination_offset();
+        self.bytes[offset..offset + SGB_VRAM_TRANSFER_BYTES].copy_from_slice(&payload.bytes);
+    }
+
+    fn pixel_color_index(&self, tile_index: usize, x: usize, y: usize) -> u8 {
+        let tile_index = tile_index % SGB_BORDER_TILE_COUNT;
+        let x = x & 0x07;
+        let y = y & 0x07;
+        let tile_offset = tile_index * SGB_BORDER_TILE_BYTES;
+        let row_offset = tile_offset + y * 2;
+        let low_plane_01 = self.bytes[row_offset];
+        let high_plane_01 = self.bytes[row_offset + 1];
+        let low_plane_23 = self.bytes[row_offset + 16];
+        let high_plane_23 = self.bytes[row_offset + 17];
+        let bit = 7 - x;
+
+        ((low_plane_01 >> bit) & 0x01)
+            | (((high_plane_01 >> bit) & 0x01) << 1)
+            | (((low_plane_23 >> bit) & 0x01) << 2)
+            | (((high_plane_23 >> bit) & 0x01) << 3)
+    }
+}
+
+impl Default for SgbBorderTileData {
+    fn default() -> Self {
+        Self {
+            bytes: vec![0; SGB_BORDER_TILE_DATA_BYTES],
+        }
+    }
+}
+
+impl SgbBorderTileData {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbBorderMapEntry {
+    pub raw: u16,
+}
+
+impl SgbBorderMapEntry {
+    pub const fn new(raw: u16) -> Self {
+        Self { raw }
+    }
+
+    const fn tile_index(self) -> usize {
+        (self.raw as usize) & 0x03FF
+    }
+
+    const fn palette_index(self) -> usize {
+        match (self.raw >> 10) & 0x07 {
+            4 => 0,
+            5 => 1,
+            6 => 2,
+            _ => 0,
+        }
+    }
+
+    const fn x_flip(self) -> bool {
+        self.raw & 0x4000 != 0
+    }
+
+    const fn y_flip(self) -> bool {
+        self.raw & 0x8000 != 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbBorderTileMap {
+    pub entries: Vec<SgbBorderMapEntry>,
+}
+
+impl SgbBorderTileMap {
+    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) {
+        for (entry_index, entry) in self.entries.iter_mut().enumerate() {
+            let byte_index = entry_index * 2;
+            *entry = SgbBorderMapEntry::new(u16::from_le_bytes([
+                payload.bytes[byte_index],
+                payload.bytes[byte_index + 1],
+            ]));
+        }
+    }
+
+    fn entry(&self, tile_x: usize, tile_y: usize) -> SgbBorderMapEntry {
+        self.entries[tile_y * SGB_BORDER_TILEMAP_WIDTH + tile_x]
+    }
+}
+
+impl Default for SgbBorderTileMap {
+    fn default() -> Self {
+        Self {
+            entries: vec![SgbBorderMapEntry::default(); SGB_BORDER_TILEMAP_ENTRIES],
+        }
+    }
+}
+
+impl SgbBorderTileMap {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.entries
+            .len()
+            .saturating_mul(std::mem::size_of::<SgbBorderMapEntry>())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbBorderPalette {
+    pub colors: [SgbRgb555Color; SGB_BORDER_PALETTE_COLORS],
+}
+
+impl SgbBorderPalette {
+    pub const fn color(self, color_index: u8) -> SgbRgb555Color {
+        self.colors[(color_index & 0x0F) as usize]
+    }
+}
+
+impl Default for SgbBorderPalette {
+    fn default() -> Self {
+        Self {
+            colors: [SgbRgb555Color::new(0); SGB_BORDER_PALETTE_COLORS],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbBorderState {
+    pub tile_data: SgbBorderTileData,
+    pub tile_map: SgbBorderTileMap,
+    pub palettes: [SgbBorderPalette; SGB_BORDER_PALETTE_COUNT],
+    pub chr0_loaded: bool,
+    pub chr1_loaded: bool,
+    pub pct_loaded: bool,
+    pub last_chr_selection: Option<SgbChrTransferSelection>,
+    pub chr_transfer_count: u64,
+    pub pct_transfer_count: u64,
+}
+
+impl SgbBorderState {
+    fn apply_chr_transfer(
+        &mut self,
+        selection: SgbChrTransferSelection,
+        payload: &SgbVramTransferBuffer,
+    ) {
+        self.tile_data.apply_chr_transfer(selection, payload);
+        if selection.tile_block == 0 {
+            self.chr0_loaded = true;
+        } else {
+            self.chr1_loaded = true;
+        }
+        self.last_chr_selection = Some(selection);
+        self.chr_transfer_count = self.chr_transfer_count.saturating_add(1);
+    }
+
+    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) {
+        self.tile_map.apply_pct_transfer(payload);
+        for palette_index in 0..SGB_BORDER_PALETTE_COUNT {
+            for color_index in 0..SGB_BORDER_PALETTE_COLORS {
+                let byte_index =
+                    0x800 + palette_index * SGB_BORDER_PALETTE_COLORS * 2 + color_index * 2;
+                self.palettes[palette_index].colors[color_index] =
+                    SgbRgb555Color::from_packet_bytes(
+                        payload.bytes[byte_index],
+                        payload.bytes[byte_index + 1],
+                    );
+            }
+        }
+        self.pct_loaded = true;
+        self.pct_transfer_count = self.pct_transfer_count.saturating_add(1);
+    }
+
+    fn pixel_color(&self, x: usize, y: usize) -> (SgbRgb555Color, u8) {
+        let tile_x = x / 8;
+        let tile_y = (y / 8).min(SGB_BORDER_TILEMAP_VISIBLE_HEIGHT - 1);
+        let entry = self.tile_map.entry(tile_x, tile_y);
+        let mut pixel_x = x & 0x07;
+        let mut pixel_y = y & 0x07;
+        if entry.x_flip() {
+            pixel_x = 7 - pixel_x;
+        }
+        if entry.y_flip() {
+            pixel_y = 7 - pixel_y;
+        }
+
+        let color_index = self
+            .tile_data
+            .pixel_color_index(entry.tile_index(), pixel_x, pixel_y);
+        (
+            self.palettes[entry.palette_index()].color(color_index),
+            color_index,
+        )
+    }
+}
+
+impl Default for SgbBorderState {
+    fn default() -> Self {
+        Self {
+            tile_data: SgbBorderTileData::default(),
+            tile_map: SgbBorderTileMap::default(),
+            palettes: [SgbBorderPalette::default(); SGB_BORDER_PALETTE_COUNT],
+            chr0_loaded: false,
+            chr1_loaded: false,
+            pct_loaded: false,
+            last_chr_selection: None,
+            chr_transfer_count: 0,
+            pct_transfer_count: 0,
+        }
+    }
+}
+
+impl SgbBorderState {
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.tile_data
+            .dynamic_payload_bytes()
+            .saturating_add(self.tile_map.dynamic_payload_bytes())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbHost {
     host_platform: HostPlatform,
     profile: Option<SgbHostProfile>,
@@ -417,13 +826,19 @@ pub struct SgbPacketTrace {
     pub bytes: [u8; SGB_PACKET_BYTES],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbVideoState {
     pub border_loaded: bool,
     pub colorization_active: bool,
     pub palette_state: SgbPaletteState,
     pub last_palette_command_id: Option<u8>,
     pub palette_command_count: u64,
+    pub mask: SgbScreenMask,
+    pub mask_command_count: u64,
+    pub freeze_capture_pending: bool,
+    pub frozen_lcd: Option<SgbLcdRgb555Frame>,
+    pub vram_transfer: SgbVramTransferState,
+    pub border: SgbBorderState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -539,7 +954,7 @@ impl SgbHost {
             startup: self.startup,
             packet_transport: self.packet_transport,
             command: self.command,
-            video: self.video,
+            video: self.video.clone(),
             multiplayer: self.multiplayer,
             audio: self.audio,
             snes_host: self.snes_host,
@@ -554,7 +969,7 @@ impl SgbHost {
             startup: self.startup,
             packet_transport: self.packet_transport,
             command: self.command,
-            video: self.video,
+            video: self.video.clone(),
             multiplayer: self.multiplayer,
             audio: self.audio,
             snes_host: self.snes_host,
@@ -568,7 +983,7 @@ impl SgbHost {
         self.startup = state.startup;
         self.packet_transport = state.packet_transport;
         self.command = state.command;
-        self.video = state.video;
+        self.video = state.video.clone();
         self.multiplayer = state.multiplayer;
         self.audio = state.audio;
         self.snes_host = state.snes_host;
@@ -769,6 +1184,17 @@ impl SgbHost {
         if direct_palette_command_pair(command_id).is_some() {
             self.video
                 .apply_direct_palette_command(command_id, &self.command.packet_buffer[0]);
+        } else {
+            match command_id {
+                SGB_COMMAND_CHR_TRN => self
+                    .video
+                    .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
+                SGB_COMMAND_PCT_TRN => self.video.request_pct_transfer(command_id),
+                SGB_COMMAND_MASK_EN => self
+                    .video
+                    .apply_mask_command(&self.command.packet_buffer[0]),
+                _ => {}
+            }
         }
     }
 
@@ -813,16 +1239,125 @@ impl SgbHost {
             });
         }
 
-        for (output_pixel, &shade) in output.iter_mut().zip(dmg_framebuffer.iter()) {
-            *output_pixel = self.video.map_lcd_shade_to_rgb555(shade).raw();
+        for (framebuffer_index, (output_pixel, &shade)) in
+            output.iter_mut().zip(dmg_framebuffer.iter()).enumerate()
+        {
+            *output_pixel = self
+                .video
+                .lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
+                .raw();
         }
         Ok(())
+    }
+
+    pub fn compose_frame_rgb555(
+        &self,
+        dmg_framebuffer: &[u8],
+    ) -> Result<Vec<u16>, SgbFrameCompositionError> {
+        let mut output = vec![0; SGB_FRAME_PIXELS];
+        self.compose_frame_rgb555_into(dmg_framebuffer, &mut output)?;
+        Ok(output)
+    }
+
+    pub fn compose_frame_rgb555_into(
+        &self,
+        dmg_framebuffer: &[u8],
+        output: &mut [u16],
+    ) -> Result<(), SgbFrameCompositionError> {
+        if !self.host_platform.is_sgb() || !self.video.colorization_active {
+            return Err(SgbFrameCompositionError::DisabledHost);
+        }
+        if dmg_framebuffer.len() != SGB_LCD_PIXELS {
+            return Err(SgbFrameCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: dmg_framebuffer.len(),
+            });
+        }
+        if output.len() != SGB_FRAME_PIXELS {
+            return Err(SgbFrameCompositionError::OutputLength {
+                expected: SGB_FRAME_PIXELS,
+                actual: output.len(),
+            });
+        }
+
+        for y in 0..SGB_FRAME_HEIGHT {
+            for x in 0..SGB_FRAME_WIDTH {
+                let output_index = y * SGB_FRAME_WIDTH + x;
+                let in_lcd_window =
+                    (SGB_LCD_FRAME_ORIGIN_X..SGB_LCD_FRAME_ORIGIN_X + SGB_LCD_WIDTH).contains(&x)
+                        && (SGB_LCD_FRAME_ORIGIN_Y..SGB_LCD_FRAME_ORIGIN_Y + SGB_LCD_HEIGHT)
+                            .contains(&y);
+
+                let (border_pixel, border_color_index) = self.video.border.pixel_color(x, y);
+                if in_lcd_window && border_color_index == 0 {
+                    let lcd_x = x - SGB_LCD_FRAME_ORIGIN_X;
+                    let lcd_y = y - SGB_LCD_FRAME_ORIGIN_Y;
+                    output[output_index] = self
+                        .video
+                        .lcd_pixel_for_framebuffer_index(
+                            lcd_y * SGB_LCD_WIDTH + lcd_x,
+                            dmg_framebuffer[lcd_y * SGB_LCD_WIDTH + lcd_x],
+                        )
+                        .raw();
+                } else {
+                    output[output_index] = border_pixel.raw();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn capture_pending_lcd_freeze(
+        &mut self,
+        dmg_framebuffer: &[u8],
+    ) -> Result<(), SgbLcdCompositionError> {
+        if !self.host_platform.is_sgb() || !self.video.colorization_active {
+            return Err(SgbLcdCompositionError::DisabledHost);
+        }
+        if dmg_framebuffer.len() != SGB_LCD_PIXELS {
+            return Err(SgbLcdCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: dmg_framebuffer.len(),
+            });
+        }
+        if !self.video.freeze_capture_pending {
+            return Ok(());
+        }
+
+        let mut frozen = SgbLcdRgb555Frame::default();
+        for (output_pixel, &shade) in frozen.pixels.iter_mut().zip(dmg_framebuffer.iter()) {
+            *output_pixel = self.video.palette_state.map_lcd_shade(shade).raw();
+        }
+        self.video.frozen_lcd = Some(frozen);
+        self.video.freeze_capture_pending = false;
+        Ok(())
+    }
+
+    pub fn capture_pending_vram_transfer(
+        &mut self,
+        vram_bytes: &[u8],
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        if !self.host_platform.is_sgb() {
+            return Err(SgbVramTransferError::DisabledHost);
+        }
+        self.video.capture_pending_vram_transfer(vram_bytes)
+    }
+
+    pub(crate) fn advance_frame_start(
+        &mut self,
+        vram_bytes: &[u8],
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        if !self.host_platform.is_sgb() {
+            return Err(SgbVramTransferError::DisabledHost);
+        }
+        self.video.advance_frame_start(vram_bytes)
     }
 }
 
 impl SgbHostSaveState {
-    pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
-        0
+    pub(crate) fn dynamic_payload_bytes(&self) -> usize {
+        self.video.dynamic_payload_bytes()
     }
 }
 
@@ -893,21 +1428,51 @@ impl Default for SgbMultiplayerState {
 }
 
 impl SgbVideoState {
-    const fn default_for_active_host(active: bool) -> Self {
+    fn default_for_active_host(active: bool) -> Self {
         Self {
             border_loaded: false,
             colorization_active: active,
-            palette_state: SgbPaletteState {
-                screen_palettes: [SgbScreenPalette::dmg_grayscale(); SGB_SCREEN_PALETTE_COUNT],
-                base_palette_index: 0,
-            },
+            palette_state: SgbPaletteState::default(),
             last_palette_command_id: None,
             palette_command_count: 0,
+            mask: SgbScreenMask::Cancel,
+            mask_command_count: 0,
+            freeze_capture_pending: false,
+            frozen_lcd: None,
+            vram_transfer: SgbVramTransferState::default(),
+            border: SgbBorderState::default(),
         }
     }
 
-    pub const fn map_lcd_shade_to_rgb555(self, shade: u8) -> SgbRgb555Color {
+    pub const fn map_lcd_shade_to_rgb555(&self, shade: u8) -> SgbRgb555Color {
         self.palette_state.map_lcd_shade(shade)
+    }
+
+    pub fn lcd_pixel_for_shade(&self, shade: u8) -> SgbRgb555Color {
+        match self.mask {
+            SgbScreenMask::Cancel => self.palette_state.map_lcd_shade(shade),
+            SgbScreenMask::Freeze => self.palette_state.map_lcd_shade(shade),
+            SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
+            SgbScreenMask::BlankColor0 => self.palette_state.map_lcd_shade(0),
+        }
+    }
+
+    fn lcd_pixel_for_framebuffer_index(
+        &self,
+        framebuffer_index: usize,
+        shade: u8,
+    ) -> SgbRgb555Color {
+        match self.mask {
+            SgbScreenMask::Cancel => self.palette_state.map_lcd_shade(shade),
+            SgbScreenMask::Freeze => self
+                .frozen_lcd
+                .as_ref()
+                .and_then(|frame| frame.pixels.get(framebuffer_index).copied())
+                .map(SgbRgb555Color::new)
+                .unwrap_or_else(|| self.palette_state.map_lcd_shade(shade)),
+            SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
+            SgbScreenMask::BlankColor0 => self.palette_state.map_lcd_shade(0),
+        }
     }
 
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -916,6 +1481,91 @@ impl SgbVideoState {
         self.colorization_active = true;
         self.last_palette_command_id = Some(command_id);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
+    }
+
+    fn apply_mask_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.mask = SgbScreenMask::from_command_byte(bytes[1]);
+        self.mask_command_count = self.mask_command_count.saturating_add(1);
+        self.freeze_capture_pending = self.mask == SgbScreenMask::Freeze;
+        if self.mask != SgbScreenMask::Freeze {
+            self.frozen_lcd = None;
+        }
+    }
+
+    fn request_chr_transfer(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.request_vram_transfer(
+            command_id,
+            SgbVramTransferTarget::Chr(SgbChrTransferSelection::from_command_byte(bytes[1])),
+        );
+    }
+
+    fn request_pct_transfer(&mut self, command_id: u8) {
+        self.request_vram_transfer(command_id, SgbVramTransferTarget::Pct);
+    }
+
+    fn request_vram_transfer(&mut self, command_id: u8, target: SgbVramTransferTarget) {
+        self.vram_transfer.pending = Some(SgbPendingVramTransfer {
+            command_id,
+            target,
+            frame_starts_until_capture: 1,
+        });
+        self.vram_transfer.requested_transfer_count = self
+            .vram_transfer
+            .requested_transfer_count
+            .saturating_add(1);
+    }
+
+    fn advance_frame_start(
+        &mut self,
+        vram_bytes: &[u8],
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        let Some(mut pending) = self.vram_transfer.pending else {
+            return Ok(None);
+        };
+        if pending.frame_starts_until_capture > 1 {
+            pending.frame_starts_until_capture -= 1;
+            self.vram_transfer.pending = Some(pending);
+            return Ok(None);
+        }
+        self.capture_pending_vram_transfer(vram_bytes)
+    }
+
+    fn capture_pending_vram_transfer(
+        &mut self,
+        vram_bytes: &[u8],
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        let Some(pending) = self.vram_transfer.pending.take() else {
+            return Err(SgbVramTransferError::NoPendingTransfer);
+        };
+        let payload = SgbVramTransferBuffer::from_source_bytes(vram_bytes)?;
+        match pending.target {
+            SgbVramTransferTarget::Chr(selection) => {
+                self.border.apply_chr_transfer(selection, &payload);
+            }
+            SgbVramTransferTarget::Pct => {
+                self.border.apply_pct_transfer(&payload);
+                self.border_loaded = true;
+            }
+        }
+        self.vram_transfer.last_completed = Some(SgbCompletedVramTransfer {
+            command_id: pending.command_id,
+            target: pending.target,
+            payload,
+        });
+        self.vram_transfer.completed_transfer_count = self
+            .vram_transfer
+            .completed_transfer_count
+            .saturating_add(1);
+        Ok(Some(pending.target))
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.frozen_lcd
+            .as_ref()
+            .map(SgbLcdRgb555Frame::dynamic_payload_bytes)
+            .unwrap_or(0)
+            .saturating_add(self.vram_transfer.dynamic_payload_bytes())
+            .saturating_add(self.border.dynamic_payload_bytes())
     }
 }
 
@@ -979,6 +1629,53 @@ mod tests {
         write_packet_color(&mut bytes, 9, 0x0001);
         write_packet_color(&mut bytes, 11, 0x0002);
         write_packet_color(&mut bytes, 13, 0x8003);
+        bytes
+    }
+
+    fn sgb_chr_trn_packet(destination: u8) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_CHR_TRN, 1);
+        bytes[1] = destination;
+        bytes
+    }
+
+    fn sgb_pct_trn_packet() -> [u8; SGB_PACKET_BYTES] {
+        sgb_command_packet(SGB_COMMAND_PCT_TRN, 1)
+    }
+
+    fn sgb_mask_packet(mask: SgbScreenMask) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_MASK_EN, 1);
+        bytes[1] = match mask {
+            SgbScreenMask::Cancel => 0,
+            SgbScreenMask::Freeze => 1,
+            SgbScreenMask::BlankBlack => 2,
+            SgbScreenMask::BlankColor0 => 3,
+        };
+        bytes
+    }
+
+    fn write_border_map_entry(bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES], entry: usize, raw: u16) {
+        let [low, high] = raw.to_le_bytes();
+        bytes[entry * 2] = low;
+        bytes[entry * 2 + 1] = high;
+    }
+
+    fn write_border_palette_color(
+        bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES],
+        palette_index: usize,
+        color_index: usize,
+        rgb555: u16,
+    ) {
+        let [low, high] = rgb555.to_le_bytes();
+        let offset = 0x800 + palette_index * SGB_BORDER_PALETTE_COLORS * 2 + color_index * 2;
+        bytes[offset] = low;
+        bytes[offset + 1] = high;
+    }
+
+    fn solid_tile_color_1_transfer() -> [u8; SGB_VRAM_TRANSFER_BYTES] {
+        let mut bytes = [0; SGB_VRAM_TRANSFER_BYTES];
+        for row in 0..8 {
+            bytes[row * 2] = 0xFF;
+        }
         bytes
     }
 
@@ -1273,6 +1970,179 @@ mod tests {
     }
 
     #[test]
+    fn chr_trn_captures_vram_transfer_into_border_tile_blocks() {
+        let mut host = accepted_sgb_host();
+        let first_block = solid_tile_color_1_transfer();
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(0));
+        assert!(matches!(
+            host.snapshot().video.vram_transfer.pending,
+            Some(SgbPendingVramTransfer {
+                target: SgbVramTransferTarget::Chr(SgbChrTransferSelection {
+                    tile_block: 0,
+                    tile_type: SgbChrTransferTileType::Bg,
+                }),
+                ..
+            })
+        ));
+
+        assert_eq!(
+            host.capture_pending_vram_transfer(&first_block)
+                .expect("CHR_TRN should capture the pending VRAM payload"),
+            Some(SgbVramTransferTarget::Chr(SgbChrTransferSelection {
+                tile_block: 0,
+                tile_type: SgbChrTransferTileType::Bg,
+            }))
+        );
+        let snapshot = host.snapshot();
+        assert!(snapshot.video.border.chr0_loaded);
+        assert!(!snapshot.video.border.chr1_loaded);
+        assert_eq!(snapshot.video.border.chr_transfer_count, 1);
+        assert_eq!(snapshot.video.border.tile_data.bytes[0], 0xFF);
+        assert_eq!(
+            snapshot
+                .video
+                .vram_transfer
+                .last_completed
+                .as_ref()
+                .expect("last transfer should be retained for save-state observability")
+                .payload
+                .bytes[0],
+            0xFF
+        );
+
+        let mut second_block = [0; SGB_VRAM_TRANSFER_BYTES];
+        second_block[0] = 0x80;
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(1));
+        host.capture_pending_vram_transfer(&second_block)
+            .expect("second CHR_TRN should replace the high tile block");
+        let snapshot = host.snapshot();
+        assert!(snapshot.video.border.chr0_loaded);
+        assert!(snapshot.video.border.chr1_loaded);
+        assert_eq!(snapshot.video.border.chr_transfer_count, 2);
+        assert_eq!(
+            snapshot.video.border.tile_data.bytes[SGB_VRAM_TRANSFER_BYTES],
+            0x80
+        );
+    }
+
+    #[test]
+    fn pct_trn_decodes_border_tilemap_and_border_palettes() {
+        let mut host = accepted_sgb_host();
+        let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_border_map_entry(&mut pct, 0, (4 << 10) | 3);
+        write_border_map_entry(
+            &mut pct,
+            SGB_BORDER_TILEMAP_WIDTH * SGB_BORDER_TILEMAP_VISIBLE_HEIGHT,
+            0x8000 | (6 << 10) | 4,
+        );
+        write_border_palette_color(&mut pct, 0, 1, 0x03E0);
+        write_border_palette_color(&mut pct, 1, 2, 0x7C00);
+        write_border_palette_color(&mut pct, 2, 3, 0x801F);
+
+        write_joyp_packet(&mut host, sgb_pct_trn_packet());
+        host.capture_pending_vram_transfer(&pct)
+            .expect("PCT_TRN should capture the pending VRAM payload");
+
+        let snapshot = host.snapshot();
+        assert!(snapshot.video.border_loaded);
+        assert!(snapshot.video.border.pct_loaded);
+        assert_eq!(snapshot.video.border.pct_transfer_count, 1);
+        assert_eq!(snapshot.video.border.tile_map.entries[0].raw, (4 << 10) | 3);
+        assert_eq!(
+            snapshot.video.border.tile_map.entries
+                [SGB_BORDER_TILEMAP_WIDTH * SGB_BORDER_TILEMAP_VISIBLE_HEIGHT]
+                .raw,
+            0x8000 | (6 << 10) | 4
+        );
+        assert_eq!(snapshot.video.border.palettes[0].colors[1].raw(), 0x03E0);
+        assert_eq!(snapshot.video.border.palettes[1].colors[2].raw(), 0x7C00);
+        assert_eq!(
+            snapshot.video.border.palettes[2].colors[3].raw(),
+            0x001F,
+            "border RGB555 palette data masks off the ignored high bit"
+        );
+    }
+
+    #[test]
+    fn sgb_frame_composition_combines_border_and_lcd_window() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(0));
+        host.capture_pending_vram_transfer(&solid_tile_color_1_transfer())
+            .expect("CHR_TRN should load the visible border tile");
+
+        let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
+        for y in 0..SGB_BORDER_TILEMAP_VISIBLE_HEIGHT {
+            for x in 0..SGB_BORDER_TILEMAP_WIDTH {
+                write_border_map_entry(&mut pct, y * SGB_BORDER_TILEMAP_WIDTH + x, 4 << 10);
+            }
+        }
+        for y in 5..23 {
+            for x in 6..26 {
+                write_border_map_entry(&mut pct, y * SGB_BORDER_TILEMAP_WIDTH + x, (4 << 10) | 1);
+            }
+        }
+        write_border_palette_color(&mut pct, 0, 0, 0x0000);
+        write_border_palette_color(&mut pct, 0, 1, 0x03E0);
+        write_joyp_packet(&mut host, sgb_pct_trn_packet());
+        host.capture_pending_vram_transfer(&pct)
+            .expect("PCT_TRN should load the border map and palettes");
+
+        let dmg_framebuffer = vec![0; SGB_LCD_PIXELS];
+        let frame = host
+            .compose_frame_rgb555(&dmg_framebuffer)
+            .expect("SGB host should compose the full 256x224 host frame");
+        assert_eq!(frame.len(), SGB_FRAME_PIXELS);
+        assert_eq!(frame[0], 0x03E0);
+        let lcd_origin = SGB_LCD_FRAME_ORIGIN_Y * SGB_FRAME_WIDTH + SGB_LCD_FRAME_ORIGIN_X;
+        assert_eq!(
+            frame[lcd_origin], 0x001F,
+            "color-index 0 border pixels inside the GB window let the SGB LCD image show through"
+        );
+    }
+
+    #[test]
+    fn mask_en_blanks_and_freezes_the_host_lcd_image() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let current_lcd = vec![0; SGB_LCD_PIXELS];
+        let mut changed_lcd = vec![3; SGB_LCD_PIXELS];
+
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::Freeze));
+        assert!(host.snapshot().video.freeze_capture_pending);
+        host.capture_pending_lcd_freeze(&current_lcd)
+            .expect("freeze should capture the current host LCD image");
+        assert!(!host.snapshot().video.freeze_capture_pending);
+        assert_eq!(
+            host.compose_lcd_rgb555(&changed_lcd)
+                .expect("frozen SGB LCD should still compose")[0],
+            0x001F
+        );
+
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::BlankBlack));
+        assert_eq!(
+            host.compose_lcd_rgb555(&changed_lcd)
+                .expect("blank-black SGB LCD should compose")[0],
+            0x0000
+        );
+
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::BlankColor0));
+        changed_lcd[0] = 3;
+        assert_eq!(
+            host.compose_lcd_rgb555(&changed_lcd)
+                .expect("blank-color0 SGB LCD should compose")[0],
+            0x001F
+        );
+
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::Cancel));
+        assert_eq!(
+            host.compose_lcd_rgb555(&changed_lcd)
+                .expect("unmasked SGB LCD should compose")[0],
+            0x4210
+        );
+    }
+
+    #[test]
     fn joyp_transport_rejects_complete_packet_until_header_unlocks_sgb() {
         let mut host = SgbHost::new(HostPlatform::Sgb);
         write_joyp_packet(&mut host, sgb_command_packet(0x11, 1));
@@ -1394,6 +2264,51 @@ mod tests {
         assert_eq!(
             restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
             0x4210
+        );
+    }
+
+    #[test]
+    fn save_state_restores_sgb_transfer_border_and_mask_state() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(0));
+        host.capture_pending_vram_transfer(&solid_tile_color_1_transfer())
+            .expect("CHR_TRN should load border tile data before save");
+        let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_border_map_entry(&mut pct, 0, 4 << 10);
+        write_border_palette_color(&mut pct, 0, 1, 0x03E0);
+        write_joyp_packet(&mut host, sgb_pct_trn_packet());
+        host.capture_pending_vram_transfer(&pct)
+            .expect("PCT_TRN should load border map before save");
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::Freeze));
+        host.capture_pending_lcd_freeze(&vec![0; SGB_LCD_PIXELS])
+            .expect("freeze should persist its captured LCD image");
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        assert_eq!(
+            restored
+                .snapshot()
+                .video
+                .vram_transfer
+                .completed_transfer_count,
+            2
+        );
+        assert!(restored.snapshot().video.border_loaded);
+        assert_eq!(restored.snapshot().video.border.tile_data.bytes[0], 0xFF);
+        assert_eq!(
+            restored.snapshot().video.border.palettes[0].colors[1].raw(),
+            0x03E0
+        );
+        assert_eq!(restored.snapshot().video.mask, SgbScreenMask::Freeze);
+        assert!(restored.snapshot().video.frozen_lcd.is_some());
+        assert_eq!(
+            restored
+                .compose_lcd_rgb555(&vec![3; SGB_LCD_PIXELS])
+                .expect("restored frozen LCD should compose")[0],
+            0x001F
         );
     }
 
