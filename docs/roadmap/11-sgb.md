@@ -57,6 +57,8 @@ Acceptance criteria:
 - Non-SGB handheld runs ignore the host command path and preserve ordinary joypad behavior.
 - Save/load captures partial packet state exactly rather than reconstructing it from P1 reads.
 
+Status: implemented as the Slice 1 baseline. `SgbHost` now records startup mode, SGB/SGB2 real-boot asset intent, cartridge SGB header metadata, and command acceptance; active hosts accept command packets only when the loaded header advertises SGB support with `$0146 == $03` and old licensee `$014B == $33`. The host observes `FF00` writes at the machine boundary, decodes active-low P14/P15 packet pulses into 16-byte command records, traces complete/rejected/invalid/incomplete packets before side effects, and preserves partial packet state in whole-machine save states. The durable machine save-state format version is bumped again because Slice 1 adds live packet/startup/acceptance state. The SameSuite SGB `command_mlt_req` and `command_mlt_req_1_incrementing` ROMs are added to `make test-roms` as informational `console = "sgb"` rows, ordered after `samesuite/ppu/blocking_bgpi_increase.gb`; they remain Slice 5 multiplayer gates, not Slice 1 pass/fail requirements.
+
 ## Slice 2 — Base DMG color on SGB
 
 Scope: implement the first visible SGB color path without using CGB palette hardware.

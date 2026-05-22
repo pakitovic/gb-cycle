@@ -1,4 +1,16 @@
-use crate::model::HostPlatform;
+use crate::cartridge::{CartridgeHeader, SgbFlag};
+use crate::model::{HostPlatform, StartupMode};
+
+const JOYP_SELECT_BITS_MASK: u8 = 0x30;
+const SGB_JOYP_IDLE_BITS: u8 = 0x30;
+const SGB_JOYP_START_BITS: u8 = 0x00;
+const SGB_JOYP_ZERO_BITS: u8 = 0x20;
+const SGB_JOYP_ONE_BITS: u8 = 0x10;
+const SGB_PACKET_BYTES: usize = 16;
+const SGB_PACKET_BITS: u8 = 128;
+const SGB_PACKET_COUNT_MIN: u8 = 1;
+const SGB_PACKET_COUNT_MAX: u8 = 7;
+const SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED: u8 = 0x33;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbVideoStandard {
@@ -76,6 +88,28 @@ impl SgbHostProfile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbRealBootAsset {
+    SgbBoot,
+    Sgb2Boot,
+}
+
+impl SgbRealBootAsset {
+    pub const fn from_profile(profile: SgbHostProfile) -> Self {
+        match profile {
+            SgbHostProfile::SgbNtsc | SgbHostProfile::SgbPal => Self::SgbBoot,
+            SgbHostProfile::Sgb2Ntsc => Self::Sgb2Boot,
+        }
+    }
+
+    pub const fn filename(self) -> &'static str {
+        match self {
+            Self::SgbBoot => "sgb_boot.bin",
+            Self::Sgb2Boot => "sgb2_boot.bin",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbHostBackendKind {
     DeterministicHle,
 }
@@ -99,11 +133,67 @@ pub enum SgbHostStatus {
     Ready,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbCommandAcceptance {
+    Disabled,
+    AwaitingCartridgeHeader,
+    RejectedByHeader,
+    Accepted,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbJoypLineState {
+    #[default]
+    Idle,
+    Start,
+    Zero,
+    One,
+    Invalid,
+}
+
+impl SgbJoypLineState {
+    const fn from_joyp_value(value: u8) -> Self {
+        match value & JOYP_SELECT_BITS_MASK {
+            SGB_JOYP_IDLE_BITS => Self::Idle,
+            SGB_JOYP_START_BITS => Self::Start,
+            SGB_JOYP_ZERO_BITS => Self::Zero,
+            SGB_JOYP_ONE_BITS => Self::One,
+            _ => Self::Invalid,
+        }
+    }
+
+    const fn data_bit(self) -> Option<u8> {
+        match self {
+            Self::Zero => Some(0),
+            Self::One => Some(1),
+            Self::Idle | Self::Start | Self::Invalid => None,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbPacketTraceStatus {
+    #[default]
+    None,
+    Complete,
+    RejectedByHeader,
+    InvalidPacketLength,
+    InvalidStopBit,
+    IncompleteReset,
+    OrphanDataPulse,
+    ConflictingPulse,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbHost {
     host_platform: HostPlatform,
     profile: Option<SgbHostProfile>,
     backend_kind: SgbHostBackendKind,
+    startup: SgbStartupState,
     packet_transport: SgbPacketTransportState,
     command: SgbCommandState,
     video: SgbVideoState,
@@ -117,6 +207,7 @@ pub struct SgbHostSaveState {
     host_platform: HostPlatform,
     profile: Option<SgbHostProfile>,
     backend_kind: SgbHostBackendKind,
+    startup: SgbStartupState,
     packet_transport: SgbPacketTransportState,
     command: SgbCommandState,
     video: SgbVideoState,
@@ -131,6 +222,7 @@ pub struct SgbHostSnapshot {
     pub status: SgbHostStatus,
     pub profile: Option<SgbHostProfile>,
     pub backend_kind: SgbHostBackendKind,
+    pub startup: SgbStartupState,
     pub packet_transport: SgbPacketTransportState,
     pub command: SgbCommandState,
     pub video: SgbVideoState,
@@ -139,20 +231,53 @@ pub struct SgbHostSnapshot {
     pub snes_host: SgbSnesHostState,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbStartupState {
+    pub startup_mode: StartupMode,
+    pub real_boot_asset: Option<SgbRealBootAsset>,
+    pub cartridge_sgb_flag: Option<SgbFlag>,
+    pub old_licensee_code: Option<u8>,
+    pub command_acceptance: SgbCommandAcceptance,
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 pub struct SgbPacketTransportState {
+    pub last_joyp_line_state: SgbJoypLineState,
+    pub transfer_active: bool,
     pub packet_bits_buffered: u8,
     pub packet_bytes_buffered: u8,
+    pub current_packet: [u8; SGB_PACKET_BYTES],
+    pub reset_pulse_count: u64,
+    pub data_pulse_count: u64,
+    pub invalid_pulse_count: u64,
+    pub last_trace: SgbPacketTrace,
 }
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 pub struct SgbCommandState {
+    pub active_command_id: Option<u8>,
+    pub expected_packet_count: u8,
+    pub received_packet_count: u8,
     pub last_command_id: Option<u8>,
     pub accepted_command_count: u64,
+    pub rejected_packet_count: u64,
+    pub invalid_packet_count: u64,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbPacketTrace {
+    pub status: SgbPacketTraceStatus,
+    pub command_id: Option<u8>,
+    pub packet_count: u8,
+    pub packet_index: u8,
+    pub bits_buffered: u8,
+    pub bytes: [u8; SGB_PACKET_BYTES],
 }
 
 #[derive(
@@ -192,19 +317,30 @@ impl Default for SgbHost {
 
 impl SgbHost {
     pub fn new(host_platform: HostPlatform) -> Self {
+        Self::new_with_startup(host_platform, StartupMode::SkipBoot)
+    }
+
+    pub fn new_with_startup(host_platform: HostPlatform, startup_mode: StartupMode) -> Self {
         Self::new_with_profile(
             host_platform,
             SgbHostProfile::default_for_host_platform(host_platform),
+            startup_mode,
         )
     }
 
-    pub fn new_with_profile(host_platform: HostPlatform, profile: Option<SgbHostProfile>) -> Self {
+    pub fn new_with_profile(
+        host_platform: HostPlatform,
+        profile: Option<SgbHostProfile>,
+        startup_mode: StartupMode,
+    ) -> Self {
         debug_assert!(profile.is_none_or(|profile| profile.host_platform() == host_platform));
         let active = host_platform.is_sgb();
+        let profile = active.then_some(profile).flatten();
         Self {
             host_platform,
-            profile: active.then_some(profile).flatten(),
+            profile,
             backend_kind: SgbHostBackendKind::DeterministicHle,
+            startup: SgbStartupState::new(active, profile, startup_mode),
             packet_transport: SgbPacketTransportState::default(),
             command: SgbCommandState::default(),
             video: SgbVideoState::default(),
@@ -234,6 +370,14 @@ impl SgbHost {
         self.backend_kind
     }
 
+    pub const fn startup(&self) -> SgbStartupState {
+        self.startup
+    }
+
+    pub const fn command_acceptance(&self) -> SgbCommandAcceptance {
+        self.startup.command_acceptance
+    }
+
     pub const fn game_link_supported(&self) -> bool {
         match self.profile {
             Some(profile) => profile.game_link_supported(),
@@ -254,6 +398,7 @@ impl SgbHost {
             status: self.status(),
             profile: self.profile,
             backend_kind: self.backend_kind,
+            startup: self.startup,
             packet_transport: self.packet_transport,
             command: self.command,
             video: self.video,
@@ -268,6 +413,7 @@ impl SgbHost {
             host_platform: self.host_platform,
             profile: self.profile,
             backend_kind: self.backend_kind,
+            startup: self.startup,
             packet_transport: self.packet_transport,
             command: self.command,
             video: self.video,
@@ -281,6 +427,7 @@ impl SgbHost {
         self.host_platform = state.host_platform;
         self.profile = state.profile;
         self.backend_kind = state.backend_kind;
+        self.startup = state.startup;
         self.packet_transport = state.packet_transport;
         self.command = state.command;
         self.video = state.video;
@@ -288,11 +435,251 @@ impl SgbHost {
         self.audio = state.audio;
         self.snes_host = state.snes_host;
     }
+
+    pub(crate) fn apply_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
+        self.startup.apply_cartridge_header(self.status(), header);
+    }
+
+    pub(crate) fn observe_joyp_write(&mut self, value: u8) {
+        if !self.host_platform.is_sgb() {
+            return;
+        }
+
+        let line_state = SgbJoypLineState::from_joyp_value(value);
+        let previous_line_state = self.packet_transport.last_joyp_line_state;
+        match line_state {
+            SgbJoypLineState::Idle => {
+                self.packet_transport.last_joyp_line_state = line_state;
+            }
+            SgbJoypLineState::Start => {
+                if !matches!(previous_line_state, SgbJoypLineState::Start) {
+                    self.begin_packet_transfer();
+                }
+                self.packet_transport.last_joyp_line_state = line_state;
+            }
+            SgbJoypLineState::Zero | SgbJoypLineState::One => {
+                if previous_line_state == SgbJoypLineState::Idle {
+                    self.observe_packet_data_bit(line_state.data_bit().expect("data line"));
+                } else if previous_line_state != line_state {
+                    self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
+                    self.packet_transport.invalid_pulse_count =
+                        self.packet_transport.invalid_pulse_count.saturating_add(1);
+                    self.command.invalid_packet_count =
+                        self.command.invalid_packet_count.saturating_add(1);
+                }
+                self.packet_transport.last_joyp_line_state = line_state;
+            }
+            SgbJoypLineState::Invalid => {
+                self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
+                self.packet_transport.invalid_pulse_count =
+                    self.packet_transport.invalid_pulse_count.saturating_add(1);
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+                self.packet_transport.last_joyp_line_state = line_state;
+            }
+        }
+    }
+
+    fn begin_packet_transfer(&mut self) {
+        if self.packet_transport.transfer_active
+            && self.packet_transport.packet_bits_buffered != 0
+            && self.packet_transport.packet_bits_buffered <= SGB_PACKET_BITS
+        {
+            self.record_packet_trace(SgbPacketTraceStatus::IncompleteReset);
+            self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
+        }
+
+        self.packet_transport.transfer_active = true;
+        self.packet_transport.packet_bits_buffered = 0;
+        self.packet_transport.packet_bytes_buffered = 0;
+        self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
+        self.packet_transport.reset_pulse_count =
+            self.packet_transport.reset_pulse_count.saturating_add(1);
+    }
+
+    fn observe_packet_data_bit(&mut self, bit: u8) {
+        self.packet_transport.data_pulse_count =
+            self.packet_transport.data_pulse_count.saturating_add(1);
+
+        if !self.packet_transport.transfer_active {
+            self.record_packet_trace(SgbPacketTraceStatus::OrphanDataPulse);
+            self.packet_transport.invalid_pulse_count =
+                self.packet_transport.invalid_pulse_count.saturating_add(1);
+            self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
+            return;
+        }
+
+        if self.packet_transport.packet_bits_buffered < SGB_PACKET_BITS {
+            let bit_index = self.packet_transport.packet_bits_buffered;
+            if bit != 0 {
+                let byte_index = usize::from(bit_index / 8);
+                let bit_in_byte = bit_index % 8;
+                self.packet_transport.current_packet[byte_index] |= 1 << bit_in_byte;
+            }
+            self.packet_transport.packet_bits_buffered =
+                self.packet_transport.packet_bits_buffered.saturating_add(1);
+            self.packet_transport.packet_bytes_buffered =
+                self.packet_transport.packet_bits_buffered.div_ceil(8);
+            return;
+        }
+
+        if bit == 0 {
+            self.complete_packet_transfer();
+        } else {
+            self.record_packet_trace(SgbPacketTraceStatus::InvalidStopBit);
+            self.packet_transport.invalid_pulse_count =
+                self.packet_transport.invalid_pulse_count.saturating_add(1);
+            self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
+            self.packet_transport.transfer_active = false;
+        }
+    }
+
+    fn complete_packet_transfer(&mut self) {
+        self.packet_transport.transfer_active = false;
+        let bytes = self.packet_transport.current_packet;
+        self.decode_complete_packet(bytes);
+    }
+
+    fn decode_complete_packet(&mut self, bytes: [u8; SGB_PACKET_BYTES]) {
+        if self.startup.command_acceptance != SgbCommandAcceptance::Accepted {
+            self.command.rejected_packet_count =
+                self.command.rejected_packet_count.saturating_add(1);
+            self.packet_transport.last_trace = SgbPacketTrace {
+                status: SgbPacketTraceStatus::RejectedByHeader,
+                command_id: Some(bytes[0] >> 3),
+                packet_count: bytes[0] & 0x07,
+                packet_index: self.command.received_packet_count.saturating_add(1),
+                bits_buffered: self.packet_transport.packet_bits_buffered,
+                bytes,
+            };
+            return;
+        }
+
+        if self.command.active_command_id.is_none() {
+            let command_id = bytes[0] >> 3;
+            let packet_count = bytes[0] & 0x07;
+            if !(SGB_PACKET_COUNT_MIN..=SGB_PACKET_COUNT_MAX).contains(&packet_count) {
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+                self.packet_transport.last_trace = SgbPacketTrace {
+                    status: SgbPacketTraceStatus::InvalidPacketLength,
+                    command_id: Some(command_id),
+                    packet_count,
+                    packet_index: 1,
+                    bits_buffered: self.packet_transport.packet_bits_buffered,
+                    bytes,
+                };
+                return;
+            }
+
+            self.command.expected_packet_count = packet_count;
+            self.command.received_packet_count = 1;
+            self.packet_transport.last_trace = SgbPacketTrace {
+                status: SgbPacketTraceStatus::Complete,
+                command_id: Some(command_id),
+                packet_count,
+                packet_index: 1,
+                bits_buffered: self.packet_transport.packet_bits_buffered,
+                bytes,
+            };
+
+            if packet_count == 1 {
+                self.command.last_command_id = Some(command_id);
+                self.command.accepted_command_count =
+                    self.command.accepted_command_count.saturating_add(1);
+                self.command.active_command_id = None;
+            } else {
+                self.command.active_command_id = Some(command_id);
+            }
+            return;
+        }
+
+        let command_id = self.command.active_command_id;
+        let packet_count = self.command.expected_packet_count;
+        self.command.received_packet_count = self.command.received_packet_count.saturating_add(1);
+        self.packet_transport.last_trace = SgbPacketTrace {
+            status: SgbPacketTraceStatus::Complete,
+            command_id,
+            packet_count,
+            packet_index: self.command.received_packet_count,
+            bits_buffered: self.packet_transport.packet_bits_buffered,
+            bytes,
+        };
+
+        if self.command.received_packet_count >= self.command.expected_packet_count {
+            self.command.last_command_id = command_id;
+            self.command.accepted_command_count =
+                self.command.accepted_command_count.saturating_add(1);
+            self.command.active_command_id = None;
+        }
+    }
+
+    fn record_packet_trace(&mut self, status: SgbPacketTraceStatus) {
+        self.packet_transport.last_trace = SgbPacketTrace {
+            status,
+            command_id: self.command.active_command_id,
+            packet_count: self.command.expected_packet_count,
+            packet_index: self.command.received_packet_count,
+            bits_buffered: self.packet_transport.packet_bits_buffered,
+            bytes: self.packet_transport.current_packet,
+        };
+    }
 }
 
 impl SgbHostSaveState {
     pub(crate) const fn dynamic_payload_bytes(&self) -> usize {
         0
+    }
+}
+
+impl SgbStartupState {
+    const fn new(active: bool, profile: Option<SgbHostProfile>, startup_mode: StartupMode) -> Self {
+        Self {
+            startup_mode,
+            real_boot_asset: match (startup_mode, profile) {
+                (StartupMode::RealBoot, Some(profile)) => {
+                    Some(SgbRealBootAsset::from_profile(profile))
+                }
+                _ => None,
+            },
+            cartridge_sgb_flag: None,
+            old_licensee_code: None,
+            command_acceptance: if active {
+                SgbCommandAcceptance::AwaitingCartridgeHeader
+            } else {
+                SgbCommandAcceptance::Disabled
+            },
+        }
+    }
+
+    fn apply_cartridge_header(
+        &mut self,
+        host_status: SgbHostStatus,
+        header: Option<&CartridgeHeader>,
+    ) {
+        if host_status == SgbHostStatus::Disabled {
+            self.cartridge_sgb_flag = None;
+            self.old_licensee_code = None;
+            self.command_acceptance = SgbCommandAcceptance::Disabled;
+            return;
+        }
+
+        let Some(header) = header else {
+            self.cartridge_sgb_flag = None;
+            self.old_licensee_code = None;
+            self.command_acceptance = SgbCommandAcceptance::AwaitingCartridgeHeader;
+            return;
+        };
+
+        self.cartridge_sgb_flag = Some(header.sgb_flag);
+        self.old_licensee_code = Some(header.old_licensee_code);
+        self.command_acceptance = if header.sgb_flag == SgbFlag::Supported
+            && header.old_licensee_code == SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED
+        {
+            SgbCommandAcceptance::Accepted
+        } else {
+            SgbCommandAcceptance::RejectedByHeader
+        };
     }
 }
 
@@ -314,6 +701,66 @@ impl Default for SgbMultiplayerState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_header(sgb_flag: SgbFlag, old_licensee_code: u8) -> CartridgeHeader {
+        CartridgeHeader {
+            entry_point: [0; 4],
+            nintendo_logo: [0; 48],
+            title_bytes: [0; 16],
+            raw_title_suffix_or_manufacturer_code: [0; 4],
+            title: "SGBTEST".to_string(),
+            cgb_flag: crate::CgbFlag::None,
+            sgb_flag,
+            cartridge_type: 0,
+            rom_size: crate::RomSizeInfo::decode(0x00),
+            ram_size: crate::RamSizeInfo::decode(0x00),
+            new_licensee_code: *b"01",
+            destination_code: 0,
+            old_licensee_code,
+            header_checksum: 0,
+        }
+    }
+
+    fn sgb_command_packet(command_id: u8, packet_count: u8) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = [0; SGB_PACKET_BYTES];
+        bytes[0] = (command_id << 3) | packet_count;
+        bytes
+    }
+
+    fn write_joyp_idle(host: &mut SgbHost) {
+        host.observe_joyp_write(SGB_JOYP_IDLE_BITS);
+    }
+
+    fn write_joyp_start(host: &mut SgbHost) {
+        host.observe_joyp_write(SGB_JOYP_START_BITS);
+        write_joyp_idle(host);
+    }
+
+    fn write_joyp_data_bit(host: &mut SgbHost, bit: u8) {
+        host.observe_joyp_write(if bit == 0 {
+            SGB_JOYP_ZERO_BITS
+        } else {
+            SGB_JOYP_ONE_BITS
+        });
+        write_joyp_idle(host);
+    }
+
+    fn write_joyp_packet(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_joyp_start(host);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_joyp_data_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_joyp_data_bit(host, 0);
+    }
+
+    fn accepted_sgb_host() -> SgbHost {
+        let mut host = SgbHost::new(HostPlatform::Sgb);
+        let header = test_header(SgbFlag::Supported, SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED);
+        host.apply_cartridge_header(Some(&header));
+        host
+    }
 
     #[test]
     fn profile_descriptors_capture_sgb_and_sgb2_capabilities() {
@@ -350,12 +797,20 @@ mod tests {
         let handheld = SgbHost::new(HostPlatform::Handheld);
         assert_eq!(handheld.status(), SgbHostStatus::Disabled);
         assert_eq!(handheld.profile(), None);
+        assert_eq!(
+            handheld.command_acceptance(),
+            SgbCommandAcceptance::Disabled
+        );
         assert_eq!(handheld.snapshot().multiplayer.player_count, 0);
 
         let sgb = SgbHost::new(HostPlatform::Sgb);
         assert_eq!(sgb.status(), SgbHostStatus::Ready);
         assert_eq!(sgb.profile(), Some(SgbHostProfile::SgbNtsc));
         assert_eq!(sgb.backend_kind(), SgbHostBackendKind::DeterministicHle);
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::AwaitingCartridgeHeader
+        );
         assert_eq!(sgb.snapshot().multiplayer.player_count, 1);
         assert!(!sgb.game_link_supported());
 
@@ -363,6 +818,206 @@ mod tests {
         assert_eq!(sgb2.profile(), Some(SgbHostProfile::Sgb2Ntsc));
         assert!(sgb2.game_link_supported());
         assert!(sgb2.corrected_clock());
+    }
+
+    #[test]
+    fn real_boot_startup_selects_profile_specific_boot_asset() {
+        let sgb = SgbHost::new_with_startup(HostPlatform::Sgb, StartupMode::RealBoot);
+        assert_eq!(sgb.startup().startup_mode, StartupMode::RealBoot);
+        assert_eq!(
+            sgb.startup().real_boot_asset,
+            Some(SgbRealBootAsset::SgbBoot)
+        );
+        assert_eq!(
+            sgb.startup()
+                .real_boot_asset
+                .map(SgbRealBootAsset::filename),
+            Some("sgb_boot.bin")
+        );
+
+        let sgb2 = SgbHost::new_with_startup(HostPlatform::Sgb2, StartupMode::RealBoot);
+        assert_eq!(
+            sgb2.startup().real_boot_asset,
+            Some(SgbRealBootAsset::Sgb2Boot)
+        );
+        assert_eq!(
+            sgb2.startup()
+                .real_boot_asset
+                .map(SgbRealBootAsset::filename),
+            Some("sgb2_boot.bin")
+        );
+
+        let handheld = SgbHost::new_with_startup(HostPlatform::Handheld, StartupMode::RealBoot);
+        assert_eq!(handheld.startup().real_boot_asset, None);
+    }
+
+    #[test]
+    fn cartridge_header_controls_sgb_command_acceptance() {
+        let supported = test_header(SgbFlag::Supported, SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED);
+        let unsupported = test_header(SgbFlag::None, SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED);
+        let wrong_licensee = test_header(SgbFlag::Supported, 0x01);
+
+        let mut sgb = SgbHost::new(HostPlatform::Sgb);
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::AwaitingCartridgeHeader
+        );
+        sgb.apply_cartridge_header(Some(&supported));
+        assert_eq!(sgb.command_acceptance(), SgbCommandAcceptance::Accepted);
+        assert_eq!(sgb.startup().cartridge_sgb_flag, Some(SgbFlag::Supported));
+        assert_eq!(sgb.startup().old_licensee_code, Some(0x33));
+
+        sgb.apply_cartridge_header(Some(&unsupported));
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::RejectedByHeader
+        );
+
+        sgb.apply_cartridge_header(Some(&wrong_licensee));
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::RejectedByHeader
+        );
+
+        sgb.apply_cartridge_header(None);
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::AwaitingCartridgeHeader
+        );
+
+        let mut handheld = SgbHost::new(HostPlatform::Handheld);
+        handheld.apply_cartridge_header(Some(&supported));
+        assert_eq!(
+            handheld.command_acceptance(),
+            SgbCommandAcceptance::Disabled
+        );
+    }
+
+    #[test]
+    fn joyp_transport_decodes_single_packet_commands_lsb_first() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_joyp_packet(&mut host, packet);
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.packet_transport.reset_pulse_count, 1);
+        assert_eq!(snapshot.packet_transport.data_pulse_count, 129);
+        assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
+        assert_eq!(snapshot.packet_transport.packet_bytes_buffered, 16);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.packet_transport.last_trace.command_id, Some(0x11));
+        assert_eq!(snapshot.packet_transport.last_trace.packet_count, 1);
+        assert_eq!(snapshot.packet_transport.last_trace.packet_index, 1);
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_rejects_complete_packet_until_header_unlocks_sgb() {
+        let mut host = SgbHost::new(HostPlatform::Sgb);
+        write_joyp_packet(&mut host, sgb_command_packet(0x11, 1));
+
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::RejectedByHeader
+        );
+        assert_eq!(snapshot.command.rejected_packet_count, 1);
+        assert_eq!(snapshot.command.accepted_command_count, 0);
+    }
+
+    #[test]
+    fn joyp_transport_records_invalid_packet_count_and_stop_bit() {
+        let mut invalid_count = accepted_sgb_host();
+        write_joyp_packet(&mut invalid_count, sgb_command_packet(0x11, 0));
+        assert_eq!(
+            invalid_count.snapshot().packet_transport.last_trace.status,
+            SgbPacketTraceStatus::InvalidPacketLength
+        );
+        assert_eq!(invalid_count.snapshot().command.invalid_packet_count, 1);
+
+        let mut invalid_stop = accepted_sgb_host();
+        write_joyp_start(&mut invalid_stop);
+        for byte in sgb_command_packet(0x11, 1) {
+            for bit_index in 0..8 {
+                write_joyp_data_bit(&mut invalid_stop, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_joyp_data_bit(&mut invalid_stop, 1);
+        assert_eq!(
+            invalid_stop.snapshot().packet_transport.last_trace.status,
+            SgbPacketTraceStatus::InvalidStopBit
+        );
+        assert_eq!(invalid_stop.snapshot().command.invalid_packet_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_records_incomplete_reset_and_orphan_data_pulse() {
+        let mut incomplete = accepted_sgb_host();
+        write_joyp_start(&mut incomplete);
+        write_joyp_data_bit(&mut incomplete, 1);
+        write_joyp_start(&mut incomplete);
+        assert_eq!(
+            incomplete.snapshot().packet_transport.last_trace.status,
+            SgbPacketTraceStatus::IncompleteReset
+        );
+        assert_eq!(incomplete.snapshot().command.invalid_packet_count, 1);
+
+        let mut orphan = accepted_sgb_host();
+        write_joyp_data_bit(&mut orphan, 1);
+        assert_eq!(
+            orphan.snapshot().packet_transport.last_trace.status,
+            SgbPacketTraceStatus::OrphanDataPulse
+        );
+        assert_eq!(orphan.snapshot().command.invalid_packet_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_ignores_handheld_hosts() {
+        let mut host = SgbHost::new(HostPlatform::Handheld);
+        write_joyp_packet(&mut host, sgb_command_packet(0x11, 1));
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.packet_transport.reset_pulse_count, 0);
+        assert_eq!(snapshot.packet_transport.data_pulse_count, 0);
+        assert_eq!(snapshot.command.accepted_command_count, 0);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::None
+        );
+    }
+
+    #[test]
+    fn save_state_restores_partial_packet_transport() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_joyp_start(&mut host);
+        for bit_index in 0..32 {
+            let byte = packet[bit_index / 8];
+            write_joyp_data_bit(&mut host, (byte >> (bit_index % 8)) & 0x01);
+        }
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        for bit_index in 32..128 {
+            let byte = packet[bit_index / 8];
+            write_joyp_data_bit(&mut restored, (byte >> (bit_index % 8)) & 0x01);
+        }
+        write_joyp_data_bit(&mut restored, 0);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
     }
 
     #[test]

@@ -59,6 +59,10 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
+        if address == 0xFF00 {
+            self.sgb_host.observe_joyp_write(value);
+        }
+
         if cpu_write_targets_ppu_mmio(&self.bus, address) {
             let mut pending = Some(PendingPpuMmioWrite { address, value });
 
@@ -195,7 +199,7 @@ impl<S: TraceSink> Machine<S> {
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
         self.serial = Serial::new_with_operating_mode(console_model, operating_mode);
-        self.sgb_host = SgbHost::new(host_platform);
+        self.sgb_host = SgbHost::new_with_startup(host_platform, startup_mode);
         self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
         self.boot = BootController::new(console_model, revision, startup_mode, boot_rom_assets);
@@ -256,6 +260,8 @@ impl<S: TraceSink> Machine<S> {
         );
         self.bus
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
+        self.sgb_host
+            .apply_cartridge_header(self.cartridge.header());
         self.external_port.apply_startup_reset();
         self.sync_serial_peer_from_external_port();
         self.pending_external_events

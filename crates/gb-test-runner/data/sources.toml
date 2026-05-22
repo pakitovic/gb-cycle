@@ -864,6 +864,14 @@ path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
 sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
 
 [[source.required_file]]
+path = "testroms/samesuite/sgb/command_mlt_req.gb"
+sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
+
+[[source.required_file]]
+path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
+sha256 = "7c95c4b134c200dd3fcef71d0a61c110990c0b953a70988f2b4a54eda47992ca"
+
+[[source.required_file]]
 path = "testroms/hacktix/bully.gb"
 sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
 

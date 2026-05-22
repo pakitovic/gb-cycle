@@ -3,7 +3,7 @@
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-hacktix run-cpp run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-hacktix run-cpp run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
 
 help:
 	@echo "Available targets:"
@@ -13,7 +13,7 @@ help:
 	@echo "  make ci                   Run the local pre-push gate (fmt, clippy, typos, deny, workspace tests via coverage, per-crate coverage check)"
 	@echo "  make coverage-check       Run one workspace coverage sweep, then enforce per-crate coverage gates"
 	@echo "  make coverage             Run complete workspace coverage and emit the HTML report"
-	@echo "  make test-roms            Fetch and run all local curated DMG ROM suites"
+	@echo "  make test-roms            Fetch and run all local curated DMG/SGB ROM suites"
 	@echo "  make test-roms-real-boot  Fetch and run all local curated DMG ROM suites through verified RealBoot"
 	@echo "  make test-roms-extra      Fetch and run the exploratory/internal extra ROM suites"
 	@echo "  make test-roms-extra-real-boot Fetch and run the exploratory/internal extra ROM suites through verified RealBoot"
@@ -29,6 +29,7 @@ help:
 	@echo "  make run-ax6              Fetch and run the extra AX6 DMG RTC suite"
 	@echo "  make run-samesuite        Fetch and run the extra SameSuite DMG suite"
 	@echo "  make run-samesuite-cgb    Fetch and run the extra SameSuite CGB variant suite"
+	@echo "  make run-samesuite-sgb    Fetch and run the informational SameSuite SGB suite"
 	@echo "  make run-magen-cgb        Fetch and run the extra Magen CGB suite"
 	@echo "  make run-little-things-gb Fetch and run the extra little-things-gb DMG suite"
 	@echo "  make run-little-things-gb-cgb Fetch and run the extra little-things-gb CGB suite"
@@ -113,6 +114,7 @@ test-roms:
 	$(MAKE) run-hacktix
 	$(MAKE) run-cpp
 	$(MAKE) run-mealybug
+	$(MAKE) run-samesuite-sgb
 
 test-roms-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-acid
@@ -214,6 +216,10 @@ run-samesuite:
 run-samesuite-cgb:
 	$(MAKE) fetch-test-roms FAMILIES=samesuite
 	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-cgb-extra --failure-artifact-root .artifacts/samesuite-cgb
+
+run-samesuite-sgb:
+	$(MAKE) fetch-test-roms FAMILIES=samesuite
+	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-sgb --failure-artifact-root .artifacts/samesuite-sgb
 
 run-magen-cgb:
 	$(MAKE) fetch-test-roms FAMILIES=magen

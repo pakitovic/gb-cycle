@@ -586,7 +586,7 @@ impl MachineSnapshot {
                 "timer.console_model={:?} timer.status={:?}\n",
                 "serial.console_model={:?} serial.status={:?} serial.sb={:#04X} serial.clock_mode={:?} serial.transfer_state={:?}\n",
                 "speed.console_model={:?} speed.operating_mode={:?} speed.status={:?} speed.current_speed={:?} speed.switch_armed={} speed.cgb_speed_switch_enabled={}\n",
-                "sgb.host_platform={:?} sgb.status={:?} sgb.profile={:?} sgb.backend={:?} sgb.game_link_supported={} sgb.corrected_clock={}\n",
+                "sgb.host_platform={:?} sgb.status={:?} sgb.profile={:?} sgb.backend={:?} sgb.startup={:?} sgb.command_acceptance={:?} sgb.packet_bits={} sgb.packet_bytes={} sgb.last_packet_status={:?} sgb.last_command={:?} sgb.accepted_commands={} sgb.game_link_supported={} sgb.corrected_clock={}\n",
                 "external_port.attachment_kind={:?} external_port.reset_policy={:?}\n",
                 "boot.console_model={:?} boot.revision={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
@@ -679,6 +679,13 @@ impl MachineSnapshot {
             self.sgb_host.status,
             self.sgb_host.profile,
             self.sgb_host.backend_kind,
+            self.sgb_host.startup.startup_mode,
+            self.sgb_host.startup.command_acceptance,
+            self.sgb_host.packet_transport.packet_bits_buffered,
+            self.sgb_host.packet_transport.packet_bytes_buffered,
+            self.sgb_host.packet_transport.last_trace.status,
+            self.sgb_host.command.last_command_id,
+            self.sgb_host.command.accepted_command_count,
             self.sgb_host
                 .profile
                 .is_some_and(|profile| profile.game_link_supported()),

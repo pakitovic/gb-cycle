@@ -38,9 +38,9 @@ use framebuffer_oracle::{
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
     CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap, CpuExecutionState,
-    CpuSnapshot, ExecutionMode, HardwareRevision, JoypadButton, Machine, MachineConfig,
-    MachineSaveState, MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer,
-    TraceSummaryBuffer,
+    CpuSnapshot, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton, Machine,
+    MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode, TimerStartupState,
+    TraceBuffer, TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
@@ -514,6 +514,7 @@ pub struct RomTestCase {
     pub rom_path: PathBuf,
     pub external_rom_root_key: Option<String>,
     pub console_model: ConsoleModel,
+    pub host_platform: HostPlatform,
     pub revision: HardwareRevision,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
@@ -543,6 +544,7 @@ impl RomTestCase {
             rom_path: rom_path.into(),
             external_rom_root_key: None,
             console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Handheld,
             revision: ConsoleModel::GameBoy.default_revision(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
@@ -561,6 +563,11 @@ impl RomTestCase {
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
         self.revision = console_model.default_revision();
+        self
+    }
+
+    pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
+        self.host_platform = host_platform;
         self
     }
 
@@ -1088,6 +1095,10 @@ pub fn samesuite_cgb_extra_suite() -> RomSuite {
     curated_test_roms::samesuite_cgb_extra_suite()
 }
 
+pub fn samesuite_sgb_suite() -> RomSuite {
+    curated_test_roms::samesuite_sgb_suite()
+}
+
 pub fn magen_cgb_extra_suite() -> RomSuite {
     curated_test_roms::magen_cgb_extra_suite()
 }
@@ -1138,6 +1149,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
         samesuite_cgb_extra_suite(),
+        samesuite_sgb_suite(),
         magen_cgb_extra_suite(),
         mealybug_tearoom_cgb_extra_suite(),
         little_things_gb_dmg_extra_suite(),
@@ -1600,6 +1612,7 @@ impl DeterministicMbc3RtcClock {
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
+            .with_host_platform(case.host_platform)
             .with_revision(case.revision)
             .with_startup_mode(case.startup_mode)
             .with_compatibility(compatibility_for_execution_mode(case.execution_mode))

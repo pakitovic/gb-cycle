@@ -290,7 +290,7 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new_with_operating_mode(console_model, operating_mode),
-            sgb_host: SgbHost::new(host_platform),
+            sgb_host: SgbHost::new_with_startup(host_platform, startup_mode),
             speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
             boot: BootController::new(console_model, revision, startup_mode, boot_rom_assets),

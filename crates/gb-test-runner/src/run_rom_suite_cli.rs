@@ -445,7 +445,7 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
                     case_catalog_family(&suite, case),
                     case_source_name(case),
                     pass_condition_name(&case.pass_condition),
-                    console_model_name(case.console_model),
+                    case_console_name(case),
                     case.revision,
                     startup_mode_name(case.startup_mode),
                     execution_mode_name(case.execution_mode),
@@ -718,12 +718,16 @@ fn case_catalog_family<'a>(suite: &'a RomSuite, case: &'a crate::RomTestCase) ->
     }
 }
 
-fn console_model_name(console_model: gb_core::ConsoleModel) -> &'static str {
-    match console_model {
-        gb_core::ConsoleModel::GameBoy => "game-boy",
-        gb_core::ConsoleModel::GameBoyPocket => "pocket",
-        gb_core::ConsoleModel::GameBoyLight => "light",
-        gb_core::ConsoleModel::GameBoyColor => "color",
+fn case_console_name(case: &crate::RomTestCase) -> &'static str {
+    match case.host_platform {
+        gb_core::HostPlatform::Sgb => "sgb",
+        gb_core::HostPlatform::Sgb2 => "sgb2",
+        gb_core::HostPlatform::Handheld => match case.console_model {
+            gb_core::ConsoleModel::GameBoy => "game-boy",
+            gb_core::ConsoleModel::GameBoyPocket => "pocket",
+            gb_core::ConsoleModel::GameBoyLight => "light",
+            gb_core::ConsoleModel::GameBoyColor => "color",
+        },
     }
 }
 

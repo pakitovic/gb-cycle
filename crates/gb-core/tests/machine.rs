@@ -1,7 +1,8 @@
 mod common;
 
 use gb_core::{
-    ConsoleModel, Machine, MachineConfig, OperatingMode, SchedulerPhase, StartupMode, TCycle,
+    ConsoleModel, HostPlatform, Machine, MachineConfig, OperatingMode, SchedulerPhase,
+    SgbCommandAcceptance, SgbPacketTraceStatus, StartupMode, TCycle,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
@@ -10,6 +11,33 @@ fn build_header_mode_rom(cgb_flag: u8) -> Vec<u8> {
     let mut rom = common::synthetic_cartridge::build_nom_bc_test_rom(&[0x00], 0x00, &[]);
     rom[0x0143] = cgb_flag;
     rom
+}
+
+fn build_sgb_supported_rom() -> Vec<u8> {
+    let mut rom = build_header_mode_rom(0x00);
+    rom[0x0146] = 0x03;
+    rom[0x014B] = 0x33;
+    rom
+}
+
+fn write_sgb_packet(machine: &mut Machine, bytes: [u8; 16]) {
+    machine.write_bus(0xFF00, 0x00);
+    machine.write_bus(0xFF00, 0x30);
+    for byte in bytes {
+        for bit_index in 0..8 {
+            machine.write_bus(
+                0xFF00,
+                if (byte >> bit_index) & 0x01 == 0 {
+                    0x20
+                } else {
+                    0x10
+                },
+            );
+            machine.write_bus(0xFF00, 0x30);
+        }
+    }
+    machine.write_bus(0xFF00, 0x20);
+    machine.write_bus(0xFF00, 0x30);
 }
 
 #[test]
@@ -65,6 +93,32 @@ fn two_identical_machines_produce_the_same_two_cycle_trace() {
     assert_eq!(right.tracer().sink().render_text(), expected);
     assert_eq!(left.next_t_cycle(), TCycle::new(2));
     assert_eq!(right.next_t_cycle(), TCycle::new(2));
+}
+
+#[test]
+fn sgb_host_observes_joyp_packet_writes_after_header_unlock() {
+    let mut packet = [0; 16];
+    packet[0] = (0x11 << 3) | 1;
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+    write_sgb_packet(&mut machine, packet);
+
+    let snapshot = machine.snapshot();
+    assert_eq!(
+        snapshot.sgb_host.startup.command_acceptance,
+        SgbCommandAcceptance::Accepted
+    );
+    assert_eq!(
+        snapshot.sgb_host.packet_transport.last_trace.status,
+        SgbPacketTraceStatus::Complete
+    );
+    assert_eq!(snapshot.sgb_host.command.last_command_id, Some(0x11));
+    assert_eq!(snapshot.sgb_host.command.accepted_command_count, 1);
 }
 
 #[test]

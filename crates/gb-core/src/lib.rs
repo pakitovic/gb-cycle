@@ -127,9 +127,11 @@ pub use serial::{
     SerialTickTelemetry, SerialTransferState,
 };
 pub use sgb::{
-    DeterministicHleSgbHostBackend, SgbAudioState, SgbCommandState, SgbHost, SgbHostBackend,
-    SgbHostBackendKind, SgbHostProfile, SgbHostSnapshot, SgbHostStatus, SgbMultiplayerState,
-    SgbPacketTransportState, SgbSnesHostState, SgbVideoStandard, SgbVideoState,
+    DeterministicHleSgbHostBackend, SgbAudioState, SgbCommandAcceptance, SgbCommandState, SgbHost,
+    SgbHostBackend, SgbHostBackendKind, SgbHostProfile, SgbHostSnapshot, SgbHostStatus,
+    SgbJoypLineState, SgbMultiplayerState, SgbPacketTrace, SgbPacketTraceStatus,
+    SgbPacketTransportState, SgbRealBootAsset, SgbSnesHostState, SgbStartupState, SgbVideoStandard,
+    SgbVideoState,
 };
 pub use speed::{
     CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,

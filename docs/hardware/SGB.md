@@ -27,7 +27,7 @@ SGB/SGB2 must support `SkipBoot` and `RealBoot` as distinct startup paths. `Real
 
 For `SUPER GB`, `RealBoot` selects `sgb_boot.bin` for revision `SGB-CPU 01`. For `SUPER GB 2`, `RealBoot` selects `sgb2_boot.bin` for revision `CPU SGB2`. A documented private asset root example is `$HOME/emu/roms/bootrom`, containing `sgb_boot.bin` and/or `sgb2_boot.bin`; validation should follow the existing boot-ROM root policy rather than embedding private paths in code.
 
-Startup must preserve cartridge header SGB capability metadata at `0x0146`, but header parsing remains cartridge-owned. The SGB host owns how header-derived capability policy affects host command acceptance, SGB boot behavior, and diagnostics.
+Startup must preserve cartridge header SGB capability metadata at `0x0146`, but header parsing remains cartridge-owned. The SGB host owns how header-derived capability policy affects host command acceptance, SGB boot behavior, and diagnostics. The Slice 1 HLE host accepts command packets only when the loaded cartridge header has SGB flag `$0146 == $03` and old licensee `$014B == $33`; active SGB/SGB2 hosts otherwise keep packet transport observable but reject complete packets before command side effects.
 
 ## Responsibilities
 
@@ -49,6 +49,14 @@ SGB does not add ordinary GB MMIO registers in the CGB sense. The primary GB-vis
 The GB joypad subsystem should expose a narrow SGB host transport boundary rather than allowing the SGB host to poll arbitrary bus state. Ordinary P1 row selection and button reads remain joypad-owned; SGB packet collection and multiplayer host responses are SGB-host behavior layered at that boundary.
 
 Physical serial link behavior remains serial/link-owned. Original SGB has no Game Link port, while SGB2 exposes physical Game Link support that must route through the existing link topology rather than through the SGB command-packet path.
+
+## JOYP packet transport
+
+SGB command transport uses active-low JOYP/P1 bits 4 and 5 as a host-side serial protocol. The host treats both lines high (`$30`) as idle, both lines low (`$00`) as the packet reset/start pulse, P14 low with P15 high (`$20`) as data bit `0`, and P14 high with P15 low (`$10`) as data bit `1`. Data bits are accumulated only from an idle-to-data transition so repeated writes without the idle separator do not create extra bits.
+
+Each packet carries 16 bytes / 128 data bits, least-significant bit first within each byte, followed by a stop bit `0`. The first byte encodes command ID in bits 3..7 and packet count in bits 0..2; the current host accepts packet counts `1..=7` and records packet-count `0` or impossible framing as invalid before any command-specific mutation. Multi-packet commands keep the active command ID and expected packet count in host state, but Slice 1 still keeps all command side effects inert.
+
+Packet transport state is part of `SgbHostSaveState`: last line state, active transfer flag, buffered bit/byte counts, current 16-byte buffer, pulse counters, last packet trace, active command ID, expected/received packet counts, accepted command count, rejected packet count, and invalid packet count. Save/load must resume a partially buffered packet exactly instead of re-reading P1 or replaying writes.
 
 ## Command ownership matrix
 
@@ -136,6 +144,7 @@ Open-source emulator code is a comparison aid, not hardware truth. If references
 ## Tests
 
 - Packet-decode unit tests for JOYP bit framing, packet counts, command IDs, malformed packets, reset behavior, and partial-packet save/load.
+- SameSuite SGB `command_mlt_req.gb` and `command_mlt_req_1_incrementing.gb` run as informational `console = "sgb"` rows after Slice 1 so packet/startup traces are visible early; they become blocking multiplayer evidence only when Slice 5 implements `MLT_REQ`.
 - Palette and attribute composition tests proving SGB state affects host output without changing DMG PPU state or CGB palette state.
 - Border transfer/composition tests for static border load, repeated updates, mask behavior, and save/load continuation.
 - `MLT_REQ` tests for one/two/four-player modes, player selection, P1 cycling, and frontend/test-runner input slots.
@@ -152,7 +161,7 @@ Commercial titles are manual compatibility examples only unless a future private
 - SGB should reuse the DMG-family shared path through explicit axes and capabilities, not a dedicated "SGB core".
 - SGB palette/attribute/border state must be explicit host state and must not piggyback on CGB palette or CGB tile-attribute internals.
 - Every slice that adds live host state must update typed save states before the slice is considered closed.
-- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It currently owns profile descriptors, deterministic-HLE backend identity, empty packet/command/video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts without intercepting JOYP writes or mutating visible output. Because this adds a typed whole-machine save-state payload block, the durable machine save-state format version is bumped.
+- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes; because this changes the typed whole-machine save-state payload again, the durable machine save-state format version is bumped.
 
 ## Known pitfalls
 
