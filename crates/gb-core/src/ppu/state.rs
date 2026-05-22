@@ -1764,13 +1764,16 @@ impl BgPipelineState {
         write_context: PpuMode3LiveRegisterWriteContext,
         current_fetcher: BgFetcherState,
         window_tile_row: u8,
+        cgb_dmg_software_window_map_lead_in: bool,
     ) {
         let first_window_pixel_index = self
             .fifo
             .cached_pixels()
             .find(|cached| cached.cached.source == PpuBgFetcherSource::Window)
             .map(|cached| cached.pixel_index);
-        let allow_current_window_tail_repaint = window_tile_row >= 24;
+        let allow_current_window_tail_repaint = window_tile_row >= 24
+            || cgb_dmg_software_window_map_lead_in
+                && write_context.bgwin_tilemap_select_changed(PpuBgFetcherSource::Window);
         let mut mark_window_entries = current_fetcher.source == PpuBgFetcherSource::Window
             && current_fetcher.stage == PpuBgFetcherStage::TileIndex;
         if !mark_window_entries {

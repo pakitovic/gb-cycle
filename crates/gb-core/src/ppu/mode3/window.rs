@@ -550,10 +550,35 @@ impl Ppu {
             return None;
         }
 
-        if let Some(current_tilemap_mask) = window_activation_tile_current_tilemap_mask(
-            cached.fetch_x,
-            self.current_window_line_counter(),
-        ) {
+        let window_tile_row = self.current_window_line_counter();
+        if let Some(transient_tilemap_mask) = self
+            .cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+                cached.fetch_x,
+                window_tile_row,
+            )
+        {
+            let use_transient_tilemap = transient_tilemap_mask & (0x80 >> pixel_index) != 0;
+            let transient_tilemap_select = if window_tile_row < 16 {
+                !previous_tilemap_select
+            } else {
+                previous_tilemap_select
+            };
+            let tilemap_select = if use_transient_tilemap {
+                transient_tilemap_select
+            } else {
+                !transient_tilemap_select
+            };
+            return Some(self.read_window_activation_tilemap_pixel(
+                cached,
+                pixel_index,
+                tilemap_select,
+                vram,
+            ));
+        }
+
+        if let Some(current_tilemap_mask) =
+            self.window_activation_tile_current_tilemap_mask(cached.fetch_x, window_tile_row)
+        {
             let use_first_write_current_tilemap = current_tilemap_mask & (0x80 >> pixel_index) != 0;
             let tilemap_select = if use_first_write_current_tilemap {
                 !previous_tilemap_select
@@ -570,9 +595,7 @@ impl Ppu {
 
         if cached.fetch_x != 0
             || pixel_index != 0
-            || !window_activation_first_pixel_uses_previous_tilemap(
-                self.current_window_line_counter(),
-            )
+            || !window_activation_first_pixel_uses_previous_tilemap(window_tile_row)
         {
             return None;
         }
@@ -608,6 +631,31 @@ impl Ppu {
         let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
         let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
         bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    fn cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+        &self,
+        fetch_x: u16,
+        window_tile_row: u8,
+    ) -> Option<u8> {
+        if !self.console_model.is_cgb_family() || !self.operating_mode.uses_dmg_software_contract()
+        {
+            return None;
+        }
+
+        cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(fetch_x, window_tile_row)
+    }
+
+    fn window_activation_tile_current_tilemap_mask(
+        &self,
+        fetch_x: u16,
+        window_tile_row: u8,
+    ) -> Option<u8> {
+        if !self.operating_mode.uses_dmg_software_contract() {
+            return None;
+        }
+
+        dmg_window_activation_tile_current_tilemap_mask(fetch_x, window_tile_row)
     }
 
     pub(super) fn compute_window_lcdc4_tiledata_selector_override(
@@ -912,6 +960,12 @@ const WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
     [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
 ];
 
+const CGB_DMG_SOFTWARE_WINDOW_ACTIVATION_LEAD_IN_FIRST_TILE_TRANSIENT_TILEMAP_MASKS: [[u8; 8]; 3] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+];
+
 const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
     [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
     [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
@@ -1020,7 +1074,27 @@ const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 
     [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
 ];
 
-const fn window_activation_tile_current_tilemap_mask(
+const fn cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<u8> {
+    if window_tile_row >= 24 {
+        return None;
+    }
+
+    let block = window_tile_row / 8;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(
+            CGB_DMG_SOFTWARE_WINDOW_ACTIVATION_LEAD_IN_FIRST_TILE_TRANSIENT_TILEMAP_MASKS
+                [block as usize][row],
+        ),
+        x if x == BG_TILE_WIDTH as u16 => Some(0xFF),
+        _ => None,
+    }
+}
+
+const fn dmg_window_activation_tile_current_tilemap_mask(
     fetch_x: u16,
     window_tile_row: u8,
 ) -> Option<u8> {

@@ -384,6 +384,9 @@ impl Ppu {
 
         let fetcher = self.bg_pipeline_state.fetcher;
         let window_line_counter = self.current_window_line_counter();
+        let cgb_dmg_software_window_map_lead_in = self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && window_line_counter < 24;
         self.bg_pipeline_state
             .latch_window_activation_tilemap_select_if_unset(route.write_context);
         self.bg_pipeline_state
@@ -391,6 +394,7 @@ impl Ppu {
                 route.write_context,
                 fetcher,
                 window_line_counter,
+                cgb_dmg_software_window_map_lead_in,
             );
         self.bg_pipeline_state
             .apply_window_activation_tilemap_select_latch_to_seam_slices();
