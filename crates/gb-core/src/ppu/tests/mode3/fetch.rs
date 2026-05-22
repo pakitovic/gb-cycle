@@ -347,6 +347,96 @@ fn observed_lcdc4_phase_table_returns_typed_startup_overrides() {
 }
 
 #[test]
+fn observed_cgb_dmg_software_lcdc4_phase_table_returns_typed_startup_overrides() {
+    let cases = [
+        (BgTileDataSelect::Unsigned8000, 2, 0, None),
+        (
+            BgTileDataSelect::Unsigned8000,
+            3,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile2,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Unsigned8000,
+            8,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile2,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Signed8800,
+            3,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile3,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Signed8800,
+            12,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile3,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Signed8800,
+            16,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile3,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Signed8800,
+            16,
+            1,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile3,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            }),
+        ),
+        (BgTileDataSelect::Signed8800, 18, 0, None),
+    ];
+
+    for (target_select, sprite_x, ly, expected) in cases {
+        assert_eq!(
+            observed_single_sprite_phase_policy(sprite_x)
+                .observed_lcdc4_phase_table()
+                .cgb_dmg_software_startup_override_for_target_select(target_select, ly),
+            expected,
+            "target_select={target_select:?} sprite_x={sprite_x} ly={ly}",
+        );
+    }
+}
+
+#[test]
 fn observed_lcdc3_phase_table_returns_declarative_live_write_decisions() {
     let cases = [
         (
@@ -1955,6 +2045,42 @@ fn startup_scy_visible_tile2_tilemap_retarget_can_read_a_neighbor_row() {
         tile_high_address: 2 * TILE_ROW_BYTES + 1,
         ..BgCachedSlice::default()
     };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_scy_tilemap_retarget_pixel(cached, 4, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn cgb_dmg_software_startup_scy_tilemap_retarget_requires_a_live_scy_write_marker() {
+    let mut ppu = cgb_fetch_startup_rig(crate::model::OperatingMode::GbCompatible, 0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    push_selected_sprite_x(&mut ppu, 2);
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+    ppu.write_bg_tile_row(0, 1, 0x08, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        fetch_x: BG_TILE_WIDTH as u16,
+        tile_index: 0,
+        tile_high_address: 2 * TILE_ROW_BYTES + 1,
+        ..BgCachedSlice::default()
+    };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_scy_tilemap_retarget_pixel(cached, 4, vram)
+        }),
+        None
+    );
+
+    ppu.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active = true;
 
     assert_eq!(
         ppu.with_ppu_vram(|ppu, vram| {

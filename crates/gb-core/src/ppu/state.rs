@@ -871,6 +871,7 @@ pub(super) struct BgPipelineState {
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
     pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
+    pub(super) cgb_dmg_scy_startup_retarget_active: bool,
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
@@ -1561,6 +1562,7 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -1577,6 +1579,7 @@ impl BgPipelineState {
         self.fifo.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
@@ -1653,6 +1656,7 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -2362,6 +2366,7 @@ impl Default for BgPipelineState {
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
             startup_scy_tiledata_latch: None,
+            cgb_dmg_scy_startup_retarget_active: false,
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,

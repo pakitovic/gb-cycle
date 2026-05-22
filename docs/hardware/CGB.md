@@ -108,6 +108,7 @@ Priority order:
 - Shared subsystems should expose clean extension points for CGB-only behavior.
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
+- `GbCompatible` and `CgbDmgExt` PPU Mode `3` live-write seams should be modeled as CGB-family DMG-software behavior: they ignore native CGB BG attributes but may still need CGB-specific startup phase tables, as with `LCDC.4`, and must stay separate from native-only CGB glitches such as same-cycle tile-number substitution.
 - CGB support should keep architecture seams explicit for banked memory, palette state, extra I/O, HDMA, and speed switching, rather than hiding those behaviors behind generic DMG fallbacks.
 - Do not claim functional closure for CGB-only special cartridges before they have dedicated validation and runtime. `MBC30` is now implemented after the base CGB gate as an explicit `MBC3`-family variant, `MBC6` is now implemented through a dedicated cartridge-local runtime and persistence model, and `MBC7` now has a dedicated sensor / EEPROM runtime path with focused validation and an explicit no-runtime-rumble policy.
 - The shared CPU execution model is based on in-flight fetch/read/write/internal steps so double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.

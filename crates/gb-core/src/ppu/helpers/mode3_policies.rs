@@ -1334,6 +1334,70 @@ impl PpuMode3ObservedLcdc4PhaseTable {
             override_select,
         })
     }
+
+    /// Observed CGB-family DMG-software LCDC.4 startup phase table.
+    ///
+    /// Compatibility-mode CGB keeps the DMG software-visible contract for the
+    /// startup BG slices, but its CGB pixel pipeline does not line up with the
+    /// monochrome DMG LCDC.4 phase table one-to-one. Keep the table separate
+    /// from the DMG one so later revision-specific evidence can refine it
+    /// without weakening either model.
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_override_for_target_select(
+        self,
+        target_select: BgTileDataSelect,
+        ly: u8,
+    ) -> Option<PpuMode3Lcdc4StartupOverride> {
+        let (slice, override_select) = match (target_select, self.sprite_x) {
+            (BgTileDataSelect::Unsigned8000, 3 | 4) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Unsigned8000, 5..=17) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 2 | 3 | 8..=11) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 4..=7 | 12..=15) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 16) if ly & 0x07 == 0 => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 16 | 17) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            _ => return None,
+        };
+
+        Some(PpuMode3Lcdc4StartupOverride {
+            slice,
+            override_select,
+        })
+    }
 }
 
 /// Observed DMG LCDC.2 16->8 Mode 3 seam for the curated Mealybug OBJ-size

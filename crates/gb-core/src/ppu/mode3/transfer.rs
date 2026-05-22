@@ -360,6 +360,14 @@ impl Ppu {
                 BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
             )
         {
+            if !self
+                .runtime
+                .bg_pipeline_state
+                .cgb_dmg_scy_startup_retarget_active
+            {
+                return None;
+            }
+
             let retarget = self
                 .scy_obj_phase_policy()?
                 .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(self.ly, pixel_index)?;
@@ -509,6 +517,14 @@ impl Ppu {
                 BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
             )
         {
+            if !self
+                .runtime
+                .bg_pipeline_state
+                .cgb_dmg_scy_startup_retarget_active
+            {
+                return None;
+            }
+
             let retarget = self
                 .scy_obj_phase_policy()?
                 .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(self.ly, pixel_index)?;

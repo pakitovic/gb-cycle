@@ -287,6 +287,7 @@ impl Ppu {
             && self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract();
         if cgb_dmg_software_scy {
+            self.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active = true;
             self.maybe_latch_cgb_dmg_scy_low_row_for_high_plane(route);
             let Some(cgb_route) = self
                 .scy_obj_phase_policy()

@@ -94,7 +94,9 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_dmg_family()
+        if !(self.console_model.is_dmg_family()
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract())
             || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
         {
             return;
@@ -123,10 +125,16 @@ impl Ppu {
             BgTileDataSelect::Signed8800
         };
 
-        let Some(override_decision) = policy
-            .observed_lcdc4_phase_table()
-            .startup_override_for_target_select(target_select)
-        else {
+        let phase_table = policy.observed_lcdc4_phase_table();
+        let override_decision = if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            phase_table.cgb_dmg_software_startup_override_for_target_select(target_select, self.ly)
+        } else {
+            phase_table.startup_override_for_target_select(target_select)
+        };
+
+        let Some(override_decision) = override_decision else {
             return;
         };
 
@@ -150,9 +158,7 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_cgb_family()
-            || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
-        {
+        if !self.is_cgb_native_mode() || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT) {
             return;
         }
 

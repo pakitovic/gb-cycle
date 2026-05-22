@@ -129,6 +129,35 @@ fn cgb_lcdc4_same_cycle_set_glitch_substitutes_tile_index_for_high_plane_push() 
 }
 
 #[test]
+fn cgb_lcdc4_same_cycle_tiledata_glitch_is_native_cgb_only() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.bg_pipeline_state.fetcher = BgFetcherState {
+            source: PpuBgFetcherSource::Background,
+            stage: PpuBgFetcherStage::TileDataLow,
+            stage_dot: 1,
+            tile_index: 0xA6,
+            tile_low: 0x12,
+            ..BgFetcherState::default()
+        };
+
+        ppu.apply_cgb_lcdc4_same_cycle_tiledata_glitch(lcdc4_write_context(
+            LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+            LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT,
+        ));
+
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.tile_low, 0x12,
+            "{operating_mode:?} should keep the compatibility-mode BG fetch byte"
+        );
+    }
+}
+
+#[test]
 fn cgb_lcdc4_same_cycle_push_glitch_preserves_independent_refetch() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.lcdc = LCDC_ENABLE_BIT | LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT;
