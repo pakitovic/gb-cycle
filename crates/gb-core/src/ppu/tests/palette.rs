@@ -377,6 +377,33 @@ fn cgb_compatibility_rgb555_routes_dmg_palettes_through_fixed_cgb_palettes() {
 }
 
 #[test]
+fn cgb_dmg_software_lcdc0_forced_white_rgb555_uses_panel_white() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0b0000_1100;
+        ppu.pipeline_registers.bgp = 0b0000_1100;
+
+        ppu.current_scanline_dmg_bg_forced_white[0] = true;
+        ppu.write_framebuffer_pixel(0, 0, MixedPixel::background(1), 0);
+        ppu.write_framebuffer_pixel(0, 1, MixedPixel::background(1), 3);
+
+        let rgb555 = ppu
+            .cgb_framebuffer_rgb555()
+            .expect("CGB model should expose the RGB555 framebuffer");
+        assert_eq!(ppu.framebuffer()[0], 0);
+        assert_eq!(ppu.framebuffer()[1], 3);
+        assert_eq!(rgb555[0], RGB555_WHITE, "{operating_mode:?}");
+        assert_eq!(rgb555[1], 0x001F, "{operating_mode:?}");
+    }
+}
+
+#[test]
 fn cgb_obj_color_zero_remains_transparent_before_rgb555_lookup() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;

@@ -1560,7 +1560,7 @@ impl Ppu {
         let framebuffer_index = row_start + visible_x;
         self.framebuffer[framebuffer_index] = panel_pixel;
         self.framebuffer_rgb555[framebuffer_index] =
-            self.framebuffer_rgb555_pixel(output_pixel, panel_pixel);
+            self.framebuffer_rgb555_pixel(visible_x, output_pixel, panel_pixel);
         self.framebuffer_layer_sources[framebuffer_index] =
             self.framebuffer_layer_source_for_output_pixel(visible_x, output_pixel);
     }
@@ -1593,7 +1593,18 @@ impl Ppu {
             );
     }
 
-    fn framebuffer_rgb555_pixel(&self, output_pixel: MixedPixel, panel_pixel: u8) -> u16 {
+    fn framebuffer_rgb555_pixel(
+        &self,
+        visible_x: usize,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+    ) -> u16 {
+        if self.uses_cgb_compatibility_rgb555_adapter()
+            && self.runtime.panel.current_scanline_dmg_bg_forced_white[visible_x]
+        {
+            return panel_shade_to_rgb555(panel_pixel);
+        }
+
         if self.console_model.is_cgb_family()
             && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
         {

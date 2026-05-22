@@ -599,7 +599,7 @@ impl Ppu {
         pixel: MixedPixel,
     ) -> bool {
         self.visible_output == PpuVisibleOutputState::Driving
-            && self.console_model.is_dmg_family()
+            && self.operating_mode.uses_dmg_software_contract()
             && !bg_enabled
             && matches!(pixel.source, MixedPixelSource::Background)
     }

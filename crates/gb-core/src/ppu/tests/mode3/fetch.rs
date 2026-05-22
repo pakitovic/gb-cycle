@@ -285,6 +285,48 @@ fn observed_lcdc0_onset_table_tracks_the_curated_single_sprite_write_windows() {
 }
 
 #[test]
+fn observed_cgb_dmg_software_lcdc0_onset_table_tracks_cgb_write_windows() {
+    let cases = [
+        (0, Some(0), Some(12), Some(20), Some(28)),
+        (1, Some(1), Some(13), Some(21), Some(29)),
+        (2, Some(2), Some(14), Some(22), Some(30)),
+        (5, Some(5), Some(17), Some(25), Some(33)),
+        (8, Some(0), Some(12), Some(20), Some(28)),
+        (17, Some(9), Some(13), Some(21), Some(29)),
+        (18, None, None, None, None),
+    ];
+
+    for (sprite_x, write0, write1, write2, write3) in cases {
+        let table = observed_single_sprite_phase_policy(sprite_x).observed_lcdc0_onset_table();
+        assert_eq!(
+            table.cgb_dmg_software_onset_visible_x(0),
+            write0,
+            "sprite_x={sprite_x} write=0"
+        );
+        assert_eq!(
+            table.cgb_dmg_software_onset_visible_x(1),
+            write1,
+            "sprite_x={sprite_x} write=1"
+        );
+        assert_eq!(
+            table.cgb_dmg_software_onset_visible_x(2),
+            write2,
+            "sprite_x={sprite_x} write=2"
+        );
+        assert_eq!(
+            table.cgb_dmg_software_onset_visible_x(3),
+            write3,
+            "sprite_x={sprite_x} write=3"
+        );
+        assert_eq!(
+            table.cgb_dmg_software_onset_visible_x(4),
+            None,
+            "sprite_x={sprite_x} write=4"
+        );
+    }
+}
+
+#[test]
 fn observed_lcdc4_phase_table_returns_typed_startup_overrides() {
     let cases = [
         (
@@ -508,6 +550,93 @@ fn observed_lcdc3_phase_table_returns_declarative_live_write_decisions() {
             observed_single_sprite_phase_policy(sprite_x)
                 .observed_lcdc3_phase_table()
                 .live_write_decision(write_index, current_bg_tilemap_select),
+            expected,
+            "sprite_x={sprite_x} write_index={write_index} current_bg_tilemap_select={current_bg_tilemap_select}",
+        );
+    }
+}
+
+#[test]
+fn observed_cgb_dmg_software_lcdc3_phase_table_returns_declarative_live_write_decisions() {
+    let cases = [
+        (
+            0,
+            0,
+            true,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: false,
+                tilemap_override: Some(PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: true,
+                    applies_to_visible_tile3: false,
+                }),
+            }),
+        ),
+        (
+            1,
+            0,
+            true,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: true,
+                tilemap_override: Some(PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: false,
+                    applies_to_visible_tile3: true,
+                }),
+            }),
+        ),
+        (
+            2,
+            1,
+            false,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: true,
+                tilemap_override: Some(PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: false,
+                    applies_to_visible_tile3: true,
+                }),
+            }),
+        ),
+        (
+            8,
+            0,
+            true,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: true,
+                tilemap_override: None,
+            }),
+        ),
+        (
+            9,
+            0,
+            true,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: true,
+                tilemap_override: Some(PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: false,
+                    applies_to_visible_tile3: true,
+                }),
+            }),
+        ),
+        (
+            16,
+            0,
+            true,
+            Some(PpuMode3Lcdc3LiveWriteDecision {
+                clear_visible_tile2_live_refetch: true,
+                tilemap_override: None,
+            }),
+        ),
+        (18, 0, true, None),
+    ];
+
+    for (sprite_x, write_index, current_bg_tilemap_select, expected) in cases {
+        assert_eq!(
+            observed_single_sprite_phase_policy(sprite_x)
+                .observed_lcdc3_phase_table()
+                .cgb_dmg_software_live_write_decision(write_index, current_bg_tilemap_select),
             expected,
             "sprite_x={sprite_x} write_index={write_index} current_bg_tilemap_select={current_bg_tilemap_select}",
         );
@@ -3625,6 +3754,61 @@ fn second_dmg_lcdc3_bg_map_write_for_x16_plus_clears_visible_tile2_live_refetch(
             .dmg_lcdc3_tilemap_select_override,
         None
     );
+}
+
+#[test]
+fn cgb_dmg_software_lcdc3_bg_map_write_retargets_visible_tile3_for_low_sprite_phases() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut rig = cgb_fetch_startup_rig(operating_mode, 0x83);
+        push_selected_sprite_x(&mut rig, 1);
+        rig.ppu.bg_pipeline_state.push.cached = BgCachedSlice {
+            source: PpuBgFetcherSource::Background,
+            origin: BgCachedSliceOrigin::StartupContinuation(
+                BgStartupContinuationSlice::VisibleTile2,
+            ),
+            needs_live_tilemap_refetch: true,
+            dmg_lcdc3_tilemap_select_override: Some(false),
+            ..BgCachedSlice::default()
+        };
+        let write_context = PpuMode3LiveRegisterWriteContext::new(
+            live_write_registers(0x83, 0x00),
+            live_write_registers(0x8B, 0x00),
+        );
+
+        rig.ppu.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+
+        assert!(
+            !rig.ppu
+                .bg_pipeline_state
+                .push
+                .cached
+                .needs_live_tilemap_refetch,
+            "{operating_mode:?} should clear the visible-tile2 live refetch"
+        );
+        assert_eq!(
+            rig.ppu
+                .bg_pipeline_state
+                .dmg_mode3_live_lcdc_bg_state
+                .startup_continuation_overrides
+                .lcdc3_tilemap_select
+                .visible_tile2,
+            None,
+            "{operating_mode:?} should not retarget visible tile2"
+        );
+        assert_eq!(
+            rig.ppu
+                .bg_pipeline_state
+                .dmg_mode3_live_lcdc_bg_state
+                .startup_continuation_overrides
+                .lcdc3_tilemap_select
+                .visible_tile3,
+            Some(true),
+            "{operating_mode:?} should retarget visible tile3"
+        );
+    }
 }
 
 #[test]

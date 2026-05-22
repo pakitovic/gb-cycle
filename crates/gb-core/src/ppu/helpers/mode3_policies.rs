@@ -352,6 +352,7 @@ impl PpuMode3WindowPolicy {
 pub(in crate::ppu) struct PpuMode3BgWinFetchPolicy {
     register_latches: PpuMode3RegisterLatches,
     console_model: ConsoleModel,
+    dmg_software_contract: bool,
     background_tilemap_uses_pipeline_snapshot: bool,
     background_tiledata_uses_pipeline_snapshot: bool,
     background_tileindex_reads_on_stage_one: bool,
@@ -362,6 +363,7 @@ impl PpuMode3BgWinFetchPolicy {
     pub(in crate::ppu) const fn new(
         register_latches: PpuMode3RegisterLatches,
         console_model: ConsoleModel,
+        dmg_software_contract: bool,
         background_tilemap_uses_pipeline_snapshot: bool,
         background_tiledata_uses_pipeline_snapshot: bool,
         background_tileindex_reads_on_stage_one: bool,
@@ -370,6 +372,7 @@ impl PpuMode3BgWinFetchPolicy {
         Self {
             register_latches,
             console_model,
+            dmg_software_contract,
             background_tilemap_uses_pipeline_snapshot,
             background_tiledata_uses_pipeline_snapshot,
             background_tileindex_reads_on_stage_one,
@@ -417,7 +420,7 @@ impl PpuMode3BgWinFetchPolicy {
             PpuBgFetcherSource::Background => LCDC_BG_TILE_MAP_BIT,
             PpuBgFetcherSource::Window => LCDC_WINDOW_TILE_MAP_BIT,
         };
-        self.console_model.is_dmg_family() && self.register_latches.lcdc_bit_changed(map_bit)
+        self.dmg_software_contract && self.register_latches.lcdc_bit_changed(map_bit)
     }
 
     pub(in crate::ppu) fn should_delay_background_tileindex_read(
@@ -1183,6 +1186,25 @@ impl PpuMode3ObservedLcdc0OnsetTable {
             _ => None,
         }
     }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_onset_visible_x(
+        self,
+        write_index: usize,
+    ) -> Option<u8> {
+        const WRITE0_ONSETS: [u8; 18] = [0, 1, 2, 3, 4, 5, 5, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const WRITE1_ONSETS: [u8; 18] = [
+            12, 13, 14, 15, 16, 17, 17, 17, 12, 13, 14, 15, 16, 17, 17, 17, 12, 13,
+        ];
+
+        let sprite_x = self.sprite_x as usize;
+        match write_index {
+            0 if sprite_x < WRITE0_ONSETS.len() => Some(WRITE0_ONSETS[sprite_x]),
+            1 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x]),
+            2 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 8),
+            3 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 16),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1247,6 +1269,53 @@ impl PpuMode3ObservedLcdc3PhaseTable {
                 tilemap_select: true,
                 applies_to_visible_tile2: true,
                 applies_to_visible_tile3: false,
+            }),
+            _ => None,
+        };
+
+        let decision = PpuMode3Lcdc3LiveWriteDecision {
+            clear_visible_tile2_live_refetch,
+            tilemap_override,
+        };
+        if decision.has_effect() {
+            Some(decision)
+        } else {
+            None
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_live_write_decision(
+        self,
+        write_index: usize,
+        current_bg_tilemap_select: bool,
+    ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
+        let clear_visible_tile2_live_refetch = matches!(
+            (write_index, self.sprite_x),
+            (0, 1..=17) | (1, 1..=2 | 16..=u8::MAX)
+        );
+
+        let tilemap_override = match write_index {
+            0 if current_bg_tilemap_select => {
+                let override_decision = PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: self.sprite_x == 0,
+                    applies_to_visible_tile3: matches!(self.sprite_x, 1..=7 | 9..=15),
+                };
+                if override_decision.has_effect() {
+                    Some(override_decision)
+                } else {
+                    None
+                }
+            }
+            1 if self.sprite_x == 0 => Some(PpuMode3Lcdc3StartupTilemapOverride {
+                tilemap_select: true,
+                applies_to_visible_tile2: true,
+                applies_to_visible_tile3: false,
+            }),
+            1 if matches!(self.sprite_x, 1..=2) => Some(PpuMode3Lcdc3StartupTilemapOverride {
+                tilemap_select: true,
+                applies_to_visible_tile2: false,
+                applies_to_visible_tile3: true,
             }),
             _ => None,
         };

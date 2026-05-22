@@ -30,12 +30,21 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn pixel_transfer_bg_enabled(&self) -> bool {
-        let bg_enabled = self.mode3_register_latches().pixel_transfer_bg_enabled(
-            self.console_model,
-            self.runtime.bg_pipeline_state.current_transfer_x,
-        );
+        let latches = self.mode3_register_latches();
+        let bg_enabled = if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            self.lcdc & LCDC_BG_ENABLE_BIT != 0
+        } else if self.operating_mode.uses_dmg_software_contract() {
+            latches.visible().lcdc & LCDC_BG_ENABLE_BIT != 0
+        } else {
+            latches.pixel_transfer_bg_enabled(
+                self.console_model,
+                self.runtime.bg_pipeline_state.current_transfer_x,
+            )
+        };
 
-        if self.console_model.is_dmg_family() {
+        if self.operating_mode.uses_dmg_software_contract() {
             self.runtime
                 .panel
                 .dmg_panel_live_write_state
@@ -52,7 +61,8 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_BG_TILE_MAP_BIT)
+        if !self.operating_mode.uses_dmg_software_contract()
+            || !write_context.lcdc_changed(LCDC_BG_TILE_MAP_BIT)
         {
             return;
         }
@@ -66,13 +76,16 @@ impl Ppu {
             return;
         };
 
-        let Some(decision) = policy.observed_lcdc3_phase_table().live_write_decision(
-            write_index,
-            write_context.current_lcdc() & LCDC_BG_TILE_MAP_BIT != 0,
-        ) else {
+        let current_bg_tilemap_select = write_context.current_lcdc() & LCDC_BG_TILE_MAP_BIT != 0;
+        let phase_table = policy.observed_lcdc3_phase_table();
+        let decision = if self.console_model.is_cgb_family() {
+            phase_table.cgb_dmg_software_live_write_decision(write_index, current_bg_tilemap_select)
+        } else {
+            phase_table.live_write_decision(write_index, current_bg_tilemap_select)
+        };
+        let Some(decision) = decision else {
             return;
         };
-
         if decision.clear_visible_tile2_live_refetch {
             self.runtime
                 .bg_pipeline_state
@@ -208,7 +221,9 @@ impl Ppu {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_BG_ENABLE_BIT) {
+        if !self.operating_mode.uses_dmg_software_contract()
+            || !write_context.lcdc_changed(LCDC_BG_ENABLE_BIT)
+        {
             return;
         }
 
@@ -222,13 +237,15 @@ impl Ppu {
         let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
             return;
         };
-        let Some(onset_visible_x) = policy
-            .observed_lcdc0_onset_table()
-            .onset_visible_x(write_index)
-        else {
+        let onset_table = policy.observed_lcdc0_onset_table();
+        let onset_visible_x = if self.console_model.is_cgb_family() {
+            onset_table.cgb_dmg_software_onset_visible_x(write_index)
+        } else {
+            onset_table.onset_visible_x(write_index)
+        };
+        let Some(onset_visible_x) = onset_visible_x else {
             return;
         };
-
         let previous_bg_enabled = write_context.previous_lcdc() & LCDC_BG_ENABLE_BIT != 0;
         let visible_pixels_output = self.runtime.bg_pipeline_state.visible_pixels_output;
         if onset_visible_x >= visible_pixels_output {
@@ -339,7 +356,7 @@ impl Ppu {
         previous_bg_enabled: bool,
         hold_pixels: u8,
     ) {
-        if !self.console_model.is_dmg_family() || hold_pixels == 0 {
+        if !self.operating_mode.uses_dmg_software_contract() || hold_pixels == 0 {
             self.runtime
                 .panel
                 .dmg_panel_live_write_state
@@ -502,6 +519,17 @@ impl Ppu {
         self.runtime.panel.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
         self.runtime.panel.current_scanline_pixels[x] = scanline_pixel;
         self.write_framebuffer_panel_shade(framebuffer_index, panel_pixel);
+        if self.uses_cgb_compatibility_rgb555_adapter() && context.visible_output_driving {
+            self.runtime.panel.framebuffer_rgb555[framebuffer_index] = if dmg_bg_forced_white {
+                panel_shade_to_rgb555(panel_pixel)
+            } else {
+                self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette_override(
+                    MixedPixel::background(pixel_color),
+                    PpuPaletteRegister::Bgp,
+                    context.historical_bgp,
+                )
+            };
+        }
         self.runtime.panel.framebuffer_layer_sources[framebuffer_index] = bgwin_source;
         self.runtime.panel.framebuffer_bgwin_colors[framebuffer_index] = pixel_color;
         self.runtime.panel.framebuffer_bgwin_forced_white[framebuffer_index] = dmg_bg_forced_white;

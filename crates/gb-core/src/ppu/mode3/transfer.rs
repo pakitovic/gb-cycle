@@ -130,8 +130,7 @@ impl Ppu {
             effective_bg_priority_pixel,
             obj_pixel,
         );
-        let dmg_bg_forced_white =
-            dmg_family && self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let panel_pixel = if self.runtime.panel.visible_output == PpuVisibleOutputState::Driving {
             if dmg_bg_forced_white {
                 0
@@ -177,7 +176,11 @@ impl Ppu {
         if dmg_family {
             self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
             self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
+        }
+        if self.operating_mode.uses_dmg_software_contract() {
             self.consume_dmg_lcdc0_bg_enable_visible_hold();
+        }
+        if dmg_family {
             self.consume_dmg_lcdc1_obj_enable_visible_hold();
         }
         self.runtime.bg_pipeline_state.current_transfer_x = self

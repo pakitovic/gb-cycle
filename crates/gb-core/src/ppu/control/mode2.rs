@@ -469,6 +469,7 @@ impl Ppu {
         PpuMode3BgWinFetchPolicy::new(
             self.mode3_register_latches(),
             self.console_model,
+            self.operating_mode.uses_dmg_software_contract(),
             self.runtime
                 .bg_pipeline_state
                 .startup_background_tilemap_uses_pipeline_snapshot(),
