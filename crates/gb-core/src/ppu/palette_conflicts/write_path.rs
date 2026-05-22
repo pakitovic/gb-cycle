@@ -25,12 +25,6 @@ struct DmgBgpCpuCommitWriteContext {
     write_index: usize,
 }
 
-impl DmgBgpCpuCommitWriteContext {
-    const fn transient_palette(self) -> u8 {
-        self.previous_visible | self.value
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgBgpCpuCommitWriteCase {
     SingleLeftSpriteSecondWriteTransient {
@@ -116,10 +110,12 @@ impl Ppu {
         }
 
         let retroactive_pixels = self.dmg_palette_conflict_retroactive_pixels(register)?;
+        let transient_palette =
+            self.dmg_palette_conflict_transient_palette(previous_visible, value);
         Some(DmgPaletteWritePlan::RetroactiveRecolor(
             DmgRetroactivePaletteWritePlan {
                 register,
-                transient_palette: previous_visible | value,
+                transient_palette,
                 final_palette: value,
                 retroactive_pixels,
                 delay_final_palette: false,
@@ -267,7 +263,8 @@ impl Ppu {
             .current_line_writes
             .iter()
             .find(|write| write.effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel);
-        let transient_palette = context.transient_palette();
+        let transient_palette =
+            self.dmg_palette_conflict_transient_palette(context.previous_visible, context.value);
         let transient_visible_x = context
             .visible_pixels_output
             .saturating_sub(context.retroactive_pixels as u8);
@@ -534,6 +531,14 @@ impl Ppu {
             PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
         } else {
             PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+        }
+    }
+
+    fn dmg_palette_conflict_transient_palette(&self, previous_visible: u8, value: u8) -> u8 {
+        if self.console_model.is_cgb_family() {
+            value
+        } else {
+            previous_visible | value
         }
     }
 
@@ -879,7 +884,14 @@ impl Ppu {
                     register,
                     value,
                 );
-                self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
+                self.write_framebuffer_palette_override_pixel(
+                    row_start + x,
+                    x,
+                    mixed_pixel,
+                    panel_pixel,
+                    register,
+                    value,
+                );
             }
         }
 
@@ -952,7 +964,7 @@ impl Ppu {
         const EARLY_WRITE1_ONSETS: [u8; 19] =
             [0, 8, 9, 10, 11, 12, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 10];
 
-        match write_index {
+        let onset = match write_index {
             0 if sprite_x < EARLY_WRITE0_ONSETS.len() => Some(EARLY_WRITE0_ONSETS[sprite_x]),
             1 if sprite_x < EARLY_WRITE1_ONSETS.len() => Some(EARLY_WRITE1_ONSETS[sprite_x]),
             2..=5 => self
@@ -965,6 +977,20 @@ impl Ppu {
                     _ => unreachable!(),
                 }),
             _ => None,
+        }?;
+
+        Some(self.adjust_cgb_dmg_software_single_left_sprite_bgp_onset(write_index, onset))
+    }
+
+    fn adjust_cgb_dmg_software_single_left_sprite_bgp_onset(
+        &self,
+        write_index: usize,
+        onset: u8,
+    ) -> u8 {
+        if self.uses_cgb_compatibility_rgb555_adapter() && matches!(write_index, 1 | 3 | 4) {
+            onset.saturating_sub(1)
+        } else {
+            onset
         }
     }
 
@@ -983,7 +1009,7 @@ impl Ppu {
         let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x;
         // The second write on the same scanline exposes a short transient seam
         // before the final palette reaches the left-edge boundary.
-        let (transient_start_x, final_onset_x) = match sprite_x {
+        let (mut transient_start_x, final_onset_x) = match sprite_x {
             7 => (5, 12),
             8..=14 => (sprite_x.saturating_sub(2), sprite_x.saturating_sub(1)),
             15 => (12, 12),
@@ -993,6 +1019,18 @@ impl Ppu {
         let final_onset_x = match sprite_x {
             14 => 12,
             _ => final_onset_x,
+        };
+        let final_onset_x = if self.uses_cgb_compatibility_rgb555_adapter() {
+            match sprite_x {
+                7..=13 => final_onset_x.saturating_sub(1),
+                14 | 15 => {
+                    transient_start_x = 11;
+                    11
+                }
+                _ => final_onset_x,
+            }
+        } else {
+            final_onset_x
         };
 
         Some((transient_start_x, final_onset_x))
@@ -1061,7 +1099,14 @@ impl Ppu {
                 register,
                 palette,
             );
-            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
+            self.write_framebuffer_palette_override_pixel(
+                row_start + x,
+                x,
+                mixed_pixel,
+                panel_pixel,
+                register,
+                palette,
+            );
         }
 
         let hold_pixels = transient_start_x.saturating_sub(visible_pixels_output);

@@ -1442,11 +1442,50 @@ impl Ppu {
         self.framebuffer_rgb555[framebuffer_index] = panel_shade_to_rgb555(panel_pixel);
     }
 
+    pub(super) fn write_framebuffer_palette_override_pixel(
+        &mut self,
+        framebuffer_index: usize,
+        _visible_x: usize,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) {
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] = self
+            .framebuffer_rgb555_palette_override_pixel(
+                output_pixel,
+                panel_pixel,
+                register,
+                palette_override,
+            );
+    }
+
     fn framebuffer_rgb555_pixel(&self, output_pixel: MixedPixel, panel_pixel: u8) -> u16 {
         if self.console_model.is_cgb_family()
             && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
         {
             self.map_mixed_pixel_to_cgb_rgb555(output_pixel)
+        } else {
+            panel_shade_to_rgb555(panel_pixel)
+        }
+    }
+
+    fn framebuffer_rgb555_palette_override_pixel(
+        &self,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) -> u16 {
+        if self.uses_cgb_compatibility_rgb555_adapter()
+            && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
+        {
+            self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette_override(
+                output_pixel,
+                register,
+                palette_override,
+            )
         } else {
             panel_shade_to_rgb555(panel_pixel)
         }

@@ -2,19 +2,31 @@ use super::*;
 
 impl Ppu {
     pub(in crate::ppu) fn pixel_pipeline_bgp(&self) -> u8 {
-        self.mode3_register_latches().pixel_pipeline_bgp(
-            self.console_model,
-            self.runtime
-                .panel
-                .dmg_panel_live_write_state
-                .bgp_cpu_commit
-                .output_palette_override,
-            self.runtime
-                .panel
-                .dmg_panel_live_write_state
-                .bgp_cpu_commit
-                .bg_visible_hold_palette_override,
-        )
+        let latches = self.mode3_register_latches();
+        if !self.uses_dmg_palette_live_write_model() {
+            return latches.visible().bgp;
+        }
+
+        if let Some(override_palette) = self
+            .runtime
+            .panel
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_palette_override
+        {
+            return override_palette;
+        }
+        if let Some(override_palette) = self
+            .runtime
+            .panel
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override
+        {
+            return override_palette;
+        }
+
+        latches.visible().bgp | latches.pipeline().bgp
     }
 
     pub(in crate::ppu) fn pixel_transfer_bg_enabled(&self) -> bool {

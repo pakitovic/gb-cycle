@@ -166,17 +166,19 @@ impl Ppu {
             output_pixel,
             panel_pixel,
         );
-        if dmg_family {
+        if self.uses_dmg_palette_live_write_model() {
             self.record_dmg_recent_panel_dot(
                 visible_x_index as u8,
                 output_pixel,
                 dmg_bg_forced_white,
             );
+            self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
+        }
+        if dmg_family {
             self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
             self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
             self.consume_dmg_lcdc0_bg_enable_visible_hold();
             self.consume_dmg_lcdc1_obj_enable_visible_hold();
-            self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
         }
         self.runtime.bg_pipeline_state.current_transfer_x = self
             .runtime

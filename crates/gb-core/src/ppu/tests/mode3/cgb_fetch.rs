@@ -206,6 +206,33 @@ fn cgb_bg_fetcher_latches_bg_attributes_from_vram_bank1() {
 }
 
 #[test]
+fn cgb_dmg_software_bg_fetcher_ignores_native_cgb_bg_attributes() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_bg_fetch_ppu();
+        ppu.apply_operating_mode_state(operating_mode);
+        let mut vram = [0; CGB_TEST_VRAM_BYTES];
+        vram[0x1800] = 0x02;
+        vram[VRAM_BANK_SIZE + 0x1800] = CGB_BG_ATTR_VRAM_BANK_BIT | 0x05;
+        vram[0x20] = 0x44;
+        vram[VRAM_BANK_SIZE + 0x20] = 0x88;
+
+        with_cgb_vram_view(vram, |vram| {
+            for _ in 0..6 {
+                assert!(!ppu.advance_bg_fetcher(vram));
+            }
+        });
+
+        let cached = ppu.bg_pipeline_state.push.cached;
+        assert_eq!(cached.tile_index, 0x02);
+        assert_eq!(cached.cgb_bg_attrs, None);
+        assert_eq!(cached.tile_low, 0x44);
+    }
+}
+
+#[test]
 fn cgb_bg_fetcher_samples_tile_number_and_attrs_on_tile_index_dot0() {
     let mut ppu = cgb_bg_fetch_ppu();
     let latched_attrs = CgbBgTileAttributes::new(

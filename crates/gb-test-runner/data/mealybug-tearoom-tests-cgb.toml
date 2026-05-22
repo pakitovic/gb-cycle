@@ -29,6 +29,7 @@ report_model_suffix = true
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_bgp_change_sprites.png"
+startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-bg-en-change"

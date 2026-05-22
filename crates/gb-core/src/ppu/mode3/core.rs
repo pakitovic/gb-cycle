@@ -165,7 +165,7 @@ impl Ppu {
             .bg_pipeline_state
             .consume_startup_transfer_entry_delay_dot()
         {
-            if self.console_model.is_dmg_family() {
+            if self.uses_dmg_palette_live_write_model() {
                 self.consume_dmg_bgp_cpu_commit_output_delay();
             }
             return Mode3TransferDot::not_served();
@@ -194,7 +194,7 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .consume_startup_source_window_dot();
-        if self.console_model.is_dmg_family() {
+        if self.uses_dmg_palette_live_write_model() {
             if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
                 self.repeat_last_dmg_recent_panel_dot();
             }
