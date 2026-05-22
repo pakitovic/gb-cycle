@@ -955,6 +955,57 @@ impl Default for SgbPaletteState {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbPlayerPaletteOverrideState {
+    pub active: bool,
+    pub palette_state: SgbPaletteState,
+    pub attributes: SgbAttributeMap,
+    pub activation_count: u64,
+    pub manual_release_count: u64,
+    pub pal_pri_release_count: u64,
+}
+
+impl SgbPlayerPaletteOverrideState {
+    fn set_uniform_palette(&mut self, palette: SgbScreenPalette) -> bool {
+        let palette_state = SgbPaletteState {
+            screen_palettes: [palette; SGB_SCREEN_PALETTE_COUNT],
+            ..SgbPaletteState::default()
+        };
+        let attributes = SgbAttributeMap::default();
+        let changed =
+            !self.active || self.palette_state != palette_state || self.attributes != attributes;
+        self.active = true;
+        self.palette_state = palette_state;
+        self.attributes = attributes;
+        if changed {
+            self.activation_count = self.activation_count.saturating_add(1);
+        }
+        changed
+    }
+
+    fn clear_by_player(&mut self) -> bool {
+        if !self.active {
+            return false;
+        }
+        self.active = false;
+        self.manual_release_count = self.manual_release_count.saturating_add(1);
+        true
+    }
+
+    fn return_to_application_due_to_pal_pri(&mut self) -> bool {
+        if !self.active {
+            return false;
+        }
+        self.active = false;
+        self.pal_pri_release_count = self.pal_pri_release_count.saturating_add(1);
+        true
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.attributes.dynamic_payload_bytes()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbSystemPaletteState {
     pub palettes: Vec<SgbScreenPalette>,
@@ -1668,6 +1719,7 @@ pub struct SgbVideoState {
     pub colorization_active: bool,
     pub palette_state: SgbPaletteState,
     pub system_palettes: SgbSystemPaletteState,
+    pub player_palette_override: SgbPlayerPaletteOverrideState,
     pub attributes: SgbAttributeState,
     pub last_palette_command_id: Option<u8>,
     pub palette_command_count: u64,
@@ -1884,6 +1936,20 @@ impl SgbHost {
     ) -> bool {
         self.multiplayer
             .set_player_button_pressed(player, button, pressed)
+    }
+
+    pub fn set_player_palette_override(&mut self, palette: SgbScreenPalette) -> bool {
+        if !self.host_platform.is_sgb() {
+            return false;
+        }
+        self.video.set_player_palette_override(palette)
+    }
+
+    pub fn clear_player_palette_override(&mut self) -> bool {
+        if !self.host_platform.is_sgb() {
+            return false;
+        }
+        self.video.clear_player_palette_override()
     }
 
     pub const fn player_pressed_masks(&self) -> [u8; SGB_CONTROLLER_COUNT] {
@@ -2635,6 +2701,7 @@ impl SgbVideoState {
             colorization_active: active,
             palette_state: SgbPaletteState::default_for_active_host(active),
             system_palettes: SgbSystemPaletteState::default(),
+            player_palette_override: SgbPlayerPaletteOverrideState::default(),
             attributes: SgbAttributeState::default(),
             last_palette_command_id: None,
             palette_command_count: 0,
@@ -2647,16 +2714,40 @@ impl SgbVideoState {
         }
     }
 
-    pub const fn map_lcd_shade_to_rgb555(&self, shade: u8) -> SgbRgb555Color {
-        self.palette_state.map_lcd_shade(shade)
+    pub fn map_lcd_shade_to_rgb555(&self, shade: u8) -> SgbRgb555Color {
+        self.visible_palette_state().map_lcd_shade(shade)
     }
 
     pub fn lcd_pixel_for_shade(&self, shade: u8) -> SgbRgb555Color {
         match self.mask {
-            SgbScreenMask::Cancel => self.palette_state.map_lcd_shade(shade),
-            SgbScreenMask::Freeze => self.palette_state.map_lcd_shade(shade),
+            SgbScreenMask::Cancel => self.visible_palette_state().map_lcd_shade(shade),
+            SgbScreenMask::Freeze => self.visible_palette_state().map_lcd_shade(shade),
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
-            SgbScreenMask::BlankColor0 => self.palette_state.map_lcd_shade(0),
+            SgbScreenMask::BlankColor0 => self.visible_palette_state().map_lcd_shade(0),
+        }
+    }
+
+    fn set_player_palette_override(&mut self, palette: SgbScreenPalette) -> bool {
+        self.player_palette_override.set_uniform_palette(palette)
+    }
+
+    fn clear_player_palette_override(&mut self) -> bool {
+        self.player_palette_override.clear_by_player()
+    }
+
+    fn visible_palette_state(&self) -> &SgbPaletteState {
+        if self.player_palette_override.active {
+            &self.player_palette_override.palette_state
+        } else {
+            &self.palette_state
+        }
+    }
+
+    fn visible_attribute_map(&self) -> &SgbAttributeMap {
+        if self.player_palette_override.active {
+            &self.player_palette_override.attributes
+        } else {
+            &self.attributes.map
         }
     }
 
@@ -2694,7 +2785,7 @@ impl SgbVideoState {
                     self.live_lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
                 }),
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
-            SgbScreenMask::BlankColor0 => self.palette_state.palette(0).color(0),
+            SgbScreenMask::BlankColor0 => self.visible_palette_state().palette(0).color(0),
         }
     }
 
@@ -2704,10 +2795,11 @@ impl SgbVideoState {
         shade: u8,
     ) -> SgbRgb555Color {
         let palette_index = self
-            .attributes
-            .map
+            .visible_attribute_map()
             .palette_index_for_framebuffer_index(framebuffer_index);
-        self.palette_state.palette(palette_index).color(shade)
+        self.visible_palette_state()
+            .palette(palette_index)
+            .color(shade)
     }
 
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -2716,6 +2808,7 @@ impl SgbVideoState {
         self.colorization_active = true;
         self.last_palette_command_id = Some(command_id);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_pal_set_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -2731,6 +2824,7 @@ impl SgbVideoState {
         if options.apply_atf {
             self.apply_atf_index(options.atf_index);
         }
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_pal_pri_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -2740,21 +2834,25 @@ impl SgbVideoState {
     fn apply_attr_blk_command(&mut self, payload: &[u8]) {
         self.attributes.apply_attr_blk(payload);
         self.colorization_active = true;
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_attr_lin_command(&mut self, payload: &[u8]) {
         self.attributes.apply_attr_lin(payload);
         self.colorization_active = true;
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_attr_div_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
         self.attributes.apply_attr_div(bytes);
         self.colorization_active = true;
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_attr_chr_command(&mut self, payload: &[u8]) {
         self.attributes.apply_attr_chr(payload);
         self.colorization_active = true;
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_attr_set_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -2765,10 +2863,18 @@ impl SgbVideoState {
         if self.apply_atf_index(atf_index) {
             self.colorization_active = true;
         }
+        self.apply_pal_pri_application_priority();
     }
 
     fn apply_atf_index(&mut self, atf_index: u8) -> bool {
         self.attributes.apply_attr_set(atf_index)
+    }
+
+    fn apply_pal_pri_application_priority(&mut self) {
+        if self.system_palettes.pal_pri_enabled {
+            self.player_palette_override
+                .return_to_application_due_to_pal_pri();
+        }
     }
 
     fn cancel_mask(&mut self) {
@@ -2883,6 +2989,7 @@ impl SgbVideoState {
             .unwrap_or(0)
             .saturating_add(self.vram_transfer.dynamic_payload_bytes())
             .saturating_add(self.system_palettes.dynamic_payload_bytes())
+            .saturating_add(self.player_palette_override.dynamic_payload_bytes())
             .saturating_add(self.attributes.dynamic_payload_bytes())
             .saturating_add(self.border.dynamic_payload_bytes())
     }
@@ -3839,6 +3946,81 @@ mod tests {
     }
 
     #[test]
+    fn pal_pri_controls_player_palette_override_priority() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+
+        let player_palette = sgb_screen_palette([0x1111, 0x2222, 0x3333, 0x4444]);
+        assert!(host.set_player_palette_override(player_palette));
+        assert!(host.snapshot().video.player_palette_override.active);
+        assert_eq!(
+            host.snapshot().video.map_lcd_shade_to_rgb555(2).raw(),
+            0x3333
+        );
+
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        assert!(
+            host.snapshot().video.player_palette_override.active,
+            "with PAL_PRI disabled, application palette commands update host state but do not override the player's selected palette"
+        );
+        assert_eq!(
+            host.snapshot().video.map_lcd_shade_to_rgb555(1).raw(),
+            0x2222
+        );
+
+        let mut pal_pri = sgb_command_packet(SGB_COMMAND_PAL_PRI, 1);
+        pal_pri[1] = 1;
+        write_joyp_packet(&mut host, pal_pri);
+        assert!(host.snapshot().video.system_palettes.pal_pri_enabled);
+        assert!(
+            host.snapshot().video.player_palette_override.active,
+            "PAL_PRI itself only changes the priority policy; a later application palette command switches back"
+        );
+
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let snapshot = host.snapshot();
+        assert!(!snapshot.video.player_palette_override.active);
+        assert_eq!(
+            snapshot.video.player_palette_override.pal_pri_release_count,
+            1
+        );
+        assert_eq!(
+            snapshot.video.map_lcd_shade_to_rgb555(1).raw(),
+            0x03E0,
+            "once PAL_PRI gives priority back to the application, visible output uses the game palette state"
+        );
+    }
+
+    #[test]
+    fn pal_pri_does_not_switch_on_transfer_loads_but_switches_on_attribute_commands() {
+        let mut host = accepted_sgb_host();
+        let player_palette = sgb_screen_palette([0x1111, 0x2222, 0x3333, 0x4444]);
+        assert!(host.set_player_palette_override(player_palette));
+
+        let mut pal_pri = sgb_command_packet(SGB_COMMAND_PAL_PRI, 1);
+        pal_pri[1] = 1;
+        write_joyp_packet(&mut host, pal_pri);
+
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        assert!(
+            host.snapshot().video.player_palette_override.active,
+            "PAL_TRN loads backing system palette memory and must not by itself switch away from the player palette"
+        );
+
+        let mut attr_set = sgb_command_packet(SGB_COMMAND_ATTR_SET, 1);
+        attr_set[1] = 0;
+        write_joyp_packet(&mut host, attr_set);
+        assert!(!host.snapshot().video.player_palette_override.active);
+        assert_eq!(
+            host.snapshot()
+                .video
+                .player_palette_override
+                .pal_pri_release_count,
+            1
+        );
+    }
+
+    #[test]
     fn attr_trn_attr_set_and_pal_set_apply_attribute_files() {
         let mut host = accepted_sgb_host();
         let mut transfer = [0; SGB_VRAM_TRANSFER_BYTES];
@@ -4169,6 +4351,26 @@ mod tests {
         assert_eq!(
             restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
             0x4210
+        );
+    }
+
+    #[test]
+    fn save_state_restores_sgb_player_palette_override_state() {
+        let mut host = accepted_sgb_host();
+        let player_palette = sgb_screen_palette([0x1111, 0x2222, 0x3333, 0x4444]);
+        assert!(host.set_player_palette_override(player_palette));
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        assert_eq!(
+            restored.snapshot().video.player_palette_override,
+            host.snapshot().video.player_palette_override
+        );
+        assert_eq!(
+            restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
+            0x4444
         );
     }
 

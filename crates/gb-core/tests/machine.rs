@@ -2,8 +2,8 @@ mod common;
 
 use gb_core::{
     ConsoleModel, HostPlatform, JoypadButton, Machine, MachineConfig, OperatingMode,
-    SCHEDULER_PHASE_COUNT, SchedulerPhase, SgbCommandAcceptance, SgbPacketTraceStatus, StartupMode,
-    TCycle,
+    SCHEDULER_PHASE_COUNT, SchedulerPhase, SgbCommandAcceptance, SgbPacketTraceStatus,
+    SgbRgb555Color, SgbScreenPalette, StartupMode, TCycle,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
@@ -305,6 +305,50 @@ fn sgb_load_applies_boot_title_palette_for_dmg_games_without_commands() {
         sgb_lcd.iter().all(|&pixel| pixel == 0x65EF),
         "the default DMG framebuffer shade 0 should map through Alleyway's SGB boot palette"
     );
+}
+
+#[test]
+fn sgb_machine_player_palette_override_composes_until_cleared() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+    write_sgb_packet(&mut machine, {
+        let mut packet = [0; 16];
+        packet[0] = 0x01;
+        write_sgb_palette_color(&mut packet, 1, 0x001F);
+        write_sgb_palette_color(&mut packet, 3, 0x03E0);
+        write_sgb_palette_color(&mut packet, 5, 0x7C00);
+        write_sgb_palette_color(&mut packet, 7, 0x4210);
+        write_sgb_palette_color(&mut packet, 9, 0x0001);
+        write_sgb_palette_color(&mut packet, 11, 0x0002);
+        write_sgb_palette_color(&mut packet, 13, 0x0003);
+        packet
+    });
+    let dmg_framebuffer_before = machine.ppu().framebuffer().to_vec();
+
+    let player_palette = SgbScreenPalette {
+        colors: [
+            SgbRgb555Color::new(0x1111),
+            SgbRgb555Color::new(0x2222),
+            SgbRgb555Color::new(0x3333),
+            SgbRgb555Color::new(0x4444),
+        ],
+    };
+    assert!(machine.set_sgb_player_palette_override(player_palette));
+    let override_lcd = machine
+        .sgb_lcd_framebuffer_rgb555()
+        .expect("player palette override should compose through the SGB host");
+    assert!(override_lcd.iter().all(|&pixel| pixel == 0x1111));
+    assert_eq!(machine.ppu().framebuffer(), dmg_framebuffer_before);
+
+    assert!(machine.clear_sgb_player_palette_override());
+    let application_lcd = machine
+        .sgb_lcd_framebuffer_rgb555()
+        .expect("application palette should become visible after clearing the player override");
+    assert!(application_lcd.iter().all(|&pixel| pixel == 0x001F));
 }
 
 #[test]

@@ -133,6 +133,27 @@ Acceptance criteria:
 
 Status: implemented as the Slice 4 baseline. `SgbHost` now owns an explicit 20×18 SGB attribute map, packed 45-entry ATF memory, 512 logical system palettes, and `PAL_PRI` state without using CGB palette RAM, CGB tile attributes, or hidden GB PPU metadata. `ATTR_BLK`, `ATTR_LIN`, `ATTR_DIV`, and `ATTR_CHR` update only the host attribute map; multi-packet attribute payloads reuse the Slice 2 packet buffer by flattening first-packet data bytes plus full subsequent packet data. `PAL_TRN` and `ATTR_TRN` reuse the Slice 3 4 KiB transfer seam, while `PAL_SET` and `ATTR_SET` copy logical palette/attribute files into visible host state and can cancel `MASK_EN` as documented. LCD and full-frame SGB composition now choose the screen palette per 8×8 GB-window cell before mapping the DMG shade to RGB555, and freeze snapshots the attribute-colored LCD image. The durable machine save-state format version is bumped again because Slice 4 adds live attribute maps, ATF buffers, system palettes, and palette-priority state. Manual compatibility examples for this slice are Pokémon Yellow, Kirby’s Dream Land 2, and Balloon Kid.
 
+## Post-Slice 4 refinement — `PAL_PRI` player/application palette priority
+
+Scope: model the documented `PAL_PRI` interaction between the player's SGB menu-selected palette override and application palette/attribute commands.
+
+Implementation notes:
+
+- Treat `PAL_PRI` as application-vs-player palette priority, not as sprite/background or per-pixel-source priority.
+- Add explicit player palette override state to the SGB host so frontend/menu code can activate a player-selected palette without overwriting the application's palette/attribute state.
+- When the override is active and `PAL_PRI` is disabled, application palette/attribute commands update application state but visible DMG-window composition continues through the player's override.
+- When `PAL_PRI` is enabled, the next application palette/attribute command (`PAL01`, `PAL23`, `PAL03`, `PAL12`, `ATTR_BLK`, `ATTR_LIN`, `ATTR_DIV`, `ATTR_CHR`, `PAL_SET`, or `ATTR_SET`) releases the player override and returns visible composition to the application state.
+- Keep transfer-only backing-data commands (`PAL_TRN`, `ATTR_TRN`) from switching visible priority by themselves.
+
+Acceptance criteria:
+
+- Player palette override composition is visible and survives save/load.
+- Application commands do not take visible priority over a player override while `PAL_PRI` is disabled.
+- With `PAL_PRI` enabled, application palette/attribute commands return visible priority to application state.
+- `PAL_TRN` and `ATTR_TRN` do not themselves return visible priority to application state.
+
+Status: implemented as a post-Slice-4 refinement. `SgbHost` now persists `SgbPlayerPaletteOverrideState`, `Machine` exposes a frontend-neutral override activation/clear API, SGB composition selects visible palette/attribute state from either the player override or the application state, and focused tests cover `PAL_PRI` switching, transfer-only non-switching, and save/load continuation. The durable machine save-state format version is bumped because the typed SGB video payload gains player palette override state.
+
 ## Slice 5 — MLT_REQ multiplayer
 
 Scope: support SGB controller multiplexing for two-player and four-player SGB games.

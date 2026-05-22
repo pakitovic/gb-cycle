@@ -148,11 +148,11 @@ pub use sgb::{
     SgbHostSnapshot, SgbHostStatus, SgbJoypLineState, SgbJumpRequest, SgbLcdCompositionError,
     SgbLcdRgb555Frame, SgbMultiplayerState, SgbPacketTrace, SgbPacketTraceStatus,
     SgbPacketTransportState, SgbPalSetOptions, SgbPaletteState, SgbPendingVramTransfer,
-    SgbRealBootAsset, SgbRgb555Color, SgbScreenMask, SgbScreenPalette, SgbSnesAddress,
-    SgbSnesHostRequest, SgbSnesHostState, SgbSoundEffectControl, SgbSoundRequest,
-    SgbSoundTransferPacket, SgbSoundTransferRequest, SgbStartupState, SgbSystemPaletteState,
-    SgbVideoState, SgbVramTransferBuffer, SgbVramTransferError, SgbVramTransferState,
-    SgbVramTransferTarget,
+    SgbPlayerPaletteOverrideState, SgbRealBootAsset, SgbRgb555Color, SgbScreenMask,
+    SgbScreenPalette, SgbSnesAddress, SgbSnesHostRequest, SgbSnesHostState, SgbSoundEffectControl,
+    SgbSoundRequest, SgbSoundTransferPacket, SgbSoundTransferRequest, SgbStartupState,
+    SgbSystemPaletteState, SgbVideoState, SgbVramTransferBuffer, SgbVramTransferError,
+    SgbVramTransferState, SgbVramTransferTarget,
 };
 pub use speed::{
     CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,

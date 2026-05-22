@@ -27,7 +27,7 @@ use crate::save_state::{
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
-use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHost};
+use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHost, SgbScreenPalette};
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -576,6 +576,14 @@ impl<S: TraceSink> Machine<S> {
 
         self.pending_external_events
             .set_sgb_joypad_button_pressed(player, button, pressed);
+    }
+
+    pub fn set_sgb_player_palette_override(&mut self, palette: SgbScreenPalette) -> bool {
+        self.sgb_host.set_player_palette_override(palette)
+    }
+
+    pub fn clear_sgb_player_palette_override(&mut self) -> bool {
+        self.sgb_host.clear_player_palette_override()
     }
 
     pub fn cartridge(&self) -> &CartridgeSlot {
