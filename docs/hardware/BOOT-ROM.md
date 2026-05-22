@@ -108,6 +108,7 @@ Phase 11 SGB/SGB2 extends the same derived asset model without adding an indepen
 - CGB `RealBoot` must not preselect native CGB versus DMG-compatibility mode from cartridge metadata before executed firmware reaches `FF50`; the boot ROM writes `KEY0`, then the `FF50` handoff locks that state and updates `MachineConfig`, bus, speed, and PPU operating mode together.
 - After the CGB handoff lock, `KEY0` remains boot-owned: ordinary software reads get the unavailable `$FF` readback and post-lock writes are ignored, while the internal locked value remains available only to boot/mode state.
 - Any CGB `RealBoot` handoff phase correction must be header-bucket-specific and applied at the real `FF50` edge in core-owned timer/PPU state, not as a test-runner startup overlay, so `gb-cli`, `gb-desktop`, and ROM-suite validation see the same cartridge-entry contract.
+- On SGB/SGB2 real boot, the same newly-unmapped `FF50` edge is the host boundary between boot ROM packet traffic and cartridge packet traffic; the SGB host clears any in-flight boot-private packet/active command accumulator at that boundary while preserving accepted boot command counters and video state, so the first cartridge-side command is decoded as a fresh command.
 
 ## DMG-family skip-boot CPU snapshot baseline
 

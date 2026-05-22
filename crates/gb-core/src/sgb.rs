@@ -41,6 +41,19 @@ pub const SGB_CONTROLLER_COUNT: usize = 4;
 pub const SGB_DATA_SND_INLINE_BYTES: usize = 11;
 pub const SGB_SNES_DATA_TRN_BYTES: u32 = SGB_VRAM_TRANSFER_BYTES as u32;
 
+const SGB_TRANSFER_DISPLAY_TILE_COLUMNS: usize = 20;
+const SGB_TRANSFER_DISPLAY_TILE_COUNT: usize = SGB_VRAM_TRANSFER_BYTES / SGB_GB_TILE_BYTES;
+const SGB_GB_VRAM_BYTES: usize = 0x2000;
+const SGB_GB_TILE_BYTES: usize = 16;
+const SGB_GB_TILEMAP_WIDTH: usize = 32;
+const SGB_GB_BG_MAP_9800_OFFSET: usize = 0x1800;
+const SGB_GB_BG_MAP_9C00_OFFSET: usize = 0x1C00;
+const SGB_GB_SIGNED_TILE_DATA_BASE_OFFSET: i32 = 0x1000;
+const SGB_TRANSFER_REQUIRED_BGP: u8 = 0xE4;
+const SGB_LCDC_ENABLE_BIT: u8 = 0x80;
+const SGB_LCDC_BG_TILE_MAP_BIT: u8 = 0x08;
+const SGB_LCDC_BG_WINDOW_TILE_DATA_BIT: u8 = 0x10;
+const SGB_LCDC_BG_ENABLE_BIT: u8 = 0x01;
 const SGB_PACKET_BYTES: usize = SGB_COMMAND_PACKET_BYTES;
 const SGB_PACKET_BITS: u8 = 128;
 const SGB_PACKET_COUNT_MIN: u8 = 1;
@@ -515,6 +528,33 @@ pub struct SgbPendingVramTransfer {
     pub frame_starts_until_capture: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct SgbVramTransferDisplayState {
+    pub lcdc: u8,
+    pub scy: u8,
+    pub scx: u8,
+    pub bgp: u8,
+}
+
+impl SgbVramTransferDisplayState {
+    pub const fn new(lcdc: u8, scy: u8, scx: u8, bgp: u8) -> Self {
+        Self {
+            lcdc,
+            scy,
+            scx,
+            bgp,
+        }
+    }
+
+    const fn can_extract_display_order(self) -> bool {
+        self.lcdc & SGB_LCDC_ENABLE_BIT != 0
+            && self.lcdc & SGB_LCDC_BG_ENABLE_BIT != 0
+            && self.scy == 0
+            && self.scx == 0
+            && self.bgp == SGB_TRANSFER_REQUIRED_BGP
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbVramTransferBuffer {
     pub bytes: Vec<u8>,
@@ -532,6 +572,40 @@ impl SgbVramTransferBuffer {
         Ok(Self {
             bytes: source[..SGB_VRAM_TRANSFER_BYTES].to_vec(),
         })
+    }
+
+    fn from_display_memory(
+        vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
+    ) -> Result<Self, SgbVramTransferError> {
+        if !display.can_extract_display_order() {
+            return Self::from_source_bytes(vram_bytes);
+        }
+        if vram_bytes.len() < SGB_GB_VRAM_BYTES {
+            return Err(SgbVramTransferError::SourceLength {
+                expected: SGB_GB_VRAM_BYTES,
+                actual: vram_bytes.len(),
+            });
+        }
+
+        let tile_map_base = if display.lcdc & SGB_LCDC_BG_TILE_MAP_BIT != 0 {
+            SGB_GB_BG_MAP_9C00_OFFSET
+        } else {
+            SGB_GB_BG_MAP_9800_OFFSET
+        };
+        let mut bytes = vec![0; SGB_VRAM_TRANSFER_BYTES];
+        for transfer_tile_index in 0..SGB_TRANSFER_DISPLAY_TILE_COUNT {
+            let tile_x = transfer_tile_index % SGB_TRANSFER_DISPLAY_TILE_COLUMNS;
+            let tile_y = transfer_tile_index / SGB_TRANSFER_DISPLAY_TILE_COLUMNS;
+            let tile_map_offset = tile_map_base + tile_y * SGB_GB_TILEMAP_WIDTH + tile_x;
+            let tile_index = vram_bytes[tile_map_offset];
+            let source_offset = gb_tile_data_offset(display.lcdc, tile_index);
+            let destination_offset = transfer_tile_index * SGB_GB_TILE_BYTES;
+            bytes[destination_offset..destination_offset + SGB_GB_TILE_BYTES]
+                .copy_from_slice(&vram_bytes[source_offset..source_offset + SGB_GB_TILE_BYTES]);
+        }
+
+        Ok(Self { bytes })
     }
 
     fn dynamic_payload_bytes(&self) -> usize {
@@ -887,6 +961,15 @@ fn sgb_title_bytes_match(title_bytes: &[u8; 16], expected_title: &[u8]) -> bool 
         && title_bytes[expected_title.len()..]
             .iter()
             .all(|&byte| byte == 0)
+}
+
+const fn gb_tile_data_offset(lcdc: u8, tile_index: u8) -> usize {
+    if lcdc & SGB_LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
+        tile_index as usize * SGB_GB_TILE_BYTES
+    } else {
+        (SGB_GB_SIGNED_TILE_DATA_BASE_OFFSET + (tile_index as i8 as i32) * SGB_GB_TILE_BYTES as i32)
+            as usize
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -1992,6 +2075,22 @@ impl SgbHost {
         self.snes_host = state.snes_host;
     }
 
+    pub(crate) fn finish_real_boot_handoff(&mut self) {
+        if !self.host_platform.is_sgb() {
+            return;
+        }
+
+        self.packet_transport.last_joyp_line_state = SgbJoypLineState::Idle;
+        self.packet_transport.transfer_active = false;
+        self.packet_transport.packet_bits_buffered = 0;
+        self.packet_transport.packet_bytes_buffered = 0;
+        self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
+        self.command.active_command_id = None;
+        self.command.expected_packet_count = 0;
+        self.command.received_packet_count = 0;
+        self.command.packet_buffer = [[0; SGB_COMMAND_PACKET_BYTES]; SGB_COMMAND_MAX_PACKETS];
+    }
+
     pub(crate) fn apply_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
         self.startup.apply_cartridge_header(self.status(), header);
         self.video.apply_boot_palette_for_cartridge_header(
@@ -2442,11 +2541,12 @@ impl SgbHost {
     pub(crate) fn advance_frame_start(
         &mut self,
         vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
         if !self.host_platform.is_sgb() {
             return Err(SgbVramTransferError::DisabledHost);
         }
-        let target = self.video.advance_frame_start(vram_bytes)?;
+        let target = self.video.advance_frame_start(vram_bytes, display)?;
         self.dispatch_completed_vram_transfer(target);
         Ok(target)
     }
@@ -2934,6 +3034,7 @@ impl SgbVideoState {
     fn advance_frame_start(
         &mut self,
         vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
         let Some(mut pending) = self.vram_transfer.pending else {
             return Ok(None);
@@ -2943,17 +3044,25 @@ impl SgbVideoState {
             self.vram_transfer.pending = Some(pending);
             return Ok(None);
         }
-        self.capture_pending_vram_transfer(vram_bytes)
+        let payload = SgbVramTransferBuffer::from_display_memory(vram_bytes, display)?;
+        self.capture_pending_vram_transfer_payload(payload)
     }
 
     fn capture_pending_vram_transfer(
         &mut self,
         vram_bytes: &[u8],
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        let payload = SgbVramTransferBuffer::from_source_bytes(vram_bytes)?;
+        self.capture_pending_vram_transfer_payload(payload)
+    }
+
+    fn capture_pending_vram_transfer_payload(
+        &mut self,
+        payload: SgbVramTransferBuffer,
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
         let Some(pending) = self.vram_transfer.pending.take() else {
             return Err(SgbVramTransferError::NoPendingTransfer);
         };
-        let payload = SgbVramTransferBuffer::from_source_bytes(vram_bytes)?;
         match pending.target {
             SgbVramTransferTarget::Chr(selection) => {
                 self.border.apply_chr_transfer(selection, &payload);
@@ -3138,6 +3247,12 @@ mod tests {
         bytes
     }
 
+    fn write_transfer_screen_tile(vram: &mut [u8], transfer_tile_index: usize, tile_index: u8) {
+        let tile_x = transfer_tile_index % SGB_TRANSFER_DISPLAY_TILE_COLUMNS;
+        let tile_y = transfer_tile_index / SGB_TRANSFER_DISPLAY_TILE_COLUMNS;
+        vram[SGB_GB_BG_MAP_9800_OFFSET + tile_y * SGB_GB_TILEMAP_WIDTH + tile_x] = tile_index;
+    }
+
     fn sgb_jump_packet() -> [u8; SGB_PACKET_BYTES] {
         let mut bytes = sgb_command_packet(SGB_COMMAND_JUMP, 1);
         bytes[1] = 0x34;
@@ -3242,6 +3357,46 @@ mod tests {
         let header = test_header(SgbFlag::Supported, SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED);
         host.apply_cartridge_header(Some(&header));
         host
+    }
+
+    #[test]
+    fn vram_transfer_display_extraction_follows_signed_tiledata_transfer_screen() {
+        let mut vram = vec![0; SGB_GB_VRAM_BYTES];
+        for transfer_tile_index in 0..SGB_TRANSFER_DISPLAY_TILE_COUNT {
+            let tile_index = 0x80u8.wrapping_add(transfer_tile_index as u8);
+            write_transfer_screen_tile(&mut vram, transfer_tile_index, tile_index);
+            let tile_offset = gb_tile_data_offset(0x81, tile_index);
+            for byte_index in 0..SGB_GB_TILE_BYTES {
+                vram[tile_offset + byte_index] = transfer_tile_index.wrapping_add(byte_index) as u8;
+            }
+        }
+
+        let payload = SgbVramTransferBuffer::from_display_memory(
+            &vram,
+            SgbVramTransferDisplayState::new(0x81, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+        )
+        .expect("SGB transfer display should decode into a 4 KiB payload");
+
+        assert_eq!(payload.bytes[0], 0);
+        assert_eq!(payload.bytes[15], 15);
+        assert_eq!(payload.bytes[128 * SGB_GB_TILE_BYTES], 128);
+        assert_eq!(payload.bytes[255 * SGB_GB_TILE_BYTES], 255);
+    }
+
+    #[test]
+    fn vram_transfer_display_extraction_falls_back_to_raw_when_display_is_not_prepared() {
+        let mut vram = vec![0; SGB_GB_VRAM_BYTES];
+        vram[0] = 0x5A;
+        vram[gb_tile_data_offset(0x81, 0x80)] = 0xA5;
+        write_transfer_screen_tile(&mut vram, 0, 0x80);
+
+        let payload = SgbVramTransferBuffer::from_display_memory(
+            &vram,
+            SgbVramTransferDisplayState::new(0x81, 1, 0, SGB_TRANSFER_REQUIRED_BGP),
+        )
+        .expect("unprepared transfer display falls back to the legacy raw payload path");
+
+        assert_eq!(payload.bytes[0], 0x5A);
     }
 
     #[test]

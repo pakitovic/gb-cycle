@@ -121,6 +121,7 @@ impl<S: TraceSink> Machine<S> {
                 serial: &mut self.serial,
                 speed: &mut self.speed,
                 timer: &mut self.timer,
+                sgb_host: &mut self.sgb_host,
                 cartridge: &self.cartridge,
                 boot: &self.boot,
             },

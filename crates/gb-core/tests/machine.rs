@@ -398,6 +398,42 @@ fn sgb_vram_transfer_captures_machine_vram_on_the_next_frame_start() {
 }
 
 #[test]
+fn sgb_vram_transfer_uses_display_order_for_signed_tiledata_transfer_screen() {
+    fn signed_tile_data_address(tile_index: u8) -> u16 {
+        (0x9000_i32 + (tile_index as i8 as i32) * 16) as u16
+    }
+
+    let mut packet = [0; 16];
+    packet[0] = (0x13 << 3) | 1;
+    packet[1] = 0;
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+
+    machine.write_bus(0xFF40, 0x00);
+    machine.write_bus(0x8000, 0x11);
+    machine.write_bus(signed_tile_data_address(0x80), 0xA5);
+    machine.write_bus(0x9800, 0x80);
+    machine.write_bus(0xFF42, 0x00);
+    machine.write_bus(0xFF43, 0x00);
+    machine.write_bus(0xFF47, 0xE4);
+    machine.write_bus(0xFF40, 0x81);
+    write_sgb_packet(&mut machine, packet);
+
+    step_until_sgb_transfer_count(&mut machine, 1);
+
+    let snapshot = machine.snapshot();
+    assert_eq!(
+        snapshot.sgb_host.video.border.tile_data.bytes[0], 0xA5,
+        "SGB HLE transfer must follow the displayed tile stream, not blindly copy $8000"
+    );
+}
+
+#[test]
 fn cgb_skip_boot_mode_follows_loaded_cartridge_header_without_becoming_dmg_silicon() {
     let mut machine = Machine::new(MachineConfig::new(ConsoleModel::GameBoyColor));
 

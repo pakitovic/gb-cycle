@@ -2980,3 +2980,68 @@ fn load_cartridge_preserves_sgb_real_boot_asset_profile() {
     assert!(machine.boot().is_boot_rom_mapped());
     assert_eq!(machine.read_bus(0x0000), 0x51);
 }
+
+#[test]
+fn sgb_real_boot_handoff_does_not_let_boot_packets_absorb_cartridge_commands() {
+    fn sgb_command_packet(command_id: u8, packet_count: u8) -> [u8; 16] {
+        let mut bytes = [0; 16];
+        bytes[0] = (command_id << 3) | (packet_count & 0x07);
+        bytes
+    }
+
+    fn write_sgb_packet(machine: &mut Machine, bytes: [u8; 16]) {
+        machine.write_bus(0xFF00, 0x00);
+        machine.write_bus(0xFF00, 0x30);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                machine.write_bus(
+                    0xFF00,
+                    if byte & (1 << bit_index) == 0 {
+                        0x20
+                    } else {
+                        0x10
+                    },
+                );
+                machine.write_bus(0xFF00, 0x30);
+            }
+        }
+        machine.write_bus(0xFF00, 0x20);
+        machine.write_bus(0xFF00, 0x30);
+    }
+
+    let assets = BootRomAssets::none()
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; 0x100])
+        .expect("sgb boot ROM image should validate");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbNtsc)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(assets),
+    );
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("supported SGB NoMBC image should load");
+    write_sgb_packet(&mut machine, sgb_command_packet(0x1F, 3));
+    assert_eq!(
+        machine.snapshot().sgb_host.command.active_command_id,
+        Some(0x1F)
+    );
+
+    machine.write_bus(0xFF50, 0x01);
+
+    let snapshot = machine.snapshot().sgb_host;
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(snapshot.command.active_command_id, None);
+    assert_eq!(snapshot.command.expected_packet_count, 0);
+    assert_eq!(snapshot.command.received_packet_count, 0);
+
+    let mut mlt_req = sgb_command_packet(0x11, 1);
+    mlt_req[1] = 0x01;
+    write_sgb_packet(&mut machine, mlt_req);
+
+    let snapshot = machine.snapshot().sgb_host;
+    assert_eq!(snapshot.command.last_command_id, Some(0x11));
+    assert_eq!(snapshot.multiplayer.mlt_req_count, 1);
+    assert_eq!(snapshot.multiplayer.player_count, 2);
+}

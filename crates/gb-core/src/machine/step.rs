@@ -21,7 +21,7 @@ use crate::scheduler::{
     scheduler_phase_trace_message,
 };
 use crate::serial::{Serial, SerialTickTelemetry};
-use crate::sgb::SgbHost;
+use crate::sgb::{SgbHost, SgbVramTransferDisplayState};
 use crate::speed::CgbSpeedMode;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
@@ -45,6 +45,7 @@ pub(super) struct RealBootHandoffParts<'a> {
     pub(super) serial: &'a mut Serial,
     pub(super) speed: &'a mut SpeedController,
     pub(super) timer: &'a mut Timer,
+    pub(super) sgb_host: &'a mut SgbHost,
     pub(super) cartridge: &'a CartridgeSlot,
     pub(super) boot: &'a BootController,
 }
@@ -60,9 +61,18 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
         serial,
         speed,
         timer,
+        sgb_host,
         cartridge,
         boot,
     } = parts;
+
+    if boot_rom_newly_unmapped
+        && !boot.is_boot_rom_mapped()
+        && config.startup_mode == StartupMode::RealBoot
+        && config.host_platform.is_sgb()
+    {
+        sgb_host.finish_real_boot_handoff();
+    }
 
     if boot_rom_newly_unmapped
         && !boot.is_boot_rom_mapped()
@@ -651,9 +661,15 @@ impl MachinePhaseRunner<'_> {
             observer.end_ppu_region(PpuStepRegion::BusSync);
         }
         if self.ppu.ly() == 0 && self.ppu.line_dot() == 0 {
+            let sgb_transfer_display = SgbVramTransferDisplayState::new(
+                self.ppu.read_register(0xFF40),
+                self.ppu.read_register(0xFF42),
+                self.ppu.read_register(0xFF43),
+                self.ppu.read_register(0xFF47),
+            );
             let _ = self
                 .sgb_host
-                .advance_frame_start(self.bus.debug_vram_bytes());
+                .advance_frame_start(self.bus.debug_vram_bytes(), sgb_transfer_display);
         }
         if records_regions {
             observer.end_region(MachineStepRegion::Ppu);
@@ -795,6 +811,7 @@ impl MachinePhaseRunner<'_> {
                                 serial,
                                 speed,
                                 timer,
+                                sgb_host,
                                 cartridge,
                                 boot,
                             },

@@ -33,6 +33,8 @@ Strict asset verification treats both SGB boot ROMs as `256`-byte low-window ima
 
 Startup must preserve cartridge header SGB capability metadata at `0x0146`, but header parsing remains cartridge-owned. The SGB host owns how header-derived capability policy affects host command acceptance, SGB boot behavior, and diagnostics. The Slice 1 HLE host accepts command packets only when the loaded cartridge header has SGB flag `$0146 == $03` and old licensee `$014B == $33`; active SGB/SGB2 hosts otherwise keep packet transport observable but reject complete packets before command side effects.
 
+At SGB/SGB2 `RealBoot` handoff, the real `FF50` unmap edge is also an SGB-host packet boundary: incomplete boot-ROM packet accumulation and active command state are cleared while accepted boot-packet counters and host video state remain intact. This prevents SGB boot-private multi-packet traffic from absorbing the first cartridge-side commands, such as the `MLT_REQ` probe used by Donkey Kong (GB), after cartridge code starts at `0x0100`.
+
 ## Responsibilities
 
 - Host-shell profile selection for SGB NTSC, SGB PAL, and SGB2 NTSC.
@@ -62,6 +64,8 @@ Each packet carries 16 bytes / 128 data bits, least-significant bit first within
 
 Packet transport state is part of `SgbHostSaveState`: last line state, active transfer flag, buffered bit/byte counts, current 16-byte buffer, pulse counters, last packet trace, active command ID, expected/received packet counts, accepted command count, rejected packet count, and invalid packet count. Save/load must resume a partially buffered packet exactly instead of re-reading P1 or replaying writes.
 
+`RealBoot` handoff is the one startup-owned exception to continuation of a partial packet: if the SGB boot ROM reaches `FF50` while a boot-private multi-packet command is still active, the host clears only the in-flight packet/command accumulator at that boundary so cartridge command transport starts from a clean idle state.
+
 ## Command ownership matrix
 
 | Command family | Examples | Owning state | Implementation notes |
@@ -88,11 +92,11 @@ The post-Slice-2 title-palette refinement models the SGB BIOS default/title pale
 
 Slice 2 implements the direct one-packet palette commands `PAL01`, `PAL23`, `PAL03`, and `PAL12`. Each command updates two physical screen palettes: one shared color 0 for the pair, three colors for the first palette, and three colors for the second palette. `PAL_SET`, `PAL_TRN`, and `PAL_PRI` remain later-slice commands because they depend on system palette transfer/selection and priority behavior outside the base direct-palette path.
 
-Slice 3 adds the shared 4 KiB `_TRN` capture seam. `CHR_TRN` and `PCT_TRN` are still normal one-packet SGB commands, but completing the packet only schedules a host-side transfer request; the machine captures the first 4 KiB of raw GB VRAM at the next PPU frame-start boundary and then lets the SGB host decode the payload. This keeps the command path faithful to the video-transfer model described by Pan Docs while leaving room for a later multi-frame timing refinement; it is not a CPU VRAM read, not CGB VRAM behavior, and not frontend-only postprocessing.
+Slice 3 adds the shared 4 KiB `_TRN` capture seam. `CHR_TRN` and `PCT_TRN` are still normal one-packet SGB commands, but completing the packet only schedules a host-side transfer request; at the next PPU frame-start boundary the machine reconstructs the 4 KiB payload from the prepared GB transfer display when it matches the SGB contract (`LCDC` enabled, BG enabled, no scroll, identity `BGP`), including signed-tiledata transfer screens such as Donkey Kong (GB), and then lets the SGB host decode that payload. This keeps the command path faithful to the video-transfer model described by Pan Docs while leaving room for a later multi-frame timing refinement; it is not a CPU VRAM read, not CGB VRAM behavior, and not frontend-only postprocessing.
 
 `CHR_TRN` decodes the command destination byte into tile block `$00-$7F` or `$80-$FF` and BG/OBJ tile type metadata, then writes the captured 4 KiB payload into SGB border tile memory. The BG/OBJ bit is retained as command metadata; the initial HLE border backend writes the same tile-memory range because Pan Docs notes that the bit appears not to change the address used by SGB software. Each SGB border tile is stored as 32 bytes of 4bpp SNES tile data: planes 0/1 interleaved by row, followed by planes 2/3 interleaved by row.
 
-`PCT_TRN` decodes the captured payload as border screen data: bytes `$000-$6FF` hold the 32×28 visible SNES BG map, bytes `$700-$73F` hold the extra 29th row that can be visible as a flicker line on real output, and bytes `$800-$85F` hold three 16-color little-endian RGB555 palettes corresponding to SNES BG palettes 4, 5, and 6. The host stores 29 rows so the extra-row data survives save/load even though the current 256×224 composition surface displays only the 28 visible rows.
+`PCT_TRN` decodes the captured payload as border screen data: bytes `$000-$6FF` hold the 32×28 visible SNES BG map, bytes `$700-$73F` hold the extra 29th row that can be visible as a flicker line on real output, and bytes `$800-$85F` hold three 16-color little-endian RGB555 palettes corresponding to SNES BG palettes 4, 5, and 6. The payload must be the SGB transfer-display byte stream, not blindly the raw `$8000-$8FFF` backing range, because real software may arrange the visible transfer screen through signed tiledata at `$8800-$97FF`; the host stores 29 rows so the extra-row data survives save/load even though the current 256×224 composition surface displays only the 28 visible rows.
 
 The full SGB host-frame output contract is `SgbHost::compose_frame_rgb555` / `Machine::sgb_framebuffer_rgb555`: a 256×224 RGB555 image with the 160×144 GB LCD window at `(48, 40)`. Border pixels outside the GB window always come from the border tilemap; inside the GB window, border color index 0 lets the composed SGB LCD image show through, while non-zero border pixels cover the GB window. This models the SGB border as host state and preserves the GB PPU framebuffer as the source of the LCD image.
 
