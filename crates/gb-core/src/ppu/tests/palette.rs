@@ -4403,7 +4403,7 @@ fn cgb_dmg_software_bgp_second_write_with_single_left_sprite_uses_cgb_onsets() {
 }
 
 #[test]
-fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels() {
+fn cgb_native_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
@@ -4429,6 +4429,55 @@ fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels(
 
     assert_eq!(ppu.obp0, Some(0x04));
     assert_eq!(&ppu.framebuffer()[2..6], &[2, 2, 2, 2]);
+}
+
+#[test]
+fn cgb_dmg_software_obp0_write_during_mode3_recolors_recent_obj_pixels_through_cgb_adapter() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x82,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        let [color1_low, color1_high] = 0x03E0_u16.to_le_bytes();
+        let [color2_low, color2_high] = 0x7C00_u16.to_le_bytes();
+        ppu.cgb_palettes
+            .port_mut(CgbPaletteKind::Object)
+            .write_palette_bytes(
+                0,
+                [0, 0, color1_low, color1_high, color2_low, color2_high, 0, 0],
+            );
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 200;
+        ppu.bg_pipeline_state.visible_pixels_output = 10;
+        ppu.obp0 = Some(0x08);
+        ppu.visible_registers.obp0 = Some(0x08);
+        ppu.current_scanline_mixed_pixels[2..6].fill(MixedPixel::object(1, false));
+        ppu.framebuffer[2..6].fill(2);
+        ppu.framebuffer_rgb555[2..6].fill(0x1111);
+
+        ppu.write_register(0xFF48, 0x04);
+
+        assert_eq!(ppu.obp0, Some(0x04));
+        assert_eq!(&ppu.framebuffer()[2..6], &[1, 1, 1, 1]);
+        assert_eq!(
+            &ppu.cgb_framebuffer_rgb555()
+                .expect("CGB model should expose the RGB555 framebuffer")[2..6],
+            &[0x03E0, 0x03E0, 0x03E0, 0x03E0]
+        );
+    }
 }
 
 #[test]
