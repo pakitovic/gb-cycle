@@ -1,8 +1,9 @@
 mod common;
 
 use gb_core::{
-    ConsoleModel, HostPlatform, Machine, MachineConfig, OperatingMode, SchedulerPhase,
-    SgbCommandAcceptance, SgbPacketTraceStatus, StartupMode, TCycle,
+    ConsoleModel, HostPlatform, JoypadButton, Machine, MachineConfig, OperatingMode,
+    SCHEDULER_PHASE_COUNT, SchedulerPhase, SgbCommandAcceptance, SgbPacketTraceStatus, StartupMode,
+    TCycle,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
@@ -44,6 +45,24 @@ fn write_sgb_palette_color(packet: &mut [u8; 16], offset: usize, rgb555: u16) {
     let [low, high] = rgb555.to_le_bytes();
     packet[offset] = low;
     packet[offset + 1] = high;
+}
+
+fn sgb_mlt_req_packet(control: u8) -> [u8; 16] {
+    let mut packet = [0; 16];
+    packet[0] = (0x11 << 3) | 1;
+    packet[1] = control;
+    packet
+}
+
+fn cycle_sgb_player(machine: &mut Machine) {
+    machine.write_bus(0xFF00, 0x10);
+    machine.write_bus(0xFF00, 0x30);
+}
+
+fn step_scheduler_cycle(machine: &mut Machine) {
+    for _ in 0..SCHEDULER_PHASE_COUNT {
+        machine.step_t_cycle();
+    }
 }
 
 fn step_until_sgb_transfer_count(machine: &mut Machine, expected_count: u64) {
@@ -142,6 +161,69 @@ fn sgb_host_observes_joyp_packet_writes_after_header_unlock() {
     );
     assert_eq!(snapshot.sgb_host.command.last_command_id, Some(0x11));
     assert_eq!(snapshot.sgb_host.command.accepted_command_count, 1);
+}
+
+#[test]
+fn sgb_multiplayer_routes_player_ids_and_input_slots_through_p1() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+
+    write_sgb_packet(&mut machine, sgb_mlt_req_packet(3));
+    assert_eq!(machine.read_bus(0xFF00), 0xFF);
+    cycle_sgb_player(&mut machine);
+    assert_eq!(machine.read_bus(0xFF00), 0xFE);
+
+    machine.set_sgb_joypad_button_pressed(2, JoypadButton::A, true);
+    step_scheduler_cycle(&mut machine);
+    assert_eq!(
+        machine.snapshot().sgb_host.multiplayer.player_pressed_masks[1],
+        0x10
+    );
+    assert_eq!(machine.snapshot().sgb_host.multiplayer.selected_player, 2);
+    machine.write_bus(0xFF00, 0x10);
+    assert_eq!(
+        machine.read_bus(0xFF00),
+        0xDE,
+        "with player 2 selected, the SGB host routes player 2's A button through the ordinary button row"
+    );
+
+    machine.set_sgb_joypad_button_pressed(1, JoypadButton::Right, true);
+    step_scheduler_cycle(&mut machine);
+    machine.write_bus(0xFF00, 0x20);
+    assert_eq!(
+        machine.read_bus(0xFF00),
+        0xEF,
+        "player 1 input must not leak into the currently selected SGB player slot"
+    );
+
+    let saved = machine.capture_save_state();
+    let mut restored = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    restored
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+    restored
+        .restore_save_state(&saved)
+        .expect("SGB multiplayer state should restore");
+    assert_eq!(restored.read_bus(0xFF00), 0xEF);
+    assert_eq!(
+        restored.snapshot().sgb_host.multiplayer.selected_player,
+        3,
+        "switching from the button row to the direction row raises P15 and advances the selected SGB player"
+    );
+    assert_eq!(
+        restored
+            .snapshot()
+            .sgb_host
+            .multiplayer
+            .player_pressed_masks[1],
+        0x10
+    );
 }
 
 #[test]

@@ -16,7 +16,7 @@ use crate::model::OperatingMode;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
-use crate::sgb::SgbHost;
+use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHost};
 use crate::speed::SpeedController;
 use crate::timer::{Timer, TimerStartupState};
 
@@ -43,6 +43,11 @@ impl<S: TraceSink> Machine<S> {
                 ppu_cpu_visible_read: false,
             },
         );
+        let value = if address == 0xFF00 {
+            self.sgb_host.joyp_read_value(value)
+        } else {
+            value
+        };
         self.bus.route_cpu_address_event(
             CpuAddressEvent {
                 kind: CpuAddressEventKind::Read,
@@ -59,12 +64,7 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
-        if address == 0xFF00 {
-            self.sgb_host.observe_joyp_write(value);
-            let _ = self
-                .sgb_host
-                .capture_pending_lcd_freeze(self.ppu.framebuffer());
-        }
+        let sgb_joyp_write = address == 0xFF00;
 
         if cpu_write_targets_ppu_mmio(&self.bus, address) {
             let mut pending = Some(PendingPpuMmioWrite { address, value });
@@ -104,6 +104,15 @@ impl<S: TraceSink> Machine<S> {
                 boot_ff50_newly_unmapped: Some(&mut boot_rom_newly_unmapped),
             },
         );
+        if sgb_joyp_write && self.config.host_platform.is_sgb() {
+            self.sgb_host.observe_joyp_write(value);
+            let _ = self
+                .sgb_host
+                .capture_pending_lcd_freeze(self.ppu.framebuffer());
+            let _ = self
+                .joypad
+                .apply_pressed_mask(self.sgb_host.selected_player_pressed_mask());
+        }
         finalize_cgb_real_boot_handoff_if_needed(
             RealBootHandoffParts {
                 config: &mut self.config,
@@ -146,10 +155,15 @@ impl<S: TraceSink> Machine<S> {
         let (cartridge, diagnostics) = report.into_parts();
         let external_port = self.external_port.clone();
         let host_joypad_pressed_mask = self.pending_external_events.joypad_pressed_mask();
+        let host_sgb_joypad_pressed_masks = self.pending_external_events.sgb_joypad_pressed_masks();
         self.cartridge = cartridge;
         self.config
             .apply_direct_boot_cartridge_header(self.cartridge.header());
-        self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, external_port);
+        self.restart_runtime_after_cartridge_load(
+            host_joypad_pressed_mask,
+            host_sgb_joypad_pressed_masks,
+            external_port,
+        );
         Ok(diagnostics)
     }
 
@@ -184,6 +198,7 @@ impl<S: TraceSink> Machine<S> {
     fn restart_runtime_after_cartridge_load(
         &mut self,
         host_joypad_pressed_mask: u8,
+        host_sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
         external_port: crate::external_port::ExternalPort,
     ) {
         let console_model = self.config.console_model;
@@ -210,10 +225,14 @@ impl<S: TraceSink> Machine<S> {
         self.joypad = Joypad::new(console_model);
         self.pending_ppu_mmio_write = None;
 
-        self.apply_startup_configuration(host_joypad_pressed_mask);
+        self.apply_startup_configuration(host_joypad_pressed_mask, host_sgb_joypad_pressed_masks);
     }
 
-    pub(super) fn apply_startup_configuration(&mut self, host_joypad_pressed_mask: u8) {
+    pub(super) fn apply_startup_configuration(
+        &mut self,
+        host_joypad_pressed_mask: u8,
+        host_sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+    ) {
         if let Some(mut startup_state) = self.boot.machine_skip_boot_state(Some(&self.cartridge)) {
             if self.config.operating_mode == OperatingMode::CgbDmgExt {
                 // DocBoy's CGB DMG-ext direct-boot profile starts with the boot-logo pulse residue inactive while keeping the ordinary powered APU register image. Keep this narrow to the experimental mode so promoted CGB startup audio state stays unchanged.
@@ -265,9 +284,19 @@ impl<S: TraceSink> Machine<S> {
             .apply_cgb_startup_state(self.config.startup_mode, self.cartridge.header());
         self.sgb_host
             .apply_cartridge_header(self.cartridge.header());
+        if self.config.host_platform.is_sgb() {
+            self.sgb_host
+                .set_player_pressed_masks(host_sgb_joypad_pressed_masks);
+            let _ = self
+                .joypad
+                .apply_pressed_mask(self.sgb_host.selected_player_pressed_mask());
+        }
         self.external_port.apply_startup_reset();
         self.sync_serial_peer_from_external_port();
-        self.pending_external_events
-            .reset_for_startup(host_joypad_pressed_mask, self.joypad.pressed_mask());
+        self.pending_external_events.reset_for_startup(
+            host_joypad_pressed_mask,
+            host_sgb_joypad_pressed_masks,
+            self.joypad.pressed_mask(),
+        );
     }
 }

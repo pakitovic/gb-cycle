@@ -1,4 +1,5 @@
 use crate::cartridge::{CartridgeHeader, SgbFlag};
+use crate::joypad::{JoypadButton, button_mask};
 use crate::model::{HostPlatform, StartupMode};
 
 const JOYP_SELECT_BITS_MASK: u8 = 0x30;
@@ -36,6 +37,7 @@ pub const SGB_BORDER_TILEMAP_ENTRIES: usize =
     SGB_BORDER_TILEMAP_WIDTH * SGB_BORDER_TILEMAP_STORED_HEIGHT;
 pub const SGB_BORDER_PALETTE_COUNT: usize = 3;
 pub const SGB_BORDER_PALETTE_COLORS: usize = 16;
+pub const SGB_CONTROLLER_COUNT: usize = 4;
 
 const SGB_PACKET_BYTES: usize = SGB_COMMAND_PACKET_BYTES;
 const SGB_PACKET_BITS: u8 = 128;
@@ -62,6 +64,7 @@ const SGB_COMMAND_PCT_TRN: u8 = 0x14;
 const SGB_COMMAND_ATTR_TRN: u8 = 0x15;
 const SGB_COMMAND_ATTR_SET: u8 = 0x16;
 const SGB_COMMAND_MASK_EN: u8 = 0x17;
+const SGB_COMMAND_MLT_REQ: u8 = 0x11;
 const SGB_COMMAND_PAL_PRI: u8 = 0x19;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -1248,6 +1251,10 @@ pub struct SgbVideoState {
 pub struct SgbMultiplayerState {
     pub player_count: u8,
     pub selected_player: u8,
+    pub player_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+    pub last_mlt_req_control: u8,
+    pub mlt_req_count: u64,
+    pub player_cycle_count: u64,
 }
 
 #[derive(
@@ -1364,6 +1371,41 @@ impl SgbHost {
         }
     }
 
+    pub const fn selected_player_pressed_mask(&self) -> u8 {
+        self.multiplayer.selected_player_pressed_mask()
+    }
+
+    pub fn set_player_pressed_mask(&mut self, player: u8, pressed_mask: u8) -> bool {
+        self.multiplayer
+            .set_player_pressed_mask(player, pressed_mask)
+    }
+
+    pub fn set_player_pressed_masks(&mut self, pressed_masks: [u8; SGB_CONTROLLER_COUNT]) -> bool {
+        self.multiplayer.set_player_pressed_masks(pressed_masks)
+    }
+
+    pub fn set_player_button_pressed(
+        &mut self,
+        player: u8,
+        button: JoypadButton,
+        pressed: bool,
+    ) -> bool {
+        self.multiplayer
+            .set_player_button_pressed(player, button, pressed)
+    }
+
+    pub const fn player_pressed_masks(&self) -> [u8; SGB_CONTROLLER_COUNT] {
+        self.multiplayer.player_pressed_masks
+    }
+
+    pub fn joyp_read_value(&self, value: u8) -> u8 {
+        if self.host_platform.is_sgb() {
+            self.multiplayer.joyp_read_value(value)
+        } else {
+            value
+        }
+    }
+
     pub(crate) fn capture_save_state(&self) -> SgbHostSaveState {
         SgbHostSaveState {
             host_platform: self.host_platform,
@@ -1403,6 +1445,8 @@ impl SgbHost {
 
         let line_state = SgbJoypLineState::from_joyp_value(value);
         let previous_line_state = self.packet_transport.last_joyp_line_state;
+        self.multiplayer
+            .observe_joyp_write(previous_line_state, value);
         match line_state {
             SgbJoypLineState::Idle => {
                 self.packet_transport.last_joyp_line_state = line_state;
@@ -1609,6 +1653,9 @@ impl SgbHost {
             SGB_COMMAND_PAL_TRN if packet_count == 1 => {
                 self.video.request_pal_transfer(command_id);
             }
+            SGB_COMMAND_MLT_REQ if packet_count == 1 => self
+                .multiplayer
+                .apply_mlt_req_command(&self.command.packet_buffer[0]),
             SGB_COMMAND_CHR_TRN if packet_count == 1 => self
                 .video
                 .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
@@ -1856,6 +1903,137 @@ impl SgbMultiplayerState {
         Self {
             player_count: if active { 1 } else { 0 },
             selected_player: if active { 1 } else { 0 },
+            player_pressed_masks: [0; SGB_CONTROLLER_COUNT],
+            last_mlt_req_control: 0,
+            mlt_req_count: 0,
+            player_cycle_count: 0,
+        }
+    }
+
+    fn apply_mlt_req_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        if self.player_count == 0 {
+            return;
+        }
+
+        let control = bytes[1] & 0x03;
+        let player_count = match control {
+            0 => 1,
+            1 => 2,
+            2 => 3,
+            _ => 4,
+        };
+        let current_player_index = self.selected_player_index();
+        let selected_player_index = if control == 2 {
+            (current_player_index + 1) & 0x02
+        } else {
+            current_player_index & (player_count - 1)
+        };
+
+        self.player_count = player_count;
+        self.selected_player = selected_player_index + 1;
+        self.last_mlt_req_control = control;
+        self.mlt_req_count = self.mlt_req_count.saturating_add(1);
+    }
+
+    fn observe_joyp_write(&mut self, previous_line_state: SgbJoypLineState, value: u8) {
+        if !self.cycles_players_on_p15_rise() {
+            return;
+        }
+
+        let previous_p15_low = matches!(
+            previous_line_state,
+            SgbJoypLineState::Start | SgbJoypLineState::One
+        );
+        let current_p15_high = value & 0x20 != 0;
+        if previous_p15_low && current_p15_high {
+            self.cycle_selected_player();
+        }
+    }
+
+    fn cycle_selected_player(&mut self) {
+        let player_count = self.player_count.min(SGB_CONTROLLER_COUNT as u8);
+        if player_count == 0 {
+            self.selected_player = 0;
+            return;
+        }
+
+        let selected_player_index = (self.selected_player_index() + 1) & (player_count - 1);
+        self.selected_player = selected_player_index + 1;
+        self.player_cycle_count = self.player_cycle_count.saturating_add(1);
+    }
+
+    const fn cycles_players_on_p15_rise(&self) -> bool {
+        self.player_count != 0 && self.player_count & 0x01 == 0
+    }
+
+    const fn selected_player_index(&self) -> u8 {
+        if self.selected_player == 0 {
+            0
+        } else if self.selected_player > SGB_CONTROLLER_COUNT as u8 {
+            SGB_CONTROLLER_COUNT as u8 - 1
+        } else {
+            self.selected_player - 1
+        }
+    }
+
+    pub const fn selected_player_pressed_mask(&self) -> u8 {
+        if self.player_count == 0 {
+            0
+        } else {
+            self.player_pressed_masks[self.selected_player_index() as usize]
+        }
+    }
+
+    pub fn set_player_pressed_mask(&mut self, player: u8, pressed_mask: u8) -> bool {
+        let Some(player_index) = player_index(player) else {
+            return false;
+        };
+        if self.player_pressed_masks[player_index] == pressed_mask {
+            return false;
+        }
+
+        self.player_pressed_masks[player_index] = pressed_mask;
+        true
+    }
+
+    pub fn set_player_pressed_masks(&mut self, pressed_masks: [u8; SGB_CONTROLLER_COUNT]) -> bool {
+        if self.player_pressed_masks == pressed_masks {
+            return false;
+        }
+
+        self.player_pressed_masks = pressed_masks;
+        true
+    }
+
+    pub fn set_player_button_pressed(
+        &mut self,
+        player: u8,
+        button: JoypadButton,
+        pressed: bool,
+    ) -> bool {
+        let Some(player_index) = player_index(player) else {
+            return false;
+        };
+        let bit = button_mask(button);
+        let previous_mask = self.player_pressed_masks[player_index];
+        let pressed_mask = if pressed {
+            previous_mask | bit
+        } else {
+            previous_mask & !bit
+        };
+        if pressed_mask == previous_mask {
+            return false;
+        }
+
+        self.player_pressed_masks[player_index] = pressed_mask;
+        true
+    }
+
+    fn joyp_read_value(self, value: u8) -> u8 {
+        if self.player_count > 1 && value & JOYP_SELECT_BITS_MASK == JOYP_SELECT_BITS_MASK {
+            (value & 0xF0) | (0x0F - self.selected_player_index())
+        } else {
+            value
         }
     }
 }
@@ -1863,6 +2041,14 @@ impl SgbMultiplayerState {
 impl Default for SgbMultiplayerState {
     fn default() -> Self {
         Self::default_for_active_host(false)
+    }
+}
+
+const fn player_index(player: u8) -> Option<usize> {
+    if player == 0 || player > SGB_CONTROLLER_COUNT as u8 {
+        None
+    } else {
+        Some((player - 1) as usize)
     }
 }
 
@@ -2193,6 +2379,12 @@ mod tests {
         sgb_command_packet(SGB_COMMAND_ATTR_TRN, 1)
     }
 
+    fn sgb_mlt_req_packet(control: u8) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_MLT_REQ, 1);
+        bytes[1] = control;
+        bytes
+    }
+
     fn write_system_palette_color(
         bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES],
         palette_index: usize,
@@ -2270,6 +2462,15 @@ mod tests {
             }
         }
         write_joyp_data_bit(host, 0);
+    }
+
+    fn cycle_sgb_player(host: &mut SgbHost) {
+        host.observe_joyp_write(SGB_JOYP_ONE_BITS);
+        host.observe_joyp_write(SGB_JOYP_IDLE_BITS);
+    }
+
+    fn sgb_player_id_value(host: &SgbHost) -> u8 {
+        host.joyp_read_value(0xFF)
     }
 
     fn accepted_sgb_host() -> SgbHost {
@@ -2430,6 +2631,98 @@ mod tests {
         assert_eq!(snapshot.packet_transport.last_trace.packet_index, 1);
         assert_eq!(snapshot.command.last_command_id, Some(0x11));
         assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn mlt_req_selects_one_two_and_four_player_modes() {
+        let mut host = accepted_sgb_host();
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(1));
+        assert_eq!(host.snapshot().multiplayer.player_count, 2);
+        assert_eq!(host.snapshot().multiplayer.selected_player, 1);
+        assert_eq!(sgb_player_id_value(&host), 0xFF);
+
+        cycle_sgb_player(&mut host);
+        assert_eq!(host.snapshot().multiplayer.selected_player, 2);
+        assert_eq!(sgb_player_id_value(&host), 0xFE);
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(0));
+        assert_eq!(host.snapshot().multiplayer.player_count, 1);
+        assert_eq!(host.snapshot().multiplayer.selected_player, 1);
+        assert_eq!(
+            sgb_player_id_value(&host),
+            0xFF,
+            "one-player mode keeps both P1 rows deselected as ordinary open lines"
+        );
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        assert_eq!(host.snapshot().multiplayer.player_count, 4);
+        assert_eq!(host.snapshot().multiplayer.selected_player, 1);
+        assert_eq!(sgb_player_id_value(&host), 0xFF);
+        cycle_sgb_player(&mut host);
+        assert_eq!(sgb_player_id_value(&host), 0xFE);
+        cycle_sgb_player(&mut host);
+        assert_eq!(sgb_player_id_value(&host), 0xFD);
+        cycle_sgb_player(&mut host);
+        assert_eq!(sgb_player_id_value(&host), 0xFC);
+        assert_eq!(
+            host.snapshot().multiplayer.player_cycle_count,
+            8,
+            "SGB player cycling also observes the P15 rises in MLT_REQ packet transport while multiplayer is already enabled"
+        );
+    }
+
+    #[test]
+    fn mlt_req_packet_transport_cycles_player_before_mode_change() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        assert_eq!(sgb_player_id_value(&host), 0xFF);
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        assert_eq!(
+            sgb_player_id_value(&host),
+            0xFD,
+            "sending MLT_REQ 3 while already in four-player mode cycles the player through the command transport pulses before the command side effect"
+        );
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(1));
+        assert_eq!(
+            sgb_player_id_value(&host),
+            0xFE,
+            "switching from four-player to two-player mode masks the already-cycled player index"
+        );
+    }
+
+    #[test]
+    fn mlt_req_control_2_preserves_hardware_glitched_three_player_state() {
+        let mut host = accepted_sgb_host();
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(0));
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(2));
+        assert_eq!(host.snapshot().multiplayer.player_count, 3);
+        assert_eq!(sgb_player_id_value(&host), 0xFF);
+        cycle_sgb_player(&mut host);
+        assert_eq!(
+            sgb_player_id_value(&host),
+            0xFF,
+            "control 2 leaves an odd three-player selector that does not cycle on P15 rises"
+        );
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(0));
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(2));
+        assert_eq!(
+            sgb_player_id_value(&host),
+            0xFD,
+            "control 2 maps the transport-cycled four-player index onto the hardware-observed player 1/player 3 pair"
+        );
+
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(0));
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        cycle_sgb_player(&mut host);
+        cycle_sgb_player(&mut host);
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(2));
+        assert_eq!(sgb_player_id_value(&host), 0xFF);
     }
 
     #[test]
@@ -3091,6 +3384,27 @@ mod tests {
             snapshot.video.palette_state.palette(0).colors[1].raw(),
             0x03E0
         );
+    }
+
+    #[test]
+    fn save_state_restores_sgb_multiplayer_state_and_input_slots() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_mlt_req_packet(3));
+        cycle_sgb_player(&mut host);
+        assert!(host.set_player_button_pressed(2, JoypadButton::A, true));
+        assert!(host.set_player_button_pressed(4, JoypadButton::Start, true));
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 4);
+        assert_eq!(snapshot.multiplayer.selected_player, 2);
+        assert_eq!(snapshot.multiplayer.player_pressed_masks[1], 0x10);
+        assert_eq!(snapshot.multiplayer.player_pressed_masks[3], 0x80);
+        assert_eq!(restored.selected_player_pressed_mask(), 0x10);
+        assert_eq!(restored.joyp_read_value(0xFF), 0xFE);
     }
 
     #[test]

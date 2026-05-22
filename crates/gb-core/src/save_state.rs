@@ -16,7 +16,7 @@ use crate::model::{
 pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
 pub use crate::serial::SerialSaveState;
-pub use crate::sgb::SgbHostSaveState;
+pub use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHostSaveState};
 pub use crate::speed::SpeedSaveState;
 pub use crate::timer::TimerSaveState;
 
@@ -79,6 +79,8 @@ pub struct SchedulerSaveState {
 pub(crate) struct MachineRuntimeSaveState {
     pub(crate) joypad_pressed_mask: u8,
     pub(crate) joypad_state_dirty: bool,
+    pub(crate) sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+    pub(crate) sgb_joypad_state_dirty_mask: u8,
     pub(crate) external_serial_clock_pulses_pending: u8,
 }
 

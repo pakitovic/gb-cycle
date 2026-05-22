@@ -27,7 +27,7 @@ use crate::save_state::{
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
-use crate::sgb::SgbHost;
+use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHost};
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -35,14 +35,20 @@ use crate::timer::Timer;
 pub(crate) struct PendingExternalEvents {
     joypad_pressed_mask: u8,
     joypad_state_dirty: bool,
+    sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+    sgb_joypad_state_dirty_mask: u8,
     external_serial_clock_pulses_pending: u8,
 }
 
 impl PendingExternalEvents {
     const fn new(joypad_pressed_mask: u8) -> Self {
+        let mut sgb_joypad_pressed_masks = [0; SGB_CONTROLLER_COUNT];
+        sgb_joypad_pressed_masks[0] = joypad_pressed_mask;
         Self {
             joypad_pressed_mask,
             joypad_state_dirty: false,
+            sgb_joypad_pressed_masks,
+            sgb_joypad_state_dirty_mask: 0,
             external_serial_clock_pulses_pending: 0,
         }
     }
@@ -51,8 +57,14 @@ impl PendingExternalEvents {
         *self = Self::new(joypad_pressed_mask);
     }
 
-    fn reset_for_startup(&mut self, host_joypad_pressed_mask: u8, hardware_pressed_mask: u8) {
+    fn reset_for_startup(
+        &mut self,
+        host_joypad_pressed_mask: u8,
+        host_sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+        hardware_pressed_mask: u8,
+    ) {
         self.reset(host_joypad_pressed_mask);
+        self.sgb_joypad_pressed_masks = host_sgb_joypad_pressed_masks;
         self.joypad_state_dirty = host_joypad_pressed_mask != hardware_pressed_mask;
     }
 
@@ -71,6 +83,29 @@ impl PendingExternalEvents {
         }
     }
 
+    fn set_sgb_joypad_button_pressed(&mut self, player: u8, button: JoypadButton, pressed: bool) {
+        let Some(player_index) = sgb_player_index(player) else {
+            return;
+        };
+        let bit = button_mask(button);
+        let previous_mask = self.sgb_joypad_pressed_masks[player_index];
+        let pressed_mask = if pressed {
+            previous_mask | bit
+        } else {
+            previous_mask & !bit
+        };
+
+        if pressed_mask == previous_mask {
+            return;
+        }
+
+        self.sgb_joypad_pressed_masks[player_index] = pressed_mask;
+        self.sgb_joypad_state_dirty_mask |= 1 << player_index;
+        if player_index == 0 {
+            self.joypad_pressed_mask = pressed_mask;
+        }
+    }
+
     fn take_pending_joypad_pressed_mask(&mut self) -> Option<u8> {
         if !self.joypad_state_dirty {
             return None;
@@ -78,6 +113,15 @@ impl PendingExternalEvents {
 
         self.joypad_state_dirty = false;
         Some(self.joypad_pressed_mask)
+    }
+
+    fn take_pending_sgb_joypad_pressed_masks(&mut self) -> Option<[u8; SGB_CONTROLLER_COUNT]> {
+        if self.sgb_joypad_state_dirty_mask == 0 {
+            return None;
+        }
+
+        self.sgb_joypad_state_dirty_mask = 0;
+        Some(self.sgb_joypad_pressed_masks)
     }
 
     fn queue_external_serial_clock(&mut self) {
@@ -95,11 +139,25 @@ impl PendingExternalEvents {
     }
 
     fn has_pending_work(&self) -> bool {
-        self.joypad_state_dirty || self.external_serial_clock_pulses_pending != 0
+        self.joypad_state_dirty
+            || self.sgb_joypad_state_dirty_mask != 0
+            || self.external_serial_clock_pulses_pending != 0
     }
 
     fn joypad_pressed_mask(&self) -> u8 {
         self.joypad_pressed_mask
+    }
+
+    const fn sgb_joypad_pressed_masks(&self) -> [u8; SGB_CONTROLLER_COUNT] {
+        self.sgb_joypad_pressed_masks
+    }
+}
+
+const fn sgb_player_index(player: u8) -> Option<usize> {
+    if player == 0 || player > SGB_CONTROLLER_COUNT as u8 {
+        None
+    } else {
+        Some((player - 1) as usize)
     }
 }
 
@@ -301,7 +359,7 @@ impl<S: TraceSink> Machine<S> {
             pending_ppu_mmio_write: None,
         };
 
-        machine.apply_startup_configuration(0);
+        machine.apply_startup_configuration(0, [0; SGB_CONTROLLER_COUNT]);
         machine
     }
 
@@ -474,8 +532,27 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
+        if self.config.host_platform.is_sgb() {
+            self.pending_external_events
+                .set_sgb_joypad_button_pressed(1, button, pressed);
+        } else {
+            self.pending_external_events
+                .set_joypad_button_pressed(button, pressed);
+        }
+    }
+
+    pub fn set_sgb_joypad_button_pressed(
+        &mut self,
+        player: u8,
+        button: JoypadButton,
+        pressed: bool,
+    ) {
+        if !self.config.host_platform.is_sgb() {
+            return;
+        }
+
         self.pending_external_events
-            .set_joypad_button_pressed(button, pressed);
+            .set_sgb_joypad_button_pressed(player, button, pressed);
     }
 
     pub fn cartridge(&self) -> &CartridgeSlot {
@@ -537,6 +614,10 @@ impl<S: TraceSink> Machine<S> {
                 machine: MachineRuntimeSaveState {
                     joypad_pressed_mask: self.pending_external_events.joypad_pressed_mask,
                     joypad_state_dirty: self.pending_external_events.joypad_state_dirty,
+                    sgb_joypad_pressed_masks: self.pending_external_events.sgb_joypad_pressed_masks,
+                    sgb_joypad_state_dirty_mask: self
+                        .pending_external_events
+                        .sgb_joypad_state_dirty_mask,
                     external_serial_clock_pulses_pending: self
                         .pending_external_events
                         .external_serial_clock_pulses_pending,
@@ -585,6 +666,8 @@ impl<S: TraceSink> Machine<S> {
         self.pending_external_events = PendingExternalEvents {
             joypad_pressed_mask: core.machine.joypad_pressed_mask,
             joypad_state_dirty: core.machine.joypad_state_dirty,
+            sgb_joypad_pressed_masks: core.machine.sgb_joypad_pressed_masks,
+            sgb_joypad_state_dirty_mask: core.machine.sgb_joypad_state_dirty_mask,
             external_serial_clock_pulses_pending: core.machine.external_serial_clock_pulses_pending,
         };
         self.pending_ppu_mmio_write = None;

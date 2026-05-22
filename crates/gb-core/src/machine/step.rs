@@ -349,7 +349,23 @@ impl MachinePhaseRunner<'_> {
         }
 
         observe_machine_step_region(observer, MachineStepRegion::ExternalEvents, || {
-            if let Some(pressed_mask) = self
+            if self.config.host_platform.is_sgb() {
+                if let Some(pressed_masks) = self
+                    .pending_external_events
+                    .take_pending_sgb_joypad_pressed_masks()
+                {
+                    self.sgb_host.set_player_pressed_masks(pressed_masks);
+                    if self
+                        .joypad
+                        .apply_pressed_mask(self.sgb_host.selected_player_pressed_mask())
+                    {
+                        context.push_external_event(ExternalEvent::HostInputChanged);
+                        tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                            self.joypad.scheduler_trace_message(context)
+                        });
+                    }
+                }
+            } else if let Some(pressed_mask) = self
                 .pending_external_events
                 .take_pending_joypad_pressed_mask()
                 && self.joypad.apply_pressed_mask(pressed_mask)
@@ -687,6 +703,7 @@ impl MachinePhaseRunner<'_> {
             let dma = &mut self.dma;
             let timer = &mut self.timer;
             let serial = &mut self.serial;
+            let sgb_host = &mut self.sgb_host;
             let speed = &mut self.speed;
             let boot = &mut self.boot;
             let config = &mut self.config;
@@ -710,7 +727,7 @@ impl MachinePhaseRunner<'_> {
                     let interrupt_flag_pending_mask =
                         cpu_interrupt_mask_for_if_read(address, context, ppu, joypad);
 
-                    Some(bus.read_with_t_cycle_context(
+                    let value = bus.read_with_t_cycle_context(
                         address,
                         BusRequester::Cpu,
                         &read_arbitration_state,
@@ -729,7 +746,12 @@ impl MachinePhaseRunner<'_> {
                             speed: Some(speed),
                             ppu_cpu_visible_read: true,
                         },
-                    ))
+                    );
+                    Some(if address == 0xFF00 {
+                        sgb_host.joyp_read_value(value)
+                    } else {
+                        value
+                    })
                 }
                 CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
@@ -759,6 +781,12 @@ impl MachinePhaseRunner<'_> {
                                 boot_ff50_newly_unmapped: Some(&mut boot_rom_newly_unmapped),
                             },
                         );
+                        if address == 0xFF00 && config.host_platform.is_sgb() {
+                            sgb_host.observe_joyp_write(value);
+                            let _ = sgb_host.capture_pending_lcd_freeze(ppu.framebuffer());
+                            let _ =
+                                joypad.apply_pressed_mask(sgb_host.selected_player_pressed_mask());
+                        }
                         finalize_cgb_real_boot_handoff_if_needed(
                             RealBootHandoffParts {
                                 config,
