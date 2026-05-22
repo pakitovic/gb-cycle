@@ -75,7 +75,27 @@ Acceptance criteria:
 - Save/load captures SGB palette RAM, active palette selection, and any palette priority state introduced by this slice.
 - Example-title notes cover Alleyway, Super Mario Land 2: 6 Golden Coins, and Pokémon Red / Blue / Yellow as manual compatibility references, not gates.
 
-Status: implemented as the Slice 2 baseline. `SgbHost` now owns four screen palettes of four SNES/CGB-layout RGB555 colors, an explicit base LCD palette selection, and a host-side 160×144 LCD RGB555 composition path that maps the DMG PPU's final panel shade indices without mutating DMG `BGP`/`OBP` behavior or enabling CGB palette hardware. The direct one-packet palette commands `PAL01`, `PAL23`, `PAL03`, and `PAL12` update the paired SGB screen palettes from little-endian RGB555 payload bytes; color 0 is shared by the two addressed palettes as documented by the command format, and bit 15 is masked as an ignored color bit. Command packet buffering now retains up to seven 16-byte packets in host command state so later multi-packet attribute/transfer commands can build on the same save-state boundary instead of replacing Slice 1 transport. The durable machine save-state format version is bumped again because Slice 2 adds live palette and command-buffer state. Manual compatibility examples for this slice are Alleyway, Super Mario Land 2: 6 Golden Coins, and Pokémon Red / Blue / Yellow.
+Status: implemented as the Slice 2 baseline. `SgbHost` now owns four screen palettes of four SNES/CGB-layout RGB555 colors, an explicit base LCD palette selection, and a host-side 160×144 LCD RGB555 composition path that maps the DMG PPU's final panel shade indices without mutating DMG `BGP`/`OBP` behavior or enabling CGB palette hardware. The direct one-packet palette commands `PAL01`, `PAL23`, `PAL03`, and `PAL12` update the paired SGB screen palettes from little-endian RGB555 payload bytes; color 0 is shared by the two addressed palettes as documented by the command format, and bit 15 is masked as an ignored color bit. Command packet buffering now retains up to seven 16-byte packets in host command state so later multi-packet attribute/transfer commands can build on the same save-state boundary instead of replacing Slice 1 transport. The durable machine save-state format version is bumped again because Slice 2 adds live palette and command-buffer state. Manual compatibility examples for this slice are Alleyway, Super Mario Land 2: 6 Golden Coins, and Pokémon Red / Blue / Yellow. Automatic SGB BIOS title/default palettes for DMG-only games were intentionally treated as a post-Slice-2 refinement rather than part of the strict Slice 2 closure.
+
+## Post-Slice 2 refinement — SGB boot/title palettes
+
+Scope: model the SGB BIOS default and title palette seed for DMG software that does not unlock SGB commands, without contaminating CGB palette hardware or hardcoding frontend game overrides.
+
+Implementation notes:
+
+- Seed active SGB/SGB2 physical screen palette 0 from the SGB BIOS built-in default palette at host construction and cartridge-header application; leave the other screen palettes deterministic until commands or transferred palettes replace them.
+- When the cartridge header is rejected for SGB command acceptance, match the raw 16-byte title bytes against the exact NUL-padded SGB BIOS title table and copy the selected built-in palette into screen palette 0.
+- Do not apply title matching to SGB-command-capable cartridges; those start from the default boot palette and are expected to update visible color through `PALxx`, `PAL_SET`, `PAL_TRN`, or later real host execution.
+- Preserve the same host palette save/load boundary as Slice 2: save states store the resulting palette RAM, not a frontend-only title override.
+
+Acceptance criteria:
+
+- Alleyway-style DMG-only title matching changes SGB RGB555 LCD output before any SGB command packet is received.
+- Unknown or non-exact title matches fall back to the SGB BIOS default palette.
+- SGB-command-capable headers with matching titles do not receive the automatic title palette.
+- CGB framebuffer/palette hardware remains inactive for SGB title palette output.
+
+Status: implemented as a post-Slice-2 refinement. `SgbHost` now owns the SGB BIOS built-in palette table and exact title-to-palette table as host startup data, applies palette 0 seeding during header application after command-acceptance policy is known, and preserves the resulting palette through the existing SGB palette save-state payload. No durable save-state format bump is required because the typed payload shape is unchanged.
 
 ## Slice 3 — VRAM transfer engine and borders
 
@@ -211,7 +231,7 @@ These titles are optional manual compatibility examples only. They are not hardw
 ## Test plan
 
 - Every SGB implementation slice must preserve the existing DMG ROM gate and run relevant CGB gates when shared model, boot, PPU, APU, serial, scheduler, link, save-state, or frontend output contracts are touched.
-- Add focused synthetic/unit tests per slice for packet decode, command state, palette/attribute composition, border composition, `MLT_REQ` controller cycling, SGB2 link routing, save/load continuation, audio events, and SNES host seams.
+- Add focused synthetic/unit tests per slice for packet decode, command state, boot/title palette seeding, palette/attribute composition, border composition, `MLT_REQ` controller cycling, SGB2 link routing, save/load continuation, audio events, and SNES host seams.
 - Add manifest or frontend smoke support only after an oracle channel and artifact policy are defined; commercial games listed here remain manual examples.
 - Use SameBoy and other mature SGB-capable emulators only as comparison aids after primary documentation and hardware research, not as hardware truth by themselves.
 

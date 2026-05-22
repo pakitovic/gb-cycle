@@ -21,6 +21,16 @@ fn build_sgb_supported_rom() -> Vec<u8> {
     rom
 }
 
+fn build_sgb_rejected_title_rom(title: &[u8]) -> Vec<u8> {
+    assert!(title.len() <= 15);
+    let mut rom = build_header_mode_rom(0x00);
+    rom[0x0134..0x0144].fill(0);
+    rom[0x0134..0x0134 + title.len()].copy_from_slice(title);
+    rom[0x0146] = 0x00;
+    rom[0x014B] = 0x33;
+    rom
+}
+
 fn write_sgb_packet(machine: &mut Machine, bytes: [u8; 16]) {
     machine.write_bus(0xFF00, 0x00);
     machine.write_bus(0xFF00, 0x30);
@@ -264,6 +274,37 @@ fn sgb_lcd_color_output_maps_dmg_framebuffer_without_cgb_palette_hardware() {
     let snapshot = machine.snapshot();
     assert_eq!(snapshot.sgb_host.video.last_palette_command_id, Some(0x00));
     assert_eq!(snapshot.sgb_host.video.palette_command_count, 1);
+}
+
+#[test]
+fn sgb_load_applies_boot_title_palette_for_dmg_games_without_commands() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_rejected_title_rom(b"ALLEY WAY"))
+        .expect("DMG ROM should load on SGB");
+
+    let snapshot = machine.snapshot();
+    assert_eq!(
+        snapshot.sgb_host.startup.command_acceptance,
+        SgbCommandAcceptance::RejectedByHeader
+    );
+    assert_eq!(snapshot.sgb_host.video.last_palette_command_id, None);
+    assert_eq!(snapshot.sgb_host.video.palette_command_count, 0);
+    assert!(
+        machine.ppu().cgb_framebuffer_rgb555().is_none(),
+        "SGB title palette seeding must not enable or reuse CGB palette framebuffer hardware"
+    );
+
+    let sgb_lcd = machine
+        .sgb_lcd_framebuffer_rgb555()
+        .expect("SGB host should compose the title-seeded 160x144 RGB555 LCD image");
+    assert_eq!(sgb_lcd.len(), gb_core::SGB_LCD_PIXELS);
+    assert!(
+        sgb_lcd.iter().all(|&pixel| pixel == 0x65EF),
+        "the default DMG framebuffer shade 0 should map through Alleyway's SGB boot palette"
+    );
 }
 
 #[test]

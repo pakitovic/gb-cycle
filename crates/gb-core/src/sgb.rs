@@ -51,6 +51,8 @@ const SGB_RGB555_WHITE: SgbRgb555Color = SgbRgb555Color::new(0x7FFF);
 const SGB_RGB555_LIGHT_GRAY: SgbRgb555Color = SgbRgb555Color::new(0x5294);
 const SGB_RGB555_DARK_GRAY: SgbRgb555Color = SgbRgb555Color::new(0x294A);
 const SGB_RGB555_BLACK: SgbRgb555Color = SgbRgb555Color::new(0x0000);
+const SGB_BOOT_PALETTE_COUNT: usize = 32;
+const SGB_BOOT_PALETTE_DEFAULT_INDEX: u8 = 1;
 const SGB_COMMAND_PAL01: u8 = 0x00;
 const SGB_COMMAND_PAL23: u8 = 0x01;
 const SGB_COMMAND_PAL03: u8 = 0x02;
@@ -671,6 +673,222 @@ impl Default for SgbScreenPalette {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SgbBootPaletteAssignment {
+    title: &'static [u8],
+    palette_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SgbBootPaletteSelection {
+    Default,
+    TitleMatch { palette_index: u8 },
+}
+
+impl SgbBootPaletteSelection {
+    const fn palette_index(self) -> u8 {
+        match self {
+            Self::Default => SGB_BOOT_PALETTE_DEFAULT_INDEX,
+            Self::TitleMatch { palette_index } => palette_index,
+        }
+    }
+}
+
+// SGB BIOS built-in palettes used by the host boot program before command-driven game palettes take over.
+const SGB_BOOT_PALETTES: [SgbScreenPalette; SGB_BOOT_PALETTE_COUNT] = [
+    sgb_screen_palette([0x67BF, 0x265B, 0x10B5, 0x2866]),
+    sgb_screen_palette([0x637B, 0x3AD9, 0x0956, 0x0000]),
+    sgb_screen_palette([0x7F1F, 0x2A7D, 0x30F3, 0x4CE7]),
+    sgb_screen_palette([0x57FF, 0x2618, 0x001F, 0x006A]),
+    sgb_screen_palette([0x5B7F, 0x3F0F, 0x222D, 0x10EB]),
+    sgb_screen_palette([0x7FBB, 0x2A3C, 0x0015, 0x0900]),
+    sgb_screen_palette([0x2800, 0x7680, 0x01EF, 0x2FFF]),
+    sgb_screen_palette([0x73BF, 0x46FF, 0x0110, 0x0066]),
+    sgb_screen_palette([0x533E, 0x2638, 0x01E5, 0x0000]),
+    sgb_screen_palette([0x7FFF, 0x2BBF, 0x00DF, 0x2C0A]),
+    sgb_screen_palette([0x7F1F, 0x463D, 0x74CF, 0x4CA5]),
+    sgb_screen_palette([0x53FF, 0x03E0, 0x00DF, 0x2800]),
+    sgb_screen_palette([0x433F, 0x72D2, 0x3045, 0x0822]),
+    sgb_screen_palette([0x7FFA, 0x2A5F, 0x0014, 0x0003]),
+    sgb_screen_palette([0x1EED, 0x215C, 0x42FC, 0x0060]),
+    sgb_screen_palette([0x7FFF, 0x5EF7, 0x39CE, 0x0000]),
+    sgb_screen_palette([0x4F5F, 0x630E, 0x159F, 0x3126]),
+    sgb_screen_palette([0x637B, 0x121C, 0x0140, 0x0840]),
+    sgb_screen_palette([0x66BC, 0x3FFF, 0x7EE0, 0x2C84]),
+    sgb_screen_palette([0x5FFE, 0x3EBC, 0x0321, 0x0000]),
+    sgb_screen_palette([0x63FF, 0x36DC, 0x11F6, 0x392A]),
+    sgb_screen_palette([0x65EF, 0x7DBF, 0x035F, 0x2108]),
+    sgb_screen_palette([0x2B6C, 0x7FFF, 0x1CD9, 0x0007]),
+    sgb_screen_palette([0x53FC, 0x1F2F, 0x0E29, 0x0061]),
+    sgb_screen_palette([0x36BE, 0x7EAF, 0x681A, 0x3C00]),
+    sgb_screen_palette([0x7BBE, 0x329D, 0x1DE8, 0x0423]),
+    sgb_screen_palette([0x739F, 0x6A9B, 0x7293, 0x0001]),
+    sgb_screen_palette([0x5FFF, 0x6732, 0x3DA9, 0x2481]),
+    sgb_screen_palette([0x577F, 0x3EBC, 0x456F, 0x1880]),
+    sgb_screen_palette([0x6B57, 0x6E1B, 0x5010, 0x0007]),
+    sgb_screen_palette([0x0F96, 0x2C97, 0x0045, 0x3200]),
+    sgb_screen_palette([0x67FF, 0x2F17, 0x2230, 0x1548]),
+];
+
+// Exact NUL-padded raw header titles that the SGB BIOS maps to built-in palettes for DMG software that does not unlock SGB commands.
+const SGB_BOOT_TITLE_PALETTE_ASSIGNMENTS: [SgbBootPaletteAssignment; 26] = [
+    SgbBootPaletteAssignment {
+        title: b"ZELDA",
+        palette_index: 5,
+    },
+    SgbBootPaletteAssignment {
+        title: b"SUPER MARIOLAND",
+        palette_index: 6,
+    },
+    SgbBootPaletteAssignment {
+        title: b"MARIOLAND2",
+        palette_index: 0x14,
+    },
+    SgbBootPaletteAssignment {
+        title: b"SUPERMARIOLAND3",
+        palette_index: 2,
+    },
+    SgbBootPaletteAssignment {
+        title: b"KIRBY DREAM LAND",
+        palette_index: 0x0B,
+    },
+    SgbBootPaletteAssignment {
+        title: b"HOSHINOKA-BI",
+        palette_index: 0x0B,
+    },
+    SgbBootPaletteAssignment {
+        title: b"KIRBY'S PINBALL",
+        palette_index: 3,
+    },
+    SgbBootPaletteAssignment {
+        title: b"YOSSY NO TAMAGO",
+        palette_index: 0x0C,
+    },
+    SgbBootPaletteAssignment {
+        title: b"MARIO & YOSHI",
+        palette_index: 0x0C,
+    },
+    SgbBootPaletteAssignment {
+        title: b"YOSSY NO COOKIE",
+        palette_index: 4,
+    },
+    SgbBootPaletteAssignment {
+        title: b"YOSHI'S COOKIE",
+        palette_index: 4,
+    },
+    SgbBootPaletteAssignment {
+        title: b"DR.MARIO",
+        palette_index: 0x12,
+    },
+    SgbBootPaletteAssignment {
+        title: b"TETRIS",
+        palette_index: 0x11,
+    },
+    SgbBootPaletteAssignment {
+        title: b"YAKUMAN",
+        palette_index: 0x13,
+    },
+    SgbBootPaletteAssignment {
+        title: b"METROID2",
+        palette_index: 0x1F,
+    },
+    SgbBootPaletteAssignment {
+        title: b"KAERUNOTAMENI",
+        palette_index: 9,
+    },
+    SgbBootPaletteAssignment {
+        title: b"GOLF",
+        palette_index: 0x18,
+    },
+    SgbBootPaletteAssignment {
+        title: b"ALLEY WAY",
+        palette_index: 0x16,
+    },
+    SgbBootPaletteAssignment {
+        title: b"BASEBALL",
+        palette_index: 0x0F,
+    },
+    SgbBootPaletteAssignment {
+        title: b"TENNIS",
+        palette_index: 0x17,
+    },
+    SgbBootPaletteAssignment {
+        title: b"F1RACE",
+        palette_index: 0x1E,
+    },
+    SgbBootPaletteAssignment {
+        title: b"KID ICARUS",
+        palette_index: 0x0E,
+    },
+    SgbBootPaletteAssignment {
+        title: b"QIX",
+        palette_index: 0x19,
+    },
+    SgbBootPaletteAssignment {
+        title: b"SOLARSTRIKER",
+        palette_index: 7,
+    },
+    SgbBootPaletteAssignment {
+        title: b"X",
+        palette_index: 0x1C,
+    },
+    SgbBootPaletteAssignment {
+        title: b"GBWARS",
+        palette_index: 0x15,
+    },
+];
+
+const fn sgb_screen_palette(raw_colors: [u16; SGB_SCREEN_PALETTE_COLORS]) -> SgbScreenPalette {
+    SgbScreenPalette {
+        colors: [
+            SgbRgb555Color::new(raw_colors[0]),
+            SgbRgb555Color::new(raw_colors[1]),
+            SgbRgb555Color::new(raw_colors[2]),
+            SgbRgb555Color::new(raw_colors[3]),
+        ],
+    }
+}
+
+fn sgb_boot_palette(palette_index: u8) -> SgbScreenPalette {
+    let table_index = usize::from(palette_index.saturating_sub(1));
+    SGB_BOOT_PALETTES
+        .get(table_index)
+        .copied()
+        .unwrap_or(SGB_BOOT_PALETTES[0])
+}
+
+fn sgb_boot_palette_selection_for_header(
+    header: Option<&CartridgeHeader>,
+    command_acceptance: SgbCommandAcceptance,
+) -> SgbBootPaletteSelection {
+    let Some(header) = header else {
+        return SgbBootPaletteSelection::Default;
+    };
+    if command_acceptance != SgbCommandAcceptance::RejectedByHeader {
+        return SgbBootPaletteSelection::Default;
+    }
+    sgb_title_palette_index(&header.title_bytes)
+        .map(|palette_index| SgbBootPaletteSelection::TitleMatch { palette_index })
+        .unwrap_or(SgbBootPaletteSelection::Default)
+}
+
+fn sgb_title_palette_index(title_bytes: &[u8; 16]) -> Option<u8> {
+    SGB_BOOT_TITLE_PALETTE_ASSIGNMENTS
+        .iter()
+        .find(|assignment| sgb_title_bytes_match(title_bytes, assignment.title))
+        .map(|assignment| assignment.palette_index)
+}
+
+fn sgb_title_bytes_match(title_bytes: &[u8; 16], expected_title: &[u8]) -> bool {
+    if expected_title.len() > title_bytes.len() {
+        return false;
+    }
+    title_bytes.starts_with(expected_title)
+        && title_bytes[expected_title.len()..]
+            .iter()
+            .all(|&byte| byte == 0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbPaletteState {
     pub screen_palettes: [SgbScreenPalette; SGB_SCREEN_PALETTE_COUNT],
@@ -678,12 +896,25 @@ pub struct SgbPaletteState {
 }
 
 impl SgbPaletteState {
+    fn default_for_active_host(active: bool) -> Self {
+        let mut state = Self::default();
+        if active {
+            state.apply_boot_palette(SgbBootPaletteSelection::Default);
+        }
+        state
+    }
+
     pub const fn palette(self, palette_index: u8) -> SgbScreenPalette {
         self.screen_palettes[(palette_index & 0x03) as usize]
     }
 
     pub const fn map_lcd_shade(self, shade: u8) -> SgbRgb555Color {
         self.palette(self.base_palette_index).color(shade)
+    }
+
+    fn apply_boot_palette(&mut self, selection: SgbBootPaletteSelection) {
+        self.screen_palettes[0] = sgb_boot_palette(selection.palette_index());
+        self.base_palette_index = 0;
     }
 
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -1697,6 +1928,11 @@ impl SgbHost {
 
     pub(crate) fn apply_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
         self.startup.apply_cartridge_header(self.status(), header);
+        self.video.apply_boot_palette_for_cartridge_header(
+            self.status(),
+            header,
+            self.startup.command_acceptance,
+        );
     }
 
     pub(crate) fn observe_joyp_write(&mut self, value: u8) {
@@ -2397,7 +2633,7 @@ impl SgbVideoState {
         Self {
             border_loaded: false,
             colorization_active: active,
-            palette_state: SgbPaletteState::default(),
+            palette_state: SgbPaletteState::default_for_active_host(active),
             system_palettes: SgbSystemPaletteState::default(),
             attributes: SgbAttributeState::default(),
             last_palette_command_id: None,
@@ -2422,6 +2658,22 @@ impl SgbVideoState {
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
             SgbScreenMask::BlankColor0 => self.palette_state.map_lcd_shade(0),
         }
+    }
+
+    fn apply_boot_palette_for_cartridge_header(
+        &mut self,
+        host_status: SgbHostStatus,
+        header: Option<&CartridgeHeader>,
+        command_acceptance: SgbCommandAcceptance,
+    ) {
+        if host_status == SgbHostStatus::Disabled {
+            self.colorization_active = false;
+            return;
+        }
+
+        let selection = sgb_boot_palette_selection_for_header(header, command_acceptance);
+        self.palette_state.apply_boot_palette(selection);
+        self.colorization_active = true;
     }
 
     fn lcd_pixel_for_framebuffer_index(
@@ -2658,12 +2910,23 @@ mod tests {
     use crate::model::SgbVideoStandard;
 
     fn test_header(sgb_flag: SgbFlag, old_licensee_code: u8) -> CartridgeHeader {
+        test_header_with_title(b"SGBTEST", sgb_flag, old_licensee_code)
+    }
+
+    fn test_header_with_title(
+        title: &[u8],
+        sgb_flag: SgbFlag,
+        old_licensee_code: u8,
+    ) -> CartridgeHeader {
+        assert!(title.len() <= 16);
+        let mut title_bytes = [0; 16];
+        title_bytes[..title.len()].copy_from_slice(title);
         CartridgeHeader {
             entry_point: [0; 4],
             nintendo_logo: [0; 48],
-            title_bytes: [0; 16],
+            title_bytes,
             raw_title_suffix_or_manufacturer_code: [0; 4],
-            title: "SGBTEST".to_string(),
+            title: String::from_utf8_lossy(title).to_string(),
             cgb_flag: crate::CgbFlag::None,
             sgb_flag,
             cartridge_type: 0,
@@ -3139,6 +3402,85 @@ mod tests {
         assert_eq!(
             handheld.command_acceptance(),
             SgbCommandAcceptance::Disabled
+        );
+    }
+
+    #[test]
+    fn sgb_boot_palette_seeds_default_and_title_matched_dmg_palettes() {
+        let mut sgb = SgbHost::new(HostPlatform::Sgb);
+        assert_eq!(
+            sgb.snapshot().video.palette_state.palette(0),
+            sgb_boot_palette(SGB_BOOT_PALETTE_DEFAULT_INDEX)
+        );
+
+        let alleyway = test_header_with_title(
+            b"ALLEY WAY",
+            SgbFlag::None,
+            SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED,
+        );
+        sgb.apply_cartridge_header(Some(&alleyway));
+        assert_eq!(
+            sgb.command_acceptance(),
+            SgbCommandAcceptance::RejectedByHeader
+        );
+        assert_eq!(
+            sgb.snapshot().video.palette_state.palette(0),
+            sgb_boot_palette(0x16)
+        );
+        assert_eq!(
+            sgb.snapshot().video.map_lcd_shade_to_rgb555(0).raw(),
+            0x65EF
+        );
+        assert_eq!(
+            sgb.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
+            0x2108
+        );
+
+        let unknown = test_header_with_title(
+            b"UNKNOWN",
+            SgbFlag::None,
+            SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED,
+        );
+        sgb.apply_cartridge_header(Some(&unknown));
+        assert_eq!(
+            sgb.snapshot().video.palette_state.palette(0),
+            sgb_boot_palette(SGB_BOOT_PALETTE_DEFAULT_INDEX)
+        );
+    }
+
+    #[test]
+    fn sgb_boot_title_palette_requires_rejected_exact_padded_title() {
+        let sgb_capable_alleyway = test_header_with_title(
+            b"ALLEY WAY",
+            SgbFlag::Supported,
+            SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED,
+        );
+        let mut sgb = SgbHost::new(HostPlatform::Sgb);
+        sgb.apply_cartridge_header(Some(&sgb_capable_alleyway));
+        assert_eq!(sgb.command_acceptance(), SgbCommandAcceptance::Accepted);
+        assert_eq!(
+            sgb.snapshot().video.palette_state.palette(0),
+            sgb_boot_palette(SGB_BOOT_PALETTE_DEFAULT_INDEX),
+            "SGB-command-capable games keep the default boot palette until commands override it"
+        );
+
+        let mut space_padded = test_header_with_title(
+            b"ALLEY WAY",
+            SgbFlag::None,
+            SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED,
+        );
+        space_padded.title_bytes[b"ALLEY WAY".len()] = b' ';
+        sgb.apply_cartridge_header(Some(&space_padded));
+        assert_eq!(
+            sgb.snapshot().video.palette_state.palette(0),
+            sgb_boot_palette(SGB_BOOT_PALETTE_DEFAULT_INDEX),
+            "the SGB BIOS title table uses exact NUL-padded header title matches"
+        );
+
+        let handheld = SgbHost::new(HostPlatform::Handheld);
+        assert_eq!(
+            handheld.snapshot().video.palette_state.palette(0),
+            SgbScreenPalette::dmg_grayscale()
         );
     }
 
@@ -3827,6 +4169,34 @@ mod tests {
         assert_eq!(
             restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
             0x4210
+        );
+    }
+
+    #[test]
+    fn save_state_restores_sgb_boot_title_palette_seed() {
+        let mut host = SgbHost::new(HostPlatform::Sgb);
+        let header = test_header_with_title(
+            b"MARIOLAND2",
+            SgbFlag::None,
+            SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED,
+        );
+        host.apply_cartridge_header(Some(&header));
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        assert_eq!(
+            restored.snapshot().video.palette_state,
+            host.snapshot().video.palette_state
+        );
+        assert_eq!(
+            restored.snapshot().video.map_lcd_shade_to_rgb555(0).raw(),
+            0x5FFE
+        );
+        assert_eq!(
+            restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
+            0x0000
         );
     }
 
