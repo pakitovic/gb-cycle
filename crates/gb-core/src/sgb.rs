@@ -18,6 +18,13 @@ pub const SGB_LCD_FRAME_ORIGIN_X: usize = 48;
 pub const SGB_LCD_FRAME_ORIGIN_Y: usize = 40;
 pub const SGB_SCREEN_PALETTE_COUNT: usize = 4;
 pub const SGB_SCREEN_PALETTE_COLORS: usize = 4;
+pub const SGB_SYSTEM_PALETTE_COUNT: usize = 512;
+pub const SGB_ATTR_MAP_WIDTH: usize = 20;
+pub const SGB_ATTR_MAP_HEIGHT: usize = 18;
+pub const SGB_ATTR_MAP_CELLS: usize = SGB_ATTR_MAP_WIDTH * SGB_ATTR_MAP_HEIGHT;
+pub const SGB_ATF_COUNT: usize = 45;
+pub const SGB_ATF_BYTES: usize = 90;
+pub const SGB_ATF_TOTAL_BYTES: usize = SGB_ATF_COUNT * SGB_ATF_BYTES;
 pub const SGB_VRAM_TRANSFER_BYTES: usize = 0x1000;
 pub const SGB_BORDER_TILE_BYTES: usize = 32;
 pub const SGB_BORDER_TILE_COUNT: usize = 256;
@@ -44,9 +51,18 @@ const SGB_COMMAND_PAL01: u8 = 0x00;
 const SGB_COMMAND_PAL23: u8 = 0x01;
 const SGB_COMMAND_PAL03: u8 = 0x02;
 const SGB_COMMAND_PAL12: u8 = 0x03;
+const SGB_COMMAND_ATTR_BLK: u8 = 0x04;
+const SGB_COMMAND_ATTR_LIN: u8 = 0x05;
+const SGB_COMMAND_ATTR_DIV: u8 = 0x06;
+const SGB_COMMAND_ATTR_CHR: u8 = 0x07;
+const SGB_COMMAND_PAL_SET: u8 = 0x0A;
+const SGB_COMMAND_PAL_TRN: u8 = 0x0B;
 const SGB_COMMAND_CHR_TRN: u8 = 0x13;
 const SGB_COMMAND_PCT_TRN: u8 = 0x14;
+const SGB_COMMAND_ATTR_TRN: u8 = 0x15;
+const SGB_COMMAND_ATTR_SET: u8 = 0x16;
 const SGB_COMMAND_MASK_EN: u8 = 0x17;
+const SGB_COMMAND_PAL_PRI: u8 = 0x19;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbVideoStandard {
@@ -306,6 +322,8 @@ impl SgbChrTransferSelection {
 pub enum SgbVramTransferTarget {
     Chr(SgbChrTransferSelection),
     Pct,
+    Pal,
+    Attr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -499,6 +517,377 @@ impl Default for SgbPaletteState {
             screen_palettes: [SgbScreenPalette::dmg_grayscale(); SGB_SCREEN_PALETTE_COUNT],
             base_palette_index: 0,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbSystemPaletteState {
+    pub palettes: Vec<SgbScreenPalette>,
+    pub loaded: bool,
+    pub last_pal_set_ids: [u16; SGB_SCREEN_PALETTE_COUNT],
+    pub pal_trn_count: u64,
+    pub pal_set_count: u64,
+    pub pal_pri_enabled: bool,
+    pub pal_pri_command_count: u64,
+}
+
+impl SgbSystemPaletteState {
+    fn apply_pal_trn(&mut self, payload: &SgbVramTransferBuffer) {
+        for palette_index in 0..SGB_SYSTEM_PALETTE_COUNT {
+            for color_index in 0..SGB_SCREEN_PALETTE_COLORS {
+                let byte_index = palette_index * SGB_SCREEN_PALETTE_COLORS * 2 + color_index * 2;
+                self.palettes[palette_index].colors[color_index] =
+                    SgbRgb555Color::from_packet_bytes(
+                        payload.bytes[byte_index],
+                        payload.bytes[byte_index + 1],
+                    );
+            }
+        }
+        self.loaded = true;
+        self.pal_trn_count = self.pal_trn_count.saturating_add(1);
+    }
+
+    fn apply_pal_set(
+        &mut self,
+        palette_state: &mut SgbPaletteState,
+        bytes: &[u8; SGB_PACKET_BYTES],
+    ) -> SgbPalSetOptions {
+        for palette_index in 0..SGB_SCREEN_PALETTE_COUNT {
+            let byte_index = 1 + palette_index * 2;
+            let palette_id = u16::from_le_bytes([bytes[byte_index], bytes[byte_index + 1]]);
+            self.last_pal_set_ids[palette_index] = palette_id;
+            palette_state.screen_palettes[palette_index] = self
+                .palettes
+                .get(usize::from(palette_id))
+                .copied()
+                .unwrap_or_default();
+        }
+        self.pal_set_count = self.pal_set_count.saturating_add(1);
+        SgbPalSetOptions::from_flags(bytes[9])
+    }
+
+    fn apply_pal_pri(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.pal_pri_enabled = bytes[1] & 0x01 != 0;
+        self.pal_pri_command_count = self.pal_pri_command_count.saturating_add(1);
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.palettes
+            .len()
+            .saturating_mul(std::mem::size_of::<SgbScreenPalette>())
+    }
+}
+
+impl Default for SgbSystemPaletteState {
+    fn default() -> Self {
+        Self {
+            palettes: vec![SgbScreenPalette::dmg_grayscale(); SGB_SYSTEM_PALETTE_COUNT],
+            loaded: false,
+            last_pal_set_ids: [0; SGB_SCREEN_PALETTE_COUNT],
+            pal_trn_count: 0,
+            pal_set_count: 0,
+            pal_pri_enabled: false,
+            pal_pri_command_count: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbPalSetOptions {
+    pub apply_atf: bool,
+    pub cancel_mask: bool,
+    pub atf_index: u8,
+}
+
+impl SgbPalSetOptions {
+    const fn from_flags(flags: u8) -> Self {
+        Self {
+            apply_atf: flags & 0x80 != 0,
+            cancel_mask: flags & 0x40 != 0,
+            atf_index: flags & 0x3F,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbAttributeMap {
+    pub cells: Vec<u8>,
+}
+
+impl SgbAttributeMap {
+    pub fn palette_index(&self, cell_x: usize, cell_y: usize) -> u8 {
+        self.cells[cell_y * SGB_ATTR_MAP_WIDTH + cell_x] & 0x03
+    }
+
+    fn palette_index_for_framebuffer_index(&self, framebuffer_index: usize) -> u8 {
+        let pixel_x = framebuffer_index % SGB_LCD_WIDTH;
+        let pixel_y = framebuffer_index / SGB_LCD_WIDTH;
+        self.palette_index(pixel_x / 8, pixel_y / 8)
+    }
+
+    fn set_cell(&mut self, cell_x: usize, cell_y: usize, palette_index: u8) {
+        if cell_x < SGB_ATTR_MAP_WIDTH && cell_y < SGB_ATTR_MAP_HEIGHT {
+            self.cells[cell_y * SGB_ATTR_MAP_WIDTH + cell_x] = palette_index & 0x03;
+        }
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.cells.len()
+    }
+}
+
+impl Default for SgbAttributeMap {
+    fn default() -> Self {
+        Self {
+            cells: vec![0; SGB_ATTR_MAP_CELLS],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbAttributeFileState {
+    pub bytes: Vec<u8>,
+    pub loaded: bool,
+}
+
+impl SgbAttributeFileState {
+    fn apply_attr_trn(&mut self, payload: &SgbVramTransferBuffer) {
+        self.bytes
+            .copy_from_slice(&payload.bytes[..SGB_ATF_TOTAL_BYTES]);
+        self.loaded = true;
+    }
+
+    fn apply_to_map(&self, atf_index: u8, map: &mut SgbAttributeMap) -> bool {
+        let atf_index = usize::from(atf_index);
+        if atf_index >= SGB_ATF_COUNT {
+            return false;
+        }
+        for cell_y in 0..SGB_ATTR_MAP_HEIGHT {
+            for cell_x in 0..SGB_ATTR_MAP_WIDTH {
+                map.set_cell(
+                    cell_x,
+                    cell_y,
+                    self.palette_index(atf_index, cell_x, cell_y),
+                );
+            }
+        }
+        true
+    }
+
+    fn palette_index(&self, atf_index: usize, cell_x: usize, cell_y: usize) -> u8 {
+        let byte_index = atf_index * SGB_ATF_BYTES + cell_y * 5 + cell_x / 4;
+        let shift = 6 - (cell_x % 4) * 2;
+        (self.bytes[byte_index] >> shift) & 0x03
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+impl Default for SgbAttributeFileState {
+    fn default() -> Self {
+        Self {
+            bytes: vec![0; SGB_ATF_TOTAL_BYTES],
+            loaded: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct SgbAttributeState {
+    pub map: SgbAttributeMap,
+    pub files: SgbAttributeFileState,
+    pub last_atf_index: Option<u8>,
+    pub attr_blk_count: u64,
+    pub attr_lin_count: u64,
+    pub attr_div_count: u64,
+    pub attr_chr_count: u64,
+    pub attr_trn_count: u64,
+    pub attr_set_count: u64,
+    pub invalid_atf_count: u64,
+}
+
+impl SgbAttributeState {
+    fn apply_attr_blk(&mut self, payload: &[u8]) {
+        if payload.is_empty() {
+            return;
+        }
+        let data_set_count = usize::from(payload[0]).min(0x12);
+        for data_set_index in 0..data_set_count {
+            let offset = 1 + data_set_index * 6;
+            let Some(data_set) = payload.get(offset..offset + 6) else {
+                break;
+            };
+            self.apply_attr_blk_data_set(data_set);
+        }
+        self.attr_blk_count = self.attr_blk_count.saturating_add(1);
+    }
+
+    fn apply_attr_blk_data_set(&mut self, data_set: &[u8]) {
+        let control = data_set[0] & 0x07;
+        let palette_designation = data_set[1];
+        let inside_palette = palette_designation & 0x03;
+        let mut line_palette = (palette_designation >> 2) & 0x03;
+        let outside_palette = (palette_designation >> 4) & 0x03;
+        let change_inside = control & 0x01 != 0;
+        let mut change_line = control & 0x02 != 0;
+        let change_outside = control & 0x04 != 0;
+
+        if control == 0x01 {
+            change_line = true;
+            line_palette = inside_palette;
+        } else if control == 0x04 {
+            change_line = true;
+            line_palette = outside_palette;
+        }
+
+        let x1 = usize::from(data_set[2]).min(SGB_ATTR_MAP_WIDTH - 1);
+        let y1 = usize::from(data_set[3]).min(SGB_ATTR_MAP_HEIGHT - 1);
+        let x2 = usize::from(data_set[4]).min(SGB_ATTR_MAP_WIDTH - 1);
+        let y2 = usize::from(data_set[5]).min(SGB_ATTR_MAP_HEIGHT - 1);
+        let (left, right) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
+        let (top, bottom) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
+
+        for cell_y in 0..SGB_ATTR_MAP_HEIGHT {
+            for cell_x in 0..SGB_ATTR_MAP_WIDTH {
+                let inside_rect =
+                    (left..=right).contains(&cell_x) && (top..=bottom).contains(&cell_y);
+                let on_line = inside_rect
+                    && (cell_x == left || cell_x == right || cell_y == top || cell_y == bottom);
+                if change_outside && !inside_rect {
+                    self.map.set_cell(cell_x, cell_y, outside_palette);
+                }
+                if change_inside && inside_rect && !on_line {
+                    self.map.set_cell(cell_x, cell_y, inside_palette);
+                }
+                if change_line && on_line {
+                    self.map.set_cell(cell_x, cell_y, line_palette);
+                }
+            }
+        }
+    }
+
+    fn apply_attr_lin(&mut self, payload: &[u8]) {
+        if payload.is_empty() {
+            return;
+        }
+        let data_set_count = usize::from(payload[0]).min(0x6E);
+        for &line in payload.iter().skip(1).take(data_set_count) {
+            let coordinate = usize::from(line & 0x1F);
+            let palette_index = (line >> 5) & 0x03;
+            let horizontal = line & 0x80 != 0;
+            if horizontal {
+                if coordinate < SGB_ATTR_MAP_HEIGHT {
+                    for cell_x in 0..SGB_ATTR_MAP_WIDTH {
+                        self.map.set_cell(cell_x, coordinate, palette_index);
+                    }
+                }
+            } else if coordinate < SGB_ATTR_MAP_WIDTH {
+                for cell_y in 0..SGB_ATTR_MAP_HEIGHT {
+                    self.map.set_cell(coordinate, cell_y, palette_index);
+                }
+            }
+        }
+        self.attr_lin_count = self.attr_lin_count.saturating_add(1);
+    }
+
+    fn apply_attr_div(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        let palettes = bytes[1];
+        let below_or_right_palette = palettes & 0x03;
+        let above_or_left_palette = (palettes >> 2) & 0x03;
+        let line_palette = (palettes >> 4) & 0x03;
+        let horizontal = palettes & 0x40 != 0;
+        let coordinate = usize::from(bytes[2]);
+
+        if horizontal {
+            for cell_y in 0..SGB_ATTR_MAP_HEIGHT {
+                let palette_index = if cell_y < coordinate {
+                    above_or_left_palette
+                } else if cell_y == coordinate {
+                    line_palette
+                } else {
+                    below_or_right_palette
+                };
+                for cell_x in 0..SGB_ATTR_MAP_WIDTH {
+                    self.map.set_cell(cell_x, cell_y, palette_index);
+                }
+            }
+        } else {
+            for cell_x in 0..SGB_ATTR_MAP_WIDTH {
+                let palette_index = if cell_x < coordinate {
+                    above_or_left_palette
+                } else if cell_x == coordinate {
+                    line_palette
+                } else {
+                    below_or_right_palette
+                };
+                for cell_y in 0..SGB_ATTR_MAP_HEIGHT {
+                    self.map.set_cell(cell_x, cell_y, palette_index);
+                }
+            }
+        }
+        self.attr_div_count = self.attr_div_count.saturating_add(1);
+    }
+
+    fn apply_attr_chr(&mut self, payload: &[u8]) {
+        if payload.len() < 5 {
+            return;
+        }
+        let mut cell_x = usize::from(payload[0]);
+        let mut cell_y = usize::from(payload[1]);
+        if cell_x >= SGB_ATTR_MAP_WIDTH || cell_y >= SGB_ATTR_MAP_HEIGHT {
+            return;
+        }
+        let data_set_count =
+            usize::from(u16::from_le_bytes([payload[2], payload[3]])).min(SGB_ATTR_MAP_CELLS);
+        let top_to_bottom = payload[4] & 0x01 != 0;
+
+        for data_set_index in 0..data_set_count {
+            let packed_byte_index = 5 + data_set_index / 4;
+            let Some(&packed) = payload.get(packed_byte_index) else {
+                break;
+            };
+            let shift = 6 - (data_set_index % 4) * 2;
+            self.map.set_cell(cell_x, cell_y, (packed >> shift) & 0x03);
+
+            if top_to_bottom {
+                cell_y += 1;
+                if cell_y == SGB_ATTR_MAP_HEIGHT {
+                    cell_y = 0;
+                    cell_x = (cell_x + 1) % SGB_ATTR_MAP_WIDTH;
+                }
+            } else {
+                cell_x += 1;
+                if cell_x == SGB_ATTR_MAP_WIDTH {
+                    cell_x = 0;
+                    cell_y = (cell_y + 1) % SGB_ATTR_MAP_HEIGHT;
+                }
+            }
+        }
+        self.attr_chr_count = self.attr_chr_count.saturating_add(1);
+    }
+
+    fn apply_attr_trn(&mut self, payload: &SgbVramTransferBuffer) {
+        self.files.apply_attr_trn(payload);
+        self.attr_trn_count = self.attr_trn_count.saturating_add(1);
+    }
+
+    fn apply_attr_set(&mut self, atf_index: u8) -> bool {
+        if self.files.apply_to_map(atf_index, &mut self.map) {
+            self.last_atf_index = Some(atf_index);
+            self.attr_set_count = self.attr_set_count.saturating_add(1);
+            true
+        } else {
+            self.invalid_atf_count = self.invalid_atf_count.saturating_add(1);
+            false
+        }
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.map
+            .dynamic_payload_bytes()
+            .saturating_add(self.files.dynamic_payload_bytes())
     }
 }
 
@@ -814,6 +1203,18 @@ pub struct SgbCommandState {
     pub invalid_packet_count: u64,
 }
 
+impl SgbCommandState {
+    fn command_payload(&self, packet_count: u8) -> Vec<u8> {
+        let packet_count = packet_count.min(SGB_PACKET_COUNT_MAX);
+        let mut payload = Vec::with_capacity(15 + usize::from(packet_count.saturating_sub(1)) * 16);
+        payload.extend_from_slice(&self.packet_buffer[0][1..]);
+        for packet_index in 1..usize::from(packet_count) {
+            payload.extend_from_slice(&self.packet_buffer[packet_index]);
+        }
+        payload
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -831,6 +1232,8 @@ pub struct SgbVideoState {
     pub border_loaded: bool,
     pub colorization_active: bool,
     pub palette_state: SgbPaletteState,
+    pub system_palettes: SgbSystemPaletteState,
+    pub attributes: SgbAttributeState,
     pub last_palette_command_id: Option<u8>,
     pub palette_command_count: u64,
     pub mask: SgbScreenMask,
@@ -1177,24 +1580,52 @@ impl SgbHost {
     }
 
     fn dispatch_completed_command(&mut self, command_id: u8, packet_count: u8) {
-        if packet_count != 1 {
+        if direct_palette_command_pair(command_id).is_some() && packet_count == 1 {
+            self.video
+                .apply_direct_palette_command(command_id, &self.command.packet_buffer[0]);
             return;
         }
 
-        if direct_palette_command_pair(command_id).is_some() {
-            self.video
-                .apply_direct_palette_command(command_id, &self.command.packet_buffer[0]);
-        } else {
-            match command_id {
-                SGB_COMMAND_CHR_TRN => self
-                    .video
-                    .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
-                SGB_COMMAND_PCT_TRN => self.video.request_pct_transfer(command_id),
-                SGB_COMMAND_MASK_EN => self
-                    .video
-                    .apply_mask_command(&self.command.packet_buffer[0]),
-                _ => {}
+        match command_id {
+            SGB_COMMAND_ATTR_BLK => {
+                let payload = self.command.command_payload(packet_count);
+                self.video.apply_attr_blk_command(&payload);
             }
+            SGB_COMMAND_ATTR_LIN => {
+                let payload = self.command.command_payload(packet_count);
+                self.video.apply_attr_lin_command(&payload);
+            }
+            SGB_COMMAND_ATTR_DIV if packet_count == 1 => self
+                .video
+                .apply_attr_div_command(&self.command.packet_buffer[0]),
+            SGB_COMMAND_ATTR_CHR => {
+                let payload = self.command.command_payload(packet_count);
+                self.video.apply_attr_chr_command(&payload);
+            }
+            SGB_COMMAND_PAL_SET if packet_count == 1 => {
+                self.video
+                    .apply_pal_set_command(&self.command.packet_buffer[0]);
+            }
+            SGB_COMMAND_PAL_TRN if packet_count == 1 => {
+                self.video.request_pal_transfer(command_id);
+            }
+            SGB_COMMAND_CHR_TRN if packet_count == 1 => self
+                .video
+                .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
+            SGB_COMMAND_PCT_TRN if packet_count == 1 => self.video.request_pct_transfer(command_id),
+            SGB_COMMAND_ATTR_TRN if packet_count == 1 => {
+                self.video.request_attr_transfer(command_id);
+            }
+            SGB_COMMAND_ATTR_SET if packet_count == 1 => self
+                .video
+                .apply_attr_set_command(&self.command.packet_buffer[0]),
+            SGB_COMMAND_MASK_EN if packet_count == 1 => self
+                .video
+                .apply_mask_command(&self.command.packet_buffer[0]),
+            SGB_COMMAND_PAL_PRI if packet_count == 1 => self
+                .video
+                .apply_pal_pri_command(&self.command.packet_buffer[0]),
+            _ => {}
         }
     }
 
@@ -1326,8 +1757,16 @@ impl SgbHost {
         }
 
         let mut frozen = SgbLcdRgb555Frame::default();
-        for (output_pixel, &shade) in frozen.pixels.iter_mut().zip(dmg_framebuffer.iter()) {
-            *output_pixel = self.video.palette_state.map_lcd_shade(shade).raw();
+        for (framebuffer_index, (output_pixel, &shade)) in frozen
+            .pixels
+            .iter_mut()
+            .zip(dmg_framebuffer.iter())
+            .enumerate()
+        {
+            *output_pixel = self
+                .video
+                .live_lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
+                .raw();
         }
         self.video.frozen_lcd = Some(frozen);
         self.video.freeze_capture_pending = false;
@@ -1433,6 +1872,8 @@ impl SgbVideoState {
             border_loaded: false,
             colorization_active: active,
             palette_state: SgbPaletteState::default(),
+            system_palettes: SgbSystemPaletteState::default(),
+            attributes: SgbAttributeState::default(),
             last_palette_command_id: None,
             palette_command_count: 0,
             mask: SgbScreenMask::Cancel,
@@ -1463,16 +1904,32 @@ impl SgbVideoState {
         shade: u8,
     ) -> SgbRgb555Color {
         match self.mask {
-            SgbScreenMask::Cancel => self.palette_state.map_lcd_shade(shade),
+            SgbScreenMask::Cancel => {
+                self.live_lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
+            }
             SgbScreenMask::Freeze => self
                 .frozen_lcd
                 .as_ref()
                 .and_then(|frame| frame.pixels.get(framebuffer_index).copied())
                 .map(SgbRgb555Color::new)
-                .unwrap_or_else(|| self.palette_state.map_lcd_shade(shade)),
+                .unwrap_or_else(|| {
+                    self.live_lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
+                }),
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
-            SgbScreenMask::BlankColor0 => self.palette_state.map_lcd_shade(0),
+            SgbScreenMask::BlankColor0 => self.palette_state.palette(0).color(0),
         }
+    }
+
+    fn live_lcd_pixel_for_framebuffer_index(
+        &self,
+        framebuffer_index: usize,
+        shade: u8,
+    ) -> SgbRgb555Color {
+        let palette_index = self
+            .attributes
+            .map
+            .palette_index_for_framebuffer_index(framebuffer_index);
+        self.palette_state.palette(palette_index).color(shade)
     }
 
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -1481,6 +1938,65 @@ impl SgbVideoState {
         self.colorization_active = true;
         self.last_palette_command_id = Some(command_id);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
+    }
+
+    fn apply_pal_set_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        let options = self
+            .system_palettes
+            .apply_pal_set(&mut self.palette_state, bytes);
+        self.colorization_active = true;
+        self.last_palette_command_id = Some(SGB_COMMAND_PAL_SET);
+        self.palette_command_count = self.palette_command_count.saturating_add(1);
+        if options.cancel_mask {
+            self.cancel_mask();
+        }
+        if options.apply_atf {
+            self.apply_atf_index(options.atf_index);
+        }
+    }
+
+    fn apply_pal_pri_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.system_palettes.apply_pal_pri(bytes);
+    }
+
+    fn apply_attr_blk_command(&mut self, payload: &[u8]) {
+        self.attributes.apply_attr_blk(payload);
+        self.colorization_active = true;
+    }
+
+    fn apply_attr_lin_command(&mut self, payload: &[u8]) {
+        self.attributes.apply_attr_lin(payload);
+        self.colorization_active = true;
+    }
+
+    fn apply_attr_div_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.attributes.apply_attr_div(bytes);
+        self.colorization_active = true;
+    }
+
+    fn apply_attr_chr_command(&mut self, payload: &[u8]) {
+        self.attributes.apply_attr_chr(payload);
+        self.colorization_active = true;
+    }
+
+    fn apply_attr_set_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        let atf_index = bytes[1] & 0x3F;
+        if bytes[1] & 0x40 != 0 {
+            self.cancel_mask();
+        }
+        if self.apply_atf_index(atf_index) {
+            self.colorization_active = true;
+        }
+    }
+
+    fn apply_atf_index(&mut self, atf_index: u8) -> bool {
+        self.attributes.apply_attr_set(atf_index)
+    }
+
+    fn cancel_mask(&mut self) {
+        self.mask = SgbScreenMask::Cancel;
+        self.freeze_capture_pending = false;
+        self.frozen_lcd = None;
     }
 
     fn apply_mask_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
@@ -1501,6 +2017,14 @@ impl SgbVideoState {
 
     fn request_pct_transfer(&mut self, command_id: u8) {
         self.request_vram_transfer(command_id, SgbVramTransferTarget::Pct);
+    }
+
+    fn request_pal_transfer(&mut self, command_id: u8) {
+        self.request_vram_transfer(command_id, SgbVramTransferTarget::Pal);
+    }
+
+    fn request_attr_transfer(&mut self, command_id: u8) {
+        self.request_vram_transfer(command_id, SgbVramTransferTarget::Attr);
     }
 
     fn request_vram_transfer(&mut self, command_id: u8, target: SgbVramTransferTarget) {
@@ -1546,6 +2070,12 @@ impl SgbVideoState {
                 self.border.apply_pct_transfer(&payload);
                 self.border_loaded = true;
             }
+            SgbVramTransferTarget::Pal => {
+                self.system_palettes.apply_pal_trn(&payload);
+            }
+            SgbVramTransferTarget::Attr => {
+                self.attributes.apply_attr_trn(&payload);
+            }
         }
         self.vram_transfer.last_completed = Some(SgbCompletedVramTransfer {
             command_id: pending.command_id,
@@ -1565,6 +2095,8 @@ impl SgbVideoState {
             .map(SgbLcdRgb555Frame::dynamic_payload_bytes)
             .unwrap_or(0)
             .saturating_add(self.vram_transfer.dynamic_payload_bytes())
+            .saturating_add(self.system_palettes.dynamic_payload_bytes())
+            .saturating_add(self.attributes.dynamic_payload_bytes())
             .saturating_add(self.border.dynamic_payload_bytes())
     }
 }
@@ -1651,6 +2183,39 @@ mod tests {
             SgbScreenMask::BlankColor0 => 3,
         };
         bytes
+    }
+
+    fn sgb_pal_trn_packet() -> [u8; SGB_PACKET_BYTES] {
+        sgb_command_packet(SGB_COMMAND_PAL_TRN, 1)
+    }
+
+    fn sgb_attr_trn_packet() -> [u8; SGB_PACKET_BYTES] {
+        sgb_command_packet(SGB_COMMAND_ATTR_TRN, 1)
+    }
+
+    fn write_system_palette_color(
+        bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES],
+        palette_index: usize,
+        color_index: usize,
+        rgb555: u16,
+    ) {
+        let [low, high] = rgb555.to_le_bytes();
+        let offset = palette_index * SGB_SCREEN_PALETTE_COLORS * 2 + color_index * 2;
+        bytes[offset] = low;
+        bytes[offset + 1] = high;
+    }
+
+    fn write_atf_cell(
+        bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES],
+        atf_index: usize,
+        cell_x: usize,
+        cell_y: usize,
+        palette_index: u8,
+    ) {
+        let offset = atf_index * SGB_ATF_BYTES + cell_y * 5 + cell_x / 4;
+        let shift = 6 - (cell_x % 4) * 2;
+        bytes[offset] &= !(0x03 << shift);
+        bytes[offset] |= (palette_index & 0x03) << shift;
     }
 
     fn write_border_map_entry(bytes: &mut [u8; SGB_VRAM_TRANSFER_BYTES], entry: usize, raw: u16) {
@@ -1967,6 +2532,180 @@ mod tests {
                 actual: SGB_LCD_PIXELS - 1,
             })
         );
+    }
+
+    #[test]
+    fn attribute_commands_update_host_attribute_map_and_lcd_composition() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+
+        let mut attr_div = sgb_command_packet(SGB_COMMAND_ATTR_DIV, 1);
+        attr_div[1] = (1 << 2) | (2 << 4);
+        attr_div[2] = 1;
+        write_joyp_packet(&mut host, attr_div);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(0, 0), 1);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(1, 0), 2);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(2, 0), 0);
+
+        let mut attr_lin = sgb_command_packet(SGB_COMMAND_ATTR_LIN, 1);
+        attr_lin[1] = 1;
+        attr_lin[2] = 0x80 | (3 << 5);
+        write_joyp_packet(&mut host, attr_lin);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(0, 0), 3);
+        assert_eq!(host.snapshot().video.attributes.attr_lin_count, 1);
+
+        let mut attr_blk = sgb_command_packet(SGB_COMMAND_ATTR_BLK, 1);
+        attr_blk[1] = 1;
+        attr_blk[2] = 0x03;
+        attr_blk[3] = 2 | (1 << 2);
+        attr_blk[4] = 1;
+        attr_blk[5] = 1;
+        attr_blk[6] = 3;
+        attr_blk[7] = 3;
+        write_joyp_packet(&mut host, attr_blk);
+        assert_eq!(
+            host.snapshot().video.attributes.map.palette_index(1, 1),
+            1,
+            "ATTR_BLK line cells use the surrounding palette"
+        );
+        assert_eq!(
+            host.snapshot().video.attributes.map.palette_index(2, 2),
+            2,
+            "ATTR_BLK inner cells use the inside palette"
+        );
+
+        let mut attr_chr = sgb_command_packet(SGB_COMMAND_ATTR_CHR, 1);
+        attr_chr[1] = 0;
+        attr_chr[2] = 0;
+        attr_chr[3] = 4;
+        attr_chr[4] = 0;
+        attr_chr[5] = 0;
+        attr_chr[6] = 0b00_01_10_11;
+        write_joyp_packet(&mut host, attr_chr);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(0, 0), 0);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(1, 0), 1);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(2, 0), 2);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(3, 0), 3);
+
+        let dmg_framebuffer = vec![1; SGB_LCD_PIXELS];
+        let rgb555 = host
+            .compose_lcd_rgb555(&dmg_framebuffer)
+            .expect("SGB LCD composition should use host attribute palettes");
+        assert_eq!(rgb555[8], 0x0001);
+    }
+
+    #[test]
+    fn attr_chr_uses_multi_packet_payload_data_after_the_first_packet() {
+        let mut host = accepted_sgb_host();
+        let mut first_packet = sgb_command_packet(SGB_COMMAND_ATTR_CHR, 2);
+        first_packet[1] = 0;
+        first_packet[2] = 0;
+        first_packet[3] = 44;
+        first_packet[4] = 0;
+        first_packet[5] = 0;
+        let mut second_packet = [0; SGB_PACKET_BYTES];
+        second_packet[0] = 0b11_00_00_00;
+
+        write_joyp_packet(&mut host, first_packet);
+        write_joyp_packet(&mut host, second_packet);
+
+        assert_eq!(
+            host.snapshot().command.last_command_id,
+            Some(SGB_COMMAND_ATTR_CHR)
+        );
+        assert_eq!(
+            host.snapshot().video.attributes.map.palette_index(0, 2),
+            3,
+            "data set 41 is stored in the first byte of the second SGB packet"
+        );
+    }
+
+    #[test]
+    fn pal_trn_pal_set_and_pal_pri_update_system_palette_state() {
+        let mut host = accepted_sgb_host();
+        let mut transfer = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_system_palette_color(&mut transfer, 7, 0, 0x001F);
+        write_system_palette_color(&mut transfer, 7, 1, 0x03E0);
+        write_system_palette_color(&mut transfer, 7, 2, 0x7C00);
+        write_system_palette_color(&mut transfer, 7, 3, 0x8421);
+
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        assert_eq!(
+            host.capture_pending_vram_transfer(&transfer)
+                .expect("PAL_TRN should capture system palette data"),
+            Some(SgbVramTransferTarget::Pal)
+        );
+
+        let mut pal_set = sgb_command_packet(SGB_COMMAND_PAL_SET, 1);
+        for palette_index in 0..SGB_SCREEN_PALETTE_COUNT {
+            let [low, high] = 7u16.to_le_bytes();
+            pal_set[1 + palette_index * 2] = low;
+            pal_set[2 + palette_index * 2] = high;
+        }
+        write_joyp_packet(&mut host, pal_set);
+
+        let snapshot = host.snapshot();
+        assert!(snapshot.video.system_palettes.loaded);
+        assert_eq!(snapshot.video.system_palettes.pal_trn_count, 1);
+        assert_eq!(snapshot.video.system_palettes.pal_set_count, 1);
+        assert_eq!(
+            snapshot.video.palette_state.palette(0).colors[0].raw(),
+            0x001F
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(0).colors[1].raw(),
+            0x03E0
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(0).colors[3].raw(),
+            0x0421,
+            "PAL_TRN colors keep RGB555 bit 15 ignored"
+        );
+
+        let mut pal_pri = sgb_command_packet(SGB_COMMAND_PAL_PRI, 1);
+        pal_pri[1] = 1;
+        write_joyp_packet(&mut host, pal_pri);
+        assert!(host.snapshot().video.system_palettes.pal_pri_enabled);
+        assert_eq!(
+            host.snapshot().video.system_palettes.pal_pri_command_count,
+            1
+        );
+    }
+
+    #[test]
+    fn attr_trn_attr_set_and_pal_set_apply_attribute_files() {
+        let mut host = accepted_sgb_host();
+        let mut transfer = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_atf_cell(&mut transfer, 2, 0, 0, 1);
+        write_atf_cell(&mut transfer, 2, 1, 0, 2);
+        write_atf_cell(&mut transfer, 2, 0, 1, 3);
+
+        write_joyp_packet(&mut host, sgb_attr_trn_packet());
+        assert_eq!(
+            host.capture_pending_vram_transfer(&transfer)
+                .expect("ATTR_TRN should capture ATF data"),
+            Some(SgbVramTransferTarget::Attr)
+        );
+
+        write_joyp_packet(&mut host, sgb_mask_packet(SgbScreenMask::Freeze));
+        let mut attr_set = sgb_command_packet(SGB_COMMAND_ATTR_SET, 1);
+        attr_set[1] = 0x40 | 2;
+        write_joyp_packet(&mut host, attr_set);
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.video.mask, SgbScreenMask::Cancel);
+        assert_eq!(snapshot.video.attributes.last_atf_index, Some(2));
+        assert_eq!(snapshot.video.attributes.attr_trn_count, 1);
+        assert_eq!(snapshot.video.attributes.attr_set_count, 1);
+        assert_eq!(snapshot.video.attributes.map.palette_index(0, 0), 1);
+        assert_eq!(snapshot.video.attributes.map.palette_index(1, 0), 2);
+        assert_eq!(snapshot.video.attributes.map.palette_index(0, 1), 3);
+
+        let mut pal_set = sgb_command_packet(SGB_COMMAND_PAL_SET, 1);
+        pal_set[9] = 0x80 | 2;
+        write_joyp_packet(&mut host, pal_set);
+        assert_eq!(host.snapshot().video.attributes.attr_set_count, 2);
+        assert_eq!(host.snapshot().video.attributes.map.palette_index(0, 0), 1);
     }
 
     #[test]
@@ -2309,6 +3048,48 @@ mod tests {
                 .compose_lcd_rgb555(&vec![3; SGB_LCD_PIXELS])
                 .expect("restored frozen LCD should compose")[0],
             0x001F
+        );
+    }
+
+    #[test]
+    fn save_state_restores_sgb_attribute_and_system_palette_state() {
+        let mut host = accepted_sgb_host();
+        let mut palettes = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_system_palette_color(&mut palettes, 3, 0, 0x001F);
+        write_system_palette_color(&mut palettes, 3, 1, 0x03E0);
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        host.capture_pending_vram_transfer(&palettes)
+            .expect("PAL_TRN should load system palette memory before save");
+        let mut attributes = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_atf_cell(&mut attributes, 4, 0, 0, 1);
+        write_atf_cell(&mut attributes, 4, 1, 0, 2);
+        write_joyp_packet(&mut host, sgb_attr_trn_packet());
+        host.capture_pending_vram_transfer(&attributes)
+            .expect("ATTR_TRN should load ATF memory before save");
+
+        let mut pal_set = sgb_command_packet(SGB_COMMAND_PAL_SET, 1);
+        for palette_index in 0..SGB_SCREEN_PALETTE_COUNT {
+            let [low, high] = 3u16.to_le_bytes();
+            pal_set[1 + palette_index * 2] = low;
+            pal_set[2 + palette_index * 2] = high;
+        }
+        pal_set[9] = 0x80 | 4;
+        write_joyp_packet(&mut host, pal_set);
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        let snapshot = restored.snapshot();
+        assert!(snapshot.video.system_palettes.loaded);
+        assert!(snapshot.video.attributes.files.loaded);
+        assert_eq!(snapshot.video.system_palettes.last_pal_set_ids, [3; 4]);
+        assert_eq!(snapshot.video.attributes.last_atf_index, Some(4));
+        assert_eq!(snapshot.video.attributes.map.palette_index(0, 0), 1);
+        assert_eq!(snapshot.video.attributes.map.palette_index(1, 0), 2);
+        assert_eq!(
+            snapshot.video.palette_state.palette(0).colors[1].raw(),
+            0x03E0
         );
     }
 

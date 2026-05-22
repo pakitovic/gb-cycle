@@ -111,6 +111,8 @@ Acceptance criteria:
 - Save/load captures attribute maps and command-loaded attribute buffers.
 - Example-title notes cover Pokémon Yellow, Kirby’s Dream Land 2, and Balloon Kid as manual compatibility references.
 
+Status: implemented as the Slice 4 baseline. `SgbHost` now owns an explicit 20×18 SGB attribute map, packed 45-entry ATF memory, 512 logical system palettes, and `PAL_PRI` state without using CGB palette RAM, CGB tile attributes, or hidden GB PPU metadata. `ATTR_BLK`, `ATTR_LIN`, `ATTR_DIV`, and `ATTR_CHR` update only the host attribute map; multi-packet attribute payloads reuse the Slice 2 packet buffer by flattening first-packet data bytes plus full subsequent packet data. `PAL_TRN` and `ATTR_TRN` reuse the Slice 3 4 KiB transfer seam, while `PAL_SET` and `ATTR_SET` copy logical palette/attribute files into visible host state and can cancel `MASK_EN` as documented. LCD and full-frame SGB composition now choose the screen palette per 8×8 GB-window cell before mapping the DMG shade to RGB555, and freeze snapshots the attribute-colored LCD image. The durable machine save-state format version is bumped again because Slice 4 adds live attribute maps, ATF buffers, system palettes, and palette-priority state. Manual compatibility examples for this slice are Pokémon Yellow, Kirby’s Dream Land 2, and Balloon Kid.
+
 ## Slice 5 — MLT_REQ multiplayer
 
 Scope: support SGB controller multiplexing for two-player and four-player SGB games.
