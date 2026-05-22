@@ -69,9 +69,9 @@ pub use differential::{
     DifferentialSuiteReport,
 };
 pub use external_roms::{
-    EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomRequiredFile,
-    ExternalRomSource, ExternalRomSourceManifest, discover_external_rom_root_for_key,
-    external_rom_source_manifest_path, external_rom_store_root, load_external_rom_source_manifest,
+    EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomRequiredFile, ExternalRomSource,
+    ExternalRomSourceManifest, discover_external_rom_root_for_key,
+    external_rom_source_manifest_path, load_external_rom_source_manifest,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
 pub use first_divergence::{
@@ -3346,8 +3346,8 @@ mod tests {
         cgb_audio_blargg_suite, cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
         cgb_dma_suite, cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite,
         cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
-        external_rom_source_manifest_path, external_rom_store_root, hacktix_dmg_curated_suite,
-        little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
+        hacktix_dmg_curated_suite, little_things_gb_cgb_extra_suite,
+        little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
         memory_text_output_completion_reached, mooneye_cgb_extra_suite,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
         mooneye_result_for_signature, render_memory_text_output, samesuite_cgb_extra_suite,
@@ -5813,8 +5813,11 @@ mod tests {
         let _guard = crate::test_support::lock_env();
         let previous_test_root = env::var_os(TEST_ROM_ROOT_ENV_VAR);
         let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
+        let external_root_key = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT";
+        let previous_external_root = env::var_os(external_root_key);
         remove_env_var(TEST_ROM_ROOT_ENV_VAR);
         remove_env_var(BOOT_ROM_ROOT_ENV_VAR);
+        remove_env_var(external_root_key);
 
         let missing_default = runner
             .resolve_case_path(Path::new("acid/dmg-acid2.gb"), Some(TEST_ROM_ROOT_ENV_VAR))
@@ -5827,42 +5830,22 @@ mod tests {
             } if key == TEST_ROM_ROOT_ENV_VAR && relative_path == Path::new("acid/dmg-acid2.gb")
         ));
 
-        let manifest_path = external_rom_source_manifest_path(&workspace);
-        fs::create_dir_all(
-            manifest_path
-                .parent()
-                .expect("manifest path should have a parent"),
-        )
-        .expect("manifest parent should be creatable");
-        fs::write(
-            &manifest_path,
-            r#"
-version = 1
-
-[[source]]
-id = "retrio"
-git_url = "https://example.invalid/retrio.git"
-git_rev = "abc123"
-local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
-"#,
-        )
-        .expect("external root manifest should be writable");
-        let manifest_root = external_rom_store_root(&workspace).join("retrio-gb-test-roms");
-        fs::create_dir_all(&manifest_root).expect("manifest-backed root should be creatable");
+        let external_root = workspace.join("external-roms");
+        set_env_var(external_root_key, &external_root);
         assert_eq!(
             runner
-                .resolve_case_path(
-                    Path::new("retrio/case.gb"),
-                    Some("GB_CYCLE_LIB_TEST_EXTERNAL_ROOT")
-                )
-                .expect("manifest-backed external root should resolve"),
-            manifest_root.join("retrio/case.gb")
+                .resolve_case_path(Path::new("retrio/case.gb"), Some(external_root_key))
+                .expect("environment-backed external root should resolve"),
+            external_root.join("retrio/case.gb")
         );
 
         match previous_test_root {
             Some(value) => set_env_var(TEST_ROM_ROOT_ENV_VAR, value),
             None => remove_env_var(TEST_ROM_ROOT_ENV_VAR),
+        }
+        match previous_external_root {
+            Some(value) => set_env_var(external_root_key, value),
+            None => remove_env_var(external_root_key),
         }
 
         let cgb_real_boot_case = RomTestCase::new(

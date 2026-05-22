@@ -4,7 +4,6 @@ use std::{env, fs, io};
 
 use serde::Deserialize;
 
-pub const EXTERNAL_ROM_STORE_DIR: &str = ".roms/external-test";
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
 const SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION: u32 = 1;
 
@@ -91,10 +90,6 @@ impl ExternalRomSourceManifest {
     }
 }
 
-pub fn external_rom_store_root(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(EXTERNAL_ROM_STORE_DIR)
-}
-
 pub fn external_rom_source_manifest_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
 }
@@ -126,16 +121,6 @@ pub fn load_external_rom_source_manifest(
     })
 }
 
-pub fn default_external_rom_root_for_key(
-    workspace_root: &Path,
-    key: &str,
-) -> Result<Option<PathBuf>, ExternalRomSourceManifestError> {
-    let manifest = load_external_rom_source_manifest(workspace_root)?;
-    Ok(manifest
-        .source_by_env_var(key)
-        .map(|source| external_rom_store_root(workspace_root).join(&source.local_dir)))
-}
-
 pub fn discover_external_rom_root_for_key(
     workspace_root: &Path,
     key: &str,
@@ -144,11 +129,7 @@ pub fn discover_external_rom_root_for_key(
         return Ok(Some(PathBuf::from(root)));
     }
 
-    if let Some(default_root) = default_external_rom_root_for_key(workspace_root, key)?
-        && default_root.exists()
-    {
-        return Ok(Some(default_root));
-    }
+    let _ = load_external_rom_source_manifest(workspace_root)?;
 
     Ok(None)
 }
@@ -156,9 +137,8 @@ pub fn discover_external_rom_root_for_key(
 #[cfg(test)]
 mod tests {
     use super::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomSourceManifestError,
-        default_external_rom_root_for_key, discover_external_rom_root_for_key,
-        external_rom_source_manifest_path, external_rom_store_root,
+        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomSourceManifestError,
+        discover_external_rom_root_for_key, external_rom_source_manifest_path,
         load_external_rom_source_manifest,
     };
     use std::env;
@@ -210,10 +190,6 @@ mod tests {
     fn workspace_path_helpers_follow_repo_local_layout() {
         let workspace_root = Path::new("/tmp/gb-cycle-workspace");
         assert_eq!(
-            external_rom_store_root(workspace_root),
-            workspace_root.join(EXTERNAL_ROM_STORE_DIR)
-        );
-        assert_eq!(
             external_rom_source_manifest_path(workspace_root),
             workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
         );
@@ -263,15 +239,6 @@ root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
                 .expect("shootout source should exist")
                 .id,
             "gbemu-shootout"
-        );
-
-        let default_root =
-            default_external_rom_root_for_key(&workspace_root, "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT")
-                .expect("default root lookup should succeed")
-                .expect("retrio default root should exist in the manifest");
-        assert_eq!(
-            default_root,
-            external_rom_store_root(&workspace_root).join("retrio-gb-test-roms")
         );
 
         let display = ExternalRomSourceManifestError::UnsupportedVersion {
@@ -330,7 +297,7 @@ root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
     }
 
     #[test]
-    fn discover_external_rom_root_prefers_env_then_existing_default_then_none() {
+    fn discover_external_rom_root_prefers_env_then_none() {
         let workspace_root = unique_temp_dir("discover-root");
         write_manifest(
             &workspace_root,
@@ -346,17 +313,14 @@ root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
 "#,
         );
 
-        let default_root = external_rom_store_root(&workspace_root).join("retrio-gb-test-roms");
-        fs::create_dir_all(&default_root).expect("default root should be creatable");
-
         let _guard = crate::test_support::lock_env();
         let key = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT";
         let previous = env::var_os(key);
         remove_env_var(key);
 
-        let discovered_default = discover_external_rom_root_for_key(&workspace_root, key)
-            .expect("default discovery should succeed");
-        assert_eq!(discovered_default, Some(default_root.clone()));
+        let missing = discover_external_rom_root_for_key(&workspace_root, key)
+            .expect("missing discovery should still succeed");
+        assert_eq!(missing, None);
 
         let env_root = workspace_root.join("custom-env-root");
         set_env_var(key, &env_root);
@@ -365,38 +329,11 @@ root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
         assert_eq!(discovered_env, Some(env_root.clone()));
 
         remove_env_var(key);
-        fs::remove_dir_all(&default_root).expect("default root should be removable");
-        let missing = discover_external_rom_root_for_key(&workspace_root, key)
-            .expect("missing discovery should still succeed");
-        assert_eq!(missing, None);
 
         match previous {
             Some(value) => set_env_var(key, value),
             None => remove_env_var(key),
         }
-    }
-
-    #[test]
-    fn default_external_rom_root_returns_none_for_unknown_key() {
-        let workspace_root = unique_temp_dir("default-none");
-        write_manifest(
-            &workspace_root,
-            r#"
-version = 1
-
-[[source]]
-id = "retrio"
-git_url = "https://example.invalid/retrio.git"
-git_rev = "abc123"
-local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
-"#,
-        );
-
-        let default_root =
-            default_external_rom_root_for_key(&workspace_root, "GB_CYCLE_UNKNOWN_EXTERNAL_ROOT")
-                .expect("unknown key lookup should succeed");
-        assert_eq!(default_root, None);
     }
 
     #[test]

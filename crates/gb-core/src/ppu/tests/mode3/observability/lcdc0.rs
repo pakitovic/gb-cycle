@@ -109,7 +109,7 @@ fn resolve_test_rom_path(relative: &str) -> std::path::PathBuf {
     }
 
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.roms/test")
+        .join("../../test")
         .join(relative)
 }
 

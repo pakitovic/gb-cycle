@@ -9,7 +9,7 @@ topology = "dmg04"
 timeout_tcycles = 100000000
 oracle = "linked-participant-framebuffer-fixture-until-match"
 target_participant = "master"
-fixture = "fixtures/docboy-dmg/ok.png"
+fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
@@ -31,7 +31,7 @@ topology = "dmg04"
 timeout_tcycles = 100000000
 oracle = "linked-participant-framebuffer-fixture-until-match"
 target_participant = "slave"
-fixture = "fixtures/docboy-dmg/ok.png"
+fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
@@ -53,7 +53,7 @@ topology = "dmg04"
 timeout_tcycles = 100000000
 oracle = "linked-participant-framebuffer-fixture-until-match"
 target_participant = "master"
-fixture = "fixtures/docboy-dmg/ok.png"
+fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
@@ -75,7 +75,7 @@ topology = "dmg04"
 timeout_tcycles = 100000000
 oracle = "linked-participant-framebuffer-fixture-until-match"
 target_participant = "slave"
-fixture = "fixtures/docboy-dmg/ok.png"
+fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"

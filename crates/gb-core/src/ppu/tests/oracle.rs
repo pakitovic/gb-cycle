@@ -4,7 +4,7 @@ use super::*;
 #[ignore = "diagnostic case1 pre-read cpu-visible stat probe against the real mooneye ROM"]
 fn cpu_stat_read_logs_case1_pre_read_state_against_real_rom() {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+        .join("../../test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
     let rom = std::fs::read(&rom_path)
         .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
     let mut machine = Machine::new(
@@ -65,7 +65,7 @@ fn cpu_stat_read_logs_case1_pre_read_state_against_real_rom() {
 #[ignore = "diagnostic helper conditions at the real first FF41 read for testcase 1"]
 fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+        .join("../../test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
     let rom = std::fs::read(&rom_path)
         .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
     let mut machine = Machine::new(

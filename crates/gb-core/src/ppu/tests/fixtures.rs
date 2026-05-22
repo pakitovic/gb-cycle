@@ -318,7 +318,7 @@ pub(super) fn seed_hacktix_dmg_boot_logo_vram(machine: &mut Machine<TraceSummary
 
 pub(super) fn load_hacktix_strikethrough_machine() -> Machine<TraceSummaryBuffer> {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.roms/test/hacktix/strikethrough.gb");
+        .join("../../test/hacktix/strikethrough.gb");
     let rom = std::fs::read(&rom_path).expect("hacktix strikethrough ROM should be present");
     let mut machine = Machine::new_summary(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
