@@ -5,7 +5,7 @@ use crate::cpu::CpuStartupState;
 use crate::dma::DmaStartupState;
 use crate::interrupts::InterruptStartupState;
 use crate::joypad::JoypadStartupState;
-use crate::model::{ConsoleModel, HardwareRevision, StartupMode};
+use crate::model::{ConsoleModel, HardwareRevision, SgbHostProfile, StartupMode};
 use crate::ppu::PpuStartupState;
 use crate::save_state::SaveStateByteFingerprint;
 use crate::scheduler::CycleContext;
@@ -21,18 +21,20 @@ const CGB_BOOT_ROM_RAW_LEN: usize = 0x0800;
 const CGB_BOOT_ROM_MAPPED_LEN: usize = 0x0900;
 const CGB_BOOT_ROM_UPPER_WINDOW_START: usize = 0x0200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum BootRomImageProfile {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum BootRomAssetKind {
     Dmg0,
     Dmg,
     Mgb,
+    Sgb,
+    Sgb2,
     Cgb0,
     Cgb,
     CgbE,
 }
 
-impl BootRomImageProfile {
-    const fn from_revision(revision: HardwareRevision) -> Self {
+impl BootRomAssetKind {
+    pub const fn from_revision(revision: HardwareRevision) -> Self {
         match revision {
             HardwareRevision::DmgCpu => Self::Dmg0,
             HardwareRevision::DmgCpuA | HardwareRevision::DmgCpuB | HardwareRevision::DmgCpuC => {
@@ -48,22 +50,77 @@ impl BootRomImageProfile {
         }
     }
 
-    const fn filename(self) -> &'static str {
+    pub const fn from_sgb_profile(profile: SgbHostProfile) -> Self {
+        match profile {
+            SgbHostProfile::SgbNtsc | SgbHostProfile::SgbPal => Self::Sgb,
+            SgbHostProfile::Sgb2Ntsc => Self::Sgb2,
+        }
+    }
+
+    pub const fn from_machine_profile(
+        revision: HardwareRevision,
+        sgb_profile: Option<SgbHostProfile>,
+    ) -> Self {
+        match sgb_profile {
+            Some(profile) => Self::from_sgb_profile(profile),
+            None => Self::from_revision(revision),
+        }
+    }
+
+    pub const fn filename(self) -> &'static str {
         match self {
             Self::Dmg0 => "dmg0_boot.bin",
             Self::Dmg => "dmg_boot.bin",
             Self::Mgb => "mgb_boot.bin",
+            Self::Sgb => "sgb_boot.bin",
+            Self::Sgb2 => "sgb2_boot.bin",
             Self::Cgb0 => "cgb0_boot.bin",
             Self::Cgb => "cgb_boot.bin",
             Self::CgbE => "cgbE_boot.bin",
         }
     }
 
-    const fn minimum_len(self) -> usize {
+    pub const fn minimum_len(self) -> usize {
         match self {
-            Self::Dmg0 | Self::Dmg | Self::Mgb => DMG_FAMILY_BOOT_ROM_LEN,
+            Self::Dmg0 | Self::Dmg | Self::Mgb | Self::Sgb | Self::Sgb2 => DMG_FAMILY_BOOT_ROM_LEN,
             Self::Cgb0 | Self::Cgb | Self::CgbE => CGB_BOOT_ROM_RAW_LEN,
         }
+    }
+
+    pub const fn expected_size(self) -> usize {
+        match self {
+            Self::Dmg0 | Self::Dmg | Self::Mgb | Self::Sgb | Self::Sgb2 => DMG_FAMILY_BOOT_ROM_LEN,
+            Self::Cgb0 | Self::Cgb | Self::CgbE => CGB_BOOT_ROM_MAPPED_LEN,
+        }
+    }
+
+    pub const fn expected_sha256(self) -> &'static str {
+        match self {
+            Self::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
+            Self::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
+            Self::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
+            Self::Sgb => "0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360",
+            Self::Sgb2 => "fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988",
+            Self::Cgb0 => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
+            Self::Cgb => "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7",
+            Self::CgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
+        }
+    }
+
+    pub const fn uses_cgb_mapping(self) -> bool {
+        matches!(self, Self::Cgb0 | Self::Cgb | Self::CgbE)
+    }
+}
+
+impl From<HardwareRevision> for BootRomAssetKind {
+    fn from(value: HardwareRevision) -> Self {
+        Self::from_revision(value)
+    }
+}
+
+impl From<SgbHostProfile> for BootRomAssetKind {
+    fn from(value: SgbHostProfile) -> Self {
+        Self::from_sgb_profile(value)
     }
 }
 
@@ -72,6 +129,8 @@ pub struct BootRomAssets {
     dmg0: Option<Vec<u8>>,
     dmg: Option<Vec<u8>>,
     mgb: Option<Vec<u8>>,
+    sgb: Option<Vec<u8>>,
+    sgb2: Option<Vec<u8>>,
     cgb0: Option<Vec<u8>>,
     cgb: Option<Vec<u8>>,
     cgb_e: Option<Vec<u8>>,
@@ -148,6 +207,8 @@ impl BootRomAssets {
             dmg0: None,
             dmg: None,
             mgb: None,
+            sgb: None,
+            sgb2: None,
             cgb0: None,
             cgb: None,
             cgb_e: None,
@@ -168,12 +229,14 @@ impl BootRomAssets {
         }
 
         Ok(Self {
-            dmg0: read_boot_rom_file(path, BootRomImageProfile::Dmg0)?,
-            dmg: read_boot_rom_file(path, BootRomImageProfile::Dmg)?,
-            mgb: read_boot_rom_file(path, BootRomImageProfile::Mgb)?,
-            cgb0: read_boot_rom_file(path, BootRomImageProfile::Cgb0)?,
-            cgb: read_boot_rom_file(path, BootRomImageProfile::Cgb)?,
-            cgb_e: read_boot_rom_file(path, BootRomImageProfile::CgbE)?,
+            dmg0: read_boot_rom_file(path, BootRomAssetKind::Dmg0)?,
+            dmg: read_boot_rom_file(path, BootRomAssetKind::Dmg)?,
+            mgb: read_boot_rom_file(path, BootRomAssetKind::Mgb)?,
+            sgb: read_boot_rom_file(path, BootRomAssetKind::Sgb)?,
+            sgb2: read_boot_rom_file(path, BootRomAssetKind::Sgb2)?,
+            cgb0: read_boot_rom_file(path, BootRomAssetKind::Cgb0)?,
+            cgb: read_boot_rom_file(path, BootRomAssetKind::Cgb)?,
+            cgb_e: read_boot_rom_file(path, BootRomAssetKind::CgbE)?,
         })
     }
 
@@ -186,14 +249,31 @@ impl BootRomAssets {
         Ok(self)
     }
 
+    pub fn with_asset_bytes(
+        mut self,
+        asset: impl Into<BootRomAssetKind>,
+        bytes: Vec<u8>,
+    ) -> Result<Self, BootRomAssetError> {
+        self.insert_asset_bytes(asset, bytes)?;
+        Ok(self)
+    }
+
     pub fn insert_bytes(
         &mut self,
         revision: HardwareRevision,
         bytes: Vec<u8>,
     ) -> Result<(), BootRomAssetError> {
-        let profile = BootRomImageProfile::from_revision(revision);
-        validate_boot_rom_len(profile.minimum_len(), &bytes, Path::new(profile.filename()))?;
-        *self.bytes_slot_mut(profile) = Some(bytes);
+        self.insert_asset_bytes(BootRomAssetKind::from_revision(revision), bytes)
+    }
+
+    pub fn insert_asset_bytes(
+        &mut self,
+        asset: impl Into<BootRomAssetKind>,
+        bytes: Vec<u8>,
+    ) -> Result<(), BootRomAssetError> {
+        let asset = asset.into();
+        validate_boot_rom_len(asset.minimum_len(), &bytes, Path::new(asset.filename()))?;
+        *self.bytes_slot_mut(asset) = Some(bytes);
         Ok(())
     }
 
@@ -201,24 +281,38 @@ impl BootRomAssets {
         revision.boot_rom_filename()
     }
 
+    pub const fn filename_for_asset(asset: BootRomAssetKind) -> &'static str {
+        asset.filename()
+    }
+
     pub fn has_image(&self, revision: HardwareRevision) -> bool {
-        self.bytes_for(BootRomImageProfile::from_revision(revision))
-            .is_some()
+        self.has_asset(BootRomAssetKind::from_revision(revision))
+    }
+
+    pub fn has_asset(&self, asset: impl Into<BootRomAssetKind>) -> bool {
+        self.bytes_for(asset.into()).is_some()
     }
 
     pub fn is_empty(&self) -> bool {
         self.dmg0.is_none()
             && self.dmg.is_none()
             && self.mgb.is_none()
+            && self.sgb.is_none()
+            && self.sgb2.is_none()
             && self.cgb0.is_none()
             && self.cgb.is_none()
             && self.cgb_e.is_none()
     }
 
     pub fn read_byte(&self, revision: HardwareRevision, address: u16) -> Option<u8> {
-        let bytes = self.bytes_for(BootRomImageProfile::from_revision(revision))?;
+        self.read_asset_byte(BootRomAssetKind::from_revision(revision), address)
+    }
 
-        if revision.uses_cgb_boot_rom() {
+    pub fn read_asset_byte(&self, asset: impl Into<BootRomAssetKind>, address: u16) -> Option<u8> {
+        let asset = asset.into();
+        let bytes = self.bytes_for(asset)?;
+
+        if asset.uses_cgb_mapping() {
             read_cgb_boot_rom_byte(bytes, address)
         } else {
             bytes.get(address as usize).copied()
@@ -226,7 +320,14 @@ impl BootRomAssets {
     }
 
     pub fn fingerprint(&self, revision: HardwareRevision) -> Option<SaveStateByteFingerprint> {
-        self.bytes_for(BootRomImageProfile::from_revision(revision))
+        self.fingerprint_asset(BootRomAssetKind::from_revision(revision))
+    }
+
+    pub fn fingerprint_asset(
+        &self,
+        asset: impl Into<BootRomAssetKind>,
+    ) -> Option<SaveStateByteFingerprint> {
+        self.bytes_for(asset.into())
             .map(SaveStateByteFingerprint::from_bytes)
     }
 
@@ -234,30 +335,36 @@ impl BootRomAssets {
         self.dmg0.as_ref().map(Vec::len).unwrap_or(0)
             + self.dmg.as_ref().map(Vec::len).unwrap_or(0)
             + self.mgb.as_ref().map(Vec::len).unwrap_or(0)
+            + self.sgb.as_ref().map(Vec::len).unwrap_or(0)
+            + self.sgb2.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb0.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb_e.as_ref().map(Vec::len).unwrap_or(0)
     }
 
-    fn bytes_for(&self, profile: BootRomImageProfile) -> Option<&[u8]> {
-        match profile {
-            BootRomImageProfile::Dmg0 => self.dmg0.as_deref(),
-            BootRomImageProfile::Dmg => self.dmg.as_deref(),
-            BootRomImageProfile::Mgb => self.mgb.as_deref(),
-            BootRomImageProfile::Cgb0 => self.cgb0.as_deref(),
-            BootRomImageProfile::Cgb => self.cgb.as_deref(),
-            BootRomImageProfile::CgbE => self.cgb_e.as_deref(),
+    fn bytes_for(&self, asset: BootRomAssetKind) -> Option<&[u8]> {
+        match asset {
+            BootRomAssetKind::Dmg0 => self.dmg0.as_deref(),
+            BootRomAssetKind::Dmg => self.dmg.as_deref(),
+            BootRomAssetKind::Mgb => self.mgb.as_deref(),
+            BootRomAssetKind::Sgb => self.sgb.as_deref(),
+            BootRomAssetKind::Sgb2 => self.sgb2.as_deref(),
+            BootRomAssetKind::Cgb0 => self.cgb0.as_deref(),
+            BootRomAssetKind::Cgb => self.cgb.as_deref(),
+            BootRomAssetKind::CgbE => self.cgb_e.as_deref(),
         }
     }
 
-    fn bytes_slot_mut(&mut self, profile: BootRomImageProfile) -> &mut Option<Vec<u8>> {
-        match profile {
-            BootRomImageProfile::Dmg0 => &mut self.dmg0,
-            BootRomImageProfile::Dmg => &mut self.dmg,
-            BootRomImageProfile::Mgb => &mut self.mgb,
-            BootRomImageProfile::Cgb0 => &mut self.cgb0,
-            BootRomImageProfile::Cgb => &mut self.cgb,
-            BootRomImageProfile::CgbE => &mut self.cgb_e,
+    fn bytes_slot_mut(&mut self, asset: BootRomAssetKind) -> &mut Option<Vec<u8>> {
+        match asset {
+            BootRomAssetKind::Dmg0 => &mut self.dmg0,
+            BootRomAssetKind::Dmg => &mut self.dmg,
+            BootRomAssetKind::Mgb => &mut self.mgb,
+            BootRomAssetKind::Sgb => &mut self.sgb,
+            BootRomAssetKind::Sgb2 => &mut self.sgb2,
+            BootRomAssetKind::Cgb0 => &mut self.cgb0,
+            BootRomAssetKind::Cgb => &mut self.cgb,
+            BootRomAssetKind::CgbE => &mut self.cgb_e,
         }
     }
 }
@@ -506,6 +613,7 @@ pub enum BootStatus {
 pub struct BootController {
     console_model: ConsoleModel,
     revision: HardwareRevision,
+    sgb_profile: Option<SgbHostProfile>,
     startup_mode: StartupMode,
     status: BootStatus,
     boot_rom_mapped: bool,
@@ -516,6 +624,7 @@ pub struct BootController {
 pub struct BootSaveState {
     console_model: ConsoleModel,
     revision: HardwareRevision,
+    sgb_profile: Option<SgbHostProfile>,
     startup_mode: StartupMode,
     status: BootStatus,
     boot_rom_mapped: bool,
@@ -532,6 +641,8 @@ impl BootSaveState {
 pub struct BootSnapshot {
     pub console_model: ConsoleModel,
     pub revision: HardwareRevision,
+    pub sgb_profile: Option<SgbHostProfile>,
+    pub boot_rom_asset: BootRomAssetKind,
     pub startup_mode: StartupMode,
     pub status: BootStatus,
     pub boot_rom_mapped: bool,
@@ -546,9 +657,20 @@ impl BootController {
         startup_mode: StartupMode,
         boot_rom_assets: BootRomAssets,
     ) -> Self {
+        Self::new_with_sgb_profile(console_model, revision, None, startup_mode, boot_rom_assets)
+    }
+
+    pub fn new_with_sgb_profile(
+        console_model: ConsoleModel,
+        revision: HardwareRevision,
+        sgb_profile: Option<SgbHostProfile>,
+        startup_mode: StartupMode,
+        boot_rom_assets: BootRomAssets,
+    ) -> Self {
         Self {
             console_model,
             revision,
+            sgb_profile,
             startup_mode,
             status: BootStatus::Ready,
             boot_rom_mapped: startup_mode.requires_boot_rom(),
@@ -564,6 +686,7 @@ impl BootController {
         BootSaveState {
             console_model: self.console_model,
             revision: self.revision,
+            sgb_profile: self.sgb_profile,
             startup_mode: self.startup_mode,
             status: self.status,
             boot_rom_mapped: self.boot_rom_mapped,
@@ -574,6 +697,7 @@ impl BootController {
     pub(crate) fn restore_save_state(&mut self, state: &BootSaveState) {
         self.console_model = state.console_model;
         self.revision = state.revision;
+        self.sgb_profile = state.sgb_profile;
         self.startup_mode = state.startup_mode;
         self.status = state.status;
         self.boot_rom_mapped = state.boot_rom_mapped;
@@ -592,16 +716,25 @@ impl BootController {
         self.revision
     }
 
+    pub fn sgb_profile(&self) -> Option<SgbHostProfile> {
+        self.sgb_profile
+    }
+
+    pub fn boot_rom_asset(&self) -> BootRomAssetKind {
+        BootRomAssetKind::from_machine_profile(self.revision, self.sgb_profile)
+    }
+
     pub fn is_boot_rom_mapped(&self) -> bool {
         self.boot_rom_mapped
     }
 
     pub fn boot_rom_fingerprint(&self) -> Option<SaveStateByteFingerprint> {
-        self.boot_rom_assets.fingerprint(self.revision)
+        self.boot_rom_assets
+            .fingerprint_asset(self.boot_rom_asset())
     }
 
     pub fn has_boot_rom_asset(&self) -> bool {
-        self.boot_rom_assets.has_image(self.revision)
+        self.boot_rom_assets.has_asset(self.boot_rom_asset())
     }
 
     pub fn bus_state(&self) -> BootRomBusState {
@@ -634,7 +767,7 @@ impl BootController {
 
     pub fn read_boot_rom(&self, address: u16) -> u8 {
         self.boot_rom_assets
-            .read_byte(self.revision, address)
+            .read_asset_byte(self.boot_rom_asset(), address)
             .unwrap_or(0xFF)
     }
 
@@ -706,6 +839,8 @@ impl BootController {
         BootSnapshot {
             console_model: self.console_model,
             revision: self.revision,
+            sgb_profile: self.sgb_profile,
+            boot_rom_asset: self.boot_rom_asset(),
             startup_mode: self.startup_mode,
             status: self.status,
             boot_rom_mapped: self.boot_rom_mapped,
@@ -984,12 +1119,12 @@ fn build_verified_boot_entry_apu_state(
 
 fn read_boot_rom_file(
     directory: &Path,
-    profile: BootRomImageProfile,
+    asset: BootRomAssetKind,
 ) -> Result<Option<Vec<u8>>, BootRomAssetError> {
-    let path = directory.join(profile.filename());
+    let path = directory.join(asset.filename());
     match fs::read(&path) {
         Ok(bytes) => {
-            validate_boot_rom_len(profile.minimum_len(), &bytes, &path)?;
+            validate_boot_rom_len(asset.minimum_len(), &bytes, &path)?;
             Ok(Some(bytes))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),

@@ -1,7 +1,7 @@
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CompatibilityPolicy, ConsoleModel, ExecutionMode,
-    HardwareRevision, MachineConfig, MachineRewindConfig, MachineRewindSubframeCadence,
-    StartupMode,
+    BootRomAssetError, BootRomAssetKind, BootRomAssets, CompatibilityPolicy, ConsoleModel,
+    ExecutionMode, HardwareRevision, MachineConfig, MachineRewindConfig,
+    MachineRewindSubframeCadence, StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
@@ -38,17 +38,16 @@ pub struct DesktopConfig {
 impl DesktopConfig {
     pub fn machine_config(&self) -> Result<MachineConfig, DesktopConfigError> {
         let revision = self.launch.effective_revision();
-        let boot_rom_assets = self
-            .boot_rom
-            .load_assets(self.launch.startup_mode, revision)?;
+        let machine_config = MachineConfig::new(self.launch.console_model.console_model())
+            .with_startup_mode(self.launch.startup_mode)
+            .with_revision(revision)
+            .with_compatibility(self.launch.compatibility_policy());
+        let boot_rom_assets = self.boot_rom.load_assets(
+            self.launch.startup_mode,
+            machine_config.boot_rom_asset_kind(),
+        )?;
 
-        Ok(
-            MachineConfig::new(self.launch.console_model.console_model())
-                .with_startup_mode(self.launch.startup_mode)
-                .with_revision(revision)
-                .with_boot_rom_assets(boot_rom_assets)
-                .with_compatibility(self.launch.compatibility_policy()),
-        )
+        Ok(machine_config.with_boot_rom_assets(boot_rom_assets))
     }
 }
 
@@ -240,8 +239,9 @@ impl BootRomOptions {
     pub fn load_assets(
         &self,
         startup_mode: StartupMode,
-        revision: HardwareRevision,
+        asset: impl Into<BootRomAssetKind>,
     ) -> Result<BootRomAssets, BootRomAssetError> {
+        let asset = asset.into();
         if !startup_mode.requires_boot_rom() {
             return Ok(BootRomAssets::none());
         }
@@ -254,7 +254,7 @@ impl BootRomOptions {
                 path: path.clone(),
                 source,
             })?;
-            return BootRomAssets::none().with_bytes(revision, bytes);
+            return BootRomAssets::none().with_asset_bytes(asset, bytes);
         }
 
         BootRomAssets::from_directory(path)
@@ -1374,6 +1374,21 @@ mod tests {
             .load_assets(StartupMode::RealBoot, HardwareRevision::DmgCpuC)
             .expect("exact boot ROM file should load");
         assert_eq!(assets.read_byte(HardwareRevision::DmgCpuC, 0), Some(0x11));
+
+        let sgb_path = root.join("sgb_boot.bin");
+        fs::write(&sgb_path, vec![0x51; 0x100])
+            .expect("test SGB boot ROM image should be writable");
+        let sgb_options = BootRomOptions {
+            search_path: Some(sgb_path),
+            verification: BootRomVerificationMode::Off,
+        };
+        let sgb_assets = sgb_options
+            .load_assets(StartupMode::RealBoot, BootRomAssetKind::Sgb)
+            .expect("exact SGB boot ROM file should load");
+        assert_eq!(
+            sgb_assets.read_asset_byte(BootRomAssetKind::Sgb, 0),
+            Some(0x51)
+        );
 
         fs::remove_dir_all(root).expect("temp boot ROM root should be removable");
     }

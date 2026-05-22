@@ -1,4 +1,4 @@
-use gb_core::{BootRomAssets, HardwareRevision, StartupMode};
+use gb_core::{BootRomAssetKind, BootRomAssets, StartupMode};
 use gb_desktop::BootRomVerificationMode;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -29,10 +29,11 @@ impl fmt::Display for MissingBootRomAsset {
 pub fn load_boot_rom_assets(
     search_path: Option<&Path>,
     verification_mode: BootRomVerificationMode,
-    revision: HardwareRevision,
+    asset: impl Into<BootRomAssetKind>,
     startup_mode: StartupMode,
     current_dir: &Path,
 ) -> Result<BootRomAssets, String> {
+    let asset = asset.into();
     if startup_mode != StartupMode::RealBoot {
         return Ok(BootRomAssets::none());
     }
@@ -49,21 +50,21 @@ pub fn load_boot_rom_assets(
         }
         return Ok(BootRomAssets::none());
     };
-    let image_path = boot_rom_image_path(&source, revision);
+    let image_path = boot_rom_image_path(&source, asset);
     match verification_mode {
         BootRomVerificationMode::Off => {}
         BootRomVerificationMode::Warn => {
-            if let Err(error) = verify_boot_rom_file(&image_path, revision) {
+            if let Err(error) = verify_boot_rom_file(&image_path, asset) {
                 eprintln!("warning: {error}");
             }
         }
         BootRomVerificationMode::Strict => {
-            verify_boot_rom_file(&image_path, revision)?;
+            verify_boot_rom_file(&image_path, asset)?;
         }
     }
 
     if source.is_file() {
-        return load_exact_boot_rom_file(&source, revision);
+        return load_exact_boot_rom_file(&source, asset);
     }
 
     if !source.is_dir() {
@@ -80,9 +81,10 @@ pub fn load_boot_rom_assets(
 
 pub fn missing_boot_rom_asset(
     search_path: Option<&Path>,
-    revision: HardwareRevision,
+    asset: impl Into<BootRomAssetKind>,
     current_dir: &Path,
 ) -> Result<Option<MissingBootRomAsset>, String> {
+    let asset = asset.into();
     let Some(source) = resolve_boot_rom_source(search_path, current_dir) else {
         return Ok(Some(MissingBootRomAsset::SourceUnconfigured));
     };
@@ -93,7 +95,7 @@ pub fn missing_boot_rom_asset(
         return Ok(None);
     }
     if source.is_dir() {
-        let image_path = boot_rom_image_path(&source, revision);
+        let image_path = boot_rom_image_path(&source, asset);
         if !path_exists(&image_path)? {
             return Ok(Some(MissingBootRomAsset::Path(image_path)));
         }
@@ -130,62 +132,64 @@ fn path_exists(path: &Path) -> Result<bool, String> {
     })
 }
 
-fn boot_rom_image_path(source: &Path, revision: HardwareRevision) -> PathBuf {
+fn boot_rom_image_path(source: &Path, asset: impl Into<BootRomAssetKind>) -> PathBuf {
     if source.is_file() {
         return source.to_path_buf();
     }
 
-    source.join(BootRomAssets::filename(revision))
+    source.join(asset.into().filename())
 }
 
 fn load_exact_boot_rom_file(
     path: &Path,
-    revision: HardwareRevision,
+    asset: impl Into<BootRomAssetKind>,
 ) -> Result<BootRomAssets, String> {
+    let asset = asset.into();
     let bytes = fs::read(path).map_err(|error| {
         format!(
             "failed to read boot ROM asset {:?} at {}: {}",
-            revision,
+            asset,
             path.display(),
             error
         )
     })?;
     BootRomAssets::none()
-        .with_bytes(revision, bytes)
+        .with_asset_bytes(asset, bytes)
         .map_err(|error| {
             format!(
                 "failed to load boot ROM asset {:?} at {}: {error}",
-                revision,
+                asset,
                 path.display()
             )
         })
 }
 
-fn verify_boot_rom_file(path: &Path, revision: HardwareRevision) -> Result<(), String> {
+fn verify_boot_rom_file(path: &Path, asset: impl Into<BootRomAssetKind>) -> Result<(), String> {
+    let asset = asset.into();
     let bytes = fs::read(path).map_err(|error| {
         format!(
             "failed to read boot ROM asset {:?} at {}: {}",
-            revision,
+            asset,
             path.display(),
             error
         )
     })?;
-    let expected_size = revision.boot_rom_expected_size();
+    let expected_size = asset.expected_size();
     if bytes.len() != expected_size {
         return Err(format!(
             "boot ROM asset {:?} at {} has unexpected size: expected {} bytes, got {}",
-            revision,
+            asset,
             path.display(),
             expected_size,
             bytes.len()
         ));
     }
     let actual_sha256 = sha256_hex(&bytes);
-    let expected_sha256 = revision.boot_rom_expected_sha256();
+    let expected_sha256 = asset.expected_sha256();
     if actual_sha256 != expected_sha256 {
         return Err(format!(
             "boot ROM asset {:?} at {} has unexpected sha256: expected {}, got {}",
-            revision,
+            asset,
             path.display(),
             expected_sha256,
             actual_sha256
@@ -207,7 +211,7 @@ mod tests {
         load_exact_boot_rom_file, missing_boot_rom_asset, path_exists, resolve_boot_rom_source,
         resolve_path, sha256_hex, verify_boot_rom_file,
     };
-    use gb_core::{BootRomAssets, HardwareRevision, StartupMode};
+    use gb_core::{BootRomAssetKind, BootRomAssets, HardwareRevision, StartupMode};
     use gb_desktop::BootRomVerificationMode;
     use std::env;
     use std::fs;
@@ -280,6 +284,14 @@ mod tests {
             boot_rom_image_path(&directory, HardwareRevision::DmgCpuC),
             directory.join(BootRomAssets::filename(HardwareRevision::DmgCpuC))
         );
+        assert_eq!(
+            boot_rom_image_path(&directory, BootRomAssetKind::Sgb),
+            directory.join("sgb_boot.bin")
+        );
+        assert_eq!(
+            boot_rom_image_path(&directory, BootRomAssetKind::Sgb2),
+            directory.join("sgb2_boot.bin")
+        );
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }
@@ -326,6 +338,10 @@ mod tests {
             HardwareRevision::boot_rom_expected_size(HardwareRevision::CpuCgbC),
             2304
         );
+        assert_eq!(BootRomAssetKind::Sgb.expected_sha256().len(), 64);
+        assert_eq!(BootRomAssetKind::Sgb2.expected_sha256().len(), 64);
+        assert_eq!(BootRomAssetKind::Sgb.expected_size(), 256);
+        assert_eq!(BootRomAssetKind::Sgb2.expected_size(), 256);
     }
 
     #[test]
@@ -342,6 +358,20 @@ mod tests {
         let missing = verify_boot_rom_file(&root.join("missing.bin"), HardwareRevision::DmgCpuC)
             .expect_err("missing file should surface a read error");
         assert!(missing.contains("failed to read boot ROM asset"));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn verify_boot_rom_file_reports_sgb_hash_mismatches() {
+        let root = temp_root("verify-sgb");
+        let image_path = root.join("sgb_boot.bin");
+        write_boot_rom_image(&image_path, 0x51);
+
+        let mismatch = verify_boot_rom_file(&image_path, BootRomAssetKind::Sgb)
+            .expect_err("synthetic SGB image should not match the pinned SHA");
+        assert!(mismatch.contains("Sgb"));
+        assert!(mismatch.contains("unexpected sha256"));
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }
@@ -371,6 +401,33 @@ mod tests {
             .expect("synthetic boot ROM file should load");
         assert!(assets.has_image(HardwareRevision::CpuMgb));
         assert_eq!(assets.read_byte(HardwareRevision::CpuMgb, 0), Some(0x5A));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn load_exact_boot_rom_file_loads_bytes_for_sgb_assets() {
+        let root = temp_root("exact-sgb-file");
+        let sgb_path = root.join("sgb_boot.bin");
+        let sgb2_path = root.join("sgb2_boot.bin");
+        write_boot_rom_image(&sgb_path, 0x51);
+        write_boot_rom_image(&sgb2_path, 0x52);
+
+        let sgb_assets = load_exact_boot_rom_file(&sgb_path, BootRomAssetKind::Sgb)
+            .expect("synthetic SGB boot ROM file should load");
+        let sgb2_assets = load_exact_boot_rom_file(&sgb2_path, BootRomAssetKind::Sgb2)
+            .expect("synthetic SGB2 boot ROM file should load");
+
+        assert!(sgb_assets.has_asset(BootRomAssetKind::Sgb));
+        assert_eq!(
+            sgb_assets.read_asset_byte(BootRomAssetKind::Sgb, 0),
+            Some(0x51)
+        );
+        assert!(sgb2_assets.has_asset(BootRomAssetKind::Sgb2));
+        assert_eq!(
+            sgb2_assets.read_asset_byte(BootRomAssetKind::Sgb2, 0),
+            Some(0x52)
+        );
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }
@@ -412,6 +469,48 @@ mod tests {
         .expect("directory-backed boot ROM assets should load");
         assert_eq!(assets.read_byte(HardwareRevision::DmgCpuC, 0), Some(0x42));
         assert!(!assets.has_image(HardwareRevision::CpuMgb));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn load_boot_rom_assets_selects_sgb_directory_images_for_real_boot() {
+        let root = temp_root("directory-sgb-assets");
+        let directory = root.join("bootrom");
+        fs::create_dir_all(&directory).expect("boot ROM directory should be creatable");
+        write_boot_rom_image(&directory.join("dmg_boot.bin"), 0xD0);
+        write_boot_rom_image(&directory.join("sgb_boot.bin"), 0x51);
+        write_boot_rom_image(&directory.join("sgb2_boot.bin"), 0x52);
+
+        let sgb_assets = load_boot_rom_assets(
+            Some(&directory),
+            BootRomVerificationMode::Off,
+            BootRomAssetKind::Sgb,
+            StartupMode::RealBoot,
+            Path::new("/unused"),
+        )
+        .expect("directory-backed SGB boot ROM assets should load");
+        let sgb2_assets = load_boot_rom_assets(
+            Some(&directory),
+            BootRomVerificationMode::Off,
+            BootRomAssetKind::Sgb2,
+            StartupMode::RealBoot,
+            Path::new("/unused"),
+        )
+        .expect("directory-backed SGB2 boot ROM assets should load");
+
+        assert_eq!(
+            sgb_assets.read_asset_byte(BootRomAssetKind::Sgb, 0),
+            Some(0x51)
+        );
+        assert_eq!(
+            sgb2_assets.read_asset_byte(BootRomAssetKind::Sgb2, 0),
+            Some(0x52)
+        );
+        assert_eq!(
+            sgb_assets.read_byte(HardwareRevision::DmgCpuC, 0),
+            Some(0xD0)
+        );
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
     }
@@ -572,6 +671,15 @@ mod tests {
             Some(MissingBootRomAsset::Path(
                 directory.join(BootRomAssets::filename(HardwareRevision::CpuMgb))
             ))
+        );
+        assert_eq!(
+            missing_boot_rom_asset(
+                Some(&directory),
+                BootRomAssetKind::Sgb,
+                Path::new("/unused"),
+            )
+            .expect("missing SGB image should surface the expected path"),
+            Some(MissingBootRomAsset::Path(directory.join("sgb_boot.bin")))
         );
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");

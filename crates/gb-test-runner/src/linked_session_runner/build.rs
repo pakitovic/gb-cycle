@@ -2,7 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use gb_core::debugger::TraceSink;
-use gb_core::{BootRomAssets, Dmg07Participant, LinkedMachines, Machine, MachineConfig};
+use gb_core::{
+    BootRomAssetKind, BootRomAssets, Dmg07Participant, LinkedMachines, Machine, MachineConfig,
+};
 
 use super::{
     LinkedMachineBuild, LinkedSessionExecutionError, LinkedSessionParticipant, LinkedSessionRunner,
@@ -161,6 +163,7 @@ impl LinkedSessionRunner {
         }
 
         let revision = boot_rom_revision_for_console_model(participant.console_model);
+        let asset = BootRomAssetKind::from_revision(revision);
 
         let Some(root) = self
             .runner
@@ -171,7 +174,7 @@ impl LinkedSessionRunner {
             if boot_rom_revision_is_required_for_runner_gate(revision) {
                 enforce_missing_boot_rom_root_verification(
                     self.runner.boot_rom_verification_mode,
-                    revision,
+                    asset,
                 )
                 .map_err(|issue| {
                     LinkedSessionExecutionError::BootRomVerification {

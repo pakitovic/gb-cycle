@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use gb_core::{BootRomAssets, ConsoleModel, HardwareRevision};
+use gb_core::{BootRomAssetKind, ConsoleModel, HardwareRevision, HostPlatform};
 
 pub const BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 pub const ORACLE_STORE_DIR: &str = ".oracles";
@@ -33,8 +33,19 @@ pub fn boot_rom_revision_for_console_model(console_model: ConsoleModel) -> Hardw
     console_model.default_revision()
 }
 
-pub fn boot_rom_image_path(root: &Path, revision: HardwareRevision) -> PathBuf {
-    root.join(BootRomAssets::filename(revision))
+pub fn boot_rom_asset_for_console_profile(
+    console_model: ConsoleModel,
+    host_platform: HostPlatform,
+) -> BootRomAssetKind {
+    match host_platform {
+        HostPlatform::Handheld => BootRomAssetKind::from_revision(console_model.default_revision()),
+        HostPlatform::Sgb => BootRomAssetKind::Sgb,
+        HostPlatform::Sgb2 => BootRomAssetKind::Sgb2,
+    }
+}
+
+pub fn boot_rom_image_path(root: &Path, asset: impl Into<BootRomAssetKind>) -> PathBuf {
+    root.join(asset.into().filename())
 }
 
 #[cfg(test)]
@@ -42,12 +53,12 @@ mod tests {
     use std::env;
     use std::path::Path;
 
-    use gb_core::{ConsoleModel, HardwareRevision};
+    use gb_core::{BootRomAssetKind, ConsoleModel, HardwareRevision, HostPlatform};
 
     use super::{
-        BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
-        boot_rom_revision_for_console_model, discover_boot_rom_root, oracle_layout_root,
-        sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
+        BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_asset_for_console_profile,
+        boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
+        oracle_layout_root, sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
     };
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -123,6 +134,22 @@ mod tests {
         assert_eq!(
             boot_rom_image_path(root, HardwareRevision::DmgCpuC),
             root.join("dmg_boot.bin")
+        );
+        assert_eq!(
+            boot_rom_asset_for_console_profile(ConsoleModel::GameBoy, HostPlatform::Sgb),
+            BootRomAssetKind::Sgb
+        );
+        assert_eq!(
+            boot_rom_asset_for_console_profile(ConsoleModel::GameBoy, HostPlatform::Sgb2),
+            BootRomAssetKind::Sgb2
+        );
+        assert_eq!(
+            boot_rom_image_path(root, BootRomAssetKind::Sgb),
+            root.join("sgb_boot.bin")
+        );
+        assert_eq!(
+            boot_rom_image_path(root, BootRomAssetKind::Sgb2),
+            root.join("sgb2_boot.bin")
         );
     }
 }

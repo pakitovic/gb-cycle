@@ -37,17 +37,19 @@ use framebuffer_oracle::{
     encode_rgb555_framebuffer_png, normalize_dmg_framebuffer,
 };
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
-    CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap, CpuExecutionState,
-    CpuSnapshot, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton, Machine,
-    MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode, TimerStartupState,
-    TraceBuffer, TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssetKind, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError,
+    CgbSpeedMode, CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap,
+    CpuExecutionState, CpuSnapshot, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton,
+    Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
+    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
 pub use boot_rom_verification::{
-    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
-    expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
+    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_asset_verification,
+    enforce_boot_rom_verification, expected_boot_rom_asset_sha256, expected_boot_rom_asset_size,
+    expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_asset_file,
+    verify_boot_rom_file,
 };
 pub use curated_test_roms::{
     TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME,
@@ -111,29 +113,31 @@ pub use sameboy_tester::{
     SameBoyTesterSuiteReport,
 };
 pub use workspace_paths::{
-    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
-    boot_rom_revision_for_console_model, discover_boot_rom_root, oracle_layout_root,
-    oracle_store_root, sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
+    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_asset_for_console_profile,
+    boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
+    oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
+    sameboy_tester_oracle_root,
 };
 
-pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
+pub(crate) fn boot_rom_asset_is_required_for_runner_gate(asset: BootRomAssetKind) -> bool {
     matches!(
-        revision,
-        HardwareRevision::DmgCpuA
-            | HardwareRevision::DmgCpuB
-            | HardwareRevision::DmgCpuC
-            | HardwareRevision::CpuMgb
-            | HardwareRevision::CpuCgbA
-            | HardwareRevision::CpuCgbB
-            | HardwareRevision::CpuCgbC
-            | HardwareRevision::CpuCgbD
-            | HardwareRevision::CpuCgbE
+        asset,
+        BootRomAssetKind::Dmg
+            | BootRomAssetKind::Mgb
+            | BootRomAssetKind::Sgb
+            | BootRomAssetKind::Sgb2
+            | BootRomAssetKind::Cgb
+            | BootRomAssetKind::CgbE
     )
+}
+
+pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
+    boot_rom_asset_is_required_for_runner_gate(BootRomAssetKind::from_revision(revision))
 }
 
 pub(crate) fn enforce_missing_boot_rom_root_verification(
     mode: BootRomVerificationMode,
-    revision: HardwareRevision,
+    asset: BootRomAssetKind,
 ) -> Result<(), BootRomVerificationIssue> {
     match mode {
         BootRomVerificationMode::Off => Ok(()),
@@ -141,14 +145,14 @@ pub(crate) fn enforce_missing_boot_rom_root_verification(
             eprintln!(
                 "warning: {}",
                 BootRomVerificationIssue::MissingRoot {
-                    revision,
+                    asset,
                     env_var: BOOT_ROM_ROOT_ENV_VAR,
                 }
             );
             Ok(())
         }
         BootRomVerificationMode::Strict => Err(BootRomVerificationIssue::MissingRoot {
-            revision,
+            asset,
             env_var: BOOT_ROM_ROOT_ENV_VAR,
         }),
     }
@@ -2122,23 +2126,20 @@ impl RomRunner {
             return Ok(BootRomAssets::none());
         }
 
-        let revision = case.revision;
+        let asset = boot_rom_asset_for_console_profile(case.console_model, case.host_platform);
 
         let Some(root) = self.boot_rom_root.clone().or_else(discover_boot_rom_root) else {
-            if boot_rom_revision_is_required_for_runner_gate(revision) {
-                enforce_missing_boot_rom_root_verification(
-                    self.boot_rom_verification_mode,
-                    revision,
-                )
-                .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+            if boot_rom_asset_is_required_for_runner_gate(asset) {
+                enforce_missing_boot_rom_root_verification(self.boot_rom_verification_mode, asset)
+                    .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
             }
             return Ok(BootRomAssets::none());
         };
-        let image_path = boot_rom_image_path(&root, revision);
-        if !boot_rom_revision_is_required_for_runner_gate(revision) && !image_path.is_file() {
+        let image_path = boot_rom_image_path(&root, asset);
+        if !boot_rom_asset_is_required_for_runner_gate(asset) && !image_path.is_file() {
             return Ok(BootRomAssets::none());
         }
-        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, revision)
+        enforce_boot_rom_asset_verification(self.boot_rom_verification_mode, &image_path, asset)
             .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
         if !root.is_dir() {
             return Ok(BootRomAssets::none());
@@ -3381,8 +3382,8 @@ mod tests {
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
     };
     use gb_core::{
-        CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState,
-        CpuStatus, ExecutionMode, StartupMode,
+        BootRomAssetKind, CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot,
+        CpuStartupState, CpuStatus, ExecutionMode, HostPlatform, StartupMode,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -5919,6 +5920,37 @@ mod tests {
                 .load_boot_rom_assets(&dmg_real_boot_case)
                 .expect("missing boot root should fall back to no assets")
                 .is_empty()
+        );
+
+        let sgb_boot_root = workspace.join("sgb-bootrom");
+        fs::create_dir_all(&sgb_boot_root).expect("SGB boot ROM root should be creatable");
+        fs::write(sgb_boot_root.join("dmg_boot.bin"), vec![0xD0; 0x100])
+            .expect("DMG boot ROM should be writable");
+        fs::write(sgb_boot_root.join("sgb_boot.bin"), vec![0x51; 0x100])
+            .expect("SGB boot ROM should be writable");
+        fs::write(sgb_boot_root.join("sgb2_boot.bin"), vec![0x52; 0x100])
+            .expect("SGB2 boot ROM should be writable");
+        let sgb_real_boot_case = RomTestCase::new(
+            "sgb-real-boot",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        )
+        .with_host_platform(HostPlatform::Sgb)
+        .with_startup_mode(StartupMode::RealBoot);
+        let sgb_assets = RomRunner::new()
+            .with_workspace_root(&workspace)
+            .with_boot_rom_root(&sgb_boot_root)
+            .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
+            .load_boot_rom_assets(&sgb_real_boot_case)
+            .expect("SGB real-boot should load SGB boot ROM assets");
+        assert_eq!(
+            sgb_assets.read_asset_byte(BootRomAssetKind::Sgb, 0),
+            Some(0x51)
+        );
+        assert_eq!(
+            sgb_assets.read_byte(ConsoleModel::GameBoy.default_revision(), 0),
+            Some(0xD0)
         );
 
         match previous_boot_rom_root {

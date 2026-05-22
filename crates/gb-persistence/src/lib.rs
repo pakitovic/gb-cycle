@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
 const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
-pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 8;
+pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 9;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
 pub const SAVE_FILE_EXTENSION_P2: &str = "gbsa2";
 pub const SAVE_FILE_EXTENSION_P3: &str = "gbsa3";

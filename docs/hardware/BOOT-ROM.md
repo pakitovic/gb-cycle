@@ -26,7 +26,7 @@ Within the DMG family, do not collapse `DMG-CPU`, later `DMG-CPU A/B/C`, and `CP
 
 ## Product and firmware profiles
 
-`ConsoleModel` is the visible console product exposed to frontends and persisted settings. `HardwareRevision` is the CPU/revision profile for that model; it is the only public/configurable revision axis and `RealBoot` always derives the boot ROM filename, expected size, and expected SHA-256 from it. A separate boot-ROM-kind axis is not public configuration: if a small private implementation descriptor is useful internally, it must be derived from `HardwareRevision` and must not be persisted, exposed in manifests, or accepted as a frontend setting. `SkipBoot` and `CustomBoot` use the selected revision for silicon/direct-start behavior but do not load or emulate boot-ROM bytes.
+`ConsoleModel` is the visible handheld console product exposed to frontends and persisted settings. `HardwareRevision` is the CPU/revision profile for that handheld model; handheld `RealBoot` derives the boot ROM filename, expected size, and expected SHA-256 from it. SGB/SGB2 frontend machine profiles are resolved into the same DMG-compatible `ConsoleModel`/`HardwareRevision` core plus an SGB host profile, and that host profile derives `sgb_boot.bin` or `sgb2_boot.bin`. A separate boot-ROM-kind axis is not public configuration: the internal asset descriptor is derived from `HardwareRevision` for handheld profiles or from `SgbHostProfile` for SGB/SGB2 profiles, and frontends/manifests should continue to expose machine profiles rather than arbitrary boot-ROM kinds. `SkipBoot` and `CustomBoot` use the selected revision/profile for silicon/direct-start behavior but do not load or emulate boot-ROM bytes.
 
 | ConsoleModel | Active revisions | Default revision | RealBoot filename from default | Direct-start profile |
 |---|---|---|---|---|
@@ -46,12 +46,12 @@ Within the DMG family, do not collapse `DMG-CPU`, later `DMG-CPU A/B/C`, and `CP
 
 The current active set is intentionally narrower than the modeled enum: DMG exposes only `DmgCpuC`, MGB/LGB expose only `CpuMgb`, and CGB exposes `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`. Earlier DMG and CGB revision variants remain modeled so real-boot assets, save-state metadata, and future hardware validation do not need another rename when they become active.
 
-Phase 11 SGB/SGB2 work will extend this same revision-derived asset model rather than adding an independent boot-ROM-kind setting. The planned user-facing SGB profiles are `SUPER GB` / `MODEL: SGB` with host platform `Sgb`, revision `SGB-CPU 01`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb_boot.bin`, and `PAL` or `NTSC` video standard; and `SUPER GB 2` / `MODEL: SGB2` with host platform `Sgb2`, revision `CPU SGB2`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb2_boot.bin`, `NTSC` video standard, corrected clock versus SGB, and Game Link support. A documented private boot-ROM root example for local validation is `$HOME/emu/roms/bootrom`.
+Phase 11 SGB/SGB2 extends the same derived asset model without adding an independent frontend boot-ROM-kind setting. The user-facing SGB profiles are `SUPER GB` / `MODEL: SGB` with host platform `Sgb`, revision label `SGB-CPU 01`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb_boot.bin`, and `PAL` or `NTSC` video standard; and `SUPER GB 2` / `MODEL: SGB2` with host platform `Sgb2`, revision label `CPU SGB2`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb2_boot.bin`, `NTSC` video standard, corrected clock versus SGB, and Game Link support. A documented private boot-ROM root example for local validation is `$HOME/emu/roms/bootrom`.
 
-| Future SGB profile | Host platform | Planned revision | RealBoot filename | Video standard | Direct-start profile |
-|---|---|---|---|---|---|
-| `SUPER GB` / `SGB` | `Sgb` | `SGB-CPU 01` | `sgb_boot.bin` | `PAL` or `NTSC` | SGB post-boot profile with SGB command host active and no physical Game Link port |
-| `SUPER GB 2` / `SGB2` | `Sgb2` | `CPU SGB2` | `sgb2_boot.bin` | `NTSC` | SGB2 post-boot profile with corrected clock and physical Game Link support |
+| SGB profile | Host platform | Revision label | RealBoot filename | Expected size | Expected SHA-256 profile | Video standard | Direct-start profile |
+|---|---|---|---|---:|---|---|---|
+| `SUPER GB` / `SGB` | `Sgb` | `SGB-CPU 01` | `sgb_boot.bin` | `256` | `0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360` | `PAL` or `NTSC` | SGB post-boot profile with SGB command host active and no physical Game Link port |
+| `SUPER GB 2` / `SGB2` | `Sgb2` | `CPU SGB2` | `sgb2_boot.bin` | `256` | `fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988` | `NTSC` | SGB2 post-boot profile with corrected clock and physical Game Link support |
 
 ## Registers / MMIO
 
@@ -67,9 +67,10 @@ Phase 11 SGB/SGB2 work will extend this same revision-derived asset model rather
 - CGB real boot publishes both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without changing bus-state shape.
 - The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
 - Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
-- The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first.
+- The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first, and an SGB/SGB2 host profile must not silently reuse `dmg_boot.bin` just because the underlying GB core is DMG-compatible.
 - In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`; in both forms only `0000-00FF` and `0200-08FF` are boot-overlay windows, and `0100-01FF` routes to cartridge/header bytes while boot ROM remains mapped.
 - Strict RealBoot validation for the standard CGB path requires canonical `cgb_boot.bin` as a `2304`-byte sparse asset with SHA-256 `b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7`; `cgb0_boot.bin` and `cgbE_boot.bin` are recognized and hash-checked as revision-derived assets, and `CpuCgbE` selects `cgbE_boot.bin` automatically. The Phase 10 default remains the standard `CpuCgbC` / `cgb_boot.bin` profile.
+- SGB and SGB2 real-boot assets are DMG-sized `0x100`-byte low-window images selected by the SGB host profile: original SGB profiles select `sgb_boot.bin`, while `Sgb2Ntsc` selects `sgb2_boot.bin`. The core still uses the existing DMG-compatible CPU/bus model for execution, but boot-ROM loading, fingerprints, and strict verification use the SGB asset identity.
 
 ## Boot mode baseline
 
@@ -225,6 +226,7 @@ Priority order:
 - tests for missing-cartridge or `0xFF`-filled header behavior
 - tests for strict boot ROM size plus SHA verification before RealBoot execution
 - tests for CGB boot-overlay windows at `0000-00FF` and `0200-08FF`, including compact `0x800` and sparse `0x900` images, and tests that `0100-01FF` routes to cartridge/header bytes while boot ROM is still mapped
+- tests that SGB/SGB2 `RealBoot` resolves `sgb_boot.bin` / `sgb2_boot.bin` through the same loader/fingerprint path instead of aliasing to `dmg_boot.bin`
 - tests for CGB `KEY0` writes before handoff, lock-on-`FF50`, post-lock read/write behavior, native versus compatibility operating-mode propagation, and save/restore of the locked handoff state
 - ignored local tests that compare CGB RealBoot handoff snapshots against centralized CGB `SkipBoot` for valid native and compatibility headers and keep invalid checked-logo, checksum, and all-`FF` header cases on the no-handoff path
 - tests for model-specific visible `A` at cartridge entry, especially DMG versus MGB

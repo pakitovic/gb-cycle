@@ -6511,20 +6511,20 @@ fn prepare_machine_config(
     let boot_rom_fallback_warning =
         maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
     let revision = effective_config.launch.effective_revision();
+    let machine_config = MachineConfig::new(effective_config.launch.console_model.console_model())
+        .with_startup_mode(effective_config.launch.startup_mode)
+        .with_revision(revision)
+        .with_compatibility(effective_config.launch.compatibility_policy());
     let boot_rom_assets = load_boot_rom_assets(
         effective_config.boot_rom.search_path.as_deref(),
         effective_config.boot_rom.verification,
-        revision,
+        machine_config.boot_rom_asset_kind(),
         effective_config.launch.startup_mode,
         current_dir,
     )?;
 
     Ok(PreparedMachineConfig {
-        machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
-            .with_startup_mode(effective_config.launch.startup_mode)
-            .with_revision(revision)
-            .with_compatibility(effective_config.launch.compatibility_policy())
-            .with_boot_rom_assets(boot_rom_assets),
+        machine_config: machine_config.with_boot_rom_assets(boot_rom_assets),
         effective_config,
         boot_rom_fallback_warning,
     })
@@ -6538,9 +6538,11 @@ fn maybe_apply_missing_boot_rom_fallback(
         return Ok(None);
     }
 
+    let machine_config = MachineConfig::new(config.launch.console_model.console_model())
+        .with_revision(config.launch.effective_revision());
     let Some(missing_asset) = missing_boot_rom_asset(
         config.boot_rom.search_path.as_deref(),
-        config.launch.effective_revision(),
+        machine_config.boot_rom_asset_kind(),
         current_dir,
     )?
     else {

@@ -1,6 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
-use crate::boot::BootRomAssets;
+use crate::boot::{BootRomAssetKind, BootRomAssets};
 use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -34,6 +34,13 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom[0x0147] = 0x00;
     rom[0x0148] = 0x00;
     rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_sgb_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0146] = 0x03;
+    rom[0x014B] = 0x33;
     rom
 }
 
@@ -2937,4 +2944,39 @@ fn load_cartridge_restarts_real_boot_from_power_on_state() {
     assert_eq!(machine.cpu().startup_state().pc, 0x0000);
     assert_eq!(machine.cpu().registers().pc, 0x0000);
     assert!(machine.boot().is_boot_rom_mapped());
+}
+
+#[test]
+fn load_cartridge_preserves_sgb_real_boot_asset_profile() {
+    let assets = BootRomAssets::none()
+        .with_bytes(HardwareRevision::DmgCpuC, vec![0xD0; 0x100])
+        .expect("dmg boot ROM image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; 0x100])
+        .expect("sgb boot ROM image should validate");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbPal)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(assets),
+    );
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("supported SGB NoMBC image should load");
+    assert_eq!(machine.boot().sgb_profile(), Some(SgbHostProfile::SgbPal));
+    assert_eq!(machine.boot().boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert_eq!(machine.read_bus(0x0000), 0x51);
+
+    machine.write_bus(0xFF50, 0x01);
+    assert!(!machine.boot().is_boot_rom_mapped());
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("reloading a supported SGB NoMBC image should succeed");
+
+    assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.boot().sgb_profile(), Some(SgbHostProfile::SgbPal));
+    assert_eq!(machine.boot().boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.read_bus(0x0000), 0x51);
 }

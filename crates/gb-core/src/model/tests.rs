@@ -271,10 +271,12 @@ fn sgb_profile_selection_tracks_and_validates_host_platform() {
         MachineConfig::new(ConsoleModel::GameBoy).with_sgb_profile(SgbHostProfile::SgbPal);
     assert_eq!(pal_sgb.host_platform, HostPlatform::Sgb);
     assert_eq!(pal_sgb.sgb_profile, Some(SgbHostProfile::SgbPal));
+    assert_eq!(pal_sgb.boot_rom_asset_kind(), BootRomAssetKind::Sgb);
     assert!(pal_sgb.model_axes_are_coherent());
 
     let sgb2 = MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb2);
     assert_eq!(sgb2.sgb_profile, Some(SgbHostProfile::Sgb2Ntsc));
+    assert_eq!(sgb2.boot_rom_asset_kind(), BootRomAssetKind::Sgb2);
     assert!(sgb2.model_axes_are_coherent());
 
     let mut impossible_pal_sgb2 = sgb2.clone();

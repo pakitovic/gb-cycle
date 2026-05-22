@@ -206,6 +206,7 @@ impl<S: TraceSink> Machine<S> {
         let revision = self.config.revision;
         let startup_mode = self.config.startup_mode;
         let host_platform = self.config.host_platform;
+        let sgb_profile = self.config.sgb_profile;
         let boot_rom_assets = self.config.boot_rom_assets.clone();
 
         self.scheduler.reset();
@@ -217,10 +218,16 @@ impl<S: TraceSink> Machine<S> {
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
         self.serial = Serial::new_with_operating_mode(console_model, operating_mode);
-        self.sgb_host = SgbHost::new_with_startup(host_platform, startup_mode);
+        self.sgb_host = SgbHost::new_with_profile(host_platform, sgb_profile, startup_mode);
         self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
-        self.boot = BootController::new(console_model, revision, startup_mode, boot_rom_assets);
+        self.boot = BootController::new_with_sgb_profile(
+            console_model,
+            revision,
+            sgb_profile,
+            startup_mode,
+            boot_rom_assets,
+        );
         self.interrupts = InterruptController::new(console_model);
         self.joypad = Joypad::new(console_model);
         self.pending_ppu_mmio_write = None;

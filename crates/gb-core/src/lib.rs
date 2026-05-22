@@ -30,7 +30,7 @@ pub use apu::{
 };
 pub use boot::{
     BootAudioSnapshot, BootController, BootDirectBootState, BootIoSnapshot, BootRomAssetError,
-    BootRomAssets, BootSnapshot, BootStatus, StartupMemoryPolicy,
+    BootRomAssetKind, BootRomAssets, BootSnapshot, BootStatus, StartupMemoryPolicy,
 };
 pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,

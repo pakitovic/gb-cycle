@@ -1,4 +1,4 @@
-use crate::boot::BootRomAssets;
+use crate::boot::{BootRomAssetKind, BootRomAssets};
 use crate::cartridge::{CartridgeHeader, CgbFlag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -147,41 +147,15 @@ pub enum HardwareRevision {
 
 impl HardwareRevision {
     pub const fn boot_rom_filename(self) -> &'static str {
-        match self {
-            Self::DmgCpu => "dmg0_boot.bin",
-            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => "dmg_boot.bin",
-            Self::CpuMgb => "mgb_boot.bin",
-            Self::CpuCgb => "cgb0_boot.bin",
-            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => "cgb_boot.bin",
-            Self::CpuCgbE => "cgbE_boot.bin",
-        }
+        BootRomAssetKind::from_revision(self).filename()
     }
 
     pub const fn boot_rom_expected_sha256(self) -> &'static str {
-        match self {
-            Self::DmgCpu => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
-            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => {
-                "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7"
-            }
-            Self::CpuMgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
-            Self::CpuCgb => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
-            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => {
-                "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7"
-            }
-            Self::CpuCgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
-        }
+        BootRomAssetKind::from_revision(self).expected_sha256()
     }
 
     pub const fn boot_rom_expected_size(self) -> usize {
-        match self {
-            Self::DmgCpu | Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC | Self::CpuMgb => 0x0100,
-            Self::CpuCgb
-            | Self::CpuCgbA
-            | Self::CpuCgbB
-            | Self::CpuCgbC
-            | Self::CpuCgbD
-            | Self::CpuCgbE => 0x0900,
-        }
+        BootRomAssetKind::from_revision(self).expected_size()
     }
 
     pub const fn uses_cgb_boot_rom(self) -> bool {
@@ -635,6 +609,10 @@ impl MachineConfig {
     pub fn with_boot_rom_assets(mut self, boot_rom_assets: BootRomAssets) -> Self {
         self.boot_rom_assets = boot_rom_assets;
         self
+    }
+
+    pub const fn boot_rom_asset_kind(&self) -> BootRomAssetKind {
+        BootRomAssetKind::from_machine_profile(self.revision, self.sgb_profile)
     }
 
     pub fn with_compatibility(mut self, compatibility: CompatibilityPolicy) -> Self {
