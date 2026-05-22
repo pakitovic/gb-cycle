@@ -75,6 +75,8 @@ Acceptance criteria:
 - Save/load captures SGB palette RAM, active palette selection, and any palette priority state introduced by this slice.
 - Example-title notes cover Alleyway, Super Mario Land 2: 6 Golden Coins, and Pokémon Red / Blue / Yellow as manual compatibility references, not gates.
 
+Status: implemented as the Slice 2 baseline. `SgbHost` now owns four screen palettes of four SNES/CGB-layout RGB555 colors, an explicit base LCD palette selection, and a host-side 160×144 LCD RGB555 composition path that maps the DMG PPU's final panel shade indices without mutating DMG `BGP`/`OBP` behavior or enabling CGB palette hardware. The direct one-packet palette commands `PAL01`, `PAL23`, `PAL03`, and `PAL12` update the paired SGB screen palettes from little-endian RGB555 payload bytes; color 0 is shared by the two addressed palettes as documented by the command format, and bit 15 is masked as an ignored color bit. Command packet buffering now retains up to seven 16-byte packets in host command state so later multi-packet attribute/transfer commands can build on the same save-state boundary instead of replacing Slice 1 transport. The durable machine save-state format version is bumped again because Slice 2 adds live palette and command-buffer state. Manual compatibility examples for this slice are Alleyway, Super Mario Land 2: 6 Golden Coins, and Pokémon Red / Blue / Yellow.
+
 ## Slice 3 — VRAM transfer engine and borders
 
 Scope: add the transfer path shared by SGB border and bulk-data commands, then render normal and dynamic borders.

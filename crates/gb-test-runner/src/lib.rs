@@ -22,6 +22,7 @@ mod sameboy_tester;
 mod test_support;
 mod workspace_paths;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -1759,10 +1760,18 @@ impl RunnerMachine {
         }
     }
 
-    fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+    fn host_framebuffer_rgb555(&self) -> Option<Cow<'_, [u16]>> {
         match self {
-            Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
-            Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+            Self::Buffered(machine) => machine
+                .ppu()
+                .cgb_framebuffer_rgb555()
+                .map(Cow::Borrowed)
+                .or_else(|| machine.sgb_lcd_framebuffer_rgb555().map(Cow::Owned)),
+            Self::Summary(machine) => machine
+                .ppu()
+                .cgb_framebuffer_rgb555()
+                .map(Cow::Borrowed)
+                .or_else(|| machine.sgb_lcd_framebuffer_rgb555().map(Cow::Owned)),
         }
     }
 
@@ -2324,8 +2333,8 @@ impl RomRunner {
 
         if case.capture_plan.contains(CaptureKind::Framebuffer) {
             artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
-            if let Some(framebuffer_rgb555) = machine.cgb_framebuffer_rgb555() {
-                artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.to_vec());
+            if let Some(framebuffer_rgb555) = machine.host_framebuffer_rgb555() {
+                artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.into_owned());
             }
         }
 
@@ -2572,13 +2581,13 @@ impl RomRunner {
                                     .as_deref()
                                     .ok_or_else(|| RomExecutionError::ReadFile {
                                         path: PathBuf::from(format!(
-                                            "<local CGB RGB555 framebuffer for {}>",
+                                            "<local host RGB555 framebuffer for {}>",
                                             case.id
                                         )),
-                                        operation: "decode local CGB RGB555 framebuffer artifact",
+                                        operation: "decode local host RGB555 framebuffer artifact",
                                         source: io::Error::new(
                                             io::ErrorKind::InvalidData,
-                                            "missing local CGB RGB555 framebuffer capture",
+                                            "missing local host RGB555 framebuffer capture",
                                         ),
                                     })?,
                             )
@@ -2586,7 +2595,7 @@ impl RomRunner {
                                 let path = error.path.clone();
                                 RomExecutionError::ReadFile {
                                     path,
-                                    operation: "decode local CGB RGB555 framebuffer artifact",
+                                    operation: "decode local host RGB555 framebuffer artifact",
                                     source: error.into_invalid_data_error(),
                                 }
                             })?
@@ -2665,13 +2674,13 @@ impl RomRunner {
                         .as_deref()
                         .ok_or_else(|| RomExecutionError::ReadFile {
                             path: PathBuf::from(format!(
-                                "<local CGB RGB555 framebuffer for {}>",
+                                "<local host RGB555 framebuffer for {}>",
                                 case.id
                             )),
-                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            operation: "decode local host RGB555 framebuffer artifact",
                             source: io::Error::new(
                                 io::ErrorKind::InvalidData,
-                                "missing local CGB RGB555 framebuffer capture",
+                                "missing local host RGB555 framebuffer capture",
                             ),
                         })?,
                 )
@@ -2679,7 +2688,7 @@ impl RomRunner {
                     let path = error.path.clone();
                     RomExecutionError::ReadFile {
                         path,
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: error.into_invalid_data_error(),
                     }
                 })?;
@@ -2711,13 +2720,13 @@ impl RomRunner {
                         .as_deref()
                         .ok_or_else(|| RomExecutionError::ReadFile {
                             path: PathBuf::from(format!(
-                                "<local CGB RGB555 framebuffer for {}>",
+                                "<local host RGB555 framebuffer for {}>",
                                 case.id
                             )),
-                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            operation: "decode local host RGB555 framebuffer artifact",
                             source: io::Error::new(
                                 io::ErrorKind::InvalidData,
-                                "missing local CGB RGB555 framebuffer capture",
+                                "missing local host RGB555 framebuffer capture",
                             ),
                         })?,
                 )
@@ -2725,7 +2734,7 @@ impl RomRunner {
                     let path = error.path.clone();
                     RomExecutionError::ReadFile {
                         path,
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: error.into_invalid_data_error(),
                     }
                 })?;
@@ -2889,13 +2898,13 @@ impl RomRunner {
                         let rgb555_png = encode_rgb555_framebuffer_png(framebuffer_rgb555)
                             .map_err(|source| RomExecutionError::ReadFile {
                                 path: png_path.clone(),
-                                operation: "encode CGB RGB555 framebuffer artifact",
+                                operation: "encode host RGB555 framebuffer artifact",
                                 source,
                             })?;
                         fs::write(&png_path, rgb555_png).map_err(|source| {
                             RomExecutionError::ReadFile {
                                 path: png_path.clone(),
-                                operation: "write CGB RGB555 framebuffer artifact",
+                                operation: "write host RGB555 framebuffer artifact",
                                 source,
                             }
                         })?;
@@ -3059,25 +3068,27 @@ fn framebuffer_matches_fixture(
         FramebufferUntilMatchSource::Rgb555 => {
             let framebuffer_rgb555 =
                 machine
-                    .cgb_framebuffer_rgb555()
+                    .host_framebuffer_rgb555()
                     .ok_or_else(|| RomExecutionError::ReadFile {
                         path: PathBuf::from(format!(
-                            "<local CGB RGB555 framebuffer for {case_id}>"
+                            "<local host RGB555 framebuffer for {case_id}>"
                         )),
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: io::Error::new(
                             io::ErrorKind::InvalidData,
-                            "missing local CGB RGB555 framebuffer capture",
+                            "missing local host RGB555 framebuffer capture",
                         ),
                     })?;
-            decode_local_rgb555_framebuffer(case_id, framebuffer_rgb555).map_err(|error| {
-                let path = error.path.clone();
-                RomExecutionError::ReadFile {
-                    path,
-                    operation: "decode local CGB RGB555 framebuffer artifact",
-                    source: error.into_invalid_data_error(),
-                }
-            })?
+            decode_local_rgb555_framebuffer(case_id, framebuffer_rgb555.as_ref()).map_err(
+                |error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local host RGB555 framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                },
+            )?
         }
     };
     Ok(actual == oracle.expected)
@@ -5484,7 +5495,7 @@ mod tests {
         assert!(matches!(
             missing_rgb555_local,
             RomExecutionError::ReadFile {
-                operation: "decode local CGB RGB555 framebuffer artifact",
+                operation: "decode local host RGB555 framebuffer artifact",
                 ..
             }
         ));
@@ -5584,7 +5595,7 @@ mod tests {
             !written
                 .iter()
                 .any(|path| path.ends_with(Path::new("framebuffer.pgm"))),
-            "CGB RGB555 framebuffer artifacts should not persist a legacy PGM"
+            "host RGB555 framebuffer artifacts should not persist a legacy PGM"
         );
 
         let case_dir = artifact_root.join("artifact-case");

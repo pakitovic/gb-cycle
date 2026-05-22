@@ -6,11 +6,28 @@ const SGB_JOYP_IDLE_BITS: u8 = 0x30;
 const SGB_JOYP_START_BITS: u8 = 0x00;
 const SGB_JOYP_ZERO_BITS: u8 = 0x20;
 const SGB_JOYP_ONE_BITS: u8 = 0x10;
-const SGB_PACKET_BYTES: usize = 16;
+pub const SGB_COMMAND_PACKET_BYTES: usize = 16;
+pub const SGB_COMMAND_MAX_PACKETS: usize = 7;
+pub const SGB_LCD_WIDTH: usize = 160;
+pub const SGB_LCD_HEIGHT: usize = 144;
+pub const SGB_LCD_PIXELS: usize = SGB_LCD_WIDTH * SGB_LCD_HEIGHT;
+pub const SGB_SCREEN_PALETTE_COUNT: usize = 4;
+pub const SGB_SCREEN_PALETTE_COLORS: usize = 4;
+
+const SGB_PACKET_BYTES: usize = SGB_COMMAND_PACKET_BYTES;
 const SGB_PACKET_BITS: u8 = 128;
 const SGB_PACKET_COUNT_MIN: u8 = 1;
-const SGB_PACKET_COUNT_MAX: u8 = 7;
+const SGB_PACKET_COUNT_MAX: u8 = SGB_COMMAND_MAX_PACKETS as u8;
 const SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED: u8 = 0x33;
+const SGB_RGB555_MASK: u16 = 0x7FFF;
+const SGB_RGB555_WHITE: SgbRgb555Color = SgbRgb555Color::new(0x7FFF);
+const SGB_RGB555_LIGHT_GRAY: SgbRgb555Color = SgbRgb555Color::new(0x5294);
+const SGB_RGB555_DARK_GRAY: SgbRgb555Color = SgbRgb555Color::new(0x294A);
+const SGB_RGB555_BLACK: SgbRgb555Color = SgbRgb555Color::new(0x0000);
+const SGB_COMMAND_PAL01: u8 = 0x00;
+const SGB_COMMAND_PAL23: u8 = 0x01;
+const SGB_COMMAND_PAL03: u8 = 0x02;
+const SGB_COMMAND_PAL12: u8 = 0x03;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbVideoStandard {
@@ -188,6 +205,125 @@ pub enum SgbPacketTraceStatus {
     ConflictingPulse,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SgbLcdCompositionError {
+    DisabledHost,
+    InputLength { expected: usize, actual: usize },
+    OutputLength { expected: usize, actual: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbRgb555Color {
+    raw: u16,
+}
+
+impl SgbRgb555Color {
+    pub const fn new(raw: u16) -> Self {
+        Self {
+            raw: raw & SGB_RGB555_MASK,
+        }
+    }
+
+    pub const fn raw(self) -> u16 {
+        self.raw
+    }
+
+    const fn from_packet_bytes(low: u8, high: u8) -> Self {
+        Self::new(u16::from_le_bytes([low, high]))
+    }
+}
+
+impl Default for SgbRgb555Color {
+    fn default() -> Self {
+        SGB_RGB555_BLACK
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbScreenPalette {
+    pub colors: [SgbRgb555Color; SGB_SCREEN_PALETTE_COLORS],
+}
+
+impl SgbScreenPalette {
+    pub const fn dmg_grayscale() -> Self {
+        Self {
+            colors: [
+                SGB_RGB555_WHITE,
+                SGB_RGB555_LIGHT_GRAY,
+                SGB_RGB555_DARK_GRAY,
+                SGB_RGB555_BLACK,
+            ],
+        }
+    }
+
+    pub const fn color(self, color_index: u8) -> SgbRgb555Color {
+        self.colors[(color_index & 0x03) as usize]
+    }
+
+    fn set_color(&mut self, color_index: usize, color: SgbRgb555Color) {
+        self.colors[color_index] = color;
+    }
+}
+
+impl Default for SgbScreenPalette {
+    fn default() -> Self {
+        Self::dmg_grayscale()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbPaletteState {
+    pub screen_palettes: [SgbScreenPalette; SGB_SCREEN_PALETTE_COUNT],
+    pub base_palette_index: u8,
+}
+
+impl SgbPaletteState {
+    pub const fn palette(self, palette_index: u8) -> SgbScreenPalette {
+        self.screen_palettes[(palette_index & 0x03) as usize]
+    }
+
+    pub const fn map_lcd_shade(self, shade: u8) -> SgbRgb555Color {
+        self.palette(self.base_palette_index).color(shade)
+    }
+
+    fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
+        let Some((first_palette, second_palette)) = direct_palette_command_pair(command_id) else {
+            return;
+        };
+
+        let shared_color_zero = SgbRgb555Color::from_packet_bytes(bytes[1], bytes[2]);
+        self.screen_palettes[first_palette].set_color(0, shared_color_zero);
+        self.screen_palettes[second_palette].set_color(0, shared_color_zero);
+
+        let first_palette_colors = [
+            SgbRgb555Color::from_packet_bytes(bytes[3], bytes[4]),
+            SgbRgb555Color::from_packet_bytes(bytes[5], bytes[6]),
+            SgbRgb555Color::from_packet_bytes(bytes[7], bytes[8]),
+        ];
+        let second_palette_colors = [
+            SgbRgb555Color::from_packet_bytes(bytes[9], bytes[10]),
+            SgbRgb555Color::from_packet_bytes(bytes[11], bytes[12]),
+            SgbRgb555Color::from_packet_bytes(bytes[13], bytes[14]),
+        ];
+
+        for (color_index, color) in first_palette_colors.into_iter().enumerate() {
+            self.screen_palettes[first_palette].set_color(color_index + 1, color);
+        }
+        for (color_index, color) in second_palette_colors.into_iter().enumerate() {
+            self.screen_palettes[second_palette].set_color(color_index + 1, color);
+        }
+    }
+}
+
+impl Default for SgbPaletteState {
+    fn default() -> Self {
+        Self {
+            screen_palettes: [SgbScreenPalette::dmg_grayscale(); SGB_SCREEN_PALETTE_COUNT],
+            base_palette_index: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbHost {
     host_platform: HostPlatform,
@@ -262,6 +398,7 @@ pub struct SgbCommandState {
     pub active_command_id: Option<u8>,
     pub expected_packet_count: u8,
     pub received_packet_count: u8,
+    pub packet_buffer: [[u8; SGB_COMMAND_PACKET_BYTES]; SGB_COMMAND_MAX_PACKETS],
     pub last_command_id: Option<u8>,
     pub accepted_command_count: u64,
     pub rejected_packet_count: u64,
@@ -280,12 +417,13 @@ pub struct SgbPacketTrace {
     pub bytes: [u8; SGB_PACKET_BYTES],
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbVideoState {
     pub border_loaded: bool,
     pub colorization_active: bool,
+    pub palette_state: SgbPaletteState,
+    pub last_palette_command_id: Option<u8>,
+    pub palette_command_count: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -343,7 +481,7 @@ impl SgbHost {
             startup: SgbStartupState::new(active, profile, startup_mode),
             packet_transport: SgbPacketTransportState::default(),
             command: SgbCommandState::default(),
-            video: SgbVideoState::default(),
+            video: SgbVideoState::default_for_active_host(active),
             multiplayer: SgbMultiplayerState::default_for_active_host(active),
             audio: SgbAudioState::default(),
             snes_host: SgbSnesHostState::default(),
@@ -574,6 +712,8 @@ impl SgbHost {
 
             self.command.expected_packet_count = packet_count;
             self.command.received_packet_count = 1;
+            self.command.packet_buffer = [[0; SGB_COMMAND_PACKET_BYTES]; SGB_COMMAND_MAX_PACKETS];
+            self.command.packet_buffer[0] = bytes;
             self.packet_transport.last_trace = SgbPacketTrace {
                 status: SgbPacketTraceStatus::Complete,
                 command_id: Some(command_id),
@@ -584,10 +724,7 @@ impl SgbHost {
             };
 
             if packet_count == 1 {
-                self.command.last_command_id = Some(command_id);
-                self.command.accepted_command_count =
-                    self.command.accepted_command_count.saturating_add(1);
-                self.command.active_command_id = None;
+                self.complete_accepted_command(command_id, packet_count);
             } else {
                 self.command.active_command_id = Some(command_id);
             }
@@ -597,6 +734,10 @@ impl SgbHost {
         let command_id = self.command.active_command_id;
         let packet_count = self.command.expected_packet_count;
         self.command.received_packet_count = self.command.received_packet_count.saturating_add(1);
+        if self.command.received_packet_count <= SGB_PACKET_COUNT_MAX {
+            let packet_index = usize::from(self.command.received_packet_count - 1);
+            self.command.packet_buffer[packet_index] = bytes;
+        }
         self.packet_transport.last_trace = SgbPacketTrace {
             status: SgbPacketTraceStatus::Complete,
             command_id,
@@ -606,11 +747,28 @@ impl SgbHost {
             bytes,
         };
 
-        if self.command.received_packet_count >= self.command.expected_packet_count {
-            self.command.last_command_id = command_id;
-            self.command.accepted_command_count =
-                self.command.accepted_command_count.saturating_add(1);
-            self.command.active_command_id = None;
+        if self.command.received_packet_count >= self.command.expected_packet_count
+            && let Some(command_id) = command_id
+        {
+            self.complete_accepted_command(command_id, packet_count);
+        }
+    }
+
+    fn complete_accepted_command(&mut self, command_id: u8, packet_count: u8) {
+        self.command.last_command_id = Some(command_id);
+        self.command.accepted_command_count = self.command.accepted_command_count.saturating_add(1);
+        self.dispatch_completed_command(command_id, packet_count);
+        self.command.active_command_id = None;
+    }
+
+    fn dispatch_completed_command(&mut self, command_id: u8, packet_count: u8) {
+        if packet_count != 1 {
+            return;
+        }
+
+        if direct_palette_command_pair(command_id).is_some() {
+            self.video
+                .apply_direct_palette_command(command_id, &self.command.packet_buffer[0]);
         }
     }
 
@@ -623,6 +781,42 @@ impl SgbHost {
             bits_buffered: self.packet_transport.packet_bits_buffered,
             bytes: self.packet_transport.current_packet,
         };
+    }
+
+    pub fn compose_lcd_rgb555(
+        &self,
+        dmg_framebuffer: &[u8],
+    ) -> Result<Vec<u16>, SgbLcdCompositionError> {
+        let mut output = vec![0; SGB_LCD_PIXELS];
+        self.compose_lcd_rgb555_into(dmg_framebuffer, &mut output)?;
+        Ok(output)
+    }
+
+    pub fn compose_lcd_rgb555_into(
+        &self,
+        dmg_framebuffer: &[u8],
+        output: &mut [u16],
+    ) -> Result<(), SgbLcdCompositionError> {
+        if !self.host_platform.is_sgb() || !self.video.colorization_active {
+            return Err(SgbLcdCompositionError::DisabledHost);
+        }
+        if dmg_framebuffer.len() != SGB_LCD_PIXELS {
+            return Err(SgbLcdCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: dmg_framebuffer.len(),
+            });
+        }
+        if output.len() != SGB_LCD_PIXELS {
+            return Err(SgbLcdCompositionError::OutputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: output.len(),
+            });
+        }
+
+        for (output_pixel, &shade) in output.iter_mut().zip(dmg_framebuffer.iter()) {
+            *output_pixel = self.video.map_lcd_shade_to_rgb555(shade).raw();
+        }
+        Ok(())
     }
 }
 
@@ -698,6 +892,49 @@ impl Default for SgbMultiplayerState {
     }
 }
 
+impl SgbVideoState {
+    const fn default_for_active_host(active: bool) -> Self {
+        Self {
+            border_loaded: false,
+            colorization_active: active,
+            palette_state: SgbPaletteState {
+                screen_palettes: [SgbScreenPalette::dmg_grayscale(); SGB_SCREEN_PALETTE_COUNT],
+                base_palette_index: 0,
+            },
+            last_palette_command_id: None,
+            palette_command_count: 0,
+        }
+    }
+
+    pub const fn map_lcd_shade_to_rgb555(self, shade: u8) -> SgbRgb555Color {
+        self.palette_state.map_lcd_shade(shade)
+    }
+
+    fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.palette_state
+            .apply_direct_palette_command(command_id, bytes);
+        self.colorization_active = true;
+        self.last_palette_command_id = Some(command_id);
+        self.palette_command_count = self.palette_command_count.saturating_add(1);
+    }
+}
+
+impl Default for SgbVideoState {
+    fn default() -> Self {
+        Self::default_for_active_host(false)
+    }
+}
+
+const fn direct_palette_command_pair(command_id: u8) -> Option<(usize, usize)> {
+    match command_id {
+        SGB_COMMAND_PAL01 => Some((0, 1)),
+        SGB_COMMAND_PAL23 => Some((2, 3)),
+        SGB_COMMAND_PAL03 => Some((0, 3)),
+        SGB_COMMAND_PAL12 => Some((1, 2)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,6 +961,24 @@ mod tests {
     fn sgb_command_packet(command_id: u8, packet_count: u8) -> [u8; SGB_PACKET_BYTES] {
         let mut bytes = [0; SGB_PACKET_BYTES];
         bytes[0] = (command_id << 3) | packet_count;
+        bytes
+    }
+
+    fn write_packet_color(bytes: &mut [u8; SGB_PACKET_BYTES], offset: usize, rgb555: u16) {
+        let [low, high] = rgb555.to_le_bytes();
+        bytes[offset] = low;
+        bytes[offset + 1] = high;
+    }
+
+    fn sgb_pal01_packet() -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_PAL01, 1);
+        write_packet_color(&mut bytes, 1, 0x001F);
+        write_packet_color(&mut bytes, 3, 0x03E0);
+        write_packet_color(&mut bytes, 5, 0x7C00);
+        write_packet_color(&mut bytes, 7, 0x4210);
+        write_packet_color(&mut bytes, 9, 0x0001);
+        write_packet_color(&mut bytes, 11, 0x0002);
+        write_packet_color(&mut bytes, 13, 0x8003);
         bytes
     }
 
@@ -916,6 +1171,108 @@ mod tests {
     }
 
     #[test]
+    fn palette_commands_update_host_palette_state_and_rgb555_mapping() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.command.last_command_id, Some(SGB_COMMAND_PAL01));
+        assert_eq!(
+            snapshot.video.last_palette_command_id,
+            Some(SGB_COMMAND_PAL01)
+        );
+        assert_eq!(snapshot.video.palette_command_count, 1);
+        assert!(snapshot.video.colorization_active);
+
+        let palette_0 = snapshot.video.palette_state.palette(0);
+        assert_eq!(palette_0.colors[0].raw(), 0x001F);
+        assert_eq!(palette_0.colors[1].raw(), 0x03E0);
+        assert_eq!(palette_0.colors[2].raw(), 0x7C00);
+        assert_eq!(palette_0.colors[3].raw(), 0x4210);
+
+        let palette_1 = snapshot.video.palette_state.palette(1);
+        assert_eq!(palette_1.colors[0].raw(), 0x001F);
+        assert_eq!(palette_1.colors[1].raw(), 0x0001);
+        assert_eq!(palette_1.colors[2].raw(), 0x0002);
+        assert_eq!(
+            palette_1.colors[3].raw(),
+            0x0003,
+            "SGB RGB555 colors mask off the ignored high bit"
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(2),
+            SgbScreenPalette::dmg_grayscale()
+        );
+        assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(0).raw(), 0x001F);
+        assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(1).raw(), 0x03E0);
+        assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(2).raw(), 0x7C00);
+        assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(3).raw(), 0x4210);
+    }
+
+    #[test]
+    fn direct_palette_commands_target_documented_palette_pairs() {
+        for (command_id, first_palette, second_palette) in [
+            (SGB_COMMAND_PAL01, 0, 1),
+            (SGB_COMMAND_PAL23, 2, 3),
+            (SGB_COMMAND_PAL03, 0, 3),
+            (SGB_COMMAND_PAL12, 1, 2),
+        ] {
+            let mut host = accepted_sgb_host();
+            let mut packet = sgb_command_packet(command_id, 1);
+            write_packet_color(&mut packet, 1, 0x001F);
+            write_packet_color(&mut packet, 3, 0x03E0);
+            write_packet_color(&mut packet, 5, 0x7C00);
+            write_packet_color(&mut packet, 7, 0x4210);
+            write_packet_color(&mut packet, 9, 0x0001);
+            write_packet_color(&mut packet, 11, 0x0002);
+            write_packet_color(&mut packet, 13, 0x0003);
+
+            write_joyp_packet(&mut host, packet);
+
+            let palettes = host.snapshot().video.palette_state.screen_palettes;
+            assert_eq!(palettes[first_palette].colors[0].raw(), 0x001F);
+            assert_eq!(palettes[first_palette].colors[1].raw(), 0x03E0);
+            assert_eq!(palettes[first_palette].colors[2].raw(), 0x7C00);
+            assert_eq!(palettes[first_palette].colors[3].raw(), 0x4210);
+            assert_eq!(palettes[second_palette].colors[0].raw(), 0x001F);
+            assert_eq!(palettes[second_palette].colors[1].raw(), 0x0001);
+            assert_eq!(palettes[second_palette].colors[2].raw(), 0x0002);
+            assert_eq!(palettes[second_palette].colors[3].raw(), 0x0003);
+        }
+    }
+
+    #[test]
+    fn sgb_lcd_composition_maps_dmg_shades_through_base_palette() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let mut dmg_framebuffer = vec![0; SGB_LCD_PIXELS];
+        dmg_framebuffer[..8].copy_from_slice(&[0, 1, 2, 3, 4, 5, 6, 7]);
+
+        let rgb555 = host
+            .compose_lcd_rgb555(&dmg_framebuffer)
+            .expect("active SGB host should compose the GB LCD image");
+        assert_eq!(
+            &rgb555[..8],
+            &[
+                0x001F, 0x03E0, 0x7C00, 0x4210, 0x001F, 0x03E0, 0x7C00, 0x4210
+            ]
+        );
+
+        let handheld = SgbHost::new(HostPlatform::Handheld);
+        assert_eq!(
+            handheld.compose_lcd_rgb555(&dmg_framebuffer),
+            Err(SgbLcdCompositionError::DisabledHost)
+        );
+        assert_eq!(
+            host.compose_lcd_rgb555(&dmg_framebuffer[..SGB_LCD_PIXELS - 1]),
+            Err(SgbLcdCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: SGB_LCD_PIXELS - 1,
+            })
+        );
+    }
+
+    #[test]
     fn joyp_transport_rejects_complete_packet_until_header_unlocks_sgb() {
         let mut host = SgbHost::new(HostPlatform::Sgb);
         write_joyp_packet(&mut host, sgb_command_packet(0x11, 1));
@@ -1018,6 +1375,26 @@ mod tests {
         );
         assert_eq!(snapshot.command.last_command_id, Some(0x11));
         assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn save_state_restores_sgb_palette_state() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        assert_eq!(
+            restored.snapshot().video.palette_state,
+            host.snapshot().video.palette_state
+        );
+        assert_eq!(restored.snapshot().video.palette_command_count, 1);
+        assert_eq!(
+            restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
+            0x4210
+        );
     }
 
     #[test]

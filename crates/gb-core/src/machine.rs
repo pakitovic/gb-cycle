@@ -400,6 +400,12 @@ impl<S: TraceSink> Machine<S> {
         &self.sgb_host
     }
 
+    pub fn sgb_lcd_framebuffer_rgb555(&self) -> Option<Vec<u16>> {
+        self.sgb_host
+            .compose_lcd_rgb555(self.ppu.framebuffer())
+            .ok()
+    }
+
     pub fn external_port(&self) -> &ExternalPort {
         &self.external_port
     }

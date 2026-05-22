@@ -74,6 +74,12 @@ Packet transport state is part of `SgbHostSaveState`: last line state, active tr
 
 The GB PPU still produces the 160×144 DMG LCD image with DMG pixel/shade information and sprite/background composition according to the GB core. The SGB host then maps those DMG shade indices through SGB palette and attribute state and places the resulting image inside the host SNES/SFC output with optional border graphics.
 
+Slice 2 defines the first visible host-color path as a 160×144 LCD RGB555 composition result. This output is not CGB palette RAM and does not change the GB PPU framebuffer; it maps the already-produced DMG panel shade index through the SGB host's current screen palette 0 until later attribute commands select different palettes per 20×18 cell.
+
+The SGB host stores four screen palettes, each with four RGB555 colors in the same bit layout used by SGB/SNES command payloads: bit 15 ignored, bits 0..4 red, bits 5..9 green, bits 10..14 blue, little-endian in command packets. Initial SGB/SGB2 host state uses a deterministic DMG grayscale palette for all four screen palettes so composition is defined before any game command or user palette selection is implemented.
+
+Slice 2 implements the direct one-packet palette commands `PAL01`, `PAL23`, `PAL03`, and `PAL12`. Each command updates two physical screen palettes: one shared color 0 for the pair, three colors for the first palette, and three colors for the second palette. `PAL_SET`, `PAL_TRN`, and `PAL_PRI` remain later-slice commands because they depend on system palette transfer/selection and priority behavior outside the base direct-palette path.
+
 SGB screen attributes are host-side 20×18 tile-cell colorization state. They must not be represented as CGB tile attributes, CGB palette indices, hidden GB VRAM state, or frontend-only postprocessing. This separation keeps CGB support and SGB support from contaminating each other.
 
 Borders belong to the SGB host. Static and dynamic borders should update host border tile/palette/attribute state through SGB commands and the 4 KiB transfer path, then compose with the GB LCD image through a frontend-neutral output contract.
@@ -145,7 +151,7 @@ Open-source emulator code is a comparison aid, not hardware truth. If references
 
 - Packet-decode unit tests for JOYP bit framing, packet counts, command IDs, malformed packets, reset behavior, and partial-packet save/load.
 - SameSuite SGB `command_mlt_req.gb` and `command_mlt_req_1_incrementing.gb` run as informational `console = "sgb"` rows after Slice 1 so packet/startup traces are visible early; they become blocking multiplayer evidence only when Slice 5 implements `MLT_REQ`.
-- Palette and attribute composition tests proving SGB state affects host output without changing DMG PPU state or CGB palette state.
+- Palette composition tests proving direct `PALxx` commands affect host RGB555 LCD output without changing DMG PPU state or CGB palette state; attribute composition remains Slice 4.
 - Border transfer/composition tests for static border load, repeated updates, mask behavior, and save/load continuation.
 - `MLT_REQ` tests for one/two/four-player modes, player selection, P1 cycling, and frontend/test-runner input slots.
 - SGB/SGB2 profile tests for PAL/NTSC validity, corrected SGB2 clock profile, original SGB no-link behavior, and SGB2 Game Link availability.
@@ -161,7 +167,7 @@ Commercial titles are manual compatibility examples only unless a future private
 - SGB should reuse the DMG-family shared path through explicit axes and capabilities, not a dedicated "SGB core".
 - SGB palette/attribute/border state must be explicit host state and must not piggyback on CGB palette or CGB tile-attribute internals.
 - Every slice that adds live host state must update typed save states before the slice is considered closed.
-- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes; because this changes the typed whole-machine save-state payload again, the durable machine save-state format version is bumped.
+- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer/audio/SNES-side placeholder state, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes. Slice 2 adds persistent direct-palette state, a seven-packet command buffer for future multi-packet commands, and `SgbHost::compose_lcd_rgb555` / `Machine::sgb_lcd_framebuffer_rgb555` as the frontend-neutral base LCD color output; because this changes the typed whole-machine save-state payload again, the durable machine save-state format version is bumped.
 
 ## Known pitfalls
 

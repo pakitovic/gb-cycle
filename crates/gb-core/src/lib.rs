@@ -127,10 +127,13 @@ pub use serial::{
     SerialTickTelemetry, SerialTransferState,
 };
 pub use sgb::{
-    DeterministicHleSgbHostBackend, SgbAudioState, SgbCommandAcceptance, SgbCommandState, SgbHost,
+    DeterministicHleSgbHostBackend, SGB_COMMAND_MAX_PACKETS, SGB_COMMAND_PACKET_BYTES,
+    SGB_LCD_HEIGHT, SGB_LCD_PIXELS, SGB_LCD_WIDTH, SGB_SCREEN_PALETTE_COLORS,
+    SGB_SCREEN_PALETTE_COUNT, SgbAudioState, SgbCommandAcceptance, SgbCommandState, SgbHost,
     SgbHostBackend, SgbHostBackendKind, SgbHostProfile, SgbHostSnapshot, SgbHostStatus,
-    SgbJoypLineState, SgbMultiplayerState, SgbPacketTrace, SgbPacketTraceStatus,
-    SgbPacketTransportState, SgbRealBootAsset, SgbSnesHostState, SgbStartupState, SgbVideoStandard,
+    SgbJoypLineState, SgbLcdCompositionError, SgbMultiplayerState, SgbPacketTrace,
+    SgbPacketTraceStatus, SgbPacketTransportState, SgbPaletteState, SgbRealBootAsset,
+    SgbRgb555Color, SgbScreenPalette, SgbSnesHostState, SgbStartupState, SgbVideoStandard,
     SgbVideoState,
 };
 pub use speed::{

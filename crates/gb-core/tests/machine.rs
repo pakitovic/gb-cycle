@@ -40,6 +40,12 @@ fn write_sgb_packet(machine: &mut Machine, bytes: [u8; 16]) {
     machine.write_bus(0xFF00, 0x30);
 }
 
+fn write_sgb_palette_color(packet: &mut [u8; 16], offset: usize, rgb555: u16) {
+    let [low, high] = rgb555.to_le_bytes();
+    packet[offset] = low;
+    packet[offset + 1] = high;
+}
+
 #[test]
 fn machine_uses_a_single_step_t_cycle_entry_point() {
     let mut machine = Machine::new(
@@ -119,6 +125,46 @@ fn sgb_host_observes_joyp_packet_writes_after_header_unlock() {
     );
     assert_eq!(snapshot.sgb_host.command.last_command_id, Some(0x11));
     assert_eq!(snapshot.sgb_host.command.accepted_command_count, 1);
+}
+
+#[test]
+fn sgb_lcd_color_output_maps_dmg_framebuffer_without_cgb_palette_hardware() {
+    let mut packet = [0; 16];
+    packet[0] = 0x01;
+    write_sgb_palette_color(&mut packet, 1, 0x001F);
+    write_sgb_palette_color(&mut packet, 3, 0x03E0);
+    write_sgb_palette_color(&mut packet, 5, 0x7C00);
+    write_sgb_palette_color(&mut packet, 7, 0x4210);
+    write_sgb_palette_color(&mut packet, 9, 0x0001);
+    write_sgb_palette_color(&mut packet, 11, 0x0002);
+    write_sgb_palette_color(&mut packet, 13, 0x0003);
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy).with_host_platform(HostPlatform::Sgb),
+    );
+    machine
+        .load_cartridge(build_sgb_supported_rom())
+        .expect("SGB-supported ROM should load");
+    let dmg_framebuffer_before = machine.ppu().framebuffer().to_vec();
+
+    write_sgb_packet(&mut machine, packet);
+
+    assert_eq!(machine.ppu().framebuffer(), dmg_framebuffer_before);
+    assert!(
+        machine.ppu().cgb_framebuffer_rgb555().is_none(),
+        "SGB colorization must not enable or reuse CGB palette framebuffer hardware"
+    );
+    let sgb_lcd = machine
+        .sgb_lcd_framebuffer_rgb555()
+        .expect("SGB host should compose a 160x144 RGB555 LCD image");
+    assert_eq!(sgb_lcd.len(), gb_core::SGB_LCD_PIXELS);
+    assert!(
+        sgb_lcd.iter().all(|&pixel| pixel == 0x001F),
+        "the default DMG framebuffer shade 0 should map through SGB palette 0 color 0"
+    );
+    let snapshot = machine.snapshot();
+    assert_eq!(snapshot.sgb_host.video.last_palette_command_id, Some(0x00));
+    assert_eq!(snapshot.sgb_host.video.palette_command_count, 1);
 }
 
 #[test]
