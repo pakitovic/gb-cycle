@@ -135,6 +135,13 @@ impl DesktopConsoleModel {
         !self.uses_rgb555_output()
     }
 
+    pub const fn allows_ext_port_menu(self) -> bool {
+        matches!(
+            self,
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::SuperGameBoy2
+        )
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::GameBoy => "DMG",
@@ -503,6 +510,7 @@ pub struct VideoOptions {
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
+    pub show_sgb_border: bool,
     pub vsync: bool,
     pub fullscreen: bool,
     pub show_performance_hud: bool,
@@ -529,6 +537,7 @@ impl Default for VideoOptions {
             show_background: true,
             show_window: true,
             show_objects: true,
+            show_sgb_border: true,
             vsync: true,
             fullscreen: false,
             show_performance_hud: false,
@@ -957,6 +966,7 @@ mod tests {
         assert!(config.video.show_background);
         assert!(config.video.show_window);
         assert!(config.video.show_objects);
+        assert!(config.video.show_sgb_border);
         assert!(config.video.vsync);
         assert!(!config.video.show_performance_hud);
         assert!(!config.video.show_cgb_infrared_helper);
@@ -1269,6 +1279,12 @@ mod tests {
         assert!(DesktopConsoleModel::GameBoy.allows_display_palette());
         assert!(!DesktopConsoleModel::GameBoyColor.allows_display_palette());
         assert!(!DesktopConsoleModel::SuperGameBoy.allows_display_palette());
+        assert!(DesktopConsoleModel::GameBoy.allows_ext_port_menu());
+        assert!(DesktopConsoleModel::GameBoyPocket.allows_ext_port_menu());
+        assert!(DesktopConsoleModel::GameBoyLight.allows_ext_port_menu());
+        assert!(!DesktopConsoleModel::GameBoyColor.allows_ext_port_menu());
+        assert!(!DesktopConsoleModel::SuperGameBoy.allows_ext_port_menu());
+        assert!(DesktopConsoleModel::SuperGameBoy2.allows_ext_port_menu());
         assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
         assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "MGB");
         assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "LGB");

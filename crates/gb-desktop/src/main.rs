@@ -5740,6 +5740,12 @@ fn run_desktop_prepared(
         Some(rom) => rom.path.parent().map(Path::to_path_buf),
         None => settings_store.last_open_directory().map(Path::to_path_buf),
     };
+    let startup_external_port_selection =
+        if startup_links_peer && options.config.launch.console_model.allows_ext_port_menu() {
+            DesktopExternalPortSelection::GameLink
+        } else {
+            DesktopExternalPortSelection::None
+        };
     let mut session = DesktopSession {
         config: options.config,
         test_runner,
@@ -5762,11 +5768,7 @@ fn run_desktop_prepared(
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         pocket_camera_frame: None,
-        external_port_selection: if startup_links_peer {
-            DesktopExternalPortSelection::GameLink
-        } else {
-            DesktopExternalPortSelection::None
-        },
+        external_port_selection: startup_external_port_selection,
     };
 
     let (mut machine, diagnostics) = load_initial_emulation_session(&mut session)?;
@@ -5828,7 +5830,8 @@ fn run_desktop_prepared(
     };
     let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
-    let framebuffer_dimensions = framebuffer_dimensions_for_session(&machine);
+    let framebuffer_dimensions =
+        framebuffer_dimensions_for_session(&machine, &session.config.video);
     let window_width = framebuffer_dimensions
         .width
         .checked_mul(u32::from(session.config.video.window_scale))
@@ -6398,6 +6401,7 @@ fn run_desktop_prepared(
 fn load_initial_emulation_session(
     session: &mut DesktopSession,
 ) -> Result<(DesktopEmulationSession, Vec<CartridgeDiagnostic>), String> {
+    sanitize_external_port_session_for_model(session);
     match (
         session.rom_bytes(),
         session.linked_secondary_rom_bytes(),
@@ -6701,6 +6705,33 @@ fn apply_external_port_selection_to_machine(
     selection: DesktopExternalPortSelection,
 ) {
     machine.set_external_port_attachment(selection.core_attachment_kind());
+}
+
+fn supported_external_port_selection_for_model(
+    console_model: DesktopConsoleModel,
+    selection: DesktopExternalPortSelection,
+) -> DesktopExternalPortSelection {
+    if console_model.allows_ext_port_menu() {
+        selection
+    } else {
+        DesktopExternalPortSelection::None
+    }
+}
+
+fn sanitize_external_port_session_for_model(session: &mut DesktopSession) {
+    let supported_selection = supported_external_port_selection_for_model(
+        session.config.launch.console_model,
+        session.external_port_selection,
+    );
+    if supported_selection == session.external_port_selection {
+        return;
+    }
+
+    session.external_port_selection = supported_selection;
+    if !session.cgb_infrared_link_active {
+        session.linked_secondary_rom = None;
+    }
+    session.dmg07_player_count = None;
 }
 
 fn session_has_pocket_camera(machine: &DesktopEmulationSession) -> bool {
@@ -8547,6 +8578,7 @@ fn apply_machine_settings_change(
     };
 
     context.session.config = effective_config;
+    sanitize_external_port_session_for_model(context.session);
     if !context.session.test_runner {
         context
             .settings_store
@@ -8756,14 +8788,32 @@ fn rebuild_machine_for_config(
     let rebuild_result: Result<RebuildMachineResult, String> = (|| {
         let mut boot_rom_fallback_warnings = Vec::new();
 
+        let next_external_port_selection = supported_external_port_selection_for_model(
+            next_config.launch.console_model,
+            context.session.external_port_selection,
+        );
+        let next_linked_secondary_rom = if context.session.cgb_infrared_link_active
+            || next_external_port_selection == DesktopExternalPortSelection::GameLink
+        {
+            context.session.linked_secondary_rom.clone()
+        } else {
+            None
+        };
+        let next_dmg07_player_count =
+            if next_external_port_selection == DesktopExternalPortSelection::FourPlayerAdapter {
+                context.session.dmg07_player_count
+            } else {
+                None
+            };
+
         let next_session = DesktopSession {
             config: next_config.clone(),
             test_runner: context.session.test_runner,
             benchmark: context.session.benchmark.clone(),
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
-            linked_secondary_rom: context.session.linked_secondary_rom.clone(),
-            dmg07_player_count: context.session.dmg07_player_count,
+            linked_secondary_rom: next_linked_secondary_rom,
+            dmg07_player_count: next_dmg07_player_count,
             cgb_infrared_link_active: context.session.cgb_infrared_link_active,
             pokemon_pikachu_color_active: context.session.pokemon_pikachu_color_active,
             pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
@@ -8773,7 +8823,7 @@ fn rebuild_machine_for_config(
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             pocket_camera_frame: context.session.pocket_camera_frame.clone(),
-            external_port_selection: context.session.external_port_selection,
+            external_port_selection: next_external_port_selection,
         };
 
         match (
@@ -9497,8 +9547,10 @@ fn open_selected_rom(
     let effective_config = loaded.effective_config;
     let config_fell_back = effective_config != context.session.config;
     let mut next_machine = DesktopEmulationSession::new_single(loaded.machine);
-    let next_external_port_selection =
-        next_single_external_port_selection(context.session.external_port_selection);
+    let next_external_port_selection = supported_external_port_selection_for_model(
+        effective_config.launch.console_model,
+        next_single_external_port_selection(context.session.external_port_selection),
+    );
     apply_external_port_selection_to_machine(
         next_machine.primary_machine_mut(),
         next_external_port_selection,
@@ -9612,6 +9664,15 @@ fn open_selected_linked_secondary_rom(
             "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
         );
     }
+    if !context
+        .session
+        .config
+        .launch
+        .console_model
+        .allows_ext_port_menu()
+    {
+        return Ok(());
+    }
 
     let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
     activate_game_link_with_secondary_rom(event_pump, canvas, next_secondary_rom, context)
@@ -9621,7 +9682,14 @@ fn open_game_link_secondary_rom_dialog(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) {
-    if !context.session.has_loaded_rom() {
+    if !context.session.has_loaded_rom()
+        || !context
+            .session
+            .config
+            .launch
+            .console_model
+            .allows_ext_port_menu()
+    {
         return;
     }
 
@@ -9648,6 +9716,15 @@ fn activate_game_link_with_secondary_rom(
         return Err(
             "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
         );
+    }
+    if !context
+        .session
+        .config
+        .launch
+        .console_model
+        .allows_ext_port_menu()
+    {
+        return Ok(());
     }
 
     drain_printed_pages_into_printer_output(
@@ -10266,7 +10343,14 @@ fn activate_dmg07_adapter(
     player_count: DesktopDmg07PlayerCount,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
-    if !context.session.has_loaded_rom() {
+    if !context.session.has_loaded_rom()
+        || !context
+            .session
+            .config
+            .launch
+            .console_model
+            .allows_ext_port_menu()
+    {
         return Ok(());
     }
 
@@ -11242,7 +11326,10 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                    ),
                 )?;
             }
             context
@@ -11269,7 +11356,10 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                    ),
                 )?;
             }
             context
@@ -11311,6 +11401,25 @@ fn execute_menu_action(
             context
                 .settings_store
                 .set_display_palette(context.runtime.video_options.display_palette)?;
+            Ok(None)
+        }
+        MenuAction::ToggleSgbBorder => {
+            if context
+                .session
+                .config
+                .launch
+                .console_model
+                .sgb_profile()
+                .is_none()
+            {
+                return Ok(None);
+            }
+            context.runtime.video_options.show_sgb_border =
+                !context.runtime.video_options.show_sgb_border;
+            context.runtime.frame_blending_state.reset();
+            context
+                .settings_store
+                .set_show_sgb_border(context.runtime.video_options.show_sgb_border)?;
             Ok(None)
         }
         MenuAction::ToggleBackgroundLayer => {
@@ -11364,7 +11473,10 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     defaults.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                    ),
                 )?;
             }
             context
@@ -11505,6 +11617,16 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetExternalPort(selection) => {
+            if selection != DesktopExternalPortSelection::None
+                && !context
+                    .session
+                    .config
+                    .launch
+                    .console_model
+                    .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             drain_printed_pages_into_printer_output(
                 canvas.window(),
                 context.session,
@@ -11551,6 +11673,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetGameLinkSameGame => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             let Some(next_secondary_rom) = context.session.loaded_rom.clone() else {
                 return Ok(None);
             };
@@ -11558,6 +11689,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SelectGameLinkRom => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             drain_printed_pages_into_printer_output(
                 canvas.window(),
                 context.session,
@@ -11569,6 +11709,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetFourPlayerAdapter(player_count) => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             activate_dmg07_adapter(event_pump, canvas, player_count, context)?;
             Ok(None)
         }
@@ -11857,6 +12006,7 @@ fn current_menu_presentation(
         show_background: runtime.video_options.show_background,
         show_window: runtime.video_options.show_window,
         show_objects: runtime.video_options.show_objects,
+        show_sgb_border: runtime.video_options.show_sgb_border,
         show_performance_hud: runtime.video_options.show_performance_hud,
         show_cgb_infrared_helper: runtime.video_options.show_cgb_infrared_helper,
         muted: runtime
@@ -13133,7 +13283,7 @@ fn save_screenshot_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
 ) -> Result<PathBuf, String> {
-    let dimensions = framebuffer_dimensions_for_session(machine);
+    let dimensions = framebuffer_dimensions_for_session(machine, video_options);
     let rendered = screenshot_output::render_screenshot(
         framebuffer_render_input_for_session(machine, dimensions, video_options),
         video_options,
@@ -13151,7 +13301,7 @@ fn save_screenshot_for_session_to_path(
     video_options: &VideoOptions,
     output_path: &Path,
 ) -> Result<(), String> {
-    let dimensions = framebuffer_dimensions_for_session(machine);
+    let dimensions = framebuffer_dimensions_for_session(machine, video_options);
     let rendered = screenshot_output::render_screenshot(
         framebuffer_render_input_for_session(machine, dimensions, video_options),
         video_options,
@@ -13371,9 +13521,12 @@ fn sync_fast_forward_host_pacing_state(
     Ok(())
 }
 
-fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
+fn framebuffer_dimensions_for_session(
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
-    let cell_dimensions = framebuffer_cell_dimensions_for_session(machine);
+    let cell_dimensions = framebuffer_cell_dimensions_for_session(machine, video_options);
     FramebufferDimensions {
         width: cell_dimensions.width * layout.columns as u32,
         height: cell_dimensions.height * layout.rows as u32,
@@ -13382,6 +13535,7 @@ fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> Fram
 
 fn framebuffer_cell_dimensions_for_session(
     machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
 ) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
     layout
@@ -13389,7 +13543,7 @@ fn framebuffer_cell_dimensions_for_session(
         .into_iter()
         .flatten()
         .filter_map(|slot| machine.machine_for_player_slot(slot))
-        .map(framebuffer_panel_dimensions_for_machine)
+        .map(|machine| framebuffer_panel_dimensions_for_machine(machine, video_options))
         .fold(
             FramebufferDimensions {
                 width: FRAMEBUFFER_WIDTH,
@@ -13404,8 +13558,9 @@ fn framebuffer_cell_dimensions_for_session(
 
 fn framebuffer_panel_dimensions_for_machine(
     machine: &Machine<TraceSummaryBuffer>,
+    video_options: &VideoOptions,
 ) -> FramebufferDimensions {
-    if machine.sgb_host().profile().is_some() {
+    if machine.sgb_host().profile().is_some() && video_options.show_sgb_border {
         FramebufferDimensions {
             width: SGB_HOST_FRAMEBUFFER_WIDTH,
             height: SGB_HOST_FRAMEBUFFER_HEIGHT,
@@ -13437,20 +13592,29 @@ fn framebuffer_cell_dimensions_for_panels(
         )
 }
 
-fn framebuffer_panel_input_for_player_slot(
-    machine: &DesktopEmulationSession,
+fn framebuffer_panel_input_for_player_slot<'a>(
+    machine: &'a DesktopEmulationSession,
     slot: PlayerSlot,
     display_palette: DisplayPalette,
-) -> Option<FramebufferPanelInput<'_>> {
+    video_options: &VideoOptions,
+) -> Option<FramebufferPanelInput<'a>> {
     let machine = machine.machine_for_player_slot(slot)?;
-    let sgb_framebuffer_rgb555 = machine.sgb_framebuffer_rgb555();
-    let dimensions = if sgb_framebuffer_rgb555.is_some() {
-        FramebufferDimensions {
-            width: SGB_HOST_FRAMEBUFFER_WIDTH,
-            height: SGB_HOST_FRAMEBUFFER_HEIGHT,
+    let sgb_framebuffer_rgb555 = if machine.sgb_host().profile().is_some() {
+        if video_options.show_sgb_border {
+            machine.sgb_framebuffer_rgb555()
+        } else {
+            machine.sgb_lcd_framebuffer_rgb555()
         }
     } else {
-        framebuffer_panel_dimensions_for_machine(machine)
+        None
+    };
+    let dimensions = if sgb_framebuffer_rgb555.is_some() {
+        framebuffer_panel_dimensions_for_machine(machine, video_options)
+    } else {
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        }
     };
     Some(FramebufferPanelInput {
         dimensions,
@@ -13476,7 +13640,12 @@ fn framebuffer_render_input_for_session<'a>(
         dimensions,
         panels: layout.slots.map(|slot| {
             slot.and_then(|slot| {
-                framebuffer_panel_input_for_player_slot(machine, slot, display_palette)
+                framebuffer_panel_input_for_player_slot(
+                    machine,
+                    slot,
+                    display_palette,
+                    video_options,
+                )
             })
         }),
     }
@@ -13643,7 +13812,7 @@ fn sync_framebuffer_presentation_resources<'a>(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
 ) -> Result<(), String> {
-    let next_dimensions = framebuffer_dimensions_for_session(machine);
+    let next_dimensions = framebuffer_dimensions_for_session(machine, video_options);
     if next_dimensions == *current_dimensions {
         return Ok(());
     }
@@ -22183,7 +22352,7 @@ mod tests {
 
         let render_input = super::framebuffer_render_input_for_session(
             &machine,
-            super::framebuffer_dimensions_for_session(&machine),
+            super::framebuffer_dimensions_for_session(&machine, &video_options),
             &video_options,
         );
 
@@ -22201,13 +22370,11 @@ mod tests {
                 .with_startup_mode(StartupMode::SkipBoot)
                 .with_sgb_profile(SgbHostProfile::SgbNtsc),
         ));
-        let dimensions = super::framebuffer_dimensions_for_session(&machine);
+        let video_options = gb_desktop::VideoOptions::default();
+        let dimensions = super::framebuffer_dimensions_for_session(&machine, &video_options);
 
-        let render_input = super::framebuffer_render_input_for_session(
-            &machine,
-            dimensions,
-            &gb_desktop::VideoOptions::default(),
-        );
+        let render_input =
+            super::framebuffer_render_input_for_session(&machine, dimensions, &video_options);
 
         assert_eq!(
             dimensions,
@@ -22227,6 +22394,37 @@ mod tests {
                 .expect("SGB panel should carry host RGB555 output")
                 .len(),
             (super::SGB_HOST_FRAMEBUFFER_WIDTH * super::SGB_HOST_FRAMEBUFFER_HEIGHT) as usize
+        );
+
+        let hidden_border_options = gb_desktop::VideoOptions {
+            show_sgb_border: false,
+            ..gb_desktop::VideoOptions::default()
+        };
+        let hidden_dimensions =
+            super::framebuffer_dimensions_for_session(&machine, &hidden_border_options);
+        let hidden_render_input = super::framebuffer_render_input_for_session(
+            &machine,
+            hidden_dimensions,
+            &hidden_border_options,
+        );
+        assert_eq!(
+            hidden_dimensions,
+            super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            }
+        );
+        let hidden_panel = hidden_render_input.panels[0]
+            .as_ref()
+            .expect("hidden-border SGB panel should be populated");
+        assert_eq!(hidden_panel.dimensions, hidden_dimensions);
+        assert_eq!(
+            hidden_panel
+                .sgb_framebuffer_rgb555
+                .as_ref()
+                .expect("hidden-border SGB panel should carry LCD RGB555 output")
+                .len(),
+            (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize
         );
     }
 
@@ -26601,7 +26799,10 @@ mod tests {
             super::DesktopDmg07PlayerCount::Four,
         )
         .expect("DMG-07 desktop session should build");
-        let dimensions = super::framebuffer_dimensions_for_session(&linked);
+        let dimensions = super::framebuffer_dimensions_for_session(
+            &linked,
+            &gb_desktop::VideoOptions::default(),
+        );
         assert_eq!(
             dimensions,
             super::FramebufferDimensions {
@@ -28089,6 +28290,25 @@ mod tests {
             harness.settings_store.base_config().video.display_palette,
             DesktopDisplayPalette::Light
         );
+        harness.session.config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![4, 5, 6];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
+        assert!(harness.runtime.video_options.show_sgb_border);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleSgbBorder)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_sgb_border);
+        assert!(!harness.settings_store.base_config().video.show_sgb_border);
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
         harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyColor;
         assert!(
             harness
@@ -28246,6 +28466,24 @@ mod tests {
             harness.machine.external_port().attachment_kind(),
             ExternalPortAttachmentKind::None
         );
+        harness.session.config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::Printer,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyPocket;
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleGamepadDirectionalSource)

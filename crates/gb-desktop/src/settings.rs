@@ -171,6 +171,15 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_show_sgb_border(&mut self, show_sgb_border: bool) -> Result<(), String> {
+        if self.settings.video.show_sgb_border == show_sgb_border {
+            return Ok(());
+        }
+
+        self.settings.video.show_sgb_border = show_sgb_border;
+        self.save()
+    }
+
     pub fn set_show_cgb_infrared_helper(
         &mut self,
         show_cgb_infrared_helper: bool,
@@ -1159,6 +1168,7 @@ show_performance_hud = true
             DesktopDisplayPalette::GameBoy
         );
         assert_eq!(settings.video.frame_blending, DesktopFrameBlendingMode::Off);
+        assert!(settings.video.show_sgb_border);
         assert!(!settings.video.show_cgb_infrared_helper);
     }
 
@@ -1296,6 +1306,7 @@ max_memory_mib = 128
         settings.video.show_background = false;
         settings.video.show_window = false;
         settings.video.show_objects = false;
+        settings.video.show_sgb_border = false;
         settings.video.fullscreen = true;
         settings.video.show_performance_hud = false;
         settings.video.show_cgb_infrared_helper = true;
@@ -1366,6 +1377,7 @@ max_memory_mib = 128
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
         assert!(!config.video.show_objects);
+        assert!(!config.video.show_sgb_border);
         assert!(config.video.fullscreen);
         assert!(!config.video.show_performance_hud);
         assert!(config.video.show_cgb_infrared_helper);
@@ -1605,6 +1617,9 @@ max_memory_mib = 128
             .set_show_performance_hud(true)
             .expect("performance HUD visibility should persist");
         store
+            .set_show_sgb_border(false)
+            .expect("SGB border visibility should persist");
+        store
             .set_show_cgb_infrared_helper(true)
             .expect("CGB IR helper visibility should persist");
         store.set_vsync(false).expect("vsync toggle should persist");
@@ -1677,6 +1692,7 @@ max_memory_mib = 128
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
+        assert!(!reloaded.video.show_sgb_border);
         assert!(reloaded.video.show_performance_hud);
         assert!(reloaded.video.show_cgb_infrared_helper);
         assert!(!reloaded.video.vsync);
@@ -1748,6 +1764,9 @@ max_memory_mib = 128
         store
             .set_show_performance_hud(true)
             .expect("HUD visibility should persist");
+        store
+            .set_show_sgb_border(false)
+            .expect("SGB border visibility should persist");
         store
             .set_show_cgb_infrared_helper(true)
             .expect("CGB IR helper visibility should persist");
