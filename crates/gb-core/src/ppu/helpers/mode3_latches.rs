@@ -189,6 +189,10 @@ impl PpuMode3LiveRegisterWriteContext {
             != (self.current.scy.wrapping_add(ly) & (BG_TILE_WIDTH - 1))
     }
 
+    pub(in crate::ppu) const fn bg_scy_effective_row_changed(self, ly: u8) -> bool {
+        self.bg_scy_tilemap_row_changed(ly) || self.bg_scy_tile_data_row_changed(ly)
+    }
+
     pub(in crate::ppu) const fn current_lcdc(self) -> u8 {
         self.current.lcdc
     }

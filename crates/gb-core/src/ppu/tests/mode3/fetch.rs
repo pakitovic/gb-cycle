@@ -2402,6 +2402,37 @@ fn cgb_dmg_software_startup_scy_tilemap_retarget_requires_a_live_scy_write_marke
 }
 
 #[test]
+fn cgb_dmg_software_startup_scy_retarget_marker_requires_effective_row_change() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_fetch_startup_rig(operating_mode, 0x91);
+        ppu.scy = 5;
+        ppu.visible_registers.scy = 5;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.lcd_state = PpuLcdState::Enabled;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        push_selected_sprite_x(&mut ppu, 2);
+
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+        ppu.write_register(0xFF42, 5);
+        assert!(
+            !ppu.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active,
+            "{operating_mode:?} should ignore an SCY write that keeps the effective row"
+        );
+
+        ppu.write_register(0xFF42, 6);
+        assert!(
+            ppu.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active,
+            "{operating_mode:?} should arm the retarget marker once SCY changes the effective row"
+        );
+    }
+}
+
+#[test]
 fn visible_tile3_scx_boundary_next_tile_retarget_reads_the_following_bg_tile() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.visible_registers.lcdc = 0x91;
