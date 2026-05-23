@@ -348,7 +348,7 @@ impl Ppu {
     pub(in crate::ppu) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(
         &self,
     ) -> bool {
-        self.console_model.is_dmg_family()
+        self.operating_mode.uses_dmg_software_contract()
             && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
             && matches!(
                 self.runtime.bg_pipeline_state.fetcher.cached_origin,
@@ -379,7 +379,7 @@ impl Ppu {
             .bg_pipeline_state
             .current_transfer_x
             .saturating_sub(16);
-        self.console_model.is_dmg_family()
+        self.operating_mode.uses_dmg_software_contract()
             && self.runtime.bg_pipeline_state.push.pending
             && self.runtime.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
             && matches!(
@@ -424,7 +424,7 @@ impl Ppu {
             .bg_pipeline_state
             .current_transfer_x
             .saturating_sub(16);
-        self.console_model.is_dmg_family()
+        self.operating_mode.uses_dmg_software_contract()
             && self.scx >= 0x58
             && self.runtime.bg_pipeline_state.push.pending
             && self.runtime.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
@@ -469,6 +469,7 @@ impl Ppu {
         PpuMode3BgWinFetchPolicy::new(
             self.mode3_register_latches(),
             self.console_model,
+            self.operating_mode.uses_dmg_software_contract(),
             self.runtime
                 .bg_pipeline_state
                 .startup_background_tilemap_uses_pipeline_snapshot(),

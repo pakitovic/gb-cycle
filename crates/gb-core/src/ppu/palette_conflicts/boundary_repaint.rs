@@ -9,7 +9,7 @@ impl Ppu {
         repaint_visible_x: u8,
         value: u8,
     ) {
-        if !self.console_model.is_dmg_family()
+        if !self.uses_dmg_palette_live_write_model()
             || self.ly >= VISIBLE_SCANLINES
             || self.visible_output != PpuVisibleOutputState::Driving
         {
@@ -144,7 +144,14 @@ impl Ppu {
                 PpuPaletteRegister::Bgp,
                 palette,
             );
-            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
+            self.write_framebuffer_palette_override_pixel(
+                row_start + x,
+                x,
+                mixed_pixel,
+                panel_pixel,
+                PpuPaletteRegister::Bgp,
+                palette,
+            );
         }
     }
 

@@ -148,6 +148,72 @@ fn cpu_mmio_scx_write_during_alignment_seed_retunes_the_current_line_discard_bud
 }
 
 #[test]
+fn cgb_dmg_software_scx_write_during_alignment_seed_retunes_the_current_line_discard_budget() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        ppu.tick_n(84);
+        ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+        ppu.tick();
+
+        let after = ppu.snapshot();
+        assert_eq!(after.line_dot, 85, "{operating_mode:?}");
+        assert_eq!(after.visible_scx, 0x02, "{operating_mode:?}");
+        assert_eq!(after.bg_current_transfer_x, 0, "{operating_mode:?}");
+        assert_eq!(
+            after.mode0_start_dot,
+            MODE0_START_DOT + 2,
+            "{operating_mode:?}"
+        );
+        assert_eq!(after.scx_discard_remaining, 0, "{operating_mode:?}");
+    }
+}
+
+#[test]
+fn native_cgb_scx_write_during_alignment_seed_does_not_use_dmg_software_discard_retune() {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::Cgb);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.tick_n(84);
+    ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.tick();
+
+    let after = ppu.snapshot();
+    assert_eq!(after.visible_scx, 0x02);
+    assert_eq!(after.bg_current_transfer_x, 2);
+    assert_eq!(after.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(after.scx_discard_remaining, 0);
+}
+
+#[test]
 fn cpu_mmio_scx_write_after_alignment_seed_does_not_retune_the_current_line_discard_budget() {
     let mut ppu = PpuTestRig::dmg();
 

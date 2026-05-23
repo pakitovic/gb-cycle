@@ -6,7 +6,10 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
-        if self.console_model.is_dmg_family() {
+        if self.console_model.is_dmg_family()
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract()
+        {
             self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
         }
         let pixel = self.take_transfer_service_bg_pixel(plan);
@@ -117,9 +120,10 @@ impl Ppu {
             bg_pixel
         };
         let dmg_family = self.console_model.is_dmg_family();
+        let dmg_software_contract = self.operating_mode.uses_dmg_software_contract();
         let effective_bg_priority_pixel = if bg_enabled { bg_pixel.color } else { 0 };
         let obj_pixel = self.pop_obj_fifo_pixel();
-        let obj_pixel = if dmg_family {
+        let obj_pixel = if dmg_software_contract {
             self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram)
         } else {
             obj_pixel
@@ -130,8 +134,7 @@ impl Ppu {
             effective_bg_priority_pixel,
             obj_pixel,
         );
-        let dmg_bg_forced_white =
-            dmg_family && self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
         let panel_pixel = if self.runtime.panel.visible_output == PpuVisibleOutputState::Driving {
             if dmg_bg_forced_white {
                 0
@@ -166,17 +169,23 @@ impl Ppu {
             output_pixel,
             panel_pixel,
         );
-        if dmg_family {
+        if self.uses_dmg_palette_live_write_model() {
             self.record_dmg_recent_panel_dot(
                 visible_x_index as u8,
                 output_pixel,
                 dmg_bg_forced_white,
             );
+            self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
+        }
+        if dmg_family {
             self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
             self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
+        }
+        if self.operating_mode.uses_dmg_software_contract() {
             self.consume_dmg_lcdc0_bg_enable_visible_hold();
+        }
+        if self.operating_mode.uses_dmg_software_contract() {
             self.consume_dmg_lcdc1_obj_enable_visible_hold();
-            self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
         }
         self.runtime.bg_pipeline_state.current_transfer_x = self
             .runtime
@@ -351,6 +360,34 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+        {
+            if !self
+                .runtime
+                .bg_pipeline_state
+                .cgb_dmg_scy_startup_retarget_active
+            {
+                return None;
+            }
+
+            let retarget = self
+                .scy_obj_phase_policy()?
+                .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(self.ly, pixel_index)?;
+
+            return Some(self.read_startup_visible_tile2_scy_retargeted_pixel(
+                cached,
+                pixel_index,
+                retarget.tilemap_row_delta,
+                retarget.tiledata_row_delta,
+                vram,
+            ));
+        }
+
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         if !matches!(
@@ -480,6 +517,34 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+        {
+            if !self
+                .runtime
+                .bg_pipeline_state
+                .cgb_dmg_scy_startup_retarget_active
+            {
+                return None;
+            }
+
+            let retarget = self
+                .scy_obj_phase_policy()?
+                .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(self.ly, pixel_index)?;
+
+            return Some(self.read_startup_visible_tile2_scy_retargeted_pixel(
+                cached,
+                pixel_index,
+                retarget.tilemap_row_delta,
+                retarget.tiledata_row_delta,
+                vram,
+            ));
+        }
+
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         if !matches!(

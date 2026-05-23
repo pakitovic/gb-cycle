@@ -871,6 +871,7 @@ pub(super) struct BgPipelineState {
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
     pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
+    pub(super) cgb_dmg_scy_startup_retarget_active: bool,
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
@@ -1178,6 +1179,13 @@ impl BgTileDataSelect {
         match self {
             Self::Signed8800 => lcdc & !LCDC_BG_WINDOW_TILE_DATA_BIT,
             Self::Unsigned8000 => lcdc | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        }
+    }
+
+    pub(super) const fn opposite(self) -> Self {
+        match self {
+            Self::Signed8800 => Self::Unsigned8000,
+            Self::Unsigned8000 => Self::Signed8800,
         }
     }
 }
@@ -1561,6 +1569,7 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -1577,6 +1586,7 @@ impl BgPipelineState {
         self.fifo.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
@@ -1653,6 +1663,7 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -1760,13 +1771,16 @@ impl BgPipelineState {
         write_context: PpuMode3LiveRegisterWriteContext,
         current_fetcher: BgFetcherState,
         window_tile_row: u8,
+        cgb_dmg_software_window_map_lead_in: bool,
     ) {
         let first_window_pixel_index = self
             .fifo
             .cached_pixels()
             .find(|cached| cached.cached.source == PpuBgFetcherSource::Window)
             .map(|cached| cached.pixel_index);
-        let allow_current_window_tail_repaint = window_tile_row >= 24;
+        let allow_current_window_tail_repaint = window_tile_row >= 24
+            || cgb_dmg_software_window_map_lead_in
+                && write_context.bgwin_tilemap_select_changed(PpuBgFetcherSource::Window);
         let mut mark_window_entries = current_fetcher.source == PpuBgFetcherSource::Window
             && current_fetcher.stage == PpuBgFetcherStage::TileIndex;
         if !mark_window_entries {
@@ -1889,8 +1903,19 @@ impl BgPipelineState {
         &mut self,
         previous_select: BgTileDataSelect,
     ) {
+        self.apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+            previous_select,
+            BG_TILE_WIDTH as u16 * 2,
+        );
+    }
+
+    pub(super) fn apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+        &mut self,
+        previous_select: BgTileDataSelect,
+        max_fetch_x: u16,
+    ) {
         if self.fetcher.source == PpuBgFetcherSource::Window
-            && self.fetcher.fetch_x <= BG_TILE_WIDTH as u16 * 2
+            && self.fetcher.fetch_x <= max_fetch_x
             && self
                 .fetcher
                 .dmg_lcdc4_previous_tiledata_select_for_output_override
@@ -1901,7 +1926,10 @@ impl BgPipelineState {
         }
 
         self.for_each_mut_cached_slice(|cached| {
-            cached.force_dmg_lcdc4_previous_tiledata_select_for_output_override(previous_select);
+            cached.force_dmg_lcdc4_previous_tiledata_select_for_output_override_up_to(
+                previous_select,
+                max_fetch_x,
+            );
         });
     }
 
@@ -2362,6 +2390,7 @@ impl Default for BgPipelineState {
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
             startup_scy_tiledata_latch: None,
+            cgb_dmg_scy_startup_retarget_active: false,
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
@@ -2429,6 +2458,7 @@ pub(super) struct BgFetcherState {
     pub(super) needs_live_tile_data_current_row_refetch_on_push: bool,
     pub(super) needs_live_tile_low_current_row_refetch_on_push: bool,
     pub(super) needs_live_tile_high_current_row_refetch_on_push: bool,
+    pub(super) cgb_dmg_scy_high_plane_uses_low_row: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
@@ -2487,6 +2517,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = aligned_fetch_x;
@@ -2522,6 +2553,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = 0;
@@ -2560,6 +2592,7 @@ impl BgFetcherState {
         self.needs_live_tile_data_current_row_refetch_on_push = false;
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
+        self.cgb_dmg_scy_high_plane_uses_low_row = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = self.bg_resume_fetch_pixel;
@@ -3057,12 +3090,13 @@ impl BgCachedSlice {
         self.window_activation_first_pixel_previous_tilemap_select = Some(previous_tilemap_select);
     }
 
-    fn force_dmg_lcdc4_previous_tiledata_select_for_output_override(
+    fn force_dmg_lcdc4_previous_tiledata_select_for_output_override_up_to(
         &mut self,
         previous_select: BgTileDataSelect,
+        max_fetch_x: u16,
     ) {
         if self.source != PpuBgFetcherSource::Window
-            || self.fetch_x > BG_TILE_WIDTH as u16 * 2
+            || self.fetch_x > max_fetch_x
             || self
                 .dmg_lcdc4_previous_tiledata_select_for_output_override
                 .is_some()

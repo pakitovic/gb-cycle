@@ -189,6 +189,35 @@ fn dmg_obj_fetch_ignores_cgb_attribute_tile_bank_bit() {
 }
 
 #[test]
+fn cgb_dmg_software_obj_fetch_ignores_native_cgb_attribute_tile_bank_bit() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        let sprite = selected_sprite(SelectedSpriteSpec::new(
+            0,
+            16,
+            8,
+            0x02,
+            CGB_OBJ_ATTR_VRAM_BANK_BIT | 0x05,
+        ));
+        let mut vram = [0; CGB_TEST_VRAM_BYTES];
+        vram[0x20] = 0x44;
+        vram[VRAM_BANK_SIZE + 0x20] = 0x88;
+
+        let byte = with_cgb_video_buses([0; 160], vram, |_oam, vram| {
+            ppu.read_obj_tile_data_byte_for_resolved_tile(vram, sprite, 0x02, 0, 0)
+        });
+
+        assert_eq!(byte, 0x44);
+        assert_eq!(ppu.obj_tile_data_vram_bank(sprite), 0);
+        assert_eq!(ppu.cgb_obj_attributes(sprite), None);
+    }
+}
+
+#[test]
 fn cgb_obj_flips_apply_before_rgb555_rendering() {
     let mut ppu = cgb_obj_fetch_ppu();
     let attrs = CgbObjAttributes::new(

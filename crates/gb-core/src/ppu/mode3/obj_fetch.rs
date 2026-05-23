@@ -436,7 +436,7 @@ impl Ppu {
         overlap_end_visible_x: u8,
         background_only: bool,
     ) {
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || self.runtime.panel.visible_output != PpuVisibleOutputState::Driving
             || overlap_end_visible_x == 0
         {

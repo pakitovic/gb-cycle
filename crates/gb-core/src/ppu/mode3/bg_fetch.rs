@@ -139,6 +139,10 @@ impl Ppu {
                 .bg_pipeline_state
                 .fetcher
                 .needs_live_tile_high_current_row_refetch_on_push = false;
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .cgb_dmg_scy_high_plane_uses_low_row = false;
         }
 
         let tile_map_address =
@@ -278,6 +282,15 @@ impl Ppu {
             1,
             fetcher.cgb_bg_attrs,
         );
+        let tile_data_address = if fetcher.cgb_dmg_scy_high_plane_uses_low_row {
+            fetcher.tile_low_address | 1
+        } else {
+            tile_data_address
+        };
+        self.runtime
+            .bg_pipeline_state
+            .fetcher
+            .cgb_dmg_scy_high_plane_uses_low_row = false;
         self.runtime.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
         self.runtime.bg_pipeline_state.fetcher.tile_high_address = tile_data_address;
         let tile_data = self.read_bg_tile_data_byte(vram, fetcher.cgb_bg_attrs, tile_data_address);
@@ -342,6 +355,17 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push();
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && fetcher_state.source == PpuBgFetcherSource::Window
+            && fetcher_state.dmg_lcdc4_previous_tiledata_select_for_output_override
+                == Some(BgTileDataSelect::Signed8800)
+        {
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override = None;
+        }
         self.runtime
             .bg_pipeline_state
             .fetcher

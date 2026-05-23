@@ -46,9 +46,13 @@ impl Ppu {
                 let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
                     dot.pixel, register, palette,
                 );
-                self.write_framebuffer_panel_shade(
+                self.write_framebuffer_palette_override_pixel(
                     row_start + usize::from(dot.visible_x),
+                    usize::from(dot.visible_x),
+                    dot.pixel,
                     panel_pixel,
+                    register,
+                    palette,
                 );
             }
             return;
@@ -81,7 +85,14 @@ impl Ppu {
                 register,
                 palette,
             );
-            self.write_framebuffer_panel_shade(row_start + x, panel_pixel);
+            self.write_framebuffer_palette_override_pixel(
+                row_start + x,
+                x,
+                mixed_pixel,
+                panel_pixel,
+                register,
+                palette,
+            );
         }
     }
 
@@ -161,7 +172,7 @@ impl Ppu {
         pixel: MixedPixel,
         dmg_bg_forced_white: bool,
     ) {
-        if !self.console_model.is_dmg_family() || self.ly >= VISIBLE_SCANLINES {
+        if !self.uses_dmg_palette_live_write_model() || self.ly >= VISIBLE_SCANLINES {
             return;
         }
 
@@ -219,7 +230,7 @@ impl Ppu {
         &self,
         register: PpuPaletteRegister,
     ) -> Option<usize> {
-        if !self.console_model.is_dmg_family() || self.ly >= VISIBLE_SCANLINES {
+        if !self.uses_dmg_palette_live_write_model() || self.ly >= VISIBLE_SCANLINES {
             return None;
         }
 

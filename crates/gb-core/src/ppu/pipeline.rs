@@ -1,6 +1,14 @@
 use super::*;
 
 impl Ppu {
+    pub(in crate::ppu) fn uses_dmg_palette_live_write_model(&self) -> bool {
+        self.operating_mode.uses_dmg_software_contract()
+    }
+
+    pub(in crate::ppu) fn uses_cgb_compatibility_rgb555_adapter(&self) -> bool {
+        self.console_model.is_cgb_family() && self.operating_mode.uses_dmg_software_contract()
+    }
+
     pub(super) fn compute_fetch_tile_index_address(
         &self,
         source: PpuBgFetcherSource,
@@ -69,7 +77,7 @@ impl Ppu {
         vram: &VramBusView<'_>,
         tile_map_address: u16,
     ) -> Option<CgbBgTileAttributes> {
-        if !self.console_model.is_cgb_family() {
+        if !self.is_cgb_native_mode() {
             return None;
         }
 
@@ -213,8 +221,7 @@ impl Ppu {
     }
 
     pub(super) fn cgb_obj_attributes(&self, sprite: PpuSelectedSprite) -> Option<CgbObjAttributes> {
-        self.console_model
-            .is_cgb_family()
+        self.is_cgb_native_mode()
             .then_some(CgbObjAttributes::new(sprite.attributes))
     }
 
@@ -376,7 +383,7 @@ impl Ppu {
         current_visible_x: u8,
         sprite_screen_x: i16,
     ) -> i16 {
-        if sprite_screen_x < 0 {
+        if sprite_screen_x < 0 && self.console_model.is_dmg_family() {
             current_visible_x as i16
                 - self.obj_fifo_hidden_pops_before_first_visible_pixel_raw() as i16
         } else {
@@ -519,7 +526,7 @@ impl Ppu {
     }
 
     pub(super) fn map_mixed_pixel_to_cgb_rgb555(&self, pixel: MixedPixel) -> u16 {
-        if self.is_cgb_compatibility_mode() {
+        if self.uses_cgb_compatibility_rgb555_adapter() {
             return self.map_mixed_pixel_to_cgb_compatibility_rgb555(pixel);
         }
 
@@ -541,18 +548,43 @@ impl Ppu {
 
     fn map_mixed_pixel_to_cgb_compatibility_rgb555(&self, pixel: MixedPixel) -> u16 {
         let visible_registers = self.mode3_register_latches().visible();
+        let palette = visible_registers.palette_for_mixed_pixel(
+            pixel,
+            visible_registers.bgp,
+            self.obj_palette_read_policy,
+        );
+        self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette(pixel, palette)
+    }
 
+    pub(in crate::ppu) fn map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette_override(
+        &self,
+        pixel: MixedPixel,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) -> u16 {
+        let visible_registers = self.mode3_register_latches().visible();
+        let palette = visible_registers.palette_for_mixed_pixel_with_override(
+            pixel,
+            register,
+            palette_override,
+            self.pixel_pipeline_bgp(),
+            self.obj_palette_read_policy,
+        );
+        self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette(pixel, palette)
+    }
+
+    fn map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette(
+        &self,
+        pixel: MixedPixel,
+        palette: u8,
+    ) -> u16 {
+        let color = self.apply_dmg_palette(palette, pixel.color);
         match pixel.source {
-            MixedPixelSource::Background => {
-                let color = self.apply_dmg_palette(visible_registers.bgp, pixel.color);
-                self.cgb_palettes
-                    .port(CgbPaletteKind::Background)
-                    .rgb555(0, color)
-            }
+            MixedPixelSource::Background => self
+                .cgb_palettes
+                .port(CgbPaletteKind::Background)
+                .rgb555(0, color),
             MixedPixelSource::Object { palette_obp1 } => {
-                let palette =
-                    visible_registers.obj_palette(palette_obp1, self.obj_palette_read_policy);
-                let color = self.apply_dmg_palette(palette, pixel.color);
                 let cgb_palette_index = u8::from(palette_obp1);
                 self.cgb_palettes
                     .port(CgbPaletteKind::Object)
@@ -567,7 +599,7 @@ impl Ppu {
         pixel: MixedPixel,
     ) -> bool {
         self.visible_output == PpuVisibleOutputState::Driving
-            && self.console_model.is_dmg_family()
+            && self.operating_mode.uses_dmg_software_contract()
             && !bg_enabled
             && matches!(pixel.source, MixedPixelSource::Background)
     }

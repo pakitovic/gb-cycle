@@ -352,6 +352,7 @@ impl PpuMode3WindowPolicy {
 pub(in crate::ppu) struct PpuMode3BgWinFetchPolicy {
     register_latches: PpuMode3RegisterLatches,
     console_model: ConsoleModel,
+    dmg_software_contract: bool,
     background_tilemap_uses_pipeline_snapshot: bool,
     background_tiledata_uses_pipeline_snapshot: bool,
     background_tileindex_reads_on_stage_one: bool,
@@ -362,6 +363,7 @@ impl PpuMode3BgWinFetchPolicy {
     pub(in crate::ppu) const fn new(
         register_latches: PpuMode3RegisterLatches,
         console_model: ConsoleModel,
+        dmg_software_contract: bool,
         background_tilemap_uses_pipeline_snapshot: bool,
         background_tiledata_uses_pipeline_snapshot: bool,
         background_tileindex_reads_on_stage_one: bool,
@@ -370,6 +372,7 @@ impl PpuMode3BgWinFetchPolicy {
         Self {
             register_latches,
             console_model,
+            dmg_software_contract,
             background_tilemap_uses_pipeline_snapshot,
             background_tiledata_uses_pipeline_snapshot,
             background_tileindex_reads_on_stage_one,
@@ -417,7 +420,7 @@ impl PpuMode3BgWinFetchPolicy {
             PpuBgFetcherSource::Background => LCDC_BG_TILE_MAP_BIT,
             PpuBgFetcherSource::Window => LCDC_WINDOW_TILE_MAP_BIT,
         };
-        self.console_model.is_dmg_family() && self.register_latches.lcdc_bit_changed(map_bit)
+        self.dmg_software_contract && self.register_latches.lcdc_bit_changed(map_bit)
     }
 
     pub(in crate::ppu) fn should_delay_background_tileindex_read(
@@ -436,6 +439,52 @@ pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     pub(in crate::ppu) pending_tilemap_row_refetch: bool,
     pub(in crate::ppu) startup_visible_tile2_tilemap_row_refetch: bool,
     pub(in crate::ppu) startup_visible_tile2_phase6_tilemap_row_refetch: bool,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub(in crate::ppu) struct PpuMode3CgbDmgLiveScyWriteRoute {
+    pending_cached_slices: bool,
+    startup_alignment_fifo: bool,
+    current_fetch: bool,
+    scy_routing: PpuMode3LiveScyWriteRouting,
+}
+
+impl PpuMode3CgbDmgLiveScyWriteRoute {
+    pub(in crate::ppu) const fn new(
+        pending_cached_slices: bool,
+        startup_alignment_fifo: bool,
+        current_fetch: bool,
+        scy_routing: PpuMode3LiveScyWriteRouting,
+    ) -> Self {
+        Self {
+            pending_cached_slices,
+            startup_alignment_fifo,
+            current_fetch,
+            scy_routing,
+        }
+    }
+
+    pub(in crate::ppu) const fn routes_anything(self) -> bool {
+        self.pending_cached_slices || self.startup_alignment_fifo || self.current_fetch
+    }
+
+    pub(in crate::ppu) const fn pending_cached_slices(self) -> bool {
+        self.pending_cached_slices
+    }
+
+    pub(in crate::ppu) const fn startup_alignment_fifo(self) -> bool {
+        self.startup_alignment_fifo
+    }
+
+    pub(in crate::ppu) const fn current_fetch(self) -> bool {
+        self.current_fetch
+    }
+
+    pub(in crate::ppu) const fn scy_routing(self) -> PpuMode3LiveScyWriteRouting {
+        self.scy_routing
+    }
 }
 
 #[derive(
@@ -896,6 +945,78 @@ impl PpuMode3ObservedScyObjPhaseTable {
     pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
         matches!(self.obj_match_x(), 16..=17)
     }
+
+    /// Observed CGB-family DMG-software SCY/OBJ startup phase table.
+    /// This intentionally does not reuse the DMG startup-alignment FIFO route
+    /// wholesale: CGB evidence keeps the write route and the row-retarget seams
+    /// as a separate hardware hypothesis.
+    pub(in crate::ppu) const fn cgb_dmg_software_live_scy_write_route(
+        self,
+    ) -> PpuMode3CgbDmgLiveScyWriteRoute {
+        let tilemap_row_routing = PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: false,
+            pending_tilemap_row_refetch: true,
+            startup_visible_tile2_tilemap_row_refetch: false,
+            startup_visible_tile2_phase6_tilemap_row_refetch: false,
+        };
+        let no_special_routing = PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: false,
+            pending_tilemap_row_refetch: false,
+            startup_visible_tile2_tilemap_row_refetch: false,
+            startup_visible_tile2_phase6_tilemap_row_refetch: false,
+        };
+
+        match self.obj_match_x() {
+            0 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, true, tilemap_row_routing),
+            1 | 4..=7 | 10..=16 => {
+                PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, true, tilemap_row_routing)
+            }
+            2 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, no_special_routing),
+            8 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, tilemap_row_routing),
+            _ => PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, false, no_special_routing),
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        let ly_phase = ly & (BG_TILE_WIDTH - 1);
+        let (tilemap_row_delta, tiledata_row_delta) =
+            match (self.obj_match_x(), ly_phase, pixel_index) {
+                (2, 6, 7) | (2, 7, 6) => (0, 0),
+                (2, _, _) => (0, -1),
+                (3, _, _) => (0, 2),
+                (8, 5, 6 | 7) => (0, -1),
+                (8, _, _) => (0, -2),
+                (9, 7, 4..=7) => (0, 0),
+                (9, _, _) => (0, 1),
+                (17, 7, 0) => (0, 2),
+                (17, _, _) => (0, 1),
+                _ => return None,
+            };
+
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta,
+            tiledata_row_delta,
+        })
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
+        self,
+        _ly: u8,
+        _pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        if !matches!(self.obj_match_x(), 16) {
+            return None;
+        }
+
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta: 0,
+            tiledata_row_delta: -2,
+        })
+    }
 }
 
 /// Resolves the current SCY/OBJ phase owner and exposes the observed table through
@@ -967,6 +1088,31 @@ impl PpuMode3ScyObjPhasePolicy {
         self.observed_phase_table()
             .startup_visible_tile3_uses_previous_tiledata_row()
     }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_live_scy_write_route(
+        self,
+    ) -> PpuMode3CgbDmgLiveScyWriteRoute {
+        self.observed_phase_table()
+            .cgb_dmg_software_live_scy_write_route()
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        self.observed_phase_table()
+            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(ly, pixel_index)
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        self.observed_phase_table()
+            .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(ly, pixel_index)
+    }
 }
 
 /// Resolves sprite-phased DMG Mode 3 live-write quirks through explicit
@@ -1002,6 +1148,16 @@ impl PpuMode3SingleSpritePhasePolicy {
         }
     }
 
+    pub(in crate::ppu) const fn cgb_dmg_software_lcdc1_disable_onset_visible_x(self) -> Option<u8> {
+        const ONSETS: [u8; 16] = [0, 1, 2, 3, 4, 5, 5, 5, 4, 5, 6, 7, 8, 9, 9, 9];
+        let sprite_x = self.sprite_x() as usize;
+        if sprite_x < ONSETS.len() {
+            Some(ONSETS[sprite_x])
+        } else {
+            None
+        }
+    }
+
     pub(in crate::ppu) const fn observed_lcdc3_phase_table(
         self,
     ) -> PpuMode3ObservedLcdc3PhaseTable {
@@ -1029,6 +1185,25 @@ impl PpuMode3ObservedLcdc0OnsetTable {
         const WRITE0_ONSETS: [u8; 18] = [0, 0, 0, 2, 3, 4, 4, 4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         const WRITE1_ONSETS: [u8; 18] = [
             11, 12, 13, 14, 15, 16, 16, 16, 11, 12, 13, 14, 15, 16, 16, 16, 11, 12,
+        ];
+
+        let sprite_x = self.sprite_x as usize;
+        match write_index {
+            0 if sprite_x < WRITE0_ONSETS.len() => Some(WRITE0_ONSETS[sprite_x]),
+            1 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x]),
+            2 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 8),
+            3 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 16),
+            _ => None,
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_onset_visible_x(
+        self,
+        write_index: usize,
+    ) -> Option<u8> {
+        const WRITE0_ONSETS: [u8; 18] = [0, 1, 2, 3, 4, 5, 5, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const WRITE1_ONSETS: [u8; 18] = [
+            12, 13, 14, 15, 16, 17, 17, 17, 12, 13, 14, 15, 16, 17, 17, 17, 12, 13,
         ];
 
         let sprite_x = self.sprite_x as usize;
@@ -1118,6 +1293,53 @@ impl PpuMode3ObservedLcdc3PhaseTable {
             None
         }
     }
+
+    pub(in crate::ppu) const fn cgb_dmg_software_live_write_decision(
+        self,
+        write_index: usize,
+        current_bg_tilemap_select: bool,
+    ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
+        let clear_visible_tile2_live_refetch = matches!(
+            (write_index, self.sprite_x),
+            (0, 1..=17) | (1, 1..=2 | 16..=u8::MAX)
+        );
+
+        let tilemap_override = match write_index {
+            0 if current_bg_tilemap_select => {
+                let override_decision = PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: self.sprite_x == 0,
+                    applies_to_visible_tile3: matches!(self.sprite_x, 1..=7 | 9..=15),
+                };
+                if override_decision.has_effect() {
+                    Some(override_decision)
+                } else {
+                    None
+                }
+            }
+            1 if self.sprite_x == 0 => Some(PpuMode3Lcdc3StartupTilemapOverride {
+                tilemap_select: true,
+                applies_to_visible_tile2: true,
+                applies_to_visible_tile3: false,
+            }),
+            1 if matches!(self.sprite_x, 1..=2) => Some(PpuMode3Lcdc3StartupTilemapOverride {
+                tilemap_select: true,
+                applies_to_visible_tile2: false,
+                applies_to_visible_tile3: true,
+            }),
+            _ => None,
+        };
+
+        let decision = PpuMode3Lcdc3LiveWriteDecision {
+            clear_visible_tile2_live_refetch,
+            tilemap_override,
+        };
+        if decision.has_effect() {
+            Some(decision)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1191,6 +1413,70 @@ impl PpuMode3ObservedLcdc4PhaseTable {
             override_select,
         })
     }
+
+    /// Observed CGB-family DMG-software LCDC.4 startup phase table.
+    ///
+    /// Compatibility-mode CGB keeps the DMG software-visible contract for the
+    /// startup BG slices, but its CGB pixel pipeline does not line up with the
+    /// monochrome DMG LCDC.4 phase table one-to-one. Keep the table separate
+    /// from the DMG one so later revision-specific evidence can refine it
+    /// without weakening either model.
+    pub(in crate::ppu) const fn cgb_dmg_software_startup_override_for_target_select(
+        self,
+        target_select: BgTileDataSelect,
+        ly: u8,
+    ) -> Option<PpuMode3Lcdc4StartupOverride> {
+        let (slice, override_select) = match (target_select, self.sprite_x) {
+            (BgTileDataSelect::Unsigned8000, 3 | 4) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Unsigned8000, 5..=17) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 2 | 3 | 8..=11) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 4..=7 | 12..=15) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 16) if ly & 0x07 == 0 => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 16 | 17) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            _ => return None,
+        };
+
+        Some(PpuMode3Lcdc4StartupOverride {
+            slice,
+            override_select,
+        })
+    }
 }
 
 /// Observed DMG LCDC.2 16->8 Mode 3 seam for the curated Mealybug OBJ-size
@@ -1218,10 +1504,17 @@ pub(in crate::ppu) struct PpuMode3Lcdc2ObjSizeObservedDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum PpuMode3Lcdc2ObjSizeObservedProfile {
+    DmgFamily,
+    CgbDmgSoftware,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc2ObjSizePhaseTable {
     sprite_x: u8,
     scx: u8,
     raw_row: u8,
+    profile: PpuMode3Lcdc2ObjSizeObservedProfile,
 }
 
 impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
@@ -1230,6 +1523,16 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             sprite_x,
             scx: scx & 0x07,
             raw_row,
+            profile: PpuMode3Lcdc2ObjSizeObservedProfile::DmgFamily,
+        }
+    }
+
+    pub(in crate::ppu) const fn cgb_dmg_software(sprite_x: u8, scx: u8, raw_row: u8) -> Self {
+        Self {
+            sprite_x,
+            scx: scx & 0x07,
+            raw_row,
+            profile: PpuMode3Lcdc2ObjSizeObservedProfile::CgbDmgSoftware,
         }
     }
 
@@ -1266,6 +1569,21 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
         write_index: usize,
         active_write_visible_x: Option<u8>,
     ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        if let PpuMode3Lcdc2ObjSizeObservedProfile::CgbDmgSoftware = self.profile
+            && let Some(selection) =
+                self.cgb_dmg_software_plane_selection(write_index, active_write_visible_x)
+        {
+            return Some(selection);
+        }
+
+        self.dmg_family_plane_selection(write_index, active_write_visible_x)
+    }
+
+    fn dmg_family_plane_selection(
+        self,
+        write_index: usize,
+        active_write_visible_x: Option<u8>,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
         match (write_index, self.sprite_x, self.scx) {
             (0, 12, 4..=7) if self.raw_row >= 8 => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
             (0, 32, 0 | 4..=7) if self.raw_row < 8 => {
@@ -1292,6 +1610,27 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             (0, 24) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
             (2, 33) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High),
             (2, 40) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+            _ => None,
+        }
+    }
+
+    fn cgb_dmg_software_plane_selection(
+        self,
+        write_index: usize,
+        active_write_visible_x: Option<u8>,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        match (write_index, self.sprite_x, self.scx) {
+            (0, 16, _) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (2, 33, _) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (0, 32, 0) if matches!(self.raw_row, 2..=7) && active_write_visible_x == Some(10) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16)
+            }
+            (0, 32, 5..=7) if matches!(self.raw_row, 4..=7) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High)
+            }
+            (2, 32, 0) if matches!(self.raw_row, 4..=7) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High)
+            }
             _ => None,
         }
     }

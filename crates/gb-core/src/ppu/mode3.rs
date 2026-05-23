@@ -57,7 +57,11 @@ mod core;
 mod obj_fetch;
 
 #[cfg(test)]
-pub(in crate::ppu) use self::window::window_lcdc4_unsigned_to_signed_previous_plane_masks;
+pub(in crate::ppu) use self::window::{
+    cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks,
+    cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks,
+    window_lcdc4_unsigned_to_signed_previous_plane_masks,
+};
 mod transfer;
 mod window;
 mod window_wx;

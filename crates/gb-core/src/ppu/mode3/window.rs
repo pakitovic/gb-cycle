@@ -550,10 +550,35 @@ impl Ppu {
             return None;
         }
 
-        if let Some(current_tilemap_mask) = window_activation_tile_current_tilemap_mask(
-            cached.fetch_x,
-            self.current_window_line_counter(),
-        ) {
+        let window_tile_row = self.current_window_line_counter();
+        if let Some(transient_tilemap_mask) = self
+            .cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+                cached.fetch_x,
+                window_tile_row,
+            )
+        {
+            let use_transient_tilemap = transient_tilemap_mask & (0x80 >> pixel_index) != 0;
+            let transient_tilemap_select = if window_tile_row < 16 {
+                !previous_tilemap_select
+            } else {
+                previous_tilemap_select
+            };
+            let tilemap_select = if use_transient_tilemap {
+                transient_tilemap_select
+            } else {
+                !transient_tilemap_select
+            };
+            return Some(self.read_window_activation_tilemap_pixel(
+                cached,
+                pixel_index,
+                tilemap_select,
+                vram,
+            ));
+        }
+
+        if let Some(current_tilemap_mask) =
+            self.window_activation_tile_current_tilemap_mask(cached.fetch_x, window_tile_row)
+        {
             let use_first_write_current_tilemap = current_tilemap_mask & (0x80 >> pixel_index) != 0;
             let tilemap_select = if use_first_write_current_tilemap {
                 !previous_tilemap_select
@@ -570,9 +595,7 @@ impl Ppu {
 
         if cached.fetch_x != 0
             || pixel_index != 0
-            || !window_activation_first_pixel_uses_previous_tilemap(
-                self.current_window_line_counter(),
-            )
+            || !window_activation_first_pixel_uses_previous_tilemap(window_tile_row)
         {
             return None;
         }
@@ -610,6 +633,31 @@ impl Ppu {
         bg_tile_pixel_value(tile_low, tile_high, pixel_index)
     }
 
+    fn cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+        &self,
+        fetch_x: u16,
+        window_tile_row: u8,
+    ) -> Option<u8> {
+        if !self.console_model.is_cgb_family() || !self.operating_mode.uses_dmg_software_contract()
+        {
+            return None;
+        }
+
+        cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(fetch_x, window_tile_row)
+    }
+
+    fn window_activation_tile_current_tilemap_mask(
+        &self,
+        fetch_x: u16,
+        window_tile_row: u8,
+    ) -> Option<u8> {
+        if !self.operating_mode.uses_dmg_software_contract() {
+            return None;
+        }
+
+        dmg_window_activation_tile_current_tilemap_mask(fetch_x, window_tile_row)
+    }
+
     pub(super) fn compute_window_lcdc4_tiledata_selector_override(
         &self,
         cached: BgCachedSlice,
@@ -621,9 +669,10 @@ impl Ppu {
             return None;
         }
 
-        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+        let previous_plane_masks = self.window_lcdc4_previous_plane_masks(
             cached.fetch_x,
             self.current_window_line_counter(),
+            previous_select,
         )?;
         Some(self.read_window_lcdc4_tiledata_selector_pixel(
             cached,
@@ -653,8 +702,10 @@ impl Ppu {
         vram: &VramBusView<'_>,
     ) -> u8 {
         let bit = 0x80 >> pixel_index;
-        let current_lcdc = self.mode3_register_latches().visible().lcdc;
-        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let visible_lcdc = self.mode3_register_latches().visible().lcdc;
+        let current_select = previous_select.opposite();
+        let previous_lcdc = previous_select.apply_to_lcdc(visible_lcdc);
+        let current_lcdc = current_select.apply_to_lcdc(visible_lcdc);
         let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
         let previous_tile_low_address =
             bg_tile_data_base(previous_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
@@ -689,13 +740,16 @@ impl Ppu {
             return None;
         }
 
-        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+        let previous_plane_masks = self.window_lcdc4_previous_plane_masks(
             context.fetch_x,
             self.current_window_line_counter(),
+            previous_select,
         )?;
         let bit = 0x80 >> context.pixel_index;
-        let current_lcdc = self.mode3_register_latches().visible().lcdc;
-        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let visible_lcdc = self.mode3_register_latches().visible().lcdc;
+        let current_select = previous_select.opposite();
+        let previous_lcdc = previous_select.apply_to_lcdc(visible_lcdc);
+        let current_lcdc = current_select.apply_to_lcdc(visible_lcdc);
         let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
         let previous_tile_low_address = bg_tile_data_base(previous_lcdc, context.tile_index)
             + current_tile_row * TILE_ROW_BYTES;
@@ -722,6 +776,36 @@ impl Ppu {
             tile_high,
             context.pixel_index,
         ))
+    }
+
+    fn window_lcdc4_previous_plane_masks(
+        &self,
+        fetch_x: u16,
+        window_tile_row: u8,
+        previous_select: BgTileDataSelect,
+    ) -> Option<PerPlane<u8>> {
+        if self.console_model.is_cgb_family() && self.operating_mode.uses_dmg_software_contract() {
+            return match previous_select {
+                BgTileDataSelect::Unsigned8000 => {
+                    cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+                        fetch_x,
+                        window_tile_row,
+                    )
+                }
+                BgTileDataSelect::Signed8800 => {
+                    cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+                        fetch_x,
+                        window_tile_row,
+                    )
+                }
+            };
+        }
+
+        if previous_select != BgTileDataSelect::Unsigned8000 {
+            return None;
+        }
+
+        window_lcdc4_unsigned_to_signed_previous_plane_masks(fetch_x, window_tile_row)
     }
 
     #[cfg(test)]
@@ -912,6 +996,12 @@ const WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
     [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
 ];
 
+const CGB_DMG_SOFTWARE_WINDOW_ACTIVATION_LEAD_IN_FIRST_TILE_TRANSIENT_TILEMAP_MASKS: [[u8; 8]; 3] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+];
+
 const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
     [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
     [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
@@ -1020,7 +1110,409 @@ const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 
     [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
 ];
 
-const fn window_activation_tile_current_tilemap_mask(
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X0_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 15] = [
+    [
+        [0x7F, 0x00],
+        [0xBF, 0x00],
+        [0xDF, 0x00],
+        [0x5F, 0x00],
+        [0xDF, 0x00],
+        [0x5F, 0x00],
+        [0xBF, 0x00],
+        [0x7F, 0x00],
+    ],
+    [
+        [0x3F, 0x00],
+        [0xDF, 0x00],
+        [0x6F, 0x00],
+        [0xAF, 0x00],
+        [0x6F, 0x00],
+        [0xAF, 0x00],
+        [0xDF, 0x00],
+        [0x3F, 0x00],
+    ],
+    [
+        [0x1F, 0x1F],
+        [0xEF, 0xEF],
+        [0x37, 0x37],
+        [0xD7, 0xD7],
+        [0x37, 0x37],
+        [0xD7, 0xD7],
+        [0xEF, 0xEF],
+        [0x1F, 0x1F],
+    ],
+    [
+        [0x0F, 0x0F],
+        [0xF7, 0xF7],
+        [0x1B, 0x1B],
+        [0x6B, 0x6B],
+        [0x1B, 0x1B],
+        [0x6B, 0x6B],
+        [0xF7, 0xF7],
+        [0x0F, 0x0F],
+    ],
+    [
+        [0x87, 0x87],
+        [0x7B, 0x7B],
+        [0x8D, 0x8D],
+        [0xB5, 0xB5],
+        [0x8D, 0x8D],
+        [0xB5, 0xB5],
+        [0x7B, 0x7B],
+        [0x87, 0x87],
+    ],
+    [
+        [0xC3, 0xC3],
+        [0xBD, 0xBD],
+        [0x46, 0x46],
+        [0x5A, 0x5A],
+        [0x46, 0x46],
+        [0x5A, 0x5A],
+        [0xBD, 0xBD],
+        [0xC3, 0xC3],
+    ],
+    [
+        [0xE1, 0xE1],
+        [0xDE, 0xDE],
+        [0xA3, 0xA3],
+        [0xAD, 0xAD],
+        [0xA3, 0xA3],
+        [0xAD, 0xAD],
+        [0xDE, 0xDE],
+        [0xE1, 0xE1],
+    ],
+    [
+        [0xF0, 0xF0],
+        [0xEF, 0xEF],
+        [0xD1, 0xD1],
+        [0xD6, 0xD6],
+        [0xD1, 0xD1],
+        [0xD6, 0xD6],
+        [0xEF, 0xEF],
+        [0xF0, 0xF0],
+    ],
+    [
+        [0xF8, 0xF8],
+        [0xF7, 0xF7],
+        [0xE8, 0xE8],
+        [0xEB, 0xEB],
+        [0xE8, 0xE8],
+        [0xEB, 0xEB],
+        [0xF7, 0xF7],
+        [0xF8, 0xF8],
+    ],
+    [
+        [0xFC, 0xFC],
+        [0xFB, 0xFB],
+        [0xF4, 0xF4],
+        [0xF5, 0xF5],
+        [0xF4, 0xF4],
+        [0xF5, 0xF5],
+        [0xFB, 0xFB],
+        [0xFC, 0xFC],
+    ],
+    [
+        [0xFE, 0xFE],
+        [0xFD, 0xFD],
+        [0xFA, 0xFA],
+        [0xFA, 0xFA],
+        [0xFA, 0xFA],
+        [0xFA, 0xFA],
+        [0xFD, 0xFD],
+        [0xFE, 0xFE],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFE, 0xFE],
+        [0xFD, 0xFD],
+        [0xFD, 0xFD],
+        [0xFD, 0xFD],
+        [0xFD, 0xFD],
+        [0xFE, 0xFE],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFE, 0xFE],
+        [0xFE, 0xFE],
+        [0xFE, 0xFE],
+        [0xFE, 0xFE],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+];
+
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X8_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 10] = [
+    [
+        [0xFF, 0x00],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0x7F, 0x7F],
+        [0x7F, 0x7F],
+        [0x7F, 0x7F],
+        [0x7F, 0x7F],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0x7F, 0x7F],
+        [0xBF, 0xBF],
+        [0xBF, 0xBF],
+        [0xBF, 0xBF],
+        [0xBF, 0xBF],
+        [0x7F, 0x7F],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0x7F, 0x7F],
+        [0xBF, 0xBF],
+        [0xDF, 0xDF],
+        [0x5F, 0x5F],
+        [0xDF, 0xDF],
+        [0x5F, 0x5F],
+        [0xBF, 0xBF],
+        [0x7F, 0x7F],
+    ],
+    [
+        [0x3F, 0x3F],
+        [0xDF, 0xDF],
+        [0x6F, 0x6F],
+        [0xAF, 0xAF],
+        [0x6F, 0x6F],
+        [0xAF, 0xAF],
+        [0xDF, 0xDF],
+        [0x3F, 0x3F],
+    ],
+    [
+        [0x1F, 0x1F],
+        [0xEF, 0xEF],
+        [0x37, 0x37],
+        [0xD7, 0xD7],
+        [0x37, 0x37],
+        [0xD7, 0xD7],
+        [0xEF, 0xEF],
+        [0x1F, 0x1F],
+    ],
+    [
+        [0x0F, 0x0F],
+        [0xF7, 0xF7],
+        [0x1B, 0x1B],
+        [0x6B, 0x6B],
+        [0x1B, 0x1B],
+        [0x6B, 0x6B],
+        [0xF7, 0xF7],
+        [0x0F, 0x0F],
+    ],
+    [
+        [0x87, 0x87],
+        [0x7B, 0x7B],
+        [0x8D, 0x8D],
+        [0xB5, 0xB5],
+        [0x8D, 0x8D],
+        [0xB5, 0xB5],
+        [0x7B, 0x7B],
+        [0x87, 0x87],
+    ],
+    [
+        [0xC3, 0xC3],
+        [0xBD, 0xBD],
+        [0x46, 0x46],
+        [0x5A, 0x5A],
+        [0x46, 0x46],
+        [0x5A, 0x5A],
+        [0xBD, 0xBD],
+        [0xC3, 0xC3],
+    ],
+    [
+        [0xE1, 0xE1],
+        [0xDE, 0xDE],
+        [0xA3, 0xA3],
+        [0xAD, 0xAD],
+        [0xA3, 0xA3],
+        [0xAD, 0xAD],
+        [0xDE, 0xDE],
+        [0xE1, 0xE1],
+    ],
+];
+
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X8_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 6] = [
+    [
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+    ],
+    [
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+    [
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+        [0xFF, 0xFF],
+    ],
+];
+
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X16_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 6] = [
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+    ],
+    [
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+        [0xFF, 0x80],
+        [0xFF, 0x80],
+        [0xFF, 0x80],
+        [0xFF, 0x80],
+        [0xFF, 0x00],
+        [0xFF, 0x00],
+    ],
+];
+
+const fn cgb_dmg_software_window_activation_lead_in_transient_tilemap_mask(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<u8> {
+    if window_tile_row >= 24 {
+        return None;
+    }
+
+    let block = window_tile_row / 8;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(
+            CGB_DMG_SOFTWARE_WINDOW_ACTIVATION_LEAD_IN_FIRST_TILE_TRANSIENT_TILEMAP_MASKS
+                [block as usize][row],
+        ),
+        x if x == BG_TILE_WIDTH as u16 => Some(0xFF),
+        _ => None,
+    }
+}
+
+const fn dmg_window_activation_tile_current_tilemap_mask(
     fetch_x: u16,
     window_tile_row: u8,
 ) -> Option<u8> {
@@ -1069,4 +1561,44 @@ pub(in crate::ppu) const fn window_lcdc4_unsigned_to_signed_previous_plane_masks
         )),
         _ => None,
     }
+}
+
+pub(in crate::ppu) const fn cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<PerPlane<u8>> {
+    let row = (window_tile_row & 0x07) as usize;
+    let pair = match fetch_x {
+        x if x == BG_TILE_WIDTH as u16 && window_tile_row >= 16 && window_tile_row < 64 => {
+            let block = ((window_tile_row - 16) / 8) as usize;
+            CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X8_PREVIOUS_PLANE_MASKS[block][row]
+        }
+        x if x == BG_TILE_WIDTH as u16 * 2 && window_tile_row >= 96 && window_tile_row < 144 => {
+            let block = ((window_tile_row - 96) / 8) as usize;
+            CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X16_PREVIOUS_PLANE_MASKS[block][row]
+        }
+        _ => return None,
+    };
+
+    Some(PerPlane::new(pair[0], pair[1]))
+}
+
+pub(in crate::ppu) const fn cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<PerPlane<u8>> {
+    let row = (window_tile_row & 0x07) as usize;
+    let pair = match fetch_x {
+        0 if window_tile_row >= 24 && window_tile_row < 144 => {
+            let block = ((window_tile_row - 24) / 8) as usize;
+            CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X0_PREVIOUS_PLANE_MASKS[block][row]
+        }
+        x if x == BG_TILE_WIDTH as u16 && window_tile_row >= 64 && window_tile_row < 144 => {
+            let block = ((window_tile_row - 64) / 8) as usize;
+            CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X8_PREVIOUS_PLANE_MASKS[block][row]
+        }
+        _ => return None,
+    };
+
+    Some(PerPlane::new(pair[0], pair[1]))
 }

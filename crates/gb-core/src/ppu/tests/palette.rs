@@ -377,6 +377,33 @@ fn cgb_compatibility_rgb555_routes_dmg_palettes_through_fixed_cgb_palettes() {
 }
 
 #[test]
+fn cgb_dmg_software_lcdc0_forced_white_rgb555_uses_panel_white() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0b0000_1100;
+        ppu.pipeline_registers.bgp = 0b0000_1100;
+
+        ppu.current_scanline_dmg_bg_forced_white[0] = true;
+        ppu.write_framebuffer_pixel(0, 0, MixedPixel::background(1), 0);
+        ppu.write_framebuffer_pixel(0, 1, MixedPixel::background(1), 3);
+
+        let rgb555 = ppu
+            .cgb_framebuffer_rgb555()
+            .expect("CGB model should expose the RGB555 framebuffer");
+        assert_eq!(ppu.framebuffer()[0], 0);
+        assert_eq!(ppu.framebuffer()[1], 3);
+        assert_eq!(rgb555[0], RGB555_WHITE, "{operating_mode:?}");
+        assert_eq!(rgb555[1], 0x001F, "{operating_mode:?}");
+    }
+}
+
+#[test]
 fn cgb_obj_color_zero_remains_transparent_before_rgb555_lookup() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
@@ -2382,6 +2409,75 @@ fn cpu_mmio_bgp_write_after_four_leading_obj_pixels_uses_the_committed_palette_o
 }
 
 #[test]
+fn cpu_mmio_bgp_first_selected_retroactive_write_after_delayed_write_delays_the_final_palette() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x01,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 32;
+    ppu.visible_registers.bgp = 0x01;
+    ppu.pipeline_registers.bgp = 0x01;
+    ppu.bg_pipeline_state.visible_pixels_output = 8;
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.current_scanline_mixed_pixels[4..8].fill(MixedPixel::background(0));
+    ppu.framebuffer[4..8].fill(1);
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
+        effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+        transient_visible_x: 0,
+        transient_palette: 0x01,
+        repaint_visible_x: 4,
+        transfer_lead_pixels: 0,
+        value: 0x01,
+    }];
+
+    ppu.write_register_with_source(0xFF47, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[4..8], &[3, 1, 1, 1]);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes
+            .last()
+            .copied(),
+        Some(PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+            transient_visible_x: 4,
+            transient_palette: 0x03,
+            repaint_visible_x: 12,
+            transfer_lead_pixels: 0,
+            value: 0x02,
+        })
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_palette_override,
+        Some(0x01)
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining,
+        4
+    );
+}
+
+#[test]
 fn cpu_mmio_bgp_write_after_the_first_selected_retroactive_write_keeps_the_recent_tail_and_flips_on_the_current_dot()
  {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
@@ -3578,6 +3674,51 @@ fn finalize_dmg_bgp_cpu_commit_scanline_skips_previous_boundary_repaint_with_sel
 }
 
 #[test]
+fn cgb_dmg_software_bgp_cpu_commit_does_not_repaint_previous_scanline_boundary() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.ly = 8;
+        ppu.previous_scanline_ly = Some(7);
+        ppu.previous_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        ppu.framebuffer[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH].fill(2);
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_start_palette = 0x10;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .previous_line_start_palette = 0x10;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 0,
+            transient_palette: 0x11,
+            repaint_visible_x: 4,
+            transfer_lead_pixels: 0,
+            value: 0x11,
+        }];
+
+        ppu.finalize_dmg_bgp_cpu_commit_scanline();
+
+        let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+        assert!(row.iter().all(|&shade| shade == 2));
+        assert_eq!(ppu.previous_scanline_ly, None);
+        assert!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_writes
+                .is_empty()
+        );
+    }
+}
+
+#[test]
 fn dmg_bgp_row_family_change_handles_selected_current_retroactive_and_current_dot_transient_writes()
 {
     let ppu = Ppu::new(ConsoleModel::GameBoy);
@@ -3694,6 +3835,67 @@ fn dmg_bgp_row_family_change_handles_selected_current_retroactive_and_current_do
         ),
         0x12
     );
+}
+
+#[test]
+fn dmg_bgp_row_family_change_selects_current_or_previous_boundary_by_onset() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(0));
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .previous_line_start_palette = 0x00;
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .current_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 4,
+            transient_palette: 0x01,
+            repaint_visible_x: 4,
+            transfer_lead_pixels: 0,
+            value: 0x02,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+            transient_visible_x: 10,
+            transient_palette: 0x02,
+            repaint_visible_x: 10,
+            transfer_lead_pixels: 0,
+            value: 0x02,
+        },
+    ];
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .previous_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 3,
+            transient_palette: 0x03,
+            repaint_visible_x: 3,
+            transfer_lead_pixels: 0,
+            value: 0x03,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::CurrentDotTransient,
+            transient_visible_x: 12,
+            transient_palette: 0x01,
+            repaint_visible_x: 14,
+            transfer_lead_pixels: 0,
+            value: 0x03,
+        },
+    ];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7, false);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert_eq!(&row[..4], &[0; 4]);
+    assert_eq!(row[4], 1);
+    assert!(row[5..12].iter().all(|&shade| shade == 2));
+    assert_eq!(row[12], 1);
+    assert_eq!(row[13], 2);
+    assert!(row[14..].iter().all(|&shade| shade == 3));
 }
 
 #[test]
@@ -4219,7 +4421,287 @@ fn cgb_bgp_cpu_commit_write_during_mode3_skips_dmg_palette_conflict_paths() {
 }
 
 #[test]
-fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels() {
+fn cgb_dmg_software_bgp_cpu_commit_recolors_recent_bg_pixels_through_cgb_adapter() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x01,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        let [color2_low, color2_high] = 0x03E0_u16.to_le_bytes();
+        let [color3_low, color3_high] = 0x7C00_u16.to_le_bytes();
+        ppu.cgb_palettes
+            .port_mut(CgbPaletteKind::Background)
+            .write_palette_bytes(
+                0,
+                [0, 0, 0, 0, color2_low, color2_high, color3_low, color3_high],
+            );
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 25;
+        ppu.visible_registers.bgp = 0x01;
+        ppu.pipeline_registers.bgp = 0x01;
+        ppu.bg_pipeline_state.visible_pixels_output = 25;
+        ppu.bg_pipeline_state.current_transfer_x = 33;
+        ppu.current_scanline_mixed_pixels[21..25].fill(MixedPixel::background(0));
+        ppu.framebuffer[21..25].fill(1);
+        ppu.framebuffer_rgb555[21..25].fill(0x1111);
+
+        ppu.write_register_with_source(0xFF47, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+
+        assert_eq!(ppu.bgp, 0x02);
+        assert_eq!(&ppu.framebuffer()[21..25], &[2, 2, 2, 2]);
+        assert_eq!(
+            &ppu.cgb_framebuffer_rgb555()
+                .expect("CGB model should expose the RGB555 framebuffer")[21..25],
+            &[0x03E0, 0x03E0, 0x03E0, 0x03E0]
+        );
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .last()
+                .copied(),
+            Some(PpuDmgBgpCpuCommitWrite {
+                effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+                transient_visible_x: 21,
+                transient_palette: 0x02,
+                repaint_visible_x: 29,
+                transfer_lead_pixels: 0,
+                value: 0x02,
+            })
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_bgp_second_write_with_single_left_sprite_uses_cgb_onsets() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        for (sprite_x, transient_visible_x, repaint_visible_x) in
+            [(8, 6, 6), (14, 11, 11), (16, 5, 8)]
+        {
+            let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+            ppu.apply_startup_state(PpuStartupState {
+                lcdc: 0x93,
+                stat: 0x83,
+                scy: 0x00,
+                scx: 0x00,
+                ly: 0x00,
+                lyc: 0x00,
+                bgp: 0x01,
+                wy: 0x00,
+                wx: 0x00,
+                obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            });
+            ppu.apply_operating_mode_state(operating_mode);
+            ppu.visible_output = PpuVisibleOutputState::Driving;
+            ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 48;
+            ppu.visible_registers.bgp = 0x01;
+            ppu.pipeline_registers.bgp = 0x01;
+            ppu.bg_pipeline_state.visible_pixels_output = 13;
+            ppu.bg_pipeline_state.current_transfer_x = 21;
+            ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+            ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+            ppu.bg_pipeline_state.fifo.push_back(0);
+            ppu.current_scanline_mixed_pixels[5..13].fill(MixedPixel::background(0));
+            ppu.framebuffer[5..13].fill(1);
+            ppu.mode2_scan_state.push(PpuSelectedSprite {
+                oam_index: 0,
+                y: 16,
+                x: sprite_x,
+                tile_index: 0,
+                attributes: 0,
+            });
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .push(PpuDmgBgpCpuCommitWrite {
+                    effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+                    transient_visible_x: 4,
+                    transient_palette: 0x01,
+                    repaint_visible_x: 5,
+                    transfer_lead_pixels: 0,
+                    value: 0x01,
+                });
+
+            ppu.write_register_with_source(0xFF47, 0x00, PpuRegisterWriteSource::CpuMmioCommit);
+
+            assert_eq!(
+                ppu.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
+                    .last()
+                    .copied(),
+                Some(PpuDmgBgpCpuCommitWrite {
+                    effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+                    transient_visible_x,
+                    transient_palette: 0x01,
+                    repaint_visible_x,
+                    transfer_lead_pixels: 0,
+                    value: 0x00,
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc1_variant_late_bgp_pulse_uses_visible_bg_hold() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x83,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x10,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 252;
+        ppu.visible_registers.bgp = 0x00;
+        ppu.pipeline_registers.bgp = 0x00;
+        ppu.bg_pipeline_state.visible_pixels_output = 147;
+        ppu.bg_pipeline_state.current_transfer_x = 155;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.current_scanline_mixed_pixels[147] = MixedPixel::background(0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 32,
+            x: 2,
+            tile_index: 25,
+            attributes: 0,
+        });
+
+        ppu.write_register_with_source(0xFF47, 0xFF, PpuRegisterWriteSource::CpuMmioCommit);
+
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .last()
+                .copied(),
+            Some(PpuDmgBgpCpuCommitWrite {
+                effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+                transient_visible_x: 148,
+                transient_palette: 0xFF,
+                repaint_visible_x: 149,
+                transfer_lead_pixels: 0,
+                value: 0xFF,
+            }),
+            "{operating_mode:?}",
+        );
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_palette_override,
+            None,
+            "{operating_mode:?}",
+        );
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_palette_override,
+            Some(0x00),
+            "{operating_mode:?}",
+        );
+
+        ppu.consume_dmg_bgp_cpu_commit_output_delay();
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_bg_pixels_remaining,
+            1,
+            "{operating_mode:?}",
+        );
+        assert_eq!(ppu.pixel_pipeline_bgp(), 0x00, "{operating_mode:?}");
+
+        ppu.consume_dmg_bgp_cpu_commit_bg_visible_hold(MixedPixel::background(0));
+        assert_eq!(ppu.pixel_pipeline_bgp(), 0xFF, "{operating_mode:?}");
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc1_variant_late_bgp_pulse_uses_cgb_tail_onsets() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x83,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x80,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 256;
+        ppu.visible_registers.bgp = 0x00;
+        ppu.pipeline_registers.bgp = 0x00;
+        ppu.bg_pipeline_state.visible_pixels_output = 154;
+        ppu.bg_pipeline_state.current_transfer_x = 162;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.current_scanline_mixed_pixels[150..154].fill(MixedPixel::background(0));
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 144,
+            x: 16,
+            tile_index: 25,
+            attributes: 0,
+        });
+
+        ppu.write_register_with_source(0xFF47, 0xFF, PpuRegisterWriteSource::CpuMmioCommit);
+
+        assert_eq!(
+            ppu.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .last()
+                .copied(),
+            Some(PpuDmgBgpCpuCommitWrite {
+                effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+                transient_visible_x: 150,
+                transient_palette: 0xFF,
+                repaint_visible_x: 151,
+                transfer_lead_pixels: 0,
+                value: 0xFF,
+            }),
+            "{operating_mode:?}",
+        );
+    }
+}
+
+#[test]
+fn cgb_native_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
@@ -4245,6 +4727,55 @@ fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels(
 
     assert_eq!(ppu.obp0, Some(0x04));
     assert_eq!(&ppu.framebuffer()[2..6], &[2, 2, 2, 2]);
+}
+
+#[test]
+fn cgb_dmg_software_obp0_write_during_mode3_recolors_recent_obj_pixels_through_cgb_adapter() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x82,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        let [color1_low, color1_high] = 0x03E0_u16.to_le_bytes();
+        let [color2_low, color2_high] = 0x7C00_u16.to_le_bytes();
+        ppu.cgb_palettes
+            .port_mut(CgbPaletteKind::Object)
+            .write_palette_bytes(
+                0,
+                [0, 0, color1_low, color1_high, color2_low, color2_high, 0, 0],
+            );
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 200;
+        ppu.bg_pipeline_state.visible_pixels_output = 10;
+        ppu.obp0 = Some(0x08);
+        ppu.visible_registers.obp0 = Some(0x08);
+        ppu.current_scanline_mixed_pixels[2..6].fill(MixedPixel::object(1, false));
+        ppu.framebuffer[2..6].fill(2);
+        ppu.framebuffer_rgb555[2..6].fill(0x1111);
+
+        ppu.write_register(0xFF48, 0x04);
+
+        assert_eq!(ppu.obp0, Some(0x04));
+        assert_eq!(&ppu.framebuffer()[2..6], &[1, 1, 1, 1]);
+        assert_eq!(
+            &ppu.cgb_framebuffer_rgb555()
+                .expect("CGB model should expose the RGB555 framebuffer")[2..6],
+            &[0x03E0, 0x03E0, 0x03E0, 0x03E0]
+        );
+    }
 }
 
 #[test]

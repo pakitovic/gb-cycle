@@ -283,11 +283,61 @@ impl Ppu {
     }
 
     fn route_mode3_live_background_write(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
+        let cgb_dmg_software_scy = matches!(route.register, PpuMode3LiveBackgroundRegister::Scy)
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract();
+        if cgb_dmg_software_scy {
+            if route.write_context.bg_scy_effective_row_changed(route.ly) {
+                self.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active = true;
+            }
+            self.maybe_latch_cgb_dmg_scy_low_row_for_high_plane(route);
+            let Some(cgb_route) = self
+                .scy_obj_phase_policy()
+                .map(PpuMode3ScyObjPhasePolicy::cgb_dmg_software_live_scy_write_route)
+            else {
+                return;
+            };
+            if !cgb_route.routes_anything() {
+                return;
+            }
+            if cgb_route.pending_cached_slices() {
+                self.route_live_background_write_to_pending_cached_slices(route);
+            }
+            if cgb_route.startup_alignment_fifo() {
+                self.route_live_scy_write_to_startup_alignment_fifo(route);
+            }
+            if cgb_route.current_fetch() {
+                self.route_live_background_write_to_current_fetch(route);
+            }
+            return;
+        }
         self.route_live_background_write_to_pending_cached_slices(route);
         self.route_live_lcdc_write_to_observed_bg_seams(route);
         self.route_live_scy_write_to_startup_alignment_fifo(route);
         self.route_live_background_write_to_current_fetch(route);
         self.route_live_scx_boundary_write_effects(route);
+    }
+
+    fn maybe_latch_cgb_dmg_scy_low_row_for_high_plane(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        if !route.write_context.bg_scy_tile_data_row_changed(route.ly)
+            || self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Background
+            || !matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot
+                ),
+                (PpuBgFetcherStage::TileDataLow, 0 | 1) | (PpuBgFetcherStage::TileDataHigh, 0)
+            )
+        {
+            return;
+        }
+
+        self.bg_pipeline_state
+            .fetcher
+            .cgb_dmg_scy_high_plane_uses_low_row = true;
     }
 
     fn route_live_background_write_to_pending_cached_slices(
@@ -336,6 +386,9 @@ impl Ppu {
 
         let fetcher = self.bg_pipeline_state.fetcher;
         let window_line_counter = self.current_window_line_counter();
+        let cgb_dmg_software_window_map_lead_in = self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && window_line_counter < 24;
         self.bg_pipeline_state
             .latch_window_activation_tilemap_select_if_unset(route.write_context);
         self.bg_pipeline_state
@@ -343,6 +396,7 @@ impl Ppu {
                 route.write_context,
                 fetcher,
                 window_line_counter,
+                cgb_dmg_software_window_map_lead_in,
             );
         self.bg_pipeline_state
             .apply_window_activation_tilemap_select_latch_to_seam_slices();
@@ -396,6 +450,7 @@ impl Ppu {
         self.route_live_scx_full_refetch_boundary_write(route.write_context);
         self.route_live_scx_old_pixel_window_boundary_write();
         self.route_live_scx_next_tile_output_retarget_boundary_write();
+        self.route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write();
     }
 
     fn route_live_scx_full_refetch_boundary_write(
@@ -543,10 +598,93 @@ impl Ppu {
         }
     }
 
+    fn route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write(&mut self) {
+        if !self.console_model.is_cgb_family()
+            || !self.operating_mode.uses_dmg_software_contract()
+            || !Self::cgb_dmg_software_scx_preserves_visible_tile3_old_tile(self.scx)
+        {
+            return;
+        }
+
+        if self.cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher() {
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_previous_scx =
+                Some(self.runtime.visible_registers.scx);
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
+            self.bg_pipeline_state
+                .fetcher
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+        }
+
+        if self.cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push() {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx =
+                Some(self.runtime.visible_registers.scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+        }
+    }
+
+    const fn cgb_dmg_software_scx_preserves_visible_tile3_old_tile(scx: u8) -> bool {
+        // Mealybug CGB evidence keeps the old carried VisibleTile3 slice for these two early
+        // startup high-bit bands instead of importing the tile-column refetch into the slice.
+        matches!(scx, 0x08..=0x17 | 0x48..=0x57)
+    }
+
+    fn cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher(&self) -> bool {
+        self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.fetcher.cached_origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataLow
+            && self.bg_pipeline_state.fetcher.stage_dot == 1
+            && self.bg_pipeline_state.current_transfer_x == 15
+            && self.bg_pipeline_state.visible_pixels_output == 7
+    }
+
+    fn cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push(&self) -> bool {
+        self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && matches!(self.bg_pipeline_state.current_transfer_x, 21 | 22)
+            && self.bg_pipeline_state.visible_pixels_output
+                == self.bg_pipeline_state.current_transfer_x.saturating_sub(8)
+    }
+
     pub(super) fn live_scy_write_routing(
         &self,
         register: PpuMode3LiveBackgroundRegister,
     ) -> PpuMode3LiveScyWriteRouting {
+        if matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            return self
+                .scy_obj_phase_policy()
+                .map(PpuMode3ScyObjPhasePolicy::cgb_dmg_software_live_scy_write_route)
+                .map(PpuMode3CgbDmgLiveScyWriteRoute::scy_routing)
+                .unwrap_or_default();
+        }
+
         PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: self.scy_pending_refetch_prefers_high_plane_only(register),
             pending_tilemap_row_refetch: self.scy_pending_refetch_prefers_tilemap_row(register),
@@ -1428,7 +1566,7 @@ impl Ppu {
         let framebuffer_index = row_start + visible_x;
         self.framebuffer[framebuffer_index] = panel_pixel;
         self.framebuffer_rgb555[framebuffer_index] =
-            self.framebuffer_rgb555_pixel(output_pixel, panel_pixel);
+            self.framebuffer_rgb555_pixel(visible_x, output_pixel, panel_pixel);
         self.framebuffer_layer_sources[framebuffer_index] =
             self.framebuffer_layer_source_for_output_pixel(visible_x, output_pixel);
     }
@@ -1442,11 +1580,61 @@ impl Ppu {
         self.framebuffer_rgb555[framebuffer_index] = panel_shade_to_rgb555(panel_pixel);
     }
 
-    fn framebuffer_rgb555_pixel(&self, output_pixel: MixedPixel, panel_pixel: u8) -> u16 {
+    pub(super) fn write_framebuffer_palette_override_pixel(
+        &mut self,
+        framebuffer_index: usize,
+        _visible_x: usize,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) {
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_rgb555[framebuffer_index] = self
+            .framebuffer_rgb555_palette_override_pixel(
+                output_pixel,
+                panel_pixel,
+                register,
+                palette_override,
+            );
+    }
+
+    fn framebuffer_rgb555_pixel(
+        &self,
+        visible_x: usize,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+    ) -> u16 {
+        if self.uses_cgb_compatibility_rgb555_adapter()
+            && self.runtime.panel.current_scanline_dmg_bg_forced_white[visible_x]
+        {
+            return panel_shade_to_rgb555(panel_pixel);
+        }
+
         if self.console_model.is_cgb_family()
             && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
         {
             self.map_mixed_pixel_to_cgb_rgb555(output_pixel)
+        } else {
+            panel_shade_to_rgb555(panel_pixel)
+        }
+    }
+
+    fn framebuffer_rgb555_palette_override_pixel(
+        &self,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) -> u16 {
+        if self.uses_cgb_compatibility_rgb555_adapter()
+            && self.runtime.panel.visible_output == PpuVisibleOutputState::Driving
+        {
+            self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette_override(
+                output_pixel,
+                register,
+                palette_override,
+            )
         } else {
             panel_shade_to_rgb555(panel_pixel)
         }
