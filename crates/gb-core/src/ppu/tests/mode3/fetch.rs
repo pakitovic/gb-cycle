@@ -2996,6 +2996,40 @@ fn window_lcdc4_unsigned_to_signed_previous_plane_masks_match_observed_row_block
 }
 
 #[test]
+fn cgb_dmg_software_window_lcdc4_previous_plane_masks_match_paired_write_phases() {
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+            0, 24,
+        ),
+        Some(PerPlane::new(0x7F, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+            8, 64,
+        ),
+        Some(PerPlane::new(0xFF, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            8, 16,
+        ),
+        Some(PerPlane::new(0xFF, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            16, 128,
+        ),
+        Some(PerPlane::new(0xFF, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            0, 24,
+        ),
+        None
+    );
+}
+
+#[test]
 fn dmg_lcdc4_output_override_marks_window_seam_slices() {
     let mut pipeline = BgPipelineState {
         fetcher: BgFetcherState {
@@ -3066,6 +3100,225 @@ fn dmg_lcdc4_output_override_marks_window_seam_slices() {
                 .dmg_lcdc4_previous_tiledata_select_for_output_override),
         Some(BgTileDataSelect::Unsigned8000)
     );
+}
+
+#[test]
+fn dmg_lcdc4_output_override_up_to_leaves_later_window_seam_slices_unmarked() {
+    let mut pipeline = BgPipelineState {
+        fetcher: BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            fetch_x: 0,
+            ..BgFetcherState::default()
+        },
+        push: BgPushState {
+            pending: true,
+            cached: BgCachedSlice {
+                source: PpuBgFetcherSource::Window,
+                fetch_x: 8,
+                ..BgCachedSlice::default()
+            },
+            ..BgPushState::default()
+        },
+        ..BgPipelineState::default()
+    };
+    pipeline
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Window,
+                fetch_x: 0,
+                ..BgCachedSlice::default()
+            },
+            4,
+        )));
+
+    pipeline.apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+        BgTileDataSelect::Signed8800,
+        0,
+    );
+
+    assert_eq!(
+        pipeline
+            .fetcher
+            .dmg_lcdc4_previous_tiledata_select_for_output_override,
+        Some(BgTileDataSelect::Signed8800)
+    );
+    assert_eq!(
+        pipeline
+            .push
+            .cached
+            .dmg_lcdc4_previous_tiledata_select_for_output_override,
+        None
+    );
+    assert_eq!(
+        pipeline
+            .fifo
+            .cached_front()
+            .flatten()
+            .and_then(|cached| cached
+                .cached
+                .dmg_lcdc4_previous_tiledata_select_for_output_override),
+        Some(BgTileDataSelect::Signed8800)
+    );
+}
+
+#[test]
+fn cgb_dmg_software_signed_lcdc4_output_override_is_one_shot_after_window_push_queue() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.visible_registers.lcdc = 0xB1;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.bg_pipeline_state.window_lcdc5_latch = true;
+        ppu.bg_pipeline_state.fetcher = BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::TileDataHigh,
+            stage_dot: 1,
+            fetch_x: 0,
+            dmg_lcdc4_previous_tiledata_select_for_output_override: Some(
+                BgTileDataSelect::Signed8800,
+            ),
+            ..BgFetcherState::default()
+        };
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            Some(BgTileDataSelect::Signed8800)
+        );
+
+        assert!(!ppu.advance_bg_fetcher_with_ppu_vram());
+
+        assert!(
+            ppu.bg_pipeline_state.push.pending,
+            "{operating_mode:?} should queue a push"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .push
+                .cached
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            Some(BgTileDataSelect::Signed8800),
+            "{operating_mode:?} should keep the override on the queued slice"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            None,
+            "{operating_mode:?} should not let the signed->unsigned override leak into the next tile"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc4_signed_to_unsigned_write_marks_only_current_window_fetch() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_fetch_startup_rig(operating_mode, 0xA3);
+        ppu.window_state.window_line_counter = 56;
+        ppu.bg_pipeline_state.fetcher = BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            fetch_x: 0,
+            ..BgFetcherState::default()
+        };
+        ppu.bg_pipeline_state.push = BgPushState {
+            pending: true,
+            cached: BgCachedSlice {
+                source: PpuBgFetcherSource::Window,
+                fetch_x: 8,
+                ..BgCachedSlice::default()
+            },
+            ..BgPushState::default()
+        };
+
+        ppu.apply_dmg_lcdc4_live_bg_tiledata_write(PpuMode3LiveRegisterWriteContext::new(
+            live_write_registers(0xA3, 0x00),
+            live_write_registers(0xB3, 0x00),
+        ));
+
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            Some(BgTileDataSelect::Signed8800),
+            "{operating_mode:?} should tag the current fetch"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .push
+                .cached
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            None,
+            "{operating_mode:?} should leave later fetch_x slices available for the paired write"
+        );
+        assert_eq!(
+            ppu.pending_dmg_window_lcdc4_output_repaint,
+            Some(BgTileDataSelect::Signed8800)
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc4_unsigned_to_signed_write_marks_window_from_row16() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = cgb_fetch_startup_rig(operating_mode, 0xB3);
+        ppu.window_state.window_line_counter = 16;
+        ppu.bg_pipeline_state.fetcher = BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            fetch_x: 8,
+            ..BgFetcherState::default()
+        };
+
+        ppu.apply_dmg_lcdc4_live_bg_tiledata_write(PpuMode3LiveRegisterWriteContext::new(
+            live_write_registers(0xB3, 0x00),
+            live_write_registers(0xA3, 0x00),
+        ));
+
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override,
+            Some(BgTileDataSelect::Unsigned8000),
+            "{operating_mode:?} should tag the CGB lead-in row"
+        );
+        assert_eq!(
+            ppu.pending_dmg_window_lcdc4_output_repaint,
+            Some(BgTileDataSelect::Unsigned8000)
+        );
+    }
+}
+
+#[test]
+fn native_cgb_lcdc4_window_writes_skip_dmg_software_output_override() {
+    let mut ppu = cgb_fetch_startup_rig(crate::model::OperatingMode::Cgb, 0xA3);
+    ppu.window_state.window_line_counter = 56;
+    ppu.bg_pipeline_state.fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        ..BgFetcherState::default()
+    };
+
+    ppu.apply_dmg_lcdc4_live_bg_tiledata_write(PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0xA3, 0x00),
+        live_write_registers(0xB3, 0x00),
+    ));
+
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .dmg_lcdc4_previous_tiledata_select_for_output_override,
+        None
+    );
+    assert_eq!(ppu.pending_dmg_window_lcdc4_output_repaint, None);
 }
 
 #[test]
@@ -4262,6 +4515,77 @@ fn window_lcdc4_output_override_uses_observed_previous_plane_masks_for_window_pi
                 0,
                 vram,
             ),
+            None
+        );
+    });
+}
+
+#[test]
+fn cgb_dmg_software_window_lcdc4_output_override_reconstructs_signed_to_unsigned_pixels() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.window_state.window_line_counter = 24;
+        ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
+            lcdc: LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+            bgp: 0xE4,
+            ..PpuVisibleRegisters::default()
+        }));
+
+        let cached = BgCachedSlice {
+            source: PpuBgFetcherSource::Window,
+            fetch_x: 0,
+            tile_index: 0,
+            dmg_lcdc4_previous_tiledata_select_for_output_override: Some(
+                BgTileDataSelect::Signed8800,
+            ),
+            ..BgCachedSlice::default()
+        };
+        let mut vram_bytes = [0; 0x2000];
+        vram_bytes[0x0000] = 0x00;
+        vram_bytes[0x0001] = 0x00;
+        vram_bytes[0x1000] = 0xFF;
+        vram_bytes[0x1001] = 0x00;
+
+        with_test_vram_view(vram_bytes, |vram| {
+            assert_eq!(
+                ppu.test_compute_window_lcdc4_tiledata_selector_override(cached, 0, vram),
+                Some(0),
+                "{operating_mode:?} should use the current selector for the unmasked leading pixel"
+            );
+            assert_eq!(
+                ppu.test_compute_window_lcdc4_tiledata_selector_override(cached, 1, vram),
+                Some(1),
+                "{operating_mode:?} should use the previous signed selector for masked low-plane pixels"
+            );
+        });
+    }
+}
+
+#[test]
+fn native_cgb_skips_dmg_software_window_lcdc4_signed_to_unsigned_override() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(crate::model::OperatingMode::Cgb);
+    ppu.window_state.window_line_counter = 24;
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
+        lcdc: LCDC_BG_ENABLE_BIT | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    }));
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        tile_index: 0,
+        dmg_lcdc4_previous_tiledata_select_for_output_override: Some(BgTileDataSelect::Signed8800),
+        ..BgCachedSlice::default()
+    };
+
+    with_test_vram_view([0; 0x2000], |vram| {
+        assert_eq!(
+            ppu.test_compute_window_lcdc4_tiledata_selector_override(cached, 1, vram),
             None
         );
     });

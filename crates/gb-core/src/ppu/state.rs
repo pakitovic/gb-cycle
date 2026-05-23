@@ -1181,6 +1181,13 @@ impl BgTileDataSelect {
             Self::Unsigned8000 => lcdc | LCDC_BG_WINDOW_TILE_DATA_BIT,
         }
     }
+
+    pub(super) const fn opposite(self) -> Self {
+        match self {
+            Self::Signed8800 => Self::Unsigned8000,
+            Self::Unsigned8000 => Self::Signed8800,
+        }
+    }
 }
 
 pub(in crate::ppu) type BgTileDataSelectOverride = PerPlane<Option<BgTileDataSelect>>;
@@ -1896,8 +1903,19 @@ impl BgPipelineState {
         &mut self,
         previous_select: BgTileDataSelect,
     ) {
+        self.apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+            previous_select,
+            BG_TILE_WIDTH as u16 * 2,
+        );
+    }
+
+    pub(super) fn apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+        &mut self,
+        previous_select: BgTileDataSelect,
+        max_fetch_x: u16,
+    ) {
         if self.fetcher.source == PpuBgFetcherSource::Window
-            && self.fetcher.fetch_x <= BG_TILE_WIDTH as u16 * 2
+            && self.fetcher.fetch_x <= max_fetch_x
             && self
                 .fetcher
                 .dmg_lcdc4_previous_tiledata_select_for_output_override
@@ -1908,7 +1926,10 @@ impl BgPipelineState {
         }
 
         self.for_each_mut_cached_slice(|cached| {
-            cached.force_dmg_lcdc4_previous_tiledata_select_for_output_override(previous_select);
+            cached.force_dmg_lcdc4_previous_tiledata_select_for_output_override_up_to(
+                previous_select,
+                max_fetch_x,
+            );
         });
     }
 
@@ -3069,12 +3090,13 @@ impl BgCachedSlice {
         self.window_activation_first_pixel_previous_tilemap_select = Some(previous_tilemap_select);
     }
 
-    fn force_dmg_lcdc4_previous_tiledata_select_for_output_override(
+    fn force_dmg_lcdc4_previous_tiledata_select_for_output_override_up_to(
         &mut self,
         previous_select: BgTileDataSelect,
+        max_fetch_x: u16,
     ) {
         if self.source != PpuBgFetcherSource::Window
-            || self.fetch_x > BG_TILE_WIDTH as u16 * 2
+            || self.fetch_x > max_fetch_x
             || self
                 .dmg_lcdc4_previous_tiledata_select_for_output_override
                 .is_some()

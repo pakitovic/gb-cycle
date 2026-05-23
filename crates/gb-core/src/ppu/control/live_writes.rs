@@ -115,9 +115,28 @@ impl Ppu {
             return;
         }
 
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
+            && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
+            && self.current_window_line_counter() >= 24
+        {
+            self.runtime
+                .bg_pipeline_state
+                .apply_dmg_lcdc4_output_override_to_window_seam_slices_up_to(
+                    BgTileDataSelect::Signed8800,
+                    self.bg_pipeline_state.fetcher.fetch_x,
+                );
+            self.runtime.panel.pending_dmg_window_lcdc4_output_repaint =
+                Some(BgTileDataSelect::Signed8800);
+        }
+
         if write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
             && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
-            && self.current_window_line_counter() >= 24
+            && (self.current_window_line_counter() >= 24
+                || self.console_model.is_cgb_family()
+                    && self.operating_mode.uses_dmg_software_contract()
+                    && self.current_window_line_counter() >= 16)
         {
             self.runtime
                 .bg_pipeline_state

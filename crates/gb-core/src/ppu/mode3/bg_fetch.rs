@@ -355,6 +355,17 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push();
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && fetcher_state.source == PpuBgFetcherSource::Window
+            && fetcher_state.dmg_lcdc4_previous_tiledata_select_for_output_override
+                == Some(BgTileDataSelect::Signed8800)
+        {
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_previous_tiledata_select_for_output_override = None;
+        }
         self.runtime
             .bg_pipeline_state
             .fetcher

@@ -6,7 +6,10 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
-        if self.console_model.is_dmg_family() {
+        if self.console_model.is_dmg_family()
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract()
+        {
             self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
         }
         let pixel = self.take_transfer_service_bg_pixel(plan);
