@@ -4568,27 +4568,38 @@ mod tests {
     fn built_in_rom_suite_lookup_returns_mealybug_cgb_extra_suite() {
         let suite = built_in_rom_suite_by_name("mealybug-tearoom-cgb-extra")
             .expect("known suite should exist");
+        let custom_boot_case_ids = [
+            "mealybug-cgb-m3-bgp-change-sprites",
+            "mealybug-cgb-m3-lcdc-bg-map-change",
+            "mealybug-cgb-m3-lcdc-obj-en-change",
+            "mealybug-cgb-m3-lcdc-obj-en-change-variant",
+            "mealybug-cgb-m3-lcdc-tile-sel-change",
+            "mealybug-cgb-m3-obp0-change",
+            "mealybug-cgb-m3-scx-low-3-bits",
+        ];
 
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
         assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
-                && case.startup_mode == StartupMode::SkipBoot
-                && case.timeout == Timeout::TCycles(5_000_000)
+                && case.startup_mode
+                    == if custom_boot_case_ids.contains(&case.id.as_str()) {
+                        StartupMode::CustomBoot
+                    } else {
+                        StartupMode::SkipBoot
+                    }
+                && case.timeout == Timeout::Frames(30)
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.capture_plan.contains(CaptureKind::Framebuffer)
                 && case.capture_plan.contains(CaptureKind::Snapshot)
-                && matches!(
-                    case.pass_condition,
-                    PassCondition::FramebufferFixtureUntilMatch { .. }
-                )
+                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
         }));
         assert!(suite.cases.iter().any(|case| {
             case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
                 && matches!(
                     &case.pass_condition,
-                    PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. }
+                    PassCondition::FramebufferFixture(fixture_path)
                         if fixture_path
                             == Path::new(
                                 "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"

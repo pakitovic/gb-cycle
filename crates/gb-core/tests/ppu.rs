@@ -395,7 +395,7 @@ fn bg_only_mode3_produces_visible_pixels_from_vram_on_the_machine_timeline() {
 }
 
 #[test]
-fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
+fn cgb_compatibility_machine_uses_cgb_bgp_conflicts_without_dmg_family_quirks() {
     let dmg_config =
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot);
     let cgb_compat_config = MachineConfig::new(ConsoleModel::GameBoyColor)
@@ -412,7 +412,7 @@ fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
     assert_eq!(dmg_before, vec![1; 8]);
     assert_ne!(dmg_after, dmg_before);
     assert_eq!(cgb_before, vec![1; 8]);
-    assert_eq!(cgb_after, cgb_before);
+    assert_eq!(cgb_after, vec![1, 1, 1, 1, 2, 2, 2, 2]);
 }
 
 #[test]

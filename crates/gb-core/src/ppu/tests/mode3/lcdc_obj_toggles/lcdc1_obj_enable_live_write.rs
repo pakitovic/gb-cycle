@@ -105,6 +105,82 @@ fn cgb_dmg_software_disabling_lcdc1_uses_the_cgb_hold_window() {
 }
 
 #[test]
+fn cgb_dmg_software_disabling_lcdc1_repaints_object_dots_through_rgb555_adapter() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));
+        let [color2_low, color2_high] = 0x03E0_u16.to_le_bytes();
+        ppu.cgb_palettes
+            .port_mut(CgbPaletteKind::Background)
+            .write_palette_bytes(0, [0, 0, 0, 0, color2_low, color2_high, 0, 0]);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0xE4;
+        ppu.pipeline_registers.bgp = 0xE4;
+        ppu.bg_pipeline_state.visible_pixels_output = 5;
+        ppu.mode2_scan_state.push(obj_toggle_sprite(0, 16, 1, 0, 0));
+        ppu.current_scanline_bg_pixels[1] = 2;
+        ppu.current_scanline_bg_dot_contexts[1] = Some(PpuRecentBgDotContext {
+            source: PpuBgFetcherSource::Window,
+            fetch_x: 0,
+            pixel_index: 1,
+            tile_index: 0,
+        });
+        ppu.current_scanline_mixed_pixels[1] = MixedPixel::object(1, false);
+        ppu.current_scanline_pixels[1] = 1;
+        ppu.framebuffer_rgb555[1] = 0x1111;
+        ppu.framebuffer_layer_sources[1] = PpuFramebufferLayerSource::Object;
+        ppu.dmg_panel_live_write_state
+            .recent_panel_dots
+            .push_back(PpuRecentPanelDot {
+                visible_x: 0,
+                pixel: MixedPixel::object(1, false),
+                dmg_bg_forced_white: false,
+            });
+        ppu.dmg_panel_live_write_state
+            .recent_panel_dots
+            .push_back(PpuRecentPanelDot {
+                visible_x: 1,
+                pixel: MixedPixel::object(1, false),
+                dmg_bg_forced_white: false,
+            });
+
+        ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+        assert_eq!(
+            ppu.current_scanline_mixed_pixels[1],
+            MixedPixel::background(2),
+            "{operating_mode:?}",
+        );
+        assert_eq!(ppu.framebuffer_rgb555[1], 0x03E0, "{operating_mode:?}");
+        assert_eq!(
+            ppu.framebuffer_layer_sources[1],
+            PpuFramebufferLayerSource::Window,
+            "{operating_mode:?}",
+        );
+        let recent_dots = ppu
+            .dmg_panel_live_write_state
+            .recent_panel_dots
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            recent_dots[0].pixel,
+            MixedPixel::object(1, false),
+            "{operating_mode:?}",
+        );
+        assert_eq!(
+            recent_dots[1].pixel,
+            MixedPixel::background(2),
+            "{operating_mode:?}",
+        );
+    }
+}
+
+#[test]
 fn native_cgb_skips_the_dmg_software_lcdc1_visible_hold() {
     let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));

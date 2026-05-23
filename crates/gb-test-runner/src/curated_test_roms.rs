@@ -3439,9 +3439,19 @@ mod tests {
     #[test]
     fn mealybug_tearoom_cgb_extra_suite_owns_the_cgb_mealybug_rows() {
         let manifest_text = include_str!("../data/mealybug-tearoom-tests-cgb.toml");
-        assert!(
-            !manifest_text.contains("startup ="),
-            "Mealybug CGB extra rows should use the default CGB SkipBoot path"
+        let custom_boot_case_ids = [
+            "mealybug-cgb-m3-bgp-change-sprites",
+            "mealybug-cgb-m3-lcdc-bg-map-change",
+            "mealybug-cgb-m3-lcdc-obj-en-change",
+            "mealybug-cgb-m3-lcdc-obj-en-change-variant",
+            "mealybug-cgb-m3-lcdc-tile-sel-change",
+            "mealybug-cgb-m3-obp0-change",
+            "mealybug-cgb-m3-scx-low-3-bits",
+        ];
+        assert_eq!(
+            manifest_text.matches("startup = \"custom-boot\"").count(),
+            custom_boot_case_ids.len(),
+            "Mealybug CGB extra rows should mirror the DMG manifest's custom-boot cases"
         );
 
         let manifest = curated_test_rom_manifests()
@@ -3462,6 +3472,14 @@ mod tests {
                 && case.report_model_suffix
                 && case.console_model == ConsoleModel::GameBoyColor
                 && !case.disabled
+                && case.startup_mode
+                    == if custom_boot_case_ids.contains(&case.id.as_str()) {
+                        StartupMode::CustomBoot
+                    } else {
+                        StartupMode::SkipBoot
+                    }
+                && case.timeout == Timeout::Frames(30)
+                && case.oracle == "framebuffer-fixture"
         }));
 
         let suite = mealybug_tearoom_cgb_extra_suite();
@@ -3472,21 +3490,23 @@ mod tests {
         assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
-                && case.startup_mode == StartupMode::SkipBoot
+                && case.startup_mode
+                    == if custom_boot_case_ids.contains(&case.id.as_str()) {
+                        StartupMode::CustomBoot
+                    } else {
+                        StartupMode::SkipBoot
+                    }
                 && case.execution_mode == crate::ExecutionMode::Strict
-                && case.timeout == Timeout::TCycles(5_000_000)
+                && case.timeout == Timeout::Frames(30)
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("mealybug-tearoom-tests/ppu")
-                && matches!(
-                    case.pass_condition,
-                    PassCondition::FramebufferFixtureUntilMatch { .. }
-                )
+                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
         }));
         assert!(suite.cases.iter().any(|case| {
             case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
                 && matches!(
                     &case.pass_condition,
-                    PassCondition::FramebufferFixtureUntilMatch { fixture_path, .. }
+                    PassCondition::FramebufferFixture(fixture_path)
                         if fixture_path
                             == Path::new(
                                 "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
