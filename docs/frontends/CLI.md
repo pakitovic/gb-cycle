@@ -54,7 +54,8 @@ Both commands load the ROM first, then validate the save payload against the car
 
 ## Output options
 
-- `--framebuffer-out` writes the final `160x144` GB LCD framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`; SGB/SGB2 PNG artifacts use the `256x224` SGB host RGB555 frame, while non-PNG SGB/SGB2 artifacts retain the legacy `160x144` shade-index PGM path for automation compatibility.
+- `--framebuffer-out` writes the final `160x144` GB LCD framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`; SGB/SGB2 PNG artifacts use the `256x224` SGB host RGB555 frame by default, while non-PNG SGB/SGB2 artifacts retain the legacy `160x144` shade-index PGM path for automation compatibility.
+- `--border-off` is valid only with `--model SGB` or `--model SGB2`; it hides the SGB host border for PNG framebuffer artifacts and writes the SGB-colored `160x144` LCD RGB555 output instead. The default is border on, matching `gb-desktop` `CONFIG -> SYSTEM -> BORDER ON`.
 - `--palette grey` maps DMG-family framebuffer shade indices through the same `DMG_GREY_DISPLAY_PALETTE` grey RGB values used by `gb-desktop`, but only when the final effective `--model` is `DMG`; the option is parsed and ignored for `MGB`, `LGB`, `CGB`, `SGB`, and `SGB2`. For PGM artifacts the override writes an 8-bit grey PGM (`maxval 255`) instead of the default raw shade-index PGM (`maxval 3`), while CGB and SGB-family PNG output continues to use RGB555 framebuffers directly.
 - `--serial-out` writes captured serial output to a file.
 - `--serial-stdout` streams completed serial bytes to stdout as they arrive.

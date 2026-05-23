@@ -69,6 +69,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
     "  --framebuffer-out <path>               Save the final framebuffer as PGM, or PNG when <path> ends in .png (SGB PNG uses 256x224 RGB555)\n",
+    "  --border-off                           Hide the SGB/SGB2 host border for PNG framebuffer artifacts\n",
     "  --palette <grey>                       Use the DMG grey framebuffer palette when --model DMG is active\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
@@ -252,6 +253,7 @@ struct RunOptions {
     serial_stdout: bool,
     serial_out: Option<PathBuf>,
     framebuffer_out: Option<PathBuf>,
+    show_sgb_border: bool,
     display_palette: Option<RunDisplayPalette>,
     trace_out: Option<PathBuf>,
     state_in: Option<PathBuf>,
@@ -279,6 +281,7 @@ impl RunOptions {
             serial_stdout: false,
             serial_out: None,
             framebuffer_out: None,
+            show_sgb_border: true,
             display_palette: None,
             trace_out: None,
             state_in: None,
@@ -416,6 +419,13 @@ impl CliMachine {
         match self {
             Self::Buffered(machine) => machine.sgb_framebuffer_rgb555(),
             Self::Summary(machine) => machine.sgb_framebuffer_rgb555(),
+        }
+    }
+
+    fn sgb_lcd_framebuffer_rgb555(&self) -> Option<Vec<u16>> {
+        match self {
+            Self::Buffered(machine) => machine.sgb_lcd_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.sgb_lcd_framebuffer_rgb555(),
         }
     }
 
@@ -660,6 +670,10 @@ where
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().framebuffer_out = Some(PathBuf::from(value.as_ref()));
             }
+            "--border-off" => {
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().show_sgb_border = false;
+            }
             "--palette" => {
                 let Some(value) = arguments.next() else {
                     return Err("--palette requires a value".to_string());
@@ -777,6 +791,9 @@ fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
             options.model.name(),
             supported_revision_names(console_model)
         ));
+    }
+    if !options.show_sgb_border && options.model.sgb_profile().is_none() {
+        return Err("--border-off requires --model SGB or --model SGB2".to_string());
     }
 
     Ok(())
@@ -954,6 +971,7 @@ fn run_benchmark_case(
         serial_stdout: false,
         serial_out: None,
         framebuffer_out,
+        show_sgb_border: true,
         display_palette: benchmark_case.palette.map(display_palette_from_benchmark),
         trace_out: None,
         state_in: None,
@@ -1101,11 +1119,15 @@ fn run_command(
         write_bytes_with_parent(serial_out, serial_bytes)?;
     }
     if let Some(framebuffer_out) = &options.framebuffer_out {
-        let sgb_framebuffer_rgb555 = machine.sgb_framebuffer_rgb555();
+        let sgb_framebuffer_rgb555 =
+            sgb_framebuffer_artifact_for_output(&machine, options.show_sgb_border);
+        let sgb_framebuffer_rgb555 = sgb_framebuffer_rgb555
+            .as_ref()
+            .map(|(width, height, pixels)| (*width, *height, pixels.as_slice()));
         let framebuffer_image = encode_framebuffer_artifact(
             framebuffer_out,
             machine.framebuffer(),
-            sgb_framebuffer_rgb555.as_deref(),
+            sgb_framebuffer_rgb555,
             machine.cgb_framebuffer_rgb555(),
             options.effective_display_palette(),
         )
@@ -2052,10 +2074,29 @@ fn framebuffer_output_format(path: &Path) -> FramebufferOutputFormat {
     }
 }
 
+fn sgb_framebuffer_artifact_for_output(
+    machine: &CliMachine,
+    show_sgb_border: bool,
+) -> Option<(usize, usize, Vec<u16>)> {
+    if show_sgb_border {
+        machine.sgb_framebuffer_rgb555().map(|pixels| {
+            (
+                SGB_HOST_FRAMEBUFFER_WIDTH,
+                SGB_HOST_FRAMEBUFFER_HEIGHT,
+                pixels,
+            )
+        })
+    } else {
+        machine
+            .sgb_lcd_framebuffer_rgb555()
+            .map(|pixels| (FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, pixels))
+    }
+}
+
 fn encode_framebuffer_artifact(
     path: &Path,
     framebuffer: &[u8],
-    sgb_framebuffer_rgb555: Option<&[u16]>,
+    sgb_framebuffer_rgb555: Option<(usize, usize, &[u16])>,
     cgb_framebuffer_rgb555: Option<&[u16]>,
     display_palette: Option<DisplayPalette>,
 ) -> io::Result<Vec<u8>> {
@@ -2068,12 +2109,8 @@ fn encode_framebuffer_artifact(
             }
         }
         FramebufferOutputFormat::Png => {
-            if let Some(sgb_framebuffer_rgb555) = sgb_framebuffer_rgb555 {
-                encode_rgb555_framebuffer_png(
-                    SGB_HOST_FRAMEBUFFER_WIDTH,
-                    SGB_HOST_FRAMEBUFFER_HEIGHT,
-                    sgb_framebuffer_rgb555,
-                )
+            if let Some((width, height, sgb_framebuffer_rgb555)) = sgb_framebuffer_rgb555 {
+                encode_rgb555_framebuffer_png(width, height, sgb_framebuffer_rgb555)
             } else if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
                 encode_rgb555_framebuffer_png(
                     FRAMEBUFFER_WIDTH,

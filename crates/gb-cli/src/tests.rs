@@ -146,6 +146,20 @@ impl Drop for CurrentDirGuard {
     }
 }
 
+fn decode_png_info(encoded: &[u8]) -> png::OutputInfo {
+    let decoder = png::Decoder::new(std::io::Cursor::new(encoded));
+    let mut reader = decoder.read_info().expect("PNG should decode");
+    let mut buffer = vec![
+        0;
+        reader
+            .output_buffer_size()
+            .expect("PNG decoder should expose an output buffer size")
+    ];
+    reader
+        .next_frame(&mut buffer)
+        .expect("PNG frame should decode")
+}
+
 impl Write for FailOnWrite {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.writes += 1;
@@ -374,17 +388,7 @@ fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
     );
     let framebuffer = fs::read(&framebuffer_path).expect("framebuffer should exist");
     assert!(framebuffer.starts_with(b"\x89PNG\r\n\x1A\n"));
-    let decoder = png::Decoder::new(std::io::Cursor::new(&framebuffer));
-    let mut reader = decoder.read_info().expect("PNG should decode");
-    let mut buffer = vec![
-        0;
-        reader
-            .output_buffer_size()
-            .expect("PNG decoder should expose an output buffer size")
-    ];
-    let info = reader
-        .next_frame(&mut buffer)
-        .expect("PNG frame should decode");
+    let info = decode_png_info(&framebuffer);
     assert_eq!(info.width, FRAMEBUFFER_WIDTH as u32);
     assert_eq!(info.height, FRAMEBUFFER_HEIGHT as u32);
     assert_eq!(info.color_type, png::ColorType::Grayscale);
@@ -992,6 +996,61 @@ fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
 }
 
 #[test]
+fn run_cli_command_sgb_border_off_captures_lcd_sized_png() {
+    let temp_dir = unique_temp_dir("sgb-border-off");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let rom_path = temp_dir.join("sgb.gb");
+    let bordered_path = temp_dir.join("bordered.png");
+    let borderless_path = temp_dir.join("borderless.png");
+    fs::write(&rom_path, build_nop_loop_rom()).expect("test ROM should be writable");
+
+    run_cli_command(
+        [
+            "run",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            "--model",
+            "SGB",
+            "--tcycles",
+            "1",
+            "--framebuffer-out",
+            bordered_path.to_str().expect("path should be valid UTF-8"),
+        ],
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect("default SGB framebuffer output should include host border");
+    let bordered_info = decode_png_info(&fs::read(&bordered_path).expect("PNG should exist"));
+    assert_eq!(bordered_info.width, SGB_HOST_FRAMEBUFFER_WIDTH as u32);
+    assert_eq!(bordered_info.height, SGB_HOST_FRAMEBUFFER_HEIGHT as u32);
+    assert_eq!(bordered_info.color_type, png::ColorType::Rgb);
+
+    run_cli_command(
+        [
+            "run",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            "--model",
+            "SGB2",
+            "--border-off",
+            "--tcycles",
+            "1",
+            "--framebuffer-out",
+            borderless_path
+                .to_str()
+                .expect("path should be valid UTF-8"),
+        ],
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect("SGB2 framebuffer output should support hidden host border");
+    let borderless_info = decode_png_info(&fs::read(&borderless_path).expect("PNG should exist"));
+    assert_eq!(borderless_info.width, FRAMEBUFFER_WIDTH as u32);
+    assert_eq!(borderless_info.height, FRAMEBUFFER_HEIGHT as u32);
+    assert_eq!(borderless_info.color_type, png::ColorType::Rgb);
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn run_cli_command_routes_help_variants_and_unknown_subcommands() {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -1098,6 +1157,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
                 options.framebuffer_out,
                 Some(PathBuf::from("framebuffer.png"))
             );
+            assert!(options.show_sgb_border);
             assert_eq!(options.display_palette, None);
             assert_eq!(options.effective_display_palette(), None);
             assert_eq!(options.trace_out, Some(PathBuf::from("trace.txt")));
@@ -1124,9 +1184,10 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
     assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::SgbNtsc));
     assert_eq!(options.revision, HardwareRevision::DmgCpuC);
+    assert!(options.show_sgb_border);
 
-    let action =
-        parse_run_arguments(["demo.gb", "--model", "SGB2"]).expect("SGB2 model should parse");
+    let action = parse_run_arguments(["demo.gb", "--model", "SGB2", "--border-off"])
+        .expect("SGB2 model should parse with border disabled");
     let CliAction::Run(options) = action else {
         panic!("expected run action");
     };
@@ -1134,6 +1195,15 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
     assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::Sgb2Ntsc));
     assert_eq!(options.revision, HardwareRevision::DmgCpuC);
+    assert!(!options.show_sgb_border);
+
+    let action = parse_run_arguments(["demo.gb", "--border-off", "--model", "SGB"])
+        .expect("SGB model should accept order-independent border disabling");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::SuperGameBoy);
+    assert!(!options.show_sgb_border);
 }
 
 #[test]
@@ -1433,6 +1503,16 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
         parse_run_arguments(["demo.gb", "--revision", "cpu-cgb-e"])
             .expect_err("CGB-E hardware requires CGB model"),
         "--revision cpu-cgb-e is not supported by --model DMG; expected one of: dmg-cpu-c"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--border-off"])
+            .expect_err("border-off requires an SGB-family model"),
+        "--border-off requires --model SGB or --model SGB2"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--model", "CGB", "--border-off"])
+            .expect_err("border-off rejects non-SGB models"),
+        "--border-off requires --model SGB or --model SGB2"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "--cgb-revision", "cgb-e"])
@@ -2699,16 +2779,35 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let sgb_rgb555_png_artifact = encode_framebuffer_artifact(
         Path::new("framebuffer.png"),
         &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
-        Some(&vec![
-            0x7FFF;
-            SGB_HOST_FRAMEBUFFER_WIDTH
-                * SGB_HOST_FRAMEBUFFER_HEIGHT
-        ]),
+        Some((
+            SGB_HOST_FRAMEBUFFER_WIDTH,
+            SGB_HOST_FRAMEBUFFER_HEIGHT,
+            &vec![0x7FFF; SGB_HOST_FRAMEBUFFER_WIDTH * SGB_HOST_FRAMEBUFFER_HEIGHT],
+        )),
         Some(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
         Some(DMG_GREY_DISPLAY_PALETTE),
     )
     .expect("SGB RGB555 PNG encoding should succeed");
     assert!(sgb_rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let sgb_info = decode_png_info(&sgb_rgb555_png_artifact);
+    assert_eq!(sgb_info.width, SGB_HOST_FRAMEBUFFER_WIDTH as u32);
+    assert_eq!(sgb_info.height, SGB_HOST_FRAMEBUFFER_HEIGHT as u32);
+    let sgb_lcd_rgb555_png_artifact = encode_framebuffer_artifact(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        Some((
+            FRAMEBUFFER_WIDTH,
+            FRAMEBUFFER_HEIGHT,
+            &vec![0x7FFF; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        )),
+        Some(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("SGB LCD RGB555 PNG encoding should succeed");
+    assert!(sgb_lcd_rgb555_png_artifact.starts_with(b"\x89PNG\r\n\x1A\n"));
+    let sgb_lcd_info = decode_png_info(&sgb_lcd_rgb555_png_artifact);
+    assert_eq!(sgb_lcd_info.width, FRAMEBUFFER_WIDTH as u32);
+    assert_eq!(sgb_lcd_info.height, FRAMEBUFFER_HEIGHT as u32);
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));
