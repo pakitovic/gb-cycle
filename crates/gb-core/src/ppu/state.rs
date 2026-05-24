@@ -1048,6 +1048,109 @@ impl DmgPendingWindowReenableResume {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum CgbPrevisibleWxPhaseRepaintMode {
+    FixedPattern,
+    CurrentLowPlaneIntoHighPlane,
+    CurrentHighPlaneWithWindowHighPlaneAsLowPlane {
+        source_start_x: u16,
+        window_line_counter: u8,
+    },
+    WindowPixels {
+        source_start_x: u16,
+        window_line_counter: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct CgbPendingPrevisibleWxPhaseRepaint {
+    pub(super) cancel_guard_x: u8,
+    pub(super) start_x: u8,
+    pub(super) end_x: u8,
+    pub(super) pattern_len: u8,
+    pub(super) pixels: [u8; 16],
+    pub(super) mode: CgbPrevisibleWxPhaseRepaintMode,
+}
+
+impl CgbPendingPrevisibleWxPhaseRepaint {
+    pub(super) const fn new(
+        cancel_guard_x: u8,
+        start_x: u8,
+        end_x: u8,
+        pattern_len: u8,
+        pixels: [u8; 16],
+    ) -> Self {
+        Self {
+            cancel_guard_x,
+            start_x,
+            end_x,
+            pattern_len,
+            pixels,
+            mode: CgbPrevisibleWxPhaseRepaintMode::FixedPattern,
+        }
+    }
+
+    pub(super) const fn new_current_low_plane_into_high_plane(
+        cancel_guard_x: u8,
+        start_x: u8,
+        end_x: u8,
+    ) -> Self {
+        Self {
+            cancel_guard_x,
+            start_x,
+            end_x,
+            pattern_len: 1,
+            pixels: [0; 16],
+            mode: CgbPrevisibleWxPhaseRepaintMode::CurrentLowPlaneIntoHighPlane,
+        }
+    }
+
+    pub(super) const fn new_current_high_plane_with_window_high_plane_as_low_plane(
+        cancel_guard_x: u8,
+        start_x: u8,
+        end_x: u8,
+        source_start_x: u16,
+        window_line_counter: u8,
+    ) -> Self {
+        Self {
+            cancel_guard_x,
+            start_x,
+            end_x,
+            pattern_len: 1,
+            pixels: [0; 16],
+            mode: CgbPrevisibleWxPhaseRepaintMode::CurrentHighPlaneWithWindowHighPlaneAsLowPlane {
+                source_start_x,
+                window_line_counter,
+            },
+        }
+    }
+
+    pub(super) const fn new_window_pixels(
+        cancel_guard_x: u8,
+        start_x: u8,
+        end_x: u8,
+        source_start_x: u16,
+        window_line_counter: u8,
+    ) -> Self {
+        Self {
+            cancel_guard_x,
+            start_x,
+            end_x,
+            pattern_len: 1,
+            pixels: [0; 16],
+            mode: CgbPrevisibleWxPhaseRepaintMode::WindowPixels {
+                source_start_x,
+                window_line_counter,
+            },
+        }
+    }
+
+    pub(super) fn pixel_at(self, x: u8) -> u8 {
+        let offset = x.saturating_sub(self.start_x) % self.pattern_len.max(1);
+        self.pixels[offset as usize]
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgWindowRestartState {
     pub(super) pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
@@ -1058,6 +1161,7 @@ pub(super) struct DmgWindowRestartState {
     pub(super) pending_previsible_wx_onset_glitch: Option<u8>,
     pub(super) pending_previsible_wx_carry: Option<DmgPendingPrevisibleWxCarry>,
     pub(super) pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
+    pub(super) pending_cgb_previsible_wx_phase_repaint: Option<CgbPendingPrevisibleWxPhaseRepaint>,
 }
 
 impl DmgWindowRestartState {
@@ -1111,6 +1215,10 @@ impl DmgWindowRestartState {
 
     pub(super) fn clear_onset_glitch(&mut self) {
         self.pending_previsible_wx_onset_glitch = None;
+    }
+
+    pub(super) fn clear_cgb_previsible_wx_phase_repaint(&mut self) {
+        self.pending_cgb_previsible_wx_phase_repaint = None;
     }
 
     pub(super) fn clear_gap_artifacts(&mut self) {

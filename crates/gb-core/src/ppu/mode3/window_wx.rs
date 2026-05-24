@@ -41,7 +41,9 @@ impl Ppu {
         let visible_registers = self.mode3_register_latches().visible();
         let plan = Self::plan_dmg_previsible_wx_retarget(
             DmgPrevisibleWxRetargetPlanContext {
-                is_dmg_family: self.console_model.is_dmg_family(),
+                dmg_software_contract: self.operating_mode.uses_dmg_software_contract(),
+                cgb_dmg_software_contract: self.console_model.is_cgb_family()
+                    && self.operating_mode.uses_dmg_software_contract(),
                 drawing_mode: self.current_access_mode() == PpuAccessMode::Drawing,
                 window_started_this_line: self.runtime.bg_pipeline_state.window_started_this_line,
                 window_wy_latch: self.runtime.bg_pipeline_state.window_wy_latch,
@@ -62,14 +64,168 @@ impl Ppu {
             wx,
         );
         self.apply_dmg_previsible_wx_plan(plan);
+        self.maybe_arm_cgb_dmg_previsible_wx_phase_repaint(previous_wx, wx);
     }
 
-    pub(in crate::ppu) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
-        if !self.console_model.is_dmg_family()
+    fn maybe_arm_cgb_dmg_previsible_wx_phase_repaint(&mut self, previous_wx: u8, wx: u8) {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && self.current_access_mode() == PpuAccessMode::Drawing
+            && previous_wx != wx
+            && self.runtime.bg_pipeline_state.visible_pixels_output != 0
+        {
+            self.maybe_cancel_pending_cgb_previsible_wx_phase_repaint_before_commit();
+        }
+
+        if !self.console_model.is_cgb_family()
+            || !self.operating_mode.uses_dmg_software_contract()
             || self.current_access_mode() != PpuAccessMode::Drawing
             || !self.runtime.bg_pipeline_state.window_started_this_line
             || !self.runtime.bg_pipeline_state.window_wy_latch
-            || self.runtime.bg_pipeline_state.visible_pixels_output == 0
+            || self.runtime.bg_pipeline_state.visible_pixels_output != 0
+            || self.runtime.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+        {
+            return;
+        }
+
+        let active_window_line = self.runtime.bg_pipeline_state.window_active_line_counter;
+
+        // CGB-family DMG software modes do not reuse the full DMG previsible retarget table, but low-WX writes that hit the active window tile phase leave a bounded raw-pixel repaint behind.
+        let repaint = match (previous_wx, wx) {
+            (4, 5) => Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                0,
+                16,
+                16,
+                [3, 3, 3, 3, 3, 0, 3, 3, 1, 1, 3, 3, 0, 3, 3, 1],
+            )),
+            (4, 7..=166)
+                if (wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX).is_multiple_of(BG_TILE_WIDTH) =>
+            {
+                let trigger_x = wx.saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX);
+                let start_x = trigger_x.saturating_add(5);
+                Some(
+                    CgbPendingPrevisibleWxPhaseRepaint::new_current_high_plane_with_window_high_plane_as_low_plane(
+                        trigger_x,
+                        start_x,
+                        start_x.saturating_add(BG_TILE_WIDTH),
+                        u16::from(start_x.saturating_sub(5)),
+                        active_window_line,
+                    ),
+                )
+            }
+            (4, 7..=166) if (wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX) % BG_TILE_WIDTH == 2 => {
+                let trigger_x = wx.saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX);
+                let start_x = trigger_x.saturating_add(4);
+                Some(
+                    CgbPendingPrevisibleWxPhaseRepaint::new_current_low_plane_into_high_plane(
+                        start_x,
+                        start_x,
+                        start_x.saturating_add(BG_TILE_WIDTH),
+                    ),
+                )
+            }
+            (4, 7..=166) if (wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX) % BG_TILE_WIDTH == 6 => {
+                let trigger_x = wx.saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX);
+                let start_x = trigger_x.saturating_add(7);
+                Some(CgbPendingPrevisibleWxPhaseRepaint::new_window_pixels(
+                    trigger_x,
+                    start_x,
+                    start_x.saturating_add(BG_TILE_WIDTH),
+                    u16::from(start_x.saturating_sub(5)),
+                    active_window_line,
+                ))
+            }
+            (5, 6) => Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                0,
+                8,
+                8,
+                [3, 3, 3, 3, 3, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            (5, 7..=166) if (wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX) % BG_TILE_WIDTH == 1 => {
+                let cancel_guard_x = wx.saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX);
+                let start_x = wx
+                    .saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX)
+                    .saturating_add(6);
+                Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                    cancel_guard_x,
+                    start_x,
+                    start_x.saturating_add(BG_TILE_WIDTH),
+                    8,
+                    [0, 0, 3, 0, 3, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+                ))
+            }
+            (6, 4) => Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                0,
+                SCREEN_WIDTH as u8,
+                8,
+                [3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            (6, 5) => Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                0,
+                SCREEN_WIDTH as u8,
+                8,
+                [1, 1, 3, 3, 3, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            (6, 7) => Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                0,
+                16,
+                16,
+                [0, 0, 0, 0, 0, 0, 0, 3, 1, 1, 1, 1, 1, 3, 3, 3],
+            )),
+            (6, 7..=166) if (wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX) % BG_TILE_WIDTH == 2 => {
+                let start_x = wx
+                    .saturating_sub(Self::DMG_VISIBLE_WINDOW_ORIGIN_WX)
+                    .saturating_add(6);
+                Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                    start_x,
+                    start_x,
+                    start_x.saturating_add(BG_TILE_WIDTH),
+                    8,
+                    [3, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+                ))
+            }
+            _ => None,
+        };
+
+        self.runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint = repaint;
+    }
+
+    fn maybe_cancel_pending_cgb_previsible_wx_phase_repaint_before_commit(&mut self) {
+        let Some(repaint) = self
+            .runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+        else {
+            return;
+        };
+
+        // A later WX restore cancels the pending phase repaint until the observed phase guard has passed; each low-WX phase records the guard seen by CGB-family DMG-software tests.
+        if self.runtime.bg_pipeline_state.visible_pixels_output <= repaint.cancel_guard_x {
+            self.runtime
+                .bg_pipeline_state
+                .dmg_window_restart
+                .clear_cgb_previsible_wx_phase_repaint();
+        }
+    }
+
+    pub(in crate::ppu) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
+        if !self.operating_mode.uses_dmg_software_contract()
+            || self.current_access_mode() != PpuAccessMode::Drawing
+            || !self.runtime.bg_pipeline_state.window_started_this_line
+            || !self.runtime.bg_pipeline_state.window_wy_latch
+            || (self.runtime.bg_pipeline_state.visible_pixels_output == 0
+                && !self.cgb_dmg_software_previsible_wx_write_hits_window_tile_index(wx))
             || !self.mode3_register_latches().visible().window_enabled()
             || !self.mode3_register_latches().visible().bg_enabled()
         {
@@ -83,7 +239,6 @@ impl Ppu {
                 return;
             }
         };
-
         if trigger_x < self.runtime.bg_pipeline_state.visible_pixels_output {
             self.clear_dmg_previsible_wx_live_trigger_glitch();
             return;
@@ -108,7 +263,7 @@ impl Ppu {
             return;
         };
 
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || self.runtime.bg_pipeline_state.visible_pixels_output != 0
             || self.runtime.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window
         {
@@ -135,11 +290,15 @@ impl Ppu {
             }
             if matches!(retarget.kind, DmgPrevisibleWxRetargetKind::CancelOnly) {
                 self.restore_current_fetcher_cached_slice_to_fifo();
-                self.runtime.bg_pipeline_state.window_start_count_this_line = self
-                    .runtime
-                    .bg_pipeline_state
-                    .window_start_count_this_line
-                    .saturating_sub(1);
+                if !(self.console_model.is_cgb_family()
+                    && self.operating_mode.uses_dmg_software_contract())
+                {
+                    self.runtime.bg_pipeline_state.window_start_count_this_line = self
+                        .runtime
+                        .bg_pipeline_state
+                        .window_start_count_this_line
+                        .saturating_sub(1);
+                }
                 self.clear_dmg_previsible_wx_retarget_state();
             }
         }
@@ -158,7 +317,7 @@ impl Ppu {
             return;
         };
 
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
         {
             return;
@@ -186,7 +345,7 @@ impl Ppu {
             return;
         };
 
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
         {
             return;
@@ -231,6 +390,83 @@ impl Ppu {
         }
     }
 
+    pub(super) fn maybe_apply_pending_cgb_previsible_wx_phase_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        let Some(repaint) = self
+            .runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+        else {
+            return;
+        };
+
+        if !self.console_model.is_cgb_family()
+            || !self.operating_mode.uses_dmg_software_contract()
+            || self.runtime.bg_pipeline_state.visible_pixels_output < repaint.end_x
+        {
+            return;
+        }
+
+        let repaint_start = repaint.start_x.min(SCREEN_WIDTH as u8);
+        let repaint_end = repaint.end_x.min(SCREEN_WIDTH as u8);
+        for x in repaint_start..repaint_end {
+            let bg_pixel = self.cgb_previsible_wx_phase_repaint_pixel(repaint, x, vram);
+            self.repaint_current_scanline_dot_with_bg_override(usize::from(x), bg_pixel, vram);
+        }
+        self.runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .clear_cgb_previsible_wx_phase_repaint();
+    }
+
+    fn cgb_previsible_wx_phase_repaint_pixel(
+        &self,
+        repaint: CgbPendingPrevisibleWxPhaseRepaint,
+        x: u8,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        match repaint.mode {
+            CgbPrevisibleWxPhaseRepaintMode::FixedPattern => repaint.pixel_at(x),
+            CgbPrevisibleWxPhaseRepaintMode::CurrentLowPlaneIntoHighPlane => {
+                let low_plane = self.runtime.panel.current_scanline_bg_pixels[usize::from(x)] & 1;
+                low_plane | (low_plane << 1)
+            }
+            CgbPrevisibleWxPhaseRepaintMode::CurrentHighPlaneWithWindowHighPlaneAsLowPlane {
+                source_start_x,
+                window_line_counter,
+            } => {
+                let current_high_plane =
+                    self.runtime.panel.current_scanline_bg_pixels[usize::from(x)] & 0b10;
+                let source_x =
+                    source_start_x.saturating_add(u16::from(x.saturating_sub(repaint.start_x)));
+                let source_high_plane = self
+                    .compute_window_pixel_for_logical_offset(window_line_counter, source_x, vram)
+                    .map_or(0, |pixel| (pixel >> 1) & 1);
+                current_high_plane | source_high_plane
+            }
+            CgbPrevisibleWxPhaseRepaintMode::WindowPixels {
+                source_start_x,
+                window_line_counter,
+            } => {
+                let source_x =
+                    source_start_x.saturating_add(u16::from(x.saturating_sub(repaint.start_x)));
+                self.compute_window_pixel_for_logical_offset(window_line_counter, source_x, vram)
+                    .unwrap_or(0)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ppu) fn test_apply_pending_cgb_previsible_wx_phase_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        self.maybe_apply_pending_cgb_previsible_wx_phase_repaint(vram);
+    }
+
     pub(super) fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
         let Some(retarget) = self
             .runtime
@@ -241,7 +477,7 @@ impl Ppu {
             return;
         };
 
-        if !self.console_model.is_dmg_family()
+        if !self.operating_mode.uses_dmg_software_contract()
             || retarget.trigger_x.is_some_and(|trigger_x| {
                 self.runtime.bg_pipeline_state.visible_pixels_output > trigger_x
             })
@@ -276,11 +512,21 @@ impl Ppu {
             && wx.saturating_sub(7) > self.runtime.bg_pipeline_state.visible_pixels_output
     }
 
+    fn cgb_dmg_software_previsible_wx_write_hits_window_tile_index(&self, wx: u8) -> bool {
+        self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window
+            && matches!(wx, 7..=166)
+            && wx.saturating_sub(7) >= self.runtime.bg_pipeline_state.current_transfer_x
+            && (wx.saturating_sub(7) - self.runtime.bg_pipeline_state.current_transfer_x)
+                .is_multiple_of(BG_TILE_WIDTH)
+    }
+
     pub(in crate::ppu) fn maybe_start_window_after_transfer_dot(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) -> bool {
-        if self.console_model.is_dmg_family()
+        if self.operating_mode.uses_dmg_software_contract()
             && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
             && self.runtime.bg_pipeline_state.scx_discard_remaining == 0
             && self.runtime.bg_pipeline_state.window_wy_latch
@@ -353,6 +599,12 @@ impl Ppu {
                 false
             }
             PpuMode3WindowStartDecision::StartNow => {
+                if self.console_model.is_cgb_family()
+                    && self.operating_mode.uses_dmg_software_contract()
+                    && self.runtime.bg_pipeline_state.window_started_this_line
+                {
+                    return false;
+                }
                 self.runtime
                     .bg_pipeline_state
                     .dmg_window_restart
@@ -420,7 +672,7 @@ impl Ppu {
         wx: u8,
     ) -> DmgPrevisibleWxPlan {
         let late_visible_write =
-            ctx.is_dmg_family && ctx.drawing_mode && ctx.visible_pixels_output != 0;
+            ctx.dmg_software_contract && ctx.drawing_mode && ctx.visible_pixels_output != 0;
         if late_visible_write
             && ctx.pending_one_hidden_prefix_resume
             && !ctx.live_wx_can_still_start_later_this_line
@@ -474,7 +726,7 @@ impl Ppu {
             };
         }
 
-        if !ctx.is_dmg_family
+        if !ctx.dmg_software_contract
             || !ctx.drawing_mode
             || !ctx.window_started_this_line
             || !ctx.window_wy_latch
@@ -496,6 +748,12 @@ impl Ppu {
 
         let cancel_only_low_wx =
             Self::is_dmg_low_wx_cancel_only_retarget(previous_wx, wx, ctx.visible_pixels_output);
+        if ctx.cgb_dmg_software_contract && !cancel_only_low_wx {
+            return DmgPrevisibleWxPlan {
+                followup_markers,
+                action: DmgPrevisibleWxPlanAction::KeepState,
+            };
+        }
         let trigger_x = match wx {
             Self::DMG_VISIBLE_WINDOW_ORIGIN_WX..=165 => {
                 Some(wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX)

@@ -66,6 +66,41 @@ fn arm_previsible_retarget_fixture(wx: u8, line_dot: u16, active_line_counter: u
     ppu
 }
 
+fn cgb_previsible_retarget_fixture(
+    wx: u8,
+    line_dot: u16,
+    active_line_counter: u8,
+    operating_mode: OperatingMode,
+) -> PpuTestRig {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(operating_mode);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: CGB_WINDOW_TEST_LCDC,
+        stat: 0x82,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: DMG_WINDOW_TEST_BGP,
+        wy: 0,
+        wx,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+    ppu.pipeline_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+    ppu.visible_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.pipeline_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.visible_registers.wx = wx;
+    ppu.pipeline_registers.wx = wx;
+    ppu.line_dot = line_dot;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = active_line_counter;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.fetcher = make_window_fetcher_state(PpuBgFetcherStage::TileIndex, 0, 0);
+    ppu
+}
+
 fn cgb_window_activation_startup(lcdc: u8) -> PpuTestRig {
     let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     ppu.write_bg_tile_row(0, 0, 0x00, 0x00);

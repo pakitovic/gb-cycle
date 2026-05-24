@@ -35,6 +35,7 @@ impl Ppu {
             PpuStepRegion::Mode3Control,
             || self.console_model.is_dmg_family(),
         );
+        let dmg_software_contract = self.operating_mode.uses_dmg_software_contract();
 
         if !self.runtime.bg_pipeline_state.mode3_started {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
@@ -102,12 +103,15 @@ impl Ppu {
             records_ppu_regions,
             PpuStepRegion::Mode3WindowEdge,
             || {
-                if dmg_family {
+                if dmg_software_contract {
                     self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
                     self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
                 }
                 self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
                 let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+                if dmg_software_contract {
+                    self.maybe_apply_pending_cgb_previsible_wx_phase_repaint(vram);
+                }
                 if dmg_family {
                     self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
                     self.apply_dmg_late_window_enable_override_repaint_up_to(
