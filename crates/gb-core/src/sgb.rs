@@ -1627,21 +1627,26 @@ impl SgbBorderState {
         self.chr_transfer_count = self.chr_transfer_count.saturating_add(1);
     }
 
-    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) {
+    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) -> SgbRgb555Color {
+        let mut backdrop_color = self.palettes[0].colors[0];
         self.tile_map.apply_pct_transfer(payload);
         for palette_index in 0..SGB_BORDER_PALETTE_COUNT {
             for color_index in 0..SGB_BORDER_PALETTE_COLORS {
                 let byte_index =
                     0x800 + palette_index * SGB_BORDER_PALETTE_COLORS * 2 + color_index * 2;
-                self.palettes[palette_index].colors[color_index] =
-                    SgbRgb555Color::from_packet_bytes(
-                        payload.bytes[byte_index],
-                        payload.bytes[byte_index + 1],
-                    );
+                let color = SgbRgb555Color::from_packet_bytes(
+                    payload.bytes[byte_index],
+                    payload.bytes[byte_index + 1],
+                );
+                self.palettes[palette_index].colors[color_index] = color;
+                if color_index == 0 {
+                    backdrop_color = color;
+                }
             }
         }
         self.pct_loaded = true;
         self.pct_transfer_count = self.pct_transfer_count.saturating_add(1);
+        backdrop_color
     }
 
     fn pixel_color(&self, x: usize, y: usize) -> (SgbRgb555Color, u8) {
@@ -1800,6 +1805,7 @@ pub struct SgbPacketTrace {
 pub struct SgbVideoState {
     pub border_loaded: bool,
     pub colorization_active: bool,
+    pub backdrop_color: SgbRgb555Color,
     pub palette_state: SgbPaletteState,
     pub system_palettes: SgbSystemPaletteState,
     pub player_palette_override: SgbPlayerPaletteOverrideState,
@@ -2483,6 +2489,8 @@ impl SgbHost {
                             dmg_framebuffer[lcd_y * SGB_LCD_WIDTH + lcd_x],
                         )
                         .raw();
+                } else if border_color_index == 0 {
+                    output[output_index] = self.video.application_backdrop_color().raw();
                 } else {
                     output[output_index] = border_pixel.raw();
                 }
@@ -2796,10 +2804,17 @@ const fn player_index(player: u8) -> Option<usize> {
 
 impl SgbVideoState {
     fn default_for_active_host(active: bool) -> Self {
+        let palette_state = SgbPaletteState::default_for_active_host(active);
+        let backdrop_color = if active {
+            palette_state.palette(0).color(0)
+        } else {
+            SgbRgb555Color::default()
+        };
         Self {
             border_loaded: false,
             colorization_active: active,
-            palette_state: SgbPaletteState::default_for_active_host(active),
+            backdrop_color,
+            palette_state,
             system_palettes: SgbSystemPaletteState::default(),
             player_palette_override: SgbPlayerPaletteOverrideState::default(),
             attributes: SgbAttributeState::default(),
@@ -2815,15 +2830,15 @@ impl SgbVideoState {
     }
 
     pub fn map_lcd_shade_to_rgb555(&self, shade: u8) -> SgbRgb555Color {
-        self.visible_palette_state().map_lcd_shade(shade)
+        self.visible_palette_color(self.visible_palette_state().base_palette_index, shade)
     }
 
     pub fn lcd_pixel_for_shade(&self, shade: u8) -> SgbRgb555Color {
         match self.mask {
-            SgbScreenMask::Cancel => self.visible_palette_state().map_lcd_shade(shade),
-            SgbScreenMask::Freeze => self.visible_palette_state().map_lcd_shade(shade),
+            SgbScreenMask::Cancel => self.map_lcd_shade_to_rgb555(shade),
+            SgbScreenMask::Freeze => self.map_lcd_shade_to_rgb555(shade),
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
-            SgbScreenMask::BlankColor0 => self.visible_palette_state().map_lcd_shade(0),
+            SgbScreenMask::BlankColor0 => self.visible_lcd_backdrop_color(),
         }
     }
 
@@ -2840,6 +2855,31 @@ impl SgbVideoState {
             &self.player_palette_override.palette_state
         } else {
             &self.palette_state
+        }
+    }
+
+    fn application_backdrop_color(&self) -> SgbRgb555Color {
+        self.backdrop_color
+    }
+
+    fn visible_lcd_backdrop_color(&self) -> SgbRgb555Color {
+        if self.player_palette_override.active {
+            self.player_palette_override
+                .palette_state
+                .palette(0)
+                .color(0)
+        } else {
+            self.backdrop_color
+        }
+    }
+
+    fn visible_palette_color(&self, palette_index: u8, color_index: u8) -> SgbRgb555Color {
+        if color_index & 0x03 == 0 {
+            self.visible_lcd_backdrop_color()
+        } else {
+            self.visible_palette_state()
+                .palette(palette_index)
+                .color(color_index)
         }
     }
 
@@ -2864,6 +2904,7 @@ impl SgbVideoState {
 
         let selection = sgb_boot_palette_selection_for_header(header, command_acceptance);
         self.palette_state.apply_boot_palette(selection);
+        self.backdrop_color = self.palette_state.palette(0).color(0);
         self.colorization_active = true;
     }
 
@@ -2885,7 +2926,7 @@ impl SgbVideoState {
                     self.live_lcd_pixel_for_framebuffer_index(framebuffer_index, shade)
                 }),
             SgbScreenMask::BlankBlack => SGB_RGB555_BLACK,
-            SgbScreenMask::BlankColor0 => self.visible_palette_state().palette(0).color(0),
+            SgbScreenMask::BlankColor0 => self.visible_lcd_backdrop_color(),
         }
     }
 
@@ -2897,14 +2938,13 @@ impl SgbVideoState {
         let palette_index = self
             .visible_attribute_map()
             .palette_index_for_framebuffer_index(framebuffer_index);
-        self.visible_palette_state()
-            .palette(palette_index)
-            .color(shade)
+        self.visible_palette_color(palette_index, shade)
     }
 
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
         self.palette_state
             .apply_direct_palette_command(command_id, bytes);
+        self.backdrop_color = SgbRgb555Color::from_packet_bytes(bytes[1], bytes[2]);
         self.colorization_active = true;
         self.last_palette_command_id = Some(command_id);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
@@ -2915,6 +2955,10 @@ impl SgbVideoState {
         let options = self
             .system_palettes
             .apply_pal_set(&mut self.palette_state, bytes);
+        self.backdrop_color = self
+            .palette_state
+            .palette((SGB_SCREEN_PALETTE_COUNT - 1) as u8)
+            .color(0);
         self.colorization_active = true;
         self.last_palette_command_id = Some(SGB_COMMAND_PAL_SET);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
@@ -3068,7 +3112,7 @@ impl SgbVideoState {
                 self.border.apply_chr_transfer(selection, &payload);
             }
             SgbVramTransferTarget::Pct => {
-                self.border.apply_pct_transfer(&payload);
+                self.backdrop_color = self.border.apply_pct_transfer(&payload);
                 self.border_loaded = true;
             }
             SgbVramTransferTarget::Pal => {
@@ -4306,6 +4350,52 @@ mod tests {
     }
 
     #[test]
+    fn border_color_zero_uses_shared_backdrop_outside_lcd_window() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(0));
+        host.capture_pending_vram_transfer(&solid_tile_color_1_transfer())
+            .expect("CHR_TRN should load a non-zero border tile");
+
+        let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_border_map_entry(&mut pct, 0, (5 << 10) | 1);
+        write_border_map_entry(&mut pct, 1, 4 << 10);
+        write_border_map_entry(
+            &mut pct,
+            (SGB_LCD_FRAME_ORIGIN_Y / 8) * SGB_BORDER_TILEMAP_WIDTH + SGB_LCD_FRAME_ORIGIN_X / 8,
+            (5 << 10) | 1,
+        );
+        write_border_palette_color(&mut pct, 0, 0, 0x0001);
+        write_border_palette_color(&mut pct, 0, 1, 0x03E0);
+        write_border_palette_color(&mut pct, 1, 0, 0x001F);
+        write_border_palette_color(&mut pct, 2, 0, 0x7FFF);
+
+        write_joyp_packet(&mut host, sgb_pct_trn_packet());
+        host.capture_pending_vram_transfer(&pct)
+            .expect("PCT_TRN should load border palette color 0 as shared backdrop");
+
+        let dmg_framebuffer = vec![3; SGB_LCD_PIXELS];
+        let frame = host
+            .compose_frame_rgb555(&dmg_framebuffer)
+            .expect("SGB host should compose border and LCD pixels");
+        assert_eq!(host.snapshot().video.backdrop_color.raw(), 0x7FFF);
+        assert_eq!(
+            frame[0], 0x7FFF,
+            "border color index 0 outside the GB window uses the shared backdrop, not the selected border palette's local color 0"
+        );
+        assert_eq!(
+            frame[8], 0x03E0,
+            "non-zero border pixels still use their selected border palette color"
+        );
+
+        let lcd_origin = SGB_LCD_FRAME_ORIGIN_Y * SGB_FRAME_WIDTH + SGB_LCD_FRAME_ORIGIN_X;
+        assert_eq!(
+            frame[lcd_origin], 0x4210,
+            "border color index 0 inside the GB window remains the transparent seam to the composed LCD image"
+        );
+    }
+
+    #[test]
     fn sgb_frame_composition_combines_border_and_lcd_window() {
         let mut host = accepted_sgb_host();
         write_joyp_packet(&mut host, sgb_pal01_packet());
@@ -4324,7 +4414,9 @@ mod tests {
                 write_border_map_entry(&mut pct, y * SGB_BORDER_TILEMAP_WIDTH + x, (4 << 10) | 1);
             }
         }
-        write_border_palette_color(&mut pct, 0, 0, 0x0000);
+        write_border_palette_color(&mut pct, 0, 0, 0x001F);
+        write_border_palette_color(&mut pct, 1, 0, 0x001F);
+        write_border_palette_color(&mut pct, 2, 0, 0x001F);
         write_border_palette_color(&mut pct, 0, 1, 0x03E0);
         write_joyp_packet(&mut host, sgb_pct_trn_packet());
         host.capture_pending_vram_transfer(&pct)
@@ -4502,6 +4594,10 @@ mod tests {
             restored.snapshot().video.palette_state,
             host.snapshot().video.palette_state
         );
+        assert_eq!(
+            restored.snapshot().video.backdrop_color,
+            host.snapshot().video.backdrop_color
+        );
         assert_eq!(restored.snapshot().video.palette_command_count, 1);
         assert_eq!(
             restored.snapshot().video.map_lcd_shade_to_rgb555(3).raw(),
@@ -4566,6 +4662,9 @@ mod tests {
             .expect("CHR_TRN should load border tile data before save");
         let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
         write_border_map_entry(&mut pct, 0, 4 << 10);
+        write_border_palette_color(&mut pct, 0, 0, 0x001F);
+        write_border_palette_color(&mut pct, 1, 0, 0x001F);
+        write_border_palette_color(&mut pct, 2, 0, 0x001F);
         write_border_palette_color(&mut pct, 0, 1, 0x03E0);
         write_joyp_packet(&mut host, sgb_pct_trn_packet());
         host.capture_pending_vram_transfer(&pct)
