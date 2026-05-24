@@ -173,6 +173,68 @@ fn cgb_mode3_lcdc5_writes_update_the_current_line_window_latch() {
 }
 
 #[test]
+fn cgb_dmg_software_same_line_startnow_suppresses_wx_retrigger_but_allows_lcdc5_reenable() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut wx_retrigger =
+            cgb_previsible_retarget_fixture(15, MODE2_DOTS + 80, 6, operating_mode);
+        wx_retrigger.bg_pipeline_state.visible_pixels_output = 8;
+        wx_retrigger.bg_pipeline_state.current_transfer_x = 16;
+        wx_retrigger.bg_pipeline_state.window_start_count_this_line = 1;
+        wx_retrigger.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+        wx_retrigger.bg_pipeline_state.window_lcdc5_latch = true;
+
+        assert!(
+            !wx_retrigger.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedVisiblePixel,
+                false,
+            )),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            wx_retrigger.bg_pipeline_state.window_start_count_this_line, 1,
+            "{operating_mode:?}"
+        );
+
+        let mut lcdc5_reenable =
+            cgb_previsible_retarget_fixture(15, MODE2_DOTS + 80, 6, operating_mode);
+        lcdc5_reenable.bg_pipeline_state.visible_pixels_output = 8;
+        lcdc5_reenable.bg_pipeline_state.current_transfer_x = 16;
+        lcdc5_reenable
+            .bg_pipeline_state
+            .window_start_count_this_line = 1;
+        lcdc5_reenable
+            .bg_pipeline_state
+            .fetcher
+            .abort_window_to_background();
+        lcdc5_reenable.bg_pipeline_state.window_lcdc5_latch = true;
+
+        assert!(
+            lcdc5_reenable.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedVisiblePixel,
+                false,
+            )),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Window,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable.bg_pipeline_state.window_active_line_counter, 1,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable
+                .bg_pipeline_state
+                .window_start_count_this_line,
+            2,
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
 fn first_window_tile_skips_the_normal_push_entry_delay() {
     let mut ppu = PpuTestRig::dmg();
     let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);

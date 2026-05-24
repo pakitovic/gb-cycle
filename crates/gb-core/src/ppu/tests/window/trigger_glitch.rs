@@ -835,6 +835,24 @@ fn cgb_dmg_software_previsible_live_wx_write_arms_only_on_window_tile_index_phas
             None,
             "{operating_mode:?}"
         );
+
+        let mut visible = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, operating_mode);
+        visible.bg_pipeline_state.visible_pixels_output = 41;
+        visible.bg_pipeline_state.current_transfer_x = 49;
+        visible
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_live_wx_trigger_glitch = Some(DmgPendingLiveWxTriggerGlitch::new(29));
+        visible.maybe_arm_dmg_live_wx_trigger_glitch(80);
+
+        assert_eq!(
+            visible
+                .bg_pipeline_state
+                .dmg_window_restart
+                .pending_live_wx_trigger_glitch,
+            None,
+            "{operating_mode:?}"
+        );
     }
 }
 

@@ -1051,6 +1051,7 @@ impl DmgPendingWindowReenableResume {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum CgbPrevisibleWxPhaseRepaintMode {
     FixedPattern,
+    Wx4ToWx5FixedPrefix,
     CurrentLowPlaneIntoHighPlane,
     CurrentHighPlaneWithWindowHighPlaneAsLowPlane {
         source_start_x: u16,
@@ -1087,6 +1088,17 @@ impl CgbPendingPrevisibleWxPhaseRepaint {
             pattern_len,
             pixels,
             mode: CgbPrevisibleWxPhaseRepaintMode::FixedPattern,
+        }
+    }
+
+    pub(super) const fn new_wx4_to_wx5_fixed_prefix() -> Self {
+        Self {
+            cancel_guard_x: 0,
+            start_x: 0,
+            end_x: 16,
+            pattern_len: 16,
+            pixels: [3, 3, 3, 3, 3, 0, 3, 3, 1, 1, 3, 3, 0, 3, 3, 1],
+            mode: CgbPrevisibleWxPhaseRepaintMode::Wx4ToWx5FixedPrefix,
         }
     }
 
