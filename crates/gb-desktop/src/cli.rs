@@ -1,7 +1,7 @@
 use crate::audio_recording::{
     DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecordingOptions,
 };
-use gb_core::{ApuRecordedChannel, ExecutionMode, HardwareRevision, StartupMode};
+use gb_core::{ApuRecordedChannel, ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
     DesktopDisplayPalette, DesktopFrameBlendingMode, DesktopSaveFlushPolicy, GamepadButtonBinding,
@@ -68,6 +68,7 @@ where
     let mut audio_recording_stem_channels = Vec::new();
     let mut requested_display_palette = None;
     let mut explicit_revision = None;
+    let mut explicit_sgb_video_standard = false;
     let mut test_runner = false;
     let mut test_runner_overrides = TestRunnerExplicitOverrides::default();
 
@@ -102,6 +103,13 @@ where
                 let revision = parse_revision(value.as_ref())?;
                 explicit_revision = Some(revision);
                 config.launch.revision = revision;
+            }
+            "--sgb-standard" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--sgb-standard requires a value".to_string());
+                };
+                config.launch.sgb_video_standard = parse_sgb_video_standard(value.as_ref())?;
+                explicit_sgb_video_standard = true;
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -305,7 +313,7 @@ where
                 .to_string(),
         );
     }
-    validate_model_axes(&config)?;
+    validate_model_axes(&config, explicit_sgb_video_standard)?;
     config.launch.normalize_revision_for_model();
 
     if config.launch.console_model == DesktopConsoleModel::GameBoy
@@ -351,7 +359,10 @@ where
     })))
 }
 
-fn validate_model_axes(config: &DesktopConfig) -> Result<(), String> {
+fn validate_model_axes(
+    config: &DesktopConfig,
+    explicit_sgb_video_standard: bool,
+) -> Result<(), String> {
     let console_model = config.launch.console_model.console_model();
     if !console_model.supports_revision(config.launch.revision) {
         return Err(format!(
@@ -361,11 +372,21 @@ fn validate_model_axes(config: &DesktopConfig) -> Result<(), String> {
             supported_revision_names(console_model)
         ));
     }
+    if explicit_sgb_video_standard
+        && config.launch.console_model != DesktopConsoleModel::SuperGameBoy
+    {
+        return Err("--sgb-standard requires --model SGB".to_string());
+    }
 
     Ok(())
 }
 
 fn apply_test_runner_defaults(config: &mut DesktopConfig, explicit: TestRunnerExplicitOverrides) {
+    config.launch.execution_mode = ExecutionMode::Permissive;
+    if config.launch.console_model == DesktopConsoleModel::GameBoy {
+        config.video.display_palette = DesktopDisplayPalette::Grey;
+    }
+    config.video.show_sgb_border = false;
     if !explicit.saves {
         config.saves.enabled = false;
     } else if !explicit.saves_disabled {
@@ -401,14 +422,15 @@ pub fn help_text() -> &'static str {
         "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
-        "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
+        "  --model <DMG|MGB|LGB|CGB|SGB|SGB2>    Select the console model/profile (default: DMG)\n",
         "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
         "                                         Select the active hardware revision for --model\n",
+        "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
-        "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+        "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and no SGB border\n",
         "  --benchmark <path>                     Run one portable benchmark case TOML\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
@@ -467,8 +489,10 @@ fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
         "MGB" => Ok(DesktopConsoleModel::GameBoyPocket),
         "LGB" => Ok(DesktopConsoleModel::GameBoyLight),
         "CGB" => Ok(DesktopConsoleModel::GameBoyColor),
+        "SGB" => Ok(DesktopConsoleModel::SuperGameBoy),
+        "SGB2" => Ok(DesktopConsoleModel::SuperGameBoy2),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, SGB, SGB2"
         )),
     }
 }
@@ -482,6 +506,16 @@ fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
         _ => Err(format!(
             "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+        )),
+    }
+}
+
+fn parse_sgb_video_standard(value: &str) -> Result<SgbVideoStandard, String> {
+    match value {
+        "ntsc" => Ok(SgbVideoStandard::Ntsc),
+        "pal" => Ok(SgbVideoStandard::Pal),
+        _ => Err(format!(
+            "unsupported --sgb-standard value {value:?}; expected ntsc or pal"
         )),
     }
 }
@@ -1048,8 +1082,28 @@ mod tests {
         assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(
             options.config.launch.execution_mode,
-            ExecutionMode::Experimental
+            ExecutionMode::Permissive
         );
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopDisplayPalette::Grey
+        );
+        assert!(!options.config.video.show_sgb_border);
+
+        let action = parse_cli_arguments(["demo.gb", "--model", "MGB", "--test-runner"])
+            .expect("test-runner should not force the DMG grey palette on non-DMG desktop models");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopConfig::default().video.display_palette
+        );
+        assert_eq!(
+            options.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert!(!options.config.video.show_sgb_border);
     }
 
     #[test]
@@ -1255,6 +1309,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_accepts_sgb_profiles_as_dmg_core_models() {
+        let action =
+            parse_cli_arguments(["demo.gb", "--model", "SGB"]).expect("SGB model should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(
+            options.config.launch.console_model.sgb_profile(),
+            Some(gb_core::SgbHostProfile::SgbNtsc)
+        );
+        assert_eq!(
+            options.config.launch.sgb_video_standard,
+            SgbVideoStandard::Ntsc
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--model", "SGB", "--sgb-standard", "pal"])
+            .expect("SGB PAL should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(
+            options.config.launch.sgb_video_standard,
+            SgbVideoStandard::Pal
+        );
+        assert_eq!(
+            options
+                .config
+                .launch
+                .machine_config_without_boot_rom_assets()
+                .sgb_profile,
+            Some(gb_core::SgbHostProfile::SgbPal)
+        );
+
+        let action =
+            parse_cli_arguments(["demo.gb", "--model", "SGB2"]).expect("SGB2 model should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::SuperGameBoy2
+        );
+        assert_eq!(options.config.launch.revision, HardwareRevision::DmgCpuC);
+        assert_eq!(
+            options.config.launch.console_model.sgb_profile(),
+            Some(gb_core::SgbHostProfile::Sgb2Ntsc)
+        );
+
+        let sgb2_standard_error =
+            parse_cli_arguments(["demo.gb", "--model", "SGB2", "--sgb-standard", "ntsc"])
+                .expect_err("SGB2 should not accept an explicit SGB standard");
+        assert_eq!(sgb2_standard_error, "--sgb-standard requires --model SGB");
+    }
+
+    #[test]
     fn parse_applies_grey_palette_only_for_the_final_dmg_model() {
         let action = parse_cli_arguments(["demo.gb", "--model", "DMG", "--palette", "grey"])
             .expect("DMG grey palette override should parse");
@@ -1366,12 +1484,20 @@ mod tests {
             parse_console_model("CGB"),
             Ok(DesktopConsoleModel::GameBoyColor)
         );
+        assert_eq!(
+            parse_console_model("SGB"),
+            Ok(DesktopConsoleModel::SuperGameBoy)
+        );
+        assert_eq!(
+            parse_console_model("SGB2"),
+            Ok(DesktopConsoleModel::SuperGameBoy2)
+        );
         for previous in [
             "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
         ] {
             let error = parse_console_model(previous).expect_err("previous models should fail");
             assert!(error.contains("unsupported --model value"));
-            assert!(error.contains("DMG, MGB, LGB, CGB"));
+            assert!(error.contains("DMG, MGB, LGB, CGB, SGB, SGB2"));
             assert!(!error.contains("game-boy, pocket, light, color"));
         }
         assert!(parse_console_model("sgb").is_err());

@@ -406,7 +406,7 @@ fn binary_real_boot_warns_for_mismatched_boot_rom_assets() {
     assert!(
         String::from_utf8(output.stderr)
             .expect("stderr should be UTF-8")
-            .contains("warning: boot ROM asset for DmgCpuC")
+            .contains("warning: boot ROM asset for Dmg")
     );
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");

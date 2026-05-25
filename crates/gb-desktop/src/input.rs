@@ -106,6 +106,12 @@ struct GamepadGyroState {
     baseline: Option<GamepadAccelerometerSample>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrontendJoypadTarget {
+    Local,
+    SgbPlayer(u8),
+}
+
 pub struct FrontendInputState {
     keyboard: SourceJoypadState,
     gamepad_buttons: SourceJoypadState,
@@ -125,13 +131,14 @@ impl FrontendInputState {
         *self = Self::new();
     }
 
-    pub fn set_keyboard_button(
+    pub fn set_keyboard_button_for_target(
         &mut self,
         machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
         button: JoypadButton,
         pressed: bool,
     ) {
-        self.set_source_button(InputSource::Keyboard, machine, button, pressed);
+        self.set_source_button(InputSource::Keyboard, machine, target, button, pressed);
     }
 
     pub fn set_gamepad_button(
@@ -140,7 +147,23 @@ impl FrontendInputState {
         button: JoypadButton,
         pressed: bool,
     ) {
-        self.set_source_button(InputSource::GamepadButtons, machine, button, pressed);
+        self.set_gamepad_button_for_target(machine, FrontendJoypadTarget::Local, button, pressed);
+    }
+
+    pub fn set_gamepad_button_for_target(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
+        button: JoypadButton,
+        pressed: bool,
+    ) {
+        self.set_source_button(
+            InputSource::GamepadButtons,
+            machine,
+            target,
+            button,
+            pressed,
+        );
     }
 
     pub fn set_gamepad_left_stick_button(
@@ -149,27 +172,64 @@ impl FrontendInputState {
         button: JoypadButton,
         pressed: bool,
     ) {
-        self.set_source_button(InputSource::GamepadLeftStick, machine, button, pressed);
+        self.set_gamepad_left_stick_button_for_target(
+            machine,
+            FrontendJoypadTarget::Local,
+            button,
+            pressed,
+        );
+    }
+
+    pub fn set_gamepad_left_stick_button_for_target(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
+        button: JoypadButton,
+        pressed: bool,
+    ) {
+        self.set_source_button(
+            InputSource::GamepadLeftStick,
+            machine,
+            target,
+            button,
+            pressed,
+        );
     }
 
     pub fn clear_gamepad(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        self.clear_gamepad_for_target(machine, FrontendJoypadTarget::Local);
+    }
+
+    pub fn clear_gamepad_for_target(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
+    ) {
         for button in JOYPAD_BUTTONS {
-            self.set_gamepad_button(machine, button, false);
-            self.set_gamepad_left_stick_button(machine, button, false);
+            self.set_gamepad_button_for_target(machine, target, button, false);
+            self.set_gamepad_left_stick_button_for_target(machine, target, button, false);
         }
     }
 
-    pub fn clear_keyboard(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+    pub fn clear_keyboard_for_target(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
+    ) {
         for button in JOYPAD_BUTTONS {
-            self.set_keyboard_button(machine, button, false);
+            self.set_keyboard_button_for_target(machine, target, button, false);
         }
     }
 
-    pub fn clear_all(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
-        self.clear_keyboard(machine);
-        self.clear_gamepad(machine);
+    pub fn clear_all_for_target(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
+    ) {
+        self.clear_keyboard_for_target(machine, target);
+        self.clear_gamepad_for_target(machine, target);
         for button in JOYPAD_BUTTONS {
-            machine.set_joypad_button_pressed(button, false);
+            apply_button_to_machine(machine, target, button, false);
         }
     }
 
@@ -177,13 +237,14 @@ impl FrontendInputState {
         &mut self,
         source: InputSource,
         machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
         button: JoypadButton,
         pressed: bool,
     ) {
         let previous_effective = self.effective_state();
         self.source_state_mut(source).set_pressed(button, pressed);
         let next_effective = self.effective_state();
-        self.apply_effective_state_delta(machine, previous_effective, next_effective);
+        self.apply_effective_state_delta(machine, target, previous_effective, next_effective);
     }
 
     #[cfg(test)]
@@ -204,6 +265,7 @@ impl FrontendInputState {
     fn apply_effective_state_delta(
         &self,
         machine: &mut Machine<TraceSummaryBuffer>,
+        target: FrontendJoypadTarget,
         previous: SourceJoypadState,
         next: SourceJoypadState,
     ) {
@@ -211,7 +273,7 @@ impl FrontendInputState {
             let was_pressed = previous.is_pressed(button);
             let is_pressed = next.is_pressed(button);
             if was_pressed != is_pressed {
-                machine.set_joypad_button_pressed(button, is_pressed);
+                apply_button_to_machine(machine, target, button, is_pressed);
             }
         }
     }
@@ -221,6 +283,20 @@ impl FrontendInputState {
             InputSource::Keyboard => &mut self.keyboard,
             InputSource::GamepadButtons => &mut self.gamepad_buttons,
             InputSource::GamepadLeftStick => &mut self.gamepad_left_stick,
+        }
+    }
+}
+
+fn apply_button_to_machine(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    target: FrontendJoypadTarget,
+    button: JoypadButton,
+    pressed: bool,
+) {
+    match target {
+        FrontendJoypadTarget::Local => machine.set_joypad_button_pressed(button, pressed),
+        FrontendJoypadTarget::SgbPlayer(player) => {
+            machine.set_sgb_joypad_button_pressed(player, button, pressed);
         }
     }
 }
@@ -1129,15 +1205,16 @@ fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> Str
 #[cfg(test)]
 mod tests {
     use super::{
-        AppliedGamepadRumble, FrontendInputState, GAMEPAD_ACCELEROMETER_SENSORS,
-        GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadGyroState, GamepadManager, GamepadRumbleState,
-        LeftStickDigitalState, SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED,
-        STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g,
-        axis_direction_state, default_gamepad_name, format_gamepad_enumeration_error,
-        format_open_gamepad_error, gamepad_button_binding_from_sdl_axis,
-        gamepad_button_binding_from_sdl_button, gamepad_trigger_axis_for_binding,
-        gamepad_trigger_axis_is_pressed, gamepad_trigger_axis_next_pressed, joystick_id_from_event,
-        right_stick_axis_to_milli_g, rumble_intensity, sdl_button_for_binding,
+        AppliedGamepadRumble, FrontendInputState, FrontendJoypadTarget,
+        GAMEPAD_ACCELEROMETER_SENSORS, GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadGyroState,
+        GamepadManager, GamepadRumbleState, LeftStickDigitalState,
+        SDL_STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED, STRONG_GAMEPAD_RUMBLE_INTENSITY,
+        WEAK_GAMEPAD_RUMBLE_INTENSITY, acceleration_to_milli_g, axis_direction_state,
+        default_gamepad_name, format_gamepad_enumeration_error, format_open_gamepad_error,
+        gamepad_button_binding_from_sdl_axis, gamepad_button_binding_from_sdl_button,
+        gamepad_trigger_axis_for_binding, gamepad_trigger_axis_is_pressed,
+        gamepad_trigger_axis_next_pressed, joystick_id_from_event, right_stick_axis_to_milli_g,
+        rumble_intensity, sdl_button_for_binding,
     };
     use gb_core::{
         ConsoleModel, JoypadButton, Machine, MachineConfig, Mbc7AccelerometerInput, StartupMode,
@@ -1487,7 +1564,12 @@ mod tests {
         let mut machine = test_machine();
         let mut input_state = FrontendInputState::new();
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::Left, true);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::Left,
+            true,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Left));
 
@@ -1523,15 +1605,30 @@ mod tests {
         let mut machine = test_machine();
         let mut input_state = FrontendInputState::new();
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::Up, true);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::Up,
+            true,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Up));
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::Down, true);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::Down,
+            true,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::Up, false);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::Up,
+            false,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Down));
     }
@@ -1541,12 +1638,22 @@ mod tests {
         let mut machine = test_machine();
         let mut input_state = FrontendInputState::new();
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::A, true);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::A,
+            true,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
 
         input_state.set_gamepad_button(&mut machine, JoypadButton::A, true);
-        input_state.set_keyboard_button(&mut machine, JoypadButton::A, false);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::A,
+            false,
+        );
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
 
@@ -1557,7 +1664,7 @@ mod tests {
             joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
         );
 
-        input_state.clear_keyboard(&mut machine);
+        input_state.clear_keyboard_for_target(&mut machine, FrontendJoypadTarget::Local);
         ingest_host_input(&mut machine);
         assert_eq!(
             pressed_mask(&machine),
@@ -1568,9 +1675,14 @@ mod tests {
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
 
-        input_state.set_keyboard_button(&mut machine, JoypadButton::Start, true);
+        input_state.set_keyboard_button_for_target(
+            &mut machine,
+            FrontendJoypadTarget::Local,
+            JoypadButton::Start,
+            true,
+        );
         input_state.set_gamepad_button(&mut machine, JoypadButton::B, true);
-        input_state.clear_all(&mut machine);
+        input_state.clear_all_for_target(&mut machine, FrontendJoypadTarget::Local);
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
     }
@@ -1584,7 +1696,7 @@ mod tests {
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Right));
 
-        input_state.clear_all(&mut machine);
+        input_state.clear_all_for_target(&mut machine, FrontendJoypadTarget::Local);
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
         assert!(!input_state.is_effectively_pressed(JoypadButton::Right));

@@ -5,11 +5,12 @@ use gb_benchmark::{
     target_frames_for_duration, target_tcycles_for_duration,
 };
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
-    CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError, CartridgePersistentStateError,
-    CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy, ConsoleModel, ExecutionMode,
-    HardwareRevision, JoypadButton, Machine, MachineConfig, MachineSaveState,
-    MachineSaveStateRestoreError, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
+    BootRomAssetError, BootRomAssetKind, BootRomAssets, CartridgeDiagnostic,
+    CartridgeDiagnosticSeverity, CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError,
+    CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
+    ConsoleModel, ExecutionMode, HardwareRevision, JoypadButton, Machine, MachineConfig,
+    MachineSaveState, MachineSaveStateRestoreError, PersistentCartState, SGB_FRAME_HEIGHT,
+    SGB_FRAME_WIDTH, SgbFlag, SgbHostProfile, SgbVideoStandard, StartupMode, TraceBuffer,
     TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
@@ -35,6 +36,8 @@ const DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT: u32 = 480;
 const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
+const SGB_HOST_FRAMEBUFFER_WIDTH: usize = SGB_FRAME_WIDTH;
+const SGB_HOST_FRAMEBUFFER_HEIGHT: usize = SGB_FRAME_HEIGHT;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 const DMG_GREY_DISPLAY_PALETTE: DisplayPalette = DisplayPalette {
     shades: [
@@ -49,14 +52,15 @@ const RUN_HELP_TEXT: &str = concat!(
     "  gb-cli run <rom> [options]\n",
     "\n",
     "Options:\n",
-    "  --model <DMG|MGB|LGB|CGB>             Select the console model (default: DMG)\n",
+    "  --model <DMG|MGB|LGB|CGB|SGB|SGB2>    Select the console model/profile (default: DMG)\n",
     "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
     "                                         Select the active hardware revision for --model\n",
+    "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
     "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
-    "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+    "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and no SGB border\n",
     "  --benchmark <path>                     Run one portable benchmark case TOML\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
     "  --tcycles <n>                          Stop after <n> T-cycles\n",
@@ -65,7 +69,8 @@ const RUN_HELP_TEXT: &str = concat!(
     "                                         with a 480-frame safety cap if handoff never arrives\n",
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
-    "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png (CGB PNG uses RGB555)\n",
+    "  --framebuffer-out <path>               Save the final framebuffer as PGM, or PNG when <path> ends in .png (SGB PNG uses 256x224 RGB555)\n",
+    "  --border-off                           Hide the SGB/SGB2 host border for PNG framebuffer artifacts; ignored by other models\n",
     "  --palette <grey>                       Use the DMG grey framebuffer palette when --model DMG is active\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
@@ -119,6 +124,8 @@ enum RunModel {
     Pocket,
     Light,
     Color,
+    SuperGameBoy,
+    SuperGameBoy2,
 }
 
 impl RunModel {
@@ -128,6 +135,30 @@ impl RunModel {
             Self::Pocket => ConsoleModel::GameBoyPocket,
             Self::Light => ConsoleModel::GameBoyLight,
             Self::Color => ConsoleModel::GameBoyColor,
+            Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
+        }
+    }
+
+    #[cfg(test)]
+    const fn sgb_profile(self) -> Option<SgbHostProfile> {
+        match self {
+            Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
+            Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
+        }
+    }
+
+    const fn sgb_profile_for_standard(
+        self,
+        video_standard: SgbVideoStandard,
+    ) -> Option<SgbHostProfile> {
+        match self {
+            Self::SuperGameBoy => match video_standard {
+                SgbVideoStandard::Ntsc => Some(SgbHostProfile::SgbNtsc),
+                SgbVideoStandard::Pal => Some(SgbHostProfile::SgbPal),
+            },
+            Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
         }
     }
 
@@ -137,6 +168,8 @@ impl RunModel {
             Self::Pocket => "MGB",
             Self::Light => "LGB",
             Self::Color => "CGB",
+            Self::SuperGameBoy => "SGB",
+            Self::SuperGameBoy2 => "SGB2",
         }
     }
 }
@@ -226,6 +259,7 @@ struct RunOptions {
     rom_path: PathBuf,
     model: RunModel,
     revision: HardwareRevision,
+    sgb_video_standard: SgbVideoStandard,
     startup_mode: StartupMode,
     execution_mode: ExecutionMode,
     boot_rom_dir: Option<PathBuf>,
@@ -236,6 +270,7 @@ struct RunOptions {
     serial_stdout: bool,
     serial_out: Option<PathBuf>,
     framebuffer_out: Option<PathBuf>,
+    show_sgb_border: bool,
     display_palette: Option<RunDisplayPalette>,
     trace_out: Option<PathBuf>,
     state_in: Option<PathBuf>,
@@ -253,6 +288,7 @@ impl RunOptions {
             rom_path,
             model: RunModel::default(),
             revision: RunModel::default().console_model().default_revision(),
+            sgb_video_standard: SgbVideoStandard::default(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             boot_rom_dir: None,
@@ -263,6 +299,7 @@ impl RunOptions {
             serial_stdout: false,
             serial_out: None,
             framebuffer_out: None,
+            show_sgb_border: true,
             display_palette: None,
             trace_out: None,
             state_in: None,
@@ -393,6 +430,20 @@ impl CliMachine {
         match self {
             Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
             Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+        }
+    }
+
+    fn sgb_framebuffer_rgb555(&self) -> Option<Vec<u16>> {
+        match self {
+            Self::Buffered(machine) => machine.sgb_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.sgb_framebuffer_rgb555(),
+        }
+    }
+
+    fn sgb_lcd_framebuffer_rgb555(&self) -> Option<Vec<u16>> {
+        match self {
+            Self::Buffered(machine) => machine.sgb_lcd_framebuffer_rgb555(),
+            Self::Summary(machine) => machine.sgb_lcd_framebuffer_rgb555(),
         }
     }
 
@@ -536,6 +587,7 @@ where
     let mut test_runner_requested = false;
     let mut save_policy_explicit = false;
     let mut revision_explicit = false;
+    let mut sgb_video_standard_explicit = false;
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -558,6 +610,15 @@ where
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().revision = parse_revision(value.as_ref())?;
                 revision_explicit = true;
+            }
+            "--sgb-standard" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--sgb-standard requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().sgb_video_standard =
+                    parse_sgb_video_standard(value.as_ref())?;
+                sgb_video_standard_explicit = true;
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -636,6 +697,10 @@ where
                 };
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().framebuffer_out = Some(PathBuf::from(value.as_ref()));
+            }
+            "--border-off" => {
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().show_sgb_border = false;
             }
             "--palette" => {
                 let Some(value) = arguments.next() else {
@@ -726,6 +791,9 @@ where
         "missing required ROM path; run `gb-cli run --help` for usage".to_string()
     })?;
     options.test_runner |= test_runner_requested;
+    if options.test_runner {
+        apply_test_runner_defaults(&mut options);
+    }
     if options.save_dir.is_none() {
         if options.save_key.is_some() {
             return Err("--save-key requires --save-dir".to_string());
@@ -740,12 +808,22 @@ where
     if options.model != RunModel::GameBoy {
         options.display_palette = None;
     }
-    validate_run_model_axes(&options)?;
+    validate_run_model_axes(&options, sgb_video_standard_explicit)?;
 
     Ok(CliAction::Run(Box::new(options)))
 }
 
-fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
+fn apply_test_runner_defaults(options: &mut RunOptions) {
+    options.test_runner = true;
+    options.execution_mode = ExecutionMode::Permissive;
+    options.show_sgb_border = false;
+    options.display_palette = Some(RunDisplayPalette::Grey);
+}
+
+fn validate_run_model_axes(
+    options: &RunOptions,
+    sgb_video_standard_explicit: bool,
+) -> Result<(), String> {
     let console_model = options.model.console_model();
     if !console_model.supports_revision(options.revision) {
         return Err(format!(
@@ -754,6 +832,9 @@ fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
             options.model.name(),
             supported_revision_names(console_model)
         ));
+    }
+    if sgb_video_standard_explicit && options.model != RunModel::SuperGameBoy {
+        return Err("--sgb-standard requires --model SGB".to_string());
     }
 
     Ok(())
@@ -915,12 +996,13 @@ fn run_benchmark_case(
     let framebuffer_out = benchmark_case
         .screenshot
         .then(|| frontend_screenshot_path(GB_CLI_FRONTEND, &benchmark_case.artifact_id));
-    let run_options = RunOptions {
+    let mut run_options = RunOptions {
         rom_path: benchmark_case.rom.clone(),
         model: run_model_from_benchmark(benchmark_case.model),
         revision: run_model_from_benchmark(benchmark_case.model)
             .console_model()
             .default_revision(),
+        sgb_video_standard: SgbVideoStandard::default(),
         startup_mode: startup_mode_from_benchmark(benchmark_case.startup),
         execution_mode: execution_mode_from_benchmark(benchmark_case.mode),
         boot_rom_dir: None,
@@ -931,6 +1013,7 @@ fn run_benchmark_case(
         serial_stdout: false,
         serial_out: None,
         framebuffer_out,
+        show_sgb_border: true,
         display_palette: benchmark_case.palette.map(display_palette_from_benchmark),
         trace_out: None,
         state_in: None,
@@ -941,6 +1024,12 @@ fn run_benchmark_case(
         test_runner,
         benchmark_case: Some(benchmark_case),
     };
+    if run_options.test_runner {
+        apply_test_runner_defaults(&mut run_options);
+    }
+    if run_options.model != RunModel::GameBoy {
+        run_options.display_palette = None;
+    }
 
     run_command(run_options, stdout, stderr)
 }
@@ -957,11 +1046,17 @@ fn run_command(
         .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
 
     let boot_rom_assets = load_boot_rom_assets(&options, &current_dir, stderr)?;
-    let config = MachineConfig::new(options.model.console_model())
+    let mut config = MachineConfig::new(options.model.console_model())
         .with_startup_mode(options.startup_mode)
         .with_revision(options.effective_revision())
         .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
         .with_boot_rom_assets(boot_rom_assets);
+    if let Some(profile) = options
+        .model
+        .sgb_profile_for_standard(options.sgb_video_standard)
+    {
+        config = config.with_sgb_profile(profile);
+    }
     let mut machine = CliMachine::new(config, options.trace_out.is_some());
     let diagnostics = machine
         .load_cartridge(rom_bytes)
@@ -1075,9 +1170,15 @@ fn run_command(
         write_bytes_with_parent(serial_out, serial_bytes)?;
     }
     if let Some(framebuffer_out) = &options.framebuffer_out {
+        let sgb_framebuffer_rgb555 =
+            sgb_framebuffer_artifact_for_output(&machine, options.show_sgb_border);
+        let sgb_framebuffer_rgb555 = sgb_framebuffer_rgb555
+            .as_ref()
+            .map(|(width, height, pixels)| (*width, *height, pixels.as_slice()));
         let framebuffer_image = encode_framebuffer_artifact(
             framebuffer_out,
             machine.framebuffer(),
+            sgb_framebuffer_rgb555,
             machine.cgb_framebuffer_rgb555(),
             options.effective_display_palette(),
         )
@@ -1670,17 +1771,22 @@ fn load_boot_rom_assets(
         return Ok(BootRomAssets::none());
     };
     validate_explicit_directory_input("--boot-rom-dir", options.boot_rom_dir.as_deref(), &root)?;
-    let revision = options.effective_revision();
-    let image_path = root.join(BootRomAssets::filename(revision));
+    let asset = BootRomAssetKind::from_machine_profile(
+        options.effective_revision(),
+        options
+            .model
+            .sgb_profile_for_standard(options.sgb_video_standard),
+    );
+    let image_path = root.join(asset.filename());
     match options.boot_rom_verify {
         BootRomVerificationMode::Off => {}
         BootRomVerificationMode::Warn => {
-            if let Err(error) = verify_boot_rom_file(&image_path, revision) {
+            if let Err(error) = verify_boot_rom_file(&image_path, asset) {
                 writeln_checked(stderr, &format!("warning: {error}"))?;
             }
         }
         BootRomVerificationMode::Strict => {
-            verify_boot_rom_file(&image_path, revision)?;
+            verify_boot_rom_file(&image_path, asset)?;
         }
     }
 
@@ -1856,8 +1962,10 @@ fn parse_run_model(value: &str) -> Result<RunModel, String> {
         "MGB" => Ok(RunModel::Pocket),
         "LGB" => Ok(RunModel::Light),
         "CGB" => Ok(RunModel::Color),
+        "SGB" => Ok(RunModel::SuperGameBoy),
+        "SGB2" => Ok(RunModel::SuperGameBoy2),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, SGB, SGB2"
         )),
     }
 }
@@ -1871,6 +1979,16 @@ fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
         _ => Err(format!(
             "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+        )),
+    }
+}
+
+fn parse_sgb_video_standard(value: &str) -> Result<SgbVideoStandard, String> {
+    match value {
+        "ntsc" => Ok(SgbVideoStandard::Ntsc),
+        "pal" => Ok(SgbVideoStandard::Pal),
+        _ => Err(format!(
+            "unsupported --sgb-standard value {value:?}; expected ntsc or pal"
         )),
     }
 }
@@ -2019,9 +2137,29 @@ fn framebuffer_output_format(path: &Path) -> FramebufferOutputFormat {
     }
 }
 
+fn sgb_framebuffer_artifact_for_output(
+    machine: &CliMachine,
+    show_sgb_border: bool,
+) -> Option<(usize, usize, Vec<u16>)> {
+    if show_sgb_border {
+        machine.sgb_framebuffer_rgb555().map(|pixels| {
+            (
+                SGB_HOST_FRAMEBUFFER_WIDTH,
+                SGB_HOST_FRAMEBUFFER_HEIGHT,
+                pixels,
+            )
+        })
+    } else {
+        machine
+            .sgb_lcd_framebuffer_rgb555()
+            .map(|pixels| (FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, pixels))
+    }
+}
+
 fn encode_framebuffer_artifact(
     path: &Path,
     framebuffer: &[u8],
+    sgb_framebuffer_rgb555: Option<(usize, usize, &[u16])>,
     cgb_framebuffer_rgb555: Option<&[u16]>,
     display_palette: Option<DisplayPalette>,
 ) -> io::Result<Vec<u8>> {
@@ -2034,8 +2172,14 @@ fn encode_framebuffer_artifact(
             }
         }
         FramebufferOutputFormat::Png => {
-            if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
-                encode_rgb555_framebuffer_png(cgb_framebuffer_rgb555)
+            if let Some((width, height, sgb_framebuffer_rgb555)) = sgb_framebuffer_rgb555 {
+                encode_rgb555_framebuffer_png(width, height, sgb_framebuffer_rgb555)
+            } else if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
+                encode_rgb555_framebuffer_png(
+                    FRAMEBUFFER_WIDTH,
+                    FRAMEBUFFER_HEIGHT,
+                    cgb_framebuffer_rgb555,
+                )
             } else if let Some(display_palette) = display_palette {
                 encode_framebuffer_palette_png(framebuffer, display_palette)
             } else {
@@ -2080,13 +2224,17 @@ fn encode_framebuffer_palette_png(
     encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
 }
 
-fn encode_rgb555_framebuffer_png(framebuffer: &[u16]) -> io::Result<Vec<u8>> {
+fn encode_rgb555_framebuffer_png(
+    width: usize,
+    height: usize,
+    framebuffer: &[u16],
+) -> io::Result<Vec<u8>> {
     let pixels = framebuffer
         .iter()
         .copied()
         .map(rgb555_to_rgb888)
         .collect::<Vec<_>>();
-    encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
+    encode_rgb_png(width, height, &pixels)
 }
 
 fn rgb555_to_rgb888(color: u16) -> [u8; 3] {
@@ -2188,30 +2336,31 @@ fn format_boot_rom_asset_load_error(root: &Path, error: BootRomAssetError) -> St
     )
 }
 
-fn verify_boot_rom_file(path: &Path, revision: HardwareRevision) -> Result<(), String> {
+fn verify_boot_rom_file(path: &Path, asset: impl Into<BootRomAssetKind>) -> Result<(), String> {
+    let asset = asset.into();
     let bytes = fs::read(path).map_err(|error| {
         format!(
             "failed to read boot ROM asset for {:?} at {}: {}",
-            revision,
+            asset,
             path.display(),
             error
         )
     })?;
-    if bytes.len() != revision.boot_rom_expected_size() {
+    if bytes.len() != asset.expected_size() {
         return Err(format!(
             "boot ROM asset for {:?} at {} has unexpected size: expected {}, got {}",
-            revision,
+            asset,
             path.display(),
-            revision.boot_rom_expected_size(),
+            asset.expected_size(),
             bytes.len()
         ));
     }
     let actual_sha256 = sha256_hex(&bytes);
-    let expected_sha256 = revision.boot_rom_expected_sha256();
+    let expected_sha256 = asset.expected_sha256();
     if actual_sha256 != expected_sha256 {
         return Err(format!(
             "boot ROM asset for {:?} at {} has unexpected sha256: expected {}, got {}",
-            revision,
+            asset,
             path.display(),
             expected_sha256,
             actual_sha256

@@ -2,7 +2,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gb_core::HardwareRevision;
+use gb_core::{BootRomAssetKind, HardwareRevision};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,26 +25,26 @@ impl BootRomVerificationMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootRomVerificationIssue {
     MissingRoot {
-        revision: HardwareRevision,
+        asset: BootRomAssetKind,
         env_var: &'static str,
     },
     MissingFile {
-        revision: HardwareRevision,
+        asset: BootRomAssetKind,
         path: PathBuf,
     },
     ReadFile {
-        revision: HardwareRevision,
+        asset: BootRomAssetKind,
         path: PathBuf,
         message: String,
     },
     HashMismatch {
-        revision: HardwareRevision,
+        asset: BootRomAssetKind,
         path: PathBuf,
         expected_sha256: &'static str,
         actual_sha256: String,
     },
     SizeMismatch {
-        revision: HardwareRevision,
+        asset: BootRomAssetKind,
         path: PathBuf,
         expected_size: usize,
         actual_size: usize,
@@ -54,50 +54,50 @@ pub enum BootRomVerificationIssue {
 impl fmt::Display for BootRomVerificationIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingRoot { revision, env_var } => write!(
+            Self::MissingRoot { asset, env_var } => write!(
                 f,
                 "boot ROM root is not configured for {:?}; set {}",
-                revision, env_var
+                asset, env_var
             ),
-            Self::MissingFile { revision, path } => write!(
+            Self::MissingFile { asset, path } => write!(
                 f,
                 "boot ROM asset {:?} is missing or unreadable at {}",
-                revision,
+                asset,
                 path.display()
             ),
             Self::ReadFile {
-                revision,
+                asset,
                 path,
                 message,
             } => write!(
                 f,
                 "failed to read boot ROM asset {:?} at {}: {}",
-                revision,
+                asset,
                 path.display(),
                 message
             ),
             Self::HashMismatch {
-                revision,
+                asset,
                 path,
                 expected_sha256,
                 actual_sha256,
             } => write!(
                 f,
                 "boot ROM asset {:?} at {} has unexpected sha256: expected {}, got {}",
-                revision,
+                asset,
                 path.display(),
                 expected_sha256,
                 actual_sha256
             ),
             Self::SizeMismatch {
-                revision,
+                asset,
                 path,
                 expected_size,
                 actual_size,
             } => write!(
                 f,
                 "boot ROM asset {:?} at {} has unexpected size: expected {} bytes, got {}",
-                revision,
+                asset,
                 path.display(),
                 expected_size,
                 actual_size
@@ -112,25 +112,32 @@ pub fn verify_boot_rom_file(
     path: &Path,
     revision: HardwareRevision,
 ) -> Result<(), BootRomVerificationIssue> {
+    verify_boot_rom_asset_file(path, BootRomAssetKind::from_revision(revision))
+}
+
+pub fn verify_boot_rom_asset_file(
+    path: &Path,
+    asset: BootRomAssetKind,
+) -> Result<(), BootRomVerificationIssue> {
     let bytes = fs::read(path).map_err(|source| {
         if source.kind() == std::io::ErrorKind::NotFound {
             BootRomVerificationIssue::MissingFile {
-                revision,
+                asset,
                 path: path.to_path_buf(),
             }
         } else {
             BootRomVerificationIssue::ReadFile {
-                revision,
+                asset,
                 path: path.to_path_buf(),
                 message: source.to_string(),
             }
         }
     })?;
 
-    let expected_size = expected_boot_rom_size(revision);
+    let expected_size = expected_boot_rom_asset_size(asset);
     if bytes.len() != expected_size {
         return Err(BootRomVerificationIssue::SizeMismatch {
-            revision,
+            asset,
             path: path.to_path_buf(),
             expected_size,
             actual_size: bytes.len(),
@@ -138,10 +145,10 @@ pub fn verify_boot_rom_file(
     }
 
     let actual_sha256 = sha256_hex(&bytes);
-    let expected_sha256 = expected_boot_rom_sha256(revision);
+    let expected_sha256 = expected_boot_rom_asset_sha256(asset);
     if actual_sha256 != expected_sha256 {
         return Err(BootRomVerificationIssue::HashMismatch {
-            revision,
+            asset,
             path: path.to_path_buf(),
             expected_sha256,
             actual_sha256,
@@ -156,24 +163,40 @@ pub fn enforce_boot_rom_verification(
     path: &Path,
     revision: HardwareRevision,
 ) -> Result<(), BootRomVerificationIssue> {
+    enforce_boot_rom_asset_verification(mode, path, BootRomAssetKind::from_revision(revision))
+}
+
+pub fn enforce_boot_rom_asset_verification(
+    mode: BootRomVerificationMode,
+    path: &Path,
+    asset: BootRomAssetKind,
+) -> Result<(), BootRomVerificationIssue> {
     match mode {
         BootRomVerificationMode::Off => Ok(()),
         BootRomVerificationMode::Warn => {
-            if let Err(issue) = verify_boot_rom_file(path, revision) {
+            if let Err(issue) = verify_boot_rom_asset_file(path, asset) {
                 eprintln!("warning: {issue}");
             }
             Ok(())
         }
-        BootRomVerificationMode::Strict => verify_boot_rom_file(path, revision),
+        BootRomVerificationMode::Strict => verify_boot_rom_asset_file(path, asset),
     }
 }
 
 pub fn expected_boot_rom_sha256(revision: HardwareRevision) -> &'static str {
-    revision.boot_rom_expected_sha256()
+    expected_boot_rom_asset_sha256(BootRomAssetKind::from_revision(revision))
+}
+
+pub fn expected_boot_rom_asset_sha256(asset: BootRomAssetKind) -> &'static str {
+    asset.expected_sha256()
 }
 
 pub const fn expected_boot_rom_size(revision: HardwareRevision) -> usize {
-    revision.boot_rom_expected_size()
+    BootRomAssetKind::from_revision(revision).expected_size()
+}
+
+pub const fn expected_boot_rom_asset_size(asset: BootRomAssetKind) -> usize {
+    asset.expected_size()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -189,11 +212,13 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use gb_core::HardwareRevision;
+    use gb_core::{BootRomAssetKind, HardwareRevision};
 
     use super::{
-        BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
-        expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
+        BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_asset_verification,
+        enforce_boot_rom_verification, expected_boot_rom_asset_sha256,
+        expected_boot_rom_asset_size, expected_boot_rom_sha256, expected_boot_rom_size,
+        verify_boot_rom_asset_file, verify_boot_rom_file,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -234,6 +259,14 @@ mod tests {
             expected_boot_rom_sha256(HardwareRevision::CpuCgbE),
             "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9"
         );
+        assert_eq!(
+            expected_boot_rom_asset_sha256(BootRomAssetKind::Sgb),
+            "0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360"
+        );
+        assert_eq!(
+            expected_boot_rom_asset_sha256(BootRomAssetKind::Sgb2),
+            "fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988"
+        );
     }
 
     #[test]
@@ -244,6 +277,39 @@ mod tests {
         assert_eq!(expected_boot_rom_size(HardwareRevision::CpuCgb), 2304);
         assert_eq!(expected_boot_rom_size(HardwareRevision::CpuCgbC), 2304);
         assert_eq!(expected_boot_rom_size(HardwareRevision::CpuCgbE), 2304);
+        assert_eq!(expected_boot_rom_asset_size(BootRomAssetKind::Sgb), 256);
+        assert_eq!(expected_boot_rom_asset_size(BootRomAssetKind::Sgb2), 256);
+    }
+
+    #[test]
+    fn sgb_asset_verification_uses_sgb_boot_rom_identity() {
+        let temp_dir = unique_temp_dir("sgb-hash-mismatch");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let path = temp_dir.join("sgb_boot.bin");
+        fs::write(
+            &path,
+            vec![0xA5; expected_boot_rom_asset_size(BootRomAssetKind::Sgb)],
+        )
+        .expect("sgb boot rom should be writable");
+
+        let error = verify_boot_rom_asset_file(&path, BootRomAssetKind::Sgb)
+            .expect_err("synthetic SGB bytes should fail strict verification");
+        assert!(matches!(
+            error,
+            BootRomVerificationIssue::HashMismatch {
+                asset: BootRomAssetKind::Sgb,
+                ..
+            }
+        ));
+
+        enforce_boot_rom_asset_verification(
+            BootRomVerificationMode::Off,
+            &path,
+            BootRomAssetKind::Sgb2,
+        )
+        .expect("off mode should allow SGB2 verification to be skipped");
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
     }
 
     #[test]
@@ -354,7 +420,7 @@ mod tests {
     #[test]
     fn issue_display_mentions_revision_expected_and_actual_hashes() {
         let mismatch = BootRomVerificationIssue::HashMismatch {
-            revision: HardwareRevision::CpuMgb,
+            asset: BootRomAssetKind::Mgb,
             path: PathBuf::from("/tmp/mgb_boot.bin"),
             expected_sha256: "expected",
             actual_sha256: "actual".to_string(),

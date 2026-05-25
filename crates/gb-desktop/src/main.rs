@@ -32,14 +32,16 @@ use gb_core::{
     CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
     CpuExecutionState, CpuRegisters, CpuSnapshot,
-    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_SECOND,
-    DebugWramAddressSample, ExecutionMode, HardwareRevision, InterruptControllerSnapshot,
-    JoypadButton, JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
-    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineRewindBuffer,
-    MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
-    PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_FRAME,
+    DMG_T_CYCLES_PER_SECOND, DebugWramAddressSample, ExecutionMode, HardwareRevision,
+    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot,
+    MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    Machine, MachineConfig, MachineRewindBuffer, MachineRewindFrameBoundaryTracker,
+    MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame,
+    PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
     PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
+    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, SgbClockRate,
+    SgbVideoStandard, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -59,7 +61,7 @@ use gb_persistence::{
     import_external_cartridge_save, uses_battery_backed_hardware_persistence,
 };
 use input::{
-    FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_axis,
+    FrontendInputState, FrontendJoypadTarget, GamepadManager, gamepad_button_binding_from_sdl_axis,
     gamepad_button_binding_from_sdl_button, gamepad_trigger_axis_is_pressed,
     gamepad_trigger_axis_next_pressed,
 };
@@ -113,9 +115,10 @@ use std::time::{Duration, Instant, SystemTime};
 
 const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
+const SGB_HOST_FRAMEBUFFER_WIDTH: u32 = SGB_FRAME_WIDTH as u32;
+const SGB_HOST_FRAMEBUFFER_HEIGHT: u32 = SGB_FRAME_HEIGHT as u32;
 #[cfg(test)]
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
-const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
 const AUDIO_QUEUE_TARGET_MS: f64 = 96.0;
 const AUDIO_QUEUE_DEADBAND_MS: f64 = 24.0;
 const AUDIO_QUEUE_PACING_GAIN: f64 = 0.10;
@@ -140,8 +143,9 @@ struct FramebufferDimensions {
     height: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FramebufferPanelInput<'a> {
+    dimensions: FramebufferDimensions,
     framebuffer: &'a [u8],
     framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
     bgwin_framebuffer: &'a [u8],
@@ -149,12 +153,20 @@ struct FramebufferPanelInput<'a> {
     bgwin_framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
     display_palette: DisplayPalette,
     cgb_framebuffer_rgb555: Option<&'a [u16]>,
+    sgb_framebuffer_rgb555: Option<Vec<u16>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FramebufferRenderInput<'a> {
     dimensions: FramebufferDimensions,
     panels: [Option<FramebufferPanelInput<'a>>; PLAYER_SLOT_COUNT],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FramebufferPresentationSource<'a> {
+    machine: &'a DesktopEmulationSession,
+    video_options: &'a VideoOptions,
+    session_has_loaded_rom: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -3610,6 +3622,7 @@ impl AudioQueuePacingCorrectionPolicy {
 
 struct FramePacer {
     next_frame_start: Instant,
+    frame_duration: Duration,
     audio_queue_pacing_correction_enabled: bool,
 }
 
@@ -3746,12 +3759,21 @@ fn u128_to_u64_saturating(value: u128) -> u64 {
 }
 
 impl FramePacer {
-    fn new(_vsync_enabled: bool) -> Self {
+    fn new(_vsync_enabled: bool, frame_duration: Duration) -> Self {
         Self {
             next_frame_start: Instant::now(),
+            frame_duration,
             audio_queue_pacing_correction_enabled: AudioQueuePacingCorrectionPolicy::from_env()
                 .correction_enabled(),
         }
+    }
+
+    fn set_frame_duration(&mut self, frame_duration: Duration) {
+        if self.frame_duration == frame_duration {
+            return;
+        }
+        self.frame_duration = frame_duration;
+        self.reset_host_pacing();
     }
 
     fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> FramePacingSample {
@@ -3759,7 +3781,7 @@ impl FramePacer {
             audio_queue_ms,
             self.audio_queue_pacing_correction_enabled,
         );
-        self.next_frame_start += FRAME_DURATION + audio_correction;
+        self.next_frame_start += self.frame_duration + audio_correction;
         let now = Instant::now();
         if now < self.next_frame_start {
             let sleep_target_duration = self.next_frame_start - now;
@@ -3896,6 +3918,7 @@ struct FramePerformanceSample {
 
 struct PerformanceCounter {
     base_title: String,
+    target_frame_rate_hz: f64,
     emulation_profile_mode: EmulationProfileMode,
     emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
     emulation_profile_request_in_flight: bool,
@@ -4030,6 +4053,7 @@ impl PerformanceCounter {
     ) -> Self {
         Self {
             base_title,
+            target_frame_rate_hz: target_frame_rate_hz(),
             emulation_profile_mode,
             emulation_profile_worker: emulation_profile_mode
                 .enabled()
@@ -4154,6 +4178,10 @@ impl PerformanceCounter {
             sample_ly_0_stall_lcd_disabled_t_cycles_observations: 0,
             hud_snapshot: None,
         }
+    }
+
+    fn set_target_frame_rate_hz(&mut self, target_frame_rate_hz: f64) {
+        self.target_frame_rate_hz = target_frame_rate_hz;
     }
 
     fn record_presented_frame(
@@ -4452,7 +4480,7 @@ impl PerformanceCounter {
 
         PerformanceHudSnapshot {
             fps,
-            speed_percent: fps / target_frame_rate_hz() * 100.0,
+            speed_percent: fps / self.target_frame_rate_hz * 100.0,
             frame_time_ms: elapsed_secs * 1_000.0 / frames_f64,
             emulation_time_ms: self.sample_emulation_duration.as_secs_f64() * 1_000.0 / frames_f64,
             render_time_ms: self.sample_render_duration.as_secs_f64() * 1_000.0 / frames_f64,
@@ -5474,6 +5502,63 @@ fn player_session_kind(machine: &DesktopEmulationSession) -> DesktopPlayerSessio
     DesktopPlayerSessionKind::Single
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlayerInputRoute {
+    keyboard_profile: PlayerKeyboardProfile,
+    target: FrontendJoypadTarget,
+}
+
+fn input_route_for_player_slot(
+    machine: &DesktopEmulationSession,
+    session_kind: DesktopPlayerSessionKind,
+    slot: PlayerSlot,
+) -> Option<PlayerInputRoute> {
+    let policy = host_policy_for_slot(session_kind, slot);
+    if policy.keyboard_profile != PlayerKeyboardProfile::Disabled {
+        return Some(PlayerInputRoute {
+            keyboard_profile: policy.keyboard_profile,
+            target: FrontendJoypadTarget::Local,
+        });
+    }
+
+    sgb_input_route_for_player_slot(machine, slot)
+}
+
+fn sgb_input_route_for_player_slot(
+    machine: &DesktopEmulationSession,
+    slot: PlayerSlot,
+) -> Option<PlayerInputRoute> {
+    let DesktopEmulationSession::Single(primary) = machine else {
+        return None;
+    };
+    if !primary.config().host_platform.is_sgb() {
+        return None;
+    }
+
+    let keyboard_profile = match slot {
+        PlayerSlot::P1 => return None,
+        PlayerSlot::P2 => PlayerKeyboardProfile::LinkedDmg04P2,
+        PlayerSlot::P3 => PlayerKeyboardProfile::LinkedDmg07P3,
+        PlayerSlot::P4 => PlayerKeyboardProfile::LinkedDmg07P4,
+    };
+
+    Some(PlayerInputRoute {
+        keyboard_profile,
+        target: FrontendJoypadTarget::SgbPlayer((slot.index() + 1) as u8),
+    })
+}
+
+fn machine_for_player_input_route_mut(
+    machine: &mut DesktopEmulationSession,
+    slot: PlayerSlot,
+    route: PlayerInputRoute,
+) -> Option<&mut Machine<TraceSummaryBuffer>> {
+    match route.target {
+        FrontendJoypadTarget::Local => machine.machine_for_player_slot_mut(slot),
+        FrontendJoypadTarget::SgbPlayer(_) => Some(machine.primary_machine_mut()),
+    }
+}
+
 fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSummaryBuffer> {
     let slot = audio_source_slot(player_session_kind(machine));
     machine
@@ -5735,6 +5820,12 @@ fn run_desktop_prepared(
         Some(rom) => rom.path.parent().map(Path::to_path_buf),
         None => settings_store.last_open_directory().map(Path::to_path_buf),
     };
+    let startup_external_port_selection =
+        if startup_links_peer && options.config.launch.console_model.allows_ext_port_menu() {
+            DesktopExternalPortSelection::GameLink
+        } else {
+            DesktopExternalPortSelection::None
+        };
     let mut session = DesktopSession {
         config: options.config,
         test_runner,
@@ -5757,11 +5848,7 @@ fn run_desktop_prepared(
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         pocket_camera_frame: None,
-        external_port_selection: if startup_links_peer {
-            DesktopExternalPortSelection::GameLink
-        } else {
-            DesktopExternalPortSelection::None
-        },
+        external_port_selection: startup_external_port_selection,
     };
 
     let (mut machine, diagnostics) = load_initial_emulation_session(&mut session)?;
@@ -5823,7 +5910,11 @@ fn run_desktop_prepared(
     };
     let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
-    let framebuffer_dimensions = framebuffer_dimensions_for_session(&machine);
+    let framebuffer_dimensions = framebuffer_dimensions_for_session(
+        &machine,
+        &session.config.video,
+        session.has_loaded_rom(),
+    );
     let window_width = framebuffer_dimensions
         .width
         .checked_mul(u32::from(session.config.video.window_scale))
@@ -5834,7 +5925,10 @@ fn run_desktop_prepared(
         .ok_or_else(|| overflow_error("window height overflowed"))?;
 
     let base_window_title = window_title(&session, &session.config);
-    let mut frame_pacer = FramePacer::new(session.config.video.vsync);
+    let mut frame_pacer = FramePacer::new(
+        session.config.video.vsync,
+        frame_duration_for_config(&session.config),
+    );
     let mut performance_counter = if session.test_runner {
         PerformanceCounter::new_with_emulation_profile_mode(
             base_window_title.clone(),
@@ -5843,6 +5937,7 @@ fn run_desktop_prepared(
     } else {
         PerformanceCounter::new(base_window_title.clone())
     };
+    performance_counter.set_target_frame_rate_hz(target_frame_rate_hz_for_config(&session.config));
     let mut window_builder = video.window(&base_window_title, window_width, window_height);
     window_builder.position_centered();
     if session.config.video.fullscreen {
@@ -5932,8 +6027,11 @@ fn run_desktop_prepared(
         &mut texture,
         &mut rgb_frame,
         &mut current_framebuffer_dimensions,
-        &machine,
-        &runtime.video_options,
+        FramebufferPresentationSource {
+            machine: &machine,
+            video_options: &runtime.video_options,
+            session_has_loaded_rom: session.has_loaded_rom(),
+        },
     )?;
     let _ = render_frame(
         &mut canvas,
@@ -5943,6 +6041,7 @@ fn run_desktop_prepared(
             &machine,
             current_framebuffer_dimensions,
             &runtime.video_options,
+            session.has_loaded_rom(),
         ),
         &runtime.video_options,
         RenderPresentationInput {
@@ -6010,8 +6109,11 @@ fn run_desktop_prepared(
                     &mut texture,
                     &mut rgb_frame,
                     &mut current_framebuffer_dimensions,
-                    &machine,
-                    &runtime.video_options,
+                    FramebufferPresentationSource {
+                        machine: &machine,
+                        video_options: &runtime.video_options,
+                        session_has_loaded_rom: session.has_loaded_rom(),
+                    },
                 )?;
                 let _ = render_frame(
                     &mut canvas,
@@ -6021,6 +6123,7 @@ fn run_desktop_prepared(
                         &machine,
                         current_framebuffer_dimensions,
                         &runtime.video_options,
+                        session.has_loaded_rom(),
                     ),
                     &runtime.video_options,
                     RenderPresentationInput {
@@ -6145,8 +6248,11 @@ fn run_desktop_prepared(
                     &mut texture,
                     &mut rgb_frame,
                     &mut current_framebuffer_dimensions,
-                    &machine,
-                    &runtime.video_options,
+                    FramebufferPresentationSource {
+                        machine: &machine,
+                        video_options: &runtime.video_options,
+                        session_has_loaded_rom: session.has_loaded_rom(),
+                    },
                 )?;
                 let _ = render_frame(
                     &mut canvas,
@@ -6156,6 +6262,7 @@ fn run_desktop_prepared(
                         &machine,
                         current_framebuffer_dimensions,
                         &runtime.video_options,
+                        session.has_loaded_rom(),
                     ),
                     &runtime.video_options,
                     RenderPresentationInput {
@@ -6202,8 +6309,11 @@ fn run_desktop_prepared(
             &mut texture,
             &mut rgb_frame,
             &mut current_framebuffer_dimensions,
-            &machine,
-            &runtime.video_options,
+            FramebufferPresentationSource {
+                machine: &machine,
+                video_options: &runtime.video_options,
+                session_has_loaded_rom: session.has_loaded_rom(),
+            },
         )?;
         let present_duration = render_frame(
             &mut canvas,
@@ -6213,6 +6323,7 @@ fn run_desktop_prepared(
                 &machine,
                 current_framebuffer_dimensions,
                 &runtime.video_options,
+                session.has_loaded_rom(),
             ),
             &runtime.video_options,
             RenderPresentationInput {
@@ -6226,6 +6337,9 @@ fn run_desktop_prepared(
             .audio_output
             .as_ref()
             .and_then(DesktopAudioOutput::queued_duration_ms);
+        frame_pacer.set_frame_duration(frame_duration_for_config(&session.config));
+        performance_counter
+            .set_target_frame_rate_hz(target_frame_rate_hz_for_config(&session.config));
         let pacing = if should_skip_host_frame_pacing(
             session.test_runner,
             fast_forward_still_active,
@@ -6393,6 +6507,7 @@ fn run_desktop_prepared(
 fn load_initial_emulation_session(
     session: &mut DesktopSession,
 ) -> Result<(DesktopEmulationSession, Vec<CartridgeDiagnostic>), String> {
+    sanitize_external_port_session_for_model(session);
     match (
         session.rom_bytes(),
         session.linked_secondary_rom_bytes(),
@@ -6510,21 +6625,17 @@ fn prepare_machine_config(
     effective_config.launch.normalize_revision_for_model();
     let boot_rom_fallback_warning =
         maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
-    let revision = effective_config.launch.effective_revision();
+    let machine_config = effective_config.machine_config_without_boot_rom_assets();
     let boot_rom_assets = load_boot_rom_assets(
         effective_config.boot_rom.search_path.as_deref(),
         effective_config.boot_rom.verification,
-        revision,
+        machine_config.boot_rom_asset_kind(),
         effective_config.launch.startup_mode,
         current_dir,
     )?;
 
     Ok(PreparedMachineConfig {
-        machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
-            .with_startup_mode(effective_config.launch.startup_mode)
-            .with_revision(revision)
-            .with_compatibility(effective_config.launch.compatibility_policy())
-            .with_boot_rom_assets(boot_rom_assets),
+        machine_config: machine_config.with_boot_rom_assets(boot_rom_assets),
         effective_config,
         boot_rom_fallback_warning,
     })
@@ -6538,9 +6649,10 @@ fn maybe_apply_missing_boot_rom_fallback(
         return Ok(None);
     }
 
+    let machine_config = config.machine_config_without_boot_rom_assets();
     let Some(missing_asset) = missing_boot_rom_asset(
         config.boot_rom.search_path.as_deref(),
-        config.launch.effective_revision(),
+        machine_config.boot_rom_asset_kind(),
         current_dir,
     )?
     else {
@@ -6701,6 +6813,33 @@ fn apply_external_port_selection_to_machine(
     machine.set_external_port_attachment(selection.core_attachment_kind());
 }
 
+fn supported_external_port_selection_for_model(
+    console_model: DesktopConsoleModel,
+    selection: DesktopExternalPortSelection,
+) -> DesktopExternalPortSelection {
+    if console_model.allows_ext_port_menu() {
+        selection
+    } else {
+        DesktopExternalPortSelection::None
+    }
+}
+
+fn sanitize_external_port_session_for_model(session: &mut DesktopSession) {
+    let supported_selection = supported_external_port_selection_for_model(
+        session.config.launch.console_model,
+        session.external_port_selection,
+    );
+    if supported_selection == session.external_port_selection {
+        return;
+    }
+
+    session.external_port_selection = supported_selection;
+    if !session.cgb_infrared_link_active {
+        session.linked_secondary_rom = None;
+    }
+    session.dmg07_player_count = None;
+}
+
 fn session_has_pocket_camera(machine: &DesktopEmulationSession) -> bool {
     PlayerSlot::ALL.into_iter().any(|slot| {
         machine
@@ -6845,6 +6984,13 @@ fn apply_benchmark_case_to_desktop_options(
         && let Some(palette) = benchmark_case.palette
     {
         options.config.video.display_palette = desktop_display_palette_from_benchmark(palette);
+    }
+    if options.test_runner {
+        options.config.launch.execution_mode = ExecutionMode::Permissive;
+        if options.config.launch.console_model == DesktopConsoleModel::GameBoy {
+            options.config.video.display_palette = DesktopDisplayPalette::Grey;
+        }
+        options.config.video.show_sgb_border = false;
     }
 }
 
@@ -7161,8 +7307,41 @@ fn performance_window_title(base_title: &str, snapshot: PerformanceHudSnapshot) 
     )
 }
 
+fn desktop_gb_master_clock_rate_for_config(config: &DesktopConfig) -> SgbClockRate {
+    match config
+        .launch
+        .console_model
+        .sgb_profile_for_standard(config.launch.effective_sgb_video_standard())
+    {
+        Some(profile) => profile.timing().gb_master_clock_hz,
+        None => SgbClockRate::from_hz(DMG_T_CYCLES_PER_SECOND as u32),
+    }
+}
+
+fn frame_duration_for_gb_master_clock(clock_rate: SgbClockRate) -> Duration {
+    let numerator = u128::from(DMG_T_CYCLES_PER_FRAME)
+        .saturating_mul(u128::from(clock_rate.denominator))
+        .saturating_mul(1_000_000_000);
+    let denominator = clock_rate.numerator_hz.max(1) as u128;
+    let rounded_nanos = numerator
+        .saturating_add(denominator / 2)
+        .saturating_div(denominator);
+    Duration::from_nanos(u64::try_from(rounded_nanos).unwrap_or(u64::MAX))
+}
+
+fn frame_duration_for_config(config: &DesktopConfig) -> Duration {
+    frame_duration_for_gb_master_clock(desktop_gb_master_clock_rate_for_config(config))
+}
+
+fn target_frame_rate_hz_for_config(config: &DesktopConfig) -> f64 {
+    let clock_rate = desktop_gb_master_clock_rate_for_config(config);
+    clock_rate.numerator_hz as f64
+        / f64::from(clock_rate.denominator)
+        / DMG_T_CYCLES_PER_FRAME as f64
+}
+
 fn target_frame_rate_hz() -> f64 {
-    1.0 / FRAME_DURATION.as_secs_f64()
+    target_frame_rate_hz_for_config(&DesktopConfig::default())
 }
 
 fn process_events(
@@ -8545,6 +8724,7 @@ fn apply_machine_settings_change(
     };
 
     context.session.config = effective_config;
+    sanitize_external_port_session_for_model(context.session);
     if !context.session.test_runner {
         context
             .settings_store
@@ -8754,14 +8934,32 @@ fn rebuild_machine_for_config(
     let rebuild_result: Result<RebuildMachineResult, String> = (|| {
         let mut boot_rom_fallback_warnings = Vec::new();
 
+        let next_external_port_selection = supported_external_port_selection_for_model(
+            next_config.launch.console_model,
+            context.session.external_port_selection,
+        );
+        let next_linked_secondary_rom = if context.session.cgb_infrared_link_active
+            || next_external_port_selection == DesktopExternalPortSelection::GameLink
+        {
+            context.session.linked_secondary_rom.clone()
+        } else {
+            None
+        };
+        let next_dmg07_player_count =
+            if next_external_port_selection == DesktopExternalPortSelection::FourPlayerAdapter {
+                context.session.dmg07_player_count
+            } else {
+                None
+            };
+
         let next_session = DesktopSession {
             config: next_config.clone(),
             test_runner: context.session.test_runner,
             benchmark: context.session.benchmark.clone(),
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
-            linked_secondary_rom: context.session.linked_secondary_rom.clone(),
-            dmg07_player_count: context.session.dmg07_player_count,
+            linked_secondary_rom: next_linked_secondary_rom,
+            dmg07_player_count: next_dmg07_player_count,
             cgb_infrared_link_active: context.session.cgb_infrared_link_active,
             pokemon_pikachu_color_active: context.session.pokemon_pikachu_color_active,
             pokemon_pikachu_color_gift: context.session.pokemon_pikachu_color_gift,
@@ -8771,7 +8969,7 @@ fn rebuild_machine_for_config(
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             pocket_camera_frame: context.session.pocket_camera_frame.clone(),
-            external_port_selection: context.session.external_port_selection,
+            external_port_selection: next_external_port_selection,
         };
 
         match (
@@ -9495,8 +9693,10 @@ fn open_selected_rom(
     let effective_config = loaded.effective_config;
     let config_fell_back = effective_config != context.session.config;
     let mut next_machine = DesktopEmulationSession::new_single(loaded.machine);
-    let next_external_port_selection =
-        next_single_external_port_selection(context.session.external_port_selection);
+    let next_external_port_selection = supported_external_port_selection_for_model(
+        effective_config.launch.console_model,
+        next_single_external_port_selection(context.session.external_port_selection),
+    );
     apply_external_port_selection_to_machine(
         next_machine.primary_machine_mut(),
         next_external_port_selection,
@@ -9610,6 +9810,15 @@ fn open_selected_linked_secondary_rom(
             "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
         );
     }
+    if !context
+        .session
+        .config
+        .launch
+        .console_model
+        .allows_ext_port_menu()
+    {
+        return Ok(());
+    }
 
     let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
     activate_game_link_with_secondary_rom(event_pump, canvas, next_secondary_rom, context)
@@ -9619,7 +9828,14 @@ fn open_game_link_secondary_rom_dialog(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) {
-    if !context.session.has_loaded_rom() {
+    if !context.session.has_loaded_rom()
+        || !context
+            .session
+            .config
+            .launch
+            .console_model
+            .allows_ext_port_menu()
+    {
         return;
     }
 
@@ -9646,6 +9862,15 @@ fn activate_game_link_with_secondary_rom(
         return Err(
             "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
         );
+    }
+    if !context
+        .session
+        .config
+        .launch
+        .console_model
+        .allows_ext_port_menu()
+    {
+        return Ok(());
     }
 
     drain_printed_pages_into_printer_output(
@@ -10264,7 +10489,14 @@ fn activate_dmg07_adapter(
     player_count: DesktopDmg07PlayerCount,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
-    if !context.session.has_loaded_rom() {
+    if !context.session.has_loaded_rom()
+        || !context
+            .session
+            .config
+            .launch
+            .console_model
+            .allows_ext_port_menu()
+    {
         return Ok(());
     }
 
@@ -10976,6 +11208,19 @@ fn execute_menu_action(
             })?;
             Ok(None)
         }
+        MenuAction::CycleSgbVideoStandard => {
+            apply_machine_settings_change(canvas, context, "SGB video standard", |config| {
+                if config
+                    .launch
+                    .console_model
+                    .allows_sgb_video_standard_selection()
+                {
+                    config.launch.sgb_video_standard =
+                        next_sgb_video_standard(config.launch.sgb_video_standard);
+                }
+            })?;
+            Ok(None)
+        }
         MenuAction::CycleStartupMode => {
             apply_machine_settings_change(canvas, context, "Startup mode", |config| {
                 config.launch.startup_mode = next_startup_mode(config.launch.startup_mode);
@@ -11240,7 +11485,11 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
+                    ),
                 )?;
             }
             context
@@ -11267,7 +11516,11 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
+                    ),
                 )?;
             }
             context
@@ -11309,6 +11562,25 @@ fn execute_menu_action(
             context
                 .settings_store
                 .set_display_palette(context.runtime.video_options.display_palette)?;
+            Ok(None)
+        }
+        MenuAction::ToggleSgbBorder => {
+            if context
+                .session
+                .config
+                .launch
+                .console_model
+                .sgb_profile()
+                .is_none()
+            {
+                return Ok(None);
+            }
+            context.runtime.video_options.show_sgb_border =
+                !context.runtime.video_options.show_sgb_border;
+            context.runtime.frame_blending_state.reset();
+            context
+                .settings_store
+                .set_show_sgb_border(context.runtime.video_options.show_sgb_border)?;
             Ok(None)
         }
         MenuAction::ToggleBackgroundLayer => {
@@ -11362,7 +11634,11 @@ fn execute_menu_action(
                 apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     defaults.window_scale,
-                    framebuffer_dimensions_for_session(context.machine),
+                    framebuffer_dimensions_for_session(
+                        context.machine,
+                        &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
+                    ),
                 )?;
             }
             context
@@ -11503,6 +11779,16 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetExternalPort(selection) => {
+            if selection != DesktopExternalPortSelection::None
+                && !context
+                    .session
+                    .config
+                    .launch
+                    .console_model
+                    .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             drain_printed_pages_into_printer_output(
                 canvas.window(),
                 context.session,
@@ -11549,6 +11835,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetGameLinkSameGame => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             let Some(next_secondary_rom) = context.session.loaded_rom.clone() else {
                 return Ok(None);
             };
@@ -11556,6 +11851,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SelectGameLinkRom => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             drain_printed_pages_into_printer_output(
                 canvas.window(),
                 context.session,
@@ -11567,6 +11871,15 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetFourPlayerAdapter(player_count) => {
+            if !context
+                .session
+                .config
+                .launch
+                .console_model
+                .allows_ext_port_menu()
+            {
+                return Ok(None);
+            }
             activate_dmg07_adapter(event_pump, canvas, player_count, context)?;
             Ok(None)
         }
@@ -11828,6 +12141,7 @@ fn current_menu_presentation(
         recent_rom_labels,
         console_model: session.config.launch.console_model,
         revision: session.config.launch.effective_revision(),
+        sgb_video_standard: session.config.launch.effective_sgb_video_standard(),
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
@@ -11855,6 +12169,7 @@ fn current_menu_presentation(
         show_background: runtime.video_options.show_background,
         show_window: runtime.video_options.show_window,
         show_objects: runtime.video_options.show_objects,
+        show_sgb_border: runtime.video_options.show_sgb_border,
         show_performance_hud: runtime.video_options.show_performance_hud,
         show_cgb_infrared_helper: runtime.video_options.show_cgb_infrared_helper,
         muted: runtime
@@ -11945,7 +12260,9 @@ fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel
         DesktopConsoleModel::GameBoy => DesktopConsoleModel::GameBoyPocket,
         DesktopConsoleModel::GameBoyPocket => DesktopConsoleModel::GameBoyLight,
         DesktopConsoleModel::GameBoyLight => DesktopConsoleModel::GameBoyColor,
-        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::GameBoy,
+        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::SuperGameBoy,
+        DesktopConsoleModel::SuperGameBoy => DesktopConsoleModel::SuperGameBoy2,
+        DesktopConsoleModel::SuperGameBoy2 => DesktopConsoleModel::GameBoy,
     }
 }
 
@@ -11959,6 +12276,13 @@ fn next_revision(
         .position(|candidate| *candidate == revision)
         .unwrap_or(0);
     active[(current_index + 1) % active.len()]
+}
+
+fn next_sgb_video_standard(video_standard: SgbVideoStandard) -> SgbVideoStandard {
+    match video_standard {
+        SgbVideoStandard::Ntsc => SgbVideoStandard::Pal,
+        SgbVideoStandard::Pal => SgbVideoStandard::Ntsc,
+    }
 }
 
 fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
@@ -12518,15 +12842,20 @@ fn sync_live_input_state(
     runtime: &mut FrontendRuntime,
 ) {
     clear_live_input_state(machine, runtime);
+    let session_kind = player_session_kind(machine);
     for slot in PlayerSlot::ALL {
-        let session_kind = player_session_kind(machine);
-        let policy = host_policy_for_slot(session_kind, slot);
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            runtime.player_inputs.input_mut(slot).reset();
+            continue;
+        };
+        let slot_machine = machine_for_player_input_route_mut(machine, slot, route);
         sync_player_keyboard_state(
             event_pump,
             keyboard_bindings,
-            policy.keyboard_profile,
+            route.keyboard_profile,
+            route.target,
             runtime.player_inputs.input_mut(slot),
-            machine.machine_for_player_slot_mut(slot),
+            slot_machine,
         );
     }
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
@@ -12540,9 +12869,17 @@ fn sync_live_input_state(
 }
 
 fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
+    let session_kind = player_session_kind(machine);
     for slot in PlayerSlot::ALL {
-        match machine.machine_for_player_slot_mut(slot) {
-            Some(machine) => runtime.player_inputs.input_mut(slot).clear_all(machine),
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            runtime.player_inputs.input_mut(slot).reset();
+            continue;
+        };
+        match machine_for_player_input_route_mut(machine, slot, route) {
+            Some(machine) => runtime
+                .player_inputs
+                .input_mut(slot)
+                .clear_all_for_target(machine, route.target),
             None => runtime.player_inputs.input_mut(slot).reset(),
         }
     }
@@ -12552,6 +12889,7 @@ fn sync_player_keyboard_state(
     event_pump: &sdl3::EventPump,
     keyboard_bindings: &KeyboardBindings,
     keyboard_profile: PlayerKeyboardProfile,
+    target: FrontendJoypadTarget,
     input_state: &mut FrontendInputState,
     machine: Option<&mut Machine<TraceSummaryBuffer>>,
 ) {
@@ -12575,8 +12913,9 @@ fn sync_player_keyboard_state(
                 (JoypadButton::Start, desktop_key_scancode(joypad.start)),
             ];
             for (joypad_button, scancode) in bindings {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12584,8 +12923,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg04P2 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG04_P2_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12593,8 +12933,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg07P3 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG07_P3_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12602,8 +12943,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg07P4 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG07_P4_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12625,22 +12967,24 @@ fn apply_keyboard_event_to_player_slots(
     let session_kind = player_session_kind(machine);
     let keyboard_bindings = runtime.keyboard_bindings;
     for slot in PlayerSlot::ALL {
-        let policy = host_policy_for_slot(session_kind, slot);
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            continue;
+        };
         let Some(button) = joypad_button_for_player_keyboard_event(
-            policy.keyboard_profile,
+            route.keyboard_profile,
             keyboard_bindings,
             keycode,
             scancode,
         ) else {
             continue;
         };
-        let Some(slot_machine) = machine.machine_for_player_slot_mut(slot) else {
+        let Some(slot_machine) = machine_for_player_input_route_mut(machine, slot, route) else {
             continue;
         };
         runtime
             .player_inputs
             .input_mut(slot)
-            .set_keyboard_button(slot_machine, button, pressed);
+            .set_keyboard_button_for_target(slot_machine, route.target, button, pressed);
     }
 }
 
@@ -13129,9 +13473,15 @@ fn save_screenshot_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
 ) -> Result<PathBuf, String> {
-    let dimensions = framebuffer_dimensions_for_session(machine);
+    let dimensions =
+        framebuffer_dimensions_for_session(machine, video_options, session.has_loaded_rom());
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_render_input_for_session(machine, dimensions, video_options),
+        framebuffer_render_input_for_session(
+            machine,
+            dimensions,
+            video_options,
+            session.has_loaded_rom(),
+        ),
         video_options,
     );
     let output_path = screenshot_output::resolve_next_screenshot_output_path(
@@ -13146,10 +13496,17 @@ fn save_screenshot_for_session_to_path(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
     output_path: &Path,
+    session_has_loaded_rom: bool,
 ) -> Result<(), String> {
-    let dimensions = framebuffer_dimensions_for_session(machine);
+    let dimensions =
+        framebuffer_dimensions_for_session(machine, video_options, session_has_loaded_rom);
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_render_input_for_session(machine, dimensions, video_options),
+        framebuffer_render_input_for_session(
+            machine,
+            dimensions,
+            video_options,
+            session_has_loaded_rom,
+        ),
         video_options,
     );
     if let Some(parent) = output_path.parent()
@@ -13187,7 +13544,12 @@ fn write_benchmark_artifacts_for_session(
         .then(|| frontend_screenshot_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id));
     if let Some(screenshot_path) = &screenshot_path {
         let output_path = resolve_path(session.current_dir.as_path(), screenshot_path);
-        save_screenshot_for_session_to_path(machine, video_options, &output_path)?;
+        save_screenshot_for_session_to_path(
+            machine,
+            video_options,
+            &output_path,
+            session.has_loaded_rom(),
+        )?;
     }
     if benchmark.case.stats {
         let stats_path = frontend_stats_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id);
@@ -13367,21 +13729,114 @@ fn sync_fast_forward_host_pacing_state(
     Ok(())
 }
 
-fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
+fn framebuffer_dimensions_for_session(
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
+) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
+    let cell_dimensions =
+        framebuffer_cell_dimensions_for_session(machine, video_options, session_has_loaded_rom);
     FramebufferDimensions {
-        width: FRAMEBUFFER_WIDTH * layout.columns as u32,
-        height: FRAMEBUFFER_HEIGHT * layout.rows as u32,
+        width: cell_dimensions.width * layout.columns as u32,
+        height: cell_dimensions.height * layout.rows as u32,
     }
 }
 
-fn framebuffer_panel_input_for_player_slot(
+fn framebuffer_cell_dimensions_for_session(
     machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
+) -> FramebufferDimensions {
+    let layout = view_layout_for_session(player_session_kind(machine));
+    layout
+        .slots
+        .into_iter()
+        .flatten()
+        .filter_map(|slot| machine.machine_for_player_slot(slot))
+        .map(|machine| {
+            framebuffer_panel_dimensions_for_machine(machine, video_options, session_has_loaded_rom)
+        })
+        .fold(
+            FramebufferDimensions {
+                width: FRAMEBUFFER_WIDTH,
+                height: FRAMEBUFFER_HEIGHT,
+            },
+            |acc, dimensions| FramebufferDimensions {
+                width: acc.width.max(dimensions.width),
+                height: acc.height.max(dimensions.height),
+            },
+        )
+}
+
+fn framebuffer_panel_dimensions_for_machine(
+    machine: &Machine<TraceSummaryBuffer>,
+    video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
+) -> FramebufferDimensions {
+    if session_has_loaded_rom
+        && machine.sgb_host().profile().is_some()
+        && video_options.show_sgb_border
+    {
+        FramebufferDimensions {
+            width: SGB_HOST_FRAMEBUFFER_WIDTH,
+            height: SGB_HOST_FRAMEBUFFER_HEIGHT,
+        }
+    } else {
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        }
+    }
+}
+
+fn framebuffer_cell_dimensions_for_panels(
+    panels: &[Option<FramebufferPanelInput<'_>>; PLAYER_SLOT_COUNT],
+) -> FramebufferDimensions {
+    panels
+        .iter()
+        .filter_map(|panel| panel.as_ref())
+        .map(|panel| panel.dimensions)
+        .fold(
+            FramebufferDimensions {
+                width: FRAMEBUFFER_WIDTH,
+                height: FRAMEBUFFER_HEIGHT,
+            },
+            |acc, dimensions| FramebufferDimensions {
+                width: acc.width.max(dimensions.width),
+                height: acc.height.max(dimensions.height),
+            },
+        )
+}
+
+fn framebuffer_panel_input_for_player_slot<'a>(
+    machine: &'a DesktopEmulationSession,
     slot: PlayerSlot,
     display_palette: DisplayPalette,
-) -> Option<FramebufferPanelInput<'_>> {
+    video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
+) -> Option<FramebufferPanelInput<'a>> {
     let machine = machine.machine_for_player_slot(slot)?;
+    let sgb_framebuffer_rgb555 = if session_has_loaded_rom && machine.sgb_host().profile().is_some()
+    {
+        if video_options.show_sgb_border {
+            machine.sgb_framebuffer_rgb555()
+        } else {
+            machine.sgb_lcd_framebuffer_rgb555()
+        }
+    } else {
+        None
+    };
+    let dimensions = if sgb_framebuffer_rgb555.is_some() {
+        framebuffer_panel_dimensions_for_machine(machine, video_options, session_has_loaded_rom)
+    } else {
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        }
+    };
     Some(FramebufferPanelInput {
+        dimensions,
         framebuffer: machine.ppu().framebuffer(),
         framebuffer_layer_sources: machine.ppu().framebuffer_layer_sources(),
         bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -13389,6 +13844,7 @@ fn framebuffer_panel_input_for_player_slot(
         bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
         display_palette,
         cgb_framebuffer_rgb555: machine.ppu().cgb_framebuffer_rgb555(),
+        sgb_framebuffer_rgb555,
     })
 }
 
@@ -13396,6 +13852,7 @@ fn framebuffer_render_input_for_session<'a>(
     machine: &'a DesktopEmulationSession,
     dimensions: FramebufferDimensions,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> FramebufferRenderInput<'a> {
     let layout = view_layout_for_session(player_session_kind(machine));
     let display_palette = display_palette_for_desktop_palette(video_options.display_palette);
@@ -13403,7 +13860,13 @@ fn framebuffer_render_input_for_session<'a>(
         dimensions,
         panels: layout.slots.map(|slot| {
             slot.and_then(|slot| {
-                framebuffer_panel_input_for_player_slot(machine, slot, display_palette)
+                framebuffer_panel_input_for_player_slot(
+                    machine,
+                    slot,
+                    display_palette,
+                    video_options,
+                    session_has_loaded_rom,
+                )
             })
         }),
     }
@@ -13567,10 +14030,13 @@ fn sync_framebuffer_presentation_resources<'a>(
     texture: &mut sdl3::render::Texture<'a>,
     rgb_frame: &mut Vec<u8>,
     current_dimensions: &mut FramebufferDimensions,
-    machine: &DesktopEmulationSession,
-    video_options: &VideoOptions,
+    source: FramebufferPresentationSource<'_>,
 ) -> Result<(), String> {
-    let next_dimensions = framebuffer_dimensions_for_session(machine);
+    let next_dimensions = framebuffer_dimensions_for_session(
+        source.machine,
+        source.video_options,
+        source.session_has_loaded_rom,
+    );
     if next_dimensions == *current_dimensions {
         return Ok(());
     }
@@ -13583,11 +14049,11 @@ fn sync_framebuffer_presentation_resources<'a>(
     if canvas.window().fullscreen_state() == FullscreenType::Off {
         apply_window_scale_for_dimensions(
             canvas.window_mut(),
-            video_options.window_scale,
+            source.video_options.window_scale,
             next_dimensions,
         )?;
     }
-    apply_canvas_video_options_for_dimensions(canvas, video_options, next_dimensions)?;
+    apply_canvas_video_options_for_dimensions(canvas, source.video_options, next_dimensions)?;
     *current_dimensions = next_dimensions;
     Ok(())
 }
@@ -13600,12 +14066,25 @@ fn write_framebuffer_region(
     source_panel: FramebufferPanelInput<'_>,
     video_options: &VideoOptions,
 ) {
-    if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
-        write_cgb_rgb555_framebuffer_region(
+    if let Some(sgb_framebuffer_rgb555) = source_panel.sgb_framebuffer_rgb555.as_deref() {
+        write_rgb555_framebuffer_region(
             target_rgb_frame,
             target_dimensions,
             target_origin_x,
             target_origin_y,
+            source_panel.dimensions,
+            sgb_framebuffer_rgb555,
+        );
+        return;
+    }
+
+    if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
+        write_rgb555_framebuffer_region(
+            target_rgb_frame,
+            target_dimensions,
+            target_origin_x,
+            target_origin_y,
+            source_panel.dimensions,
             cgb_framebuffer_rgb555,
         );
         return;
@@ -13621,27 +14100,30 @@ fn write_framebuffer_region(
     );
 }
 
-fn write_cgb_rgb555_framebuffer_region(
+fn write_rgb555_framebuffer_region(
     target_rgb_frame: &mut [u8],
     target_dimensions: FramebufferDimensions,
     target_origin_x: usize,
     target_origin_y: usize,
-    cgb_framebuffer_rgb555: &[u16],
+    source_dimensions: FramebufferDimensions,
+    framebuffer_rgb555: &[u16],
 ) {
     let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
     let target_width = target_dimensions.width as usize;
     let target_height = target_dimensions.height as usize;
-    for y in 0..FRAMEBUFFER_HEIGHT as usize {
+    let source_width = source_dimensions.width as usize;
+    let source_height = source_dimensions.height as usize;
+    for y in 0..source_height {
         if target_origin_y + y >= target_height {
             break;
         }
-        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+        for x in 0..source_width {
             if target_origin_x + x >= target_width {
                 break;
             }
 
-            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
-            let Some(&rgb555_pixel) = cgb_framebuffer_rgb555.get(source_index) else {
+            let source_index = y * source_width + x;
+            let Some(&rgb555_pixel) = framebuffer_rgb555.get(source_index) else {
                 continue;
             };
             let target_pixel_index =
@@ -13680,24 +14162,46 @@ fn write_monochrome_framebuffer_region(
     let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
     let target_width = target_dimensions.width as usize;
     let target_height = target_dimensions.height as usize;
-    for y in 0..FRAMEBUFFER_HEIGHT as usize {
+    let source_width = source_panel.dimensions.width as usize;
+    let source_height = source_panel.dimensions.height as usize;
+    for y in 0..source_height {
         if target_origin_y + y >= target_height {
             break;
         }
-        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+        for x in 0..source_width {
             if target_origin_x + x >= target_width {
                 break;
             }
 
-            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
+            let source_index = y * source_width + x;
+            let Some(&framebuffer_shade) = source_panel.framebuffer.get(source_index) else {
+                continue;
+            };
+            let Some(&framebuffer_source) =
+                source_panel.framebuffer_layer_sources.get(source_index)
+            else {
+                continue;
+            };
+            let Some(&bgwin_shade) = source_panel.bgwin_framebuffer.get(source_index) else {
+                continue;
+            };
+            let Some(&bgwin_source) = source_panel
+                .bgwin_framebuffer_layer_sources
+                .get(source_index)
+            else {
+                continue;
+            };
+            let Some(&backdrop_shade) = source_panel.backdrop_framebuffer.get(source_index) else {
+                continue;
+            };
             let target_pixel_index =
                 (target_origin_y + y) * target_pitch_bytes + ((target_origin_x + x) * 3);
             let panel_shade = composite_framebuffer_panel_shade(
-                source_panel.framebuffer[source_index],
-                source_panel.framebuffer_layer_sources[source_index],
-                source_panel.bgwin_framebuffer[source_index],
-                source_panel.bgwin_framebuffer_layer_sources[source_index],
-                source_panel.backdrop_framebuffer[source_index],
+                framebuffer_shade,
+                framebuffer_source,
+                bgwin_shade,
+                bgwin_source,
+                backdrop_shade,
                 video_options,
             );
             let [r, g, b] = source_panel.display_palette.shade_rgb(panel_shade);
@@ -13725,7 +14229,8 @@ fn render_frame(
     apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
     sync_framebuffer_texture_video_options(texture, video_options);
     rgb_frame.fill(0);
-    let columns = (framebuffer.dimensions.width / FRAMEBUFFER_WIDTH).max(1) as usize;
+    let cell_dimensions = framebuffer_cell_dimensions_for_panels(&framebuffer.panels);
+    let columns = (framebuffer.dimensions.width / cell_dimensions.width).max(1) as usize;
     for (panel_index, panel) in framebuffer.panels.into_iter().enumerate() {
         let Some(panel) = panel else {
             continue;
@@ -13735,8 +14240,8 @@ fn render_frame(
         write_framebuffer_region(
             rgb_frame,
             framebuffer.dimensions,
-            column * FRAMEBUFFER_WIDTH as usize,
-            row * FRAMEBUFFER_HEIGHT as usize,
+            column * cell_dimensions.width as usize,
+            row * cell_dimensions.height as usize,
             panel,
             video_options,
         );
@@ -14284,7 +14789,7 @@ mod tests {
         next_boot_rom_verification_mode, next_console_model, next_execution_mode,
         next_fast_forward_speed_multiplier, next_gamepad_directional_source,
         next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot, next_revision,
-        next_save_flush_policy, next_startup_mode, next_window_scale,
+        next_save_flush_policy, next_sgb_video_standard, next_startup_mode, next_window_scale,
         parse_cgb_ir_optical_delay_t_cycles, parse_cgb_ir_trace_event_count,
         parse_cgb_ir_trace_trigger_addresses, parse_cgb_ir_trace_watch_addresses,
         parse_edge_trace_addresses, parse_edge_trace_event_count, parse_edge_trace_pc_ranges,
@@ -14306,7 +14811,7 @@ mod tests {
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
         ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
         ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
-        ApuSampleCapture, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+        ApuSampleCapture, BootRomAssetKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
         CartridgeMappedRomSource, CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode,
         ConsoleModel, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
         CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, DebugWramAddressSample,
@@ -14314,7 +14819,7 @@ mod tests {
         HardwareRevision, JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
         MachineConfig, MachineStepRegion, PersistentCartState, PocketCameraFrame,
         PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState, PrinterCommand,
-        SerialTickTelemetry, StartupMode, TraceSummaryBuffer,
+        SerialTickTelemetry, SgbHostProfile, SgbVideoStandard, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -14415,6 +14920,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer,
                     framebuffer_layer_sources: layer_sources,
                     bgwin_framebuffer: framebuffer,
@@ -14422,6 +14931,7 @@ mod tests {
                     bgwin_framebuffer_layer_sources: layer_sources,
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -16724,15 +17234,21 @@ mod tests {
                 .build()
                 .expect("frontend harness window");
             let mut canvas = window.into_canvas();
-            let mut frame_pacer = super::FramePacer::new(config.video.vsync);
+            let mut frame_pacer = super::FramePacer::new(
+                config.video.vsync,
+                super::frame_duration_for_config(&config),
+            );
             super::apply_renderer_vsync(&mut canvas, &mut frame_pacer, config.video.vsync)
                 .expect("frontend harness vsync");
             let event_pump = sdl.event_pump().expect("frontend harness event pump");
             let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
-            let performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
-                super::window_title(&session, &config),
-                super::EmulationProfileMode::Disabled,
-            );
+            let mut performance_counter =
+                super::PerformanceCounter::new_with_emulation_profile_mode(
+                    super::window_title(&session, &config),
+                    super::EmulationProfileMode::Disabled,
+                );
+            performance_counter
+                .set_target_frame_rate_hz(super::target_frame_rate_hz_for_config(&config));
             let save_sessions = super::open_save_sessions_for_session(&session, &mut machine)
                 .expect("frontend harness save sessions");
             let runtime = super::FrontendRuntime {
@@ -20489,7 +21005,10 @@ mod tests {
 
     #[test]
     fn frame_pacer_and_performance_counter_cover_idle_paths() {
-        let mut frame_pacer = super::FramePacer::new(true);
+        let mut frame_pacer = super::FramePacer::new(
+            true,
+            super::frame_duration_for_config(&DesktopConfig::default()),
+        );
         frame_pacer.next_frame_start = Instant::now() - Duration::from_secs(1);
         let pacing = frame_pacer.wait_until_next_frame(None);
         assert_eq!(pacing.pacing_duration, Duration::ZERO);
@@ -20497,16 +21016,70 @@ mod tests {
         assert!(pacing.late_duration > Duration::ZERO);
         assert_eq!(pacing.audio_correction_duration, Duration::ZERO);
         assert_eq!(pacing.oversleep_duration, Duration::ZERO);
+        frame_pacer.set_frame_duration(Duration::from_millis(15));
+        assert_eq!(frame_pacer.frame_duration, Duration::from_millis(15));
         frame_pacer.set_vsync_enabled(true);
         assert!(frame_pacer.next_frame_start <= Instant::now());
 
-        let counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+        let mut counter = super::PerformanceCounter::new_with_emulation_profile_mode(
             "gb-desktop | no rom".to_string(),
             super::EmulationProfileMode::Disabled,
         );
+        counter.set_target_frame_rate_hz(60.0);
         let snapshot = counter.snapshot_from_elapsed(Duration::ZERO);
         assert!(snapshot.fps.is_finite());
         assert_eq!(snapshot.audio_queue_ms, None);
+    }
+
+    #[test]
+    fn desktop_frame_timing_uses_sgb_profile_gb_master_clock() {
+        fn assert_close(actual: f64, expected: f64) {
+            assert!(
+                (actual - expected).abs() < 0.000_1,
+                "expected {expected}, got {actual}"
+            );
+        }
+
+        let mut config = DesktopConfig::default();
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            59.727_500_6,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_742_706)
+        );
+
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        config.launch.sgb_video_standard = SgbVideoStandard::Ntsc;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            61.167_897_0,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_348_445)
+        );
+
+        config.launch.sgb_video_standard = SgbVideoStandard::Pal;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            60.609_962_4,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_498_938)
+        );
+
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            59.727_500_6,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_742_706)
+        );
     }
 
     #[test]
@@ -20829,6 +21402,14 @@ mod tests {
         );
         assert_eq!(
             next_console_model(DesktopConsoleModel::GameBoyColor),
+            DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::SuperGameBoy),
+            DesktopConsoleModel::SuperGameBoy2
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::SuperGameBoy2),
             DesktopConsoleModel::GameBoy
         );
         assert_eq!(
@@ -20850,6 +21431,14 @@ mod tests {
         assert_eq!(
             next_revision(DesktopConsoleModel::GameBoyPocket, HardwareRevision::CpuMgb),
             HardwareRevision::CpuMgb
+        );
+        assert_eq!(
+            next_sgb_video_standard(SgbVideoStandard::Ntsc),
+            SgbVideoStandard::Pal
+        );
+        assert_eq!(
+            next_sgb_video_standard(SgbVideoStandard::Pal),
+            SgbVideoStandard::Ntsc
         );
         assert_eq!(
             next_startup_mode(StartupMode::SkipBoot),
@@ -22058,13 +22647,121 @@ mod tests {
 
         let render_input = super::framebuffer_render_input_for_session(
             &machine,
-            super::framebuffer_dimensions_for_session(&machine),
+            super::framebuffer_dimensions_for_session(&machine, &video_options, true),
             &video_options,
+            true,
         );
 
-        let panel = render_input.panels[0].expect("primary panel should be populated");
+        let panel = render_input.panels[0]
+            .as_ref()
+            .expect("primary panel should be populated");
         assert_eq!(panel.display_palette, super::GBL_DISPLAY_PALETTE);
         assert!(render_input.panels[1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn framebuffer_render_input_uses_sgb_host_frame_dimensions_and_rgb555_output() {
+        let machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::SgbNtsc),
+        ));
+        let video_options = gb_desktop::VideoOptions::default();
+        let dimensions = super::framebuffer_dimensions_for_session(&machine, &video_options, true);
+
+        let render_input =
+            super::framebuffer_render_input_for_session(&machine, dimensions, &video_options, true);
+
+        assert_eq!(
+            dimensions,
+            super::FramebufferDimensions {
+                width: super::SGB_HOST_FRAMEBUFFER_WIDTH,
+                height: super::SGB_HOST_FRAMEBUFFER_HEIGHT,
+            }
+        );
+        let panel = render_input.panels[0]
+            .as_ref()
+            .expect("SGB panel should be populated");
+        assert_eq!(panel.dimensions, dimensions);
+        assert_eq!(
+            panel
+                .sgb_framebuffer_rgb555
+                .as_ref()
+                .expect("SGB panel should carry host RGB555 output")
+                .len(),
+            (super::SGB_HOST_FRAMEBUFFER_WIDTH * super::SGB_HOST_FRAMEBUFFER_HEIGHT) as usize
+        );
+
+        let hidden_border_options = gb_desktop::VideoOptions {
+            show_sgb_border: false,
+            ..gb_desktop::VideoOptions::default()
+        };
+        let hidden_dimensions =
+            super::framebuffer_dimensions_for_session(&machine, &hidden_border_options, true);
+        let hidden_render_input = super::framebuffer_render_input_for_session(
+            &machine,
+            hidden_dimensions,
+            &hidden_border_options,
+            true,
+        );
+        assert_eq!(
+            hidden_dimensions,
+            super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            }
+        );
+        let hidden_panel = hidden_render_input.panels[0]
+            .as_ref()
+            .expect("hidden-border SGB panel should be populated");
+        assert_eq!(hidden_panel.dimensions, hidden_dimensions);
+        assert_eq!(
+            hidden_panel
+                .sgb_framebuffer_rgb555
+                .as_ref()
+                .expect("hidden-border SGB panel should carry LCD RGB555 output")
+                .len(),
+            (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize
+        );
+    }
+
+    #[test]
+    fn launcher_sgb_profile_uses_handheld_dimensions_until_a_rom_is_loaded() {
+        let machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::Sgb2Ntsc),
+        ));
+        for show_sgb_border in [true, false] {
+            let video_options = gb_desktop::VideoOptions {
+                show_sgb_border,
+                ..gb_desktop::VideoOptions::default()
+            };
+            let dimensions =
+                super::framebuffer_dimensions_for_session(&machine, &video_options, false);
+            let render_input = super::framebuffer_render_input_for_session(
+                &machine,
+                dimensions,
+                &video_options,
+                false,
+            );
+
+            assert_eq!(
+                dimensions,
+                super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                }
+            );
+            let panel = render_input.panels[0]
+                .as_ref()
+                .expect("launcher panel should be populated");
+            assert_eq!(panel.dimensions, dimensions);
+            assert!(
+                panel.sgb_framebuffer_rgb555.is_none(),
+                "launcher presentation must not allocate an SGB host frame before a ROM is loaded"
+            );
+        }
     }
 
     #[test]
@@ -22088,6 +22785,10 @@ mod tests {
             0,
             0,
             super::FramebufferPanelInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
                 framebuffer: &framebuffer,
                 framebuffer_layer_sources: &layer_sources,
                 bgwin_framebuffer: &framebuffer,
@@ -22095,6 +22796,7 @@ mod tests {
                 bgwin_framebuffer_layer_sources: &layer_sources,
                 display_palette: super::GBL_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
+                sgb_framebuffer_rgb555: None,
             },
             &gb_desktop::VideoOptions {
                 display_palette: DesktopDisplayPalette::Light,
@@ -22239,6 +22941,7 @@ mod tests {
             options.config.video.display_palette,
             DesktopDisplayPalette::Grey
         );
+        assert!(!options.config.video.show_sgb_border);
 
         assert_eq!(
             super::desktop_model_from_benchmark(BenchmarkModel::Dmg),
@@ -22304,6 +23007,11 @@ mod tests {
             cgb_options.config.video.display_palette,
             DesktopDisplayPalette::Light
         );
+        assert_eq!(
+            cgb_options.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert!(!cgb_options.config.video.show_sgb_border);
 
         let machine = super::DesktopEmulationSession::new_single(
             super::load_machine_for_rom(&options.config, &root, &rom_bytes)
@@ -22684,6 +23392,38 @@ mod tests {
                 .boot_rom_fallback_warning
                 .as_deref()
                 .is_some_and(|warning| warning.contains("falling back to skip-boot"))
+        );
+    }
+
+    #[test]
+    fn prepare_machine_config_uses_sgb_boot_asset_identity_before_real_boot_fallback() {
+        let root = temp_test_root("missing-sgb2-bootrom-fallback");
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+        config.boot_rom.search_path = Some(root.clone());
+
+        let prepared = super::prepare_machine_config(&config, &root)
+            .expect("missing SGB2 boot ROM paths should degrade to skip-boot");
+
+        assert_eq!(
+            prepared.effective_config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
+        assert_eq!(
+            prepared.machine_config.sgb_profile,
+            Some(SgbHostProfile::Sgb2Ntsc)
+        );
+        assert_eq!(
+            prepared.machine_config.boot_rom_asset_kind(),
+            BootRomAssetKind::Sgb2
+        );
+        assert!(
+            prepared
+                .boot_rom_fallback_warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("sgb2_boot.bin"))
         );
     }
 
@@ -25557,6 +26297,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: harness.machine.ppu().framebuffer(),
                         framebuffer_layer_sources: harness
                             .machine
@@ -25573,6 +26317,7 @@ mod tests {
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -25602,6 +26347,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: harness.machine.ppu().framebuffer(),
                         framebuffer_layer_sources: harness
                             .machine
@@ -25618,6 +26367,7 @@ mod tests {
                             .framebuffer_bgwin_layer_sources(),
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -25883,6 +26633,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer: &framebuffer,
                     framebuffer_layer_sources: &layer_sources,
                     bgwin_framebuffer: &framebuffer,
@@ -25890,6 +26644,7 @@ mod tests {
                     bgwin_framebuffer_layer_sources: &layer_sources,
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -26081,6 +26836,66 @@ mod tests {
                 .snapshot()
                 .pressed_mask,
             0
+        );
+    }
+
+    #[test]
+    fn sgb_single_runtime_routes_multiplayer_keyboard_slots_to_host_controllers() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("sgb-keyboard-routing", true, false, false);
+        harness.machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::SgbNtsc),
+        ));
+
+        harness.push_key_with_scancode(Keycode::E, Scancode::E, true);
+        harness.push_key_with_scancode(Keycode::B, Scancode::B, true);
+        harness.push_key_with_scancode(Keycode::M, Scancode::M, true);
+        harness
+            .process_events()
+            .expect("SGB keyboard press should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .sgb_host()
+                .snapshot()
+                .multiplayer
+                .player_pressed_masks,
+            [0x00, 0x80, 0x10, 0x20],
+            "P2 START, P3 A, and P4 B should route into SGB host controller slots instead of Game Link machines"
+        );
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0,
+            "SGB P2/P3/P4 desktop keys must not leak into the local P1 joypad"
+        );
+
+        harness.push_key_with_scancode(Keycode::E, Scancode::E, false);
+        harness.push_key_with_scancode(Keycode::B, Scancode::B, false);
+        harness.push_key_with_scancode(Keycode::M, Scancode::M, false);
+        harness
+            .process_events()
+            .expect("SGB keyboard release should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .sgb_host()
+                .snapshot()
+                .multiplayer
+                .player_pressed_masks,
+            [0x00; 4]
         );
     }
 
@@ -26327,6 +27142,10 @@ mod tests {
                 dimensions: linked_dimensions,
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &left_framebuffer,
                         framebuffer_layer_sources: &left_sources,
                         bgwin_framebuffer: &left_framebuffer,
@@ -26334,8 +27153,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &left_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &right_framebuffer,
                         framebuffer_layer_sources: &right_sources,
                         bgwin_framebuffer: &right_framebuffer,
@@ -26343,6 +27167,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &right_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26376,7 +27201,11 @@ mod tests {
             super::DesktopDmg07PlayerCount::Four,
         )
         .expect("DMG-07 desktop session should build");
-        let dimensions = super::framebuffer_dimensions_for_session(&linked);
+        let dimensions = super::framebuffer_dimensions_for_session(
+            &linked,
+            &gb_desktop::VideoOptions::default(),
+            true,
+        );
         assert_eq!(
             dimensions,
             super::FramebufferDimensions {
@@ -26413,6 +27242,10 @@ mod tests {
                 dimensions,
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_0,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_0,
@@ -26420,8 +27253,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_1,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_1,
@@ -26429,8 +27267,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_2,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_2,
@@ -26438,8 +27281,13 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &panel_3,
                         framebuffer_layer_sources: &sources,
                         bgwin_framebuffer: &panel_3,
@@ -26447,6 +27295,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                 ],
             },
@@ -26509,6 +27358,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &framebuffer,
                         framebuffer_layer_sources: &layer_sources,
                         bgwin_framebuffer: &bgwin_framebuffer,
@@ -26516,6 +27369,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26598,6 +27452,10 @@ mod tests {
                 },
                 panels: [
                     Some(super::FramebufferPanelInput {
+                        dimensions: super::FramebufferDimensions {
+                            width: super::FRAMEBUFFER_WIDTH,
+                            height: super::FRAMEBUFFER_HEIGHT,
+                        },
                         framebuffer: &framebuffer,
                         framebuffer_layer_sources: &layer_sources,
                         bgwin_framebuffer: &bgwin_framebuffer,
@@ -26605,6 +27463,7 @@ mod tests {
                         bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                         display_palette: super::DMG_DISPLAY_PALETTE,
                         cgb_framebuffer_rgb555: None,
+                        sgb_framebuffer_rgb555: None,
                     }),
                     None,
                     None,
@@ -26642,6 +27501,10 @@ mod tests {
             },
             panels: [
                 Some(super::FramebufferPanelInput {
+                    dimensions: super::FramebufferDimensions {
+                        width: super::FRAMEBUFFER_WIDTH,
+                        height: super::FRAMEBUFFER_HEIGHT,
+                    },
                     framebuffer: harness.machine.ppu().framebuffer(),
                     framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
                     bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -26652,6 +27515,7 @@ mod tests {
                         .framebuffer_bgwin_layer_sources(),
                     display_palette: super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
+                    sgb_framebuffer_rgb555: None,
                 }),
                 None,
                 None,
@@ -26665,7 +27529,7 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            framebuffer,
+            framebuffer.clone(),
             &video_options,
             super::RenderPresentationInput::default(),
         )
@@ -27421,6 +28285,14 @@ mod tests {
                 DesktopConsoleModel::GameBoyColor,
                 DesktopDisplayPalette::Grey,
             ),
+            (
+                DesktopConsoleModel::SuperGameBoy,
+                DesktopDisplayPalette::Grey,
+            ),
+            (
+                DesktopConsoleModel::SuperGameBoy2,
+                DesktopDisplayPalette::Grey,
+            ),
             (DesktopConsoleModel::GameBoy, DesktopDisplayPalette::GameBoy),
         ] {
             harness.runtime.video_options.display_palette = DesktopDisplayPalette::Grey;
@@ -27821,6 +28693,25 @@ mod tests {
             harness.settings_store.base_config().video.display_palette,
             DesktopDisplayPalette::Light
         );
+        harness.session.config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        harness.runtime.frame_blending_state.previous_rgb_frame = vec![4, 5, 6];
+        harness.runtime.frame_blending_state.has_previous_frame = true;
+        assert!(harness.runtime.video_options.show_sgb_border);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleSgbBorder)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_sgb_border);
+        assert!(!harness.settings_store.base_config().video.show_sgb_border);
+        assert!(
+            harness
+                .runtime
+                .frame_blending_state
+                .previous_rgb_frame
+                .is_empty()
+        );
         harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyColor;
         assert!(
             harness
@@ -27978,6 +28869,24 @@ mod tests {
             harness.machine.external_port().attachment_kind(),
             ExternalPortAttachmentKind::None
         );
+        harness.session.config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::Printer,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        harness.session.config.launch.console_model = DesktopConsoleModel::GameBoyPocket;
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleGamepadDirectionalSource)

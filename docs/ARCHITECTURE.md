@@ -3,7 +3,7 @@
 ## Goals
 
 - Prioritize hardware-accurate behavior.
-- Keep the core modular enough to support DMG and CGB while leaving room for later SGB support.
+- Keep the core modular enough to support DMG, CGB, and SGB host-shell behavior while leaving room for later SNES/SFC-side execution.
 - Keep portability high so the core remains platform-agnostic.
 - Preserve determinism, debuggability, and testability across all implementation phases.
 
@@ -103,7 +103,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 
 - The core must expose an explicit console model concept.
 - The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, and the current functional target includes both the closed DMG-family path and the promoted base CGB-family path.
-- Keep the shared DMG/CGB core extensible for later CGB revision, AGB-family compatibility, and SGB host-shell work without duplicating subsystem implementations.
+- Keep the shared DMG/CGB/SGB core extensible for later CGB revision, AGB-family compatibility, and SGB SNES/SFC host-shell work without duplicating subsystem implementations.
 - The goal is to avoid major later refactors while keeping each implemented CGB-only path owned by an explicit subsystem.
 - Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
 - `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
@@ -112,10 +112,10 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - The public model surface keeps three explicit axes instead of collapsing everything into one enum:
   - `ConsoleModel` for the silicon family / revision baseline
   - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
-  - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB1` / `SGB2`
+  - `HostPlatform` for the surrounding host shell, such as handheld standalone or `SGB` / `SGB2`
 - The project also exposes one derived `CapabilitySet` view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
-- Future `SGB1` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
+- `SGB` / `SGB2` support enters through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
 ## DMG-stable, CGB-integrated policy
 
@@ -164,7 +164,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
-- Model-specific extensions: CGB and later SGB
+- Model-specific extensions: CGB and SGB host shell
 
 ## Detailed module responsibility guide
 
@@ -406,9 +406,9 @@ This section complements `Suggested subsystem boundaries` by mapping the source 
 - Restoring or replaying under a different execution mode should fail by default unless a later explicit conversion workflow is designed on top of recorded metadata.
 - Debugger or tooling snapshots should layer on top of the same core-owned save-state contracts instead of creating a second incompatible serialization path.
 - `MachineSaveState` is the core-owned whole-machine boundary. It is distinct from `MachineSnapshot` (debug/inspection only) and cartridge battery-save persistence.
-- Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
+- Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, SGB profile, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
 - The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `1`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
-- During active development the `.gbstate` payload schema is current-only even while the envelope remains version `1`; incompatible local slot files from earlier builds may be rejected and should be recreated instead of migrated.
+- During active development the `.gbstate` payload schema is current-only; incompatible local slot files from earlier builds may be rejected and should be recreated instead of migrated.
 - The Phase 8 durability layer stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
 - Rewind is layered over repeated in-memory `MachineSaveState` capture/restore. Phase 8.4 defines the core-only frame/subframe `MachineRewindBuffer` ring buffer and memory telemetry; Phase 8.7 accounts `MachineSaveState` payload bytes by deterministic deep-size of owned snapshot storage while still excluding allocator/RSS overhead. `gb-desktop` owns the single-machine host integration by recording frame/subframe snapshots during normal runtime, exposing a remappable hold hotkey (`Left Shift` by default), persistent rewind capture/capacity/playback-speed options under `SYSTEM -> REWIND`, compact HUD telemetry plus a top-right active-rewind indicator, and host input/audio/pacing/RTC/save-baseline cleanup after restore. Multi-machine coordination, compression, deltas, and debugger-grade reverse T-cycle stepping remain outside the core contract.
 - Host-facing `.gbstate` I/O is a frontend/tooling policy on top of the core contract. `gb-cli run --state-in/--state-out` restores after ROM load and saves after the normal run budget, while `gb-desktop` stores single-machine slots under `<rom-dir>/states/<state-key>.slot<N>.gbstate` and keeps `LOAD STATE` visible but disabled until the selected ROM-related slot exists. Loading a `.gbstate` must not apply elapsed RTC off-session time or replay cartridge battery-save storage; any cartridge save session uses the restored cartridge state as its new baseline, and the desktop rewind buffer is cleared because the host timeline has jumped to an externally loaded state.

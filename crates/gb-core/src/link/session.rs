@@ -41,6 +41,10 @@ pub enum LinkedMachinesError {
     UnsupportedMachineCountForDmg07 {
         count: usize,
     },
+    UnsupportedExternalPortAttachment {
+        machine_index: usize,
+        attachment_kind: ExternalPortAttachmentKind,
+    },
     UnsupportedMachineCountForCgbInfrared {
         count: usize,
     },
@@ -160,6 +164,7 @@ impl<S: TraceSink> LinkedMachines<S> {
                 count: self.machines.len(),
             });
         }
+        self.validate_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04)?;
 
         self.detach_link_topology();
 
@@ -177,6 +182,12 @@ impl<S: TraceSink> LinkedMachines<S> {
         participants: &[Dmg07Participant],
     ) -> Result<(), LinkedMachinesError> {
         validate_dmg07_participants(participants, self.machines.len())?;
+        for participant in participants {
+            self.validate_machine_external_port_attachment(
+                participant.machine_index,
+                ExternalPortAttachmentKind::FourPlayerAdapterDmg07,
+            )?;
+        }
 
         self.detach_link_topology();
 
@@ -310,6 +321,31 @@ impl<S: TraceSink> LinkedMachines<S> {
         }
     }
 
+    fn validate_external_port_attachment(
+        &self,
+        attachment_kind: ExternalPortAttachmentKind,
+    ) -> Result<(), LinkedMachinesError> {
+        for machine_index in 0..self.machines.len() {
+            self.validate_machine_external_port_attachment(machine_index, attachment_kind)?;
+        }
+        Ok(())
+    }
+
+    fn validate_machine_external_port_attachment(
+        &self,
+        machine_index: usize,
+        attachment_kind: ExternalPortAttachmentKind,
+    ) -> Result<(), LinkedMachinesError> {
+        if self.machines[machine_index].supports_external_port_attachment(attachment_kind) {
+            Ok(())
+        } else {
+            Err(LinkedMachinesError::UnsupportedExternalPortAttachment {
+                machine_index,
+                attachment_kind,
+            })
+        }
+    }
+
     pub fn topology_trace_text(&self) -> Option<String> {
         match &self.topology {
             LinkTopology::None | LinkTopology::Dmg04(_) | LinkTopology::CgbInfrared(_) => None,
@@ -334,7 +370,7 @@ mod tests {
     use super::super::cgb_ir::DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES;
     use super::*;
     use crate::machine::MachineStepObserver;
-    use crate::model::{ConsoleModel, MachineConfig, StartupMode};
+    use crate::model::{ConsoleModel, HostPlatform, MachineConfig, SgbHostProfile, StartupMode};
 
     const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
     const CGB_IR_SIGNAL_VISIBLE_T_CYCLES: u64 = 19_900;
@@ -355,6 +391,14 @@ mod tests {
     fn dmg_skip_boot_machine() -> Machine {
         Machine::new(
             MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
+        )
+    }
+
+    fn sgb_skip_boot_machine(profile: SgbHostProfile) -> Machine {
+        Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_sgb_profile(profile)
+                .with_startup_mode(StartupMode::SkipBoot),
         )
     }
 
@@ -534,6 +578,65 @@ mod tests {
             Some(ExternalPortAttachmentKind::GameLinkDmg04)
         );
         assert_eq!(linked.topology_kind(), LinkedTopologyKind::Dmg04);
+    }
+
+    #[test]
+    fn attach_dmg04_cable_rejects_original_sgb_without_physical_link_port() {
+        let mut linked = LinkedMachines::new(vec![
+            sgb_skip_boot_machine(SgbHostProfile::SgbNtsc),
+            dmg_skip_boot_machine(),
+        ])
+        .expect("matching machines should link");
+
+        let error = linked
+            .attach_dmg04_cable()
+            .expect_err("original SGB should not expose a Game Link attachment");
+
+        assert_eq!(
+            error,
+            LinkedMachinesError::UnsupportedExternalPortAttachment {
+                machine_index: 0,
+                attachment_kind: ExternalPortAttachmentKind::GameLinkDmg04,
+            }
+        );
+        assert_eq!(linked.topology_kind(), LinkedTopologyKind::None);
+        assert_eq!(
+            linked
+                .machine(0)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::None)
+        );
+    }
+
+    #[test]
+    fn attach_dmg04_cable_accepts_sgb2_through_the_existing_link_topology() {
+        let mut linked = LinkedMachines::new(vec![
+            Machine::new(
+                MachineConfig::new(ConsoleModel::GameBoy)
+                    .with_host_platform(HostPlatform::Sgb2)
+                    .with_startup_mode(StartupMode::SkipBoot),
+            ),
+            dmg_skip_boot_machine(),
+        ])
+        .expect("matching machines should link");
+
+        linked
+            .attach_dmg04_cable()
+            .expect("SGB2 should expose its physical Game Link port");
+
+        assert_eq!(linked.topology_kind(), LinkedTopologyKind::Dmg04);
+        assert_eq!(
+            linked
+                .machine(0)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::GameLinkDmg04)
+        );
+        assert_eq!(
+            linked
+                .machine(1)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::GameLinkDmg04)
+        );
     }
 
     #[test]

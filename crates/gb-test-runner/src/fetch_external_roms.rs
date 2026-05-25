@@ -525,7 +525,7 @@ mod tests {
         curated_test_rom_families, curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite,
         docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
         gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite, test_rom_store_root,
+        samesuite_dmg_extra_suite, samesuite_sgb_suite, test_rom_store_root,
     };
 
     use super::{
@@ -678,6 +678,7 @@ mod tests {
                 cgb_audio_blargg_suite(),
                 cgb_audio_samesuite_suite(),
                 samesuite_cgb_extra_suite(),
+                samesuite_sgb_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| {
@@ -749,6 +750,7 @@ mod tests {
             cgb_audio_blargg_suite(),
             cgb_audio_samesuite_suite(),
             samesuite_cgb_extra_suite(),
+            samesuite_sgb_suite(),
         ]) {
             for case in suite.cases {
                 let source_path = root.join(gbemu_test_fixture_source_path(&case.rom_path));
@@ -1393,6 +1395,12 @@ mod tests {
             &gbemu_root,
             "testroms/samesuite/apu/div_write_trigger_10.gb",
         );
+        let command_mlt_req_sha =
+            sha_for_file(&gbemu_root, "testroms/samesuite/sgb/command_mlt_req.gb");
+        let command_mlt_req_incrementing_sha = sha_for_file(
+            &gbemu_root,
+            "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb",
+        );
         let ei_delay_halt_sha = write_required_file(
             &docboy_root,
             "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb",
@@ -1456,6 +1464,14 @@ sha256 = "{}"
 path = "testroms/samesuite/apu/div_write_trigger_10.gb"
 sha256 = "{}"
 
+[[source.required_file]]
+path = "testroms/samesuite/sgb/command_mlt_req.gb"
+sha256 = "{}"
+
+[[source.required_file]]
+path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
+sha256 = "{}"
+
 [[source]]
 id = "docboy"
 git_url = "{}"
@@ -1479,6 +1495,8 @@ sha256 = "{}"
                 gbemu_rev,
                 div_write_sha,
                 div_write_10_sha,
+                command_mlt_req_sha,
+                command_mlt_req_incrementing_sha,
                 docboy_root.display(),
                 docboy_rev,
                 ei_delay_halt_sha,
@@ -1495,6 +1513,12 @@ sha256 = "{}"
         let samesuite_root = test_rom_store_root(&workspace_root).join("samesuite");
         assert!(samesuite_root.join("apu/div_write_trigger.gb").exists());
         assert!(samesuite_root.join("apu/div_write_trigger_10.gb").exists());
+        assert!(samesuite_root.join("sgb/command_mlt_req.gb").exists());
+        assert!(
+            samesuite_root
+                .join("sgb/command_mlt_req_1_incrementing.gb")
+                .exists()
+        );
         assert_eq!(
             fs::read_to_string(samesuite_root.join("interrupt/ei_delay_halt.gb"))
                 .expect("DocBoy SameSuite ROM should materialize"),

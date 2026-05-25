@@ -214,6 +214,50 @@ fn boot_rom_reads_come_from_the_configured_selected_model_image() {
 }
 
 #[test]
+fn sgb_real_boot_reads_come_from_sgb_boot_assets_instead_of_dmg_revision_assets() {
+    let assets = BootRomAssets::none()
+        .with_bytes(
+            HardwareRevision::DmgCpuC,
+            vec![0xD0; DMG_FAMILY_BOOT_ROM_LEN],
+        )
+        .expect("dmg image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; DMG_FAMILY_BOOT_ROM_LEN])
+        .expect("sgb image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb2, vec![0x52; DMG_FAMILY_BOOT_ROM_LEN])
+        .expect("sgb2 image should validate");
+    let sgb = BootController::new_with_sgb_profile(
+        ConsoleModel::GameBoy,
+        HardwareRevision::DmgCpuC,
+        Some(SgbHostProfile::SgbNtsc),
+        StartupMode::RealBoot,
+        assets.clone(),
+    );
+    let sgb_pal = BootController::new_with_sgb_profile(
+        ConsoleModel::GameBoy,
+        HardwareRevision::DmgCpuC,
+        Some(SgbHostProfile::SgbPal),
+        StartupMode::RealBoot,
+        assets.clone(),
+    );
+    let sgb2 = BootController::new_with_sgb_profile(
+        ConsoleModel::GameBoy,
+        HardwareRevision::DmgCpuC,
+        Some(SgbHostProfile::Sgb2Ntsc),
+        StartupMode::RealBoot,
+        assets,
+    );
+
+    assert_eq!(sgb.boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert_eq!(sgb_pal.boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert_eq!(sgb2.boot_rom_asset(), BootRomAssetKind::Sgb2);
+    assert!(sgb.has_boot_rom_asset());
+    assert!(sgb2.has_boot_rom_asset());
+    assert_eq!(sgb.read_boot_rom(0x0000), 0x51);
+    assert_eq!(sgb_pal.read_boot_rom(0x0000), 0x51);
+    assert_eq!(sgb2.read_boot_rom(0x0000), 0x52);
+}
+
+#[test]
 fn cgb_boot_rom_reads_cover_both_overlay_windows_without_aliasing_to_dmg_assets() {
     let mut cgb_boot = vec![0x00; CGB_BOOT_ROM_RAW_LEN];
     cgb_boot[0x0000] = 0xC0;
@@ -756,6 +800,49 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
         assets.read_byte(HardwareRevision::CpuCgbE, 0x0000),
         Some(0xCE)
     );
+    assert!(!assets.has_asset(BootRomAssetKind::Sgb));
+    assert!(!assets.has_asset(BootRomAssetKind::Sgb2));
+
+    fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
+}
+
+#[test]
+fn boot_rom_assets_can_load_sgb_directory_images_independently() {
+    let directory = unique_temp_dir();
+    fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
+    fs::write(
+        directory.join(BootRomAssets::filename(HardwareRevision::DmgCpuC)),
+        vec![0xD1; DMG_FAMILY_BOOT_ROM_LEN],
+    )
+    .expect("dmg boot ROM file should be writable");
+    fs::write(
+        directory.join(BootRomAssets::filename_for_asset(BootRomAssetKind::Sgb)),
+        vec![0x51; DMG_FAMILY_BOOT_ROM_LEN],
+    )
+    .expect("sgb boot ROM file should be writable");
+    fs::write(
+        directory.join(BootRomAssets::filename_for_asset(BootRomAssetKind::Sgb2)),
+        vec![0x52; DMG_FAMILY_BOOT_ROM_LEN],
+    )
+    .expect("sgb2 boot ROM file should be writable");
+
+    let assets = BootRomAssets::from_directory(&directory)
+        .expect("directory-backed SGB boot ROM assets should load");
+
+    assert!(assets.has_asset(BootRomAssetKind::Sgb));
+    assert!(assets.has_asset(BootRomAssetKind::Sgb2));
+    assert_eq!(
+        assets.read_asset_byte(BootRomAssetKind::Sgb, 0x0000),
+        Some(0x51)
+    );
+    assert_eq!(
+        assets.read_asset_byte(BootRomAssetKind::Sgb2, 0x0000),
+        Some(0x52)
+    );
+    assert_eq!(
+        assets.read_byte(HardwareRevision::DmgCpuC, 0x0000),
+        Some(0xD1)
+    );
 
     fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
 }
@@ -825,6 +912,24 @@ fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
 
         fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
     }
+
+    for asset in [BootRomAssetKind::Sgb, BootRomAssetKind::Sgb2] {
+        let directory = unique_temp_dir();
+        fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
+        fs::write(
+            directory.join(BootRomAssets::filename_for_asset(asset)),
+            vec![0xFF; DMG_FAMILY_BOOT_ROM_LEN - 1],
+        )
+        .expect("short SGB boot ROM file should be writable");
+
+        let error = BootRomAssets::from_directory(&directory)
+            .expect_err("too-short SGB boot ROM files should be rejected");
+        assert!(matches!(error, BootRomAssetError::ImageTooShort { .. }));
+        assert!(error.to_string().contains("too short"));
+        assert!(std::error::Error::source(&error).is_none());
+
+        fs::remove_dir_all(&directory).expect("temporary asset directory should be removable");
+    }
 }
 
 #[test]
@@ -846,7 +951,11 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         )
         .expect("mgb image should validate")
         .with_bytes(HardwareRevision::CpuCgbC, vec![0x40; CGB_BOOT_ROM_RAW_LEN])
-        .expect("cgb image should validate");
+        .expect("cgb image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; DMG_FAMILY_BOOT_ROM_LEN])
+        .expect("sgb image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb2, vec![0x52; DMG_FAMILY_BOOT_ROM_LEN])
+        .expect("sgb2 image should validate");
 
     assert_eq!(
         BootRomAssets::filename(HardwareRevision::DmgCpu),
@@ -864,11 +973,21 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         BootRomAssets::filename(HardwareRevision::CpuCgbC),
         "cgb_boot.bin"
     );
+    assert_eq!(
+        BootRomAssets::filename_for_asset(BootRomAssetKind::Sgb),
+        "sgb_boot.bin"
+    );
+    assert_eq!(
+        BootRomAssets::filename_for_asset(BootRomAssetKind::Sgb2),
+        "sgb2_boot.bin"
+    );
     assert!(!assets.is_empty());
     assert!(assets.has_image(HardwareRevision::DmgCpu));
     assert!(assets.has_image(HardwareRevision::DmgCpuC));
     assert!(assets.has_image(HardwareRevision::CpuMgb));
     assert!(assets.has_image(HardwareRevision::CpuCgbC));
+    assert!(assets.has_asset(BootRomAssetKind::Sgb));
+    assert!(assets.has_asset(BootRomAssetKind::Sgb2));
     assert_eq!(
         assets.read_byte(HardwareRevision::DmgCpu, 0x0000),
         Some(0x10)
@@ -884,5 +1003,13 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     assert_eq!(
         assets.read_byte(HardwareRevision::CpuCgbC, 0x0000),
         Some(0x40)
+    );
+    assert_eq!(
+        assets.read_asset_byte(BootRomAssetKind::Sgb, 0x0000),
+        Some(0x51)
+    );
+    assert_eq!(
+        assets.read_asset_byte(BootRomAssetKind::Sgb2, 0x0000),
+        Some(0x52)
     );
 }

@@ -1,6 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
-use crate::boot::BootRomAssets;
+use crate::boot::{BootRomAssetKind, BootRomAssets};
 use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -10,7 +10,8 @@ use crate::dma::DmaTransferLifecycle;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{
-    CompatibilityPolicy, ConsoleModel, ExecutionMode, HardwareRevision, OperatingMode, StartupMode,
+    CompatibilityPolicy, ConsoleModel, ExecutionMode, HardwareRevision, HostPlatform,
+    OperatingMode, SgbHostProfile, StartupMode,
 };
 use crate::ppu::{
     PpuAccessMode, PpuLcdState, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
@@ -33,6 +34,13 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom[0x0147] = 0x00;
     rom[0x0148] = 0x00;
     rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_sgb_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0146] = 0x03;
+    rom[0x014B] = 0x33;
     rom
 }
 
@@ -2862,6 +2870,40 @@ fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
 }
 
 #[test]
+fn sgb_profiles_gate_physical_external_port_attachments() {
+    let mut sgb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbPal)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+    let mut sgb2 = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_host_platform(HostPlatform::Sgb2)
+            .with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    assert!(!sgb.supports_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04));
+    assert!(sgb2.supports_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04));
+
+    sgb.set_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04);
+    sgb2.set_external_port_attachment(ExternalPortAttachmentKind::GameLinkDmg04);
+
+    assert_eq!(
+        sgb.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::None
+    );
+    assert_eq!(
+        sgb.serial().peer(),
+        SerialPeer::Disconnected,
+        "original SGB has no physical serial/link connector"
+    );
+    assert_eq!(
+        sgb2.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::GameLinkDmg04
+    );
+}
+
+#[test]
 fn machine_exposes_external_port_reset_policy_configuration() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
@@ -2902,4 +2944,104 @@ fn load_cartridge_restarts_real_boot_from_power_on_state() {
     assert_eq!(machine.cpu().startup_state().pc, 0x0000);
     assert_eq!(machine.cpu().registers().pc, 0x0000);
     assert!(machine.boot().is_boot_rom_mapped());
+}
+
+#[test]
+fn load_cartridge_preserves_sgb_real_boot_asset_profile() {
+    let assets = BootRomAssets::none()
+        .with_bytes(HardwareRevision::DmgCpuC, vec![0xD0; 0x100])
+        .expect("dmg boot ROM image should validate")
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; 0x100])
+        .expect("sgb boot ROM image should validate");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbPal)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(assets),
+    );
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("supported SGB NoMBC image should load");
+    assert_eq!(machine.boot().sgb_profile(), Some(SgbHostProfile::SgbPal));
+    assert_eq!(machine.boot().boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert_eq!(machine.read_bus(0x0000), 0x51);
+
+    machine.write_bus(0xFF50, 0x01);
+    assert!(!machine.boot().is_boot_rom_mapped());
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("reloading a supported SGB NoMBC image should succeed");
+
+    assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.boot().sgb_profile(), Some(SgbHostProfile::SgbPal));
+    assert_eq!(machine.boot().boot_rom_asset(), BootRomAssetKind::Sgb);
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.read_bus(0x0000), 0x51);
+}
+
+#[test]
+fn sgb_real_boot_handoff_does_not_let_boot_packets_absorb_cartridge_commands() {
+    fn sgb_command_packet(command_id: u8, packet_count: u8) -> [u8; 16] {
+        let mut bytes = [0; 16];
+        bytes[0] = (command_id << 3) | (packet_count & 0x07);
+        bytes
+    }
+
+    fn write_sgb_packet(machine: &mut Machine, bytes: [u8; 16]) {
+        machine.write_bus(0xFF00, 0x00);
+        machine.write_bus(0xFF00, 0x30);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                machine.write_bus(
+                    0xFF00,
+                    if byte & (1 << bit_index) == 0 {
+                        0x20
+                    } else {
+                        0x10
+                    },
+                );
+                machine.write_bus(0xFF00, 0x30);
+            }
+        }
+        machine.write_bus(0xFF00, 0x20);
+        machine.write_bus(0xFF00, 0x30);
+    }
+
+    let assets = BootRomAssets::none()
+        .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; 0x100])
+        .expect("sgb boot ROM image should validate");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoy)
+            .with_sgb_profile(SgbHostProfile::SgbNtsc)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(assets),
+    );
+
+    machine
+        .load_cartridge(build_sgb_test_rom(&[0x00]))
+        .expect("supported SGB NoMBC image should load");
+    write_sgb_packet(&mut machine, sgb_command_packet(0x1F, 3));
+    assert_eq!(
+        machine.snapshot().sgb_host.command.active_command_id,
+        Some(0x1F)
+    );
+
+    machine.write_bus(0xFF50, 0x01);
+
+    let snapshot = machine.snapshot().sgb_host;
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(snapshot.command.active_command_id, None);
+    assert_eq!(snapshot.command.expected_packet_count, 0);
+    assert_eq!(snapshot.command.received_packet_count, 0);
+
+    let mut mlt_req = sgb_command_packet(0x11, 1);
+    mlt_req[1] = 0x01;
+    write_sgb_packet(&mut machine, mlt_req);
+
+    let snapshot = machine.snapshot().sgb_host;
+    assert_eq!(snapshot.command.last_command_id, Some(0x11));
+    assert_eq!(snapshot.multiplayer.mlt_req_count, 1);
+    assert_eq!(snapshot.multiplayer.player_count, 2);
 }

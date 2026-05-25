@@ -4,12 +4,12 @@
 
 Explain how to use the public model-facing types introduced around `ConsoleModel`, `OperatingMode`, `HostPlatform`, and `CapabilitySet`.
 
-This file is a code-facing usage and migration note. It exists to keep DMG, future CGB, and future SGB work from collapsing distinct concepts back into one catch-all enum.
+This file is a code-facing usage and migration note. It exists to keep DMG, CGB, and SGB work from collapsing distinct concepts back into one catch-all enum.
 
 ## Authority boundaries
 
 - `ARCHITECTURE.md` owns the existence of the separate axes and the high-level architectural reason for them.
-- `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that later consumes those axes.
+- `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that consumes those axes.
 - This file owns the global model-profile reference table that aligns the public axes with hardware-profile names, without making those hardware-profile names functional behavior gates.
 - This file owns the practical "which type should I consult here?" guidance for production code and follow-up refactors.
 
@@ -24,6 +24,7 @@ ConsoleModel     = visible product model selected by users and frontends
 HardwareRevision = CPU/revision profile selected within that model; RealBoot derives firmware from it
 OperatingMode    = which GB-visible mode the software is currently running under
 HostPlatform     = which outer host shell surrounds the shared GB core
+SgbHostProfile   = which SGB/SGB2 host shell timing/link profile applies when HostPlatform is Sgb/Sgb2
 ```
 
 Examples:
@@ -34,9 +35,10 @@ Examples:
 - `ConsoleModel::GameBoyColor` + `HardwareRevision::CpuCgbE` + `OperatingMode::Cgb` = CGB-family silicon on the active CGB-E profile, with `cgbE_boot.bin` selected automatically for `RealBoot`
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
-- `HostPlatform::Sgb1` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
+- `HostPlatform::Sgb` or `HostPlatform::Sgb2` = SGB shell around the shared GB core, not a different GB silicon family
+- `SgbHostProfile::SgbNtsc`, `SgbHostProfile::SgbPal`, or `SgbHostProfile::Sgb2Ntsc` = the concrete SGB/SGB2 host profile used for video standard, source clock, corrected-clock fact, and physical Game Link availability; `SgbPal` is only coherent with `HostPlatform::Sgb`, and `Sgb2Ntsc` is only coherent with `HostPlatform::Sgb2`
 
-`CapabilitySet` is the derived semantic view over those axes. It exists so most subsystem code can ask the question it really means instead of manually recomputing it.
+`CapabilitySet` is the derived semantic view over the broad model axes. SGB host-profile facts currently live on `SgbHostProfile` because they are profile-specific timing/link facts rather than GB-silicon behavior; code that needs SGB2 Game Link availability or corrected clock should consult the selected SGB profile instead of duplicating `HostPlatform` checks.
 
 ## Reference model profiles
 
@@ -56,8 +58,8 @@ This table is an informative reference for aligning the public axes with the har
 | true | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
 | false | Game Boy Color | Handheld | `CPU CGB D` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Post-C family revision; fixes many A/B/C-era issues and changes LCD/PPU timing behavior. |
 | false | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB-E boot profile | Latest CGB revision; CGB-CPU-06 integrates WRAM into the CPU and uses the distinct `cgbE_boot.bin`. |
-| true | Super Game Boy | Sgb1 | `SGB-CPU 01` | `sgb_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB1 host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side. |
-| false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | SGB | SGB palettes + SNES/SFC border | SGB2 host; NTSC/JPN case; corrected clock versus SGB1; boot identifies SGB2 separately. |
+| true | Super Game Boy | Sgb | `SGB-CPU 01` | `sgb_boot.bin` | DMG-compatible hosted by SGB | SGB palettes + SNES/SFC border | SGB host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side; no physical Game Link port. |
+| false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | DMG-compatible hosted by SGB2 | SGB palettes + SNES/SFC border | SGB2 host; NTSC case; corrected clock versus SGB; physical Game Link support; boot identifies SGB2 separately. |
 | false | Game Boy Advance | Handheld | `CPU AGB` | `gba_bios.bin` + `cgb_agb0_boot.bin` | AGB; GB/GBC Compatible on AGB0 | AGB color; GB/GBC with AGB0 profile | Initial CPU without suffix; early AGB. `AGB0` refers to the CGB-compatible boot ROM variant, not a confirmed separate native GBA BIOS here. |
 | true | Game Boy Advance | Handheld | `CPU AGB A` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB color; GB/GBC with AGB profile | Common AGB revision; CGB-compatible boot fixes logo-swap behavior and exposes GBA compatibility mode to software. |
 | true | Game Boy Advance SP | Handheld | `CPU AGB B` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Early AGS/AGS-001 family. |
@@ -113,12 +115,14 @@ Reach for `HostPlatform` when the behavior belongs to the environment around the
 
 Typical uses:
 
-- future SGB command transport
-- future SGB border ownership
-- future SGB multiplayer-host behavior
+- SGB command transport
+- SGB border ownership
+- SGB multiplayer-host behavior
 - host-shell timing coordination with a SNES-side implementation
 
 `HostPlatform` should not decide CPU, PPU, DMA, timer, or APU truth directly unless a subsystem handbook later documents a real host-platform-visible effect.
+
+Use `SgbHostProfile` when the host-shell question needs the specific SGB profile rather than merely "is this SGB?". Typical uses include choosing SGB NTSC versus SGB PAL presentation, identifying SGB2 corrected-clock behavior, selecting the SGB/SGB2 real-boot asset intent, and gating the physical Game Link port. `MachineConfig::with_sgb_profile` is the preferred profile-selection entry point because it keeps the host platform coherent with the profile.
 
 ### Use `CapabilitySet` by default for subsystem behavior gates
 
@@ -141,7 +145,7 @@ When adding or refactoring model-aware code:
 1. Ask whether the code really wants a semantic capability.
 2. If yes, use `CapabilitySet` or add a new derived capability there.
 3. If not, ask whether the question is about silicon, active operating mode, or host shell.
-4. Use `ConsoleModel`, `OperatingMode`, or `HostPlatform` only for that specific raw concern.
+4. Use `ConsoleModel`, `OperatingMode`, `HostPlatform`, or `SgbHostProfile` only for that specific raw concern.
 
 In short:
 
@@ -150,6 +154,7 @@ behavior gate -> CapabilitySet first
 silicon fact  -> ConsoleModel
 mode fact     -> OperatingMode
 host-shell    -> HostPlatform
+sgb profile   -> SgbHostProfile
 ```
 
 ## Concrete examples
@@ -180,9 +185,15 @@ Use `OperatingMode` or a capability derived from it for:
 
 Use `HostPlatform` or a capability derived from it for:
 
-- future SGB packet decoder ownership
-- future border composition outside the handheld LCD image
-- future SGB multiplayer-controller multiplexing
+- SGB packet decoder ownership
+- SGB border composition outside the handheld LCD image
+- SGB multiplayer-controller multiplexing
+
+Use `SgbHostProfile` directly for:
+
+- SGB NTSC versus SGB PAL source-clock and video-standard facts
+- SGB2 corrected-clock and physical Game Link availability
+- validating save-state restore against the selected SGB/SGB2 profile
 
 ## Migration guidance
 
@@ -203,6 +214,7 @@ This keeps behavior-neutral refactors small and makes later CGB bring-up easier 
 - Do not use `OperatingMode::GbCompatible` as a synonym for "DMG-family silicon".
 - Do not use `OperatingMode::CgbDmgExt` as a synonym for native CGB, full PGB, PSM NMI, or live post-boot `OPRI` visual switching.
 - Do not put SGB host-shell policy behind random `ConsoleModel` checks.
+- Do not treat `HostPlatform::Sgb2` as enough to answer NTSC/PAL or corrected-clock questions once a concrete SGB profile is available.
 - Do not re-derive the same semantic meaning from the raw axes in several subsystems.
 - Do not add a second emulator path just because one raw axis is insufficient.
 

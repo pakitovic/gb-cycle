@@ -1,4 +1,4 @@
-use crate::boot::BootRomAssets;
+use crate::boot::{BootRomAssetKind, BootRomAssets};
 use crate::cartridge::{CartridgeHeader, CgbFlag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -147,41 +147,15 @@ pub enum HardwareRevision {
 
 impl HardwareRevision {
     pub const fn boot_rom_filename(self) -> &'static str {
-        match self {
-            Self::DmgCpu => "dmg0_boot.bin",
-            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => "dmg_boot.bin",
-            Self::CpuMgb => "mgb_boot.bin",
-            Self::CpuCgb => "cgb0_boot.bin",
-            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => "cgb_boot.bin",
-            Self::CpuCgbE => "cgbE_boot.bin",
-        }
+        BootRomAssetKind::from_revision(self).filename()
     }
 
     pub const fn boot_rom_expected_sha256(self) -> &'static str {
-        match self {
-            Self::DmgCpu => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
-            Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC => {
-                "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7"
-            }
-            Self::CpuMgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
-            Self::CpuCgb => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
-            Self::CpuCgbA | Self::CpuCgbB | Self::CpuCgbC | Self::CpuCgbD => {
-                "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7"
-            }
-            Self::CpuCgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
-        }
+        BootRomAssetKind::from_revision(self).expected_sha256()
     }
 
     pub const fn boot_rom_expected_size(self) -> usize {
-        match self {
-            Self::DmgCpu | Self::DmgCpuA | Self::DmgCpuB | Self::DmgCpuC | Self::CpuMgb => 0x0100,
-            Self::CpuCgb
-            | Self::CpuCgbA
-            | Self::CpuCgbB
-            | Self::CpuCgbC
-            | Self::CpuCgbD
-            | Self::CpuCgbE => 0x0900,
-        }
+        BootRomAssetKind::from_revision(self).expected_size()
     }
 
     pub const fn uses_cgb_boot_rom(self) -> bool {
@@ -236,13 +210,163 @@ impl OperatingMode {
 pub enum HostPlatform {
     #[default]
     Handheld,
-    Sgb1,
+    Sgb,
     Sgb2,
 }
 
 impl HostPlatform {
     pub const fn is_sgb(self) -> bool {
-        matches!(self, Self::Sgb1 | Self::Sgb2)
+        matches!(self, Self::Sgb | Self::Sgb2)
+    }
+}
+
+pub const DMG_MASTER_CLOCK_HZ: u32 = 4_194_304;
+pub const SGB_ICD2_CLOCK_DIVISOR: u32 = 5;
+pub const SGB_NTSC_SOURCE_MASTER_CLOCK_HZ: u32 = 21_477_272;
+pub const SGB_PAL_SOURCE_MASTER_CLOCK_HZ: u32 = 21_281_370;
+pub const SGB2_SOURCE_MASTER_CLOCK_HZ: u32 = DMG_MASTER_CLOCK_HZ * SGB_ICD2_CLOCK_DIVISOR;
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbVideoStandard {
+    #[default]
+    Ntsc,
+    Pal,
+}
+
+impl SgbVideoStandard {
+    pub const fn argument_name(self) -> &'static str {
+        match self {
+            Self::Ntsc => "ntsc",
+            Self::Pal => "pal",
+        }
+    }
+
+    pub const fn menu_name(self) -> &'static str {
+        match self {
+            Self::Ntsc => "NTSC",
+            Self::Pal => "PAL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbClockRate {
+    pub numerator_hz: u64,
+    pub denominator: u32,
+}
+
+impl SgbClockRate {
+    pub const fn from_hz(hz: u32) -> Self {
+        Self {
+            numerator_hz: hz as u64,
+            denominator: 1,
+        }
+    }
+
+    pub const fn divided_by(self, divisor: u32) -> Self {
+        Self {
+            numerator_hz: self.numerator_hz,
+            denominator: self.denominator * divisor,
+        }
+    }
+
+    pub const fn rounded_hz(self) -> u32 {
+        ((self.numerator_hz + (self.denominator / 2) as u64) / self.denominator as u64) as u32
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SgbProfileTiming {
+    pub source_master_clock_hz: SgbClockRate,
+    pub gb_master_clock_hz: SgbClockRate,
+    pub gb_clock_divisor: u32,
+    pub video_standard: SgbVideoStandard,
+    pub corrected_clock: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SgbHostProfile {
+    SgbNtsc,
+    SgbPal,
+    Sgb2Ntsc,
+}
+
+impl SgbHostProfile {
+    pub const ALL: [Self; 3] = [Self::SgbNtsc, Self::SgbPal, Self::Sgb2Ntsc];
+
+    pub const fn default_for_host_platform(host_platform: HostPlatform) -> Option<Self> {
+        match host_platform {
+            HostPlatform::Handheld => None,
+            HostPlatform::Sgb => Some(Self::SgbNtsc),
+            HostPlatform::Sgb2 => Some(Self::Sgb2Ntsc),
+        }
+    }
+
+    pub const fn host_platform(self) -> HostPlatform {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => HostPlatform::Sgb,
+            Self::Sgb2Ntsc => HostPlatform::Sgb2,
+        }
+    }
+
+    pub const fn video_standard(self) -> SgbVideoStandard {
+        match self {
+            Self::SgbNtsc | Self::Sgb2Ntsc => SgbVideoStandard::Ntsc,
+            Self::SgbPal => SgbVideoStandard::Pal,
+        }
+    }
+
+    pub const fn ui_label(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SUPER GB",
+            Self::Sgb2Ntsc => "SUPER GB2",
+        }
+    }
+
+    pub const fn machine_profile_name(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SGB",
+            Self::Sgb2Ntsc => "SGB2",
+        }
+    }
+
+    pub const fn revision_label(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "SGB-CPU 01",
+            Self::Sgb2Ntsc => "CPU SGB2",
+        }
+    }
+
+    pub const fn real_boot_filename(self) -> &'static str {
+        match self {
+            Self::SgbNtsc | Self::SgbPal => "sgb_boot.bin",
+            Self::Sgb2Ntsc => "sgb2_boot.bin",
+        }
+    }
+
+    pub const fn game_link_supported(self) -> bool {
+        matches!(self, Self::Sgb2Ntsc)
+    }
+
+    pub const fn corrected_clock(self) -> bool {
+        matches!(self, Self::Sgb2Ntsc)
+    }
+
+    pub const fn timing(self) -> SgbProfileTiming {
+        let source_master_clock_hz = match self {
+            Self::SgbNtsc => SgbClockRate::from_hz(SGB_NTSC_SOURCE_MASTER_CLOCK_HZ),
+            Self::SgbPal => SgbClockRate::from_hz(SGB_PAL_SOURCE_MASTER_CLOCK_HZ),
+            Self::Sgb2Ntsc => SgbClockRate::from_hz(SGB2_SOURCE_MASTER_CLOCK_HZ),
+        };
+        SgbProfileTiming {
+            source_master_clock_hz,
+            gb_master_clock_hz: source_master_clock_hz.divided_by(SGB_ICD2_CLOCK_DIVISOR),
+            gb_clock_divisor: SGB_ICD2_CLOCK_DIVISOR,
+            video_standard: self.video_standard(),
+            corrected_clock: self.corrected_clock(),
+        }
     }
 }
 
@@ -447,6 +571,7 @@ pub struct MachineConfig {
     pub operating_mode: OperatingMode,
     pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
+    pub sgb_profile: Option<SgbHostProfile>,
     pub startup_mode: StartupMode,
     pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
@@ -485,6 +610,13 @@ impl MachineConfig {
 
     pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
         self.host_platform = host_platform;
+        self.sgb_profile = SgbHostProfile::default_for_host_platform(host_platform);
+        self
+    }
+
+    pub fn with_sgb_profile(mut self, sgb_profile: SgbHostProfile) -> Self {
+        self.host_platform = sgb_profile.host_platform();
+        self.sgb_profile = Some(sgb_profile);
         self
     }
 
@@ -496,6 +628,10 @@ impl MachineConfig {
     pub fn with_boot_rom_assets(mut self, boot_rom_assets: BootRomAssets) -> Self {
         self.boot_rom_assets = boot_rom_assets;
         self
+    }
+
+    pub const fn boot_rom_asset_kind(&self) -> BootRomAssetKind {
+        BootRomAssetKind::from_machine_profile(self.revision, self.sgb_profile)
     }
 
     pub fn with_compatibility(mut self, compatibility: CompatibilityPolicy) -> Self {
@@ -535,6 +671,21 @@ impl MachineConfig {
         self.console_model
             .supports_operating_mode(self.operating_mode)
             && self.console_model.supports_revision(self.revision)
+            && self.sgb_profile_matches_host_platform()
+    }
+
+    pub const fn sgb_profile_matches_host_platform(&self) -> bool {
+        match (self.host_platform, self.sgb_profile) {
+            (HostPlatform::Handheld, None) => true,
+            (HostPlatform::Handheld, Some(_)) => false,
+            (HostPlatform::Sgb, Some(profile)) => {
+                matches!(profile.host_platform(), HostPlatform::Sgb)
+            }
+            (HostPlatform::Sgb2, Some(profile)) => {
+                matches!(profile.host_platform(), HostPlatform::Sgb2)
+            }
+            (_, None) => false,
+        }
     }
 }
 
@@ -545,6 +696,7 @@ impl Default for MachineConfig {
             operating_mode: ConsoleModel::GameBoy.default_operating_mode(),
             revision: ConsoleModel::GameBoy.default_revision(),
             host_platform: HostPlatform::Handheld,
+            sgb_profile: None,
             startup_mode: StartupMode::SkipBoot,
             boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),

@@ -21,6 +21,7 @@ use crate::scheduler::{
     scheduler_phase_trace_message,
 };
 use crate::serial::{Serial, SerialTickTelemetry};
+use crate::sgb::{SgbHost, SgbVramTransferDisplayState};
 use crate::speed::CgbSpeedMode;
 use crate::speed::SpeedController;
 use crate::timer::Timer;
@@ -44,6 +45,7 @@ pub(super) struct RealBootHandoffParts<'a> {
     pub(super) serial: &'a mut Serial,
     pub(super) speed: &'a mut SpeedController,
     pub(super) timer: &'a mut Timer,
+    pub(super) sgb_host: &'a mut SgbHost,
     pub(super) cartridge: &'a CartridgeSlot,
     pub(super) boot: &'a BootController,
 }
@@ -59,9 +61,18 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
         serial,
         speed,
         timer,
+        sgb_host,
         cartridge,
         boot,
     } = parts;
+
+    if boot_rom_newly_unmapped
+        && !boot.is_boot_rom_mapped()
+        && config.startup_mode == StartupMode::RealBoot
+        && config.host_platform.is_sgb()
+    {
+        sgb_host.finish_real_boot_handoff();
+    }
 
     if boot_rom_newly_unmapped
         && !boot.is_boot_rom_mapped()
@@ -275,6 +286,7 @@ struct MachinePhaseRunner<'a> {
     dma: &'a mut DmaController,
     timer: &'a mut Timer,
     serial: &'a mut Serial,
+    sgb_host: &'a mut SgbHost,
     speed: &'a mut SpeedController,
     external_port: &'a mut ExternalPort,
     boot: &'a mut BootController,
@@ -347,7 +359,23 @@ impl MachinePhaseRunner<'_> {
         }
 
         observe_machine_step_region(observer, MachineStepRegion::ExternalEvents, || {
-            if let Some(pressed_mask) = self
+            if self.config.host_platform.is_sgb() {
+                if let Some(pressed_masks) = self
+                    .pending_external_events
+                    .take_pending_sgb_joypad_pressed_masks()
+                {
+                    self.sgb_host.set_player_pressed_masks(pressed_masks);
+                    if self
+                        .joypad
+                        .apply_pressed_mask(self.sgb_host.selected_player_pressed_mask())
+                    {
+                        context.push_external_event(ExternalEvent::HostInputChanged);
+                        tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                            self.joypad.scheduler_trace_message(context)
+                        });
+                    }
+                }
+            } else if let Some(pressed_mask) = self
                 .pending_external_events
                 .take_pending_joypad_pressed_mask()
                 && self.joypad.apply_pressed_mask(pressed_mask)
@@ -632,6 +660,17 @@ impl MachinePhaseRunner<'_> {
         if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
         }
+        if self.ppu.ly() == 0 && self.ppu.line_dot() == 0 {
+            let sgb_transfer_display = SgbVramTransferDisplayState::new(
+                self.ppu.read_register(0xFF40),
+                self.ppu.read_register(0xFF42),
+                self.ppu.read_register(0xFF43),
+                self.ppu.read_register(0xFF47),
+            );
+            let _ = self
+                .sgb_host
+                .advance_frame_start(self.bus.debug_vram_bytes(), sgb_transfer_display);
+        }
         if records_regions {
             observer.end_region(MachineStepRegion::Ppu);
         }
@@ -680,6 +719,7 @@ impl MachinePhaseRunner<'_> {
             let dma = &mut self.dma;
             let timer = &mut self.timer;
             let serial = &mut self.serial;
+            let sgb_host = &mut self.sgb_host;
             let speed = &mut self.speed;
             let boot = &mut self.boot;
             let config = &mut self.config;
@@ -703,7 +743,7 @@ impl MachinePhaseRunner<'_> {
                     let interrupt_flag_pending_mask =
                         cpu_interrupt_mask_for_if_read(address, context, ppu, joypad);
 
-                    Some(bus.read_with_t_cycle_context(
+                    let value = bus.read_with_t_cycle_context(
                         address,
                         BusRequester::Cpu,
                         &read_arbitration_state,
@@ -722,7 +762,12 @@ impl MachinePhaseRunner<'_> {
                             speed: Some(speed),
                             ppu_cpu_visible_read: true,
                         },
-                    ))
+                    );
+                    Some(if address == 0xFF00 {
+                        sgb_host.joyp_read_value(value)
+                    } else {
+                        value
+                    })
                 }
                 CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
@@ -752,6 +797,12 @@ impl MachinePhaseRunner<'_> {
                                 boot_ff50_newly_unmapped: Some(&mut boot_rom_newly_unmapped),
                             },
                         );
+                        if address == 0xFF00 && config.host_platform.is_sgb() {
+                            sgb_host.observe_joyp_write(value);
+                            let _ = sgb_host.capture_pending_lcd_freeze(ppu.framebuffer());
+                            let _ =
+                                joypad.apply_pressed_mask(sgb_host.selected_player_pressed_mask());
+                        }
                         finalize_cgb_real_boot_handoff_if_needed(
                             RealBootHandoffParts {
                                 config,
@@ -760,6 +811,7 @@ impl MachinePhaseRunner<'_> {
                                 serial,
                                 speed,
                                 timer,
+                                sgb_host,
                                 cartridge,
                                 boot,
                             },
@@ -1028,6 +1080,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            sgb_host: &mut self.sgb_host,
             speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,
@@ -1066,6 +1119,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            sgb_host: &mut self.sgb_host,
             speed: &mut self.speed,
             external_port: &mut self.external_port,
             boot: &mut self.boot,

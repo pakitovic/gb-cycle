@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use gb_core::{ConsoleModel, HardwareRevision, JoypadButton, StartupMode};
+use gb_core::{ConsoleModel, HardwareRevision, HostPlatform, JoypadButton, StartupMode};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -166,6 +166,7 @@ struct CuratedTestRomCase {
     memory: Vec<MemoryByteExpectation>,
     stimuli: Vec<ExternalStimulus>,
     console_model: ConsoleModel,
+    host_platform: HostPlatform,
     revision: HardwareRevision,
     startup_mode: StartupMode,
     execution_mode: Option<String>,
@@ -266,6 +267,10 @@ pub fn samesuite_dmg_extra_suite() -> RomSuite {
 
 pub fn samesuite_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("samesuite-cgb-extra")
+}
+
+pub fn samesuite_sgb_suite() -> RomSuite {
+    manifest_suite_by_name("samesuite-sgb")
 }
 
 pub fn magen_cgb_extra_suite() -> RomSuite {
@@ -1117,7 +1122,7 @@ fn manifest_case_order_for_suite(
             return Some(ReportCaseOrder {
                 source_order_missing: source_order.is_none(),
                 source_or_manifest_order: source_order.unwrap_or(case_manifest_order),
-                console_order: console_report_order(case.console_model),
+                console_order: console_report_order(case.console_model, case.host_platform),
                 manifest_order: case_manifest_order,
             });
         }
@@ -1138,7 +1143,7 @@ fn manifest_case_order_for_any_suite(family: &str, rom: &str) -> Option<ReportCa
             return Some(ReportCaseOrder {
                 source_order_missing: source_order.is_none(),
                 source_or_manifest_order: source_order.unwrap_or(case_manifest_order),
-                console_order: console_report_order(case.console_model),
+                console_order: console_report_order(case.console_model, case.host_platform),
                 manifest_order: case_manifest_order,
             });
         }
@@ -1266,7 +1271,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 31] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1283,6 +1288,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
         (
             "crates/gb-test-runner/data/samesuite-cgb.toml",
             include_str!("../data/samesuite-cgb.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/samesuite-sgb.toml",
+            include_str!("../data/samesuite-sgb.toml"),
         ),
         (
             "crates/gb-test-runner/data/magen.toml",
@@ -1426,7 +1435,7 @@ fn parse_manifest_case(
                 case.id
             )
         });
-    let console_model = parse_manifest_console_model(
+    let (console_model, host_platform) = parse_manifest_console_profile(
         source_path,
         &case.id,
         case.console.as_deref().unwrap_or("dmg"),
@@ -1500,6 +1509,7 @@ fn parse_manifest_case(
             .map(|stimulus| parse_manifest_stimulus(&source_path, &case_id, stimulus))
             .collect(),
         console_model,
+        host_platform,
         revision,
         startup_mode,
         execution_mode: case.execution_mode,
@@ -1563,12 +1573,28 @@ fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem
     }
 }
 
+#[cfg(test)]
 fn parse_manifest_console_model(source_path: &str, case_id: &str, console: &str) -> ConsoleModel {
+    parse_manifest_console_profile(source_path, case_id, console).0
+}
+
+#[cfg(test)]
+fn parse_manifest_host_platform(source_path: &str, case_id: &str, console: &str) -> HostPlatform {
+    parse_manifest_console_profile(source_path, case_id, console).1
+}
+
+fn parse_manifest_console_profile(
+    source_path: &str,
+    case_id: &str,
+    console: &str,
+) -> (ConsoleModel, HostPlatform) {
     match console {
-        "game-boy" | "dmg0" | "dmg" => ConsoleModel::GameBoy,
-        "pocket" | "mgb" => ConsoleModel::GameBoyPocket,
-        "light" => ConsoleModel::GameBoyLight,
-        "color" | "cgb" => ConsoleModel::GameBoyColor,
+        "game-boy" | "dmg0" | "dmg" => (ConsoleModel::GameBoy, HostPlatform::Handheld),
+        "pocket" | "mgb" => (ConsoleModel::GameBoyPocket, HostPlatform::Handheld),
+        "light" => (ConsoleModel::GameBoyLight, HostPlatform::Handheld),
+        "color" | "cgb" => (ConsoleModel::GameBoyColor, HostPlatform::Handheld),
+        "sgb" => (ConsoleModel::GameBoy, HostPlatform::Sgb),
+        "sgb2" => (ConsoleModel::GameBoy, HostPlatform::Sgb2),
         other => panic!(
             "unsupported console model {other:?} for curated case {case_id} in {source_path}"
         ),
@@ -1650,6 +1676,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
         memory,
         stimuli,
         console_model,
+        host_platform,
         revision,
         startup_mode,
         execution_mode,
@@ -1723,6 +1750,7 @@ fn manifest_case_to_rom_test_case(case: CuratedTestRomCase) -> RomTestCase {
     )
     .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR)
     .with_console_model(console_model)
+    .with_host_platform(host_platform)
     .with_revision(revision)
     .with_startup_mode(startup_mode)
     .with_capture_plan(capture_plan)
@@ -2073,7 +2101,10 @@ fn manifest_case_report_rom_display(case: &CuratedTestRomCase) -> String {
         &curated_case_store_relative_path(&case.family, &case.rom),
     );
     if case.report_model_suffix {
-        format!("{rom} ({})", console_report_suffix(case.console_model))
+        format!(
+            "{rom} ({})",
+            console_report_suffix(case.console_model, case.host_platform)
+        )
     } else {
         rom
     }
@@ -2148,17 +2179,27 @@ fn curated_required_rom_path(file: CuratedRequiredFile) -> Option<(String, PathB
     Some((family, rom))
 }
 
-fn console_report_suffix(console_model: ConsoleModel) -> &'static str {
-    match console_model {
-        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => "DMG",
-        ConsoleModel::GameBoyColor => "GBC",
+fn console_report_suffix(console_model: ConsoleModel, host_platform: HostPlatform) -> &'static str {
+    match host_platform {
+        HostPlatform::Sgb => "SGB",
+        HostPlatform::Sgb2 => "SGB2",
+        HostPlatform::Handheld => match console_model {
+            ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
+                "DMG"
+            }
+            ConsoleModel::GameBoyColor => "GBC",
+        },
     }
 }
 
-fn console_report_order(console_model: ConsoleModel) -> usize {
-    match console_model {
-        ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0,
-        ConsoleModel::GameBoyColor => 1,
+fn console_report_order(console_model: ConsoleModel, host_platform: HostPlatform) -> usize {
+    match host_platform {
+        HostPlatform::Handheld => match console_model {
+            ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0,
+            ConsoleModel::GameBoyColor => 1,
+        },
+        HostPlatform::Sgb => 2,
+        HostPlatform::Sgb2 => 3,
     }
 }
 
@@ -2202,16 +2243,17 @@ mod tests {
         materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
         mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
         mooneye_cgb_extra_suite, parse_manifest_case, parse_manifest_console_model,
-        parse_manifest_subsystem, render_markdown_report, report_rom_display,
-        report_status_display, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
-        sort_persisted_case_statuses, suite_uses_docboy_test_report, suite_uses_extra_test_report,
-        test_rom_store_root, update_curated_test_report,
+        parse_manifest_host_platform, parse_manifest_subsystem, render_markdown_report,
+        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite, samesuite_sgb_suite, sort_persisted_case_statuses,
+        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
+        update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
         RomCaseOutcome, RomCaseReport, RomSuiteReport, TestSubsystem, Timeout,
     };
-    use gb_core::{ConsoleModel, HardwareRevision, StartupMode};
+    use gb_core::{ConsoleModel, HardwareRevision, HostPlatform, StartupMode};
     use std::collections::BTreeSet;
     use std::env;
     use std::fs;
@@ -2877,6 +2919,51 @@ mod tests {
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
             assert_eq!(manifest_case_report_rom_display(manifest_case), report_rom);
+        }
+    }
+
+    #[test]
+    fn samesuite_sgb_suite_runs_informational_rows_on_sgb_host() {
+        let suite = samesuite_sgb_suite();
+
+        assert_eq!(suite.name, "samesuite-sgb");
+        assert_eq!(suite.family.as_deref(), Some("samesuite"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(crate::built_in_rom_suite_by_name("samesuite-sgb").is_some());
+        assert!(!suite_uses_extra_test_report("samesuite-sgb"));
+        assert!(!suite_uses_docboy_test_report("samesuite-sgb"));
+
+        let expected = [
+            (
+                "samesuite-sgb-command-mlt-req",
+                "samesuite/sgb/command_mlt_req.gb",
+            ),
+            (
+                "samesuite-sgb-command-mlt-req-1-incrementing",
+                "samesuite/sgb/command_mlt_req_1_incrementing.gb",
+            ),
+        ];
+
+        for (case, (id, rom_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.host_platform, HostPlatform::Sgb);
+            assert_eq!(case.startup_mode, StartupMode::SkipBoot);
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(case.rom_path, PathBuf::from(rom_path));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(
+                case.pass_condition,
+                PassCondition::Informational(CaptureKind::Framebuffer)
+            );
+            assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
     }
 
@@ -5185,6 +5272,58 @@ status = "PASS"
     }
 
     #[test]
+    fn render_markdown_report_orders_sgb_rows_after_cgb_blocking_bgpi_row() {
+        let rendered = render_markdown_report(&[
+            PersistedSuiteStatus {
+                version: 1,
+                suite_name: "samesuite-sgb".to_string(),
+                family: "samesuite".to_string(),
+                cases: vec![
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "sgb/command_mlt_req.gb".to_string(),
+                        status: "INFO".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "sgb/command_mlt_req_1_incrementing.gb".to_string(),
+                        status: "INFO".to_string(),
+                    },
+                ],
+            },
+            PersistedSuiteStatus {
+                version: 1,
+                suite_name: "cgb-ppu-basic".to_string(),
+                family: "cgb-ppu-basic".to_string(),
+                cases: vec![PersistedCaseStatus {
+                    family: Some("samesuite".to_string()),
+                    rom: "ppu/blocking_bgpi_increase.gb".to_string(),
+                    status: "PASS".to_string(),
+                }],
+            },
+        ]);
+
+        let blocking = rendered
+            .find(&format!(
+                "| samesuite | ppu/blocking_bgpi_increase.gb | {REPORT_STATUS_PASS_EMOJI} |"
+            ))
+            .expect("SameSuite CGB blocking BGPI row should exist");
+        let mlt_req = rendered
+            .find(&format!(
+                "| samesuite | sgb/command_mlt_req.gb | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("SameSuite SGB MLT_REQ row should exist");
+        let mlt_req_incrementing = rendered
+            .find(&format!(
+                "| samesuite | sgb/command_mlt_req_1_incrementing.gb | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("SameSuite SGB MLT_REQ incrementing row should exist");
+
+        assert!(blocking < mlt_req);
+        assert!(mlt_req < mlt_req_incrementing);
+    }
+
+    #[test]
     fn curated_test_report_returns_none_for_non_curated_suites() {
         let workspace_root = unique_temp_dir("report-none");
         let report = RomSuiteReport {
@@ -5475,7 +5614,27 @@ status = "PASS"
     #[test]
     #[should_panic(expected = "unsupported console model")]
     fn parse_manifest_console_model_rejects_unknown_values() {
-        let _ = parse_manifest_console_model("test-manifest.toml", "test-case", "sgb");
+        let _ = parse_manifest_console_model("test-manifest.toml", "test-case", "super-game-boy");
+    }
+
+    #[test]
+    fn parse_manifest_console_profile_supports_sgb_hosts() {
+        assert_eq!(
+            parse_manifest_console_model("test-manifest.toml", "test-case", "sgb"),
+            ConsoleModel::GameBoy
+        );
+        assert_eq!(
+            parse_manifest_host_platform("test-manifest.toml", "test-case", "sgb"),
+            HostPlatform::Sgb
+        );
+        assert_eq!(
+            parse_manifest_console_model("test-manifest.toml", "test-case", "sgb2"),
+            ConsoleModel::GameBoy
+        );
+        assert_eq!(
+            parse_manifest_host_platform("test-manifest.toml", "test-case", "sgb2"),
+            HostPlatform::Sgb2
+        );
     }
 
     #[test]
@@ -5609,6 +5768,7 @@ status = "PASS"
             memory: Vec::new(),
             stimuli: Vec::new(),
             console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Handheld,
             revision: HardwareRevision::DmgCpuC,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: None,

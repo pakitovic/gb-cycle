@@ -1,7 +1,7 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{
     ApuRecordedChannel, ExecutionMode, HardwareRevision, PokemonMysteryGiftCode,
-    PokemonMysteryGiftKind, PokemonPikachuColorGift, StartupMode,
+    PokemonMysteryGiftKind, PokemonPikachuColorGift, SgbVideoStandard, StartupMode,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -15,26 +15,22 @@ use std::time::{Duration, Instant};
 const GLYPH_WIDTH: usize = 5;
 const GLYPH_HEIGHT: usize = 7;
 const GLYPH_SPACING: usize = 1;
-const MENU_PANEL_X: usize = 20;
-const MENU_PANEL_Y: usize = 16;
 const MENU_PANEL_WIDTH: usize = 120;
 const MENU_PANEL_HEIGHT: usize = 112;
 const MENU_ITEM_HEIGHT: usize = 14;
 const MENU_ITEM_AREA_TOP_OFFSET: usize = 30;
 const MENU_ITEM_AREA_BOTTOM_PADDING: usize = 12;
-const MENU_ITEM_CURSOR_X: usize = MENU_PANEL_X + 10;
-const MENU_ITEM_TEXT_X: usize = MENU_PANEL_X + 18;
-const MENU_ITEM_TEXT_Y: usize = MENU_PANEL_Y + MENU_ITEM_AREA_TOP_OFFSET;
-const MENU_ITEM_TEXT_AREA_WIDTH: usize = MENU_PANEL_WIDTH - (MENU_ITEM_TEXT_X - MENU_PANEL_X) - 8;
+const MENU_ITEM_CURSOR_OFFSET_X: usize = 10;
+const MENU_ITEM_TEXT_OFFSET_X: usize = 18;
+const MENU_ITEM_TEXT_AREA_WIDTH: usize = MENU_PANEL_WIDTH - MENU_ITEM_TEXT_OFFSET_X - 8;
 const MENU_ITEM_TEXT_CAPACITY: usize =
     (MENU_ITEM_TEXT_AREA_WIDTH + GLYPH_SPACING) / (GLYPH_WIDTH + GLYPH_SPACING);
 const MENU_VISIBLE_ITEM_CAPACITY: usize =
     (MENU_PANEL_HEIGHT - MENU_ITEM_AREA_TOP_OFFSET - MENU_ITEM_AREA_BOTTOM_PADDING)
         / MENU_ITEM_HEIGHT;
-const MENU_SCROLL_INDICATOR_X: usize = MENU_PANEL_X + MENU_PANEL_WIDTH - 11;
-const MENU_SCROLL_INDICATOR_TOP_Y: usize = MENU_ITEM_TEXT_Y - 9;
-const MENU_SCROLL_INDICATOR_BOTTOM_Y: usize =
-    MENU_PANEL_Y + MENU_PANEL_HEIGHT - MENU_ITEM_AREA_BOTTOM_PADDING + 1;
+const MENU_SCROLL_INDICATOR_OFFSET_RIGHT: usize = 11;
+const MENU_SCROLL_INDICATOR_TOP_OFFSET_Y: usize = 9;
+const MENU_SCROLL_INDICATOR_BOTTOM_EXTRA_Y: usize = 1;
 const HUD_PANEL_X: usize = 4;
 const HUD_PANEL_Y: usize = 4;
 const HUD_PANEL_WIDTH: usize = 82;
@@ -236,9 +232,11 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 10] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 12] = [
     MenuItem::ConsoleModel,
     MenuItem::HardwareRevision,
+    MenuItem::SgbVideoStandard,
+    MenuItem::SgbBorder,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
     MenuItem::BootRomMenu,
@@ -306,6 +304,7 @@ pub enum MenuAction {
     SaveScreenshot,
     CycleConsoleModel,
     CycleHardwareRevision,
+    CycleSgbVideoStandard,
     CycleStartupMode,
     CycleExecutionMode,
     ToggleRewindEnabled,
@@ -330,6 +329,7 @@ pub enum MenuAction {
     TogglePresentationFilter,
     CycleFrameBlending,
     CycleDisplayPalette,
+    ToggleSgbBorder,
     ToggleBackgroundLayer,
     ToggleWindowLayer,
     ToggleObjectLayer,
@@ -576,6 +576,7 @@ pub struct MenuPresentation {
     pub recent_rom_labels: [CompactRecentRomLabel; RECENT_ROM_MENU_CAPACITY],
     pub console_model: DesktopConsoleModel,
     pub revision: HardwareRevision,
+    pub sgb_video_standard: SgbVideoStandard,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
@@ -601,6 +602,7 @@ pub struct MenuPresentation {
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
+    pub show_sgb_border: bool,
     pub show_performance_hud: bool,
     pub muted: bool,
     pub audio_available: bool,
@@ -669,6 +671,9 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => self.recent_rom_count >= 11,
             MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
+            MenuItem::SgbVideoStandard | MenuItem::SgbBorder => {
+                self.console_model.sgb_profile().is_some()
+            }
             MenuItem::CgbInfrared
             | MenuItem::CgbInfraredNone
             | MenuItem::CgbInfraredSameGame
@@ -699,7 +704,7 @@ impl MenuPresentation {
             }
             MenuItem::StateSlot => self.rom_loaded,
             MenuItem::StateAutoloadSlot => self.rom_loaded && !self.any_dialog_pending,
-            MenuItem::DisplayPalette => self.console_model != DesktopConsoleModel::GameBoyColor,
+            MenuItem::DisplayPalette => self.console_model.allows_display_palette(),
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -839,8 +844,6 @@ impl MenuPresentation {
             | MenuItem::SavesEnabled
             | MenuItem::SavePolicy
             | MenuItem::SaveDefaultPath
-            | MenuItem::ExternalPortNone
-            | MenuItem::ExternalPortPrinter
             | MenuItem::Fullscreen
             | MenuItem::Vsync
             | MenuItem::WindowScale
@@ -857,17 +860,26 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
+            MenuItem::SgbVideoStandard => self.console_model.allows_sgb_video_standard_selection(),
+            MenuItem::SgbBorder => true,
             MenuItem::HardwareRevision => {
                 self.console_model.console_model().active_revisions().len() > 1
             }
-            MenuItem::ExtPortMenu => self.rom_loaded,
+            MenuItem::ExternalPortNone | MenuItem::ExternalPortPrinter => {
+                self.console_model.allows_ext_port_menu()
+            }
+            MenuItem::ExtPortMenu => self.rom_loaded && self.console_model.allows_ext_port_menu(),
             MenuItem::ExternalPortGameLink
             | MenuItem::GameLinkSameGame
             | MenuItem::GameLinkSelectGame
             | MenuItem::ExternalPortFourPlayerAdapter
             | MenuItem::FourPlayerAdapterTwoPlayers
             | MenuItem::FourPlayerAdapterThreePlayers
-            | MenuItem::FourPlayerAdapterFourPlayers => self.rom_loaded && !self.any_dialog_pending,
+            | MenuItem::FourPlayerAdapterFourPlayers => {
+                self.rom_loaded
+                    && self.console_model.allows_ext_port_menu()
+                    && !self.any_dialog_pending
+            }
         }
     }
 
@@ -1000,9 +1012,27 @@ impl MenuPresentation {
                 DesktopConsoleModel::GameBoyPocket => "MODEL GB POCKET".to_string(),
                 DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
                 DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
+                DesktopConsoleModel::SuperGameBoy => "MODEL SUPER GB".to_string(),
+                DesktopConsoleModel::SuperGameBoy2 => "MODEL SUPER GB2".to_string(),
             },
-            MenuItem::HardwareRevision => {
-                format!("REV {}", hardware_revision_menu_name(self.revision))
+            MenuItem::HardwareRevision => match self.console_model.sgb_profile() {
+                Some(profile) => format!("REV {}", profile.revision_label()),
+                None => format!("REV {}", hardware_revision_menu_name(self.revision)),
+            },
+            MenuItem::SgbVideoStandard => {
+                let video_standard = if self.console_model == DesktopConsoleModel::SuperGameBoy2 {
+                    SgbVideoStandard::Ntsc
+                } else {
+                    self.sgb_video_standard
+                };
+                format!("VIDEO {}", video_standard.menu_name())
+            }
+            MenuItem::SgbBorder => {
+                if self.show_sgb_border {
+                    "BORDER ON".to_string()
+                } else {
+                    "BORDER OFF".to_string()
+                }
             }
             MenuItem::StartupMode => match self.startup_mode {
                 StartupMode::SkipBoot => "START SKIP".to_string(),
@@ -1113,7 +1143,9 @@ impl MenuPresentation {
                 DesktopFrameBlendingMode::On => "BLEND ON".to_string(),
             },
             MenuItem::DisplayPalette => {
-                if self.console_model == DesktopConsoleModel::GameBoyColor {
+                if let Some(profile) = self.console_model.sgb_profile() {
+                    format!("PALETTE {}", profile.machine_profile_name())
+                } else if self.console_model == DesktopConsoleModel::GameBoyColor {
                     "PALETTE RGB555".to_string()
                 } else {
                     match self.display_palette {
@@ -1587,6 +1619,8 @@ enum MenuItem {
     FastForwardMenu,
     ConsoleModel,
     HardwareRevision,
+    SgbVideoStandard,
+    SgbBorder,
     StartupMode,
     ExecutionMode,
     BootRomDirectoryPath,
@@ -1709,6 +1743,37 @@ pub struct OverlayMenuState {
     screen_stack: Vec<ScreenState>,
     pending_binding_capture: Option<PendingBindingCapture>,
     selection_started_at: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MenuPanelLayout {
+    panel_x: usize,
+    panel_y: usize,
+    item_cursor_x: usize,
+    item_text_x: usize,
+    item_text_y: usize,
+    scroll_indicator_x: usize,
+    scroll_indicator_top_y: usize,
+    scroll_indicator_bottom_y: usize,
+}
+
+impl MenuPanelLayout {
+    fn centered(frame_width: usize, frame_height: usize) -> Self {
+        let panel_x = frame_width.saturating_sub(MENU_PANEL_WIDTH) / 2;
+        let panel_y = frame_height.saturating_sub(MENU_PANEL_HEIGHT) / 2;
+        let item_text_y = panel_y + MENU_ITEM_AREA_TOP_OFFSET;
+        Self {
+            panel_x,
+            panel_y,
+            item_cursor_x: panel_x + MENU_ITEM_CURSOR_OFFSET_X,
+            item_text_x: panel_x + MENU_ITEM_TEXT_OFFSET_X,
+            item_text_y,
+            scroll_indicator_x: panel_x + MENU_PANEL_WIDTH - MENU_SCROLL_INDICATOR_OFFSET_RIGHT,
+            scroll_indicator_top_y: item_text_y - MENU_SCROLL_INDICATOR_TOP_OFFSET_Y,
+            scroll_indicator_bottom_y: panel_y + MENU_PANEL_HEIGHT - MENU_ITEM_AREA_BOTTOM_PADDING
+                + MENU_SCROLL_INDICATOR_BOTTOM_EXTRA_Y,
+        }
+    }
 }
 
 struct OverlayCanvas<'a> {
@@ -2155,25 +2220,26 @@ impl OverlayMenuState {
         let selection_elapsed = self.selection_elapsed();
         let item_count = visible_item_count(screen, presentation);
 
+        let layout = MenuPanelLayout::centered(frame_width, frame_height);
         let mut canvas = OverlayCanvas::new(rgb_frame, frame_width, frame_height);
         canvas.dim_frame();
         canvas.fill_rect(
-            MENU_PANEL_X,
-            MENU_PANEL_Y,
+            layout.panel_x,
+            layout.panel_y,
             MENU_PANEL_WIDTH,
             MENU_PANEL_HEIGHT,
             PANEL_COLOR,
         );
         canvas.draw_rect(
-            MENU_PANEL_X,
-            MENU_PANEL_Y,
+            layout.panel_x,
+            layout.panel_y,
             MENU_PANEL_WIDTH,
             MENU_PANEL_HEIGHT,
             PANEL_BORDER_COLOR,
         );
         canvas.draw_rect(
-            MENU_PANEL_X + 2,
-            MENU_PANEL_Y + 2,
+            layout.panel_x + 2,
+            layout.panel_y + 2,
             MENU_PANEL_WIDTH.saturating_sub(4),
             MENU_PANEL_HEIGHT.saturating_sub(4),
             PANEL_INNER_BORDER_COLOR,
@@ -2191,9 +2257,9 @@ impl OverlayMenuState {
             screen.title(presentation)
         };
         canvas.draw_text_centered(
-            MENU_PANEL_X,
+            layout.panel_x,
             MENU_PANEL_WIDTH,
-            MENU_PANEL_Y + 10,
+            layout.panel_y + 10,
             title,
             TITLE_COLOR,
             2,
@@ -2203,16 +2269,16 @@ impl OverlayMenuState {
         let viewport_end = (viewport_start + MENU_VISIBLE_ITEM_CAPACITY).min(item_count);
         if viewport_start > 0 {
             canvas.draw_scroll_indicator(
-                MENU_SCROLL_INDICATOR_X,
-                MENU_SCROLL_INDICATOR_TOP_Y,
+                layout.scroll_indicator_x,
+                layout.scroll_indicator_top_y,
                 ScrollIndicatorDirection::Up,
                 PANEL_BORDER_COLOR,
             );
         }
         if viewport_end < item_count {
             canvas.draw_scroll_indicator(
-                MENU_SCROLL_INDICATOR_X,
-                MENU_SCROLL_INDICATOR_BOTTOM_Y,
+                layout.scroll_indicator_x,
+                layout.scroll_indicator_bottom_y,
                 ScrollIndicatorDirection::Down,
                 PANEL_BORDER_COLOR,
             );
@@ -2221,7 +2287,7 @@ impl OverlayMenuState {
         for (visible_index, index) in (viewport_start..viewport_end).enumerate() {
             let item = visible_item_at(screen, index, presentation)
                 .expect("render viewport index should map to a visible item");
-            let item_y = MENU_ITEM_TEXT_Y + visible_index * MENU_ITEM_HEIGHT;
+            let item_y = layout.item_text_y + visible_index * MENU_ITEM_HEIGHT;
             let enabled = if self.pending_binding_capture.is_some() {
                 self.pending_binding_item() == Some(item)
             } else {
@@ -2230,13 +2296,13 @@ impl OverlayMenuState {
             let selected = selected_index == index;
             if selected {
                 canvas.fill_rect(
-                    MENU_PANEL_X + 8,
+                    layout.panel_x + 8,
                     item_y.saturating_sub(3),
                     MENU_PANEL_WIDTH.saturating_sub(16),
                     11,
                     SELECTION_COLOR,
                 );
-                canvas.fill_rect(MENU_ITEM_CURSOR_X, item_y, 4, 4, CURSOR_COLOR);
+                canvas.fill_rect(layout.item_cursor_x, item_y, 4, 4, CURSOR_COLOR);
             }
 
             let color = if !enabled {
@@ -2257,7 +2323,7 @@ impl OverlayMenuState {
             } else {
                 rendered_item_label(item, selected, presentation, selection_elapsed)
             };
-            canvas.draw_text(MENU_ITEM_TEXT_X, item_y, &label, color, 1);
+            canvas.draw_text(layout.item_text_x, item_y, &label, color, 1);
         }
     }
 
@@ -2380,6 +2446,8 @@ impl OverlayMenuState {
             }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
             MenuItem::HardwareRevision => Some(MenuAction::CycleHardwareRevision),
+            MenuItem::SgbVideoStandard => Some(MenuAction::CycleSgbVideoStandard),
+            MenuItem::SgbBorder => Some(MenuAction::ToggleSgbBorder),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
             MenuItem::RewindEnabled => Some(MenuAction::ToggleRewindEnabled),
@@ -3566,7 +3634,8 @@ mod tests {
         GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadActionBindingTarget,
         GamepadBindingTarget, GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
         KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
-        KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem,
+        KeyboardMenuBindingTarget, MENU_ITEM_AREA_TOP_OFFSET, MENU_ITEM_TEXT_OFFSET_X,
+        MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem, MenuPanelLayout,
         MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS,
         RECENT_ROM_MENU_CAPACITY, REWIND_MENU_ITEMS, ROOT_MENU_ITEMS, RewindHudSnapshot,
         SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
@@ -3580,7 +3649,7 @@ mod tests {
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{
         ExecutionMode, HardwareRevision, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
-        PokemonPikachuColorGift, StartupMode,
+        PokemonPikachuColorGift, SgbVideoStandard, StartupMode,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -3598,6 +3667,7 @@ mod tests {
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
             console_model: DesktopConsoleModel::GameBoy,
             revision: HardwareRevision::DmgCpuC,
+            sgb_video_standard: SgbVideoStandard::Ntsc,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
@@ -3623,6 +3693,7 @@ mod tests {
             show_background: true,
             show_window: true,
             show_objects: true,
+            show_sgb_border: true,
             show_performance_hud: true,
             muted: false,
             audio_available: false,
@@ -3867,20 +3938,27 @@ mod tests {
     }
 
     #[test]
-    fn video_submenu_disables_display_palette_for_game_boy_color() {
+    fn video_submenu_disables_display_palette_for_rgb555_models() {
         let mut presentation = test_presentation();
-        presentation.console_model = DesktopConsoleModel::GameBoyColor;
-        presentation.display_palette = DesktopDisplayPalette::Grey;
 
-        assert!(!presentation.item_enabled(MenuItem::DisplayPalette));
-        assert_eq!(
-            presentation.item_label(MenuItem::DisplayPalette),
-            "PALETTE RGB555"
-        );
-        assert_eq!(
-            super::next_enabled_index(MenuScreen::Video, 1, presentation),
-            2
-        );
+        for (console_model, expected_label) in [
+            (DesktopConsoleModel::GameBoyColor, "PALETTE RGB555"),
+            (DesktopConsoleModel::SuperGameBoy, "PALETTE SGB"),
+            (DesktopConsoleModel::SuperGameBoy2, "PALETTE SGB2"),
+        ] {
+            presentation.console_model = console_model;
+            presentation.display_palette = DesktopDisplayPalette::Grey;
+
+            assert!(!presentation.item_enabled(MenuItem::DisplayPalette));
+            assert_eq!(
+                presentation.item_label(MenuItem::DisplayPalette),
+                expected_label
+            );
+            assert_eq!(
+                super::next_enabled_index(MenuScreen::Video, 1, presentation),
+                2
+            );
+        }
     }
 
     #[test]
@@ -4068,6 +4146,83 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, cgb_presentation),
             Some(MenuAction::CycleExecutionMode)
+        );
+    }
+
+    #[test]
+    fn system_submenu_toggles_sgb_border_only_for_sgb_profiles() {
+        let presentation = test_presentation();
+        assert!(!presentation.item_visible(MenuItem::SgbBorder));
+
+        let mut sgb_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy,
+            ..presentation
+        };
+        assert!(sgb_presentation.item_visible(MenuItem::SgbBorder));
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbBorder),
+            "BORDER ON"
+        );
+        sgb_presentation.show_sgb_border = false;
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbBorder),
+            "BORDER OFF"
+        );
+
+        let mut menu = OverlayMenuState::default();
+        open_system_menu(&mut menu, sgb_presentation);
+        select_visible_item(&mut menu, sgb_presentation, MenuItem::SgbBorder);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, sgb_presentation),
+            Some(MenuAction::ToggleSgbBorder)
+        );
+
+        let sgb2_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy2,
+            ..presentation
+        };
+        assert!(sgb2_presentation.item_visible(MenuItem::SgbBorder));
+    }
+
+    #[test]
+    fn system_submenu_cycles_sgb_video_standard_only_for_original_sgb() {
+        let presentation = test_presentation();
+        assert!(!presentation.item_visible(MenuItem::SgbVideoStandard));
+
+        let mut sgb_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy,
+            ..presentation
+        };
+        assert!(sgb_presentation.item_visible(MenuItem::SgbVideoStandard));
+        assert!(sgb_presentation.item_enabled(MenuItem::SgbVideoStandard));
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO NTSC"
+        );
+        sgb_presentation.sgb_video_standard = SgbVideoStandard::Pal;
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO PAL"
+        );
+
+        let mut menu = OverlayMenuState::default();
+        open_system_menu(&mut menu, sgb_presentation);
+        select_visible_item(&mut menu, sgb_presentation, MenuItem::SgbVideoStandard);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, sgb_presentation),
+            Some(MenuAction::CycleSgbVideoStandard)
+        );
+
+        let sgb2_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy2,
+            sgb_video_standard: SgbVideoStandard::Pal,
+            ..presentation
+        };
+        assert!(sgb2_presentation.item_visible(MenuItem::SgbVideoStandard));
+        assert!(!sgb2_presentation.item_enabled(MenuItem::SgbVideoStandard));
+        assert_eq!(
+            sgb2_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO NTSC"
         );
     }
 
@@ -4928,14 +5083,16 @@ mod tests {
 
         assert_eq!(SYSTEM_MENU_ITEMS[0], MenuItem::ConsoleModel);
         assert_eq!(SYSTEM_MENU_ITEMS[1], MenuItem::HardwareRevision);
-        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::StartupMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::ExecutionMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::BootRomMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::SaveMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::RewindMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::FastForwardMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::Reset);
-        assert_eq!(SYSTEM_MENU_ITEMS[9], MenuItem::Return);
+        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::SgbVideoStandard);
+        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::SgbBorder);
+        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::StartupMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::ExecutionMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::BootRomMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::SaveMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::RewindMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[9], MenuItem::FastForwardMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[10], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[11], MenuItem::Return);
         assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(REWIND_MENU_ITEMS[0], MenuItem::RewindEnabled);
@@ -5053,6 +5210,25 @@ mod tests {
             presentation.item_label(MenuItem::ConsoleModel),
             "MODEL GB COLOR"
         );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL SUPER GB"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV SGB-CPU 01"
+        );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL SUPER GB2"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HardwareRevision),
+            "REV CPU SGB2"
+        );
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
         presentation.revision = HardwareRevision::CpuCgbC;
         assert_eq!(
             presentation.item_label(MenuItem::HardwareRevision),
@@ -5225,6 +5401,16 @@ mod tests {
             presentation.item_label(MenuItem::DisplayPalette),
             "PALETTE RGB555"
         );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE SGB"
+        );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_eq!(
+            presentation.item_label(MenuItem::DisplayPalette),
+            "PALETTE SGB2"
+        );
         presentation.console_model = DesktopConsoleModel::GameBoy;
         for (display_palette, expected_label) in [
             (DesktopDisplayPalette::Grey, "PALETTE GREY"),
@@ -5350,7 +5536,23 @@ mod tests {
             presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
             "4P ADAPTER ✓"
         );
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy;
+        assert!(!presentation.item_enabled(MenuItem::ExtPortMenu));
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortNone));
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortPrinter));
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert!(presentation.item_enabled(MenuItem::ExtPortMenu));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortNone));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortPrinter));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        presentation.console_model = DesktopConsoleModel::GameBoyColor;
+        assert!(presentation.item_enabled(MenuItem::ExtPortMenu));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortNone));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortPrinter));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
 
+        presentation.console_model = DesktopConsoleModel::GameBoy;
         assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "IR: NONE");
         assert_eq!(presentation.item_label(MenuItem::CgbInfraredNone), "NONE ✓");
         assert_eq!(
@@ -5798,6 +6000,25 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::Quit)
+        );
+    }
+
+    #[test]
+    fn menu_panel_layout_centers_on_dmg_and_sgb_frames() {
+        let dmg_layout = MenuPanelLayout::centered(160, 144);
+        assert_eq!(dmg_layout.panel_x, 20);
+        assert_eq!(dmg_layout.panel_y, 16);
+
+        let sgb_layout = MenuPanelLayout::centered(256, 224);
+        assert_eq!(sgb_layout.panel_x, 68);
+        assert_eq!(sgb_layout.panel_y, 56);
+        assert_eq!(
+            sgb_layout.item_text_x,
+            sgb_layout.panel_x + MENU_ITEM_TEXT_OFFSET_X
+        );
+        assert_eq!(
+            sgb_layout.item_text_y,
+            sgb_layout.panel_y + MENU_ITEM_AREA_TOP_OFFSET
         );
     }
 

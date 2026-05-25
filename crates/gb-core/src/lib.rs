@@ -16,6 +16,7 @@ pub mod rewind;
 pub mod save_state;
 pub mod scheduler;
 pub mod serial;
+pub mod sgb;
 pub mod speed;
 pub mod timer;
 
@@ -29,7 +30,7 @@ pub use apu::{
 };
 pub use boot::{
     BootAudioSnapshot, BootController, BootDirectBootState, BootIoSnapshot, BootRomAssetError,
-    BootRomAssets, BootSnapshot, BootStatus, StartupMemoryPolicy,
+    BootRomAssetKind, BootRomAssets, BootSnapshot, BootStatus, StartupMemoryPolicy,
 };
 pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
@@ -92,9 +93,12 @@ pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
 };
 pub use model::{
-    CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy,
-    ExecutionMode, HardwareRevision, HeuristicPolicy, HostPlatform, MachineConfig, OperatingMode,
-    OverridePolicy, StartupMode, ValidationPolicy,
+    CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DMG_MASTER_CLOCK_HZ,
+    DiagnosticPolicy, ExecutionMode, HardwareRevision, HeuristicPolicy, HostPlatform,
+    MachineConfig, OperatingMode, OverridePolicy, SGB_ICD2_CLOCK_DIVISOR,
+    SGB_NTSC_SOURCE_MASTER_CLOCK_HZ, SGB_PAL_SOURCE_MASTER_CLOCK_HZ, SGB2_SOURCE_MASTER_CLOCK_HZ,
+    SgbClockRate, SgbHostProfile, SgbProfileTiming, SgbVideoStandard, StartupMode,
+    ValidationPolicy,
 };
 pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
@@ -115,7 +119,7 @@ pub use save_state::{
     InterruptSaveState, JoypadSaveState, MachineBootSaveStateMetadata,
     MachineCartridgeSaveStateMetadata, MachineSaveState, MachineSaveStateMetadata,
     MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint, SchedulerSaveState,
-    SerialSaveState, TimerSaveState,
+    SerialSaveState, SgbHostSaveState, TimerSaveState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,
@@ -124,6 +128,31 @@ pub use scheduler::{
 pub use serial::{
     Serial, SerialClockMode, SerialPeer, SerialSnapshot, SerialStartupState, SerialStatus,
     SerialTickTelemetry, SerialTransferState,
+};
+pub use sgb::{
+    DeterministicHleSgbHostBackend, SGB_ATF_BYTES, SGB_ATF_COUNT, SGB_ATF_TOTAL_BYTES,
+    SGB_ATTR_MAP_CELLS, SGB_ATTR_MAP_HEIGHT, SGB_ATTR_MAP_WIDTH, SGB_BORDER_PALETTE_COLORS,
+    SGB_BORDER_PALETTE_COUNT, SGB_BORDER_TILE_BYTES, SGB_BORDER_TILE_COUNT,
+    SGB_BORDER_TILE_DATA_BYTES, SGB_BORDER_TILEMAP_ENTRIES, SGB_BORDER_TILEMAP_STORED_HEIGHT,
+    SGB_BORDER_TILEMAP_VISIBLE_HEIGHT, SGB_BORDER_TILEMAP_WIDTH, SGB_COMMAND_MAX_PACKETS,
+    SGB_COMMAND_PACKET_BYTES, SGB_CONTROLLER_COUNT, SGB_DATA_SND_INLINE_BYTES, SGB_FRAME_HEIGHT,
+    SGB_FRAME_PIXELS, SGB_FRAME_WIDTH, SGB_LCD_FRAME_ORIGIN_X, SGB_LCD_FRAME_ORIGIN_Y,
+    SGB_LCD_HEIGHT, SGB_LCD_PIXELS, SGB_LCD_WIDTH, SGB_SCREEN_PALETTE_COLORS,
+    SGB_SCREEN_PALETTE_COUNT, SGB_SNES_DATA_TRN_BYTES, SGB_SYSTEM_PALETTE_COUNT,
+    SGB_VRAM_TRANSFER_BYTES, SgbApuRamAddress, SgbAttributeFileState, SgbAttributeMap,
+    SgbAttributeState, SgbAudioState, SgbBorderMapEntry, SgbBorderPalette, SgbBorderState,
+    SgbBorderTileData, SgbBorderTileMap, SgbChrTransferSelection, SgbChrTransferTileType,
+    SgbCommandAcceptance, SgbCommandState, SgbCompletedVramTransfer, SgbDataSendRequest,
+    SgbDataTransferRequest, SgbFrameCompositionError, SgbHost, SgbHostAudioRequest, SgbHostBackend,
+    SgbHostBackendKind, SgbHostBackendRequest, SgbHostBackendRequestKind, SgbHostBackendResponse,
+    SgbHostSnapshot, SgbHostStatus, SgbJoypLineState, SgbJumpRequest, SgbLcdCompositionError,
+    SgbLcdRgb555Frame, SgbMultiplayerState, SgbPacketTrace, SgbPacketTraceStatus,
+    SgbPacketTransportState, SgbPalSetOptions, SgbPaletteState, SgbPendingVramTransfer,
+    SgbPlayerPaletteOverrideState, SgbRealBootAsset, SgbRgb555Color, SgbScreenMask,
+    SgbScreenPalette, SgbSnesAddress, SgbSnesHostRequest, SgbSnesHostState, SgbSoundEffectControl,
+    SgbSoundRequest, SgbSoundTransferPacket, SgbSoundTransferRequest, SgbStartupState,
+    SgbSystemPaletteState, SgbVideoState, SgbVramTransferBuffer, SgbVramTransferError,
+    SgbVramTransferState, SgbVramTransferTarget,
 };
 pub use speed::{
     CGB_SPEED_SWITCH_PAUSE_T_CYCLES, CgbSpeedMode, SpeedController, SpeedSnapshot, SpeedStatus,

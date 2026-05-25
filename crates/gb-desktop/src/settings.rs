@@ -1,4 +1,4 @@
-use gb_core::{ExecutionMode, HardwareRevision, StartupMode};
+use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
     DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
@@ -168,6 +168,15 @@ impl DesktopSettingsStore {
         }
 
         self.settings.video.show_performance_hud = show_performance_hud;
+        self.save()
+    }
+
+    pub fn set_show_sgb_border(&mut self, show_sgb_border: bool) -> Result<(), String> {
+        if self.settings.video.show_sgb_border == show_sgb_border {
+            return Ok(());
+        }
+
+        self.settings.video.show_sgb_border = show_sgb_border;
         self.save()
     }
 
@@ -582,6 +591,7 @@ impl Default for PersistedDesktopSettings {
 struct PersistedLaunchSettings {
     console_model: PersistedDesktopConsoleModel,
     revision: PersistedHardwareRevision,
+    sgb_video_standard: PersistedSgbVideoStandard,
     startup_mode: PersistedStartupMode,
     execution_mode: PersistedExecutionMode,
 }
@@ -591,6 +601,9 @@ impl PersistedLaunchSettings {
         Self {
             console_model: PersistedDesktopConsoleModel::from_external(config.launch.console_model),
             revision: PersistedHardwareRevision::from_external(config.launch.revision),
+            sgb_video_standard: PersistedSgbVideoStandard::from_external(
+                config.launch.sgb_video_standard,
+            ),
             startup_mode: PersistedStartupMode::from_external(config.launch.startup_mode),
             execution_mode: PersistedExecutionMode::from_external(config.launch.execution_mode),
         }
@@ -600,8 +613,34 @@ impl PersistedLaunchSettings {
         config.launch.console_model = self.console_model.to_external();
         config.launch.revision = self.revision.to_external();
         config.launch.normalize_revision_for_model();
+        config.launch.sgb_video_standard = self.sgb_video_standard.to_external();
         config.launch.startup_mode = self.startup_mode.to_external();
         config.launch.execution_mode = self.execution_mode.to_external();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedSgbVideoStandard {
+    #[default]
+    #[serde(rename = "ntsc")]
+    Ntsc,
+    #[serde(rename = "pal")]
+    Pal,
+}
+
+impl PersistedSgbVideoStandard {
+    fn from_external(value: SgbVideoStandard) -> Self {
+        match value {
+            SgbVideoStandard::Ntsc => Self::Ntsc,
+            SgbVideoStandard::Pal => Self::Pal,
+        }
+    }
+
+    fn to_external(self) -> SgbVideoStandard {
+        match self {
+            Self::Ntsc => SgbVideoStandard::Ntsc,
+            Self::Pal => SgbVideoStandard::Pal,
+        }
     }
 }
 
@@ -762,6 +801,10 @@ enum PersistedDesktopConsoleModel {
     GameBoyLight,
     #[serde(rename = "color")]
     GameBoyColor,
+    #[serde(rename = "super-gb")]
+    SuperGameBoy,
+    #[serde(rename = "super-gb-2")]
+    SuperGameBoy2,
     #[serde(rename = "dmg0")]
     LegacyDmg0,
     #[serde(rename = "dmg")]
@@ -779,6 +822,8 @@ impl PersistedDesktopConsoleModel {
             gb_desktop::DesktopConsoleModel::GameBoyPocket => Self::GameBoyPocket,
             gb_desktop::DesktopConsoleModel::GameBoyLight => Self::GameBoyLight,
             gb_desktop::DesktopConsoleModel::GameBoyColor => Self::GameBoyColor,
+            gb_desktop::DesktopConsoleModel::SuperGameBoy => Self::SuperGameBoy,
+            gb_desktop::DesktopConsoleModel::SuperGameBoy2 => Self::SuperGameBoy2,
         }
     }
 
@@ -790,6 +835,8 @@ impl PersistedDesktopConsoleModel {
             Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
             Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
             Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+            Self::SuperGameBoy => gb_desktop::DesktopConsoleModel::SuperGameBoy,
+            Self::SuperGameBoy2 => gb_desktop::DesktopConsoleModel::SuperGameBoy2,
         }
     }
 }
@@ -972,10 +1019,10 @@ mod tests {
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
         MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomVerificationMode,
         PersistedDesktopConsoleModel, PersistedDesktopSettings, PersistedExecutionMode,
-        PersistedHardwareRevision, PersistedSaveDirectoryPolicy, PersistedStartupMode,
-        resolve_desktop_settings_path_from_locations,
+        PersistedHardwareRevision, PersistedSaveDirectoryPolicy, PersistedSgbVideoStandard,
+        PersistedStartupMode, resolve_desktop_settings_path_from_locations,
     };
-    use gb_core::{ExecutionMode, HardwareRevision, StartupMode};
+    use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
     use gb_desktop::{
         DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopFrameBlendingMode,
         DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
@@ -1151,6 +1198,7 @@ show_performance_hud = true
             DesktopDisplayPalette::GameBoy
         );
         assert_eq!(settings.video.frame_blending, DesktopFrameBlendingMode::Off);
+        assert!(settings.video.show_sgb_border);
         assert!(!settings.video.show_cgb_infrared_helper);
     }
 
@@ -1264,6 +1312,7 @@ max_memory_mib = 128
         let mut settings = PersistedDesktopSettings::default();
         settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
         settings.launch.revision = PersistedHardwareRevision::CpuCgbE;
+        settings.launch.sgb_video_standard = PersistedSgbVideoStandard::Pal;
         settings.launch.startup_mode = PersistedStartupMode::Real;
         settings.launch.execution_mode = PersistedExecutionMode::Permissive;
         settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
@@ -1288,6 +1337,7 @@ max_memory_mib = 128
         settings.video.show_background = false;
         settings.video.show_window = false;
         settings.video.show_objects = false;
+        settings.video.show_sgb_border = false;
         settings.video.fullscreen = true;
         settings.video.show_performance_hud = false;
         settings.video.show_cgb_infrared_helper = true;
@@ -1323,6 +1373,7 @@ max_memory_mib = 128
             gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(config.launch.revision, HardwareRevision::CpuMgb);
+        assert_eq!(config.launch.sgb_video_standard, SgbVideoStandard::Pal);
         assert_eq!(config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Permissive);
         assert_eq!(
@@ -1358,6 +1409,7 @@ max_memory_mib = 128
         assert!(!config.video.show_background);
         assert!(!config.video.show_window);
         assert!(!config.video.show_objects);
+        assert!(!config.video.show_sgb_border);
         assert!(config.video.fullscreen);
         assert!(!config.video.show_performance_hud);
         assert!(config.video.show_cgb_infrared_helper);
@@ -1519,6 +1571,7 @@ max_memory_mib = 128
         };
         let mut config = DesktopConfig::default();
         config.launch.console_model = gb_desktop::DesktopConsoleModel::GameBoy;
+        config.launch.sgb_video_standard = SgbVideoStandard::Pal;
         config.launch.startup_mode = StartupMode::RealBoot;
         config.launch.execution_mode = ExecutionMode::Experimental;
         config.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"));
@@ -1536,6 +1589,10 @@ max_memory_mib = 128
         assert_eq!(
             reloaded.launch.console_model,
             PersistedDesktopConsoleModel::GameBoy
+        );
+        assert_eq!(
+            reloaded.launch.sgb_video_standard,
+            PersistedSgbVideoStandard::Pal
         );
         assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::Real);
         assert_eq!(
@@ -1596,6 +1653,9 @@ max_memory_mib = 128
         store
             .set_show_performance_hud(true)
             .expect("performance HUD visibility should persist");
+        store
+            .set_show_sgb_border(false)
+            .expect("SGB border visibility should persist");
         store
             .set_show_cgb_infrared_helper(true)
             .expect("CGB IR helper visibility should persist");
@@ -1669,6 +1729,7 @@ max_memory_mib = 128
         assert!(!reloaded.video.show_background);
         assert!(!reloaded.video.show_window);
         assert!(!reloaded.video.show_objects);
+        assert!(!reloaded.video.show_sgb_border);
         assert!(reloaded.video.show_performance_hud);
         assert!(reloaded.video.show_cgb_infrared_helper);
         assert!(!reloaded.video.vsync);
@@ -1740,6 +1801,9 @@ max_memory_mib = 128
         store
             .set_show_performance_hud(true)
             .expect("HUD visibility should persist");
+        store
+            .set_show_sgb_border(false)
+            .expect("SGB border visibility should persist");
         store
             .set_show_cgb_infrared_helper(true)
             .expect("CGB IR helper visibility should persist");
@@ -1937,8 +2001,26 @@ max_memory_mib = 128
             gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::SuperGameBoy
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::SuperGameBoy
+        );
+        assert_eq!(
+            PersistedDesktopConsoleModel::from_external(
+                gb_desktop::DesktopConsoleModel::SuperGameBoy2
+            )
+            .to_external(),
+            gb_desktop::DesktopConsoleModel::SuperGameBoy2
+        );
+        assert_eq!(
             PersistedHardwareRevision::from_external(HardwareRevision::CpuCgbE).to_external(),
             HardwareRevision::CpuCgbE
+        );
+        assert_eq!(
+            PersistedSgbVideoStandard::from_external(SgbVideoStandard::Pal).to_external(),
+            SgbVideoStandard::Pal
         );
         assert_eq!(
             PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),

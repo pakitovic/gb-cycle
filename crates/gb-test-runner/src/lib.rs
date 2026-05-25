@@ -22,6 +22,7 @@ mod sameboy_tester;
 mod test_support;
 mod workspace_paths;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -36,17 +37,19 @@ use framebuffer_oracle::{
     encode_rgb555_framebuffer_png, normalize_dmg_framebuffer,
 };
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CgbSpeedMode,
-    CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap, CpuExecutionState,
-    CpuSnapshot, ExecutionMode, HardwareRevision, JoypadButton, Machine, MachineConfig,
-    MachineSaveState, MachineSaveStateRestoreError, StartupMode, TimerStartupState, TraceBuffer,
-    TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssetKind, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError,
+    CgbSpeedMode, CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap,
+    CpuExecutionState, CpuSnapshot, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton,
+    Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
+    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
 pub use boot_rom_verification::{
-    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
-    expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_file,
+    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_asset_verification,
+    enforce_boot_rom_verification, expected_boot_rom_asset_sha256, expected_boot_rom_asset_size,
+    expected_boot_rom_sha256, expected_boot_rom_size, verify_boot_rom_asset_file,
+    verify_boot_rom_file,
 };
 pub use curated_test_roms::{
     TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME,
@@ -110,29 +113,31 @@ pub use sameboy_tester::{
     SameBoyTesterSuiteReport,
 };
 pub use workspace_paths::{
-    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_image_path,
-    boot_rom_revision_for_console_model, discover_boot_rom_root, oracle_layout_root,
-    oracle_store_root, sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
+    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_asset_for_console_profile,
+    boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
+    oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
+    sameboy_tester_oracle_root,
 };
 
-pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
+pub(crate) fn boot_rom_asset_is_required_for_runner_gate(asset: BootRomAssetKind) -> bool {
     matches!(
-        revision,
-        HardwareRevision::DmgCpuA
-            | HardwareRevision::DmgCpuB
-            | HardwareRevision::DmgCpuC
-            | HardwareRevision::CpuMgb
-            | HardwareRevision::CpuCgbA
-            | HardwareRevision::CpuCgbB
-            | HardwareRevision::CpuCgbC
-            | HardwareRevision::CpuCgbD
-            | HardwareRevision::CpuCgbE
+        asset,
+        BootRomAssetKind::Dmg
+            | BootRomAssetKind::Mgb
+            | BootRomAssetKind::Sgb
+            | BootRomAssetKind::Sgb2
+            | BootRomAssetKind::Cgb
+            | BootRomAssetKind::CgbE
     )
+}
+
+pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
+    boot_rom_asset_is_required_for_runner_gate(BootRomAssetKind::from_revision(revision))
 }
 
 pub(crate) fn enforce_missing_boot_rom_root_verification(
     mode: BootRomVerificationMode,
-    revision: HardwareRevision,
+    asset: BootRomAssetKind,
 ) -> Result<(), BootRomVerificationIssue> {
     match mode {
         BootRomVerificationMode::Off => Ok(()),
@@ -140,14 +145,14 @@ pub(crate) fn enforce_missing_boot_rom_root_verification(
             eprintln!(
                 "warning: {}",
                 BootRomVerificationIssue::MissingRoot {
-                    revision,
+                    asset,
                     env_var: BOOT_ROM_ROOT_ENV_VAR,
                 }
             );
             Ok(())
         }
         BootRomVerificationMode::Strict => Err(BootRomVerificationIssue::MissingRoot {
-            revision,
+            asset,
             env_var: BOOT_ROM_ROOT_ENV_VAR,
         }),
     }
@@ -514,6 +519,7 @@ pub struct RomTestCase {
     pub rom_path: PathBuf,
     pub external_rom_root_key: Option<String>,
     pub console_model: ConsoleModel,
+    pub host_platform: HostPlatform,
     pub revision: HardwareRevision,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
@@ -543,6 +549,7 @@ impl RomTestCase {
             rom_path: rom_path.into(),
             external_rom_root_key: None,
             console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Handheld,
             revision: ConsoleModel::GameBoy.default_revision(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
@@ -561,6 +568,11 @@ impl RomTestCase {
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
         self.revision = console_model.default_revision();
+        self
+    }
+
+    pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
+        self.host_platform = host_platform;
         self
     }
 
@@ -1088,6 +1100,10 @@ pub fn samesuite_cgb_extra_suite() -> RomSuite {
     curated_test_roms::samesuite_cgb_extra_suite()
 }
 
+pub fn samesuite_sgb_suite() -> RomSuite {
+    curated_test_roms::samesuite_sgb_suite()
+}
+
 pub fn magen_cgb_extra_suite() -> RomSuite {
     curated_test_roms::magen_cgb_extra_suite()
 }
@@ -1138,6 +1154,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
         samesuite_cgb_extra_suite(),
+        samesuite_sgb_suite(),
         magen_cgb_extra_suite(),
         mealybug_tearoom_cgb_extra_suite(),
         little_things_gb_dmg_extra_suite(),
@@ -1600,6 +1617,7 @@ impl DeterministicMbc3RtcClock {
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
+            .with_host_platform(case.host_platform)
             .with_revision(case.revision)
             .with_startup_mode(case.startup_mode)
             .with_compatibility(compatibility_for_execution_mode(case.execution_mode))
@@ -1746,10 +1764,18 @@ impl RunnerMachine {
         }
     }
 
-    fn cgb_framebuffer_rgb555(&self) -> Option<&[u16]> {
+    fn host_framebuffer_rgb555(&self) -> Option<Cow<'_, [u16]>> {
         match self {
-            Self::Buffered(machine) => machine.ppu().cgb_framebuffer_rgb555(),
-            Self::Summary(machine) => machine.ppu().cgb_framebuffer_rgb555(),
+            Self::Buffered(machine) => machine
+                .ppu()
+                .cgb_framebuffer_rgb555()
+                .map(Cow::Borrowed)
+                .or_else(|| machine.sgb_lcd_framebuffer_rgb555().map(Cow::Owned)),
+            Self::Summary(machine) => machine
+                .ppu()
+                .cgb_framebuffer_rgb555()
+                .map(Cow::Borrowed)
+                .or_else(|| machine.sgb_lcd_framebuffer_rgb555().map(Cow::Owned)),
         }
     }
 
@@ -2100,23 +2126,20 @@ impl RomRunner {
             return Ok(BootRomAssets::none());
         }
 
-        let revision = case.revision;
+        let asset = boot_rom_asset_for_console_profile(case.console_model, case.host_platform);
 
         let Some(root) = self.boot_rom_root.clone().or_else(discover_boot_rom_root) else {
-            if boot_rom_revision_is_required_for_runner_gate(revision) {
-                enforce_missing_boot_rom_root_verification(
-                    self.boot_rom_verification_mode,
-                    revision,
-                )
-                .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+            if boot_rom_asset_is_required_for_runner_gate(asset) {
+                enforce_missing_boot_rom_root_verification(self.boot_rom_verification_mode, asset)
+                    .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
             }
             return Ok(BootRomAssets::none());
         };
-        let image_path = boot_rom_image_path(&root, revision);
-        if !boot_rom_revision_is_required_for_runner_gate(revision) && !image_path.is_file() {
+        let image_path = boot_rom_image_path(&root, asset);
+        if !boot_rom_asset_is_required_for_runner_gate(asset) && !image_path.is_file() {
             return Ok(BootRomAssets::none());
         }
-        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, revision)
+        enforce_boot_rom_asset_verification(self.boot_rom_verification_mode, &image_path, asset)
             .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
         if !root.is_dir() {
             return Ok(BootRomAssets::none());
@@ -2311,8 +2334,8 @@ impl RomRunner {
 
         if case.capture_plan.contains(CaptureKind::Framebuffer) {
             artifacts.framebuffer_pgm = Some(encode_framebuffer_pgm(machine.framebuffer()));
-            if let Some(framebuffer_rgb555) = machine.cgb_framebuffer_rgb555() {
-                artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.to_vec());
+            if let Some(framebuffer_rgb555) = machine.host_framebuffer_rgb555() {
+                artifacts.framebuffer_rgb555 = Some(framebuffer_rgb555.into_owned());
             }
         }
 
@@ -2559,13 +2582,13 @@ impl RomRunner {
                                     .as_deref()
                                     .ok_or_else(|| RomExecutionError::ReadFile {
                                         path: PathBuf::from(format!(
-                                            "<local CGB RGB555 framebuffer for {}>",
+                                            "<local host RGB555 framebuffer for {}>",
                                             case.id
                                         )),
-                                        operation: "decode local CGB RGB555 framebuffer artifact",
+                                        operation: "decode local host RGB555 framebuffer artifact",
                                         source: io::Error::new(
                                             io::ErrorKind::InvalidData,
-                                            "missing local CGB RGB555 framebuffer capture",
+                                            "missing local host RGB555 framebuffer capture",
                                         ),
                                     })?,
                             )
@@ -2573,7 +2596,7 @@ impl RomRunner {
                                 let path = error.path.clone();
                                 RomExecutionError::ReadFile {
                                     path,
-                                    operation: "decode local CGB RGB555 framebuffer artifact",
+                                    operation: "decode local host RGB555 framebuffer artifact",
                                     source: error.into_invalid_data_error(),
                                 }
                             })?
@@ -2652,13 +2675,13 @@ impl RomRunner {
                         .as_deref()
                         .ok_or_else(|| RomExecutionError::ReadFile {
                             path: PathBuf::from(format!(
-                                "<local CGB RGB555 framebuffer for {}>",
+                                "<local host RGB555 framebuffer for {}>",
                                 case.id
                             )),
-                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            operation: "decode local host RGB555 framebuffer artifact",
                             source: io::Error::new(
                                 io::ErrorKind::InvalidData,
-                                "missing local CGB RGB555 framebuffer capture",
+                                "missing local host RGB555 framebuffer capture",
                             ),
                         })?,
                 )
@@ -2666,7 +2689,7 @@ impl RomRunner {
                     let path = error.path.clone();
                     RomExecutionError::ReadFile {
                         path,
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: error.into_invalid_data_error(),
                     }
                 })?;
@@ -2698,13 +2721,13 @@ impl RomRunner {
                         .as_deref()
                         .ok_or_else(|| RomExecutionError::ReadFile {
                             path: PathBuf::from(format!(
-                                "<local CGB RGB555 framebuffer for {}>",
+                                "<local host RGB555 framebuffer for {}>",
                                 case.id
                             )),
-                            operation: "decode local CGB RGB555 framebuffer artifact",
+                            operation: "decode local host RGB555 framebuffer artifact",
                             source: io::Error::new(
                                 io::ErrorKind::InvalidData,
-                                "missing local CGB RGB555 framebuffer capture",
+                                "missing local host RGB555 framebuffer capture",
                             ),
                         })?,
                 )
@@ -2712,7 +2735,7 @@ impl RomRunner {
                     let path = error.path.clone();
                     RomExecutionError::ReadFile {
                         path,
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: error.into_invalid_data_error(),
                     }
                 })?;
@@ -2876,13 +2899,13 @@ impl RomRunner {
                         let rgb555_png = encode_rgb555_framebuffer_png(framebuffer_rgb555)
                             .map_err(|source| RomExecutionError::ReadFile {
                                 path: png_path.clone(),
-                                operation: "encode CGB RGB555 framebuffer artifact",
+                                operation: "encode host RGB555 framebuffer artifact",
                                 source,
                             })?;
                         fs::write(&png_path, rgb555_png).map_err(|source| {
                             RomExecutionError::ReadFile {
                                 path: png_path.clone(),
-                                operation: "write CGB RGB555 framebuffer artifact",
+                                operation: "write host RGB555 framebuffer artifact",
                                 source,
                             }
                         })?;
@@ -3046,25 +3069,27 @@ fn framebuffer_matches_fixture(
         FramebufferUntilMatchSource::Rgb555 => {
             let framebuffer_rgb555 =
                 machine
-                    .cgb_framebuffer_rgb555()
+                    .host_framebuffer_rgb555()
                     .ok_or_else(|| RomExecutionError::ReadFile {
                         path: PathBuf::from(format!(
-                            "<local CGB RGB555 framebuffer for {case_id}>"
+                            "<local host RGB555 framebuffer for {case_id}>"
                         )),
-                        operation: "decode local CGB RGB555 framebuffer artifact",
+                        operation: "decode local host RGB555 framebuffer artifact",
                         source: io::Error::new(
                             io::ErrorKind::InvalidData,
-                            "missing local CGB RGB555 framebuffer capture",
+                            "missing local host RGB555 framebuffer capture",
                         ),
                     })?;
-            decode_local_rgb555_framebuffer(case_id, framebuffer_rgb555).map_err(|error| {
-                let path = error.path.clone();
-                RomExecutionError::ReadFile {
-                    path,
-                    operation: "decode local CGB RGB555 framebuffer artifact",
-                    source: error.into_invalid_data_error(),
-                }
-            })?
+            decode_local_rgb555_framebuffer(case_id, framebuffer_rgb555.as_ref()).map_err(
+                |error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local host RGB555 framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                },
+            )?
         }
     };
     Ok(actual == oracle.expected)
@@ -3357,8 +3382,8 @@ mod tests {
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
     };
     use gb_core::{
-        CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState,
-        CpuStatus, ExecutionMode, StartupMode,
+        BootRomAssetKind, CgbSpeedMode, ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot,
+        CpuStartupState, CpuStatus, ExecutionMode, HostPlatform, StartupMode,
     };
     use std::collections::BTreeSet;
     use std::env;
@@ -5471,7 +5496,7 @@ mod tests {
         assert!(matches!(
             missing_rgb555_local,
             RomExecutionError::ReadFile {
-                operation: "decode local CGB RGB555 framebuffer artifact",
+                operation: "decode local host RGB555 framebuffer artifact",
                 ..
             }
         ));
@@ -5571,7 +5596,7 @@ mod tests {
             !written
                 .iter()
                 .any(|path| path.ends_with(Path::new("framebuffer.pgm"))),
-            "CGB RGB555 framebuffer artifacts should not persist a legacy PGM"
+            "host RGB555 framebuffer artifacts should not persist a legacy PGM"
         );
 
         let case_dir = artifact_root.join("artifact-case");
@@ -5895,6 +5920,37 @@ mod tests {
                 .load_boot_rom_assets(&dmg_real_boot_case)
                 .expect("missing boot root should fall back to no assets")
                 .is_empty()
+        );
+
+        let sgb_boot_root = workspace.join("sgb-bootrom");
+        fs::create_dir_all(&sgb_boot_root).expect("SGB boot ROM root should be creatable");
+        fs::write(sgb_boot_root.join("dmg_boot.bin"), vec![0xD0; 0x100])
+            .expect("DMG boot ROM should be writable");
+        fs::write(sgb_boot_root.join("sgb_boot.bin"), vec![0x51; 0x100])
+            .expect("SGB boot ROM should be writable");
+        fs::write(sgb_boot_root.join("sgb2_boot.bin"), vec![0x52; 0x100])
+            .expect("SGB2 boot ROM should be writable");
+        let sgb_real_boot_case = RomTestCase::new(
+            "sgb-real-boot",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        )
+        .with_host_platform(HostPlatform::Sgb)
+        .with_startup_mode(StartupMode::RealBoot);
+        let sgb_assets = RomRunner::new()
+            .with_workspace_root(&workspace)
+            .with_boot_rom_root(&sgb_boot_root)
+            .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
+            .load_boot_rom_assets(&sgb_real_boot_case)
+            .expect("SGB real-boot should load SGB boot ROM assets");
+        assert_eq!(
+            sgb_assets.read_asset_byte(BootRomAssetKind::Sgb, 0),
+            Some(0x51)
+        );
+        assert_eq!(
+            sgb_assets.read_byte(ConsoleModel::GameBoy.default_revision(), 0),
+            Some(0xD0)
         );
 
         match previous_boot_rom_root {

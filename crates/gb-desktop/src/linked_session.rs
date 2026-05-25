@@ -669,6 +669,12 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         LinkedMachinesError::UnsupportedMachineCountForDmg07 { count } => {
             format!("DMG-07 linked sessions require two to four machines, found {count}")
         }
+        LinkedMachinesError::UnsupportedExternalPortAttachment {
+            machine_index,
+            attachment_kind,
+        } => format!(
+            "linked session cannot attach {attachment_kind:?} to machine index {machine_index}"
+        ),
         LinkedMachinesError::UnsupportedMachineCountForCgbInfrared { count } => {
             format!("CGB infrared linked sessions require exactly two machines, found {count}")
         }

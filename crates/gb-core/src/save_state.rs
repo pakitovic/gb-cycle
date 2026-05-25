@@ -11,11 +11,13 @@ pub use crate::external_port::ExternalPortSaveState;
 pub use crate::interrupts::InterruptSaveState;
 pub use crate::joypad::JoypadSaveState;
 use crate::model::{
-    CompatibilityPolicy, ConsoleModel, HardwareRevision, HostPlatform, OperatingMode, StartupMode,
+    CompatibilityPolicy, ConsoleModel, HardwareRevision, HostPlatform, OperatingMode,
+    SgbHostProfile, StartupMode,
 };
 pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
 pub use crate::serial::SerialSaveState;
+pub use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHostSaveState};
 pub use crate::speed::SpeedSaveState;
 pub use crate::timer::TimerSaveState;
 
@@ -62,6 +64,7 @@ pub struct MachineSaveStateMetadata {
     pub operating_mode: OperatingMode,
     pub revision: HardwareRevision,
     pub host_platform: HostPlatform,
+    pub sgb_profile: Option<SgbHostProfile>,
     pub startup_mode: StartupMode,
     pub compatibility: CompatibilityPolicy,
     pub next_t_cycle: TCycle,
@@ -78,6 +81,8 @@ pub struct SchedulerSaveState {
 pub(crate) struct MachineRuntimeSaveState {
     pub(crate) joypad_pressed_mask: u8,
     pub(crate) joypad_state_dirty: bool,
+    pub(crate) sgb_joypad_pressed_masks: [u8; SGB_CONTROLLER_COUNT],
+    pub(crate) sgb_joypad_state_dirty_mask: u8,
     pub(crate) external_serial_clock_pulses_pending: u8,
 }
 
@@ -92,6 +97,7 @@ pub(crate) struct MachineCoreSaveState {
     pub(crate) dma: DmaSaveState,
     pub(crate) timer: TimerSaveState,
     pub(crate) serial: SerialSaveState,
+    pub(crate) sgb_host: SgbHostSaveState,
     pub(crate) speed: SpeedSaveState,
     pub(crate) external_port: ExternalPortSaveState,
     pub(crate) boot: BootSaveState,
@@ -143,6 +149,7 @@ impl MachineCoreSaveState {
             .saturating_add(self.dma.dynamic_payload_bytes())
             .saturating_add(self.timer.dynamic_payload_bytes())
             .saturating_add(self.serial.dynamic_payload_bytes())
+            .saturating_add(self.sgb_host.dynamic_payload_bytes())
             .saturating_add(self.speed.dynamic_payload_bytes())
             .saturating_add(self.external_port.dynamic_payload_bytes())
             .saturating_add(self.boot.dynamic_payload_bytes())
@@ -169,6 +176,10 @@ pub enum MachineSaveStateRestoreError {
     HostPlatformMismatch {
         expected: HostPlatform,
         actual: HostPlatform,
+    },
+    SgbProfileMismatch {
+        expected: Option<SgbHostProfile>,
+        actual: Option<SgbHostProfile>,
     },
     StartupModeMismatch {
         expected: StartupMode,
@@ -207,6 +218,11 @@ impl fmt::Display for MachineSaveStateRestoreError {
             Self::HostPlatformMismatch { expected, actual } => write!(
                 f,
                 "save-state host platform mismatch: expected {:?}, got {:?}",
+                expected, actual
+            ),
+            Self::SgbProfileMismatch { expected, actual } => write!(
+                f,
+                "save-state SGB profile mismatch: expected {:?}, got {:?}",
                 expected, actual
             ),
             Self::StartupModeMismatch { expected, actual } => write!(
@@ -349,9 +365,16 @@ mod tests {
             (
                 MachineSaveStateRestoreError::HostPlatformMismatch {
                     expected: HostPlatform::Handheld,
-                    actual: HostPlatform::Sgb1,
+                    actual: HostPlatform::Sgb,
                 },
                 "host platform mismatch",
+            ),
+            (
+                MachineSaveStateRestoreError::SgbProfileMismatch {
+                    expected: Some(SgbHostProfile::SgbNtsc),
+                    actual: Some(SgbHostProfile::SgbPal),
+                },
+                "SGB profile mismatch",
             ),
             (
                 MachineSaveStateRestoreError::StartupModeMismatch {

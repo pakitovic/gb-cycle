@@ -1,26 +1,26 @@
 # gb-cycle
 
-A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, developed with support from AI-assisted tooling.
+A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling.
 
 ## Current implementation highlights
 
 | Domain | Highlight |
 | --- | --- |
-| Core architecture | Frontend-agnostic `gb-core` separated from CLI, desktop, persistence, and ROM-runner crates so the DMG and CGB hardware paths stay portable, deterministic, and testable. |
+| Core architecture | Frontend-agnostic `gb-core` separated from CLI, desktop, persistence, and ROM-runner crates so the DMG, CGB, and SGB-family hardware paths stay portable, deterministic, and testable. |
 | Scheduler | One deterministic shared `T-cycle` timeline coordinates CPU, PPU, timer, speed switching, DMA, APU, serial, joypad, link, and MMIO side effects. |
 | CPU | `T-cycle`-accurate micro-op core with real opcode, immediate, stack, interrupt-service, `HALT`, `STOP`, and native-CGB speed-switch bus traffic. |
 | PPU | `T-cycle`-accurate dot pipeline with explicit fetcher/FIFO stages, variable `Mode 3`, live MMIO effects, DMG OAM-corruption coverage, CGB VRAM-bank attributes, palettes, priority composition, and an RGB555 framebuffer. |
 | DMA / bus / memory | Requester-aware arbitration with DMG and CGB OAM DMA policies, native-CGB VRAM/WRAM banking, GDMA/HDMA, blocked VRAM/OAM semantics, and explicit MMIO ownership. |
 | Timer / speed / interrupts | Falling-edge timer model with delayed `TIMA` reload/request timing, native-CGB `KEY1` normal/double-speed domains, centralized `IF` / `IE` ownership, and scheduler-visible IRQ aggregation. |
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF, and host-facing sample export. |
-| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, `SC`, and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, explicit link / IR endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, `DMG-07` 2/3/4-player topology, native CGB-to-CGB infrared sessions, the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color Mystery Gift accessory model, and a selectable western GSC Mystery Gift sender accessory. |
+| Joypad / serial / external I/O | Hardware-owned `JOYP`, `SB`, `SC`, and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, explicit link / IR endpoint boundaries, Game Boy Printer protocol, `DMG-04` cable sessions, `DMG-07` 2/3/4-player topology, SGB `MLT_REQ` host-controller multiplexing, native CGB-to-CGB infrared sessions, the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color Mystery Gift accessory model, and a selectable western GSC Mystery Gift sender accessory. |
 | Cartridges | Header-driven mapper model covering `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, RTC, flash / EEPROM / accelerometer paths, rumble-capable metadata, and separate host persistence. |
-| Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family and CGB-family models, including CGB boot-window routing, header-driven native/compatibility mode selection, and coherent first post-boot timer, PPU, and APU state. |
-| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, custom GSC Mystery Gift item/decoration sends, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
+| Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family, CGB-family, and SGB-family profiles, including CGB boot-window routing, SGB/SGB2 `sgb_boot.bin` / `sgb2_boot.bin` asset selection, header-driven native/compatibility/SGB command policy, and coherent first post-boot timer, PPU, and APU state. |
+| Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB and SGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports SGB/SGB2 model selection, SGB PAL/NTSC selection, SGB border presentation toggles, SGB2 Game Link, printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, custom GSC Mystery Gift item/decoration sends, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
-| Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
+| Save states / rewind | Versioned `.gbstate` v1 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
-| Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix; green non-DocBoy extra/internal suites run through the separate GitHub `test-roms-extra` matrix. |
+| Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational), Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix, green non-DocBoy extra/internal suites run through the separate GitHub `test-roms-extra` matrix, and Phase 11 now covers SGB/SGB2 architecture, packets, palettes, borders, advanced coloring, multiplayer, profiles, and SGB2 link behavior with focused synthetic tests plus informational SameSuite SGB rows. |
 
 ## Current structure
 
@@ -46,7 +46,7 @@ Future extensions that are intentionally not separate crates yet:
 
 - `gb-web`
 - richer debugger / devtools surfaces on top of the existing trace, snapshot, breakpoint, and watchpoint contracts
-- SGB / SGB2-focused tooling once that host-shell model lands
+- SNES/SFC host-shell execution tooling for the deferred SGB startup/audio/16-bit slices
 
 ## Quick start
 
@@ -60,6 +60,13 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 # CLI: force the Game Boy Color model and export the final RGB555 framebuffer as PNG
 cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
 
+# CLI: run an SGB-enhanced game and export the native 256x224 SGB host frame
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
+
+# CLI: original SGB PAL profile, or SGB/SGB2 LCD-only PNG without the host border
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --sgb-standard pal --framebuffer-out .artifacts/sgb-pal.png
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB2 --border-off --framebuffer-out .artifacts/sgb2-lcd.png
+
 # CLI: save and restore a whole-machine .gbstate
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --state-out .artifacts/run.gbstate
 cargo run -p gb-cli -- run path/to/rom.gb --state-in .artifacts/run.gbstate --tcycles 5000
@@ -69,6 +76,10 @@ cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 # Desktop: launch a CGB ROM with direct RGB555 presentation
 cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
+
+# Desktop: launch an SGB/SGB2 profile; CONFIG -> SYSTEM exposes MODEL, REV, VIDEO, START, and BORDER
+cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB
+cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB2 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
 
 # Desktop: launch a local DMG-04 two-player Game Link session
 cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
@@ -82,6 +93,16 @@ scripts/run-benchmark.sh path/to/benchmark-cases
 ```
 
 See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.md](docs/frontends/DESKTOP.md) for full usage details.
+
+## Super Game Boy / Super Game Boy 2
+
+SGB support is implemented as a DMG-compatible GB core plus a pluggable SGB/SNES host shell, not as CGB mode and not as a duplicated GB core. The public profiles are `SGB` / `SUPER GB` and `SGB2` / `SUPER GB2`; original SGB supports `NTSC` and `PAL` host profiles, while SGB2 is fixed to `NTSC`, uses the corrected GB clock, and exposes the physical Game Link port through the existing link topology.
+
+The current public milestone covers Phase 11 slices 0-6: SGB/SGB2 architecture and save-state contracts, `SkipBoot` / `RealBoot` asset selection (`sgb_boot.bin` / `sgb2_boot.bin`), JOYP packet transport and SGB-header unlock policy, base SGB palette commands and BIOS title/default palettes for DMG-only games, `_TRN` transfer capture, static/dynamic border composition, `MASK_EN`, advanced attribute coloring, `PAL_TRN` / `PAL_SET` / `ATTR_TRN` / `ATTR_SET` / `PAL_PRI`, `MLT_REQ` multiplayer with P1-P4 host controller slots, SGB PAL/NTSC/SGB2 NTSC timing facts, and SGB2 Game Link availability.
+
+`gb-desktop` exposes this through `CONFIG -> SYSTEM -> MODEL SUPER GB` / `SUPER GB2`, `REV SGB-CPU 01` / `CPU SGB2`, `VIDEO NTSC/PAL`, `START SKIP/REAL`, and `BORDER ON/OFF`; the no-ROM launcher keeps the handheld-size window until a ROM is loaded. `gb-cli` exposes the same profiles with `--model SGB|SGB2`, `--sgb-standard ntsc|pal` for original SGB, and `--border-off` for LCD-only SGB PNG captures. RealBoot examples can use a private boot-ROM root such as `$HOME/emu/roms/bootrom`.
+
+The final three SGB slices are deliberately deferred to a later milestone: Slice 7 will model the SNES/SFC-side SGB startup shell, built-in generic border, logo animation, and jingle; Slice 8 will implement general SGB special audio (`SOUND` / `SOU_TRN`); Slice 9 will implement SNES-side data transfer and 16-bit execution (`DATA_SND`, `DATA_TRN`, `JUMP`) for titles such as Space Invaders. Because those host-firmware features are not contained in the 256-byte GB-side `sgb_boot.bin` / `sgb2_boot.bin`, current RealBoot correctly executes the GB-side boot asset but does not yet show the real-hardware SGB firmware animation or built-in startup border before cartridge-side transfers.
 
 ## CGB infrared, Pokémon Pikachu 2, and GSC Mystery Gift
 
