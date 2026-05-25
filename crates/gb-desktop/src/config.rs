@@ -1,7 +1,7 @@
 use gb_core::{
     BootRomAssetError, BootRomAssetKind, BootRomAssets, CompatibilityPolicy, ConsoleModel,
     ExecutionMode, HardwareRevision, MachineConfig, MachineRewindConfig,
-    MachineRewindSubframeCadence, SgbHostProfile, StartupMode,
+    MachineRewindSubframeCadence, SgbHostProfile, SgbVideoStandard, StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
@@ -124,6 +124,24 @@ impl DesktopConsoleModel {
         }
     }
 
+    pub const fn sgb_profile_for_standard(
+        self,
+        video_standard: SgbVideoStandard,
+    ) -> Option<SgbHostProfile> {
+        match self {
+            Self::SuperGameBoy => match video_standard {
+                SgbVideoStandard::Ntsc => Some(SgbHostProfile::SgbNtsc),
+                SgbVideoStandard::Pal => Some(SgbHostProfile::SgbPal),
+            },
+            Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
+            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+        }
+    }
+
+    pub const fn allows_sgb_video_standard_selection(self) -> bool {
+        matches!(self, Self::SuperGameBoy)
+    }
+
     pub const fn uses_rgb555_output(self) -> bool {
         matches!(
             self,
@@ -204,6 +222,7 @@ impl DesktopFrameBlendingMode {
 pub struct LaunchOptions {
     pub console_model: DesktopConsoleModel,
     pub revision: HardwareRevision,
+    pub sgb_video_standard: SgbVideoStandard,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
 }
@@ -225,6 +244,17 @@ impl LaunchOptions {
         self.revision = self.effective_revision();
     }
 
+    pub fn effective_sgb_video_standard(&self) -> SgbVideoStandard {
+        match self.console_model {
+            DesktopConsoleModel::SuperGameBoy => self.sgb_video_standard,
+            DesktopConsoleModel::SuperGameBoy2 => SgbVideoStandard::Ntsc,
+            DesktopConsoleModel::GameBoy
+            | DesktopConsoleModel::GameBoyPocket
+            | DesktopConsoleModel::GameBoyLight
+            | DesktopConsoleModel::GameBoyColor => self.sgb_video_standard,
+        }
+    }
+
     pub fn compatibility_policy(&self) -> CompatibilityPolicy {
         match self.execution_mode {
             ExecutionMode::Strict => CompatibilityPolicy::strict(),
@@ -239,7 +269,10 @@ impl LaunchOptions {
             .with_startup_mode(self.startup_mode)
             .with_revision(revision)
             .with_compatibility(self.compatibility_policy());
-        if let Some(profile) = self.console_model.sgb_profile() {
+        if let Some(profile) = self
+            .console_model
+            .sgb_profile_for_standard(self.effective_sgb_video_standard())
+        {
             machine_config.with_sgb_profile(profile)
         } else {
             machine_config
@@ -254,6 +287,7 @@ impl Default for LaunchOptions {
             revision: DesktopConsoleModel::GameBoy
                 .console_model()
                 .default_revision(),
+            sgb_video_standard: SgbVideoStandard::default(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
         }
@@ -1131,6 +1165,13 @@ mod tests {
         assert_eq!(sgb_config.sgb_profile, Some(SgbHostProfile::SgbNtsc));
         assert_eq!(sgb_config.boot_rom_asset_kind(), BootRomAssetKind::Sgb);
 
+        config.launch.sgb_video_standard = SgbVideoStandard::Pal;
+        let sgb_pal_config = config
+            .machine_config()
+            .expect("skip-boot should not load firmware");
+        assert_eq!(sgb_pal_config.sgb_profile, Some(SgbHostProfile::SgbPal));
+        assert_eq!(sgb_pal_config.boot_rom_asset_kind(), BootRomAssetKind::Sgb);
+
         config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
         let sgb2_config = config
             .machine_config()
@@ -1270,9 +1311,19 @@ mod tests {
             Some(SgbHostProfile::SgbNtsc)
         );
         assert_eq!(
+            DesktopConsoleModel::SuperGameBoy.sgb_profile_for_standard(SgbVideoStandard::Pal),
+            Some(SgbHostProfile::SgbPal)
+        );
+        assert_eq!(
             DesktopConsoleModel::SuperGameBoy2.sgb_profile(),
             Some(SgbHostProfile::Sgb2Ntsc)
         );
+        assert_eq!(
+            DesktopConsoleModel::SuperGameBoy2.sgb_profile_for_standard(SgbVideoStandard::Pal),
+            Some(SgbHostProfile::Sgb2Ntsc)
+        );
+        assert!(DesktopConsoleModel::SuperGameBoy.allows_sgb_video_standard_selection());
+        assert!(!DesktopConsoleModel::SuperGameBoy2.allows_sgb_video_standard_selection());
         assert!(DesktopConsoleModel::GameBoy.allows_display_palette());
         assert!(!DesktopConsoleModel::GameBoyColor.allows_display_palette());
         assert!(!DesktopConsoleModel::SuperGameBoy.allows_display_palette());

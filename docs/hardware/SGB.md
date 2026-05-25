@@ -17,17 +17,17 @@ The host implementation must remain pluggable. The preferred path is hybrid: use
 | UI label | Machine profile | Host platform | GB core contract | Revision | Startup modes | RealBoot asset | Video standard | Host capabilities |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER GB` | `SGB` | `Sgb` | DMG-compatible | `SGB-CPU 01` | `skip-boot`, `real-boot` | `sgb_boot.bin` | `PAL` or `NTSC` | SGB command host, palettes, borders, multiplayer, host audio, SNES-side command/data path; no physical Game Link port. |
-| `SUPER GB 2` | `SGB2` | `Sgb2` | DMG-compatible | `CPU SGB2` | `skip-boot`, `real-boot` | `sgb2_boot.bin` | `NTSC` | SGB command host, palettes, borders, multiplayer, host audio, corrected clock versus SGB, physical Game Link support. |
+| `SUPER GB2` | `SGB2` | `Sgb2` | DMG-compatible | `CPU SGB2` | `skip-boot`, `real-boot` | `sgb2_boot.bin` | `NTSC` | SGB command host, palettes, borders, multiplayer, host audio, corrected clock versus SGB, physical Game Link support. |
 
 `MODEL: SGB` and `MODEL: SGB2` are user-facing machine profiles that resolve into explicit model axes. They must not become independent duplicated cores. The internal profile descriptor is `SgbHostProfile`: `SgbNtsc` and `SgbPal` require `HostPlatform::Sgb`, while `Sgb2Ntsc` requires `HostPlatform::Sgb2`; impossible combinations such as PAL SGB2 are rejected by model-axis coherence and save-state metadata validation instead of being normalized silently.
 
-`gb-desktop` and `gb-cli` expose `SGB` and `SGB2` through the same public model/profile selector as handheld models. The first frontend selector maps `SGB` to `SgbHostProfile::SgbNtsc` and `SGB2` to `SgbHostProfile::Sgb2Ntsc`; `SgbPal` remains a core/profile capability that should be surfaced through an explicit video-standard/profile selector rather than by introducing `SGB1` naming.
+`gb-desktop` and `gb-cli` expose `SGB` and `SGB2` through the same public model/profile selector as handheld models. The model selector maps `SGB` through an explicit video-standard axis, defaulting to `SgbHostProfile::SgbNtsc` and allowing `SgbHostProfile::SgbPal` via `--sgb-standard pal` or `CONFIG -> SYSTEM -> VIDEO PAL`; `SGB2` always maps to `SgbHostProfile::Sgb2Ntsc`, rejects an explicit CLI SGB standard, and shows a disabled `VIDEO NTSC` UI item instead of introducing an impossible PAL SGB2 profile or `SGB1` naming.
 
 ## Boot and startup
 
 SGB/SGB2 must support `SkipBoot` and `RealBoot` as distinct startup paths. `RealBoot` executes the SGB-profile-derived boot ROM on the shared CPU/bus/scheduler path with the boot ROM mapped until the real handoff; `SkipBoot` synthesizes a coherent post-boot handoff state and does not require boot ROM bytes.
 
-For `SUPER GB`, `RealBoot` selects `sgb_boot.bin` for revision label `SGB-CPU 01`. For `SUPER GB 2`, `RealBoot` selects `sgb2_boot.bin` for revision label `CPU SGB2`. A documented private asset root example is `$HOME/emu/roms/bootrom`, containing `sgb_boot.bin` and/or `sgb2_boot.bin`; validation follows the existing boot-ROM root policy rather than embedding private paths in code. These assets are selected by `SgbHostProfile`, not by forking the GB `HardwareRevision` axis or by aliasing to `dmg_boot.bin`.
+For `SUPER GB`, `RealBoot` selects `sgb_boot.bin` for revision label `SGB-CPU 01`. For `SUPER GB2`, `RealBoot` selects `sgb2_boot.bin` for revision label `CPU SGB2`. A documented private asset root example is `$HOME/emu/roms/bootrom`, containing `sgb_boot.bin` and/or `sgb2_boot.bin`; validation follows the existing boot-ROM root policy rather than embedding private paths in code. These assets are selected by `SgbHostProfile`, not by forking the GB `HardwareRevision` axis or by aliasing to `dmg_boot.bin`.
 
 Strict asset verification treats both SGB boot ROMs as `256`-byte low-window images: `sgb_boot.bin` has SHA-256 `0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360`, and `sgb2_boot.bin` has SHA-256 `fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988`.
 

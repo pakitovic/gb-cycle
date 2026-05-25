@@ -1,7 +1,7 @@
 use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{
     ApuRecordedChannel, ExecutionMode, HardwareRevision, PokemonMysteryGiftCode,
-    PokemonMysteryGiftKind, PokemonPikachuColorGift, StartupMode,
+    PokemonMysteryGiftKind, PokemonPikachuColorGift, SgbVideoStandard, StartupMode,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -232,9 +232,10 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 11] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 12] = [
     MenuItem::ConsoleModel,
     MenuItem::HardwareRevision,
+    MenuItem::SgbVideoStandard,
     MenuItem::SgbBorder,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
@@ -303,6 +304,7 @@ pub enum MenuAction {
     SaveScreenshot,
     CycleConsoleModel,
     CycleHardwareRevision,
+    CycleSgbVideoStandard,
     CycleStartupMode,
     CycleExecutionMode,
     ToggleRewindEnabled,
@@ -574,6 +576,7 @@ pub struct MenuPresentation {
     pub recent_rom_labels: [CompactRecentRomLabel; RECENT_ROM_MENU_CAPACITY],
     pub console_model: DesktopConsoleModel,
     pub revision: HardwareRevision,
+    pub sgb_video_standard: SgbVideoStandard,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
@@ -668,7 +671,9 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => self.recent_rom_count >= 11,
             MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
-            MenuItem::SgbBorder => self.console_model.sgb_profile().is_some(),
+            MenuItem::SgbVideoStandard | MenuItem::SgbBorder => {
+                self.console_model.sgb_profile().is_some()
+            }
             MenuItem::CgbInfrared
             | MenuItem::CgbInfraredNone
             | MenuItem::CgbInfraredSameGame
@@ -824,7 +829,6 @@ impl MenuPresentation {
             | MenuItem::RewindMenu
             | MenuItem::FastForwardMenu
             | MenuItem::ConsoleModel
-            | MenuItem::SgbBorder
             | MenuItem::StartupMode
             | MenuItem::ExecutionMode
             | MenuItem::RewindEnabled
@@ -856,6 +860,8 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
+            MenuItem::SgbVideoStandard => self.console_model.allows_sgb_video_standard_selection(),
+            MenuItem::SgbBorder => true,
             MenuItem::HardwareRevision => {
                 self.console_model.console_model().active_revisions().len() > 1
             }
@@ -1007,12 +1013,20 @@ impl MenuPresentation {
                 DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
                 DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
                 DesktopConsoleModel::SuperGameBoy => "MODEL SUPER GB".to_string(),
-                DesktopConsoleModel::SuperGameBoy2 => "MODEL SUPER GB 2".to_string(),
+                DesktopConsoleModel::SuperGameBoy2 => "MODEL SUPER GB2".to_string(),
             },
             MenuItem::HardwareRevision => match self.console_model.sgb_profile() {
                 Some(profile) => format!("REV {}", profile.revision_label()),
                 None => format!("REV {}", hardware_revision_menu_name(self.revision)),
             },
+            MenuItem::SgbVideoStandard => {
+                let video_standard = if self.console_model == DesktopConsoleModel::SuperGameBoy2 {
+                    SgbVideoStandard::Ntsc
+                } else {
+                    self.sgb_video_standard
+                };
+                format!("VIDEO {}", video_standard.menu_name())
+            }
             MenuItem::SgbBorder => {
                 if self.show_sgb_border {
                     "BORDER ON".to_string()
@@ -1605,6 +1619,7 @@ enum MenuItem {
     FastForwardMenu,
     ConsoleModel,
     HardwareRevision,
+    SgbVideoStandard,
     SgbBorder,
     StartupMode,
     ExecutionMode,
@@ -2431,6 +2446,7 @@ impl OverlayMenuState {
             }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
             MenuItem::HardwareRevision => Some(MenuAction::CycleHardwareRevision),
+            MenuItem::SgbVideoStandard => Some(MenuAction::CycleSgbVideoStandard),
             MenuItem::SgbBorder => Some(MenuAction::ToggleSgbBorder),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
@@ -3633,7 +3649,7 @@ mod tests {
     use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{
         ExecutionMode, HardwareRevision, PokemonMysteryGiftCode, PokemonMysteryGiftKind,
-        PokemonPikachuColorGift, StartupMode,
+        PokemonPikachuColorGift, SgbVideoStandard, StartupMode,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopDisplayPalette,
@@ -3651,6 +3667,7 @@ mod tests {
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
             console_model: DesktopConsoleModel::GameBoy,
             revision: HardwareRevision::DmgCpuC,
+            sgb_video_standard: SgbVideoStandard::Ntsc,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
@@ -4165,6 +4182,48 @@ mod tests {
             ..presentation
         };
         assert!(sgb2_presentation.item_visible(MenuItem::SgbBorder));
+    }
+
+    #[test]
+    fn system_submenu_cycles_sgb_video_standard_only_for_original_sgb() {
+        let presentation = test_presentation();
+        assert!(!presentation.item_visible(MenuItem::SgbVideoStandard));
+
+        let mut sgb_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy,
+            ..presentation
+        };
+        assert!(sgb_presentation.item_visible(MenuItem::SgbVideoStandard));
+        assert!(sgb_presentation.item_enabled(MenuItem::SgbVideoStandard));
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO NTSC"
+        );
+        sgb_presentation.sgb_video_standard = SgbVideoStandard::Pal;
+        assert_eq!(
+            sgb_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO PAL"
+        );
+
+        let mut menu = OverlayMenuState::default();
+        open_system_menu(&mut menu, sgb_presentation);
+        select_visible_item(&mut menu, sgb_presentation, MenuItem::SgbVideoStandard);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, sgb_presentation),
+            Some(MenuAction::CycleSgbVideoStandard)
+        );
+
+        let sgb2_presentation = MenuPresentation {
+            console_model: DesktopConsoleModel::SuperGameBoy2,
+            sgb_video_standard: SgbVideoStandard::Pal,
+            ..presentation
+        };
+        assert!(sgb2_presentation.item_visible(MenuItem::SgbVideoStandard));
+        assert!(!sgb2_presentation.item_enabled(MenuItem::SgbVideoStandard));
+        assert_eq!(
+            sgb2_presentation.item_label(MenuItem::SgbVideoStandard),
+            "VIDEO NTSC"
+        );
     }
 
     #[test]
@@ -5024,15 +5083,16 @@ mod tests {
 
         assert_eq!(SYSTEM_MENU_ITEMS[0], MenuItem::ConsoleModel);
         assert_eq!(SYSTEM_MENU_ITEMS[1], MenuItem::HardwareRevision);
-        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::SgbBorder);
-        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::StartupMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::ExecutionMode);
-        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::BootRomMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::SaveMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::RewindMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::FastForwardMenu);
-        assert_eq!(SYSTEM_MENU_ITEMS[9], MenuItem::Reset);
-        assert_eq!(SYSTEM_MENU_ITEMS[10], MenuItem::Return);
+        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::SgbVideoStandard);
+        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::SgbBorder);
+        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::StartupMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::ExecutionMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::BootRomMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[7], MenuItem::SaveMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[8], MenuItem::RewindMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[9], MenuItem::FastForwardMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[10], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[11], MenuItem::Return);
         assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(REWIND_MENU_ITEMS[0], MenuItem::RewindEnabled);
@@ -5162,7 +5222,7 @@ mod tests {
         presentation.console_model = DesktopConsoleModel::SuperGameBoy2;
         assert_eq!(
             presentation.item_label(MenuItem::ConsoleModel),
-            "MODEL SUPER GB 2"
+            "MODEL SUPER GB2"
         );
         assert_eq!(
             presentation.item_label(MenuItem::HardwareRevision),

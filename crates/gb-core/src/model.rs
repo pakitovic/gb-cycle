@@ -226,10 +226,29 @@ pub const SGB_NTSC_SOURCE_MASTER_CLOCK_HZ: u32 = 21_477_272;
 pub const SGB_PAL_SOURCE_MASTER_CLOCK_HZ: u32 = 21_281_370;
 pub const SGB2_SOURCE_MASTER_CLOCK_HZ: u32 = DMG_MASTER_CLOCK_HZ * SGB_ICD2_CLOCK_DIVISOR;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SgbVideoStandard {
+    #[default]
     Ntsc,
     Pal,
+}
+
+impl SgbVideoStandard {
+    pub const fn argument_name(self) -> &'static str {
+        match self {
+            Self::Ntsc => "ntsc",
+            Self::Pal => "pal",
+        }
+    }
+
+    pub const fn menu_name(self) -> &'static str {
+        match self {
+            Self::Ntsc => "NTSC",
+            Self::Pal => "PAL",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -302,7 +321,7 @@ impl SgbHostProfile {
     pub const fn ui_label(self) -> &'static str {
         match self {
             Self::SgbNtsc | Self::SgbPal => "SUPER GB",
-            Self::Sgb2Ntsc => "SUPER GB 2",
+            Self::Sgb2Ntsc => "SUPER GB2",
         }
     }
 

@@ -1183,8 +1183,29 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     assert_eq!(options.model, RunModel::SuperGameBoy);
     assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
     assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::SgbNtsc));
+    assert_eq!(options.sgb_video_standard, SgbVideoStandard::Ntsc);
+    assert_eq!(
+        options
+            .model
+            .sgb_profile_for_standard(options.sgb_video_standard),
+        Some(SgbHostProfile::SgbNtsc)
+    );
     assert_eq!(options.revision, HardwareRevision::DmgCpuC);
     assert!(options.show_sgb_border);
+
+    let action = parse_run_arguments(["demo.gb", "--model", "SGB", "--sgb-standard", "pal"])
+        .expect("SGB PAL should parse");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::SuperGameBoy);
+    assert_eq!(options.sgb_video_standard, SgbVideoStandard::Pal);
+    assert_eq!(
+        options
+            .model
+            .sgb_profile_for_standard(options.sgb_video_standard),
+        Some(SgbHostProfile::SgbPal)
+    );
 
     let action = parse_run_arguments(["demo.gb", "--model", "SGB2", "--border-off"])
         .expect("SGB2 model should parse with border disabled");
@@ -1204,6 +1225,18 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     };
     assert_eq!(options.model, RunModel::SuperGameBoy);
     assert!(!options.show_sgb_border);
+
+    let sgb2_standard_error =
+        parse_run_arguments(["demo.gb", "--model", "SGB2", "--sgb-standard", "ntsc"])
+            .expect_err("SGB2 should not accept an explicit SGB standard");
+    assert_eq!(sgb2_standard_error, "--sgb-standard requires --model SGB");
+
+    let non_sgb_standard_error = parse_run_arguments(["demo.gb", "--sgb-standard", "pal"])
+        .expect_err("non-SGB models should reject SGB standard overrides");
+    assert_eq!(
+        non_sgb_standard_error,
+        "--sgb-standard requires --model SGB"
+    );
 }
 
 #[test]
@@ -2264,7 +2297,19 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         Some(SgbHostProfile::SgbNtsc)
     );
     assert_eq!(
+        RunModel::SuperGameBoy.sgb_profile_for_standard(SgbVideoStandard::Ntsc),
+        Some(SgbHostProfile::SgbNtsc)
+    );
+    assert_eq!(
+        RunModel::SuperGameBoy.sgb_profile_for_standard(SgbVideoStandard::Pal),
+        Some(SgbHostProfile::SgbPal)
+    );
+    assert_eq!(
         RunModel::SuperGameBoy2.sgb_profile(),
+        Some(SgbHostProfile::Sgb2Ntsc)
+    );
+    assert_eq!(
+        RunModel::SuperGameBoy2.sgb_profile_for_standard(SgbVideoStandard::Pal),
         Some(SgbHostProfile::Sgb2Ntsc)
     );
     assert_eq!(RunModel::GameBoy.name(), "DMG");
@@ -2376,6 +2421,13 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(parse_run_model("CGB"), Ok(RunModel::Color));
     assert_eq!(parse_run_model("SGB"), Ok(RunModel::SuperGameBoy));
     assert_eq!(parse_run_model("SGB2"), Ok(RunModel::SuperGameBoy2));
+    assert_eq!(parse_sgb_video_standard("ntsc"), Ok(SgbVideoStandard::Ntsc));
+    assert_eq!(parse_sgb_video_standard("pal"), Ok(SgbVideoStandard::Pal));
+    assert!(
+        parse_sgb_video_standard("secam")
+            .expect_err("unsupported SGB standards should fail")
+            .contains("unsupported --sgb-standard value")
+    );
     for previous in [
         "game-boy", "pocket", "light", "color", "dmg0", "dmg", "mgb", "cgb",
     ] {

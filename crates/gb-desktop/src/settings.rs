@@ -1,4 +1,4 @@
-use gb_core::{ExecutionMode, HardwareRevision, StartupMode};
+use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
     DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy, FastForwardOptions,
@@ -591,6 +591,7 @@ impl Default for PersistedDesktopSettings {
 struct PersistedLaunchSettings {
     console_model: PersistedDesktopConsoleModel,
     revision: PersistedHardwareRevision,
+    sgb_video_standard: PersistedSgbVideoStandard,
     startup_mode: PersistedStartupMode,
     execution_mode: PersistedExecutionMode,
 }
@@ -600,6 +601,9 @@ impl PersistedLaunchSettings {
         Self {
             console_model: PersistedDesktopConsoleModel::from_external(config.launch.console_model),
             revision: PersistedHardwareRevision::from_external(config.launch.revision),
+            sgb_video_standard: PersistedSgbVideoStandard::from_external(
+                config.launch.sgb_video_standard,
+            ),
             startup_mode: PersistedStartupMode::from_external(config.launch.startup_mode),
             execution_mode: PersistedExecutionMode::from_external(config.launch.execution_mode),
         }
@@ -609,8 +613,34 @@ impl PersistedLaunchSettings {
         config.launch.console_model = self.console_model.to_external();
         config.launch.revision = self.revision.to_external();
         config.launch.normalize_revision_for_model();
+        config.launch.sgb_video_standard = self.sgb_video_standard.to_external();
         config.launch.startup_mode = self.startup_mode.to_external();
         config.launch.execution_mode = self.execution_mode.to_external();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedSgbVideoStandard {
+    #[default]
+    #[serde(rename = "ntsc")]
+    Ntsc,
+    #[serde(rename = "pal")]
+    Pal,
+}
+
+impl PersistedSgbVideoStandard {
+    fn from_external(value: SgbVideoStandard) -> Self {
+        match value {
+            SgbVideoStandard::Ntsc => Self::Ntsc,
+            SgbVideoStandard::Pal => Self::Pal,
+        }
+    }
+
+    fn to_external(self) -> SgbVideoStandard {
+        match self {
+            Self::Ntsc => SgbVideoStandard::Ntsc,
+            Self::Pal => SgbVideoStandard::Pal,
+        }
     }
 }
 
@@ -989,10 +1019,10 @@ mod tests {
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
         MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomVerificationMode,
         PersistedDesktopConsoleModel, PersistedDesktopSettings, PersistedExecutionMode,
-        PersistedHardwareRevision, PersistedSaveDirectoryPolicy, PersistedStartupMode,
-        resolve_desktop_settings_path_from_locations,
+        PersistedHardwareRevision, PersistedSaveDirectoryPolicy, PersistedSgbVideoStandard,
+        PersistedStartupMode, resolve_desktop_settings_path_from_locations,
     };
-    use gb_core::{ExecutionMode, HardwareRevision, StartupMode};
+    use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
     use gb_desktop::{
         DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette, DesktopFrameBlendingMode,
         DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
@@ -1282,6 +1312,7 @@ max_memory_mib = 128
         let mut settings = PersistedDesktopSettings::default();
         settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
         settings.launch.revision = PersistedHardwareRevision::CpuCgbE;
+        settings.launch.sgb_video_standard = PersistedSgbVideoStandard::Pal;
         settings.launch.startup_mode = PersistedStartupMode::Real;
         settings.launch.execution_mode = PersistedExecutionMode::Permissive;
         settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
@@ -1342,6 +1373,7 @@ max_memory_mib = 128
             gb_desktop::DesktopConsoleModel::GameBoyPocket
         );
         assert_eq!(config.launch.revision, HardwareRevision::CpuMgb);
+        assert_eq!(config.launch.sgb_video_standard, SgbVideoStandard::Pal);
         assert_eq!(config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Permissive);
         assert_eq!(
@@ -1539,6 +1571,7 @@ max_memory_mib = 128
         };
         let mut config = DesktopConfig::default();
         config.launch.console_model = gb_desktop::DesktopConsoleModel::GameBoy;
+        config.launch.sgb_video_standard = SgbVideoStandard::Pal;
         config.launch.startup_mode = StartupMode::RealBoot;
         config.launch.execution_mode = ExecutionMode::Experimental;
         config.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"));
@@ -1556,6 +1589,10 @@ max_memory_mib = 128
         assert_eq!(
             reloaded.launch.console_model,
             PersistedDesktopConsoleModel::GameBoy
+        );
+        assert_eq!(
+            reloaded.launch.sgb_video_standard,
+            PersistedSgbVideoStandard::Pal
         );
         assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::Real);
         assert_eq!(
@@ -1980,6 +2017,10 @@ max_memory_mib = 128
         assert_eq!(
             PersistedHardwareRevision::from_external(HardwareRevision::CpuCgbE).to_external(),
             HardwareRevision::CpuCgbE
+        );
+        assert_eq!(
+            PersistedSgbVideoStandard::from_external(SgbVideoStandard::Pal).to_external(),
+            SgbVideoStandard::Pal
         );
         assert_eq!(
             PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),

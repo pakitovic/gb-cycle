@@ -46,12 +46,12 @@ Within the DMG family, do not collapse `DMG-CPU`, later `DMG-CPU A/B/C`, and `CP
 
 The current active set is intentionally narrower than the modeled enum: DMG exposes only `DmgCpuC`, MGB/LGB expose only `CpuMgb`, and CGB exposes `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`. Earlier DMG and CGB revision variants remain modeled so real-boot assets, save-state metadata, and future hardware validation do not need another rename when they become active.
 
-Phase 11 SGB/SGB2 extends the same derived asset model without adding an independent frontend boot-ROM-kind setting. The user-facing SGB profiles are `SUPER GB` / `MODEL: SGB` with host platform `Sgb`, revision label `SGB-CPU 01`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb_boot.bin`, and `PAL` or `NTSC` video standard; and `SUPER GB 2` / `MODEL: SGB2` with host platform `Sgb2`, revision label `CPU SGB2`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb2_boot.bin`, `NTSC` video standard, corrected clock versus SGB, and Game Link support. A documented private boot-ROM root example for local validation is `$HOME/emu/roms/bootrom`.
+Phase 11 SGB/SGB2 extends the same derived asset model without adding an independent frontend boot-ROM-kind setting. The user-facing SGB profiles are `SUPER GB` / `MODEL: SGB` with host platform `Sgb`, revision label `SGB-CPU 01`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb_boot.bin`, and `PAL` or `NTSC` video standard; and `SUPER GB2` / `MODEL: SGB2` with host platform `Sgb2`, revision label `CPU SGB2`, startup `skip-boot` or `real-boot`, `RealBoot` filename `sgb2_boot.bin`, `NTSC` video standard, corrected clock versus SGB, and Game Link support. A documented private boot-ROM root example for local validation is `$HOME/emu/roms/bootrom`.
 
 | SGB profile | Host platform | Revision label | RealBoot filename | Expected size | Expected SHA-256 profile | Video standard | Direct-start profile |
 |---|---|---|---|---:|---|---|---|
 | `SUPER GB` / `SGB` | `Sgb` | `SGB-CPU 01` | `sgb_boot.bin` | `256` | `0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360` | `PAL` or `NTSC` | SGB post-boot profile with SGB command host active and no physical Game Link port |
-| `SUPER GB 2` / `SGB2` | `Sgb2` | `CPU SGB2` | `sgb2_boot.bin` | `256` | `fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988` | `NTSC` | SGB2 post-boot profile with corrected clock and physical Game Link support |
+| `SUPER GB2` / `SGB2` | `Sgb2` | `CPU SGB2` | `sgb2_boot.bin` | `256` | `fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988` | `NTSC` | SGB2 post-boot profile with corrected clock and physical Game Link support |
 
 ## Registers / MMIO
 

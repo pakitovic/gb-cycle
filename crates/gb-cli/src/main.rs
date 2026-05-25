@@ -10,8 +10,8 @@ use gb_core::{
     CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
     ConsoleModel, ExecutionMode, HardwareRevision, JoypadButton, Machine, MachineConfig,
     MachineSaveState, MachineSaveStateRestoreError, PersistentCartState, SGB_FRAME_HEIGHT,
-    SGB_FRAME_WIDTH, SgbFlag, SgbHostProfile, StartupMode, TraceBuffer, TraceSummaryBuffer,
-    UnsupportedCartridgeCategory,
+    SGB_FRAME_WIDTH, SgbFlag, SgbHostProfile, SgbVideoStandard, StartupMode, TraceBuffer,
+    TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveEnvelope, CartridgeSaveKey,
@@ -55,6 +55,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --model <DMG|MGB|LGB|CGB|SGB|SGB2>    Select the console model/profile (default: DMG)\n",
     "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
     "                                         Select the active hardware revision for --model\n",
+    "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
@@ -141,6 +142,20 @@ impl RunModel {
     const fn sgb_profile(self) -> Option<SgbHostProfile> {
         match self {
             Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
+            Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
+        }
+    }
+
+    const fn sgb_profile_for_standard(
+        self,
+        video_standard: SgbVideoStandard,
+    ) -> Option<SgbHostProfile> {
+        match self {
+            Self::SuperGameBoy => match video_standard {
+                SgbVideoStandard::Ntsc => Some(SgbHostProfile::SgbNtsc),
+                SgbVideoStandard::Pal => Some(SgbHostProfile::SgbPal),
+            },
             Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
             Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
         }
@@ -243,6 +258,7 @@ struct RunOptions {
     rom_path: PathBuf,
     model: RunModel,
     revision: HardwareRevision,
+    sgb_video_standard: SgbVideoStandard,
     startup_mode: StartupMode,
     execution_mode: ExecutionMode,
     boot_rom_dir: Option<PathBuf>,
@@ -271,6 +287,7 @@ impl RunOptions {
             rom_path,
             model: RunModel::default(),
             revision: RunModel::default().console_model().default_revision(),
+            sgb_video_standard: SgbVideoStandard::default(),
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             boot_rom_dir: None,
@@ -569,6 +586,7 @@ where
     let mut test_runner_requested = false;
     let mut save_policy_explicit = false;
     let mut revision_explicit = false;
+    let mut sgb_video_standard_explicit = false;
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -591,6 +609,15 @@ where
                 ensure_run_options_initialized(&mut options, &rom_path)?;
                 options.as_mut().unwrap().revision = parse_revision(value.as_ref())?;
                 revision_explicit = true;
+            }
+            "--sgb-standard" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--sgb-standard requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().sgb_video_standard =
+                    parse_sgb_video_standard(value.as_ref())?;
+                sgb_video_standard_explicit = true;
             }
             "--startup" => {
                 let Some(value) = arguments.next() else {
@@ -777,12 +804,15 @@ where
     if options.model != RunModel::GameBoy {
         options.display_palette = None;
     }
-    validate_run_model_axes(&options)?;
+    validate_run_model_axes(&options, sgb_video_standard_explicit)?;
 
     Ok(CliAction::Run(Box::new(options)))
 }
 
-fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
+fn validate_run_model_axes(
+    options: &RunOptions,
+    sgb_video_standard_explicit: bool,
+) -> Result<(), String> {
     let console_model = options.model.console_model();
     if !console_model.supports_revision(options.revision) {
         return Err(format!(
@@ -794,6 +824,9 @@ fn validate_run_model_axes(options: &RunOptions) -> Result<(), String> {
     }
     if !options.show_sgb_border && options.model.sgb_profile().is_none() {
         return Err("--border-off requires --model SGB or --model SGB2".to_string());
+    }
+    if sgb_video_standard_explicit && options.model != RunModel::SuperGameBoy {
+        return Err("--sgb-standard requires --model SGB".to_string());
     }
 
     Ok(())
@@ -961,6 +994,7 @@ fn run_benchmark_case(
         revision: run_model_from_benchmark(benchmark_case.model)
             .console_model()
             .default_revision(),
+        sgb_video_standard: SgbVideoStandard::default(),
         startup_mode: startup_mode_from_benchmark(benchmark_case.startup),
         execution_mode: execution_mode_from_benchmark(benchmark_case.mode),
         boot_rom_dir: None,
@@ -1003,7 +1037,10 @@ fn run_command(
         .with_revision(options.effective_revision())
         .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
         .with_boot_rom_assets(boot_rom_assets);
-    if let Some(profile) = options.model.sgb_profile() {
+    if let Some(profile) = options
+        .model
+        .sgb_profile_for_standard(options.sgb_video_standard)
+    {
         config = config.with_sgb_profile(profile);
     }
     let mut machine = CliMachine::new(config, options.trace_out.is_some());
@@ -1722,7 +1759,9 @@ fn load_boot_rom_assets(
     validate_explicit_directory_input("--boot-rom-dir", options.boot_rom_dir.as_deref(), &root)?;
     let asset = BootRomAssetKind::from_machine_profile(
         options.effective_revision(),
-        options.model.sgb_profile(),
+        options
+            .model
+            .sgb_profile_for_standard(options.sgb_video_standard),
     );
     let image_path = root.join(asset.filename());
     match options.boot_rom_verify {
@@ -1926,6 +1965,16 @@ fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
         _ => Err(format!(
             "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+        )),
+    }
+}
+
+fn parse_sgb_video_standard(value: &str) -> Result<SgbVideoStandard, String> {
+    match value {
+        "ntsc" => Ok(SgbVideoStandard::Ntsc),
+        "pal" => Ok(SgbVideoStandard::Pal),
+        _ => Err(format!(
+            "unsupported --sgb-standard value {value:?}; expected ntsc or pal"
         )),
     }
 }

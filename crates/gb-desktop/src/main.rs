@@ -39,8 +39,8 @@ use gb_core::{
     MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
     PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
     PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, StartupMode,
-    TraceSummaryBuffer,
+    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, SgbVideoStandard,
+    StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -11088,6 +11088,19 @@ fn execute_menu_action(
             })?;
             Ok(None)
         }
+        MenuAction::CycleSgbVideoStandard => {
+            apply_machine_settings_change(canvas, context, "SGB video standard", |config| {
+                if config
+                    .launch
+                    .console_model
+                    .allows_sgb_video_standard_selection()
+                {
+                    config.launch.sgb_video_standard =
+                        next_sgb_video_standard(config.launch.sgb_video_standard);
+                }
+            })?;
+            Ok(None)
+        }
         MenuAction::CycleStartupMode => {
             apply_machine_settings_change(canvas, context, "Startup mode", |config| {
                 config.launch.startup_mode = next_startup_mode(config.launch.startup_mode);
@@ -12008,6 +12021,7 @@ fn current_menu_presentation(
         recent_rom_labels,
         console_model: session.config.launch.console_model,
         revision: session.config.launch.effective_revision(),
+        sgb_video_standard: session.config.launch.effective_sgb_video_standard(),
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
@@ -12142,6 +12156,13 @@ fn next_revision(
         .position(|candidate| *candidate == revision)
         .unwrap_or(0);
     active[(current_index + 1) % active.len()]
+}
+
+fn next_sgb_video_standard(video_standard: SgbVideoStandard) -> SgbVideoStandard {
+    match video_standard {
+        SgbVideoStandard::Ntsc => SgbVideoStandard::Pal,
+        SgbVideoStandard::Pal => SgbVideoStandard::Ntsc,
+    }
 }
 
 fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
@@ -14628,7 +14649,7 @@ mod tests {
         next_boot_rom_verification_mode, next_console_model, next_execution_mode,
         next_fast_forward_speed_multiplier, next_gamepad_directional_source,
         next_gamepad_gyro_mode, next_gamepad_rumble_mode, next_machine_state_slot, next_revision,
-        next_save_flush_policy, next_startup_mode, next_window_scale,
+        next_save_flush_policy, next_sgb_video_standard, next_startup_mode, next_window_scale,
         parse_cgb_ir_optical_delay_t_cycles, parse_cgb_ir_trace_event_count,
         parse_cgb_ir_trace_trigger_addresses, parse_cgb_ir_trace_watch_addresses,
         parse_edge_trace_addresses, parse_edge_trace_event_count, parse_edge_trace_pc_ranges,
@@ -14658,7 +14679,7 @@ mod tests {
         HardwareRevision, JoypadButton, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
         MachineConfig, MachineStepRegion, PersistentCartState, PocketCameraFrame,
         PpuFramebufferLayerSource, PpuStepRegion, PpuVisibleOutputState, PrinterCommand,
-        SerialTickTelemetry, SgbHostProfile, StartupMode, TraceSummaryBuffer,
+        SerialTickTelemetry, SgbHostProfile, SgbVideoStandard, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -21207,6 +21228,14 @@ mod tests {
         assert_eq!(
             next_revision(DesktopConsoleModel::GameBoyPocket, HardwareRevision::CpuMgb),
             HardwareRevision::CpuMgb
+        );
+        assert_eq!(
+            next_sgb_video_standard(SgbVideoStandard::Ntsc),
+            SgbVideoStandard::Pal
+        );
+        assert_eq!(
+            next_sgb_video_standard(SgbVideoStandard::Pal),
+            SgbVideoStandard::Ntsc
         );
         assert_eq!(
             next_startup_mode(StartupMode::SkipBoot),
