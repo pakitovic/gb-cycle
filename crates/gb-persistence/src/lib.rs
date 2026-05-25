@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
 const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
-pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 1;
+pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 2;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
 pub const SAVE_FILE_EXTENSION_P2: &str = "gbsa2";
 pub const SAVE_FILE_EXTENSION_P3: &str = "gbsa3";
@@ -3241,6 +3241,17 @@ mod tests {
             Err(CartridgeSaveBackendError::UnsupportedFormatVersion {
                 version
             }) if version == CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION + 1
+        ));
+
+        let mut previous_version = encoded.clone();
+        previous_version[MACHINE_SAVE_STATE_MAGIC.len()..MACHINE_SAVE_STATE_MAGIC.len() + 2]
+            .copy_from_slice(&(CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION - 1).to_le_bytes());
+        previous_version[MACHINE_SAVE_STATE_MAGIC.len() + 2] = 0xFF;
+        assert!(matches!(
+            decode_machine_save_state_envelope(&previous_version),
+            Err(CartridgeSaveBackendError::UnsupportedFormatVersion {
+                version
+            }) if version == CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION - 1
         ));
 
         let mut invalid_model_tag = encoded.clone();
