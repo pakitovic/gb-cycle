@@ -404,6 +404,79 @@ fn cgb_dmg_software_lcdc0_forced_white_rgb555_uses_panel_white() {
 }
 
 #[test]
+fn cgb_dmg_software_rgb555_bgp_output_override_is_sprite_scoped() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 0, RGB555_WHITE);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0x00;
+        ppu.pipeline_registers.bgp = 0xFF;
+
+        ppu.write_framebuffer_pixel(0, 0, MixedPixel::background(0), 0);
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_palette_override = Some(0xFF);
+        ppu.write_framebuffer_pixel(0, 1, MixedPixel::background(0), 0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.write_framebuffer_pixel(0, 2, MixedPixel::background(0), 3);
+
+        let rgb555 = ppu
+            .cgb_framebuffer_rgb555()
+            .expect("CGB model should expose the RGB555 framebuffer");
+        assert_eq!(ppu.framebuffer()[0], 0, "{operating_mode:?}");
+        assert_eq!(rgb555[0], RGB555_WHITE, "{operating_mode:?}");
+        assert_eq!(ppu.framebuffer()[1], 0, "{operating_mode:?}");
+        assert_eq!(rgb555[1], RGB555_WHITE, "{operating_mode:?}");
+        assert_eq!(ppu.framebuffer()[2], 3, "{operating_mode:?}");
+        assert_eq!(rgb555[2], 0x001F, "{operating_mode:?}");
+    }
+}
+
+#[test]
+fn cgb_dmg_software_rgb555_uses_bgp_visible_hold_for_bg_pixels() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 0, RGB555_WHITE);
+        write_cgb_palette_rgb555(&mut ppu, CgbPaletteKind::Background, 0, 3, 0x001F);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0xFF;
+        ppu.pipeline_registers.bgp = 0xFF;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override = Some(0x00);
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining = 1;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_fallback_palette = Some(0xFF);
+
+        ppu.write_framebuffer_pixel(0, 0, MixedPixel::background(0), 0);
+
+        let rgb555 = ppu
+            .cgb_framebuffer_rgb555()
+            .expect("CGB model should expose the RGB555 framebuffer");
+        assert_eq!(ppu.framebuffer()[0], 0, "{operating_mode:?}");
+        assert_eq!(rgb555[0], RGB555_WHITE, "{operating_mode:?}");
+    }
+}
+
+#[test]
 fn cgb_obj_color_zero_remains_transparent_before_rgb555_lookup() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
     ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
@@ -897,6 +970,60 @@ fn dmg_lcdc0_historical_repaint_ignores_active_bgp_output_delay_override() {
             .iter()
             .all(|&dot| !dot)
     );
+}
+
+#[test]
+fn cgb_dmg_software_lcdc0_repaint_updates_rgb555_white_and_forced_blank_paths() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.lcdc = 0x93;
+        ppu.lcd_state = PpuLcdState::Enabled;
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.runtime.panel.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.pipeline_registers.lcdc = 0x93;
+        ppu.visible_registers.bgp = 0xE4;
+        ppu.pipeline_registers.bgp = 0xE4;
+        ppu.line_dot = 104;
+        ppu.bg_pipeline_state.visible_pixels_output = 4;
+        ppu.bg_pipeline_state.current_transfer_x = 12;
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 0,
+            tile_index: 0,
+            attributes: 0,
+        });
+        for x in 0..4 {
+            ppu.current_scanline_mixed_pixels[x] = MixedPixel::background(2);
+            ppu.current_scanline_pixels[x] = 2;
+            ppu.current_scanline_dmg_bg_forced_white[x] = false;
+            ppu.framebuffer[x] = 2;
+            ppu.framebuffer_rgb555[x] = 0x03E0;
+        }
+
+        ppu.write_register(0xFF40, 0x92);
+
+        assert_eq!(&ppu.current_scanline_pixels[..4], &[0; 4]);
+        assert_eq!(&ppu.framebuffer()[..4], &[0; 4]);
+        assert!(
+            ppu.current_scanline_dmg_bg_forced_white[..4]
+                .iter()
+                .all(|&dot| dot),
+            "{operating_mode:?}"
+        );
+        assert!(
+            ppu.cgb_framebuffer_rgb555()
+                .expect("CGB model should expose the RGB555 framebuffer")[..4]
+                .iter()
+                .all(|&pixel| pixel == RGB555_WHITE),
+            "{operating_mode:?}"
+        );
+    }
 }
 
 #[test]

@@ -446,7 +446,7 @@ impl Ppu {
     }
 
     fn repaint_dmg_panel_range(&mut self, start_x: u8, end_x: u8, repaint: DmgPanelRangeRepaint) {
-        let context = self.dmg_panel_repaint_context();
+        let context = self.dmg_panel_repaint_context(repaint);
         let bg_enabled = match repaint {
             DmgPanelRangeRepaint::Lcdc0BgEnable { bg_enabled } => bg_enabled,
             DmgPanelRangeRepaint::Lcdc1ObjDisable => self.pixel_transfer_bg_enabled(),
@@ -502,17 +502,31 @@ impl Ppu {
         }
     }
 
-    fn dmg_panel_repaint_context(&self) -> DmgPanelRepaintContext {
+    fn dmg_panel_repaint_context(&self, repaint: DmgPanelRangeRepaint) -> DmgPanelRepaintContext {
         DmgPanelRepaintContext {
             visible_output_driving: self.runtime.panel.visible_output
                 == PpuVisibleOutputState::Driving,
             row_start: self.ly as usize * SCREEN_WIDTH,
-            historical_bgp: self.mode3_register_latches().pixel_pipeline_bgp(
-                self.console_model,
-                None,
-                None,
-            ),
+            historical_bgp: self.dmg_panel_repaint_historical_bgp(repaint),
         }
+    }
+
+    fn dmg_panel_repaint_historical_bgp(&self, repaint: DmgPanelRangeRepaint) -> u8 {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && matches!(repaint, DmgPanelRangeRepaint::Lcdc1ObjDisable)
+            && let Some(override_palette) = self
+                .runtime
+                .panel
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_palette_override
+        {
+            return override_palette;
+        }
+
+        self.mode3_register_latches()
+            .pixel_pipeline_bgp(self.console_model, None, None)
     }
 
     fn repaint_dmg_panel_output_pixel(

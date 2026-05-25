@@ -85,6 +85,11 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   source family: `mealybug-tearoom-tests`
   current status: Phase 9 SameBoy-PASS differential subset
   oracle: framebuffer fixture
+- `mealybug-tearoom-cgb-extra`
+  source family: `mealybug-tearoom-tests`
+  current status: extra/internal local-only
+  oracle mix: RGB555 framebuffer fixtures
+  fixture ownership: committed CGB fixtures under `mealybug-cgb/`; `m3_lcdc_win_en_change_multiple_wx.png` is an experimental real-CGB-C/D capture and the runner path-specifically quantizes its sparse near-black, near-green, and forced-white capture noise before RGB555 fixture comparison
 - `mooneye-acceptance-dmg-curated`
   source family: `mooneye`
   current status: exploratory local-only

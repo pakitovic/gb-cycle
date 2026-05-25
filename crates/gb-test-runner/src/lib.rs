@@ -4577,7 +4577,6 @@ mod tests {
             "mealybug-cgb-m3-obp0-change",
             "mealybug-cgb-m3-scx-low-3-bits",
         ];
-
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
         assert_eq!(suite.cases.len(), 24);
@@ -4593,13 +4592,16 @@ mod tests {
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.capture_plan.contains(CaptureKind::Framebuffer)
                 && case.capture_plan.contains(CaptureKind::Snapshot)
-                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555Fixture(_)
+                )
         }));
         assert!(suite.cases.iter().any(|case| {
             case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
                 && matches!(
                     &case.pass_condition,
-                    PassCondition::FramebufferFixture(fixture_path)
+                    PassCondition::FramebufferRgb555Fixture(fixture_path)
                         if fixture_path
                             == Path::new(
                                 "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"

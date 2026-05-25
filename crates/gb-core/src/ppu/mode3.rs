@@ -2,7 +2,8 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgPrevisibleWxRetargetPlanContext {
-    is_dmg_family: bool,
+    dmg_software_contract: bool,
+    cgb_dmg_software_contract: bool,
     drawing_mode: bool,
     window_started_this_line: bool,
     window_wy_latch: bool,

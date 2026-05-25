@@ -66,6 +66,41 @@ fn arm_previsible_retarget_fixture(wx: u8, line_dot: u16, active_line_counter: u
     ppu
 }
 
+fn cgb_previsible_retarget_fixture(
+    wx: u8,
+    line_dot: u16,
+    active_line_counter: u8,
+    operating_mode: OperatingMode,
+) -> PpuTestRig {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(operating_mode);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: CGB_WINDOW_TEST_LCDC,
+        stat: 0x82,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: DMG_WINDOW_TEST_BGP,
+        wy: 0,
+        wx,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+    ppu.pipeline_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+    ppu.visible_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.pipeline_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.visible_registers.wx = wx;
+    ppu.pipeline_registers.wx = wx;
+    ppu.line_dot = line_dot;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = active_line_counter;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.fetcher = make_window_fetcher_state(PpuBgFetcherStage::TileIndex, 0, 0);
+    ppu
+}
+
 fn cgb_window_activation_startup(lcdc: u8) -> PpuTestRig {
     let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     ppu.write_bg_tile_row(0, 0, 0x00, 0x00);
@@ -135,6 +170,68 @@ fn cgb_mode3_lcdc5_writes_update_the_current_line_window_latch() {
 
     ppu.write_register(0xFF40, CGB_WINDOW_DISABLED_LCDC);
     assert!(!ppu.bg_pipeline_state.window_lcdc5_latch);
+}
+
+#[test]
+fn cgb_dmg_software_same_line_startnow_suppresses_wx_retrigger_but_allows_lcdc5_reenable() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut wx_retrigger =
+            cgb_previsible_retarget_fixture(15, MODE2_DOTS + 80, 6, operating_mode);
+        wx_retrigger.bg_pipeline_state.visible_pixels_output = 8;
+        wx_retrigger.bg_pipeline_state.current_transfer_x = 16;
+        wx_retrigger.bg_pipeline_state.window_start_count_this_line = 1;
+        wx_retrigger.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+        wx_retrigger.bg_pipeline_state.window_lcdc5_latch = true;
+
+        assert!(
+            !wx_retrigger.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedVisiblePixel,
+                false,
+            )),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            wx_retrigger.bg_pipeline_state.window_start_count_this_line, 1,
+            "{operating_mode:?}"
+        );
+
+        let mut lcdc5_reenable =
+            cgb_previsible_retarget_fixture(15, MODE2_DOTS + 80, 6, operating_mode);
+        lcdc5_reenable.bg_pipeline_state.visible_pixels_output = 8;
+        lcdc5_reenable.bg_pipeline_state.current_transfer_x = 16;
+        lcdc5_reenable
+            .bg_pipeline_state
+            .window_start_count_this_line = 1;
+        lcdc5_reenable
+            .bg_pipeline_state
+            .fetcher
+            .abort_window_to_background();
+        lcdc5_reenable.bg_pipeline_state.window_lcdc5_latch = true;
+
+        assert!(
+            lcdc5_reenable.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedVisiblePixel,
+                false,
+            )),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Window,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable.bg_pipeline_state.window_active_line_counter, 1,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            lcdc5_reenable
+                .bg_pipeline_state
+                .window_start_count_this_line,
+            2,
+            "{operating_mode:?}"
+        );
+    }
 }
 
 #[test]

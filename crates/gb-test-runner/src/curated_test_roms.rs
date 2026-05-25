@@ -3479,7 +3479,7 @@ mod tests {
                         StartupMode::SkipBoot
                     }
                 && case.timeout == Timeout::Frames(30)
-                && case.oracle == "framebuffer-fixture"
+                && case.oracle == "framebuffer-rgb555-fixture"
         }));
 
         let suite = mealybug_tearoom_cgb_extra_suite();
@@ -3500,13 +3500,16 @@ mod tests {
                 && case.timeout == Timeout::Frames(30)
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("mealybug-tearoom-tests/ppu")
-                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+                && matches!(
+                    case.pass_condition,
+                    PassCondition::FramebufferRgb555Fixture(_)
+                )
         }));
         assert!(suite.cases.iter().any(|case| {
             case.id == "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
                 && matches!(
                     &case.pass_condition,
-                    PassCondition::FramebufferFixture(fixture_path)
+                    PassCondition::FramebufferRgb555Fixture(fixture_path)
                         if fixture_path
                             == Path::new(
                                 "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"

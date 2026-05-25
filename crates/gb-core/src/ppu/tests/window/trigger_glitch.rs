@@ -806,3 +806,95 @@ fn pending_live_wx_glitch_expiry_helper_waits_until_the_trigger_is_behind() {
         None
     );
 }
+
+#[test]
+fn cgb_dmg_software_previsible_live_wx_write_arms_only_on_window_tile_index_phase() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut aligned = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, operating_mode);
+        aligned.bg_pipeline_state.current_transfer_x = 6;
+        aligned.maybe_arm_dmg_live_wx_trigger_glitch(13);
+
+        assert_eq!(
+            aligned
+                .bg_pipeline_state
+                .dmg_window_restart
+                .pending_live_wx_trigger_glitch,
+            Some(DmgPendingLiveWxTriggerGlitch::new(6)),
+            "{operating_mode:?}"
+        );
+
+        let mut unaligned = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, operating_mode);
+        unaligned.bg_pipeline_state.current_transfer_x = 6;
+        unaligned.maybe_arm_dmg_live_wx_trigger_glitch(14);
+
+        assert_eq!(
+            unaligned
+                .bg_pipeline_state
+                .dmg_window_restart
+                .pending_live_wx_trigger_glitch,
+            None,
+            "{operating_mode:?}"
+        );
+
+        let mut visible = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, operating_mode);
+        visible.bg_pipeline_state.visible_pixels_output = 41;
+        visible.bg_pipeline_state.current_transfer_x = 49;
+        visible
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_live_wx_trigger_glitch = Some(DmgPendingLiveWxTriggerGlitch::new(29));
+        visible.maybe_arm_dmg_live_wx_trigger_glitch(80);
+
+        assert_eq!(
+            visible
+                .bg_pipeline_state
+                .dmg_window_restart
+                .pending_live_wx_trigger_glitch,
+            None,
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_previsible_live_wx_trigger_inserts_a_raw_zero_pixel() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut ppu = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, operating_mode);
+        ppu.bg_pipeline_state.current_transfer_x = 6;
+
+        ppu.maybe_arm_dmg_live_wx_trigger_glitch(13);
+        ppu.bg_pipeline_state.visible_pixels_output = 6;
+        ppu.maybe_apply_pending_dmg_live_wx_trigger_glitch(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedVisiblePixel,
+            false,
+        ));
+
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .dmg_window_restart
+                .pending_live_wx_trigger_glitch,
+            None,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.fifo.back(),
+            Some(&0),
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn native_cgb_ignores_dmg_software_previsible_live_wx_trigger_glitches() {
+    let mut ppu = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 14, 6, OperatingMode::Cgb);
+    ppu.bg_pipeline_state.current_transfer_x = 6;
+
+    ppu.maybe_arm_dmg_live_wx_trigger_glitch(13);
+
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .dmg_window_restart
+            .pending_live_wx_trigger_glitch,
+        None
+    );
+}

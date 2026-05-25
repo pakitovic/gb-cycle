@@ -2993,6 +2993,10 @@ fn live_lcdc3_fifo_write_uses_the_active_window_row_after_a_same_scanline_restar
 #[test]
 fn window_lcdc4_unsigned_to_signed_previous_plane_masks_match_observed_row_blocks() {
     assert_eq!(
+        crate::ppu::mode3::window_lcdc4_unsigned_to_signed_previous_plane_masks(0, 23),
+        None
+    );
+    assert_eq!(
         crate::ppu::mode3::window_lcdc4_unsigned_to_signed_previous_plane_masks(0, 24),
         Some(PerPlane::new(0xFF, 0xFF))
     );
@@ -3024,6 +3028,14 @@ fn window_lcdc4_unsigned_to_signed_previous_plane_masks_match_observed_row_block
         crate::ppu::mode3::window_lcdc4_unsigned_to_signed_previous_plane_masks(16, 136),
         Some(PerPlane::new(0xFF, 0x00))
     );
+    assert_eq!(
+        crate::ppu::mode3::window_lcdc4_unsigned_to_signed_previous_plane_masks(24, 136),
+        None
+    );
+    assert_eq!(
+        crate::ppu::mode3::window_lcdc4_unsigned_to_signed_previous_plane_masks(0, 144),
+        None
+    );
 }
 
 #[test]
@@ -3041,6 +3053,18 @@ fn cgb_dmg_software_window_lcdc4_previous_plane_masks_match_paired_write_phases(
         Some(PerPlane::new(0xFF, 0x00))
     );
     assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+            8, 63,
+        ),
+        None
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+            16, 64,
+        ),
+        None
+    );
+    assert_eq!(
         crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
             8, 16,
         ),
@@ -3048,9 +3072,21 @@ fn cgb_dmg_software_window_lcdc4_previous_plane_masks_match_paired_write_phases(
     );
     assert_eq!(
         crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            8, 15,
+        ),
+        None
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
             16, 128,
         ),
         Some(PerPlane::new(0xFF, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            16, 95,
+        ),
+        None
     );
     assert_eq!(
         crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
@@ -4782,6 +4818,123 @@ fn pending_window_lcdc4_output_repaint_keeps_object_owned_pixels_mixed_while_ref
             visible_x: 0,
             pixel: MixedPixel::object(1, false),
             dmg_bg_forced_white: false,
+        }
+    );
+}
+
+#[test]
+fn pending_window_lcdc4_output_repaint_covers_skipped_and_forced_blank_paths() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.visible_output = PpuVisibleOutputState::ForcedBlank;
+    ppu.ly = 0;
+    ppu.window_state.window_line_counter = 40;
+    ppu.bg_pipeline_state.visible_pixels_output = 3;
+    ppu.pending_dmg_window_lcdc4_output_repaint = Some(BgTileDataSelect::Unsigned8000);
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
+        lcdc: LCDC_BG_ENABLE_BIT,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    }));
+    ppu.current_scanline_bg_dot_contexts[1] = Some(PpuRecentBgDotContext {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 24,
+        pixel_index: 0,
+        tile_index: 0,
+    });
+    ppu.current_scanline_bg_dot_contexts[2] = Some(PpuRecentBgDotContext {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 8,
+        pixel_index: 0,
+        tile_index: 0,
+    });
+    ppu.current_scanline_bg_pixels[..3].copy_from_slice(&[0, 0, 0]);
+    ppu.current_scanline_mixed_pixels[..3].fill(MixedPixel::background(0));
+    ppu.current_scanline_pixels[..3].copy_from_slice(&[1, 1, 1]);
+    ppu.framebuffer[..3].copy_from_slice(&[1, 1, 1]);
+    ppu.dmg_panel_live_write_state
+        .recent_panel_dots
+        .push_back(PpuRecentPanelDot {
+            visible_x: 2,
+            pixel: MixedPixel::background(0),
+            dmg_bg_forced_white: false,
+        });
+    let mut vram_bytes = [0; 0x2000];
+    vram_bytes[0x0000] = 0x80;
+    vram_bytes[0x0001] = 0x80;
+    vram_bytes[0x1000] = 0x00;
+    vram_bytes[0x1001] = 0x00;
+
+    with_test_vram_view(vram_bytes, |vram| {
+        ppu.test_apply_pending_dmg_window_lcdc4_output_repaint(vram)
+    });
+
+    assert_eq!(ppu.pending_dmg_window_lcdc4_output_repaint, None);
+    assert_eq!(&ppu.current_scanline_bg_pixels[..3], &[0, 0, 3]);
+    assert_eq!(&ppu.current_scanline_pixels[..3], &[1, 1, 0]);
+    assert_eq!(&ppu.framebuffer()[..3], &[1, 1, 0]);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state.recent_panel_dots[0],
+        PpuRecentPanelDot {
+            visible_x: 2,
+            pixel: MixedPixel::background(3),
+            dmg_bg_forced_white: false,
+        }
+    );
+}
+
+#[test]
+fn pending_window_lcdc4_output_repaint_forces_white_when_bg_is_disabled() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.ly = 0;
+    ppu.window_state.window_line_counter = 40;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.pending_dmg_window_lcdc4_output_repaint = Some(BgTileDataSelect::Unsigned8000);
+    ppu.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(PpuVisibleRegisters {
+        lcdc: 0x00,
+        bgp: 0xE4,
+        ..PpuVisibleRegisters::default()
+    }));
+    ppu.current_scanline_bg_dot_contexts[0] = Some(PpuRecentBgDotContext {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 8,
+        pixel_index: 0,
+        tile_index: 0,
+    });
+    ppu.current_scanline_mixed_pixels[0] = MixedPixel::background(0);
+    ppu.current_scanline_pixels[0] = 1;
+    ppu.framebuffer[0] = 1;
+    ppu.dmg_panel_live_write_state
+        .recent_panel_dots
+        .push_back(PpuRecentPanelDot {
+            visible_x: 0,
+            pixel: MixedPixel::background(0),
+            dmg_bg_forced_white: false,
+        });
+    let mut vram_bytes = [0; 0x2000];
+    vram_bytes[0x0000] = 0x80;
+    vram_bytes[0x0001] = 0x80;
+    vram_bytes[0x1000] = 0x00;
+    vram_bytes[0x1001] = 0x00;
+
+    with_test_vram_view(vram_bytes, |vram| {
+        ppu.test_apply_pending_dmg_window_lcdc4_output_repaint(vram)
+    });
+
+    assert_eq!(ppu.current_scanline_bg_pixels[0], 3);
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[0],
+        MixedPixel::background(3)
+    );
+    assert!(ppu.current_scanline_dmg_bg_forced_white[0]);
+    assert_eq!(ppu.current_scanline_pixels[0], 0);
+    assert_eq!(ppu.framebuffer[0], 0);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state.recent_panel_dots[0],
+        PpuRecentPanelDot {
+            visible_x: 0,
+            pixel: MixedPixel::background(3),
+            dmg_bg_forced_white: true,
         }
     );
 }
