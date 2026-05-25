@@ -70,7 +70,7 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   current status: exploratory local-only
   oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
 - `hacktix-dmg-curated`
-  source family: `hacktix`
+  source family: repo-local `hacktix`, materialized from upstream `ashiepaws`
   current status: workflow-managed and Phase 9 LibSameBoy differential matched
   oracle mix: framebuffer fixture
 - `cpp-dmg-curated`

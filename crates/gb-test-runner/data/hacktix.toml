@@ -6,6 +6,7 @@ subsystem = "CrossSubsystem"
 [[case]]
 id = "hacktix-bully"
 rom = "bully.gb"
+source_path = "testroms/ashiepaws/bully.gb"
 console = "dmg"
 report_model_suffix = true
 timeout_frames = 30
@@ -16,6 +17,7 @@ startup = "custom-boot"
 [[case]]
 id = "hacktix-strikethrough"
 rom = "strikethrough.gb"
+source_path = "testroms/ashiepaws/strikethrough.gb"
 console = "dmg"
 timeout_frames = 30
 oracle = "framebuffer-fixture"

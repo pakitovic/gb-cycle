@@ -7,7 +7,7 @@ version = 1
 [[source]]
 id = "gbemu-shootout"
 git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
-git_rev = "0cee7097d4187aea134be72bcd356533ae683c84"
+git_rev = "0464f9077abd7355943d47654d4970af33c8527b"
 local_dir = "gbemu-shootout"
 root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
 
@@ -871,20 +871,29 @@ sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
 path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
 sha256 = "7c95c4b134c200dd3fcef71d0a61c110990c0b953a70988f2b4a54eda47992ca"
 
+# GBEmulatorShootout renamed the upstream `hacktix` directory to `ashiepaws` in
+# 17e0a4e. Keep the repo-local curated family name stable as `hacktix` while
+# pinning the active upstream paths explicitly.
 [[source.required_file]]
-path = "testroms/hacktix/bully.gb"
+path = "testroms/ashiepaws/bully.gb"
+family = "hacktix"
+rom = "bully.gb"
 sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
 
 [[source.required_file]]
-path = "testroms/hacktix/bully.png"
+path = "testroms/ashiepaws/bully.png"
+family = "hacktix"
 sha256 = "340be52fc2d231868153a14d3f252fd387483e68c2868f1ad17fea362b2918ff"
 
 [[source.required_file]]
-path = "testroms/hacktix/strikethrough.gb"
+path = "testroms/ashiepaws/strikethrough.gb"
+family = "hacktix"
+rom = "strikethrough.gb"
 sha256 = "353d50d745e2539d93f0baf7d670ec93b520f97e41443cb39ba6f32be1f5fa31"
 
 [[source.required_file]]
-path = "testroms/hacktix/strikethrough.png"
+path = "testroms/ashiepaws/strikethrough.png"
+family = "hacktix"
 sha256 = "52187909e73d03ea11659149935c57bfce8395c3091d3f7809bbadc3c5feb745"
 
 [[source.required_file]]

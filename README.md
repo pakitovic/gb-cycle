@@ -1,6 +1,6 @@
 # gb-cycle
 
-A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling such as Codex and Claude.
+A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling.
 
 ## Current implementation highlights
 
@@ -18,7 +18,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator 
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis for DMG-family, CGB-family, and SGB-family profiles, including CGB boot-window routing, SGB/SGB2 `sgb_boot.bin` / `sgb2_boot.bin` asset selection, header-driven native/compatibility/SGB command policy, and coherent first post-boot timer, PPU, and APU state. |
 | Frontends | `gb-cli` and the SDL3 `gb-desktop` frontend share model/startup/execution-mode semantics; the desktop frontend renders CGB and SGB RGB555 output directly, keeps DMG-family presentation palettes host-side, and supports SGB/SGB2 model selection, SGB PAL/NTSC selection, SGB border presentation toggles, SGB2 Game Link, printer, camera, Game Link, CGB IR, Pokémon Pikachu 2 Mystery Gift, custom GSC Mystery Gift item/decoration sends, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward. |
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
-| Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
+| Save states / rewind | Versioned `.gbstate` v1 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
 | Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational), Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix, green non-DocBoy extra/internal suites run through the separate GitHub `test-roms-extra` matrix, and Phase 11 now covers SGB/SGB2 architecture, packets, palettes, borders, advanced coloring, multiplayer, profiles, and SGB2 link behavior with focused synthetic tests plus informational SameSuite SGB rows. |
 

@@ -681,14 +681,18 @@ mod tests {
                 samesuite_sgb_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
-            .map(|path| ExternalRomRequiredFile {
-                path: PathBuf::from("testroms").join(&path),
-                family: None,
-                rom: None,
-                sha256: sha256_hex(
-                    &fs::read(root.join("testroms").join(&path))
-                        .expect("required curated source file should be readable"),
-                ),
+            .map(|path| {
+                let source_path = gbemu_test_fixture_source_path(&path);
+                let (family, rom) = gbemu_test_fixture_required_file_alias(&path);
+                ExternalRomRequiredFile {
+                    sha256: sha256_hex(
+                        &fs::read(root.join(&source_path))
+                            .expect("required curated source file should be readable"),
+                    ),
+                    path: source_path,
+                    family,
+                    rom,
+                }
             })
             .collect();
 
@@ -700,6 +704,35 @@ mod tests {
             root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
             required_files,
         }
+    }
+
+    fn gbemu_test_fixture_source_path(rom_path: &Path) -> PathBuf {
+        let mut components = rom_path.components();
+        if components
+            .next()
+            .is_some_and(|component| component.as_os_str() == "hacktix")
+        {
+            return PathBuf::from("testroms/ashiepaws").join(components.collect::<PathBuf>());
+        }
+
+        PathBuf::from("testroms").join(rom_path)
+    }
+
+    fn gbemu_test_fixture_required_file_alias(
+        rom_path: &Path,
+    ) -> (Option<String>, Option<PathBuf>) {
+        let mut components = rom_path.components();
+        if components
+            .next()
+            .is_some_and(|component| component.as_os_str() == "hacktix")
+        {
+            return (
+                Some("hacktix".to_string()),
+                Some(components.collect::<PathBuf>()),
+            );
+        }
+
+        (None, None)
     }
 
     fn write_curated_shootout_repo(root: &Path) {
@@ -720,7 +753,7 @@ mod tests {
             samesuite_sgb_suite(),
         ]) {
             for case in suite.cases {
-                let source_path = root.join("testroms").join(&case.rom_path);
+                let source_path = root.join(gbemu_test_fixture_source_path(&case.rom_path));
                 fs::create_dir_all(
                     source_path
                         .parent()
