@@ -8,10 +8,13 @@ export LC_ALL=C
 
 usage() {
   cat <<'USAGE'
-Usage: bump-workspace-version.sh [--dry-run] [--allow-same] [--print-normalized] VERSION
+Usage: bump-workspace-version.sh [--dry-run] [--check] [--allow-same] [--print-normalized] VERSION
 
 Bump every workspace crate package version, internal workspace dependency version,
 and Cargo.lock workspace package version to VERSION.
+
+With --check, validate that the workspace already matches VERSION without
+modifying files.
 
 VERSION accepts SemVer MAJOR.MINOR.PATCH with an optional leading v and optional
 prerelease suffix, for example 0.1.7, v0.1.7, or 0.1.7-rc.1.
@@ -356,6 +359,7 @@ bump_lockfile() {
 }
 
 dry_run=false
+check=false
 allow_same=false
 print_normalized=false
 version_input=
@@ -363,6 +367,10 @@ version_input=
 while (($# > 0)); do
   case $1 in
     --dry-run)
+      dry_run=true
+      ;;
+    --check)
+      check=true
       dry_run=true
       ;;
     --allow-same)
@@ -472,7 +480,18 @@ if [[ ! -f $lockfile ]]; then
 fi
 bump_lockfile "$lockfile" "$crate_re" "$target_text" "$dry_run"
 
-if [[ $dry_run == true ]]; then
+if [[ $check == true ]]; then
+  if (( ${#changed_paths[@]} > 0 )); then
+    printf 'Workspace crate versions do not match %s; would update:\n' "$target_text" >&2
+    for path in "${changed_paths[@]}"; do
+      printf '  %s\n' "${path#"$root"/}" >&2
+    done
+    exit 1
+  fi
+
+  printf 'Workspace crate versions match %s\n' "$target_text"
+  exit 0
+elif [[ $dry_run == true ]]; then
   action='Would update'
 else
   action='Updated'
