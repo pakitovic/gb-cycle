@@ -177,8 +177,16 @@ impl Ppu {
             );
             self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
         }
-        if dmg_family {
+        if dmg_family
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract()
+        {
             self.apply_dmg_wx0_window_disable_prefix_override(visible_x_index, bg_pixel.color);
+        }
+        if dmg_family
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract()
+        {
             self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x_index + 1, vram);
         }
         if self.operating_mode.uses_dmg_software_contract() {

@@ -550,7 +550,7 @@ impl Ppu {
         let visible_registers = self.mode3_register_latches().visible();
         let palette = visible_registers.palette_for_mixed_pixel(
             pixel,
-            visible_registers.bgp,
+            self.pixel_pipeline_bgp(),
             self.obj_palette_read_policy,
         );
         self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette(pixel, palette)

@@ -181,6 +181,62 @@ fn cgb_dmg_software_disabling_lcdc1_repaints_object_dots_through_rgb555_adapter(
 }
 
 #[test]
+fn cgb_dmg_software_lcdc1_repaint_honors_bgp_visible_hold_in_rgb555_adapter() {
+    for operating_mode in [
+        crate::model::OperatingMode::GbCompatible,
+        crate::model::OperatingMode::CgbDmgExt,
+    ] {
+        let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+        ppu.apply_operating_mode_state(operating_mode);
+        ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));
+        let [white_low, white_high] = 0x7FFF_u16.to_le_bytes();
+        ppu.cgb_palettes
+            .port_mut(CgbPaletteKind::Background)
+            .write_palette_bytes(0, [white_low, white_high, 0, 0, 0, 0, 0, 0]);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.bgp = 0xFF;
+        ppu.pipeline_registers.bgp = 0xFF;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override = Some(0x00);
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining = 1;
+        ppu.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_fallback_palette = Some(0xFF);
+        ppu.bg_pipeline_state.visible_pixels_output = 5;
+        ppu.mode2_scan_state.push(obj_toggle_sprite(0, 16, 1, 0, 0));
+        ppu.current_scanline_bg_pixels[1] = 0;
+        ppu.current_scanline_bg_dot_contexts[1] = Some(PpuRecentBgDotContext {
+            source: PpuBgFetcherSource::Background,
+            fetch_x: 0,
+            pixel_index: 1,
+            tile_index: 0,
+        });
+        ppu.current_scanline_mixed_pixels[1] = MixedPixel::object(1, false);
+        ppu.current_scanline_pixels[1] = 1;
+        ppu.framebuffer[1] = 3;
+        ppu.framebuffer_rgb555[1] = 0x0000;
+        ppu.framebuffer_layer_sources[1] = PpuFramebufferLayerSource::Object;
+
+        ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+        assert_eq!(
+            ppu.current_scanline_mixed_pixels[1],
+            MixedPixel::background(0)
+        );
+        assert_eq!(ppu.framebuffer[1], 0, "{operating_mode:?}");
+        assert_eq!(ppu.framebuffer_rgb555[1], 0x7FFF, "{operating_mode:?}");
+        assert_eq!(
+            ppu.framebuffer_layer_sources[1],
+            PpuFramebufferLayerSource::Background,
+            "{operating_mode:?}",
+        );
+    }
+}
+
+#[test]
 fn native_cgb_skips_the_dmg_software_lcdc1_visible_hold() {
     let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     ppu.apply_startup_state(dmg_mode3_startup_state(0x83, 0, 0));

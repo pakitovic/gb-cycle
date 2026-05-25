@@ -364,6 +364,157 @@ fn late_window_enable_for_wx16_arms_and_repaints_the_observed_segment() {
 }
 
 #[test]
+fn cgb_dmg_software_late_lcdc5_enable_arms_the_hardware_observed_initial_segment() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut ppu = cgb_previsible_retarget_fixture(18, MODE2_DOTS + 32, 0, operating_mode);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = 18;
+        ppu.pipeline_registers.wx = 18;
+        ppu.bg_pipeline_state.window_started_this_line = false;
+        ppu.bg_pipeline_state.visible_pixels_output = 13;
+
+        assert!(
+            !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.dmg_late_window_enable_override,
+            Some(DmgLateWindowEnableOverride::new(11, 35, 11)),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.window_start_count_this_line, 0,
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc5_reenable_resume_repaints_without_counting_a_restart() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut ppu = cgb_previsible_retarget_fixture(28, MODE2_DOTS + 52, 20, operating_mode);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = 28;
+        ppu.pipeline_registers.wx = 28;
+        ppu.bg_pipeline_state.window_started_this_line = true;
+        ppu.bg_pipeline_state.window_start_count_this_line = 1;
+        ppu.bg_pipeline_state.visible_pixels_output = 34;
+        ppu.bg_pipeline_state
+            .dmg_window_restart
+            .pending_window_reenable_resume = Some(DmgPendingWindowReenableResume::new(
+            29,
+            21,
+            8,
+            PpuBgFetcherStage::TileDataHigh,
+            1,
+        ));
+
+        assert!(
+            !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.dmg_late_window_enable_override,
+            Some(DmgLateWindowEnableOverride::new(29, 37, 21)),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .dmg_window_restart
+                .pending_window_reenable_resume,
+            None,
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.window_start_count_this_line, 1,
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc5_low_wx_reenable_arms_fixed_panel_repaint() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut ppu = cgb_previsible_retarget_fixture(4, MODE2_DOTS + 32, 0, operating_mode);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = 4;
+        ppu.pipeline_registers.wx = 4;
+        ppu.bg_pipeline_state.visible_pixels_output = 8;
+
+        assert!(
+            !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()),
+            "{operating_mode:?}"
+        );
+        let repaint = ppu
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+            .expect("low-WX LCDC.5 repaint should arm");
+        assert_eq!(repaint.start_x, 5, "{operating_mode:?}");
+        assert_eq!(repaint.end_x, 15, "{operating_mode:?}");
+        assert_eq!(repaint.pattern_len, 10, "{operating_mode:?}");
+        assert_eq!(
+            &repaint.pixels[..10],
+            &[0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc5_second_enable_can_replace_resume_with_fixed_panel_repaint() {
+    for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
+        let mut ppu = cgb_previsible_retarget_fixture(35, MODE2_DOTS + 52, 0, operating_mode);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = 35;
+        ppu.pipeline_registers.wx = 35;
+        ppu.bg_pipeline_state.window_start_count_this_line = 1;
+        ppu.bg_pipeline_state.visible_pixels_output = 34;
+        ppu.bg_pipeline_state
+            .dmg_window_restart
+            .pending_window_reenable_resume = Some(DmgPendingWindowReenableResume::new(
+            28,
+            28,
+            0,
+            PpuBgFetcherStage::TileDataHigh,
+            1,
+        ));
+
+        assert!(
+            !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()),
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .dmg_window_restart
+                .pending_window_reenable_resume,
+            None,
+            "{operating_mode:?}"
+        );
+        let repaint = ppu
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+            .expect("second-enable LCDC.5 repaint should arm");
+        assert_eq!(repaint.start_x, 28, "{operating_mode:?}");
+        assert_eq!(repaint.end_x, 36, "{operating_mode:?}");
+        assert_eq!(
+            &repaint.pixels[..8],
+            &[1, 1, 1, 1, 1, 1, 1, 3],
+            "{operating_mode:?}"
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.window_start_count_this_line, 1,
+            "{operating_mode:?}"
+        );
+    }
+}
+
+#[test]
 fn wx15_late_window_enable_repaints_the_white_glitch_pixel() {
     let mut ppu = PpuTestRig::dmg();
 

@@ -9,7 +9,7 @@ rom = "ppu/m2_win_en_toggle.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m2_win_en_toggle.png"
 
 [[case]]
@@ -18,7 +18,7 @@ rom = "ppu/m3_bgp_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_bgp_change.png"
 
 [[case]]
@@ -27,7 +27,7 @@ rom = "ppu/m3_bgp_change_sprites.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_bgp_change_sprites.png"
 startup = "custom-boot"
 
@@ -37,7 +37,7 @@ rom = "ppu/m3_lcdc_bg_en_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_bg_en_change.png"
 
 [[case]]
@@ -46,7 +46,7 @@ rom = "ppu/m3_lcdc_bg_map_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_bg_map_change.png"
 startup = "custom-boot"
 
@@ -56,7 +56,7 @@ rom = "ppu/m3_lcdc_obj_en_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_en_change.png"
 startup = "custom-boot"
 
@@ -66,7 +66,7 @@ rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_en_change_variant.png"
 startup = "custom-boot"
 
@@ -76,7 +76,7 @@ rom = "ppu/m3_lcdc_obj_size_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_size_change.png"
 
 [[case]]
@@ -85,7 +85,7 @@ rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_size_change_scx.png"
 
 [[case]]
@@ -94,7 +94,7 @@ rom = "ppu/m3_lcdc_tile_sel_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_tile_sel_change.png"
 startup = "custom-boot"
 
@@ -104,7 +104,7 @@ rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_tile_sel_win_change.png"
 
 [[case]]
@@ -113,7 +113,7 @@ rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple.png"
 
 [[case]]
@@ -122,7 +122,7 @@ rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
 
 [[case]]
@@ -131,7 +131,7 @@ rom = "ppu/m3_lcdc_win_map_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_map_change.png"
 
 [[case]]
@@ -140,7 +140,7 @@ rom = "ppu/m3_obp0_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_obp0_change.png"
 startup = "custom-boot"
 
@@ -150,7 +150,7 @@ rom = "ppu/m3_scx_high_5_bits.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scx_high_5_bits.png"
 
 [[case]]
@@ -159,7 +159,7 @@ rom = "ppu/m3_scx_low_3_bits.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scx_low_3_bits.png"
 startup = "custom-boot"
 
@@ -169,7 +169,7 @@ rom = "ppu/m3_scy_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scy_change.png"
 
 [[case]]
@@ -178,7 +178,7 @@ rom = "ppu/m3_window_timing.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_window_timing.png"
 
 [[case]]
@@ -187,7 +187,7 @@ rom = "ppu/m3_window_timing_wx_0.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_window_timing_wx_0.png"
 
 [[case]]
@@ -196,7 +196,7 @@ rom = "ppu/m3_wx_4_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_4_change.png"
 
 [[case]]
@@ -205,7 +205,7 @@ rom = "ppu/m3_wx_4_change_sprites.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_4_change_sprites.png"
 
 [[case]]
@@ -214,7 +214,7 @@ rom = "ppu/m3_wx_5_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_5_change.png"
 
 [[case]]
@@ -223,5 +223,5 @@ rom = "ppu/m3_wx_6_change.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
-oracle = "framebuffer-fixture"
+oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_6_change.png"

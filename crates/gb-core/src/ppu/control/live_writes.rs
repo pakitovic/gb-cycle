@@ -507,11 +507,7 @@ impl Ppu {
             visible_output_driving: self.runtime.panel.visible_output
                 == PpuVisibleOutputState::Driving,
             row_start: self.ly as usize * SCREEN_WIDTH,
-            historical_bgp: self.mode3_register_latches().pixel_pipeline_bgp(
-                self.console_model,
-                None,
-                None,
-            ),
+            historical_bgp: self.pixel_pipeline_bgp(),
         }
     }
 

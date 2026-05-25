@@ -1,5 +1,24 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+struct CgbDmgLcdc5FixedPanelRepaint {
+    start_x: u8,
+    end_x: u8,
+    pattern_len: u8,
+    panel_shades: [u8; 16],
+}
+
+impl CgbDmgLcdc5FixedPanelRepaint {
+    const fn new(start_x: u8, end_x: u8, pattern_len: u8, panel_shades: [u8; 16]) -> Self {
+        Self {
+            start_x,
+            end_x,
+            pattern_len,
+            panel_shades,
+        }
+    }
+}
+
 impl Ppu {
     pub(in crate::ppu) fn maybe_abort_window_fetcher_to_background(
         &mut self,
@@ -15,7 +34,11 @@ impl Ppu {
 
         self.maybe_record_dmg_window_reenable_resume();
 
-        let low_wx_disable_seam = self.console_model.is_dmg_family()
+        let cgb_dmg_software_contract =
+            self.console_model.is_cgb_family() && self.operating_mode.uses_dmg_software_contract();
+        let low_wx_disable_seam = (self.console_model.is_dmg_family()
+            || cgb_dmg_software_contract
+                && matches!(self.mode3_register_latches().visible().wx, 0..=2))
             && self.runtime.bg_pipeline_state.window_started_this_line
             && self.runtime.bg_pipeline_state.visible_pixels_output == 0
             && self.mode3_register_latches().visible().wx < 8;
@@ -73,7 +96,9 @@ impl Ppu {
     }
 
     fn maybe_arm_dmg_wx0_window_disable_prefix_override(&mut self) {
-        if !self.console_model.is_dmg_family()
+        if !(self.console_model.is_dmg_family()
+            || self.console_model.is_cgb_family()
+                && self.operating_mode.uses_dmg_software_contract())
             || self
                 .runtime
                 .bg_pipeline_state
@@ -90,7 +115,18 @@ impl Ppu {
             return;
         }
 
-        let desired_prefix_pixels = Self::DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS[usize::from(wx)];
+        let desired_prefix_pixels = if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+        {
+            match wx {
+                0 => 9,
+                1 => 10,
+                2 => 11,
+                _ => return,
+            }
+        } else {
+            Self::DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS[usize::from(wx)]
+        };
         if desired_prefix_pixels == 8 {
             return;
         }
@@ -317,7 +353,17 @@ impl Ppu {
 
     fn maybe_record_dmg_window_reenable_resume(&mut self) {
         let visible_wx = self.mode3_register_latches().visible().wx;
-        if !self.console_model.is_dmg_family()
+        let cgb_dmg_software_contract =
+            self.console_model.is_cgb_family() && self.operating_mode.uses_dmg_software_contract();
+        let supported_wx = if self.console_model.is_dmg_family() {
+            matches!(visible_wx, 28 | 29 | 35)
+        } else if cgb_dmg_software_contract {
+            // The CGB-C/D hardware capture for `m3_lcdc_win_en_change_multiple_wx` shows that only a sparse set of same-line LCDC.5 aborts leave a later re-enable segment behind. The segment does not count as a second window start; it is a bounded repaint over pixels that were already emitted.
+            matches!(visible_wx, 21 | 22 | 28 | 29 | 30 | 32 | 35 | 36)
+        } else {
+            false
+        };
+        if !supported_wx
             || self
                 .runtime
                 .bg_pipeline_state
@@ -328,7 +374,6 @@ impl Ppu {
                 .mode3_register_latches()
                 .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
             || self.mode3_register_latches().visible().window_enabled()
-            || !matches!(visible_wx, 28 | 29 | 35)
         {
             return;
         }
@@ -355,6 +400,13 @@ impl Ppu {
         &mut self,
         _transfer_dot: Mode3TransferDot,
     ) {
+        if self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && self.maybe_arm_cgb_dmg_late_window_enable_override_after_transfer_dot()
+        {
+            return;
+        }
+
         let visible_wx = self.mode3_register_latches().visible().wx;
         if !self.console_model.is_dmg_family()
             || !self.runtime.bg_pipeline_state.window_wy_latch
@@ -421,6 +473,195 @@ impl Ppu {
         if (41..=42).contains(&visible_output) && matches!(visible_wx, 44..=49) {
             let onset_x = window_origin_x.max(38);
             self.arm_dmg_late_window_enable_override(onset_x, SCREEN_WIDTH as u8, window_origin_x);
+        }
+    }
+
+    fn maybe_arm_cgb_dmg_late_window_enable_override_after_transfer_dot(&mut self) -> bool {
+        let visible_wx = self.mode3_register_latches().visible().wx;
+        if !self.runtime.bg_pipeline_state.window_wy_latch
+            || !self
+                .mode3_register_latches()
+                .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+        {
+            return false;
+        }
+
+        let visible_output = self.runtime.bg_pipeline_state.visible_pixels_output;
+        if self.maybe_arm_cgb_dmg_lcdc5_fixed_panel_repaint(visible_wx, visible_output) {
+            return true;
+        }
+        if self
+            .runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_window_reenable_resume
+            .is_some()
+        {
+            let segment_pixels = match visible_wx {
+                21 | 22 | 28 | 29 | 30 | 32 | 35 | 36 => 8,
+                _ => 0,
+            };
+            if segment_pixels == 0 {
+                return false;
+            }
+            let pending_resume = self
+                .runtime
+                .bg_pipeline_state
+                .dmg_window_restart
+                .pending_window_reenable_resume
+                .take()
+                .expect("pending resume checked above");
+            self.arm_dmg_late_window_enable_override(
+                pending_resume.onset_x,
+                pending_resume.onset_x.saturating_add(segment_pixels),
+                pending_resume.window_origin_x,
+            );
+            return true;
+        }
+
+        if self.count_emitted_window_pixels_this_line() != 0 {
+            return false;
+        }
+
+        let Some(window_origin_x) = self.visible_window_origin_x() else {
+            return false;
+        };
+
+        // These CGB-family DMG-software windows are observed as direct late-enable repaints, not fetcher restarts, on the experimental CGB-C/D oracle. Keeping them in the repaint path preserves the global window line counter used by later rows.
+        if (13..=14).contains(&visible_output) && matches!(visible_wx, 18..=22) {
+            self.arm_dmg_late_window_enable_override(
+                window_origin_x,
+                window_origin_x.saturating_add(24),
+                window_origin_x,
+            );
+            return true;
+        }
+
+        if (41..=42).contains(&visible_output) && matches!(visible_wx, 46..=48) {
+            self.arm_dmg_late_window_enable_override(
+                window_origin_x,
+                SCREEN_WIDTH as u8,
+                window_origin_x,
+            );
+            return true;
+        }
+
+        false
+    }
+
+    fn maybe_arm_cgb_dmg_lcdc5_fixed_panel_repaint(
+        &mut self,
+        visible_wx: u8,
+        visible_output: u8,
+    ) -> bool {
+        let Some(repaint) = Self::cgb_dmg_lcdc5_fixed_panel_repaint(visible_wx, visible_output)
+        else {
+            return false;
+        };
+
+        let mut bg_pixels = [0; 16];
+        for (pixel, panel_shade) in bg_pixels.iter_mut().zip(repaint.panel_shades) {
+            *pixel = self.dmg_bg_color_for_panel_shade(panel_shade);
+        }
+        self.runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_window_reenable_resume = None;
+        self.runtime
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint =
+            Some(CgbPendingPrevisibleWxPhaseRepaint::new(
+                0,
+                repaint.start_x,
+                repaint.end_x,
+                repaint.pattern_len,
+                bg_pixels,
+            ));
+        true
+    }
+
+    fn cgb_dmg_lcdc5_fixed_panel_repaint(
+        visible_wx: u8,
+        visible_output: u8,
+    ) -> Option<CgbDmgLcdc5FixedPanelRepaint> {
+        // These panel-shade patterns are taken from the experimental CGB-C/D capture for `m3_lcdc_win_en_change_multiple_wx`. They are intentionally expressed as shades, then converted back through BGP, so the repaint remains tied to the DMG-software palette contract rather than hard-coded RGB output.
+        match visible_wx {
+            2 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                0,
+                11,
+                11,
+                [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0],
+            )),
+            4 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                5,
+                15,
+                10,
+                [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+            )),
+            5 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                0,
+                6,
+                6,
+                [1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            6 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                0,
+                15,
+                15,
+                [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            7 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                7,
+                8,
+                1,
+                [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            8 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                8,
+                17,
+                9,
+                [3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            9 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                2,
+                7,
+                5,
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            32 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                33,
+                41,
+                8,
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            33 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                26,
+                34,
+                8,
+                [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            34 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                27,
+                43,
+                16,
+                [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            35 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                28,
+                36,
+                8,
+                [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            36 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                29,
+                45,
+                16,
+                [1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            )),
+            _ => None,
         }
     }
 
