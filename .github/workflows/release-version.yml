@@ -41,7 +41,7 @@ jobs:
           VERSION_INPUT: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="$(scripts/bump-workspace-version.py --print-normalized "${VERSION_INPUT}")"
+          version="$(scripts/bump-workspace-version.sh --print-normalized "${VERSION_INPUT}")"
           tag="v${version}"
 
           if [[ "${version}" == *-* ]]; then
@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Bump workspace crate versions
-        run: scripts/bump-workspace-version.py --allow-same "${{ steps.version.outputs.version }}"
+        run: scripts/bump-workspace-version.sh --allow-same "${{ steps.version.outputs.version }}"
 
       - name: Validate bumped metadata
         run: |
