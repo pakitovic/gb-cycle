@@ -465,6 +465,114 @@ fn cgb_dmg_software_lcdc5_low_wx_reenable_arms_fixed_panel_repaint() {
 }
 
 #[test]
+fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
+    let cases = [
+        (
+            2,
+            8,
+            0,
+            11,
+            11,
+            [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0],
+        ),
+        (
+            5,
+            8,
+            0,
+            6,
+            6,
+            [1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            6,
+            8,
+            0,
+            15,
+            15,
+            [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            7,
+            8,
+            7,
+            8,
+            1,
+            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            8,
+            8,
+            8,
+            17,
+            9,
+            [3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            9,
+            8,
+            2,
+            7,
+            5,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            32,
+            34,
+            33,
+            41,
+            8,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            33,
+            34,
+            26,
+            34,
+            8,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            34,
+            34,
+            27,
+            43,
+            16,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            36,
+            34,
+            29,
+            45,
+            16,
+            [1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+        ),
+    ];
+
+    for (wx, visible_output, start_x, end_x, pattern_len, pixels) in cases {
+        let mut ppu =
+            cgb_previsible_retarget_fixture(wx, MODE2_DOTS + 52, 0, OperatingMode::GbCompatible);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = wx;
+        ppu.pipeline_registers.wx = wx;
+        ppu.bg_pipeline_state.visible_pixels_output = visible_output;
+
+        assert!(!ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()));
+
+        let repaint = ppu
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+            .unwrap_or_else(|| panic!("WX={wx} fixed panel repaint should arm"));
+        assert_eq!(repaint.start_x, start_x, "WX={wx}");
+        assert_eq!(repaint.end_x, end_x, "WX={wx}");
+        assert_eq!(repaint.pattern_len, pattern_len, "WX={wx}");
+        assert_eq!(repaint.pixels, pixels, "WX={wx}");
+    }
+}
+
+#[test]
 fn cgb_dmg_software_lcdc5_second_enable_can_replace_resume_with_fixed_panel_repaint() {
     for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
         let mut ppu = cgb_previsible_retarget_fixture(35, MODE2_DOTS + 52, 0, operating_mode);
