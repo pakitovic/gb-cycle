@@ -550,10 +550,36 @@ impl Ppu {
         let visible_registers = self.mode3_register_latches().visible();
         let palette = visible_registers.palette_for_mixed_pixel(
             pixel,
-            self.pixel_pipeline_bgp(),
+            self.cgb_compatibility_rgb555_bgp(),
             self.obj_palette_read_policy,
         );
         self.map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette(pixel, palette)
+    }
+
+    fn cgb_compatibility_rgb555_bgp(&self) -> u8 {
+        let visible_bgp = self.mode3_register_latches().visible().bgp;
+        if !self.uses_dmg_palette_live_write_model() {
+            return visible_bgp;
+        }
+
+        if let Some(override_palette) = self
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override
+        {
+            return override_palette;
+        }
+
+        if self.mode2_scan_state.selected_sprite_count() != 0
+            && let Some(override_palette) = self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_palette_override
+        {
+            return override_palette;
+        }
+
+        visible_bgp
     }
 
     pub(in crate::ppu) fn map_mixed_pixel_to_cgb_compatibility_rgb555_with_palette_override(
