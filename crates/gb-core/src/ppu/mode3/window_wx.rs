@@ -418,8 +418,18 @@ impl Ppu {
 
         let repaint_start = repaint.start_x.min(SCREEN_WIDTH as u8);
         let repaint_end = repaint.end_x.min(SCREEN_WIDTH as u8);
+        let wx4_to_wx5_prefix_all_high = matches!(
+            repaint.mode,
+            CgbPrevisibleWxPhaseRepaintMode::Wx4ToWx5FixedPrefix
+        )
+        .then(|| self.cgb_wx4_to_wx5_current_prefix_is_all_high(repaint));
         for x in repaint_start..repaint_end {
-            let bg_pixel = self.cgb_previsible_wx_phase_repaint_pixel(repaint, x, vram);
+            let bg_pixel = self.cgb_previsible_wx_phase_repaint_pixel(
+                repaint,
+                x,
+                vram,
+                wx4_to_wx5_prefix_all_high,
+            );
             self.repaint_current_scanline_dot_with_bg_override(usize::from(x), bg_pixel, vram);
         }
         self.runtime
@@ -433,11 +443,14 @@ impl Ppu {
         repaint: CgbPendingPrevisibleWxPhaseRepaint,
         x: u8,
         vram: &VramBusView<'_>,
+        wx4_to_wx5_prefix_all_high: Option<bool>,
     ) -> u8 {
         match repaint.mode {
             CgbPrevisibleWxPhaseRepaintMode::FixedPattern => repaint.pixel_at(x),
             CgbPrevisibleWxPhaseRepaintMode::Wx4ToWx5FixedPrefix => {
-                if self.cgb_wx4_to_wx5_current_prefix_is_all_high(repaint) {
+                if wx4_to_wx5_prefix_all_high
+                    .unwrap_or_else(|| self.cgb_wx4_to_wx5_current_prefix_is_all_high(repaint))
+                {
                     self.runtime.panel.current_scanline_bg_pixels[usize::from(x)]
                 } else {
                     repaint.pixel_at(x)

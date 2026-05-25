@@ -898,6 +898,28 @@ fn cgb_dmg_software_wx4_phase_repaint_applies_plane_sources() {
             "{operating_mode:?}"
         );
 
+        let mut wx5_mixed_prefix =
+            cgb_previsible_retarget_fixture(4, MODE2_DOTS + 14, 0, operating_mode);
+        wx5_mixed_prefix.current_scanline_bg_pixels[0..16].fill(3);
+        wx5_mixed_prefix.current_scanline_bg_pixels[0] = 0;
+        wx5_mixed_prefix.current_scanline_mixed_pixels[0..16].fill(MixedPixel::background(3));
+        wx5_mixed_prefix.visible_output = PpuVisibleOutputState::Driving;
+        wx5_mixed_prefix.maybe_arm_dmg_previsible_wx_retarget(4, 5);
+        wx5_mixed_prefix.bg_pipeline_state.visible_pixels_output = 16;
+        let mut vram = crate::bus::VramDomain::from_bytes(&wx5_mixed_prefix.vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        wx5_mixed_prefix.test_apply_pending_cgb_previsible_wx_phase_repaint(&VramBusView::new(
+            BusMaster::Ppu,
+            &mut vram,
+        ));
+
+        assert_eq!(
+            &wx5_mixed_prefix.current_scanline_bg_pixels[0..16],
+            &[3, 3, 3, 3, 3, 0, 3, 3, 1, 1, 3, 3, 0, 3, 3, 1],
+            "{operating_mode:?}"
+        );
+
         let mut phase0 = cgb_previsible_retarget_fixture(4, MODE2_DOTS + 14, 0, operating_mode);
         phase0.write_window_tilemap_entry(0, 0, 0x01);
         phase0.write_bg_tile_row(0x01, 0, 0x00, 0b1010_1100);
