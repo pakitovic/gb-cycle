@@ -32,15 +32,16 @@ use gb_core::{
     CartridgeMappedRomWindow, CgbInfraredStatus, CgbSpeedMode, CpuAddressEvent,
     CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
     CpuExecutionState, CpuRegisters, CpuSnapshot,
-    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_SECOND,
-    DebugWramAddressSample, ExecutionMode, HardwareRevision, InterruptControllerSnapshot,
-    JoypadButton, JoypadSnapshot, MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
-    MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, Machine, MachineConfig, MachineRewindBuffer,
-    MachineRewindFrameBoundaryTracker, MachineStepObserver, MachineStepRegion, PersistentCartState,
-    PocketCameraFrame, PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
+    DEFAULT_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, DMG_T_CYCLES_PER_FRAME,
+    DMG_T_CYCLES_PER_SECOND, DebugWramAddressSample, ExecutionMode, HardwareRevision,
+    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot,
+    MAX_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES, MIN_CGB_IR_OPTICAL_PROPAGATION_DELAY_T_CYCLES,
+    Machine, MachineConfig, MachineRewindBuffer, MachineRewindFrameBoundaryTracker,
+    MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame,
+    PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
     PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, SgbVideoStandard,
-    StartupMode, TraceSummaryBuffer,
+    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, SgbClockRate,
+    SgbVideoStandard, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -118,7 +119,6 @@ const SGB_HOST_FRAMEBUFFER_WIDTH: u32 = SGB_FRAME_WIDTH as u32;
 const SGB_HOST_FRAMEBUFFER_HEIGHT: u32 = SGB_FRAME_HEIGHT as u32;
 #[cfg(test)]
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
-const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
 const AUDIO_QUEUE_TARGET_MS: f64 = 96.0;
 const AUDIO_QUEUE_DEADBAND_MS: f64 = 24.0;
 const AUDIO_QUEUE_PACING_GAIN: f64 = 0.10;
@@ -3622,6 +3622,7 @@ impl AudioQueuePacingCorrectionPolicy {
 
 struct FramePacer {
     next_frame_start: Instant,
+    frame_duration: Duration,
     audio_queue_pacing_correction_enabled: bool,
 }
 
@@ -3758,12 +3759,21 @@ fn u128_to_u64_saturating(value: u128) -> u64 {
 }
 
 impl FramePacer {
-    fn new(_vsync_enabled: bool) -> Self {
+    fn new(_vsync_enabled: bool, frame_duration: Duration) -> Self {
         Self {
             next_frame_start: Instant::now(),
+            frame_duration,
             audio_queue_pacing_correction_enabled: AudioQueuePacingCorrectionPolicy::from_env()
                 .correction_enabled(),
         }
+    }
+
+    fn set_frame_duration(&mut self, frame_duration: Duration) {
+        if self.frame_duration == frame_duration {
+            return;
+        }
+        self.frame_duration = frame_duration;
+        self.reset_host_pacing();
     }
 
     fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> FramePacingSample {
@@ -3771,7 +3781,7 @@ impl FramePacer {
             audio_queue_ms,
             self.audio_queue_pacing_correction_enabled,
         );
-        self.next_frame_start += FRAME_DURATION + audio_correction;
+        self.next_frame_start += self.frame_duration + audio_correction;
         let now = Instant::now();
         if now < self.next_frame_start {
             let sleep_target_duration = self.next_frame_start - now;
@@ -3908,6 +3918,7 @@ struct FramePerformanceSample {
 
 struct PerformanceCounter {
     base_title: String,
+    target_frame_rate_hz: f64,
     emulation_profile_mode: EmulationProfileMode,
     emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
     emulation_profile_request_in_flight: bool,
@@ -4042,6 +4053,7 @@ impl PerformanceCounter {
     ) -> Self {
         Self {
             base_title,
+            target_frame_rate_hz: target_frame_rate_hz(),
             emulation_profile_mode,
             emulation_profile_worker: emulation_profile_mode
                 .enabled()
@@ -4166,6 +4178,10 @@ impl PerformanceCounter {
             sample_ly_0_stall_lcd_disabled_t_cycles_observations: 0,
             hud_snapshot: None,
         }
+    }
+
+    fn set_target_frame_rate_hz(&mut self, target_frame_rate_hz: f64) {
+        self.target_frame_rate_hz = target_frame_rate_hz;
     }
 
     fn record_presented_frame(
@@ -4464,7 +4480,7 @@ impl PerformanceCounter {
 
         PerformanceHudSnapshot {
             fps,
-            speed_percent: fps / target_frame_rate_hz() * 100.0,
+            speed_percent: fps / self.target_frame_rate_hz * 100.0,
             frame_time_ms: elapsed_secs * 1_000.0 / frames_f64,
             emulation_time_ms: self.sample_emulation_duration.as_secs_f64() * 1_000.0 / frames_f64,
             render_time_ms: self.sample_render_duration.as_secs_f64() * 1_000.0 / frames_f64,
@@ -5852,7 +5868,10 @@ fn run_desktop_prepared(
         .ok_or_else(|| overflow_error("window height overflowed"))?;
 
     let base_window_title = window_title(&session, &session.config);
-    let mut frame_pacer = FramePacer::new(session.config.video.vsync);
+    let mut frame_pacer = FramePacer::new(
+        session.config.video.vsync,
+        frame_duration_for_config(&session.config),
+    );
     let mut performance_counter = if session.test_runner {
         PerformanceCounter::new_with_emulation_profile_mode(
             base_window_title.clone(),
@@ -5861,6 +5880,7 @@ fn run_desktop_prepared(
     } else {
         PerformanceCounter::new(base_window_title.clone())
     };
+    performance_counter.set_target_frame_rate_hz(target_frame_rate_hz_for_config(&session.config));
     let mut window_builder = video.window(&base_window_title, window_width, window_height);
     window_builder.position_centered();
     if session.config.video.fullscreen {
@@ -6260,6 +6280,9 @@ fn run_desktop_prepared(
             .audio_output
             .as_ref()
             .and_then(DesktopAudioOutput::queued_duration_ms);
+        frame_pacer.set_frame_duration(frame_duration_for_config(&session.config));
+        performance_counter
+            .set_target_frame_rate_hz(target_frame_rate_hz_for_config(&session.config));
         let pacing = if should_skip_host_frame_pacing(
             session.test_runner,
             fast_forward_still_active,
@@ -7220,8 +7243,41 @@ fn performance_window_title(base_title: &str, snapshot: PerformanceHudSnapshot) 
     )
 }
 
+fn desktop_gb_master_clock_rate_for_config(config: &DesktopConfig) -> SgbClockRate {
+    match config
+        .launch
+        .console_model
+        .sgb_profile_for_standard(config.launch.effective_sgb_video_standard())
+    {
+        Some(profile) => profile.timing().gb_master_clock_hz,
+        None => SgbClockRate::from_hz(DMG_T_CYCLES_PER_SECOND as u32),
+    }
+}
+
+fn frame_duration_for_gb_master_clock(clock_rate: SgbClockRate) -> Duration {
+    let numerator = u128::from(DMG_T_CYCLES_PER_FRAME)
+        .saturating_mul(u128::from(clock_rate.denominator))
+        .saturating_mul(1_000_000_000);
+    let denominator = clock_rate.numerator_hz.max(1) as u128;
+    let rounded_nanos = numerator
+        .saturating_add(denominator / 2)
+        .saturating_div(denominator);
+    Duration::from_nanos(u64::try_from(rounded_nanos).unwrap_or(u64::MAX))
+}
+
+fn frame_duration_for_config(config: &DesktopConfig) -> Duration {
+    frame_duration_for_gb_master_clock(desktop_gb_master_clock_rate_for_config(config))
+}
+
+fn target_frame_rate_hz_for_config(config: &DesktopConfig) -> f64 {
+    let clock_rate = desktop_gb_master_clock_rate_for_config(config);
+    clock_rate.numerator_hz as f64
+        / f64::from(clock_rate.denominator)
+        / DMG_T_CYCLES_PER_FRAME as f64
+}
+
 fn target_frame_rate_hz() -> f64 {
-    1.0 / FRAME_DURATION.as_secs_f64()
+    target_frame_rate_hz_for_config(&DesktopConfig::default())
 }
 
 fn process_events(
@@ -17094,15 +17150,21 @@ mod tests {
                 .build()
                 .expect("frontend harness window");
             let mut canvas = window.into_canvas();
-            let mut frame_pacer = super::FramePacer::new(config.video.vsync);
+            let mut frame_pacer = super::FramePacer::new(
+                config.video.vsync,
+                super::frame_duration_for_config(&config),
+            );
             super::apply_renderer_vsync(&mut canvas, &mut frame_pacer, config.video.vsync)
                 .expect("frontend harness vsync");
             let event_pump = sdl.event_pump().expect("frontend harness event pump");
             let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
-            let performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
-                super::window_title(&session, &config),
-                super::EmulationProfileMode::Disabled,
-            );
+            let mut performance_counter =
+                super::PerformanceCounter::new_with_emulation_profile_mode(
+                    super::window_title(&session, &config),
+                    super::EmulationProfileMode::Disabled,
+                );
+            performance_counter
+                .set_target_frame_rate_hz(super::target_frame_rate_hz_for_config(&config));
             let save_sessions = super::open_save_sessions_for_session(&session, &mut machine)
                 .expect("frontend harness save sessions");
             let runtime = super::FrontendRuntime {
@@ -20859,7 +20921,10 @@ mod tests {
 
     #[test]
     fn frame_pacer_and_performance_counter_cover_idle_paths() {
-        let mut frame_pacer = super::FramePacer::new(true);
+        let mut frame_pacer = super::FramePacer::new(
+            true,
+            super::frame_duration_for_config(&DesktopConfig::default()),
+        );
         frame_pacer.next_frame_start = Instant::now() - Duration::from_secs(1);
         let pacing = frame_pacer.wait_until_next_frame(None);
         assert_eq!(pacing.pacing_duration, Duration::ZERO);
@@ -20867,16 +20932,70 @@ mod tests {
         assert!(pacing.late_duration > Duration::ZERO);
         assert_eq!(pacing.audio_correction_duration, Duration::ZERO);
         assert_eq!(pacing.oversleep_duration, Duration::ZERO);
+        frame_pacer.set_frame_duration(Duration::from_millis(15));
+        assert_eq!(frame_pacer.frame_duration, Duration::from_millis(15));
         frame_pacer.set_vsync_enabled(true);
         assert!(frame_pacer.next_frame_start <= Instant::now());
 
-        let counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+        let mut counter = super::PerformanceCounter::new_with_emulation_profile_mode(
             "gb-desktop | no rom".to_string(),
             super::EmulationProfileMode::Disabled,
         );
+        counter.set_target_frame_rate_hz(60.0);
         let snapshot = counter.snapshot_from_elapsed(Duration::ZERO);
         assert!(snapshot.fps.is_finite());
         assert_eq!(snapshot.audio_queue_ms, None);
+    }
+
+    #[test]
+    fn desktop_frame_timing_uses_sgb_profile_gb_master_clock() {
+        fn assert_close(actual: f64, expected: f64) {
+            assert!(
+                (actual - expected).abs() < 0.000_1,
+                "expected {expected}, got {actual}"
+            );
+        }
+
+        let mut config = DesktopConfig::default();
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            59.727_500_6,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_742_706)
+        );
+
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
+        config.launch.sgb_video_standard = SgbVideoStandard::Ntsc;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            61.167_897_0,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_348_445)
+        );
+
+        config.launch.sgb_video_standard = SgbVideoStandard::Pal;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            60.609_962_4,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_498_938)
+        );
+
+        config.launch.console_model = DesktopConsoleModel::SuperGameBoy2;
+        assert_close(
+            super::target_frame_rate_hz_for_config(&config),
+            59.727_500_6,
+        );
+        assert_eq!(
+            super::frame_duration_for_config(&config),
+            Duration::from_nanos(16_742_706)
+        );
     }
 
     #[test]

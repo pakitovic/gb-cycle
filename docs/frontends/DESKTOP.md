@@ -64,6 +64,8 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 
 In CGB double-speed, desktop playback and recording capture that host-facing boundary only on the undoubled APU/LCD domain tick, not on every CPU-visible scheduler T-cycle, so a double-speed video frame enqueues roughly one frame of host audio instead of two.
 
+Desktop frame pacing and the performance HUD speed percentage use the effective GB master clock for the selected profile. Handheld and `SUPER GB2` profiles target the corrected DMG/SGB2 cadence of about `59.73` GB frames/s, original `SUPER GB` NTSC targets about `61.17` GB frames/s, and original `SUPER GB` PAL targets about `60.61` GB frames/s; the PAL host-video refresh of a future SNES/SFC shell remains separate and is not modeled as a 50 FPS GB core cadence. If renderer vsync is enabled, the observed window FPS may still be clamped by the host display, but `% speed` is computed against the selected SGB profile cadence.
+
 ## Audio investigation
 
 - Use `--audio-record path/to/capture.wav` to export direct digital stereo APU output to `WAV` or `AIFC` without going through speakers, room acoustics, the macOS microphone path, or the frontend mute/volume controls.
