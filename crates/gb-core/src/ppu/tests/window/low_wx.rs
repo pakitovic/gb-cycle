@@ -813,6 +813,64 @@ fn cgb_dmg_software_wx4_phase_repaint_arms_for_the_observed_tile_phases() {
 }
 
 #[test]
+fn cgb_dmg_software_wx5_and_wx6_fixed_phase_repaints_cover_edge_patterns() {
+    let cases = [
+        (
+            5,
+            6,
+            0,
+            0,
+            8,
+            8,
+            [3, 3, 3, 3, 3, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            6,
+            5,
+            0,
+            0,
+            SCREEN_WIDTH as u8,
+            8,
+            [1, 1, 3, 3, 3, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            6,
+            7,
+            0,
+            0,
+            16,
+            16,
+            [0, 0, 0, 0, 0, 0, 0, 3, 1, 1, 1, 1, 1, 3, 3, 3],
+        ),
+    ];
+
+    for (previous_wx, wx, cancel_guard_x, start_x, end_x, pattern_len, pixels) in cases {
+        let mut ppu = cgb_previsible_retarget_fixture(
+            previous_wx,
+            MODE2_DOTS + 14,
+            6,
+            OperatingMode::GbCompatible,
+        );
+
+        ppu.maybe_arm_dmg_previsible_wx_retarget(previous_wx, wx);
+
+        let repaint = ppu
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+            .unwrap_or_else(|| panic!("WX={previous_wx}->{wx} phase repaint should arm"));
+        assert_eq!(
+            repaint.cancel_guard_x, cancel_guard_x,
+            "WX={previous_wx}->{wx}"
+        );
+        assert_eq!(repaint.start_x, start_x, "WX={previous_wx}->{wx}");
+        assert_eq!(repaint.end_x, end_x, "WX={previous_wx}->{wx}");
+        assert_eq!(repaint.pattern_len, pattern_len, "WX={previous_wx}->{wx}");
+        assert_eq!(repaint.pixels, pixels, "WX={previous_wx}->{wx}");
+    }
+}
+
+#[test]
 fn cgb_dmg_software_wx4_phase_repaint_applies_plane_sources() {
     for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
         let mut wx5_all_high =
