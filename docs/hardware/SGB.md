@@ -10,7 +10,7 @@ SGB is a DMG-compatible Game Boy core embedded behind an ICD2/SNES/SFC host shel
 
 Do not treat SGB as CGB mode and do not implement a second DMG emulator for SGB. SGB behavior should enter through the `HostPlatform` axis and derived capabilities while `OperatingMode` remains a DMG-compatible software contract. Use `HostPlatform::Sgb` for the original Super Game Boy whenever possible and reserve `HostPlatform::Sgb2` for Super Game Boy 2.
 
-The host implementation must remain pluggable. Early implementation may use a deterministic HLE host for command effects, but command/data/audio interfaces must leave room for later real or equivalent SNES-side execution, especially for `DATA_SND`, `DATA_TRN`, `JUMP`, S-APU-related behavior, and Space Invaders-style host code.
+The host implementation must remain pluggable. The preferred path is hybrid: use deterministic HLE for validated host startup shell behavior, command effects, and early audio events, but keep command/data/audio interfaces able to switch to later real or equivalent SNES-side execution, especially for `DATA_SND`, `DATA_TRN`, `JUMP`, S-APU-related behavior, and Space Invaders-style host code.
 
 ## Public profiles
 
@@ -30,6 +30,8 @@ SGB/SGB2 must support `SkipBoot` and `RealBoot` as distinct startup paths. `Real
 For `SUPER GB`, `RealBoot` selects `sgb_boot.bin` for revision label `SGB-CPU 01`. For `SUPER GB 2`, `RealBoot` selects `sgb2_boot.bin` for revision label `CPU SGB2`. A documented private asset root example is `$HOME/emu/roms/bootrom`, containing `sgb_boot.bin` and/or `sgb2_boot.bin`; validation follows the existing boot-ROM root policy rather than embedding private paths in code. These assets are selected by `SgbHostProfile`, not by forking the GB `HardwareRevision` axis or by aliasing to `dmg_boot.bin`.
 
 Strict asset verification treats both SGB boot ROMs as `256`-byte low-window images: `sgb_boot.bin` has SHA-256 `0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360`, and `sgb2_boot.bin` has SHA-256 `fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988`.
+
+Current SGB/SGB2 `RealBoot` executes only this 256-byte GB-side boot ROM on the shared DMG-compatible CPU/bus path. It does not yet execute the SNES/SFC-side SGB firmware or seed the host's built-in startup border/animation state, so the deterministic HLE host starts with blank border VRAM/CGRAM until the boot ROM or cartridge command stream mutates implemented host state. The real-hardware Super Game Boy logo animation and built-in "Game Boy screen" border are SNES-side host-shell behavior and require a later host-startup model or real SNES-side execution backend; they are not contained in `sgb_boot.bin` / `sgb2_boot.bin` themselves.
 
 Startup must preserve cartridge header SGB capability metadata at `0x0146`, but header parsing remains cartridge-owned. The SGB host owns how header-derived capability policy affects host command acceptance, SGB boot behavior, and diagnostics. The Slice 1 HLE host accepts command packets only when the loaded cartridge header has SGB flag `$0146 == $03` and old licensee `$014B == $33`; active SGB/SGB2 hosts otherwise keep packet transport observable but reject complete packets before command side effects.
 
@@ -78,7 +80,7 @@ Packet transport state is part of `SgbHostSaveState`: last line state, active tr
 | Host audio | `SOUND`, `SOU_TRN` | SGB host audio event/state plus pluggable host backend request | Keep ordinary GB APU separate; allow deterministic HLE first and later S-APU-capable backend. |
 | System/data/execution | `DATA_SND`, `DATA_TRN`, `JUMP` | Pluggable SNES/SFC host backend request/state | Final-stage behavior; avoid game-specific shortcuts and leave room for SNES RAM, VRAM-transfer targets, and 65C816 execution. |
 
-The Slice 0 hardening contract defines typed `SgbHostBackendRequest` events before Slice 7/8 implementation: `SOUND` records an inline host-audio request, `SOU_TRN` uses the shared 4 KiB VRAM-transfer seam and records a sound-transfer descriptor, `DATA_SND` records an inline SNES memory write descriptor, `DATA_TRN` uses the same 4 KiB transfer seam with an explicit SNES destination, and `JUMP` records PC/NMI handler addresses and marks host execution as entered. The deterministic HLE backend currently records these requests for save/load and tests; it does not emulate S-APU mixing, SNES RAM contents, or 65C816 instruction execution yet.
+The Slice 0 hardening contract defines typed `SgbHostBackendRequest` events before Slice 8/9 implementation: `SOUND` records an inline host-audio request, `SOU_TRN` uses the shared 4 KiB VRAM-transfer seam and records a sound-transfer descriptor, `DATA_SND` records an inline SNES memory write descriptor, `DATA_TRN` uses the same 4 KiB transfer seam with an explicit SNES destination, and `JUMP` records PC/NMI handler addresses and marks host execution as entered. The deterministic HLE backend currently records these requests for save/load and tests; it does not emulate S-APU mixing, SNES RAM contents, or 65C816 instruction execution yet.
 
 ## Video and color composition
 
@@ -116,6 +118,14 @@ The SGB LCD composition path now selects a palette per 8×8 LCD cell before mapp
 
 Borders belong to the SGB host. Static and dynamic borders update host border tile/palette/attribute state through SGB commands and the 4 KiB transfer path, then compose with the GB LCD image through the frontend-neutral 256×224 host-frame contract.
 
+## Host startup shell
+
+The SNES/SFC-side startup shell owns the Super Game Boy logo animation, SGB jingle, startup transfer presentation, and built-in generic border shown before cartridge-side SGB border transfers. These effects are not contained in `sgb_boot.bin` / `sgb2_boot.bin`; those files are only GB-side low-window boot ROM images.
+
+Slice 7 should model this first as validated deterministic HLE state that writes through the same host video/audio structures used by normal commands: border tile data, tilemap, border palettes/backdrop, optional mask/freeze state, host-audio/jingle events, and a deterministic startup timeline. This must remain core-owned and save-state visible so `gb-desktop`, `gb-cli`, screenshots, and tests observe the same state; do not implement the generic border or jingle as a frontend-only overlay.
+
+The HLE startup shell is an intermediate backend, not the final architecture. It must remain replaceable by a later real/pluggable SNES-side backend and must not prevent cartridge-side `CHR_TRN`/`PCT_TRN` from replacing the startup border through the ordinary border pipeline.
+
 ## Multiplayer
 
 `MLT_REQ` enables SGB controller multiplexing for one, two, or four players. The SGB host owns player count, selected player, player-ID cycling, and routing of host input slots to GB-visible joypad reads. Frontends and test tooling should expose player slots without binding the GB core to any UI event model.
@@ -130,7 +140,7 @@ SGB multiplayer is not a DMG-07 four-player adapter and not a Game Link connecti
 
 The GB APU remains the shared core's ordinary audio generator. SGB special audio is host-side behavior driven by `SOUND` and `SOU_TRN`, exported or mixed through an SGB host-audio boundary.
 
-The typed backend contract stores `SgbHostAudioRequest::Sound` for inline `SOUND` packets and `SgbHostAudioRequest::SoundTransfer` after the shared `_TRN` capture completes for `SOU_TRN`. A deterministic HLE host-audio backend is acceptable for initial command/state support, but the API must leave room for a later SNES/S-APU-capable backend. Do not hardcode Donkey Kong (GB) special audio behavior as a title-specific path; use it only as a manual compatibility example.
+The typed backend contract stores `SgbHostAudioRequest::Sound` for inline `SOUND` packets and `SgbHostAudioRequest::SoundTransfer` after the shared `_TRN` capture completes for `SOU_TRN`. A deterministic HLE host-audio backend is acceptable for initial command/state support in Slice 8, and Slice 7 startup jingle events should use the same host-audio seam where practical, but the API must leave room for a later SNES/S-APU-capable backend. Do not hardcode Donkey Kong (GB) special audio behavior as a title-specific path; use it only as a manual compatibility example.
 
 ## Timing / accuracy requirements
 
@@ -150,7 +160,7 @@ SGB2 link availability is a profile/capability fact. `Machine::supports_external
 
 ## SNES-side execution
 
-`DATA_SND`, `DATA_TRN`, and `JUMP` require a host backend that can own SNES/SFC-side memory, data-transfer destinations, and execution state. The core now represents these as typed `SgbSnesHostRequest` values: inline `DATA_SND`, 4 KiB transfer-backed `DATA_TRN`, and `JUMP` with PC/NMI handler addresses. A command-only HLE host is acceptable for earlier slices, but the final execution slice must be able to replace request recording with 16-bit host-side execution sufficiently for software that uploads and jumps to SNES code.
+`DATA_SND`, `DATA_TRN`, and `JUMP` require a host backend that can own SNES/SFC-side memory, data-transfer destinations, and execution state. The core now represents these as typed `SgbSnesHostRequest` values: inline `DATA_SND`, 4 KiB transfer-backed `DATA_TRN`, and `JUMP` with PC/NMI handler addresses. A command-only HLE host is acceptable for earlier slices, but Slice 9 must be able to replace request recording with 16-bit host-side execution sufficiently for software that uploads and jumps to SNES code.
 
 Space Invaders should be treated as a manual compatibility example for this capability, not as a hardcoded special case.
 
@@ -182,7 +192,7 @@ Space Invaders should be treated as a manual compatibility example for this capa
 ## Open-source emulator references
 
 - SameBoy for practical SGB/SGB2 architecture, command behavior, and differential comparison after primary references.
-- bsnes/higan-class SNES references for later host-side 65C816/SNES/S-APU behavior when Slice 8 begins.
+- bsnes/higan-class SNES references for later host-side 65C816/SNES/S-APU behavior when Slice 9 begins.
 - GBE+ as an accessory/peripheral-oriented cross-check after primary references, especially for obscure SGB-adjacent behavior.
 
 Open-source emulator code is a comparison aid, not hardware truth. If references disagree, prefer real hardware documentation/research, then model clarity and deterministic tests.
@@ -197,6 +207,7 @@ Open-source emulator code is a comparison aid, not hardware truth. If references
 - Border transfer/composition tests for static border load, shared color-0/backdrop behavior, repeated updates, mask behavior, and save/load continuation.
 - `MLT_REQ` tests for one/two/four-player modes, player selection, P1 cycling, and frontend/test-runner input slots.
 - SGB/SGB2 profile tests for PAL/NTSC validity, corrected SGB2 clock profile, original SGB no-link behavior, and SGB2 Game Link availability.
+- Host startup shell tests for deterministic generic border state, startup animation timeline, SGB jingle events, save/load continuation, and replacement by cartridge-side border transfers.
 - Host-audio command tests for deterministic event/state capture without replacing the GB APU.
 - SNES-host seam tests for `DATA_SND`, `DATA_TRN`, `JUMP`, backend state persistence, and deterministic continuation.
 
@@ -209,7 +220,7 @@ Commercial titles are manual compatibility examples only unless a future private
 - SGB should reuse the DMG-family shared path through explicit axes and capabilities, not a dedicated "SGB core".
 - SGB palette/attribute/border state must be explicit host state and must not piggyback on CGB palette or CGB tile-attribute internals.
 - Every slice that adds live host state must update typed save states before the slice is considered closed.
-- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer state, typed host-audio and SNES-side backend request contracts, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes; the boot-ROM resolver now carries the same SGB asset identity through core, desktop loader helpers, and test-runner loading so RealBoot uses `sgb_boot.bin` or `sgb2_boot.bin` instead of `dmg_boot.bin`. Slice 2 adds persistent direct-palette state, a seven-packet command buffer for future multi-packet commands, and `SgbHost::compose_lcd_rgb555` / `Machine::sgb_lcd_framebuffer_rgb555` as the frontend-neutral base LCD color output; the post-Slice-2 title-palette refinement seeds palette 0 from the SGB BIOS default/title table when loading DMG-only headers that do not unlock SGB commands. Slice 3 adds pending `_TRN` transfer state, the retained last 4 KiB transfer payload, border tile data, border tilemap/palette state, `MASK_EN` mask/freeze state, and `SgbHost::compose_frame_rgb555` / `Machine::sgb_framebuffer_rgb555` for the 256×224 host frame. Slice 4 adds active 20×18 screen attributes, packed ATF memory, 512 system palettes, indirect palette/attribute commands, `PAL_PRI`, and attribute-aware LCD/freeze composition; the post-Slice-4 `PAL_PRI` refinement adds player-selected palette override state and application-vs-player visible priority switching. Slice 5 adds `MLT_REQ` mode state, selected-player cycling, four SGB host input slots, player-ID P1 read overlay, and pending input-slot save-state coverage. Slice 6 moves SGB profile timing into the model/profile contract, persists selected profile metadata, and gates physical external-port attachments so original SGB has no Game Link while SGB2 routes through existing link topologies; because this changes the typed whole-machine save-state metadata again, the durable machine save-state format version is bumped.
+- The Slice 0 baseline has an explicit inert `SgbHost` block in machine state, snapshots, and save states. It owns profile descriptors, deterministic-HLE backend identity, video/multiplayer state, typed host-audio and SNES-side backend request contracts, and SGB2 capability facts. Slice 1 extends that block with startup mode, real-boot asset intent, header-derived command acceptance, JOYP packet decode state, command packet counters, and packet traces observed from `FF00` writes; the boot-ROM resolver now carries the same SGB asset identity through core, desktop loader helpers, and test-runner loading so RealBoot uses `sgb_boot.bin` or `sgb2_boot.bin` instead of `dmg_boot.bin`. Slice 2 adds persistent direct-palette state, a seven-packet command buffer for future multi-packet commands, and `SgbHost::compose_lcd_rgb555` / `Machine::sgb_lcd_framebuffer_rgb555` as the frontend-neutral base LCD color output; the post-Slice-2 title-palette refinement seeds palette 0 from the SGB BIOS default/title table when loading DMG-only headers that do not unlock SGB commands. Slice 3 adds pending `_TRN` transfer state, the retained last 4 KiB transfer payload, border tile data, border tilemap/palette state, `MASK_EN` mask/freeze state, and `SgbHost::compose_frame_rgb555` / `Machine::sgb_framebuffer_rgb555` for the 256×224 host frame. Slice 4 adds active 20×18 screen attributes, packed ATF memory, 512 system palettes, indirect palette/attribute commands, `PAL_PRI`, and attribute-aware LCD/freeze composition; the post-Slice-4 `PAL_PRI` refinement adds player-selected palette override state and application-vs-player visible priority switching. Slice 5 adds `MLT_REQ` mode state, selected-player cycling, four SGB host input slots, player-ID P1 read overlay, and pending input-slot save-state coverage. Slice 6 moves SGB profile timing into the model/profile contract, persists selected profile metadata, and gates physical external-port attachments so original SGB has no Game Link while SGB2 routes through existing link topologies; because this changes the typed whole-machine save-state metadata again, the durable machine save-state format version is bumped. Slice 7 should add core-owned startup shell state for the built-in generic border, SGB jingle, startup animation timeline, and transfer presentation through the same host video/audio seams planned for later backends. Slice 8 should implement general `SOUND`/`SOU_TRN` host-audio command behavior. Slice 9 should implement pluggable SNES-side data transfer and 16-bit execution for `DATA_SND`, `DATA_TRN`, and `JUMP`.
 
 ## Known pitfalls
 
@@ -225,6 +236,6 @@ Commercial titles are manual compatibility examples only unless a future private
 
 ## Open questions
 
-- RealBoot execution details beyond asset selection still need hardware validation: exact SGB/SGB2 post-boot handoff snapshots, boot timing, and any host-side startup effects not already represented by the current DMG-compatible low-window mapping.
-- Which SNES/SFC host backend is preferred for Slice 8: a minimal in-repo execution model, a narrow pluggable backend, or an integration with a broader SNES core.
+- RealBoot execution details beyond GB-side asset selection still need hardware validation: exact SGB/SGB2 post-boot handoff snapshots, boot timing, the SNES-side Super Game Boy logo animation, SGB jingle, and the built-in startup/default border state not already represented by the current DMG-compatible low-window mapping.
+- Which SNES/SFC host backend is preferred for Slice 9: a minimal in-repo execution model, a narrow pluggable backend, or an integration with a broader SNES core.
 - What frontend output surface should represent the combined SGB border plus GB LCD image without disrupting existing handheld framebuffer APIs.
