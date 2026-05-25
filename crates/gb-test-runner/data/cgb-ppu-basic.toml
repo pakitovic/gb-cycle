@@ -34,6 +34,7 @@ fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
 family = "hacktix"
 id = "cgb-ppu-basic-hacktix-bully-gbc"
 rom = "bully.gb"
+source_path = "testroms/ashiepaws/bully.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
