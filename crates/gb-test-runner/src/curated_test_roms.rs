@@ -2212,6 +2212,7 @@ mod tests {
         RomCaseOutcome, RomCaseReport, RomSuiteReport, TestSubsystem, Timeout,
     };
     use gb_core::{ConsoleModel, HardwareRevision, StartupMode};
+    use std::collections::BTreeSet;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -3899,6 +3900,44 @@ mod tests {
         assert_eq!(
             manifest_case_report_rom_display(cgb_boot_regs),
             "misc/boot_regs-cgb.gb"
+        );
+    }
+
+    #[test]
+    fn hacktix_manifest_uses_ashiepaws_upstream_paths_with_stable_local_family() {
+        let manifests = curated_test_rom_manifests();
+        let hacktix_cases = manifests
+            .iter()
+            .flat_map(|manifest| &manifest.cases)
+            .filter(|case| case.family == "hacktix")
+            .map(|case| {
+                (
+                    case.id.as_str(),
+                    case.rom.as_path(),
+                    case.source_path.as_path(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            hacktix_cases,
+            BTreeSet::from([
+                (
+                    "cgb-ppu-basic-hacktix-bully-gbc",
+                    Path::new("bully.gb"),
+                    Path::new("testroms/ashiepaws/bully.gb")
+                ),
+                (
+                    "hacktix-bully",
+                    Path::new("bully.gb"),
+                    Path::new("testroms/ashiepaws/bully.gb")
+                ),
+                (
+                    "hacktix-strikethrough",
+                    Path::new("strikethrough.gb"),
+                    Path::new("testroms/ashiepaws/strikethrough.gb")
+                ),
+            ])
         );
     }
 
