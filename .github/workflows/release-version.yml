@@ -1,0 +1,133 @@
+name: release-version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer version to release, for example 0.1.7 or v0.1.7.
+        required: true
+        type: string
+      dry_run:
+        description: Validate the version bump and show the diff without committing, tagging, or releasing.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: release-version
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Normalize version
+        id: version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$(scripts/bump-workspace-version.sh --print-normalized "${VERSION_INPUT}")"
+          tag="v${version}"
+
+          if [[ "${version}" == *-* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check release tag does not exist
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          if git rev-parse --verify --quiet "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+            echo "tag ${{ steps.version.outputs.tag }} already exists" >&2
+            exit 1
+          fi
+
+      - name: Bump workspace crate versions
+        run: scripts/bump-workspace-version.sh --allow-same "${{ steps.version.outputs.version }}"
+
+      - name: Validate bumped metadata
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --format-version=1 --no-deps >/tmp/gb-cycle-metadata.json
+          cargo fmt --all --check
+          git diff --check
+
+      - name: Show dry-run diff
+        if: ${{ inputs.dry_run }}
+        run: git diff -- Cargo.lock 'crates/*/Cargo.toml'
+
+      - name: Configure release git identity
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git add Cargo.lock crates/*/Cargo.toml
+          if git diff --cached --quiet; then
+            echo "workspace versions already match ${{ steps.version.outputs.version }}; skipping commit"
+          else
+            git commit -m "chore(release): prepare ${{ steps.version.outputs.tag }}"
+            git push origin HEAD:main
+          fi
+
+      - name: Push release tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          release_args=("${tag}" --verify-tag --title "${tag}" --generate-notes)
+          if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} already exists"
+          elif ! gh release create "${release_args[@]}"; then
+            gh release view "${tag}" >/dev/null
+          fi
+
+      - name: Dispatch package release workflows
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          for workflow in release-linux.yml release-macos.yml release-windows.yml; do
+            gh workflow run "${workflow}" --ref "${tag}"
+          done

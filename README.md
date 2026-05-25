@@ -20,7 +20,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, 
 | Benchmarking | Shared `gb-benchmark` case parsing, deterministic input scheduling, artifact naming, and stats serialization let `gb-cli`, `gb-desktop`, and `scripts/run-benchmark.sh` run the same portable one-file-per-game benchmark contracts. |
 | Save states / rewind | Versioned `.gbstate` v3 whole-machine save/load with metadata-checked restore, deterministic continuation coverage, CGB state coverage, and core-owned rewind snapshots exposed by desktop hold-to-rewind. |
 | Debugging / tooling | Typed traces, breakpoints, watchpoints, subsystem snapshots, RGB555 / grayscale framebuffer artifacts, differential comparison, and first-divergence probes provide practical localization paths for timing-sensitive failures. |
-| Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix. |
+| Validation | Phase 9 DMG closure keeps the `167/167` curated external report (`165` passing, `2` informational) while Phase 10 adds promoted CGB ROM gates for smoke, boot/DIV, speed, PPU, DMA, audio, and RTC coverage through local Make targets and the GitHub `test-roms` matrix; green non-DocBoy extra/internal suites run through the separate GitHub `test-roms-extra` matrix. |
 
 ## Current structure
 
@@ -149,6 +149,10 @@ Tag pushes matching `v*` build the SDL3 desktop frontend with the `release-max` 
 - `gb-cycle-linux-x86_64.tar.gz`
 - `gb-cycle-macos-aarch64.zip`
 
+Use the manual `release-version` GitHub Actions workflow to prepare a new version from `main`. Pass the SemVer crate version without the tag prefix, for example `0.1.7`; `v0.1.7` is also accepted and normalized. The workflow rejects versions older than the current aligned workspace version, updates every workspace crate package version plus internal workspace dependency requirements, updates `Cargo.lock`, commits `chore(release): prepare v<version>` to `main` when files changed, creates the annotated `v<version>` tag, creates the GitHub Release, and explicitly dispatches the three platform release workflows at that tag so their assets attach to the release. Set `dry_run` when you only want the version validation and diff without pushing anything. Prerelease versions such as `0.1.7-rc.1` create GitHub prereleases; SemVer build metadata is intentionally not accepted for crate-release automation.
+
+The workflow needs repository Actions permission to write contents and a `main` branch policy that allows the repository `GITHUB_TOKEN` to push the release commit and tag.
+
 The macOS release is Apple Silicon only. The bundle is ad-hoc signed for internal consistency, but it is not notarized with Apple Developer ID credentials, so a downloaded ZIP may need the normal macOS Privacy & Security "Open Anyway" override on first launch.
 
 ### Requirements
@@ -193,7 +197,9 @@ make coverage
 ```bash
 make ci
 make test-roms
+make test-roms-extra
 make test-roms-cgb
+make test-roms-cgb-extra
 make coverage
 ```
 
