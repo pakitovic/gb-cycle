@@ -23,6 +23,12 @@ The host implementation must remain pluggable. The preferred path is hybrid: use
 
 `gb-desktop` and `gb-cli` expose `SGB` and `SGB2` through the same public model/profile selector as handheld models. The model selector maps `SGB` through an explicit video-standard axis, defaulting to `SgbHostProfile::SgbNtsc` and allowing `SgbHostProfile::SgbPal` via `--sgb-standard pal` or `CONFIG -> SYSTEM -> VIDEO PAL`; `SGB2` always maps to `SgbHostProfile::Sgb2Ntsc`, rejects an explicit CLI SGB standard, and shows a disabled `VIDEO NTSC` UI item instead of introducing an impossible PAL SGB2 profile or `SGB1` naming.
 
+## Current implementation level
+
+The current public SGB/SGB2 implementation covers the Phase 11 slices 0-6 milestone: architecture and save-state shape, `SkipBoot`/`RealBoot` asset selection, JOYP packet transport, SGB-header unlock policy, base palette commands, BIOS title/default palette seeding for DMG-only titles, `_TRN` transfer capture, static/dynamic borders, `MASK_EN`, advanced screen coloring, transferred palette/attribute files, `PAL_PRI`, `MLT_REQ` multiplayer, SGB NTSC/PAL and SGB2 NTSC profile timing, desktop/CLI model exposure, SGB border presentation toggles, and SGB2 physical Game Link routing.
+
+The next SGB milestone deliberately starts at deferred Slice 7. It will add the SNES/SFC-side startup shell, built-in generic border, logo animation, and SGB jingle; deferred Slice 8 will add general SGB special audio; deferred Slice 9 will add SNES-side data transfer and 16-bit execution. Until those slices land, current RealBoot executes the GB-side 256-byte `sgb_boot.bin` / `sgb2_boot.bin` assets and host command effects, but it does not execute or fake the real SNES/SFC firmware startup presentation.
+
 ## Boot and startup
 
 SGB/SGB2 must support `SkipBoot` and `RealBoot` as distinct startup paths. `RealBoot` executes the SGB-profile-derived boot ROM on the shared CPU/bus/scheduler path with the boot ROM mapped until the real handoff; `SkipBoot` synthesizes a coherent post-boot handoff state and does not require boot ROM bytes.
@@ -129,6 +135,8 @@ The HLE startup shell is an intermediate backend, not the final architecture. It
 ## Multiplayer
 
 `MLT_REQ` enables SGB controller multiplexing for one, two, or four players. The SGB host owns player count, selected player, player-ID cycling, and routing of host input slots to GB-visible joypad reads. Frontends and test tooling should expose player slots without binding the GB core to any UI event model.
+
+Frontend input routing for SGB/SGB2 must target the single SGB host controller slots, not the physical serial/link topology. In a single SGB-family desktop session, P2/P3/P4 host inputs are valid `MLT_REQ` controller sources even when original SGB correctly disables `EXT. PORT`; if SGB2 is placed in an explicit Game Link session, the linked-session P2 routing remains the physical secondary console and is separate from SGB host controller multiplexing.
 
 The Slice 5 baseline treats P15 low-to-high transitions as the selected-player cycle edge when the active player count is even. This includes normal polling transitions and the transitions produced by SGB command packet transport itself, so sending `MLT_REQ` while multiplayer is already enabled can advance the selected player before the command side effect masks it into the new mode. P1 reads with both P14/P15 high return the player-ID nibble for multiplayer modes, while ordinary button and direction row reads are still resolved by the joypad subsystem using the selected SGB host input slot.
 

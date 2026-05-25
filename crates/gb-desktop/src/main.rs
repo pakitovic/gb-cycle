@@ -61,7 +61,7 @@ use gb_persistence::{
     import_external_cartridge_save, uses_battery_backed_hardware_persistence,
 };
 use input::{
-    FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_axis,
+    FrontendInputState, FrontendJoypadTarget, GamepadManager, gamepad_button_binding_from_sdl_axis,
     gamepad_button_binding_from_sdl_button, gamepad_trigger_axis_is_pressed,
     gamepad_trigger_axis_next_pressed,
 };
@@ -5500,6 +5500,63 @@ fn player_session_kind(machine: &DesktopEmulationSession) -> DesktopPlayerSessio
         return DesktopPlayerSessionKind::LinkedDmg04TwoPlayer;
     }
     DesktopPlayerSessionKind::Single
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlayerInputRoute {
+    keyboard_profile: PlayerKeyboardProfile,
+    target: FrontendJoypadTarget,
+}
+
+fn input_route_for_player_slot(
+    machine: &DesktopEmulationSession,
+    session_kind: DesktopPlayerSessionKind,
+    slot: PlayerSlot,
+) -> Option<PlayerInputRoute> {
+    let policy = host_policy_for_slot(session_kind, slot);
+    if policy.keyboard_profile != PlayerKeyboardProfile::Disabled {
+        return Some(PlayerInputRoute {
+            keyboard_profile: policy.keyboard_profile,
+            target: FrontendJoypadTarget::Local,
+        });
+    }
+
+    sgb_input_route_for_player_slot(machine, slot)
+}
+
+fn sgb_input_route_for_player_slot(
+    machine: &DesktopEmulationSession,
+    slot: PlayerSlot,
+) -> Option<PlayerInputRoute> {
+    let DesktopEmulationSession::Single(primary) = machine else {
+        return None;
+    };
+    if !primary.config().host_platform.is_sgb() {
+        return None;
+    }
+
+    let keyboard_profile = match slot {
+        PlayerSlot::P1 => return None,
+        PlayerSlot::P2 => PlayerKeyboardProfile::LinkedDmg04P2,
+        PlayerSlot::P3 => PlayerKeyboardProfile::LinkedDmg07P3,
+        PlayerSlot::P4 => PlayerKeyboardProfile::LinkedDmg07P4,
+    };
+
+    Some(PlayerInputRoute {
+        keyboard_profile,
+        target: FrontendJoypadTarget::SgbPlayer((slot.index() + 1) as u8),
+    })
+}
+
+fn machine_for_player_input_route_mut(
+    machine: &mut DesktopEmulationSession,
+    slot: PlayerSlot,
+    route: PlayerInputRoute,
+) -> Option<&mut Machine<TraceSummaryBuffer>> {
+    match route.target {
+        FrontendJoypadTarget::Local => machine.machine_for_player_slot_mut(slot),
+        FrontendJoypadTarget::SgbPlayer(_) => Some(machine.primary_machine_mut()),
+    }
 }
 
 fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSummaryBuffer> {
@@ -12778,15 +12835,20 @@ fn sync_live_input_state(
     runtime: &mut FrontendRuntime,
 ) {
     clear_live_input_state(machine, runtime);
+    let session_kind = player_session_kind(machine);
     for slot in PlayerSlot::ALL {
-        let session_kind = player_session_kind(machine);
-        let policy = host_policy_for_slot(session_kind, slot);
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            runtime.player_inputs.input_mut(slot).reset();
+            continue;
+        };
+        let slot_machine = machine_for_player_input_route_mut(machine, slot, route);
         sync_player_keyboard_state(
             event_pump,
             keyboard_bindings,
-            policy.keyboard_profile,
+            route.keyboard_profile,
+            route.target,
             runtime.player_inputs.input_mut(slot),
-            machine.machine_for_player_slot_mut(slot),
+            slot_machine,
         );
     }
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
@@ -12800,9 +12862,17 @@ fn sync_live_input_state(
 }
 
 fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
+    let session_kind = player_session_kind(machine);
     for slot in PlayerSlot::ALL {
-        match machine.machine_for_player_slot_mut(slot) {
-            Some(machine) => runtime.player_inputs.input_mut(slot).clear_all(machine),
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            runtime.player_inputs.input_mut(slot).reset();
+            continue;
+        };
+        match machine_for_player_input_route_mut(machine, slot, route) {
+            Some(machine) => runtime
+                .player_inputs
+                .input_mut(slot)
+                .clear_all_for_target(machine, route.target),
             None => runtime.player_inputs.input_mut(slot).reset(),
         }
     }
@@ -12812,6 +12882,7 @@ fn sync_player_keyboard_state(
     event_pump: &sdl3::EventPump,
     keyboard_bindings: &KeyboardBindings,
     keyboard_profile: PlayerKeyboardProfile,
+    target: FrontendJoypadTarget,
     input_state: &mut FrontendInputState,
     machine: Option<&mut Machine<TraceSummaryBuffer>>,
 ) {
@@ -12835,8 +12906,9 @@ fn sync_player_keyboard_state(
                 (JoypadButton::Start, desktop_key_scancode(joypad.start)),
             ];
             for (joypad_button, scancode) in bindings {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12844,8 +12916,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg04P2 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG04_P2_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12853,8 +12926,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg07P3 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG07_P3_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12862,8 +12936,9 @@ fn sync_player_keyboard_state(
         }
         PlayerKeyboardProfile::LinkedDmg07P4 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG07_P4_KEYBOARD_BINDINGS {
-                input_state.set_keyboard_button(
+                input_state.set_keyboard_button_for_target(
                     machine,
+                    target,
                     joypad_button,
                     keyboard_state.is_scancode_pressed(scancode),
                 );
@@ -12885,22 +12960,24 @@ fn apply_keyboard_event_to_player_slots(
     let session_kind = player_session_kind(machine);
     let keyboard_bindings = runtime.keyboard_bindings;
     for slot in PlayerSlot::ALL {
-        let policy = host_policy_for_slot(session_kind, slot);
+        let Some(route) = input_route_for_player_slot(machine, session_kind, slot) else {
+            continue;
+        };
         let Some(button) = joypad_button_for_player_keyboard_event(
-            policy.keyboard_profile,
+            route.keyboard_profile,
             keyboard_bindings,
             keycode,
             scancode,
         ) else {
             continue;
         };
-        let Some(slot_machine) = machine.machine_for_player_slot_mut(slot) else {
+        let Some(slot_machine) = machine_for_player_input_route_mut(machine, slot, route) else {
             continue;
         };
         runtime
             .player_inputs
             .input_mut(slot)
-            .set_keyboard_button(slot_machine, button, pressed);
+            .set_keyboard_button_for_target(slot_machine, route.target, button, pressed);
     }
 }
 
@@ -26746,6 +26823,66 @@ mod tests {
                 .snapshot()
                 .pressed_mask,
             0
+        );
+    }
+
+    #[test]
+    fn sgb_single_runtime_routes_multiplayer_keyboard_slots_to_host_controllers() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("sgb-keyboard-routing", true, false, false);
+        harness.machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::SgbNtsc),
+        ));
+
+        harness.push_key_with_scancode(Keycode::E, Scancode::E, true);
+        harness.push_key_with_scancode(Keycode::B, Scancode::B, true);
+        harness.push_key_with_scancode(Keycode::M, Scancode::M, true);
+        harness
+            .process_events()
+            .expect("SGB keyboard press should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .sgb_host()
+                .snapshot()
+                .multiplayer
+                .player_pressed_masks,
+            [0x00, 0x80, 0x10, 0x20],
+            "P2 START, P3 A, and P4 B should route into SGB host controller slots instead of Game Link machines"
+        );
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0,
+            "SGB P2/P3/P4 desktop keys must not leak into the local P1 joypad"
+        );
+
+        harness.push_key_with_scancode(Keycode::E, Scancode::E, false);
+        harness.push_key_with_scancode(Keycode::B, Scancode::B, false);
+        harness.push_key_with_scancode(Keycode::M, Scancode::M, false);
+        harness
+            .process_events()
+            .expect("SGB keyboard release should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .sgb_host()
+                .snapshot()
+                .multiplayer
+                .player_pressed_masks,
+            [0x00; 4]
         );
     }
 

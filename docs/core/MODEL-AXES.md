@@ -4,12 +4,12 @@
 
 Explain how to use the public model-facing types introduced around `ConsoleModel`, `OperatingMode`, `HostPlatform`, and `CapabilitySet`.
 
-This file is a code-facing usage and migration note. It exists to keep DMG, future CGB, and future SGB work from collapsing distinct concepts back into one catch-all enum.
+This file is a code-facing usage and migration note. It exists to keep DMG, CGB, and SGB work from collapsing distinct concepts back into one catch-all enum.
 
 ## Authority boundaries
 
 - `ARCHITECTURE.md` owns the existence of the separate axes and the high-level architectural reason for them.
-- `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that later consumes those axes.
+- `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that consumes those axes.
 - This file owns the global model-profile reference table that aligns the public axes with hardware-profile names, without making those hardware-profile names functional behavior gates.
 - This file owns the practical "which type should I consult here?" guidance for production code and follow-up refactors.
 
@@ -35,7 +35,7 @@ Examples:
 - `ConsoleModel::GameBoyColor` + `HardwareRevision::CpuCgbE` + `OperatingMode::Cgb` = CGB-family silicon on the active CGB-E profile, with `cgbE_boot.bin` selected automatically for `RealBoot`
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
-- `HostPlatform::Sgb` or `HostPlatform::Sgb2` = future SGB shell around the shared GB core, not a different GB silicon family
+- `HostPlatform::Sgb` or `HostPlatform::Sgb2` = SGB shell around the shared GB core, not a different GB silicon family
 - `SgbHostProfile::SgbNtsc`, `SgbHostProfile::SgbPal`, or `SgbHostProfile::Sgb2Ntsc` = the concrete SGB/SGB2 host profile used for video standard, source clock, corrected-clock fact, and physical Game Link availability; `SgbPal` is only coherent with `HostPlatform::Sgb`, and `Sgb2Ntsc` is only coherent with `HostPlatform::Sgb2`
 
 `CapabilitySet` is the derived semantic view over the broad model axes. SGB host-profile facts currently live on `SgbHostProfile` because they are profile-specific timing/link facts rather than GB-silicon behavior; code that needs SGB2 Game Link availability or corrected clock should consult the selected SGB profile instead of duplicating `HostPlatform` checks.
@@ -115,9 +115,9 @@ Reach for `HostPlatform` when the behavior belongs to the environment around the
 
 Typical uses:
 
-- future SGB command transport
-- future SGB border ownership
-- future SGB multiplayer-host behavior
+- SGB command transport
+- SGB border ownership
+- SGB multiplayer-host behavior
 - host-shell timing coordination with a SNES-side implementation
 
 `HostPlatform` should not decide CPU, PPU, DMA, timer, or APU truth directly unless a subsystem handbook later documents a real host-platform-visible effect.
@@ -185,9 +185,9 @@ Use `OperatingMode` or a capability derived from it for:
 
 Use `HostPlatform` or a capability derived from it for:
 
-- future SGB packet decoder ownership
-- future border composition outside the handheld LCD image
-- future SGB multiplayer-controller multiplexing
+- SGB packet decoder ownership
+- SGB border composition outside the handheld LCD image
+- SGB multiplayer-controller multiplexing
 
 Use `SgbHostProfile` directly for:
 

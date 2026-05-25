@@ -1157,7 +1157,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
                 options.framebuffer_out,
                 Some(PathBuf::from("framebuffer.png"))
             );
-            assert!(options.show_sgb_border);
+            assert!(!options.show_sgb_border);
             assert_eq!(options.display_palette, None);
             assert_eq!(options.effective_display_palette(), None);
             assert_eq!(options.trace_out, Some(PathBuf::from("trace.txt")));
@@ -1226,6 +1226,22 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     assert_eq!(options.model, RunModel::SuperGameBoy);
     assert!(!options.show_sgb_border);
 
+    let action = parse_run_arguments(["demo.gb", "--border-off"])
+        .expect("border disabling should be accepted and ignored outside SGB-family output");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::GameBoy);
+    assert!(!options.show_sgb_border);
+
+    let action = parse_run_arguments(["demo.gb", "--model", "CGB", "--border-off"])
+        .expect("border disabling should not reject non-SGB models");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert_eq!(options.model, RunModel::Color);
+    assert!(!options.show_sgb_border);
+
     let sgb2_standard_error =
         parse_run_arguments(["demo.gb", "--model", "SGB2", "--sgb-standard", "ntsc"])
             .expect_err("SGB2 should not accept an explicit SGB standard");
@@ -1240,7 +1256,7 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
 }
 
 #[test]
-fn parse_run_arguments_accepts_test_runner_without_changing_emulated_limits() {
+fn parse_run_arguments_applies_test_runner_defaults_without_changing_emulated_limits() {
     let action =
         parse_run_arguments(["demo.gb", "--test-runner"]).expect("test-runner should parse");
 
@@ -1250,7 +1266,13 @@ fn parse_run_arguments_accepts_test_runner_without_changing_emulated_limits() {
 
     assert!(options.test_runner);
     assert_eq!(options.startup_mode, StartupMode::SkipBoot);
-    assert_eq!(options.execution_mode, ExecutionMode::Strict);
+    assert_eq!(options.execution_mode, ExecutionMode::Permissive);
+    assert!(!options.show_sgb_border);
+    assert_eq!(options.display_palette, Some(RunDisplayPalette::Grey));
+    assert_eq!(
+        options.effective_display_palette(),
+        Some(DMG_GREY_DISPLAY_PALETTE)
+    );
     assert_eq!(options.save_dir, None);
     assert_eq!(
         options.default_run_budget,
@@ -1258,6 +1280,26 @@ fn parse_run_arguments_accepts_test_runner_without_changing_emulated_limits() {
             frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
         })
     );
+
+    let action = parse_run_arguments(["demo.gb", "--test-runner", "--mode", "strict"])
+        .expect("test-runner should force permissive mode");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert!(options.test_runner);
+    assert_eq!(options.execution_mode, ExecutionMode::Permissive);
+
+    let action = parse_run_arguments(["demo.gb", "--model", "CGB", "--test-runner"])
+        .expect("test-runner should be accepted for non-DMG models");
+    let CliAction::Run(options) = action else {
+        panic!("expected run action");
+    };
+    assert!(options.test_runner);
+    assert_eq!(options.model, RunModel::Color);
+    assert_eq!(options.execution_mode, ExecutionMode::Permissive);
+    assert!(!options.show_sgb_border);
+    assert_eq!(options.display_palette, None);
+    assert_eq!(options.effective_display_palette(), None);
 }
 
 #[test]
@@ -1449,6 +1491,10 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     let missing_value_cases = [
         (vec!["demo.gb", "--model"], "--model requires a value"),
         (vec!["demo.gb", "--revision"], "--revision requires a value"),
+        (
+            vec!["demo.gb", "--sgb-standard"],
+            "--sgb-standard requires a value",
+        ),
         (vec!["demo.gb", "--startup"], "--startup requires a value"),
         (vec!["demo.gb", "--mode"], "--mode requires a value"),
         (
@@ -1536,16 +1582,6 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
         parse_run_arguments(["demo.gb", "--revision", "cpu-cgb-e"])
             .expect_err("CGB-E hardware requires CGB model"),
         "--revision cpu-cgb-e is not supported by --model DMG; expected one of: dmg-cpu-c"
-    );
-    assert_eq!(
-        parse_run_arguments(["demo.gb", "--border-off"])
-            .expect_err("border-off requires an SGB-family model"),
-        "--border-off requires --model SGB or --model SGB2"
-    );
-    assert_eq!(
-        parse_run_arguments(["demo.gb", "--model", "CGB", "--border-off"])
-            .expect_err("border-off rejects non-SGB models"),
-        "--border-off requires --model SGB or --model SGB2"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "--cgb-revision", "cgb-e"])
@@ -2451,11 +2487,29 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
             .expect_err("inactive revisions should fail")
             .contains("unsupported --revision value")
     );
+    assert_eq!(revision_argument_name(HardwareRevision::DmgCpu), "dmg-cpu");
+    assert_eq!(
+        revision_argument_name(HardwareRevision::DmgCpuA),
+        "dmg-cpu-a"
+    );
+    assert_eq!(
+        revision_argument_name(HardwareRevision::DmgCpuB),
+        "dmg-cpu-b"
+    );
     assert_eq!(
         revision_argument_name(HardwareRevision::DmgCpuC),
         "dmg-cpu-c"
     );
     assert_eq!(revision_argument_name(HardwareRevision::CpuMgb), "cpu-mgb");
+    assert_eq!(revision_argument_name(HardwareRevision::CpuCgb), "cpu-cgb");
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgbA),
+        "cpu-cgb-a"
+    );
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgbB),
+        "cpu-cgb-b"
+    );
     assert_eq!(
         revision_argument_name(HardwareRevision::CpuCgbC),
         "cpu-cgb-c"

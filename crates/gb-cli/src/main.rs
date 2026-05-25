@@ -60,7 +60,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
     "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
     "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
-    "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+    "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and no SGB border\n",
     "  --benchmark <path>                     Run one portable benchmark case TOML\n",
     "  --frames <n>                           Stop after <n> completed frames\n",
     "  --tcycles <n>                          Stop after <n> T-cycles\n",
@@ -70,7 +70,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
     "  --framebuffer-out <path>               Save the final framebuffer as PGM, or PNG when <path> ends in .png (SGB PNG uses 256x224 RGB555)\n",
-    "  --border-off                           Hide the SGB/SGB2 host border for PNG framebuffer artifacts\n",
+    "  --border-off                           Hide the SGB/SGB2 host border for PNG framebuffer artifacts; ignored by other models\n",
     "  --palette <grey>                       Use the DMG grey framebuffer palette when --model DMG is active\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",
@@ -139,6 +139,7 @@ impl RunModel {
         }
     }
 
+    #[cfg(test)]
     const fn sgb_profile(self) -> Option<SgbHostProfile> {
         match self {
             Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
@@ -790,6 +791,9 @@ where
         "missing required ROM path; run `gb-cli run --help` for usage".to_string()
     })?;
     options.test_runner |= test_runner_requested;
+    if options.test_runner {
+        apply_test_runner_defaults(&mut options);
+    }
     if options.save_dir.is_none() {
         if options.save_key.is_some() {
             return Err("--save-key requires --save-dir".to_string());
@@ -809,6 +813,13 @@ where
     Ok(CliAction::Run(Box::new(options)))
 }
 
+fn apply_test_runner_defaults(options: &mut RunOptions) {
+    options.test_runner = true;
+    options.execution_mode = ExecutionMode::Permissive;
+    options.show_sgb_border = false;
+    options.display_palette = Some(RunDisplayPalette::Grey);
+}
+
 fn validate_run_model_axes(
     options: &RunOptions,
     sgb_video_standard_explicit: bool,
@@ -821,9 +832,6 @@ fn validate_run_model_axes(
             options.model.name(),
             supported_revision_names(console_model)
         ));
-    }
-    if !options.show_sgb_border && options.model.sgb_profile().is_none() {
-        return Err("--border-off requires --model SGB or --model SGB2".to_string());
     }
     if sgb_video_standard_explicit && options.model != RunModel::SuperGameBoy {
         return Err("--sgb-standard requires --model SGB".to_string());
@@ -988,7 +996,7 @@ fn run_benchmark_case(
     let framebuffer_out = benchmark_case
         .screenshot
         .then(|| frontend_screenshot_path(GB_CLI_FRONTEND, &benchmark_case.artifact_id));
-    let run_options = RunOptions {
+    let mut run_options = RunOptions {
         rom_path: benchmark_case.rom.clone(),
         model: run_model_from_benchmark(benchmark_case.model),
         revision: run_model_from_benchmark(benchmark_case.model)
@@ -1016,6 +1024,12 @@ fn run_benchmark_case(
         test_runner,
         benchmark_case: Some(benchmark_case),
     };
+    if run_options.test_runner {
+        apply_test_runner_defaults(&mut run_options);
+    }
+    if run_options.model != RunModel::GameBoy {
+        run_options.display_palette = None;
+    }
 
     run_command(run_options, stdout, stderr)
 }

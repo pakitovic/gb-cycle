@@ -3,7 +3,7 @@
 ## Goals
 
 - Prioritize hardware-accurate behavior.
-- Keep the core modular enough to support DMG and CGB while leaving room for later SGB support.
+- Keep the core modular enough to support DMG, CGB, and SGB host-shell behavior while leaving room for later SNES/SFC-side execution.
 - Keep portability high so the core remains platform-agnostic.
 - Preserve determinism, debuggability, and testability across all implementation phases.
 
@@ -103,7 +103,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 
 - The core must expose an explicit console model concept.
 - The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, and the current functional target includes both the closed DMG-family path and the promoted base CGB-family path.
-- Keep the shared DMG/CGB core extensible for later CGB revision, AGB-family compatibility, and SGB host-shell work without duplicating subsystem implementations.
+- Keep the shared DMG/CGB/SGB core extensible for later CGB revision, AGB-family compatibility, and SGB SNES/SFC host-shell work without duplicating subsystem implementations.
 - The goal is to avoid major later refactors while keeping each implemented CGB-only path owned by an explicit subsystem.
 - Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
 - `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
@@ -112,10 +112,10 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - The public model surface keeps three explicit axes instead of collapsing everything into one enum:
   - `ConsoleModel` for the silicon family / revision baseline
   - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
-  - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB` / `SGB2`
+  - `HostPlatform` for the surrounding host shell, such as handheld standalone or `SGB` / `SGB2`
 - The project also exposes one derived `CapabilitySet` view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
 - `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
-- Future `SGB` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
+- `SGB` / `SGB2` support enters through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
 ## DMG-stable, CGB-integrated policy
 
@@ -164,7 +164,7 @@ Future frontends such as WebAssembly should reuse the same core-facing contracts
 - Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
-- Model-specific extensions: CGB and later SGB
+- Model-specific extensions: CGB and SGB host shell
 
 ## Detailed module responsibility guide
 

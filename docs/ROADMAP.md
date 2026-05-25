@@ -1,12 +1,12 @@
 # gb-cycle Roadmap — T-Cycle-Based Game Boy Core
 
-Implementation roadmap for the project's **DMG** core closure, **CGB** expansion, and planned **SGB/SGB2** host-shell support: T-cycle based, PPU dot-by-dot, Mode 3 with pixel FIFO, and architecturally prepared for model-specific hardware behavior.
+Implementation roadmap for the project's **DMG** core closure, **CGB** expansion, and **SGB/SGB2** host-shell support: T-cycle based, PPU dot-by-dot, Mode 3 with pixel FIFO, and architecturally prepared for model-specific hardware behavior.
 
 This is a living document. Update it when phase structure, scope, or done criteria change. Keep TODOs in [TODO.md](TODO.md).
 
 ## Scope
 
-Phases 0 through 9 close the DMG core. CGB-specific features such as double speed, VRAM/WRAM banking, CGB palettes, and HDMA/GDMA stay out of those DMG closure phases except where architectural seams are required. Phase 10 starts the functional CGB implementation roadmap and must preserve the DMG `167/167` ROM gate after every CGB slice. Phase 11 defines the SGB/SGB2 roadmap as a DMG-compatible GB core plus pluggable SGB/SNES host shell, preserving the existing DMG/CGB gates after every SGB slice.
+Phases 0 through 9 close the DMG core. CGB-specific features such as double speed, VRAM/WRAM banking, CGB palettes, and HDMA/GDMA stay out of those DMG closure phases except where architectural seams are required. Phase 10 starts the functional CGB implementation roadmap and must preserve the DMG `167/167` ROM gate after every CGB slice. Phase 11 implements SGB/SGB2 as a DMG-compatible GB core plus pluggable SGB/SNES host shell; slices 0-6 are the current public SGB milestone, while slices 7-9 are explicitly deferred to a later SGB host-shell milestone for startup firmware presentation, special audio, and SNES-side execution.
 
 ## Authority boundaries
 

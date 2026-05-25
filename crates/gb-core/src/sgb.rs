@@ -3412,6 +3412,366 @@ mod tests {
     }
 
     #[test]
+    fn helper_edges_keep_sgb_contract_helpers_observable() {
+        let address = SgbSnesAddress::new(0x12, 0x3456);
+        assert_eq!(address.raw24(), 0x12_3456);
+
+        let mut data = [0; SGB_DATA_SND_INLINE_BYTES];
+        for (index, byte) in data.iter_mut().enumerate() {
+            *byte = index as u8;
+        }
+        let oversized = SgbDataSendRequest {
+            destination: address,
+            declared_len: (SGB_DATA_SND_INLINE_BYTES + 4) as u8,
+            data,
+        };
+        assert_eq!(oversized.payload_len(), SGB_DATA_SND_INLINE_BYTES);
+        assert_eq!(oversized.payload(), &data);
+
+        assert_eq!(SgbJoypLineState::Idle.data_bit(), None);
+        assert_eq!(SgbJoypLineState::Invalid.data_bit(), None);
+        assert_eq!(
+            SgbChrTransferSelection::from_command_byte(0x03),
+            SgbChrTransferSelection {
+                tile_block: 1,
+                tile_type: SgbChrTransferTileType::Obj,
+            }
+        );
+        assert_eq!(
+            SgbChrTransferSelection::from_command_byte(0x03).destination_offset(),
+            SGB_VRAM_TRANSFER_BYTES
+        );
+        assert_eq!(
+            gb_tile_data_offset(SGB_LCDC_BG_WINDOW_TILE_DATA_BIT, 0x12),
+            0x120
+        );
+        assert!(!sgb_title_bytes_match(&[0; 16], &[0; 17]));
+
+        let palette_state = SgbPaletteState::default();
+        assert_eq!(palette_state.map_lcd_shade(2), SGB_RGB555_DARK_GRAY);
+        let mut invalid_direct_palette = palette_state;
+        invalid_direct_palette.apply_direct_palette_command(0x1F, &sgb_command_packet(0x1F, 1));
+        assert_eq!(invalid_direct_palette, palette_state);
+        assert_eq!(
+            SgbScreenPalette::default(),
+            SgbScreenPalette::dmg_grayscale()
+        );
+    }
+
+    #[test]
+    fn vram_transfer_helpers_report_source_edges_and_display_order() {
+        assert_eq!(
+            SgbVramTransferBuffer::from_source_bytes(&[0; SGB_VRAM_TRANSFER_BYTES - 1]),
+            Err(SgbVramTransferError::SourceLength {
+                expected: SGB_VRAM_TRANSFER_BYTES,
+                actual: SGB_VRAM_TRANSFER_BYTES - 1,
+            })
+        );
+        assert_eq!(
+            SgbVramTransferBuffer::from_display_memory(
+                &[0; SGB_GB_VRAM_BYTES - 1],
+                SgbVramTransferDisplayState::new(0x81, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+            ),
+            Err(SgbVramTransferError::SourceLength {
+                expected: SGB_GB_VRAM_BYTES,
+                actual: SGB_GB_VRAM_BYTES - 1,
+            })
+        );
+
+        let mut vram = vec![0; SGB_GB_VRAM_BYTES];
+        let lcdc = SGB_LCDC_ENABLE_BIT
+            | SGB_LCDC_BG_ENABLE_BIT
+            | SGB_LCDC_BG_TILE_MAP_BIT
+            | SGB_LCDC_BG_WINDOW_TILE_DATA_BIT;
+        vram[SGB_GB_BG_MAP_9C00_OFFSET] = 2;
+        vram[gb_tile_data_offset(lcdc, 2)] = 0x5A;
+        let payload = SgbVramTransferBuffer::from_display_memory(
+            &vram,
+            SgbVramTransferDisplayState::new(lcdc, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+        )
+        .expect("prepared 9C00 transfer display should extract tile data");
+        assert_eq!(payload.bytes[0], 0x5A);
+        assert_eq!(
+            SgbVramTransferBuffer::default().dynamic_payload_bytes(),
+            SGB_VRAM_TRANSFER_BYTES
+        );
+    }
+
+    #[test]
+    fn sound_transfer_jump_and_dynamic_payload_accounting_are_explicit() {
+        let empty = SgbVramTransferBuffer { bytes: Vec::new() };
+        assert_eq!(
+            SgbSoundTransferRequest::from_vram_transfer_payload(&empty),
+            SgbSoundTransferRequest {
+                first_packet: SgbSoundTransferPacket::Jump {
+                    address: SgbApuRamAddress::new(0),
+                },
+                payload_bytes: 0,
+            }
+        );
+
+        let mut video = SgbVideoState::default_for_active_host(true);
+        assert!(video.dynamic_payload_bytes() > 0);
+        video.frozen_lcd = Some(SgbLcdRgb555Frame::default());
+        video.vram_transfer.last_completed = Some(SgbCompletedVramTransfer {
+            command_id: SGB_COMMAND_PAL_TRN,
+            target: SgbVramTransferTarget::Pal,
+            payload: SgbVramTransferBuffer::default(),
+        });
+        assert!(
+            video.dynamic_payload_bytes()
+                >= SGB_LCD_PIXELS * std::mem::size_of::<u16>() + SGB_VRAM_TRANSFER_BYTES
+        );
+
+        let saved = SgbHost::new(HostPlatform::Sgb).capture_save_state();
+        assert!(saved.dynamic_payload_bytes() > 0);
+    }
+
+    #[test]
+    fn attribute_state_rejects_invalid_inputs_and_wraps_cells_explicitly() {
+        let mut attributes = SgbAttributeState::default();
+
+        attributes.apply_attr_blk(&[]);
+        assert_eq!(attributes.attr_blk_count, 0);
+
+        attributes.apply_attr_blk(&[2, 0x01, 0x01, 1, 1, 3, 3]);
+        assert_eq!(attributes.attr_blk_count, 1);
+        assert_eq!(attributes.map.palette_index(1, 1), 1);
+
+        attributes.apply_attr_blk(&[2, 0x04, 0x20, 3, 3, 1, 1]);
+        assert_eq!(attributes.attr_blk_count, 2);
+        assert_eq!(attributes.map.palette_index(1, 1), 2);
+
+        attributes.apply_attr_lin(&[]);
+        assert_eq!(attributes.attr_lin_count, 0);
+        attributes.apply_attr_lin(&[2, 1 << 5, 0x80 | (2 << 5) | 1]);
+        assert_eq!(attributes.attr_lin_count, 1);
+        assert_eq!(attributes.map.palette_index(0, 0), 1);
+        assert_eq!(attributes.map.palette_index(0, 1), 2);
+
+        let mut horizontal_div = sgb_command_packet(SGB_COMMAND_ATTR_DIV, 1);
+        horizontal_div[1] = 0x40 | 3 | (1 << 2) | (2 << 4);
+        horizontal_div[2] = 1;
+        attributes.apply_attr_div(&horizontal_div);
+        assert_eq!(attributes.map.palette_index(0, 0), 1);
+        assert_eq!(attributes.map.palette_index(0, 1), 2);
+        assert_eq!(attributes.map.palette_index(0, 2), 3);
+
+        attributes.apply_attr_chr(&[0, 0, 0, 0]);
+        let attr_chr_count = attributes.attr_chr_count;
+        attributes.apply_attr_chr(&[SGB_ATTR_MAP_WIDTH as u8, 0, 1, 0, 0, 0xFF]);
+        assert_eq!(attributes.attr_chr_count, attr_chr_count);
+        attributes.apply_attr_chr(&[19, 17, 2, 0, 1, 0b01_10_00_00]);
+        assert_eq!(attributes.attr_chr_count, attr_chr_count + 1);
+        assert_eq!(attributes.map.palette_index(19, 17), 1);
+        assert_eq!(attributes.map.palette_index(0, 0), 2);
+
+        assert!(!attributes.apply_attr_set(SGB_ATF_COUNT as u8));
+        assert_eq!(attributes.invalid_atf_count, 1);
+        assert!(attributes.dynamic_payload_bytes() >= SGB_ATTR_MAP_CELLS + SGB_ATF_TOTAL_BYTES);
+    }
+
+    #[test]
+    fn multiplayer_edges_keep_invalid_and_noop_controller_slots_inert() {
+        let mut state = SgbMultiplayerState::default();
+        state.apply_mlt_req_command(&sgb_mlt_req_packet(3));
+        assert_eq!(state.player_count, 0);
+        state.cycle_selected_player();
+        assert_eq!(state.selected_player, 0);
+        assert_eq!(state.selected_player_pressed_mask(), 0);
+
+        state.player_count = 4;
+        state.selected_player = 9;
+        state.player_pressed_masks = [1, 2, 3, 4];
+        assert_eq!(state.selected_player_index(), 3);
+        assert_eq!(state.selected_player_pressed_mask(), 4);
+        assert!(!state.set_player_pressed_mask(0, 0x12));
+        assert!(state.set_player_pressed_mask(1, 0x12));
+        assert!(!state.set_player_pressed_mask(1, 0x12));
+        assert!(state.set_player_pressed_masks([0, 0, 0, 0]));
+        assert!(!state.set_player_pressed_masks([0, 0, 0, 0]));
+        assert!(!state.set_player_button_pressed(5, JoypadButton::A, true));
+        assert!(state.set_player_button_pressed(1, JoypadButton::A, true));
+        assert!(!state.set_player_button_pressed(1, JoypadButton::A, true));
+        assert!(state.set_player_button_pressed(1, JoypadButton::A, false));
+        assert!(!state.set_player_button_pressed(1, JoypadButton::A, false));
+
+        let mut handheld = SgbHost::default();
+        assert_eq!(handheld.host_platform(), HostPlatform::Handheld);
+        assert!(!handheld.game_link_supported());
+        assert!(!handheld.corrected_clock());
+        assert!(
+            !handheld
+                .set_player_palette_override(sgb_screen_palette([0x1111, 0x2222, 0x3333, 0x4444,]))
+        );
+        assert!(!handheld.clear_player_palette_override());
+        handheld.finish_real_boot_handoff();
+
+        let mismatched_profile = SgbHost::new_with_profile(
+            HostPlatform::Sgb,
+            Some(SgbHostProfile::Sgb2Ntsc),
+            StartupMode::SkipBoot,
+        );
+        assert_eq!(mismatched_profile.profile(), Some(SgbHostProfile::SgbNtsc));
+
+        let mut sgb = SgbHost::new(HostPlatform::Sgb);
+        assert!(sgb.set_player_pressed_mask(1, 0x12));
+        assert_eq!(sgb.player_pressed_masks()[0], 0x12);
+        assert!(sgb.set_player_pressed_masks([1, 2, 3, 4]));
+        assert_eq!(sgb.player_pressed_masks(), [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn video_composition_and_transfer_error_edges_are_reported() {
+        let mut host = accepted_sgb_host();
+        let lcd = vec![0; SGB_LCD_PIXELS];
+        let mut short_lcd_output = vec![0; SGB_LCD_PIXELS - 1];
+        assert_eq!(
+            host.compose_lcd_rgb555_into(&lcd, &mut short_lcd_output),
+            Err(SgbLcdCompositionError::OutputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: SGB_LCD_PIXELS - 1,
+            })
+        );
+
+        let handheld = SgbHost::new(HostPlatform::Handheld);
+        assert_eq!(
+            handheld.compose_frame_rgb555(&lcd),
+            Err(SgbFrameCompositionError::DisabledHost)
+        );
+        assert_eq!(
+            host.compose_frame_rgb555(&lcd[..SGB_LCD_PIXELS - 1]),
+            Err(SgbFrameCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: SGB_LCD_PIXELS - 1,
+            })
+        );
+        let mut short_frame_output = vec![0; SGB_FRAME_PIXELS - 1];
+        assert_eq!(
+            host.compose_frame_rgb555_into(&lcd, &mut short_frame_output),
+            Err(SgbFrameCompositionError::OutputLength {
+                expected: SGB_FRAME_PIXELS,
+                actual: SGB_FRAME_PIXELS - 1,
+            })
+        );
+
+        assert_eq!(
+            handheld.clone().capture_pending_lcd_freeze(&lcd),
+            Err(SgbLcdCompositionError::DisabledHost)
+        );
+        assert_eq!(
+            host.capture_pending_lcd_freeze(&lcd[..SGB_LCD_PIXELS - 1]),
+            Err(SgbLcdCompositionError::InputLength {
+                expected: SGB_LCD_PIXELS,
+                actual: SGB_LCD_PIXELS - 1,
+            })
+        );
+        assert_eq!(host.capture_pending_lcd_freeze(&lcd), Ok(()));
+
+        assert_eq!(
+            SgbHost::new(HostPlatform::Handheld)
+                .capture_pending_vram_transfer(&[0; SGB_VRAM_TRANSFER_BYTES]),
+            Err(SgbVramTransferError::DisabledHost)
+        );
+        assert_eq!(
+            host.capture_pending_vram_transfer(&[0; SGB_VRAM_TRANSFER_BYTES]),
+            Err(SgbVramTransferError::NoPendingTransfer)
+        );
+        assert_eq!(
+            SgbHost::new(HostPlatform::Handheld).advance_frame_start(
+                &[0; SGB_GB_VRAM_BYTES],
+                SgbVramTransferDisplayState::new(0x81, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+            ),
+            Err(SgbVramTransferError::DisabledHost)
+        );
+        assert_eq!(
+            host.advance_frame_start(
+                &[0; SGB_GB_VRAM_BYTES],
+                SgbVramTransferDisplayState::new(0x81, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+            ),
+            Ok(None)
+        );
+
+        host.video.request_pal_transfer(SGB_COMMAND_PAL_TRN);
+        host.video
+            .vram_transfer
+            .pending
+            .as_mut()
+            .expect("test should have a pending PAL_TRN")
+            .frame_starts_until_capture = 2;
+        assert_eq!(
+            host.advance_frame_start(
+                &[0; SGB_GB_VRAM_BYTES],
+                SgbVramTransferDisplayState::new(0x81, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            host.snapshot()
+                .video
+                .vram_transfer
+                .pending
+                .expect("pending transfer should remain delayed")
+                .frame_starts_until_capture,
+            1
+        );
+
+        host.dispatch_completed_vram_transfer(None);
+        host.dispatch_completed_vram_transfer(Some(SgbVramTransferTarget::Pal));
+    }
+
+    #[test]
+    fn masks_palette_override_and_border_flips_cover_visible_pixel_edges() {
+        let mut video = SgbVideoState::default_for_active_host(true);
+        video.mask = SgbScreenMask::Cancel;
+        assert_eq!(
+            video.lcd_pixel_for_shade(1),
+            video.map_lcd_shade_to_rgb555(1)
+        );
+        video.mask = SgbScreenMask::Freeze;
+        assert_eq!(
+            video.lcd_pixel_for_shade(1),
+            video.map_lcd_shade_to_rgb555(1)
+        );
+        video.mask = SgbScreenMask::BlankBlack;
+        assert_eq!(video.lcd_pixel_for_shade(1), SGB_RGB555_BLACK);
+        video.mask = SgbScreenMask::BlankColor0;
+        assert_eq!(
+            video.lcd_pixel_for_shade(1),
+            video.visible_lcd_backdrop_color()
+        );
+
+        let mut override_state = SgbPlayerPaletteOverrideState::default();
+        assert!(!override_state.clear_by_player());
+        assert!(!override_state.return_to_application_due_to_pal_pri());
+        let player_palette = sgb_screen_palette([0x1111, 0x2222, 0x3333, 0x4444]);
+        assert!(override_state.set_uniform_palette(player_palette));
+        assert!(!override_state.set_uniform_palette(player_palette));
+        assert!(override_state.clear_by_player());
+
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        host.video.mask = SgbScreenMask::Freeze;
+        host.video.frozen_lcd = None;
+        assert_eq!(
+            host.compose_lcd_rgb555(&vec![1; SGB_LCD_PIXELS])
+                .expect("freeze without a captured frame falls back to live LCD")[0],
+            0x03E0
+        );
+
+        let mut border = SgbBorderState::default();
+        border.tile_map.entries[0] = SgbBorderMapEntry::new(0xC000 | (7 << 10));
+        border.tile_data.bytes[14] = 0x01;
+        border.palettes[0].colors[1] = SgbRgb555Color::new(0x1234);
+        assert_eq!(border.pixel_color(0, 0), (SgbRgb555Color::new(0x1234), 1));
+        assert_eq!(
+            border.dynamic_payload_bytes(),
+            SGB_BORDER_TILE_DATA_BYTES
+                + SGB_BORDER_TILEMAP_ENTRIES * std::mem::size_of::<SgbBorderMapEntry>()
+        );
+    }
+
+    #[test]
     fn vram_transfer_display_extraction_follows_signed_tiledata_transfer_screen() {
         let mut vram = vec![0; SGB_GB_VRAM_BYTES];
         for transfer_tile_index in 0..SGB_TRANSFER_DISPLAY_TILE_COUNT {
