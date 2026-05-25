@@ -1000,14 +1000,19 @@ impl SgbPaletteState {
         self.base_palette_index = 0;
     }
 
+    fn set_shared_color_zero(&mut self, color: SgbRgb555Color) {
+        for palette in &mut self.screen_palettes {
+            palette.set_color(0, color);
+        }
+    }
+
     fn apply_direct_palette_command(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
         let Some((first_palette, second_palette)) = direct_palette_command_pair(command_id) else {
             return;
         };
 
         let shared_color_zero = SgbRgb555Color::from_packet_bytes(bytes[1], bytes[2]);
-        self.screen_palettes[first_palette].set_color(0, shared_color_zero);
-        self.screen_palettes[second_palette].set_color(0, shared_color_zero);
+        self.set_shared_color_zero(shared_color_zero);
 
         let first_palette_colors = [
             SgbRgb555Color::from_packet_bytes(bytes[3], bytes[4]),
@@ -1101,6 +1106,12 @@ pub struct SgbSystemPaletteState {
 }
 
 impl SgbSystemPaletteState {
+    fn color_zero_for_last_pal_set(&self) -> Option<SgbRgb555Color> {
+        self.palettes
+            .get(usize::from(self.last_pal_set_ids[0]))
+            .map(|palette| palette.color(0))
+    }
+
     fn apply_pal_trn(&mut self, payload: &SgbVramTransferBuffer) {
         for palette_index in 0..SGB_SYSTEM_PALETTE_COUNT {
             for color_index in 0..SGB_SCREEN_PALETTE_COLORS {
@@ -1627,8 +1638,7 @@ impl SgbBorderState {
         self.chr_transfer_count = self.chr_transfer_count.saturating_add(1);
     }
 
-    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) -> SgbRgb555Color {
-        let mut backdrop_color = self.palettes[0].colors[0];
+    fn apply_pct_transfer(&mut self, payload: &SgbVramTransferBuffer) {
         self.tile_map.apply_pct_transfer(payload);
         for palette_index in 0..SGB_BORDER_PALETTE_COUNT {
             for color_index in 0..SGB_BORDER_PALETTE_COLORS {
@@ -1639,14 +1649,10 @@ impl SgbBorderState {
                     payload.bytes[byte_index + 1],
                 );
                 self.palettes[palette_index].colors[color_index] = color;
-                if color_index == 0 {
-                    backdrop_color = color;
-                }
             }
         }
         self.pct_loaded = true;
         self.pct_transfer_count = self.pct_transfer_count.saturating_add(1);
-        backdrop_color
     }
 
     fn pixel_color(&self, x: usize, y: usize) -> (SgbRgb555Color, u8) {
@@ -2869,7 +2875,7 @@ impl SgbVideoState {
                 .palette(0)
                 .color(0)
         } else {
-            self.backdrop_color
+            self.palette_state.palette(0).color(0)
         }
     }
 
@@ -2956,9 +2962,11 @@ impl SgbVideoState {
             .system_palettes
             .apply_pal_set(&mut self.palette_state, bytes);
         self.backdrop_color = self
-            .palette_state
-            .palette((SGB_SCREEN_PALETTE_COUNT - 1) as u8)
-            .color(0);
+            .system_palettes
+            .color_zero_for_last_pal_set()
+            .unwrap_or_else(|| self.palette_state.palette(0).color(0));
+        self.palette_state
+            .set_shared_color_zero(self.backdrop_color);
         self.colorization_active = true;
         self.last_palette_command_id = Some(SGB_COMMAND_PAL_SET);
         self.palette_command_count = self.palette_command_count.saturating_add(1);
@@ -3112,7 +3120,7 @@ impl SgbVideoState {
                 self.border.apply_chr_transfer(selection, &payload);
             }
             SgbVramTransferTarget::Pct => {
-                self.backdrop_color = self.border.apply_pct_transfer(&payload);
+                self.border.apply_pct_transfer(&payload);
                 self.border_loaded = true;
             }
             SgbVramTransferTarget::Pal => {
@@ -3934,8 +3942,13 @@ mod tests {
             "SGB RGB555 colors mask off the ignored high bit"
         );
         assert_eq!(
-            snapshot.video.palette_state.palette(2),
-            SgbScreenPalette::dmg_grayscale()
+            snapshot.video.palette_state.palette(2).colors[0].raw(),
+            0x001F,
+            "direct palette commands update the shared LCD color 0 for palettes outside the targeted color-1..3 pair"
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(2).colors[1..],
+            SgbScreenPalette::dmg_grayscale().colors[1..]
         );
         assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(0).raw(), 0x001F);
         assert_eq!(snapshot.video.map_lcd_shade_to_rgb555(1).raw(), 0x03E0);
@@ -3964,11 +3977,16 @@ mod tests {
             write_joyp_packet(&mut host, packet);
 
             let palettes = host.snapshot().video.palette_state.screen_palettes;
-            assert_eq!(palettes[first_palette].colors[0].raw(), 0x001F);
+            for palette in palettes {
+                assert_eq!(
+                    palette.colors[0].raw(),
+                    0x001F,
+                    "SGB screen color 0 is shared across all four visible palettes"
+                );
+            }
             assert_eq!(palettes[first_palette].colors[1].raw(), 0x03E0);
             assert_eq!(palettes[first_palette].colors[2].raw(), 0x7C00);
             assert_eq!(palettes[first_palette].colors[3].raw(), 0x4210);
-            assert_eq!(palettes[second_palette].colors[0].raw(), 0x001F);
             assert_eq!(palettes[second_palette].colors[1].raw(), 0x0001);
             assert_eq!(palettes[second_palette].colors[2].raw(), 0x0002);
             assert_eq!(palettes[second_palette].colors[3].raw(), 0x0003);
@@ -4220,6 +4238,58 @@ mod tests {
     }
 
     #[test]
+    fn pal_set_uses_palette_zero_color_zero_as_shared_lcd_color_zero() {
+        let mut host = accepted_sgb_host();
+        let mut transfer = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_system_palette_color(&mut transfer, 7, 0, 0x5F5F);
+        write_system_palette_color(&mut transfer, 7, 1, 0x2EDB);
+        write_system_palette_color(&mut transfer, 8, 0, 0x68BF);
+        write_system_palette_color(&mut transfer, 8, 1, 0x0CA7);
+        write_system_palette_color(&mut transfer, 9, 0, 0x001F);
+        write_system_palette_color(&mut transfer, 9, 1, 0x03E0);
+        write_system_palette_color(&mut transfer, 10, 0, 0x7C00);
+        write_system_palette_color(&mut transfer, 10, 1, 0x4210);
+
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        host.capture_pending_vram_transfer(&transfer)
+            .expect("PAL_TRN should capture system palette data");
+
+        let mut pal_set = sgb_command_packet(SGB_COMMAND_PAL_SET, 1);
+        for (palette_index, palette_id) in [7_u16, 8, 9, 10].into_iter().enumerate() {
+            let [low, high] = palette_id.to_le_bytes();
+            pal_set[1 + palette_index * 2] = low;
+            pal_set[2 + palette_index * 2] = high;
+        }
+        write_joyp_packet(&mut host, pal_set);
+
+        let snapshot = host.snapshot();
+        for palette in snapshot.video.palette_state.screen_palettes {
+            assert_eq!(
+                palette.colors[0].raw(),
+                0x5F5F,
+                "PAL_SET takes the shared visible LCD color 0 from physical SGB palette 0, not from later palette IDs"
+            );
+        }
+        assert_eq!(snapshot.video.backdrop_color.raw(), 0x5F5F);
+        assert_eq!(
+            snapshot.video.palette_state.palette(0).colors[1].raw(),
+            0x2EDB
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(1).colors[1].raw(),
+            0x0CA7
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(2).colors[1].raw(),
+            0x03E0
+        );
+        assert_eq!(
+            snapshot.video.palette_state.palette(3).colors[1].raw(),
+            0x4210
+        );
+    }
+
+    #[test]
     fn attr_trn_attr_set_and_pal_set_apply_attribute_files() {
         let mut host = accepted_sgb_host();
         let mut transfer = [0; SGB_VRAM_TRANSFER_BYTES];
@@ -4372,16 +4442,16 @@ mod tests {
 
         write_joyp_packet(&mut host, sgb_pct_trn_packet());
         host.capture_pending_vram_transfer(&pct)
-            .expect("PCT_TRN should load border palette color 0 as shared backdrop");
+            .expect("PCT_TRN should load border map and palette data");
 
         let dmg_framebuffer = vec![3; SGB_LCD_PIXELS];
         let frame = host
             .compose_frame_rgb555(&dmg_framebuffer)
             .expect("SGB host should compose border and LCD pixels");
-        assert_eq!(host.snapshot().video.backdrop_color.raw(), 0x7FFF);
+        assert_eq!(host.snapshot().video.backdrop_color.raw(), 0x001F);
         assert_eq!(
-            frame[0], 0x7FFF,
-            "border color index 0 outside the GB window uses the shared backdrop, not the selected border palette's local color 0"
+            frame[0], 0x001F,
+            "border color index 0 outside the GB window uses the current application backdrop, not the selected border palette's local color 0 or later PCT_TRN color-0 data"
         );
         assert_eq!(
             frame[8], 0x03E0,
@@ -4392,6 +4462,40 @@ mod tests {
         assert_eq!(
             frame[lcd_origin], 0x4210,
             "border color index 0 inside the GB window remains the transparent seam to the composed LCD image"
+        );
+        let lcd_color_zero_frame = host
+            .compose_lcd_rgb555(&vec![0; SGB_LCD_PIXELS])
+            .expect("SGB host should compose LCD pixels after PCT_TRN");
+        assert_eq!(
+            lcd_color_zero_frame[0], 0x001F,
+            "PCT_TRN must not recolor LCD shade 0 away from the active screen palette"
+        );
+    }
+
+    #[test]
+    fn pct_trn_keeps_transparent_border_pixels_on_current_backdrop() {
+        let mut host = accepted_sgb_host();
+        let initial_backdrop = host.snapshot().video.backdrop_color.raw();
+
+        let mut pct = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_border_map_entry(&mut pct, 0, 6 << 10);
+        write_border_palette_color(&mut pct, 2, 0, 0x7CD2);
+        write_border_palette_color(&mut pct, 2, 1, 0x03E0);
+        write_joyp_packet(&mut host, sgb_pct_trn_packet());
+        host.capture_pending_vram_transfer(&pct)
+            .expect("PCT_TRN should load border map and palette data");
+
+        let frame = host
+            .compose_frame_rgb555(&vec![0; SGB_LCD_PIXELS])
+            .expect("SGB host should compose transparent border pixels");
+        assert_eq!(
+            host.snapshot().video.border.palettes[2].colors[0].raw(),
+            0x7CD2
+        );
+        assert_eq!(host.snapshot().video.backdrop_color.raw(), initial_backdrop);
+        assert_eq!(
+            frame[0], initial_backdrop,
+            "Pokémon Gold-style PCT_TRN palette color 0 payloads are transparent border data and must not become a temporary purple backdrop"
         );
     }
 
