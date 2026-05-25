@@ -162,6 +162,13 @@ struct FramebufferRenderInput<'a> {
     panels: [Option<FramebufferPanelInput<'a>>; PLAYER_SLOT_COUNT],
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FramebufferPresentationSource<'a> {
+    machine: &'a DesktopEmulationSession,
+    video_options: &'a VideoOptions,
+    session_has_loaded_rom: bool,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct RenderHudInput {
     performance: Option<PerformanceHudSnapshot>,
@@ -5830,8 +5837,11 @@ fn run_desktop_prepared(
     };
     let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
-    let framebuffer_dimensions =
-        framebuffer_dimensions_for_session(&machine, &session.config.video);
+    let framebuffer_dimensions = framebuffer_dimensions_for_session(
+        &machine,
+        &session.config.video,
+        session.has_loaded_rom(),
+    );
     let window_width = framebuffer_dimensions
         .width
         .checked_mul(u32::from(session.config.video.window_scale))
@@ -5940,8 +5950,11 @@ fn run_desktop_prepared(
         &mut texture,
         &mut rgb_frame,
         &mut current_framebuffer_dimensions,
-        &machine,
-        &runtime.video_options,
+        FramebufferPresentationSource {
+            machine: &machine,
+            video_options: &runtime.video_options,
+            session_has_loaded_rom: session.has_loaded_rom(),
+        },
     )?;
     let _ = render_frame(
         &mut canvas,
@@ -5951,6 +5964,7 @@ fn run_desktop_prepared(
             &machine,
             current_framebuffer_dimensions,
             &runtime.video_options,
+            session.has_loaded_rom(),
         ),
         &runtime.video_options,
         RenderPresentationInput {
@@ -6018,8 +6032,11 @@ fn run_desktop_prepared(
                     &mut texture,
                     &mut rgb_frame,
                     &mut current_framebuffer_dimensions,
-                    &machine,
-                    &runtime.video_options,
+                    FramebufferPresentationSource {
+                        machine: &machine,
+                        video_options: &runtime.video_options,
+                        session_has_loaded_rom: session.has_loaded_rom(),
+                    },
                 )?;
                 let _ = render_frame(
                     &mut canvas,
@@ -6029,6 +6046,7 @@ fn run_desktop_prepared(
                         &machine,
                         current_framebuffer_dimensions,
                         &runtime.video_options,
+                        session.has_loaded_rom(),
                     ),
                     &runtime.video_options,
                     RenderPresentationInput {
@@ -6153,8 +6171,11 @@ fn run_desktop_prepared(
                     &mut texture,
                     &mut rgb_frame,
                     &mut current_framebuffer_dimensions,
-                    &machine,
-                    &runtime.video_options,
+                    FramebufferPresentationSource {
+                        machine: &machine,
+                        video_options: &runtime.video_options,
+                        session_has_loaded_rom: session.has_loaded_rom(),
+                    },
                 )?;
                 let _ = render_frame(
                     &mut canvas,
@@ -6164,6 +6185,7 @@ fn run_desktop_prepared(
                         &machine,
                         current_framebuffer_dimensions,
                         &runtime.video_options,
+                        session.has_loaded_rom(),
                     ),
                     &runtime.video_options,
                     RenderPresentationInput {
@@ -6210,8 +6232,11 @@ fn run_desktop_prepared(
             &mut texture,
             &mut rgb_frame,
             &mut current_framebuffer_dimensions,
-            &machine,
-            &runtime.video_options,
+            FramebufferPresentationSource {
+                machine: &machine,
+                video_options: &runtime.video_options,
+                session_has_loaded_rom: session.has_loaded_rom(),
+            },
         )?;
         let present_duration = render_frame(
             &mut canvas,
@@ -6221,6 +6246,7 @@ fn run_desktop_prepared(
                 &machine,
                 current_framebuffer_dimensions,
                 &runtime.video_options,
+                session.has_loaded_rom(),
             ),
             &runtime.video_options,
             RenderPresentationInput {
@@ -11329,6 +11355,7 @@ fn execute_menu_action(
                     framebuffer_dimensions_for_session(
                         context.machine,
                         &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
                     ),
                 )?;
             }
@@ -11359,6 +11386,7 @@ fn execute_menu_action(
                     framebuffer_dimensions_for_session(
                         context.machine,
                         &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
                     ),
                 )?;
             }
@@ -11476,6 +11504,7 @@ fn execute_menu_action(
                     framebuffer_dimensions_for_session(
                         context.machine,
                         &context.runtime.video_options,
+                        context.session.has_loaded_rom(),
                     ),
                 )?;
             }
@@ -13283,9 +13312,15 @@ fn save_screenshot_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
 ) -> Result<PathBuf, String> {
-    let dimensions = framebuffer_dimensions_for_session(machine, video_options);
+    let dimensions =
+        framebuffer_dimensions_for_session(machine, video_options, session.has_loaded_rom());
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_render_input_for_session(machine, dimensions, video_options),
+        framebuffer_render_input_for_session(
+            machine,
+            dimensions,
+            video_options,
+            session.has_loaded_rom(),
+        ),
         video_options,
     );
     let output_path = screenshot_output::resolve_next_screenshot_output_path(
@@ -13300,10 +13335,17 @@ fn save_screenshot_for_session_to_path(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
     output_path: &Path,
+    session_has_loaded_rom: bool,
 ) -> Result<(), String> {
-    let dimensions = framebuffer_dimensions_for_session(machine, video_options);
+    let dimensions =
+        framebuffer_dimensions_for_session(machine, video_options, session_has_loaded_rom);
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_render_input_for_session(machine, dimensions, video_options),
+        framebuffer_render_input_for_session(
+            machine,
+            dimensions,
+            video_options,
+            session_has_loaded_rom,
+        ),
         video_options,
     );
     if let Some(parent) = output_path.parent()
@@ -13341,7 +13383,12 @@ fn write_benchmark_artifacts_for_session(
         .then(|| frontend_screenshot_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id));
     if let Some(screenshot_path) = &screenshot_path {
         let output_path = resolve_path(session.current_dir.as_path(), screenshot_path);
-        save_screenshot_for_session_to_path(machine, video_options, &output_path)?;
+        save_screenshot_for_session_to_path(
+            machine,
+            video_options,
+            &output_path,
+            session.has_loaded_rom(),
+        )?;
     }
     if benchmark.case.stats {
         let stats_path = frontend_stats_path(GB_DESKTOP_FRONTEND, &benchmark.case.artifact_id);
@@ -13524,9 +13571,11 @@ fn sync_fast_forward_host_pacing_state(
 fn framebuffer_dimensions_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
-    let cell_dimensions = framebuffer_cell_dimensions_for_session(machine, video_options);
+    let cell_dimensions =
+        framebuffer_cell_dimensions_for_session(machine, video_options, session_has_loaded_rom);
     FramebufferDimensions {
         width: cell_dimensions.width * layout.columns as u32,
         height: cell_dimensions.height * layout.rows as u32,
@@ -13536,6 +13585,7 @@ fn framebuffer_dimensions_for_session(
 fn framebuffer_cell_dimensions_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> FramebufferDimensions {
     let layout = view_layout_for_session(player_session_kind(machine));
     layout
@@ -13543,7 +13593,9 @@ fn framebuffer_cell_dimensions_for_session(
         .into_iter()
         .flatten()
         .filter_map(|slot| machine.machine_for_player_slot(slot))
-        .map(|machine| framebuffer_panel_dimensions_for_machine(machine, video_options))
+        .map(|machine| {
+            framebuffer_panel_dimensions_for_machine(machine, video_options, session_has_loaded_rom)
+        })
         .fold(
             FramebufferDimensions {
                 width: FRAMEBUFFER_WIDTH,
@@ -13559,8 +13611,12 @@ fn framebuffer_cell_dimensions_for_session(
 fn framebuffer_panel_dimensions_for_machine(
     machine: &Machine<TraceSummaryBuffer>,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> FramebufferDimensions {
-    if machine.sgb_host().profile().is_some() && video_options.show_sgb_border {
+    if session_has_loaded_rom
+        && machine.sgb_host().profile().is_some()
+        && video_options.show_sgb_border
+    {
         FramebufferDimensions {
             width: SGB_HOST_FRAMEBUFFER_WIDTH,
             height: SGB_HOST_FRAMEBUFFER_HEIGHT,
@@ -13597,9 +13653,11 @@ fn framebuffer_panel_input_for_player_slot<'a>(
     slot: PlayerSlot,
     display_palette: DisplayPalette,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> Option<FramebufferPanelInput<'a>> {
     let machine = machine.machine_for_player_slot(slot)?;
-    let sgb_framebuffer_rgb555 = if machine.sgb_host().profile().is_some() {
+    let sgb_framebuffer_rgb555 = if session_has_loaded_rom && machine.sgb_host().profile().is_some()
+    {
         if video_options.show_sgb_border {
             machine.sgb_framebuffer_rgb555()
         } else {
@@ -13609,7 +13667,7 @@ fn framebuffer_panel_input_for_player_slot<'a>(
         None
     };
     let dimensions = if sgb_framebuffer_rgb555.is_some() {
-        framebuffer_panel_dimensions_for_machine(machine, video_options)
+        framebuffer_panel_dimensions_for_machine(machine, video_options, session_has_loaded_rom)
     } else {
         FramebufferDimensions {
             width: FRAMEBUFFER_WIDTH,
@@ -13633,6 +13691,7 @@ fn framebuffer_render_input_for_session<'a>(
     machine: &'a DesktopEmulationSession,
     dimensions: FramebufferDimensions,
     video_options: &VideoOptions,
+    session_has_loaded_rom: bool,
 ) -> FramebufferRenderInput<'a> {
     let layout = view_layout_for_session(player_session_kind(machine));
     let display_palette = display_palette_for_desktop_palette(video_options.display_palette);
@@ -13645,6 +13704,7 @@ fn framebuffer_render_input_for_session<'a>(
                     slot,
                     display_palette,
                     video_options,
+                    session_has_loaded_rom,
                 )
             })
         }),
@@ -13809,10 +13869,13 @@ fn sync_framebuffer_presentation_resources<'a>(
     texture: &mut sdl3::render::Texture<'a>,
     rgb_frame: &mut Vec<u8>,
     current_dimensions: &mut FramebufferDimensions,
-    machine: &DesktopEmulationSession,
-    video_options: &VideoOptions,
+    source: FramebufferPresentationSource<'_>,
 ) -> Result<(), String> {
-    let next_dimensions = framebuffer_dimensions_for_session(machine, video_options);
+    let next_dimensions = framebuffer_dimensions_for_session(
+        source.machine,
+        source.video_options,
+        source.session_has_loaded_rom,
+    );
     if next_dimensions == *current_dimensions {
         return Ok(());
     }
@@ -13825,11 +13888,11 @@ fn sync_framebuffer_presentation_resources<'a>(
     if canvas.window().fullscreen_state() == FullscreenType::Off {
         apply_window_scale_for_dimensions(
             canvas.window_mut(),
-            video_options.window_scale,
+            source.video_options.window_scale,
             next_dimensions,
         )?;
     }
-    apply_canvas_video_options_for_dimensions(canvas, video_options, next_dimensions)?;
+    apply_canvas_video_options_for_dimensions(canvas, source.video_options, next_dimensions)?;
     *current_dimensions = next_dimensions;
     Ok(())
 }
@@ -22352,8 +22415,9 @@ mod tests {
 
         let render_input = super::framebuffer_render_input_for_session(
             &machine,
-            super::framebuffer_dimensions_for_session(&machine, &video_options),
+            super::framebuffer_dimensions_for_session(&machine, &video_options, true),
             &video_options,
+            true,
         );
 
         let panel = render_input.panels[0]
@@ -22371,10 +22435,10 @@ mod tests {
                 .with_sgb_profile(SgbHostProfile::SgbNtsc),
         ));
         let video_options = gb_desktop::VideoOptions::default();
-        let dimensions = super::framebuffer_dimensions_for_session(&machine, &video_options);
+        let dimensions = super::framebuffer_dimensions_for_session(&machine, &video_options, true);
 
         let render_input =
-            super::framebuffer_render_input_for_session(&machine, dimensions, &video_options);
+            super::framebuffer_render_input_for_session(&machine, dimensions, &video_options, true);
 
         assert_eq!(
             dimensions,
@@ -22401,11 +22465,12 @@ mod tests {
             ..gb_desktop::VideoOptions::default()
         };
         let hidden_dimensions =
-            super::framebuffer_dimensions_for_session(&machine, &hidden_border_options);
+            super::framebuffer_dimensions_for_session(&machine, &hidden_border_options, true);
         let hidden_render_input = super::framebuffer_render_input_for_session(
             &machine,
             hidden_dimensions,
             &hidden_border_options,
+            true,
         );
         assert_eq!(
             hidden_dimensions,
@@ -22426,6 +22491,45 @@ mod tests {
                 .len(),
             (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize
         );
+    }
+
+    #[test]
+    fn launcher_sgb_profile_uses_handheld_dimensions_until_a_rom_is_loaded() {
+        let machine = super::DesktopEmulationSession::new_single(Machine::new_summary(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_startup_mode(StartupMode::SkipBoot)
+                .with_sgb_profile(SgbHostProfile::Sgb2Ntsc),
+        ));
+        for show_sgb_border in [true, false] {
+            let video_options = gb_desktop::VideoOptions {
+                show_sgb_border,
+                ..gb_desktop::VideoOptions::default()
+            };
+            let dimensions =
+                super::framebuffer_dimensions_for_session(&machine, &video_options, false);
+            let render_input = super::framebuffer_render_input_for_session(
+                &machine,
+                dimensions,
+                &video_options,
+                false,
+            );
+
+            assert_eq!(
+                dimensions,
+                super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                }
+            );
+            let panel = render_input.panels[0]
+                .as_ref()
+                .expect("launcher panel should be populated");
+            assert_eq!(panel.dimensions, dimensions);
+            assert!(
+                panel.sgb_framebuffer_rgb555.is_none(),
+                "launcher presentation must not allocate an SGB host frame before a ROM is loaded"
+            );
+        }
     }
 
     #[test]
@@ -26802,6 +26906,7 @@ mod tests {
         let dimensions = super::framebuffer_dimensions_for_session(
             &linked,
             &gb_desktop::VideoOptions::default(),
+            true,
         );
         assert_eq!(
             dimensions,

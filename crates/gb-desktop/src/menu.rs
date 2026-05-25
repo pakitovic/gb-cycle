@@ -5487,7 +5487,10 @@ mod tests {
         assert!(presentation.item_enabled(MenuItem::ExternalPortPrinter));
         assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
         presentation.console_model = DesktopConsoleModel::GameBoyColor;
-        assert!(!presentation.item_enabled(MenuItem::ExtPortMenu));
+        assert!(presentation.item_enabled(MenuItem::ExtPortMenu));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortNone));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortPrinter));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
 
         presentation.console_model = DesktopConsoleModel::GameBoy;
         assert_eq!(presentation.item_label(MenuItem::CgbInfrared), "IR: NONE");

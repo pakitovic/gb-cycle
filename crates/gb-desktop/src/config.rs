@@ -136,10 +136,7 @@ impl DesktopConsoleModel {
     }
 
     pub const fn allows_ext_port_menu(self) -> bool {
-        matches!(
-            self,
-            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::SuperGameBoy2
-        )
+        !matches!(self, Self::SuperGameBoy)
     }
 
     pub fn name(self) -> &'static str {
@@ -1282,7 +1279,7 @@ mod tests {
         assert!(DesktopConsoleModel::GameBoy.allows_ext_port_menu());
         assert!(DesktopConsoleModel::GameBoyPocket.allows_ext_port_menu());
         assert!(DesktopConsoleModel::GameBoyLight.allows_ext_port_menu());
-        assert!(!DesktopConsoleModel::GameBoyColor.allows_ext_port_menu());
+        assert!(DesktopConsoleModel::GameBoyColor.allows_ext_port_menu());
         assert!(!DesktopConsoleModel::SuperGameBoy.allows_ext_port_menu());
         assert!(DesktopConsoleModel::SuperGameBoy2.allows_ext_port_menu());
         assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
