@@ -149,6 +149,10 @@ Tag pushes matching `v*` build the SDL3 desktop frontend with the `release-max` 
 - `gb-cycle-linux-x86_64.tar.gz`
 - `gb-cycle-macos-aarch64.zip`
 
+Use the manual `release-version` GitHub Actions workflow to prepare a new version from `main`. Pass the SemVer crate version without the tag prefix, for example `0.1.7`; `v0.1.7` is also accepted and normalized. The workflow rejects versions older than the current aligned workspace version, updates every workspace crate package version plus internal workspace dependency requirements, updates `Cargo.lock`, commits `chore(release): prepare v<version>` to `main` when files changed, creates the annotated `v<version>` tag, creates the GitHub Release, and explicitly dispatches the three platform release workflows at that tag so their assets attach to the release. Set `dry_run` when you only want the version validation and diff without pushing anything. Prerelease versions such as `0.1.7-rc.1` create GitHub prereleases; SemVer build metadata is intentionally not accepted for crate-release automation.
+
+The workflow needs repository Actions permission to write contents and a `main` branch policy that allows the repository `GITHUB_TOKEN` to push the release commit and tag.
+
 The macOS release is Apple Silicon only. The bundle is ad-hoc signed for internal consistency, but it is not notarized with Apple Developer ID credentials, so a downloaded ZIP may need the normal macOS Privacy & Security "Open Anyway" override on first launch.
 
 ### Requirements
