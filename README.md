@@ -1,6 +1,6 @@
 # gb-cycle
 
-A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, developed with support from AI-assisted tooling such as Codex and Claude.
+A hardware-accuracy-focused Game Boy / Game Boy Color emulator written in Rust, developed with support from AI-assisted tooling.
 
 ## Current implementation highlights
 
