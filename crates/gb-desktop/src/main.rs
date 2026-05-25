@@ -6985,6 +6985,13 @@ fn apply_benchmark_case_to_desktop_options(
     {
         options.config.video.display_palette = desktop_display_palette_from_benchmark(palette);
     }
+    if options.test_runner {
+        options.config.launch.execution_mode = ExecutionMode::Permissive;
+        if options.config.launch.console_model == DesktopConsoleModel::GameBoy {
+            options.config.video.display_palette = DesktopDisplayPalette::Grey;
+        }
+        options.config.video.show_sgb_border = false;
+    }
 }
 
 fn load_initial_linked_secondary_rom(
@@ -22934,6 +22941,7 @@ mod tests {
             options.config.video.display_palette,
             DesktopDisplayPalette::Grey
         );
+        assert!(!options.config.video.show_sgb_border);
 
         assert_eq!(
             super::desktop_model_from_benchmark(BenchmarkModel::Dmg),
@@ -22999,6 +23007,11 @@ mod tests {
             cgb_options.config.video.display_palette,
             DesktopDisplayPalette::Light
         );
+        assert_eq!(
+            cgb_options.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert!(!cgb_options.config.video.show_sgb_border);
 
         let machine = super::DesktopEmulationSession::new_single(
             super::load_machine_for_rom(&options.config, &root, &rom_bytes)

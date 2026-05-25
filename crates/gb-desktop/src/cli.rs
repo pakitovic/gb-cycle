@@ -382,6 +382,11 @@ fn validate_model_axes(
 }
 
 fn apply_test_runner_defaults(config: &mut DesktopConfig, explicit: TestRunnerExplicitOverrides) {
+    config.launch.execution_mode = ExecutionMode::Permissive;
+    if config.launch.console_model == DesktopConsoleModel::GameBoy {
+        config.video.display_palette = DesktopDisplayPalette::Grey;
+    }
+    config.video.show_sgb_border = false;
     if !explicit.saves {
         config.saves.enabled = false;
     } else if !explicit.saves_disabled {
@@ -425,7 +430,7 @@ pub fn help_text() -> &'static str {
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
-        "  --test-runner                          Use host-light runner defaults without changing emulated timing\n",
+        "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and no SGB border\n",
         "  --benchmark <path>                     Run one portable benchmark case TOML\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
@@ -1077,8 +1082,28 @@ mod tests {
         assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
         assert_eq!(
             options.config.launch.execution_mode,
-            ExecutionMode::Experimental
+            ExecutionMode::Permissive
         );
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopDisplayPalette::Grey
+        );
+        assert!(!options.config.video.show_sgb_border);
+
+        let action = parse_cli_arguments(["demo.gb", "--model", "MGB", "--test-runner"])
+            .expect("test-runner should not force the DMG grey palette on non-DMG desktop models");
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.config.video.display_palette,
+            DesktopConfig::default().video.display_palette
+        );
+        assert_eq!(
+            options.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        assert!(!options.config.video.show_sgb_border);
     }
 
     #[test]
