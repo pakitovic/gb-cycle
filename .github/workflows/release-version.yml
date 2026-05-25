@@ -80,6 +80,13 @@ jobs:
           echo "Release dry run passed for ${{ steps.version.outputs.tag }}"
           echo "No tag, GitHub Release, or package workflows were created."
 
+      - name: Configure Git identity
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Push release tag
         if: ${{ !inputs.dry_run }}
         run: |
