@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       dry_run:
-        description: Validate the version bump and show the diff without committing, tagging, or releasing.
+        description: Validate the release without creating the tag, GitHub Release, or package workflows.
         required: false
         default: false
         type: boolean
@@ -63,38 +63,22 @@ jobs:
             exit 1
           fi
 
-      - name: Bump workspace crate versions
-        run: scripts/bump-workspace-version.sh --allow-same "${{ steps.version.outputs.version }}"
+      - name: Verify workspace crate versions
+        run: scripts/bump-workspace-version.sh --check --allow-same "${{ steps.version.outputs.version }}"
 
-      - name: Validate bumped metadata
+      - name: Validate release metadata
         run: |
           set -euo pipefail
           cargo metadata --locked --format-version=1 --no-deps >/tmp/gb-cycle-metadata.json
           cargo fmt --all --check
           git diff --check
 
-      - name: Show dry-run diff
+      - name: Show dry-run summary
         if: ${{ inputs.dry_run }}
-        run: git diff -- Cargo.lock 'crates/*/Cargo.toml'
-
-      - name: Configure release git identity
-        if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit version bump
-        if: ${{ !inputs.dry_run }}
-        run: |
-          set -euo pipefail
-          git add Cargo.lock crates/*/Cargo.toml
-          if git diff --cached --quiet; then
-            echo "workspace versions already match ${{ steps.version.outputs.version }}; skipping commit"
-          else
-            git commit -m "chore(release): prepare ${{ steps.version.outputs.tag }}"
-            git push origin HEAD:main
-          fi
+          echo "Release dry run passed for ${{ steps.version.outputs.tag }}"
+          echo "No tag, GitHub Release, or package workflows were created."
 
       - name: Push release tag
         if: ${{ !inputs.dry_run }}
