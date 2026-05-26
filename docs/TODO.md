@@ -15,6 +15,10 @@ When an open item is non-trivial, make four things obvious:
 
 Remove TODOs when closed. Rewrite when the old wording points to a superseded path. Do not keep archival `Done` bullets.
 
+### Phase 11 — SGB/SGB2
+
+- [SGB][EXTERNAL-ORACLES] Mooneye `acceptance/boot_regs-sgb.gb` and `acceptance/boot_regs-sgb2.gb` now pin SGB/SGB2 direct-start fingerprints in the extra report. The only remaining SGB public-ROM oracle gaps are `ATRC_EN`, `TEST_EN`, `ICON_EN`, `OBJ_TRN`, `_TRN` timing, and packet busy; synthetic coverage already validates those behaviors internally, but no public ROM row is currently pinned with a crisp oracle for them. If adding external coverage, use a public ROM with explicit expected signal for one of these six gaps rather than promoting commercial compatibility examples or ambiguous framebuffer output.
+
 ### Testing tooling
 
 - [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `run-docboy-dmg` now executes the DocBoy serial-link rows through `run_linked_session` and retains participant failure artifacts, but linked-session outcomes are still CLI-output-only and do not update `test/test-report-docboy.md`; if linked-session rows need aggregate report persistence, design participant-aware markdown status rows instead of flattening them into single-machine ROM rows.

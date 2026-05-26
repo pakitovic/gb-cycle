@@ -19,7 +19,7 @@ Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `ashiepaws`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, `cgb-boot-hwio`, `mooneye-cgb-extra`, and `mooneye-sgb-boot-regs-extra` update `/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `ashiepaws`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -79,8 +79,9 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   oracle mix: framebuffer fixture
 - `cpp-sgb`
   source family: `cpp`
-  current status: workflow-managed informational SGB lane
-  oracle mix: informational framebuffer capture
+  current status: workflow-managed SGB packet lane
+  oracle mix: framebuffer fixture
+  fixture ownership: `sgb-ext-test.sgb.png` is a clean 160×144 rank-only reconstruction from CasualPokePlayer/test-roms `sgb-ext-test` `pass.png`; it is the promoted DMG LCD framebuffer oracle for the SGB JOYP packet-edge result matrix and intentionally is not an RGB555 host-color fixture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory local-only
@@ -98,6 +99,10 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   source family: `mooneye`
   current status: exploratory local-only
   oracle: Mooneye breakpoint/register result plus retained serial output
+- `mooneye-sgb-boot-regs-extra`
+  source family: `mooneye`
+  current status: extra/internal SGB direct-start oracle lane
+  oracle: Mooneye breakpoint/register result under SGB/SGB2 `SkipBoot`
 - `docboy-dmg-extra`
   source family: `docboy-dmg`
   current status: DocBoy extra/internal local-only
@@ -141,6 +146,7 @@ Run one family directly through `make`:
 make run-daid
 make run-cpp
 make run-cpp-sgb
+make run-mooneye-sgb-boot-regs
 make run-blargg
 make run-acid
 make run-ashiepaws
@@ -157,7 +163,7 @@ make run-docboy-cgb-dmg-ext
 make test-roms-docboy
 ```
 
-Each `make run-*` target materializes its own family before executing and updates `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye`, and `samesuite` (DMG and CGB extra variants).
+Each `make run-*` target materializes its own family before executing and updates `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye` (DMG, CGB, and SGB/SGB2 extra variants), and `samesuite` (DMG and CGB extra variants).
 
 Run one curated family directly and update the report:
 

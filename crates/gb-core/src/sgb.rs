@@ -40,6 +40,7 @@ pub const SGB_BORDER_PALETTE_COLORS: usize = 16;
 pub const SGB_CONTROLLER_COUNT: usize = 4;
 pub const SGB_DATA_SND_INLINE_BYTES: usize = 11;
 pub const SGB_SNES_DATA_TRN_BYTES: u32 = SGB_VRAM_TRANSFER_BYTES as u32;
+pub const SGB_OBJ_OAM_PAYLOAD_BYTES: usize = 0x70;
 
 const SGB_TRANSFER_DISPLAY_TILE_COLUMNS: usize = 20;
 const SGB_TRANSFER_DISPLAY_TILE_COUNT: usize = SGB_VRAM_TRANSFER_BYTES / SGB_GB_TILE_BYTES;
@@ -78,6 +79,9 @@ const SGB_COMMAND_SOUND: u8 = 0x08;
 const SGB_COMMAND_SOU_TRN: u8 = 0x09;
 const SGB_COMMAND_PAL_SET: u8 = 0x0A;
 const SGB_COMMAND_PAL_TRN: u8 = 0x0B;
+const SGB_COMMAND_ATRC_EN: u8 = 0x0C;
+const SGB_COMMAND_TEST_EN: u8 = 0x0D;
+const SGB_COMMAND_ICON_EN: u8 = 0x0E;
 const SGB_COMMAND_DATA_SND: u8 = 0x0F;
 const SGB_COMMAND_DATA_TRN: u8 = 0x10;
 const SGB_COMMAND_CHR_TRN: u8 = 0x13;
@@ -85,9 +89,13 @@ const SGB_COMMAND_PCT_TRN: u8 = 0x14;
 const SGB_COMMAND_ATTR_TRN: u8 = 0x15;
 const SGB_COMMAND_ATTR_SET: u8 = 0x16;
 const SGB_COMMAND_MASK_EN: u8 = 0x17;
+const SGB_COMMAND_OBJ_TRN: u8 = 0x18;
 const SGB_COMMAND_MLT_REQ: u8 = 0x11;
 const SGB_COMMAND_JUMP: u8 = 0x12;
 const SGB_COMMAND_PAL_PRI: u8 = 0x19;
+const SGB_VRAM_TRANSFER_TOTAL_FRAMES: u8 = 5;
+const SGB_OBJ_TRN_BUSY_FRAMES: u8 = 1;
+const SGB_OBJ_OAM_SOURCE_OFFSET: usize = 0x0F90;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SgbRealBootAsset {
@@ -421,11 +429,24 @@ impl SgbJoypLineState {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
+pub enum SgbPacketTransportPhase {
+    #[default]
+    Idle,
+    StartPending,
+    Receiving,
+    DataPending,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SgbPacketTraceStatus {
     #[default]
     None,
     Complete,
     RejectedByHeader,
+    RejectedWhileBusy,
+    SuppressedByIcon,
     InvalidPacketLength,
     InvalidStopBit,
     IncompleteReset,
@@ -521,11 +542,23 @@ pub enum SgbVramTransferTarget {
     SnesData(SgbSnesAddress),
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbVramTransferPhase {
+    #[default]
+    WaitingForNextFrame,
+    Capturing,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbPendingVramTransfer {
     pub command_id: u8,
     pub target: SgbVramTransferTarget,
     pub frame_starts_until_capture: u8,
+    pub phase: SgbVramTransferPhase,
+    pub frames_captured: u8,
+    pub total_frames: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -655,6 +688,7 @@ pub struct SgbCompletedVramTransfer {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SgbVramTransferState {
     pub pending: Option<SgbPendingVramTransfer>,
+    pub partial_payload: Option<SgbVramTransferBuffer>,
     pub last_completed: Option<SgbCompletedVramTransfer>,
     pub requested_transfer_count: u64,
     pub completed_transfer_count: u64,
@@ -666,6 +700,12 @@ impl SgbVramTransferState {
             .as_ref()
             .map(|transfer| transfer.payload.dynamic_payload_bytes())
             .unwrap_or(0)
+            .saturating_add(
+                self.partial_payload
+                    .as_ref()
+                    .map(SgbVramTransferBuffer::dynamic_payload_bytes)
+                    .unwrap_or(0),
+            )
     }
 }
 
@@ -972,6 +1012,14 @@ const fn gb_tile_data_offset(lcdc: u8, tile_index: u8) -> usize {
     }
 }
 
+fn vram_transfer_chunk_range(frame_index: u8, total_frames: u8) -> (usize, usize) {
+    let total_frames = usize::from(total_frames.max(1));
+    let frame_index = usize::from(frame_index).min(total_frames - 1);
+    let chunk_start = SGB_VRAM_TRANSFER_BYTES * frame_index / total_frames;
+    let chunk_end = SGB_VRAM_TRANSFER_BYTES * (frame_index + 1) / total_frames;
+    (chunk_start, chunk_end)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbPaletteState {
     pub screen_palettes: [SgbScreenPalette; SGB_SCREEN_PALETTE_COUNT],
@@ -1106,6 +1154,10 @@ pub struct SgbSystemPaletteState {
 }
 
 impl SgbSystemPaletteState {
+    fn palette_wrapping(&self, palette_index: usize) -> SgbScreenPalette {
+        self.palettes[palette_index % SGB_SYSTEM_PALETTE_COUNT]
+    }
+
     fn color_zero_for_last_pal_set(&self) -> Option<SgbRgb555Color> {
         self.palettes
             .get(usize::from(self.last_pal_set_ids[0]))
@@ -1610,6 +1662,121 @@ impl Default for SgbBorderPalette {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SgbObjOamPayload {
+    pub bytes: Vec<u8>,
+}
+
+impl SgbObjOamPayload {
+    fn from_source_bytes(source: &[u8]) -> Result<Self, SgbVramTransferError> {
+        let expected = SGB_OBJ_OAM_SOURCE_OFFSET + SGB_OBJ_OAM_PAYLOAD_BYTES;
+        if source.len() < expected {
+            return Err(SgbVramTransferError::SourceLength {
+                expected,
+                actual: source.len(),
+            });
+        }
+
+        Ok(Self {
+            bytes: source
+                [SGB_OBJ_OAM_SOURCE_OFFSET..SGB_OBJ_OAM_SOURCE_OFFSET + SGB_OBJ_OAM_PAYLOAD_BYTES]
+                .to_vec(),
+        })
+    }
+
+    fn from_display_memory(
+        vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
+    ) -> Result<Self, SgbVramTransferError> {
+        let payload = SgbVramTransferBuffer::from_display_memory(vram_bytes, display)?;
+        Self::from_source_bytes(&payload.bytes)
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+impl Default for SgbObjOamPayload {
+    fn default() -> Self {
+        Self {
+            bytes: vec![0; SGB_OBJ_OAM_PAYLOAD_BYTES],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct SgbObjTransferState {
+    pub enabled: bool,
+    pub color_transfer_requested: bool,
+    pub last_control: u8,
+    pub palette_ids: [u16; 4],
+    pub palettes: [SgbBorderPalette; 4],
+    pub command_count: u64,
+    pub frame_capture_count: u64,
+    pub last_oam_payload: Option<SgbObjOamPayload>,
+}
+
+impl SgbObjTransferState {
+    fn apply_obj_trn(
+        &mut self,
+        system_palettes: &SgbSystemPaletteState,
+        bytes: &[u8; SGB_PACKET_BYTES],
+    ) {
+        self.last_control = bytes[1] & 0x03;
+        self.enabled = self.last_control & 0x01 != 0;
+        self.color_transfer_requested = self.last_control & 0x02 != 0;
+        self.command_count = self.command_count.saturating_add(1);
+        for palette_index in 0..4 {
+            let byte_index = 2 + palette_index * 2;
+            self.palette_ids[palette_index] =
+                u16::from_le_bytes([bytes[byte_index], bytes[byte_index + 1]]) & 0x01FF;
+        }
+
+        if self.color_transfer_requested {
+            self.reload_palettes(system_palettes);
+        }
+        if !self.enabled {
+            self.last_oam_payload = None;
+        }
+    }
+
+    fn reload_palettes(&mut self, system_palettes: &SgbSystemPaletteState) {
+        for obj_palette_index in 0..4 {
+            let base_palette_id = self.palette_ids[obj_palette_index] as usize;
+            for sub_palette_index in 0..4 {
+                let system_palette =
+                    system_palettes.palette_wrapping(base_palette_id + sub_palette_index);
+                for color_index in 0..SGB_SCREEN_PALETTE_COLORS {
+                    self.palettes[obj_palette_index].colors
+                        [sub_palette_index * SGB_SCREEN_PALETTE_COLORS + color_index] =
+                        system_palette.colors[color_index];
+                }
+            }
+        }
+    }
+
+    fn capture_frame(
+        &mut self,
+        vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
+    ) -> Result<(), SgbVramTransferError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        self.last_oam_payload = Some(SgbObjOamPayload::from_display_memory(vram_bytes, display)?);
+        self.frame_capture_count = self.frame_capture_count.saturating_add(1);
+        Ok(())
+    }
+
+    fn dynamic_payload_bytes(&self) -> usize {
+        self.last_oam_payload
+            .as_ref()
+            .map(SgbObjOamPayload::dynamic_payload_bytes)
+            .unwrap_or(0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SgbBorderState {
     pub tile_data: SgbBorderTileData,
     pub tile_map: SgbBorderTileMap,
@@ -1708,6 +1875,8 @@ pub struct SgbHost {
     profile: Option<SgbHostProfile>,
     backend_kind: SgbHostBackendKind,
     startup: SgbStartupState,
+    system: SgbSystemControlState,
+    packet_gate: SgbPacketGateState,
     packet_transport: SgbPacketTransportState,
     command: SgbCommandState,
     video: SgbVideoState,
@@ -1722,6 +1891,8 @@ pub struct SgbHostSaveState {
     profile: Option<SgbHostProfile>,
     backend_kind: SgbHostBackendKind,
     startup: SgbStartupState,
+    system: SgbSystemControlState,
+    packet_gate: SgbPacketGateState,
     packet_transport: SgbPacketTransportState,
     command: SgbCommandState,
     video: SgbVideoState,
@@ -1737,6 +1908,8 @@ pub struct SgbHostSnapshot {
     pub profile: Option<SgbHostProfile>,
     pub backend_kind: SgbHostBackendKind,
     pub startup: SgbStartupState,
+    pub system: SgbSystemControlState,
+    pub packet_gate: SgbPacketGateState,
     pub packet_transport: SgbPacketTransportState,
     pub command: SgbCommandState,
     pub video: SgbVideoState,
@@ -1757,15 +1930,80 @@ pub struct SgbStartupState {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
+pub struct SgbSystemControlState {
+    pub attraction_disabled: bool,
+    pub atrc_en_count: u64,
+    pub test_mode_enabled: bool,
+    pub test_en_count: u64,
+    pub icon_disable_bits: u8,
+    pub icon_en_count: u64,
+    pub last_system_command_id: Option<u8>,
+}
+
+impl SgbSystemControlState {
+    fn apply_atrc_en(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.attraction_disabled = bytes[1] & 0x01 != 0;
+        self.atrc_en_count = self.atrc_en_count.saturating_add(1);
+        self.last_system_command_id = Some(SGB_COMMAND_ATRC_EN);
+    }
+
+    fn apply_test_en(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.test_mode_enabled = bytes[1] & 0x01 != 0;
+        self.test_en_count = self.test_en_count.saturating_add(1);
+        self.last_system_command_id = Some(SGB_COMMAND_TEST_EN);
+    }
+
+    fn apply_icon_en(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.icon_disable_bits = bytes[1] & 0x7F;
+        self.icon_en_count = self.icon_en_count.saturating_add(1);
+        self.last_system_command_id = Some(SGB_COMMAND_ICON_EN);
+    }
+
+    const fn register_file_transfer_disabled(self) -> bool {
+        self.icon_disable_bits & 0x04 != 0
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub struct SgbPacketGateState {
+    pub busy_frames_remaining: u8,
+    pub busy_rejected_packet_count: u64,
+    pub icon_suppressed_packet_count: u64,
+    pub last_busy_command_id: Option<u8>,
+    pub last_suppressed_command_id: Option<u8>,
+}
+
+impl SgbPacketGateState {
+    fn start_busy_frames(&mut self, frames: u8) {
+        self.busy_frames_remaining = self.busy_frames_remaining.max(frames);
+    }
+
+    fn clear_busy(&mut self) {
+        self.busy_frames_remaining = 0;
+    }
+
+    fn advance_frame(&mut self) {
+        self.busy_frames_remaining = self.busy_frames_remaining.saturating_sub(1);
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct SgbPacketTransportState {
     pub last_joyp_line_state: SgbJoypLineState,
+    pub phase: SgbPacketTransportPhase,
     pub transfer_active: bool,
+    pub pending_data_bit: Option<u8>,
     pub packet_bits_buffered: u8,
     pub packet_bytes_buffered: u8,
     pub current_packet: [u8; SGB_PACKET_BYTES],
     pub reset_pulse_count: u64,
     pub data_pulse_count: u64,
     pub invalid_pulse_count: u64,
+    pub invalid_stop_bit_count: u64,
     pub last_trace: SgbPacketTrace,
 }
 
@@ -1824,6 +2062,7 @@ pub struct SgbVideoState {
     pub frozen_lcd: Option<SgbLcdRgb555Frame>,
     pub vram_transfer: SgbVramTransferState,
     pub border: SgbBorderState,
+    pub obj: SgbObjTransferState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -1943,6 +2182,8 @@ impl SgbHost {
             profile,
             backend_kind: SgbHostBackendKind::DeterministicHle,
             startup: SgbStartupState::new(active, profile, startup_mode),
+            system: SgbSystemControlState::default(),
+            packet_gate: SgbPacketGateState::default(),
             packet_transport: SgbPacketTransportState::default(),
             command: SgbCommandState::default(),
             video: SgbVideoState::default_for_active_host(active),
@@ -2001,6 +2242,8 @@ impl SgbHost {
             profile: self.profile,
             backend_kind: self.backend_kind,
             startup: self.startup,
+            system: self.system,
+            packet_gate: self.packet_gate,
             packet_transport: self.packet_transport,
             command: self.command,
             video: self.video.clone(),
@@ -2065,6 +2308,8 @@ impl SgbHost {
             profile: self.profile,
             backend_kind: self.backend_kind,
             startup: self.startup,
+            system: self.system,
+            packet_gate: self.packet_gate,
             packet_transport: self.packet_transport,
             command: self.command,
             video: self.video.clone(),
@@ -2079,6 +2324,8 @@ impl SgbHost {
         self.profile = state.profile;
         self.backend_kind = state.backend_kind;
         self.startup = state.startup;
+        self.system = state.system;
+        self.packet_gate = state.packet_gate;
         self.packet_transport = state.packet_transport;
         self.command = state.command;
         self.video = state.video.clone();
@@ -2093,7 +2340,9 @@ impl SgbHost {
         }
 
         self.packet_transport.last_joyp_line_state = SgbJoypLineState::Idle;
+        self.packet_transport.phase = SgbPacketTransportPhase::Idle;
         self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         self.packet_transport.packet_bits_buffered = 0;
         self.packet_transport.packet_bytes_buffered = 0;
         self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
@@ -2123,25 +2372,15 @@ impl SgbHost {
             .observe_joyp_write(previous_line_state, value);
         match line_state {
             SgbJoypLineState::Idle => {
-                self.packet_transport.last_joyp_line_state = line_state;
+                self.observe_joyp_idle();
             }
             SgbJoypLineState::Start => {
-                if !matches!(previous_line_state, SgbJoypLineState::Start) {
-                    self.begin_packet_transfer();
+                if previous_line_state != SgbJoypLineState::Start {
+                    self.observe_joyp_start();
                 }
-                self.packet_transport.last_joyp_line_state = line_state;
             }
             SgbJoypLineState::Zero | SgbJoypLineState::One => {
-                if previous_line_state == SgbJoypLineState::Idle {
-                    self.observe_packet_data_bit(line_state.data_bit().expect("data line"));
-                } else if previous_line_state != line_state {
-                    self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
-                    self.packet_transport.invalid_pulse_count =
-                        self.packet_transport.invalid_pulse_count.saturating_add(1);
-                    self.command.invalid_packet_count =
-                        self.command.invalid_packet_count.saturating_add(1);
-                }
-                self.packet_transport.last_joyp_line_state = line_state;
+                self.observe_joyp_data_candidate(line_state.data_bit().expect("data line"));
             }
             SgbJoypLineState::Invalid => {
                 self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
@@ -2149,21 +2388,75 @@ impl SgbHost {
                     self.packet_transport.invalid_pulse_count.saturating_add(1);
                 self.command.invalid_packet_count =
                     self.command.invalid_packet_count.saturating_add(1);
-                self.packet_transport.last_joyp_line_state = line_state;
+            }
+        }
+        self.packet_transport.last_joyp_line_state = line_state;
+    }
+
+    fn observe_joyp_idle(&mut self) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::Idle | SgbPacketTransportPhase::Receiving => {}
+            SgbPacketTransportPhase::StartPending => {
+                self.confirm_packet_start();
+            }
+            SgbPacketTransportPhase::DataPending => {
+                if let Some(bit) = self.packet_transport.pending_data_bit.take() {
+                    self.confirm_packet_data_bit(bit);
+                }
             }
         }
     }
 
-    fn begin_packet_transfer(&mut self) {
-        if self.packet_transport.transfer_active
-            && self.packet_transport.packet_bits_buffered != 0
-            && self.packet_transport.packet_bits_buffered <= SGB_PACKET_BITS
+    fn observe_joyp_start(&mut self) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::StartPending => {}
+            SgbPacketTransportPhase::Idle => self.begin_packet_start_pulse(false),
+            SgbPacketTransportPhase::Receiving | SgbPacketTransportPhase::DataPending => {
+                self.begin_packet_start_pulse(true);
+            }
+        }
+    }
+
+    fn observe_joyp_data_candidate(&mut self, bit: u8) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::Receiving | SgbPacketTransportPhase::DataPending => {
+                self.packet_transport.phase = SgbPacketTransportPhase::DataPending;
+                self.packet_transport.pending_data_bit = Some(bit);
+                self.packet_transport.data_pulse_count =
+                    self.packet_transport.data_pulse_count.saturating_add(1);
+            }
+            SgbPacketTransportPhase::StartPending => {
+                self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
+                self.packet_transport.invalid_pulse_count =
+                    self.packet_transport.invalid_pulse_count.saturating_add(1);
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+                self.packet_transport.phase = SgbPacketTransportPhase::Idle;
+                self.packet_transport.transfer_active = false;
+                self.packet_transport.pending_data_bit = None;
+            }
+            SgbPacketTransportPhase::Idle => {
+                self.record_packet_trace(SgbPacketTraceStatus::OrphanDataPulse);
+                self.packet_transport.invalid_pulse_count =
+                    self.packet_transport.invalid_pulse_count.saturating_add(1);
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+            }
+        }
+    }
+
+    fn begin_packet_start_pulse(&mut self, incomplete_reset: bool) {
+        if incomplete_reset
+            && (self.packet_transport.packet_bits_buffered != 0
+                || self.packet_transport.pending_data_bit.is_some())
         {
             self.record_packet_trace(SgbPacketTraceStatus::IncompleteReset);
             self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
         }
 
-        self.packet_transport.transfer_active = true;
+        self.packet_transport.phase = SgbPacketTransportPhase::StartPending;
+        self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         self.packet_transport.packet_bits_buffered = 0;
         self.packet_transport.packet_bytes_buffered = 0;
         self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
@@ -2171,18 +2464,12 @@ impl SgbHost {
             self.packet_transport.reset_pulse_count.saturating_add(1);
     }
 
-    fn observe_packet_data_bit(&mut self, bit: u8) {
-        self.packet_transport.data_pulse_count =
-            self.packet_transport.data_pulse_count.saturating_add(1);
+    fn confirm_packet_start(&mut self) {
+        self.packet_transport.phase = SgbPacketTransportPhase::Receiving;
+        self.packet_transport.transfer_active = true;
+    }
 
-        if !self.packet_transport.transfer_active {
-            self.record_packet_trace(SgbPacketTraceStatus::OrphanDataPulse);
-            self.packet_transport.invalid_pulse_count =
-                self.packet_transport.invalid_pulse_count.saturating_add(1);
-            self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
-            return;
-        }
-
+    fn confirm_packet_data_bit(&mut self, bit: u8) {
         if self.packet_transport.packet_bits_buffered < SGB_PACKET_BITS {
             let bit_index = self.packet_transport.packet_bits_buffered;
             if bit != 0 {
@@ -2194,22 +2481,27 @@ impl SgbHost {
                 self.packet_transport.packet_bits_buffered.saturating_add(1);
             self.packet_transport.packet_bytes_buffered =
                 self.packet_transport.packet_bits_buffered.div_ceil(8);
+            self.packet_transport.phase = SgbPacketTransportPhase::Receiving;
             return;
         }
 
-        if bit == 0 {
-            self.complete_packet_transfer();
-        } else {
+        if bit != 0 {
             self.record_packet_trace(SgbPacketTraceStatus::InvalidStopBit);
             self.packet_transport.invalid_pulse_count =
                 self.packet_transport.invalid_pulse_count.saturating_add(1);
+            self.packet_transport.invalid_stop_bit_count = self
+                .packet_transport
+                .invalid_stop_bit_count
+                .saturating_add(1);
             self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
-            self.packet_transport.transfer_active = false;
         }
+        self.complete_packet_transfer();
     }
 
     fn complete_packet_transfer(&mut self) {
+        self.packet_transport.phase = SgbPacketTransportPhase::Idle;
         self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         let bytes = self.packet_transport.current_packet;
         self.decode_complete_packet(bytes);
     }
@@ -2232,6 +2524,38 @@ impl SgbHost {
         if self.command.active_command_id.is_none() {
             let command_id = bytes[0] >> 3;
             let packet_count = bytes[0] & 0x07;
+            if self.system.register_file_transfer_disabled() {
+                self.packet_gate.icon_suppressed_packet_count = self
+                    .packet_gate
+                    .icon_suppressed_packet_count
+                    .saturating_add(1);
+                self.packet_gate.last_suppressed_command_id = Some(command_id);
+                self.packet_transport.last_trace = SgbPacketTrace {
+                    status: SgbPacketTraceStatus::SuppressedByIcon,
+                    command_id: Some(command_id),
+                    packet_count,
+                    packet_index: 1,
+                    bits_buffered: self.packet_transport.packet_bits_buffered,
+                    bytes,
+                };
+                return;
+            }
+            if self.packet_gate.busy_frames_remaining != 0 {
+                self.packet_gate.busy_rejected_packet_count = self
+                    .packet_gate
+                    .busy_rejected_packet_count
+                    .saturating_add(1);
+                self.packet_gate.last_busy_command_id = Some(command_id);
+                self.packet_transport.last_trace = SgbPacketTrace {
+                    status: SgbPacketTraceStatus::RejectedWhileBusy,
+                    command_id: Some(command_id),
+                    packet_count,
+                    packet_index: 1,
+                    bits_buffered: self.packet_transport.packet_bits_buffered,
+                    bytes,
+                };
+                return;
+            }
             if !(SGB_PACKET_COUNT_MIN..=SGB_PACKET_COUNT_MAX).contains(&packet_count) {
                 self.command.invalid_packet_count =
                     self.command.invalid_packet_count.saturating_add(1);
@@ -2329,6 +2653,17 @@ impl SgbHost {
             }
             SGB_COMMAND_SOU_TRN if packet_count == 1 => {
                 self.video.request_sound_transfer(command_id);
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            }
+            SGB_COMMAND_ATRC_EN if packet_count == 1 => {
+                self.system.apply_atrc_en(&self.command.packet_buffer[0]);
+            }
+            SGB_COMMAND_TEST_EN if packet_count == 1 => {
+                self.system.apply_test_en(&self.command.packet_buffer[0]);
+            }
+            SGB_COMMAND_ICON_EN if packet_count == 1 => {
+                self.system.apply_icon_en(&self.command.packet_buffer[0]);
             }
             SGB_COMMAND_PAL_SET if packet_count == 1 => {
                 self.video
@@ -2336,6 +2671,8 @@ impl SgbHost {
             }
             SGB_COMMAND_PAL_TRN if packet_count == 1 => {
                 self.video.request_pal_transfer(command_id);
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
             }
             SGB_COMMAND_DATA_SND if packet_count == 1 => {
                 self.dispatch_host_backend_request(SgbHostBackendRequest::Snes(
@@ -2353,6 +2690,8 @@ impl SgbHost {
                         self.command.packet_buffer[0][3],
                     ),
                 );
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
             }
             SGB_COMMAND_MLT_REQ if packet_count == 1 => self
                 .multiplayer
@@ -2364,12 +2703,21 @@ impl SgbHost {
                     )),
                 ));
             }
-            SGB_COMMAND_CHR_TRN if packet_count == 1 => self
-                .video
-                .request_chr_transfer(command_id, &self.command.packet_buffer[0]),
-            SGB_COMMAND_PCT_TRN if packet_count == 1 => self.video.request_pct_transfer(command_id),
+            SGB_COMMAND_CHR_TRN if packet_count == 1 => {
+                self.video
+                    .request_chr_transfer(command_id, &self.command.packet_buffer[0]);
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            }
+            SGB_COMMAND_PCT_TRN if packet_count == 1 => {
+                self.video.request_pct_transfer(command_id);
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            }
             SGB_COMMAND_ATTR_TRN if packet_count == 1 => {
                 self.video.request_attr_transfer(command_id);
+                self.packet_gate
+                    .start_busy_frames(SGB_VRAM_TRANSFER_TOTAL_FRAMES);
             }
             SGB_COMMAND_ATTR_SET if packet_count == 1 => self
                 .video
@@ -2377,6 +2725,11 @@ impl SgbHost {
             SGB_COMMAND_MASK_EN if packet_count == 1 => self
                 .video
                 .apply_mask_command(&self.command.packet_buffer[0]),
+            SGB_COMMAND_OBJ_TRN if packet_count == 1 => {
+                self.video
+                    .apply_obj_trn_command(&self.command.packet_buffer[0]);
+                self.packet_gate.start_busy_frames(SGB_OBJ_TRN_BUSY_FRAMES);
+            }
             SGB_COMMAND_PAL_PRI if packet_count == 1 => self
                 .video
                 .apply_pal_pri_command(&self.command.packet_buffer[0]),
@@ -2540,7 +2893,8 @@ impl SgbHost {
         Ok(())
     }
 
-    pub fn capture_pending_vram_transfer(
+    #[cfg(test)]
+    pub(crate) fn capture_pending_vram_transfer(
         &mut self,
         vram_bytes: &[u8],
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
@@ -2549,6 +2903,9 @@ impl SgbHost {
         }
         let target = self.video.capture_pending_vram_transfer(vram_bytes)?;
         self.dispatch_completed_vram_transfer(target);
+        if target.is_some() {
+            self.packet_gate.clear_busy();
+        }
         Ok(target)
     }
 
@@ -2562,6 +2919,11 @@ impl SgbHost {
         }
         let target = self.video.advance_frame_start(vram_bytes, display)?;
         self.dispatch_completed_vram_transfer(target);
+        if target.is_some() {
+            self.packet_gate.clear_busy();
+        } else {
+            self.packet_gate.advance_frame();
+        }
         Ok(target)
     }
 
@@ -2832,6 +3194,7 @@ impl SgbVideoState {
             frozen_lcd: None,
             vram_transfer: SgbVramTransferState::default(),
             border: SgbBorderState::default(),
+            obj: SgbObjTransferState::default(),
         }
     }
 
@@ -3044,6 +3407,10 @@ impl SgbVideoState {
         }
     }
 
+    fn apply_obj_trn_command(&mut self, bytes: &[u8; SGB_PACKET_BYTES]) {
+        self.obj.apply_obj_trn(&self.system_palettes, bytes);
+    }
+
     fn request_chr_transfer(&mut self, command_id: u8, bytes: &[u8; SGB_PACKET_BYTES]) {
         self.request_vram_transfer(
             command_id,
@@ -3076,7 +3443,11 @@ impl SgbVideoState {
             command_id,
             target,
             frame_starts_until_capture: 1,
+            phase: SgbVramTransferPhase::WaitingForNextFrame,
+            frames_captured: 0,
+            total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
         });
+        self.vram_transfer.partial_payload = Some(SgbVramTransferBuffer::default());
         self.vram_transfer.requested_transfer_count = self
             .vram_transfer
             .requested_transfer_count
@@ -3084,6 +3455,16 @@ impl SgbVideoState {
     }
 
     fn advance_frame_start(
+        &mut self,
+        vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
+    ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
+        let completed_target = self.advance_pending_vram_transfer(vram_bytes, display)?;
+        self.obj.capture_frame(vram_bytes, display)?;
+        Ok(completed_target)
+    }
+
+    fn advance_pending_vram_transfer(
         &mut self,
         vram_bytes: &[u8],
         display: SgbVramTransferDisplayState,
@@ -3097,24 +3478,48 @@ impl SgbVideoState {
             return Ok(None);
         }
         let payload = SgbVramTransferBuffer::from_display_memory(vram_bytes, display)?;
-        self.capture_pending_vram_transfer_payload(payload)
+        pending.frame_starts_until_capture = 0;
+        pending.phase = SgbVramTransferPhase::Capturing;
+        let frame_index = pending
+            .frames_captured
+            .min(pending.total_frames.saturating_sub(1));
+        let (chunk_start, chunk_end) =
+            vram_transfer_chunk_range(frame_index, pending.total_frames.max(1));
+        {
+            let partial_payload = self
+                .vram_transfer
+                .partial_payload
+                .get_or_insert_with(SgbVramTransferBuffer::default);
+            partial_payload.bytes[chunk_start..chunk_end]
+                .copy_from_slice(&payload.bytes[chunk_start..chunk_end]);
+        }
+        pending.frames_captured = pending.frames_captured.saturating_add(1);
+        if pending.frames_captured >= pending.total_frames {
+            let final_payload = self.vram_transfer.partial_payload.take().unwrap_or(payload);
+            self.complete_pending_vram_transfer_payload(final_payload)
+        } else {
+            self.vram_transfer.pending = Some(pending);
+            Ok(None)
+        }
     }
 
+    #[cfg(test)]
     fn capture_pending_vram_transfer(
         &mut self,
         vram_bytes: &[u8],
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
         let payload = SgbVramTransferBuffer::from_source_bytes(vram_bytes)?;
-        self.capture_pending_vram_transfer_payload(payload)
+        self.complete_pending_vram_transfer_payload(payload)
     }
 
-    fn capture_pending_vram_transfer_payload(
+    fn complete_pending_vram_transfer_payload(
         &mut self,
         payload: SgbVramTransferBuffer,
     ) -> Result<Option<SgbVramTransferTarget>, SgbVramTransferError> {
         let Some(pending) = self.vram_transfer.pending.take() else {
             return Err(SgbVramTransferError::NoPendingTransfer);
         };
+        self.vram_transfer.partial_payload = None;
         match pending.target {
             SgbVramTransferTarget::Chr(selection) => {
                 self.border.apply_chr_transfer(selection, &payload);
@@ -3153,6 +3558,7 @@ impl SgbVideoState {
             .saturating_add(self.player_palette_override.dynamic_payload_bytes())
             .saturating_add(self.attributes.dynamic_payload_bytes())
             .saturating_add(self.border.dynamic_payload_bytes())
+            .saturating_add(self.obj.dynamic_payload_bytes())
     }
 }
 
@@ -3263,6 +3669,35 @@ mod tests {
     fn sgb_mlt_req_packet(control: u8) -> [u8; SGB_PACKET_BYTES] {
         let mut bytes = sgb_command_packet(SGB_COMMAND_MLT_REQ, 1);
         bytes[1] = control;
+        bytes
+    }
+
+    fn sgb_atrc_en_packet(disable: bool) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_ATRC_EN, 1);
+        bytes[1] = u8::from(disable);
+        bytes
+    }
+
+    fn sgb_test_en_packet(enable: bool) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_TEST_EN, 1);
+        bytes[1] = u8::from(enable);
+        bytes
+    }
+
+    fn sgb_icon_en_packet(disable_bits: u8) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_ICON_EN, 1);
+        bytes[1] = disable_bits;
+        bytes
+    }
+
+    fn sgb_obj_trn_packet(control: u8, palette_ids: [u16; 4]) -> [u8; SGB_PACKET_BYTES] {
+        let mut bytes = sgb_command_packet(SGB_COMMAND_OBJ_TRN, 1);
+        bytes[1] = control;
+        for (palette_index, palette_id) in palette_ids.into_iter().enumerate() {
+            let [low, high] = palette_id.to_le_bytes();
+            bytes[2 + palette_index * 2] = low;
+            bytes[3 + palette_index * 2] = high;
+        }
         bytes
     }
 
@@ -3395,6 +3830,128 @@ mod tests {
         write_joyp_data_bit(host, 0);
     }
 
+    fn write_joyp_line(host: &mut SgbHost, line: SgbJoypLineState) {
+        host.observe_joyp_write(match line {
+            SgbJoypLineState::Idle => SGB_JOYP_IDLE_BITS,
+            SgbJoypLineState::Start => SGB_JOYP_START_BITS,
+            SgbJoypLineState::Zero => SGB_JOYP_ZERO_BITS,
+            SgbJoypLineState::One => SGB_JOYP_ONE_BITS,
+            SgbJoypLineState::Invalid => unreachable!("all masked JOYP states are explicit"),
+        });
+    }
+
+    fn write_sgb_ext_test_start(host: &mut SgbHost) {
+        write_joyp_line(host, SgbJoypLineState::Start);
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_bit(host: &mut SgbHost, bit: u8) {
+        write_joyp_line(
+            host,
+            if bit == 0 {
+                SgbJoypLineState::Zero
+            } else {
+                SgbJoypLineState::One
+            },
+        );
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_packet_basic(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_sgb_ext_test_start(host);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn write_sgb_ext_test_packet_corrupt_stop(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_sgb_ext_test_start(host);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 1);
+    }
+
+    fn write_sgb_ext_test_packet_avoid_30(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_joyp_line(host, SgbJoypLineState::Idle);
+        write_joyp_line(host, SgbJoypLineState::Start);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_joyp_line(
+                    host,
+                    if (byte >> bit_index) & 0x01 == 0 {
+                        SgbJoypLineState::One
+                    } else {
+                        SgbJoypLineState::Zero
+                    },
+                );
+                write_joyp_line(host, SgbJoypLineState::Start);
+            }
+        }
+        write_joyp_line(host, SgbJoypLineState::One);
+        write_joyp_line(host, SgbJoypLineState::Start);
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_packet_with_second_byte_bit_transition(
+        host: &mut SgbHost,
+        bytes: [u8; SGB_PACKET_BYTES],
+        transition: &[SgbJoypLineState],
+    ) {
+        write_sgb_ext_test_start(host);
+        for bit_index in 0..8 {
+            write_sgb_ext_test_bit(host, (bytes[0] >> bit_index) & 0x01);
+        }
+        for &line in transition {
+            write_joyp_line(host, line);
+        }
+        for bit_index in 1..8 {
+            write_sgb_ext_test_bit(host, (bytes[1] >> bit_index) & 0x01);
+        }
+        for byte in &bytes[2..] {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn write_sgb_ext_test_packet_short_start(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_joyp_line(host, SgbJoypLineState::Start);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn sgb_ext_test_player_count(host: &mut SgbHost) -> u8 {
+        for _ in 0..SGB_CONTROLLER_COUNT + 1 {
+            write_joyp_line(host, SgbJoypLineState::Start);
+            write_joyp_line(host, SgbJoypLineState::Idle);
+            if host.joyp_read_value(0xFF) & 0x0F == 0x0F {
+                break;
+            }
+        }
+
+        let mut count = 0_u8;
+        for _ in 0..SGB_CONTROLLER_COUNT + 1 {
+            count += 1;
+            write_joyp_line(host, SgbJoypLineState::Start);
+            write_joyp_line(host, SgbJoypLineState::Idle);
+            if host.joyp_read_value(0xFF) & 0x0F == 0x0F {
+                return count;
+            }
+        }
+        count
+    }
+
     fn cycle_sgb_player(host: &mut SgbHost) {
         host.observe_joyp_write(SGB_JOYP_ONE_BITS);
         host.observe_joyp_write(SGB_JOYP_IDLE_BITS);
@@ -3409,6 +3966,28 @@ mod tests {
         let header = test_header(SgbFlag::Supported, SGB_HEADER_OLD_LICENSEE_CODE_REQUIRED);
         host.apply_cartridge_header(Some(&header));
         host
+    }
+
+    fn fallback_transfer_display() -> SgbVramTransferDisplayState {
+        SgbVramTransferDisplayState::new(0x81, 0, 1, SGB_TRANSFER_REQUIRED_BGP)
+    }
+
+    fn transfer_vram_from_payload(
+        payload: &[u8; SGB_VRAM_TRANSFER_BYTES],
+    ) -> [u8; SGB_GB_VRAM_BYTES] {
+        let mut vram = [0; SGB_GB_VRAM_BYTES];
+        vram[..SGB_VRAM_TRANSFER_BYTES].copy_from_slice(payload);
+        vram
+    }
+
+    fn frame_payload(frame_index: u8) -> [u8; SGB_VRAM_TRANSFER_BYTES] {
+        let mut payload = [0; SGB_VRAM_TRANSFER_BYTES];
+        for (byte_index, byte) in payload.iter_mut().enumerate() {
+            *byte = frame_index
+                .wrapping_mul(0x31)
+                .wrapping_add(byte_index as u8);
+        }
+        payload
     }
 
     #[test]
@@ -3891,6 +4470,376 @@ mod tests {
     }
 
     #[test]
+    fn sgb_direct_boot_profiles_publish_sgb_cpu_fingerprint() {
+        for startup_mode in [StartupMode::SkipBoot, StartupMode::CustomBoot] {
+            let dmg = crate::Machine::new(
+                crate::MachineConfig::new(crate::ConsoleModel::GameBoy)
+                    .with_startup_mode(startup_mode),
+            );
+            assert_eq!(dmg.cpu().startup_state().a, 0x01);
+            assert_eq!(dmg.cpu().startup_state().c, 0x13);
+
+            let sgb = crate::Machine::new(
+                crate::MachineConfig::new(crate::ConsoleModel::GameBoy)
+                    .with_sgb_profile(SgbHostProfile::SgbNtsc)
+                    .with_startup_mode(startup_mode),
+            );
+            assert_eq!(sgb.cpu().startup_state().a, 0x01);
+            assert_eq!(sgb.cpu().startup_state().f, 0x00);
+            assert_eq!(sgb.cpu().startup_state().c, 0x14);
+            assert_eq!(sgb.cpu().startup_state().e, 0x00);
+            assert_eq!(sgb.cpu().startup_state().h, 0xC0);
+            assert_eq!(sgb.cpu().startup_state().l, 0x60);
+
+            let sgb2 = crate::Machine::new(
+                crate::MachineConfig::new(crate::ConsoleModel::GameBoy)
+                    .with_sgb_profile(SgbHostProfile::Sgb2Ntsc)
+                    .with_startup_mode(startup_mode),
+            );
+            assert_eq!(sgb2.cpu().startup_state().a, 0xFF);
+            assert_eq!(sgb2.cpu().startup_state().f, 0x00);
+            assert_eq!(sgb2.cpu().startup_state().c, 0x14);
+            assert_eq!(sgb2.cpu().startup_state().e, 0x00);
+            assert_eq!(sgb2.cpu().startup_state().h, 0xC0);
+            assert_eq!(sgb2.cpu().startup_state().l, 0x60);
+        }
+    }
+
+    #[test]
+    fn system_control_commands_are_persisted_and_icon_can_suppress_packets() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_atrc_en_packet(true));
+        assert!(host.snapshot().system.attraction_disabled);
+        assert_eq!(host.snapshot().system.atrc_en_count, 1);
+
+        write_joyp_packet(&mut host, sgb_test_en_packet(true));
+        assert!(host.snapshot().system.test_mode_enabled);
+        assert_eq!(host.snapshot().system.test_en_count, 1);
+
+        write_joyp_packet(&mut host, sgb_icon_en_packet(0x03));
+        assert_eq!(host.snapshot().system.icon_disable_bits, 0x03);
+        assert_eq!(host.snapshot().system.icon_en_count, 1);
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        assert_eq!(
+            host.snapshot().command.last_command_id,
+            Some(SGB_COMMAND_PAL01)
+        );
+        assert_eq!(host.snapshot().video.palette_command_count, 1);
+
+        write_joyp_packet(&mut host, sgb_icon_en_packet(0x04));
+        assert_eq!(host.snapshot().system.icon_disable_bits, 0x04);
+        let palette_command_count = host.snapshot().video.palette_command_count;
+        let accepted_command_count = host.snapshot().command.accepted_command_count;
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::SuppressedByIcon
+        );
+        assert_eq!(snapshot.packet_gate.icon_suppressed_packet_count, 1);
+        assert_eq!(
+            snapshot.packet_gate.last_suppressed_command_id,
+            Some(SGB_COMMAND_PAL01)
+        );
+        assert_eq!(snapshot.video.palette_command_count, palette_command_count);
+        assert_eq!(
+            snapshot.command.accepted_command_count,
+            accepted_command_count
+        );
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+        assert_eq!(restored.snapshot().system, snapshot.system);
+        assert_eq!(restored.snapshot().packet_gate, snapshot.packet_gate);
+    }
+
+    #[test]
+    fn obj_trn_records_host_obj_state_and_captures_oam_from_display_frames() {
+        let mut host = accepted_sgb_host();
+        let mut palettes = [0; SGB_VRAM_TRANSFER_BYTES];
+        write_system_palette_color(&mut palettes, 3, 0, 0x001F);
+        write_system_palette_color(&mut palettes, 3, 1, 0x03E0);
+        write_system_palette_color(&mut palettes, 4, 0, 0x7C00);
+        write_system_palette_color(&mut palettes, 4, 1, 0x4210);
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        host.capture_pending_vram_transfer(&palettes)
+            .expect("PAL_TRN should load OBJ backing palette data");
+
+        write_joyp_packet(&mut host, sgb_obj_trn_packet(0x03, [3, 4, 5, 511]));
+        let snapshot = host.snapshot();
+        assert!(snapshot.video.obj.enabled);
+        assert!(snapshot.video.obj.color_transfer_requested);
+        assert_eq!(snapshot.video.obj.command_count, 1);
+        assert_eq!(snapshot.video.obj.palette_ids, [3, 4, 5, 511]);
+        assert_eq!(snapshot.video.obj.palettes[0].colors[0].raw(), 0x001F);
+        assert_eq!(snapshot.video.obj.palettes[0].colors[1].raw(), 0x03E0);
+        assert_eq!(snapshot.video.obj.palettes[0].colors[4].raw(), 0x7C00);
+        assert_eq!(
+            snapshot.packet_gate.busy_frames_remaining,
+            SGB_OBJ_TRN_BUSY_FRAMES
+        );
+
+        let mut vram = [0; SGB_GB_VRAM_BYTES];
+        for index in 0..SGB_OBJ_OAM_PAYLOAD_BYTES {
+            vram[SGB_OBJ_OAM_SOURCE_OFFSET + index] = index as u8;
+        }
+        host.advance_frame_start(
+            &vram,
+            SgbVramTransferDisplayState::new(0x81, 0, 1, SGB_TRANSFER_REQUIRED_BGP),
+        )
+        .expect("OBJ_TRN frame capture should use the display-transfer seam");
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.packet_gate.busy_frames_remaining, 0);
+        assert_eq!(snapshot.video.obj.frame_capture_count, 1);
+        assert_eq!(
+            snapshot
+                .video
+                .obj
+                .last_oam_payload
+                .as_ref()
+                .expect("OBJ_TRN should retain the last OAM payload")
+                .bytes,
+            (0..SGB_OBJ_OAM_PAYLOAD_BYTES)
+                .map(|index| index as u8)
+                .collect::<Vec<_>>()
+        );
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+        assert_eq!(restored.snapshot().video.obj, snapshot.video.obj);
+    }
+
+    #[test]
+    fn vram_transfer_command_captures_over_five_frame_window_and_survives_save_state() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot.video.vram_transfer.pending,
+            Some(SgbPendingVramTransfer {
+                command_id: SGB_COMMAND_PAL_TRN,
+                target: SgbVramTransferTarget::Pal,
+                frame_starts_until_capture: 1,
+                phase: SgbVramTransferPhase::WaitingForNextFrame,
+                frames_captured: 0,
+                total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
+            })
+        );
+        assert!(snapshot.video.vram_transfer.last_completed.is_none());
+        assert_eq!(
+            snapshot.packet_gate.busy_frames_remaining,
+            SGB_VRAM_TRANSFER_TOTAL_FRAMES
+        );
+
+        let mut expected = [0; SGB_VRAM_TRANSFER_BYTES];
+        for frame_index in 0..2 {
+            let payload = frame_payload(frame_index);
+            let (chunk_start, chunk_end) =
+                vram_transfer_chunk_range(frame_index, SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            expected[chunk_start..chunk_end].copy_from_slice(&payload[chunk_start..chunk_end]);
+            assert_eq!(
+                host.advance_frame_start(
+                    &transfer_vram_from_payload(&payload),
+                    fallback_transfer_display(),
+                ),
+                Ok(None)
+            );
+            let snapshot = host.snapshot();
+            let pending = snapshot
+                .video
+                .vram_transfer
+                .pending
+                .expect("PAL_TRN should remain pending until the fifth frame");
+            assert_eq!(pending.phase, SgbVramTransferPhase::Capturing);
+            assert_eq!(pending.frames_captured, frame_index + 1);
+            assert_eq!(
+                snapshot.packet_gate.busy_frames_remaining,
+                SGB_VRAM_TRANSFER_TOTAL_FRAMES - frame_index - 1
+            );
+            assert_eq!(
+                snapshot
+                    .video
+                    .vram_transfer
+                    .partial_payload
+                    .as_ref()
+                    .expect("partial _TRN payload should be save-state-visible")
+                    .bytes[chunk_start..chunk_end],
+                expected[chunk_start..chunk_end]
+            );
+        }
+
+        let mid_save = host.capture_save_state();
+        let mid_snapshot = host.snapshot();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&mid_save);
+        assert_eq!(
+            restored.snapshot().video.vram_transfer,
+            mid_snapshot.video.vram_transfer
+        );
+        assert_eq!(restored.snapshot().packet_gate, mid_snapshot.packet_gate);
+
+        for frame_index in 2..SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+            let payload = frame_payload(frame_index);
+            let (chunk_start, chunk_end) =
+                vram_transfer_chunk_range(frame_index, SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            expected[chunk_start..chunk_end].copy_from_slice(&payload[chunk_start..chunk_end]);
+            let result = restored
+                .advance_frame_start(
+                    &transfer_vram_from_payload(&payload),
+                    fallback_transfer_display(),
+                )
+                .expect("restored PAL_TRN frame capture should continue exactly");
+            if frame_index + 1 < SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                assert_eq!(result, None);
+                assert_eq!(
+                    restored
+                        .snapshot()
+                        .video
+                        .vram_transfer
+                        .pending
+                        .expect("transfer should still be pending")
+                        .frames_captured,
+                    frame_index + 1
+                );
+            } else {
+                assert_eq!(result, Some(SgbVramTransferTarget::Pal));
+            }
+        }
+
+        let snapshot = restored.snapshot();
+        assert_eq!(snapshot.packet_gate.busy_frames_remaining, 0);
+        assert!(snapshot.video.vram_transfer.pending.is_none());
+        assert!(snapshot.video.vram_transfer.partial_payload.is_none());
+        assert_eq!(snapshot.video.vram_transfer.completed_transfer_count, 1);
+        assert_eq!(
+            snapshot
+                .video
+                .vram_transfer
+                .last_completed
+                .as_ref()
+                .expect("completed PAL_TRN should retain the final payload")
+                .payload
+                .bytes,
+            expected.to_vec()
+        );
+        assert_eq!(
+            snapshot.video.system_palettes.palette_wrapping(0).colors[0].raw(),
+            u16::from_le_bytes([expected[0], expected[1]]) & SGB_RGB555_MASK
+        );
+    }
+
+    #[test]
+    fn packet_gate_rejects_packets_while_busy_and_accepts_after_transfer_finishes() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_pal_trn_packet());
+        assert_eq!(host.snapshot().command.accepted_command_count, 1);
+        assert_eq!(
+            host.snapshot().packet_gate.busy_frames_remaining,
+            SGB_VRAM_TRANSFER_TOTAL_FRAMES
+        );
+
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let rejected = host.snapshot();
+        assert_eq!(
+            rejected.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::RejectedWhileBusy
+        );
+        assert_eq!(rejected.packet_gate.busy_rejected_packet_count, 1);
+        assert_eq!(
+            rejected.packet_gate.last_busy_command_id,
+            Some(SGB_COMMAND_PAL01)
+        );
+        assert_eq!(rejected.command.accepted_command_count, 1);
+        assert_eq!(rejected.video.palette_command_count, 0);
+
+        for frame_index in 0..SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+            let payload = frame_payload(frame_index);
+            let result = host
+                .advance_frame_start(
+                    &transfer_vram_from_payload(&payload),
+                    fallback_transfer_display(),
+                )
+                .expect("busy PAL_TRN should advance from deterministic host frames");
+            if frame_index + 1 < SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                assert_eq!(result, None);
+            } else {
+                assert_eq!(result, Some(SgbVramTransferTarget::Pal));
+            }
+        }
+        assert_eq!(host.snapshot().packet_gate.busy_frames_remaining, 0);
+
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let accepted = host.snapshot();
+        assert_eq!(
+            accepted.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(accepted.packet_gate.busy_rejected_packet_count, 1);
+        assert_eq!(accepted.command.last_command_id, Some(SGB_COMMAND_PAL01));
+        assert_eq!(accepted.command.accepted_command_count, 2);
+        assert_eq!(accepted.video.palette_command_count, 1);
+    }
+
+    #[test]
+    fn packet_gate_rejects_packets_during_obj_trn_busy() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_obj_trn_packet(0x01, [0, 0, 0, 0]));
+        let obj_snapshot = host.snapshot();
+        assert_eq!(
+            obj_snapshot.command.last_command_id,
+            Some(SGB_COMMAND_OBJ_TRN)
+        );
+        assert_eq!(obj_snapshot.command.accepted_command_count, 1);
+        assert_eq!(
+            obj_snapshot.packet_gate.busy_frames_remaining,
+            SGB_OBJ_TRN_BUSY_FRAMES
+        );
+        assert!(obj_snapshot.video.obj.enabled);
+
+        let palette_state = obj_snapshot.video.palette_state;
+        let palette_command_count = obj_snapshot.video.palette_command_count;
+        let border_state = obj_snapshot.video.border.clone();
+        let audio_state = obj_snapshot.audio;
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let rejected = host.snapshot();
+        assert_eq!(
+            rejected.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::RejectedWhileBusy
+        );
+        assert_eq!(rejected.packet_gate.busy_rejected_packet_count, 1);
+        assert_eq!(
+            rejected.packet_gate.last_busy_command_id,
+            Some(SGB_COMMAND_PAL01)
+        );
+        assert_eq!(rejected.command.accepted_command_count, 1);
+        assert_eq!(rejected.command.last_command_id, Some(SGB_COMMAND_OBJ_TRN));
+        assert_eq!(rejected.video.palette_state, palette_state);
+        assert_eq!(rejected.video.palette_command_count, palette_command_count);
+        assert_eq!(rejected.video.border, border_state);
+        assert_eq!(rejected.audio, audio_state);
+
+        host.advance_frame_start(&[0; SGB_GB_VRAM_BYTES], fallback_transfer_display())
+            .expect("OBJ_TRN busy window should advance from deterministic host frames");
+        assert_eq!(host.snapshot().packet_gate.busy_frames_remaining, 0);
+
+        write_joyp_packet(&mut host, sgb_pal01_packet());
+        let accepted = host.snapshot();
+        assert_eq!(
+            accepted.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(accepted.packet_gate.busy_rejected_packet_count, 1);
+        assert_eq!(accepted.command.last_command_id, Some(SGB_COMMAND_PAL01));
+        assert_eq!(accepted.command.accepted_command_count, 2);
+        assert_eq!(
+            accepted.video.palette_command_count,
+            palette_command_count + 1
+        );
+    }
+
+    #[test]
     fn host_backend_contract_records_sound_data_and_jump_requests() {
         let mut host = accepted_sgb_host();
 
@@ -3928,6 +4877,9 @@ mod tests {
                 command_id: SGB_COMMAND_DATA_TRN,
                 target: SgbVramTransferTarget::SnesData(SgbSnesAddress::new(0x7E, 0x2200)),
                 frame_starts_until_capture: 1,
+                phase: SgbVramTransferPhase::WaitingForNextFrame,
+                frames_captured: 0,
+                total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
             })
         );
         host.capture_pending_vram_transfer(&[0x42; SGB_VRAM_TRANSFER_BYTES])
@@ -3971,6 +4923,9 @@ mod tests {
                 command_id: SGB_COMMAND_SOU_TRN,
                 target: SgbVramTransferTarget::Sound,
                 frame_starts_until_capture: 1,
+                phase: SgbVramTransferPhase::WaitingForNextFrame,
+                frames_captured: 0,
+                total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
             })
         );
 
@@ -4167,6 +5122,11 @@ mod tests {
         let snapshot = host.snapshot();
         assert_eq!(snapshot.packet_transport.reset_pulse_count, 1);
         assert_eq!(snapshot.packet_transport.data_pulse_count, 129);
+        assert_eq!(
+            snapshot.packet_transport.phase,
+            SgbPacketTransportPhase::Idle
+        );
+        assert_eq!(snapshot.packet_transport.pending_data_bit, None);
         assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
         assert_eq!(snapshot.packet_transport.packet_bytes_buffered, 16);
         assert_eq!(
@@ -4178,6 +5138,181 @@ mod tests {
         assert_eq!(snapshot.packet_transport.last_trace.packet_index, 1);
         assert_eq!(snapshot.command.last_command_id, Some(0x11));
         assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_matches_cpp_sgb_ext_test_packet_edge_matrix() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_basic(&mut host, sgb_mlt_req_packet(1));
+
+        let mut results = Vec::new();
+        for (packet, writer) in [
+            (
+                sgb_mlt_req_packet(3),
+                write_sgb_ext_test_packet_basic as fn(&mut SgbHost, [u8; SGB_PACKET_BYTES]),
+            ),
+            (sgb_mlt_req_packet(0), write_sgb_ext_test_packet_basic),
+            (
+                sgb_mlt_req_packet(3),
+                write_sgb_ext_test_packet_corrupt_stop,
+            ),
+            (
+                sgb_mlt_req_packet(0),
+                write_sgb_ext_test_packet_corrupt_stop,
+            ),
+            (sgb_mlt_req_packet(3), write_sgb_ext_test_packet_avoid_30),
+            (sgb_mlt_req_packet(0), write_sgb_ext_test_packet_avoid_30),
+        ] {
+            writer(&mut host, packet);
+            results.push(sgb_ext_test_player_count(&mut host));
+        }
+
+        for (transition, controls) in [
+            (
+                &[
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+        ] {
+            for control in controls {
+                write_sgb_ext_test_packet_with_second_byte_bit_transition(
+                    &mut host,
+                    sgb_mlt_req_packet(control),
+                    transition,
+                );
+                results.push(sgb_ext_test_player_count(&mut host));
+            }
+        }
+
+        for control in [3, 1, 0] {
+            write_sgb_ext_test_packet_short_start(&mut host, sgb_mlt_req_packet(control));
+            results.push(sgb_ext_test_player_count(&mut host));
+        }
+
+        assert_eq!(
+            results,
+            [
+                0x04, 0x01, 0x04, 0x01, 0x01, 0x01, 0x04, 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 0x01,
+                0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+            ]
+        );
+    }
+
+    #[test]
+    fn joyp_transport_records_corrupt_stop_without_rejecting_packet() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_corrupt_stop(&mut host, sgb_mlt_req_packet(3));
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 4);
+        assert_eq!(snapshot.packet_transport.invalid_stop_bit_count, 1);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+        assert_eq!(snapshot.command.invalid_packet_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_requires_idle_to_confirm_start() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_short_start(&mut host, sgb_mlt_req_packet(3));
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 1);
+        assert_eq!(snapshot.command.accepted_command_count, 0);
+        assert!(snapshot.command.invalid_packet_count > 0);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::OrphanDataPulse
+        );
+    }
+
+    #[test]
+    fn joyp_transport_uses_last_pending_data_state_before_idle() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_with_second_byte_bit_transition(
+            &mut host,
+            sgb_mlt_req_packet(0),
+            &[
+                SgbJoypLineState::Zero,
+                SgbJoypLineState::One,
+                SgbJoypLineState::Idle,
+            ],
+        );
+
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot.multiplayer.player_count, 2,
+            "$20->$10->$30 substitutes a one for the first MLT_REQ control bit"
+        );
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+    }
+
+    #[test]
+    fn joyp_transport_treats_start_mid_packet_as_incomplete_reset() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_with_second_byte_bit_transition(
+            &mut host,
+            sgb_mlt_req_packet(3),
+            &[
+                SgbJoypLineState::Zero,
+                SgbJoypLineState::Start,
+                SgbJoypLineState::Idle,
+            ],
+        );
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 1);
+        assert!(snapshot.command.invalid_packet_count > 0);
+        assert_ne!(snapshot.command.last_command_id, Some(SGB_COMMAND_MLT_REQ));
     }
 
     #[test]
@@ -4583,6 +5718,12 @@ mod tests {
             host.snapshot().video.player_palette_override.active,
             "PAL_TRN loads backing system palette memory and must not by itself switch away from the player palette"
         );
+        host.capture_pending_vram_transfer(&[0; SGB_VRAM_TRANSFER_BYTES])
+            .expect("PAL_TRN must finish before a later command packet is accepted");
+        assert!(
+            host.snapshot().video.player_palette_override.active,
+            "completed PAL_TRN still must not switch away from the player palette until an application command consumes PAL_PRI"
+        );
 
         let mut attr_set = sgb_command_packet(SGB_COMMAND_ATTR_SET, 1);
         attr_set[1] = 0;
@@ -4974,8 +6115,16 @@ mod tests {
         write_joyp_data_bit(&mut invalid_stop, 1);
         assert_eq!(
             invalid_stop.snapshot().packet_transport.last_trace.status,
-            SgbPacketTraceStatus::InvalidStopBit
+            SgbPacketTraceStatus::Complete
         );
+        assert_eq!(
+            invalid_stop
+                .snapshot()
+                .packet_transport
+                .invalid_stop_bit_count,
+            1
+        );
+        assert_eq!(invalid_stop.snapshot().command.accepted_command_count, 1);
         assert_eq!(invalid_stop.snapshot().command.invalid_packet_count, 1);
     }
 
@@ -5037,6 +6186,70 @@ mod tests {
 
         let snapshot = restored.snapshot();
         assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn save_state_restores_pending_start_pulse() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_joyp_line(&mut host, SgbJoypLineState::Start);
+        assert_eq!(
+            host.snapshot().packet_transport.phase,
+            SgbPacketTransportPhase::StartPending
+        );
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        write_joyp_line(&mut restored, SgbJoypLineState::Idle);
+        for byte in packet {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(&mut restored, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(&mut restored, 0);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn save_state_restores_pending_data_bit() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_sgb_ext_test_start(&mut host);
+        write_joyp_line(&mut host, SgbJoypLineState::One);
+        assert_eq!(
+            host.snapshot().packet_transport.phase,
+            SgbPacketTransportPhase::DataPending
+        );
+        assert_eq!(host.snapshot().packet_transport.pending_data_bit, Some(1));
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        write_joyp_line(&mut restored, SgbJoypLineState::Idle);
+        for bit_index in 1..128 {
+            let byte = packet[bit_index / 8];
+            write_sgb_ext_test_bit(&mut restored, (byte >> (bit_index % 8)) & 0x01);
+        }
+        write_sgb_ext_test_bit(&mut restored, 0);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(snapshot.packet_transport.pending_data_bit, None);
         assert_eq!(
             snapshot.packet_transport.last_trace.status,
             SgbPacketTraceStatus::Complete

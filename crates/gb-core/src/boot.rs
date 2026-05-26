@@ -873,6 +873,7 @@ impl BootController {
         BootDirectBootState {
             cpu: build_skip_boot_cpu_state(
                 self.console_model,
+                self.sgb_profile,
                 cartridge.and_then(CartridgeSlot::header),
             ),
             io,
@@ -919,8 +920,38 @@ const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
 
 fn build_skip_boot_cpu_state(
     console_model: ConsoleModel,
+    sgb_profile: Option<SgbHostProfile>,
     header: Option<&CartridgeHeader>,
 ) -> CpuStartupState {
+    if let Some(sgb_profile) = sgb_profile {
+        return match sgb_profile {
+            SgbHostProfile::SgbNtsc | SgbHostProfile::SgbPal => CpuStartupState {
+                a: 0x01,
+                f: 0x00,
+                b: 0x00,
+                c: 0x14,
+                d: 0x00,
+                e: 0x00,
+                h: 0xC0,
+                l: 0x60,
+                sp: 0xFFFE,
+                pc: 0x0100,
+            },
+            SgbHostProfile::Sgb2Ntsc => CpuStartupState {
+                a: 0xFF,
+                f: 0x00,
+                b: 0x00,
+                c: 0x14,
+                d: 0x00,
+                e: 0x00,
+                h: 0xC0,
+                l: 0x60,
+                sp: 0xFFFE,
+                pc: 0x0100,
+            },
+        };
+    }
+
     match console_model {
         ConsoleModel::GameBoy => CpuStartupState {
             a: 0x01,

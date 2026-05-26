@@ -1148,6 +1148,10 @@ pub fn mooneye_cgb_extra_suite() -> RomSuite {
     curated_test_roms::mooneye_cgb_extra_suite()
 }
 
+pub fn mooneye_sgb_boot_regs_extra_suite() -> RomSuite {
+    curated_test_roms::mooneye_sgb_boot_regs_extra_suite()
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     let mut suites = vec![
         phase_2_cpu_timing_suite(),
@@ -1173,6 +1177,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         cgb_boot_div_suite(),
         cgb_boot_hwio_suite(),
         mooneye_cgb_extra_suite(),
+        mooneye_sgb_boot_regs_extra_suite(),
         cgb_audio_blargg_suite(),
         cgb_audio_samesuite_suite(),
         cgb_speed_suite(),
@@ -3380,8 +3385,8 @@ mod tests {
         little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
         memory_text_output_completion_reached, mooneye_cgb_extra_suite,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
-        mooneye_result_for_signature, render_memory_text_output, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite,
+        mooneye_result_for_signature, mooneye_sgb_boot_regs_extra_suite, render_memory_text_output,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
     };
     use crate::framebuffer_oracle::{
         decode_fixture_framebuffer_path, encode_framebuffer_pgm, encode_rgb555_framebuffer_png,
@@ -3649,6 +3654,35 @@ mod tests {
                 && case.id != "mooneye-cgb-ppu-vblank-stat-intr-gs"
         }));
         assert!(built_in_rom_suite_by_name("mooneye-cgb-extra").is_some());
+    }
+
+    #[test]
+    fn mooneye_sgb_boot_regs_extra_suite_is_manifest_backed_sgb_gate() {
+        let suite = mooneye_sgb_boot_regs_extra_suite();
+
+        assert_eq!(suite.name, "mooneye-sgb-boot-regs-extra");
+        assert_eq!(suite.family.as_deref(), Some("mooneye-sgb-boot-regs-extra"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(built_in_rom_suite_by_name("mooneye-sgb-boot-regs-extra").is_some());
+        assert!(suite.cases.iter().all(|case| {
+            case.console_model == ConsoleModel::GameBoy
+                && case.startup_mode == StartupMode::SkipBoot
+                && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.timeout == Timeout::Frames(180)
+                && case.pass_condition == PassCondition::MooneyeResult
+        }));
+
+        assert_eq!(suite.cases[0].host_platform, HostPlatform::Sgb);
+        assert_eq!(
+            suite.cases[0].rom_path,
+            PathBuf::from("mooneye/acceptance/boot_regs-sgb.gb")
+        );
+        assert_eq!(suite.cases[1].host_platform, HostPlatform::Sgb2);
+        assert_eq!(
+            suite.cases[1].rom_path,
+            PathBuf::from("mooneye/acceptance/boot_regs-sgb2.gb")
+        );
     }
 
     #[test]
@@ -4696,7 +4730,7 @@ mod tests {
     }
 
     #[test]
-    fn built_in_rom_suite_lookup_returns_cpp_sgb_informational_suite() {
+    fn built_in_rom_suite_lookup_returns_cpp_sgb_fixture_suite() {
         let suite = built_in_rom_suite_by_name("cpp-sgb").expect("known suite should exist");
 
         assert_eq!(suite, cpp_sgb_suite());
@@ -4708,7 +4742,9 @@ mod tests {
         assert_eq!(case.host_platform, HostPlatform::Sgb);
         assert_eq!(
             case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png"
+            ))
         );
     }
 

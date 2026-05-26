@@ -51,10 +51,11 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 10] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "mooneye-cgb-extra",
+    "mooneye-sgb-boot-regs-extra",
     "samesuite-dmg-extra",
     "samesuite-cgb-extra",
     "magen-cgb-extra",
@@ -1208,6 +1209,10 @@ pub fn mooneye_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("mooneye-cgb-extra")
 }
 
+pub fn mooneye_sgb_boot_regs_extra_suite() -> RomSuite {
+    manifest_suite_by_name("mooneye-sgb-boot-regs-extra")
+}
+
 pub fn cgb_audio_blargg_suite() -> RomSuite {
     manifest_suite_by_name("cgb-audio-blargg")
 }
@@ -1275,7 +1280,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 32] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 33] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1344,6 +1349,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 32] {
         (
             "crates/gb-test-runner/data/cgb-boot-hwio.toml",
             include_str!("../data/cgb-boot-hwio.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/mooneye-sgb-boot-regs.toml",
+            include_str!("../data/mooneye-sgb-boot-regs.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-smoke.toml",
@@ -2250,12 +2259,12 @@ mod tests {
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
         mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
-        mooneye_cgb_extra_suite, parse_manifest_case, parse_manifest_console_model,
-        parse_manifest_host_platform, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite, samesuite_sgb_suite, sort_persisted_case_statuses,
-        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
-        update_curated_test_report,
+        mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
+        parse_manifest_console_model, parse_manifest_host_platform, parse_manifest_subsystem,
+        render_markdown_report, report_rom_display, report_status_display,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
+        sort_persisted_case_statuses, suite_uses_docboy_test_report, suite_uses_extra_test_report,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -2618,6 +2627,51 @@ mod tests {
     }
 
     #[test]
+    fn mooneye_sgb_boot_regs_extra_suite_runs_sgb_profiles_as_extra_rows() {
+        let suite = mooneye_sgb_boot_regs_extra_suite();
+
+        assert_eq!(suite.name, "mooneye-sgb-boot-regs-extra");
+        assert_eq!(suite.family.as_deref(), Some("mooneye-sgb-boot-regs-extra"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(crate::built_in_rom_suite_by_name("mooneye-sgb-boot-regs-extra").is_some());
+        assert!(suite_uses_extra_test_report("mooneye-sgb-boot-regs-extra"));
+        assert!(!suite_uses_docboy_test_report(
+            "mooneye-sgb-boot-regs-extra"
+        ));
+
+        let expected = [
+            (
+                "mooneye-sgb-boot-regs-sgb",
+                HostPlatform::Sgb,
+                "acceptance/boot_regs-sgb.gb",
+            ),
+            (
+                "mooneye-sgb-boot-regs-sgb2",
+                HostPlatform::Sgb2,
+                "acceptance/boot_regs-sgb2.gb",
+            ),
+        ];
+        for (case, (id, host_platform, rom_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.host_platform, host_platform);
+            assert_eq!(case.startup_mode, StartupMode::SkipBoot);
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(case.rom_path, PathBuf::from("mooneye").join(rom_path));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
+            assert!(case.capture_plan.contains(CaptureKind::Serial));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Serial));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
+    }
+
+    #[test]
     fn cgb_ppu_basic_suite_promotes_initial_slice4_rows_in_order() {
         let suite = cgb_ppu_basic_suite();
 
@@ -2976,7 +3030,7 @@ mod tests {
     }
 
     #[test]
-    fn cpp_sgb_suite_runs_informational_row_on_sgb_host() {
+    fn cpp_sgb_suite_runs_fixture_row_on_sgb_host() {
         let suite = cpp_sgb_suite();
 
         assert_eq!(suite.name, "cpp-sgb");
@@ -2992,7 +3046,7 @@ mod tests {
         assert_eq!(case.console_model, ConsoleModel::GameBoy);
         assert_eq!(case.host_platform, HostPlatform::Sgb);
         assert_eq!(case.startup_mode, StartupMode::SkipBoot);
-        assert_eq!(case.timeout, Timeout::Frames(30));
+        assert_eq!(case.timeout, Timeout::Frames(240));
         assert_eq!(case.rom_path, PathBuf::from("cpp/sgb-ext-test.gb"));
         assert_eq!(
             case.external_rom_root_key.as_deref(),
@@ -3000,12 +3054,62 @@ mod tests {
         );
         assert_eq!(
             case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png"
+            ))
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+    }
+
+    #[test]
+    fn cpp_sgb_reference_fixture_matches_upstream_pass_signature() {
+        const TILE_0: [u8; 8] = [0x00, 0xEE, 0xAA, 0xAA, 0xAA, 0xAA, 0xEE, 0x00];
+        const TILE_1: [u8; 8] = [0x00, 0xE4, 0xAC, 0xA4, 0xA4, 0xA4, 0xEE, 0x00];
+        const TILE_2: [u8; 8] = [0x00, 0xEE, 0xAA, 0xA2, 0xAE, 0xA8, 0xEE, 0x00];
+        const TILE_4: [u8; 8] = [0x00, 0xEA, 0xAA, 0xAE, 0xA2, 0xA2, 0xE2, 0x00];
+        const PASS_VALUES: [u8; 27] = [
+            0x04, 0x01, 0x04, 0x01, 0x01, 0x01, 0x04, 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 0x01,
+            0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+        ];
+
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("data/fixtures/cpp-sgb/sgb-ext-test.sgb.png");
+        let fixture = crate::framebuffer_oracle::decode_fixture_framebuffer_path(&fixture_path)
+            .expect("cpp SGB reference fixture should decode");
+
+        assert_eq!(fixture.width, 160);
+        assert_eq!(fixture.height, 144);
+
+        let mut expected = vec![0_u8; 160 * 144];
+        for tile_y in 0..18 {
+            for tile_x in 0..20 {
+                let output_index = tile_y * 16 + tile_x;
+                let tile = if tile_x < 16 && output_index < PASS_VALUES.len() {
+                    PASS_VALUES[output_index]
+                } else {
+                    0x00
+                };
+                let rows = match tile {
+                    0x00 => TILE_0,
+                    0x01 => TILE_1,
+                    0x02 => TILE_2,
+                    0x04 => TILE_4,
+                    _ => panic!("unexpected cpp SGB pass fixture tile {tile:#04X}"),
+                };
+                for (row, bits) in rows.iter().enumerate() {
+                    for col in 0..8 {
+                        if *bits & (0x80_u8 >> col) != 0 {
+                            expected[(tile_y * 8 + row) * 160 + tile_x * 8 + col] = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(fixture.palette_ranks, expected);
     }
 
     #[test]
