@@ -8,10 +8,10 @@ use gb_core::{
     CpuRegisters, Machine, MachineConfig, OperatingMode, StartupMode, TraceSummaryBuffer,
 };
 use gb_test_runner::{
-    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
-    boot_rom_revision_for_console_model, built_in_rom_suite_by_name, cpp_dmg_curated_suite,
-    daid_dmg_curated_suite, discover_boot_rom_root, discover_test_rom_store_root,
-    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    RomRunner, RomSuite, acid_dmg_curated_suite, ashiepaws_dmg_curated_suite,
+    blargg_dmg_repo_gated_suite, boot_rom_image_path, boot_rom_revision_for_console_model,
+    built_in_rom_suite_by_name, cpp_dmg_curated_suite, cpp_sgb_suite, daid_dmg_curated_suite,
+    discover_boot_rom_root, discover_test_rom_store_root, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, update_curated_test_report, verify_boot_rom_file,
 };
 
@@ -1164,13 +1164,27 @@ fn cpp_curated_suite_passes_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
-fn hacktix_curated_suite_passes_from_repo_store() {
-    let Some(report) =
-        run_curated_suite(&hacktix_dmg_curated_suite(), "curated hacktix suite", true)
+fn cpp_sgb_suite_runs_from_repo_store() {
+    let Some(report) = run_curated_suite(&cpp_sgb_suite(), "informational cpp SGB suite", true)
     else {
         return;
     };
-    assert_eq!(report.family.as_deref(), Some("hacktix"), "{report:#?}");
+    assert_eq!(report.family.as_deref(), Some("cpp"), "{report:#?}");
+    assert_eq!(report.cases.len(), 1, "{report:#?}");
+    assert!(report.all_non_failing(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
+fn ashiepaws_curated_suite_passes_from_repo_store() {
+    let Some(report) = run_curated_suite(
+        &ashiepaws_dmg_curated_suite(),
+        "curated ashiepaws suite",
+        true,
+    ) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("ashiepaws"), "{report:#?}");
     assert_eq!(report.cases.len(), 2, "{report:#?}");
     assert!(report.all_passed(), "{report:#?}");
 }

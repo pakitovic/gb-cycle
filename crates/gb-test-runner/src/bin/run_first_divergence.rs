@@ -55,7 +55,7 @@ mod tests {
                 "--oracle",
                 "sameboy",
                 "--suite",
-                "hacktix-dmg-curated",
+                "ashiepaws-dmg-curated",
                 "--probe-interval-tcycles",
                 "nope",
             ],

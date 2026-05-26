@@ -142,11 +142,11 @@ fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
 }
 
 #[test]
-#[ignore = "diagnostic probe for hacktix strikethrough line 68 DMA/OBJ overlap"]
-fn sample_real_hacktix_strikethrough_line68_dma_obj_overlap() {
+#[ignore = "diagnostic probe for ashiepaws strikethrough line 68 DMA/OBJ overlap"]
+fn sample_real_ashiepaws_strikethrough_line68_dma_obj_overlap() {
     for target_ly in 64..=72 {
         let (selected_sprites, events, segment, framebuffer_segment) =
-            sample_hacktix_strikethrough_line(target_ly, 64);
+            sample_ashiepaws_strikethrough_line(target_ly, 64);
 
         println!("ly={target_ly} selected_sprites={selected_sprites:#?}");
         println!("ly={target_ly} line_pixels_71_79={segment:?}");
@@ -156,6 +156,6 @@ fn sample_real_hacktix_strikethrough_line68_dma_obj_overlap() {
         }
     }
 
-    let (selected_sprites, events, _, _) = sample_hacktix_strikethrough_line(68, 64);
+    let (selected_sprites, events, _, _) = sample_ashiepaws_strikethrough_line(68, 64);
     assert!(!selected_sprites.is_empty() || !events.is_empty());
 }

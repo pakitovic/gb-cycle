@@ -1154,7 +1154,7 @@ const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 // Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
 const CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
-// Hacktix `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
+// Ashiepaws `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
 const CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E84;
 // Nitro2k01 `whichboot.gb` is a native-CGB old-licensee `$33` header with binary-zero new-licensee bytes. Its hardware-facing timing reference identifies a distinct CGB boot-entry bucket one final boot-ROM IF-poll period after gb-cycle's raw `cgb_boot.bin` handoff for that header.
 const CGB_NATIVE_BINARY_ZERO_NEW_LICENSEE_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E98;

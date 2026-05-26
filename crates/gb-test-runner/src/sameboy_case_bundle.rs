@@ -877,22 +877,22 @@ mod tests {
         let temp_dir = unique_temp_dir("probe");
         let oracle_root = temp_dir.join("oracle");
         let external_root = temp_dir.join("external");
-        let hacktix_root = external_root.join("hacktix");
-        fs::create_dir_all(&hacktix_root).expect("hacktix dir should be creatable");
-        fs::write(hacktix_root.join("bully.gb"), b"fake-rom").expect("fixture ROM should exist");
+        let ashiepaws_root = external_root.join("ashiepaws");
+        fs::create_dir_all(&ashiepaws_root).expect("ashiepaws dir should be creatable");
+        fs::write(ashiepaws_root.join("bully.gb"), b"fake-rom").expect("fixture ROM should exist");
 
         let args_output = temp_dir.join("runner-args.txt");
         let runner_binary = temp_dir.join("fake-sameboy-case-bundle.sh");
         write_fake_runner(&runner_binary, &args_output);
 
-        let suite = crate::hacktix_dmg_curated_suite();
+        let suite = crate::ashiepaws_dmg_curated_suite();
         let case = suite
             .cases
             .iter()
-            .find(|case| case.id == "hacktix-bully")
-            .expect("hacktix bully case should exist");
+            .find(|case| case.id == "ashiepaws-bully")
+            .expect("ashiepaws bully case should exist");
         let probe_path = oracle_root
-            .join("hacktix-bully")
+            .join("ashiepaws-bully")
             .join("sameboy_probes.jsonl");
         let report = SameBoyCaseBundleRunner::new(&oracle_root)
             .with_rom_runner(
@@ -902,7 +902,7 @@ mod tests {
             .run_probe_case(case, &probe_path, 70_224)
             .expect("probe case should run");
 
-        assert_eq!(report.case_id, "hacktix-bully");
+        assert_eq!(report.case_id, "ashiepaws-bully");
         assert!(report.probe_path.is_file());
         assert!(
             fs::read_to_string(&report.probe_path)

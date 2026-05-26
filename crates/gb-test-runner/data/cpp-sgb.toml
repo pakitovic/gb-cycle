@@ -1,0 +1,12 @@
+version = 1
+family = "cpp"
+suite_name = "cpp-sgb"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "cpp-sgb-ext-test"
+rom = "sgb-ext-test.gb"
+source_path = "testroms/cpp/sgb-ext-test.gb"
+console = "sgb"
+timeout_frames = 30
+oracle = "info-framebuffer"

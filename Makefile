@@ -3,7 +3,7 @@
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-hacktix run-cpp run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-hacktix phase9-sameboy-hacktix-oracles phase9-first-divergence-hacktix
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-cpp-sgb run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-ashiepaws phase9-sameboy-ashiepaws-oracles phase9-first-divergence-ashiepaws
 
 help:
 	@echo "Available targets:"
@@ -49,8 +49,9 @@ help:
 	@echo "  make run-mooneye-mbc1-mbc5 Fetch and run the Mooneye emulator-only MBC1/MBC5 chunk"
 	@echo "  make run-mooneye-mbc2     Fetch and run the Mooneye emulator-only MBC2 chunk"
 	@echo "  make run-mooneye-cgb      Fetch and run the exploratory/internal Mooneye CGB PPU suite"
-	@echo "  make run-hacktix          Fetch and run the curated Hacktix DMG suite"
+	@echo "  make run-ashiepaws          Fetch and run the curated Ashiepaws DMG suite"
 	@echo "  make run-cpp              Fetch and run the curated cpp MBC3 suite"
+	@echo "  make run-cpp-sgb          Fetch and run the informational cpp SGB suite"
 	@echo "  make run-mealybug         Fetch and run the local Mealybug DMG suite"
 	@echo "  make run-cgb-smoke        Fetch and run the curated CGB smoke suite"
 	@echo "  make run-cgb-boot-div     Fetch and run the curated CGB boot DIV suite"
@@ -71,9 +72,9 @@ help:
 	@echo "  make phase9-sameboy-acid-oracles Materialize LibSameBoy case-bundle artifacts for Acid"
 	@echo "  make phase9-diff-mealybug     Compare SameBoy-PASS Mealybug framebuffer cases against LibSameBoy case-bundle artifacts"
 	@echo "  make phase9-sameboy-mealybug-oracles Materialize LibSameBoy case-bundle artifacts for the SameBoy-PASS Mealybug subset"
-	@echo "  make phase9-diff-hacktix      Compare Hacktix framebuffer cases against LibSameBoy case-bundle artifacts"
-	@echo "  make phase9-sameboy-hacktix-oracles Materialize LibSameBoy case-bundle artifacts for Hacktix"
-	@echo "  make phase9-first-divergence-hacktix Capture Hacktix local/LibSameBoy first-divergence probe windows"
+	@echo "  make phase9-diff-ashiepaws      Compare Ashiepaws framebuffer cases against LibSameBoy case-bundle artifacts"
+	@echo "  make phase9-sameboy-ashiepaws-oracles Materialize LibSameBoy case-bundle artifacts for Ashiepaws"
+	@echo "  make phase9-first-divergence-ashiepaws Capture Ashiepaws local/LibSameBoy first-divergence probe windows"
 
 setup: hooks tools
 
@@ -111,8 +112,9 @@ test-roms:
 	$(MAKE) run-blargg
 	$(MAKE) run-daid
 	$(MAKE) run-mooneye
-	$(MAKE) run-hacktix
+	$(MAKE) run-ashiepaws
 	$(MAKE) run-cpp
+	$(MAKE) run-cpp-sgb
 	$(MAKE) run-mealybug
 	$(MAKE) run-samesuite-sgb
 
@@ -121,7 +123,7 @@ test-roms-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-blargg
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-daid
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mooneye
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-hacktix
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ashiepaws
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cpp
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mealybug
 
@@ -296,13 +298,17 @@ run-mooneye-mbc2:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
 	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc2_chunk_passes_from_repo_store --no-capture
 
-run-hacktix:
-	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact hacktix_curated_suite_passes_from_repo_store --no-capture
+run-ashiepaws:
+	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact ashiepaws_curated_suite_passes_from_repo_store --no-capture
 
 run-cpp:
 	$(MAKE) fetch-test-roms FAMILIES=cpp
 	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_passes_from_repo_store --no-capture
+
+run-cpp-sgb:
+	$(MAKE) fetch-test-roms FAMILIES=cpp
+	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite cpp-sgb --failure-artifact-root .artifacts/cpp-sgb
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
@@ -333,7 +339,7 @@ run-cgb-speed:
 	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-speed --failure-artifact-root .artifacts/cgb-speed
 
 run-cgb-ppu-basic:
-	$(MAKE) fetch-test-roms FAMILIES="samesuite daid acid hacktix"
+	$(MAKE) fetch-test-roms FAMILIES="samesuite daid acid ashiepaws"
 	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
 
 run-cgb-ppu-hard:
@@ -394,14 +400,14 @@ phase9-diff-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
 	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite mealybug-tearoom-dmg-sameboy-differential
 
-phase9-sameboy-hacktix-oracles:
-	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite hacktix-dmg-curated --build-if-missing
+phase9-sameboy-ashiepaws-oracles:
+	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
+	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite ashiepaws-dmg-curated --build-if-missing
 
-phase9-diff-hacktix:
-	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite hacktix-dmg-curated
+phase9-diff-ashiepaws:
+	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
+	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite ashiepaws-dmg-curated
 
-phase9-first-divergence-hacktix:
-	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo run --release -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite hacktix-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence
+phase9-first-divergence-ashiepaws:
+	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
+	cargo run --release -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite ashiepaws-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence

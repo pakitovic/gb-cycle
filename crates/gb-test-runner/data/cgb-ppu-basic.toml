@@ -31,13 +31,13 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png"
 
 [[case]]
-family = "hacktix"
-id = "cgb-ppu-basic-hacktix-bully-gbc"
+family = "ashiepaws"
+id = "cgb-ppu-basic-ashiepaws-bully-gbc"
 rom = "bully.gb"
 source_path = "testroms/ashiepaws/bully.gb"
 console = "cgb"
 report_model_suffix = true
 timeout_frames = 30
 oracle = "framebuffer-rgb555-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+fixture = "crates/gb-test-runner/data/fixtures/ashiepaws/bully.cgb.png"
 startup = "custom-boot"

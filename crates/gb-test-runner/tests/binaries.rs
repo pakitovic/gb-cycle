@@ -124,7 +124,7 @@ fn run_first_divergence_binary_handles_help_and_parse_errors() {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--probe-interval-tcycles",
             "nope",
         ],

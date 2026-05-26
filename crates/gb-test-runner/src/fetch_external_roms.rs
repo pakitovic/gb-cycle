@@ -522,10 +522,11 @@ mod tests {
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, cgb_audio_blargg_suite,
         cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
         cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
-        curated_test_rom_families, curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite,
-        docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
-        gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite, samesuite_sgb_suite, test_rom_store_root,
+        cpp_sgb_suite, curated_test_rom_families, curated_test_rom_family_suites,
+        docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
+        docboy_dmg_extra_suite, gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
+        test_rom_store_root,
     };
 
     use super::{
@@ -679,6 +680,7 @@ mod tests {
                 cgb_audio_samesuite_suite(),
                 samesuite_cgb_extra_suite(),
                 samesuite_sgb_suite(),
+                cpp_sgb_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| {
@@ -710,7 +712,7 @@ mod tests {
         let mut components = rom_path.components();
         if components
             .next()
-            .is_some_and(|component| component.as_os_str() == "hacktix")
+            .is_some_and(|component| component.as_os_str() == "ashiepaws")
         {
             return PathBuf::from("testroms/ashiepaws").join(components.collect::<PathBuf>());
         }
@@ -724,10 +726,10 @@ mod tests {
         let mut components = rom_path.components();
         if components
             .next()
-            .is_some_and(|component| component.as_os_str() == "hacktix")
+            .is_some_and(|component| component.as_os_str() == "ashiepaws")
         {
             return (
-                Some("hacktix".to_string()),
+                Some("ashiepaws".to_string()),
                 Some(components.collect::<PathBuf>()),
             );
         }
@@ -751,6 +753,7 @@ mod tests {
             cgb_audio_samesuite_suite(),
             samesuite_cgb_extra_suite(),
             samesuite_sgb_suite(),
+            cpp_sgb_suite(),
         ]) {
             for case in suite.cases {
                 let source_path = root.join(gbemu_test_fixture_source_path(&case.rom_path));

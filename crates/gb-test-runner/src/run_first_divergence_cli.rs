@@ -437,9 +437,9 @@ mod tests {
                 "--oracle",
                 "sameboy",
                 "--suite",
-                "hacktix-dmg-curated",
+                "ashiepaws-dmg-curated",
                 "--case",
-                "hacktix-bully",
+                "ashiepaws-bully",
                 "--probe-root",
                 "/tmp/probes",
                 "--timeout-tcycles",
@@ -455,8 +455,8 @@ mod tests {
                 probe_root: PathBuf::from("/tmp/probes"),
                 sameboy_root: None,
                 runner_binary: None,
-                suite_name: "hacktix-dmg-curated".to_string(),
-                case_id: Some("hacktix-bully".to_string()),
+                suite_name: "ashiepaws-dmg-curated".to_string(),
+                case_id: Some("ashiepaws-bully".to_string()),
                 timeout_override: Some(crate::Timeout::TCycles(1234)),
                 build_if_missing: true,
                 allow_divergence: false,
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn parse_arguments_rejects_missing_or_bad_values() {
-        let missing_oracle = parse_first_divergence_arguments(["--suite", "hacktix-dmg-curated"])
+        let missing_oracle = parse_first_divergence_arguments(["--suite", "ashiepaws-dmg-curated"])
             .expect_err("missing oracle should fail");
         assert!(missing_oracle.contains("missing required --oracle"));
 
@@ -509,7 +509,7 @@ mod tests {
             "--oracle",
             "unknown",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
         ])
         .expect_err("bad oracle should fail");
         assert!(bad_oracle.contains("unknown oracle"));
@@ -518,7 +518,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--probe-interval-tcycles",
             "0",
         ])
@@ -533,7 +533,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--unexpected",
         ])
         .expect_err("unknown argument should fail");
@@ -543,7 +543,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--runner-binary",
         ])
         .expect_err("missing runner binary should fail");
@@ -553,7 +553,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--timeout-frames",
             "NaN",
         ])
@@ -564,7 +564,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
             "--compare-mode",
             "cpu",
         ])
@@ -575,7 +575,7 @@ mod tests {
             "--oracle",
             "sameboy",
             "--suite",
-            "hacktix-dmg-curated",
+            "ashiepaws-dmg-curated",
         ])
         .expect("default root should parse");
         let FirstDivergenceCliAction::Run(default_root) = default_root else {

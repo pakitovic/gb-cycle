@@ -283,7 +283,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - [inference] Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
 - [inference] BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices.
 - [hardware fact] Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
-- [hardware fact] During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
+- [hardware fact] During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `ashiepaws/strikethrough` depend on that conflict window.
 - [inference] If that DMA conflict is modeled in detail, keep the current DMA destination address and current DMA byte explicit for the cycle instead of relying on an address-only hint.
 
 ## Mid-frame toggle and size-change baseline
@@ -524,7 +524,7 @@ The following DMG ROMs are the PPU no-regression catalog for the already-closed 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Base raster / smoke | acid | `dmg-acid2.gb` | PPU | VERY LOW | general Mode 3 raster, BG/WIN/OBJ mixing, left edge / startup | 2 |
 | 2 | Visible raster and post-boot state | daid | `ppu_scanline_bgp.gb` | PPU | MEDIUM | per-scanline `BGP`, visible raster | 41 |
-| 3 | Visible raster and post-boot state | hacktix | `bully.gb` | PPU | HIGH | visible VRAM / tilemap seed after boot | 139 |
+| 3 | Visible raster and post-boot state | ashiepaws | `bully.gb` | PPU | HIGH | visible VRAM / tilemap seed after boot | 139 |
 | 4 | Base OAM / bus visibility | mooneye | `acceptance/bits/mem_oam.gb` | PPU / OAM | MEDIUM | OAM bus access, visible blocking / reads | 45 |
 | 5 | Base sprites / priority | mooneye | `manual-only/sprite_priority.gb` | PPU | HIGH | OBJ priority, X / OAM order, BG / OBJ mixing | 138 |
 | 6 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_1_2_timing-GS.gb` | PPU | HIGH | `STAT`, Mode `1 -> 2` transition | 78 |
@@ -546,7 +546,7 @@ The following DMG ROMs are the PPU no-regression catalog for the already-closed 
 | 22 | DMG OAM quirks | blargg | `oam_bug/5-timing_bug.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, bug window | 26 |
 | 23 | DMG OAM quirks | blargg | `oam_bug/6-timing_no_bug.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, non-bug window | 27 |
 | 24 | DMG OAM quirks | blargg | `oam_bug/8-instr_effect.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, CPU-access-dependent effects | 28 |
-| 25 | DMA quirks + sprite metadata | hacktix | `strikethrough.gb` | PPU | VERY HIGH | Mode `3` OBJ metadata, OAM DMA conflict | 140 |
+| 25 | DMA quirks + sprite metadata | ashiepaws | `strikethrough.gb` | PPU | VERY HIGH | Mode `3` OBJ metadata, OAM DMA conflict | 140 |
 | 26 | Mode 3 palettes | mealybug-tearoom-tests | `ppu/m2_win_en_toggle.gb` | PPU | VERY HIGH | Mode `2`, window-enable latch, `LCDC.5` | 144 |
 | 27 | Mode 3 palettes | mealybug-tearoom-tests | `ppu/m3_bgp_change.gb` | PPU | VERY HIGH | Mode `3`, live `BGP`, palette conflict | 145 |
 | 28 | Mode 3 palettes | mealybug-tearoom-tests | `ppu/m3_bgp_change_sprites.gb` | PPU | VERY HIGH | Mode `3`, live `BGP` with OBJ interaction | 146 |
