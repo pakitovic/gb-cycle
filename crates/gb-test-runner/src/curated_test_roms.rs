@@ -2976,7 +2976,7 @@ mod tests {
     }
 
     #[test]
-    fn cpp_sgb_suite_runs_informational_row_on_sgb_host() {
+    fn cpp_sgb_suite_runs_fixture_row_on_sgb_host() {
         let suite = cpp_sgb_suite();
 
         assert_eq!(suite.name, "cpp-sgb");
@@ -2992,7 +2992,7 @@ mod tests {
         assert_eq!(case.console_model, ConsoleModel::GameBoy);
         assert_eq!(case.host_platform, HostPlatform::Sgb);
         assert_eq!(case.startup_mode, StartupMode::SkipBoot);
-        assert_eq!(case.timeout, Timeout::Frames(30));
+        assert_eq!(case.timeout, Timeout::Frames(240));
         assert_eq!(case.rom_path, PathBuf::from("cpp/sgb-ext-test.gb"));
         assert_eq!(
             case.external_rom_root_key.as_deref(),
@@ -3000,7 +3000,9 @@ mod tests {
         );
         assert_eq!(
             case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png"
+            ))
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));

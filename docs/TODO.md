@@ -18,7 +18,6 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 ### Phase 11 — SGB/SGB2
 
 - [SGB][EXTERNAL-ORACLES] Synthetic coverage now validates `ATRC_EN`, `TEST_EN`, `ICON_EN` suppression, `OBJ_TRN` state, SGB/SGB2 direct-start fingerprints, five-frame `_TRN` timing, mid-transfer save/load, and packet busy rejection, but no public ROM row is currently pinned with a crisp oracle for those exact behaviors. If adding external coverage, use a public ROM with explicit expected signal for one of these gaps rather than promoting commercial compatibility examples or ambiguous framebuffer output.
-- [SGB][PACKET-EDGE-ORACLE] `cpp/sgb-ext-test.gb` now has a public pass reference from CasualPokePlayer/test-roms and a clean local fixture at `crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png`, but the curated row remains informational because current gb-cycle and SameBoy captures do not match the malformed SGB JOYP packet-edge pass pattern. Promote it only after the host packet transport models the corrupt-stop, missing-idle, and intermediate P14/P15 transition cases against hardware-facing evidence.
 
 ### Testing tooling
 

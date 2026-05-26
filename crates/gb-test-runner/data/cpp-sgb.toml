@@ -8,6 +8,6 @@ id = "cpp-sgb-ext-test"
 rom = "sgb-ext-test.gb"
 source_path = "testroms/cpp/sgb-ext-test.gb"
 console = "sgb"
-timeout_frames = 30
-# Reference fixture, not a promoted oracle yet: crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png mirrors CasualPokePlayer/test-roms `pass.png` after cropping the SGB LCD and recreating the ROM font as a clean rank-only PNG. The row stays informational until gb-cycle's JOYP packet-edge transport matches the upstream pass signal.
-oracle = "info-framebuffer"
+timeout_frames = 240
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png"

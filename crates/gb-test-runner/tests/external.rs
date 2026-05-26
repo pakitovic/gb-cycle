@@ -1165,13 +1165,12 @@ fn cpp_curated_suite_passes_from_repo_store() {
 #[test]
 #[ignore = "requires curated test ROM assets under test or GB_CYCLE_TEST_ROM_ROOT"]
 fn cpp_sgb_suite_runs_from_repo_store() {
-    let Some(report) = run_curated_suite(&cpp_sgb_suite(), "informational cpp SGB suite", true)
-    else {
+    let Some(report) = run_curated_suite(&cpp_sgb_suite(), "curated cpp SGB suite", true) else {
         return;
     };
     assert_eq!(report.family.as_deref(), Some("cpp"), "{report:#?}");
     assert_eq!(report.cases.len(), 1, "{report:#?}");
-    assert!(report.all_non_failing(), "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
 }
 
 #[test]

@@ -429,6 +429,17 @@ impl SgbJoypLineState {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
+pub enum SgbPacketTransportPhase {
+    #[default]
+    Idle,
+    StartPending,
+    Receiving,
+    DataPending,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SgbPacketTraceStatus {
     #[default]
     None,
@@ -1983,13 +1994,16 @@ impl SgbPacketGateState {
 )]
 pub struct SgbPacketTransportState {
     pub last_joyp_line_state: SgbJoypLineState,
+    pub phase: SgbPacketTransportPhase,
     pub transfer_active: bool,
+    pub pending_data_bit: Option<u8>,
     pub packet_bits_buffered: u8,
     pub packet_bytes_buffered: u8,
     pub current_packet: [u8; SGB_PACKET_BYTES],
     pub reset_pulse_count: u64,
     pub data_pulse_count: u64,
     pub invalid_pulse_count: u64,
+    pub invalid_stop_bit_count: u64,
     pub last_trace: SgbPacketTrace,
 }
 
@@ -2326,7 +2340,9 @@ impl SgbHost {
         }
 
         self.packet_transport.last_joyp_line_state = SgbJoypLineState::Idle;
+        self.packet_transport.phase = SgbPacketTransportPhase::Idle;
         self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         self.packet_transport.packet_bits_buffered = 0;
         self.packet_transport.packet_bytes_buffered = 0;
         self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
@@ -2356,25 +2372,15 @@ impl SgbHost {
             .observe_joyp_write(previous_line_state, value);
         match line_state {
             SgbJoypLineState::Idle => {
-                self.packet_transport.last_joyp_line_state = line_state;
+                self.observe_joyp_idle();
             }
             SgbJoypLineState::Start => {
-                if !matches!(previous_line_state, SgbJoypLineState::Start) {
-                    self.begin_packet_transfer();
+                if previous_line_state != SgbJoypLineState::Start {
+                    self.observe_joyp_start();
                 }
-                self.packet_transport.last_joyp_line_state = line_state;
             }
             SgbJoypLineState::Zero | SgbJoypLineState::One => {
-                if previous_line_state == SgbJoypLineState::Idle {
-                    self.observe_packet_data_bit(line_state.data_bit().expect("data line"));
-                } else if previous_line_state != line_state {
-                    self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
-                    self.packet_transport.invalid_pulse_count =
-                        self.packet_transport.invalid_pulse_count.saturating_add(1);
-                    self.command.invalid_packet_count =
-                        self.command.invalid_packet_count.saturating_add(1);
-                }
-                self.packet_transport.last_joyp_line_state = line_state;
+                self.observe_joyp_data_candidate(line_state.data_bit().expect("data line"));
             }
             SgbJoypLineState::Invalid => {
                 self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
@@ -2382,21 +2388,75 @@ impl SgbHost {
                     self.packet_transport.invalid_pulse_count.saturating_add(1);
                 self.command.invalid_packet_count =
                     self.command.invalid_packet_count.saturating_add(1);
-                self.packet_transport.last_joyp_line_state = line_state;
+            }
+        }
+        self.packet_transport.last_joyp_line_state = line_state;
+    }
+
+    fn observe_joyp_idle(&mut self) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::Idle | SgbPacketTransportPhase::Receiving => {}
+            SgbPacketTransportPhase::StartPending => {
+                self.confirm_packet_start();
+            }
+            SgbPacketTransportPhase::DataPending => {
+                if let Some(bit) = self.packet_transport.pending_data_bit.take() {
+                    self.confirm_packet_data_bit(bit);
+                }
             }
         }
     }
 
-    fn begin_packet_transfer(&mut self) {
-        if self.packet_transport.transfer_active
-            && self.packet_transport.packet_bits_buffered != 0
-            && self.packet_transport.packet_bits_buffered <= SGB_PACKET_BITS
+    fn observe_joyp_start(&mut self) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::StartPending => {}
+            SgbPacketTransportPhase::Idle => self.begin_packet_start_pulse(false),
+            SgbPacketTransportPhase::Receiving | SgbPacketTransportPhase::DataPending => {
+                self.begin_packet_start_pulse(true);
+            }
+        }
+    }
+
+    fn observe_joyp_data_candidate(&mut self, bit: u8) {
+        match self.packet_transport.phase {
+            SgbPacketTransportPhase::Receiving | SgbPacketTransportPhase::DataPending => {
+                self.packet_transport.phase = SgbPacketTransportPhase::DataPending;
+                self.packet_transport.pending_data_bit = Some(bit);
+                self.packet_transport.data_pulse_count =
+                    self.packet_transport.data_pulse_count.saturating_add(1);
+            }
+            SgbPacketTransportPhase::StartPending => {
+                self.record_packet_trace(SgbPacketTraceStatus::ConflictingPulse);
+                self.packet_transport.invalid_pulse_count =
+                    self.packet_transport.invalid_pulse_count.saturating_add(1);
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+                self.packet_transport.phase = SgbPacketTransportPhase::Idle;
+                self.packet_transport.transfer_active = false;
+                self.packet_transport.pending_data_bit = None;
+            }
+            SgbPacketTransportPhase::Idle => {
+                self.record_packet_trace(SgbPacketTraceStatus::OrphanDataPulse);
+                self.packet_transport.invalid_pulse_count =
+                    self.packet_transport.invalid_pulse_count.saturating_add(1);
+                self.command.invalid_packet_count =
+                    self.command.invalid_packet_count.saturating_add(1);
+            }
+        }
+    }
+
+    fn begin_packet_start_pulse(&mut self, incomplete_reset: bool) {
+        if incomplete_reset
+            && (self.packet_transport.packet_bits_buffered != 0
+                || self.packet_transport.pending_data_bit.is_some())
         {
             self.record_packet_trace(SgbPacketTraceStatus::IncompleteReset);
             self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
         }
 
-        self.packet_transport.transfer_active = true;
+        self.packet_transport.phase = SgbPacketTransportPhase::StartPending;
+        self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         self.packet_transport.packet_bits_buffered = 0;
         self.packet_transport.packet_bytes_buffered = 0;
         self.packet_transport.current_packet = [0; SGB_PACKET_BYTES];
@@ -2404,18 +2464,12 @@ impl SgbHost {
             self.packet_transport.reset_pulse_count.saturating_add(1);
     }
 
-    fn observe_packet_data_bit(&mut self, bit: u8) {
-        self.packet_transport.data_pulse_count =
-            self.packet_transport.data_pulse_count.saturating_add(1);
+    fn confirm_packet_start(&mut self) {
+        self.packet_transport.phase = SgbPacketTransportPhase::Receiving;
+        self.packet_transport.transfer_active = true;
+    }
 
-        if !self.packet_transport.transfer_active {
-            self.record_packet_trace(SgbPacketTraceStatus::OrphanDataPulse);
-            self.packet_transport.invalid_pulse_count =
-                self.packet_transport.invalid_pulse_count.saturating_add(1);
-            self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
-            return;
-        }
-
+    fn confirm_packet_data_bit(&mut self, bit: u8) {
         if self.packet_transport.packet_bits_buffered < SGB_PACKET_BITS {
             let bit_index = self.packet_transport.packet_bits_buffered;
             if bit != 0 {
@@ -2427,22 +2481,27 @@ impl SgbHost {
                 self.packet_transport.packet_bits_buffered.saturating_add(1);
             self.packet_transport.packet_bytes_buffered =
                 self.packet_transport.packet_bits_buffered.div_ceil(8);
+            self.packet_transport.phase = SgbPacketTransportPhase::Receiving;
             return;
         }
 
-        if bit == 0 {
-            self.complete_packet_transfer();
-        } else {
+        if bit != 0 {
             self.record_packet_trace(SgbPacketTraceStatus::InvalidStopBit);
             self.packet_transport.invalid_pulse_count =
                 self.packet_transport.invalid_pulse_count.saturating_add(1);
+            self.packet_transport.invalid_stop_bit_count = self
+                .packet_transport
+                .invalid_stop_bit_count
+                .saturating_add(1);
             self.command.invalid_packet_count = self.command.invalid_packet_count.saturating_add(1);
-            self.packet_transport.transfer_active = false;
         }
+        self.complete_packet_transfer();
     }
 
     fn complete_packet_transfer(&mut self) {
+        self.packet_transport.phase = SgbPacketTransportPhase::Idle;
         self.packet_transport.transfer_active = false;
+        self.packet_transport.pending_data_bit = None;
         let bytes = self.packet_transport.current_packet;
         self.decode_complete_packet(bytes);
     }
@@ -3771,6 +3830,128 @@ mod tests {
         write_joyp_data_bit(host, 0);
     }
 
+    fn write_joyp_line(host: &mut SgbHost, line: SgbJoypLineState) {
+        host.observe_joyp_write(match line {
+            SgbJoypLineState::Idle => SGB_JOYP_IDLE_BITS,
+            SgbJoypLineState::Start => SGB_JOYP_START_BITS,
+            SgbJoypLineState::Zero => SGB_JOYP_ZERO_BITS,
+            SgbJoypLineState::One => SGB_JOYP_ONE_BITS,
+            SgbJoypLineState::Invalid => unreachable!("all masked JOYP states are explicit"),
+        });
+    }
+
+    fn write_sgb_ext_test_start(host: &mut SgbHost) {
+        write_joyp_line(host, SgbJoypLineState::Start);
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_bit(host: &mut SgbHost, bit: u8) {
+        write_joyp_line(
+            host,
+            if bit == 0 {
+                SgbJoypLineState::Zero
+            } else {
+                SgbJoypLineState::One
+            },
+        );
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_packet_basic(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_sgb_ext_test_start(host);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn write_sgb_ext_test_packet_corrupt_stop(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_sgb_ext_test_start(host);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 1);
+    }
+
+    fn write_sgb_ext_test_packet_avoid_30(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_joyp_line(host, SgbJoypLineState::Idle);
+        write_joyp_line(host, SgbJoypLineState::Start);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_joyp_line(
+                    host,
+                    if (byte >> bit_index) & 0x01 == 0 {
+                        SgbJoypLineState::One
+                    } else {
+                        SgbJoypLineState::Zero
+                    },
+                );
+                write_joyp_line(host, SgbJoypLineState::Start);
+            }
+        }
+        write_joyp_line(host, SgbJoypLineState::One);
+        write_joyp_line(host, SgbJoypLineState::Start);
+        write_joyp_line(host, SgbJoypLineState::Idle);
+    }
+
+    fn write_sgb_ext_test_packet_with_second_byte_bit_transition(
+        host: &mut SgbHost,
+        bytes: [u8; SGB_PACKET_BYTES],
+        transition: &[SgbJoypLineState],
+    ) {
+        write_sgb_ext_test_start(host);
+        for bit_index in 0..8 {
+            write_sgb_ext_test_bit(host, (bytes[0] >> bit_index) & 0x01);
+        }
+        for &line in transition {
+            write_joyp_line(host, line);
+        }
+        for bit_index in 1..8 {
+            write_sgb_ext_test_bit(host, (bytes[1] >> bit_index) & 0x01);
+        }
+        for byte in &bytes[2..] {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn write_sgb_ext_test_packet_short_start(host: &mut SgbHost, bytes: [u8; SGB_PACKET_BYTES]) {
+        write_joyp_line(host, SgbJoypLineState::Start);
+        for byte in bytes {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(host, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(host, 0);
+    }
+
+    fn sgb_ext_test_player_count(host: &mut SgbHost) -> u8 {
+        for _ in 0..SGB_CONTROLLER_COUNT + 1 {
+            write_joyp_line(host, SgbJoypLineState::Start);
+            write_joyp_line(host, SgbJoypLineState::Idle);
+            if host.joyp_read_value(0xFF) & 0x0F == 0x0F {
+                break;
+            }
+        }
+
+        let mut count = 0_u8;
+        for _ in 0..SGB_CONTROLLER_COUNT + 1 {
+            count += 1;
+            write_joyp_line(host, SgbJoypLineState::Start);
+            write_joyp_line(host, SgbJoypLineState::Idle);
+            if host.joyp_read_value(0xFF) & 0x0F == 0x0F {
+                return count;
+            }
+        }
+        count
+    }
+
     fn cycle_sgb_player(host: &mut SgbHost) {
         host.observe_joyp_write(SGB_JOYP_ONE_BITS);
         host.observe_joyp_write(SGB_JOYP_IDLE_BITS);
@@ -4941,6 +5122,11 @@ mod tests {
         let snapshot = host.snapshot();
         assert_eq!(snapshot.packet_transport.reset_pulse_count, 1);
         assert_eq!(snapshot.packet_transport.data_pulse_count, 129);
+        assert_eq!(
+            snapshot.packet_transport.phase,
+            SgbPacketTransportPhase::Idle
+        );
+        assert_eq!(snapshot.packet_transport.pending_data_bit, None);
         assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
         assert_eq!(snapshot.packet_transport.packet_bytes_buffered, 16);
         assert_eq!(
@@ -4952,6 +5138,181 @@ mod tests {
         assert_eq!(snapshot.packet_transport.last_trace.packet_index, 1);
         assert_eq!(snapshot.command.last_command_id, Some(0x11));
         assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_matches_cpp_sgb_ext_test_packet_edge_matrix() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_basic(&mut host, sgb_mlt_req_packet(1));
+
+        let mut results = Vec::new();
+        for (packet, writer) in [
+            (
+                sgb_mlt_req_packet(3),
+                write_sgb_ext_test_packet_basic as fn(&mut SgbHost, [u8; SGB_PACKET_BYTES]),
+            ),
+            (sgb_mlt_req_packet(0), write_sgb_ext_test_packet_basic),
+            (
+                sgb_mlt_req_packet(3),
+                write_sgb_ext_test_packet_corrupt_stop,
+            ),
+            (
+                sgb_mlt_req_packet(0),
+                write_sgb_ext_test_packet_corrupt_stop,
+            ),
+            (sgb_mlt_req_packet(3), write_sgb_ext_test_packet_avoid_30),
+            (sgb_mlt_req_packet(0), write_sgb_ext_test_packet_avoid_30),
+        ] {
+            writer(&mut host, packet);
+            results.push(sgb_ext_test_player_count(&mut host));
+        }
+
+        for (transition, controls) in [
+            (
+                &[
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::One,
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+            (
+                &[
+                    SgbJoypLineState::Zero,
+                    SgbJoypLineState::Start,
+                    SgbJoypLineState::Idle,
+                ][..],
+                [3, 1, 0],
+            ),
+        ] {
+            for control in controls {
+                write_sgb_ext_test_packet_with_second_byte_bit_transition(
+                    &mut host,
+                    sgb_mlt_req_packet(control),
+                    transition,
+                );
+                results.push(sgb_ext_test_player_count(&mut host));
+            }
+        }
+
+        for control in [3, 1, 0] {
+            write_sgb_ext_test_packet_short_start(&mut host, sgb_mlt_req_packet(control));
+            results.push(sgb_ext_test_player_count(&mut host));
+        }
+
+        assert_eq!(
+            results,
+            [
+                0x04, 0x01, 0x04, 0x01, 0x01, 0x01, 0x04, 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 0x01,
+                0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+            ]
+        );
+    }
+
+    #[test]
+    fn joyp_transport_records_corrupt_stop_without_rejecting_packet() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_corrupt_stop(&mut host, sgb_mlt_req_packet(3));
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 4);
+        assert_eq!(snapshot.packet_transport.invalid_stop_bit_count, 1);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+        assert_eq!(snapshot.command.invalid_packet_count, 1);
+    }
+
+    #[test]
+    fn joyp_transport_requires_idle_to_confirm_start() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_short_start(&mut host, sgb_mlt_req_packet(3));
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 1);
+        assert_eq!(snapshot.command.accepted_command_count, 0);
+        assert!(snapshot.command.invalid_packet_count > 0);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::OrphanDataPulse
+        );
+    }
+
+    #[test]
+    fn joyp_transport_uses_last_pending_data_state_before_idle() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_with_second_byte_bit_transition(
+            &mut host,
+            sgb_mlt_req_packet(0),
+            &[
+                SgbJoypLineState::Zero,
+                SgbJoypLineState::One,
+                SgbJoypLineState::Idle,
+            ],
+        );
+
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot.multiplayer.player_count, 2,
+            "$20->$10->$30 substitutes a one for the first MLT_REQ control bit"
+        );
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+    }
+
+    #[test]
+    fn joyp_transport_treats_start_mid_packet_as_incomplete_reset() {
+        let mut host = accepted_sgb_host();
+        write_sgb_ext_test_packet_with_second_byte_bit_transition(
+            &mut host,
+            sgb_mlt_req_packet(3),
+            &[
+                SgbJoypLineState::Zero,
+                SgbJoypLineState::Start,
+                SgbJoypLineState::Idle,
+            ],
+        );
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot.multiplayer.player_count, 1);
+        assert!(snapshot.command.invalid_packet_count > 0);
+        assert_ne!(snapshot.command.last_command_id, Some(SGB_COMMAND_MLT_REQ));
     }
 
     #[test]
@@ -5754,8 +6115,16 @@ mod tests {
         write_joyp_data_bit(&mut invalid_stop, 1);
         assert_eq!(
             invalid_stop.snapshot().packet_transport.last_trace.status,
-            SgbPacketTraceStatus::InvalidStopBit
+            SgbPacketTraceStatus::Complete
         );
+        assert_eq!(
+            invalid_stop
+                .snapshot()
+                .packet_transport
+                .invalid_stop_bit_count,
+            1
+        );
+        assert_eq!(invalid_stop.snapshot().command.accepted_command_count, 1);
         assert_eq!(invalid_stop.snapshot().command.invalid_packet_count, 1);
     }
 
@@ -5817,6 +6186,70 @@ mod tests {
 
         let snapshot = restored.snapshot();
         assert_eq!(snapshot.packet_transport.packet_bits_buffered, 128);
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn save_state_restores_pending_start_pulse() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_joyp_line(&mut host, SgbJoypLineState::Start);
+        assert_eq!(
+            host.snapshot().packet_transport.phase,
+            SgbPacketTransportPhase::StartPending
+        );
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        write_joyp_line(&mut restored, SgbJoypLineState::Idle);
+        for byte in packet {
+            for bit_index in 0..8 {
+                write_sgb_ext_test_bit(&mut restored, (byte >> bit_index) & 0x01);
+            }
+        }
+        write_sgb_ext_test_bit(&mut restored, 0);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(
+            snapshot.packet_transport.last_trace.status,
+            SgbPacketTraceStatus::Complete
+        );
+        assert_eq!(snapshot.command.last_command_id, Some(0x11));
+        assert_eq!(snapshot.command.accepted_command_count, 1);
+    }
+
+    #[test]
+    fn save_state_restores_pending_data_bit() {
+        let mut host = accepted_sgb_host();
+        let packet = sgb_command_packet(0x11, 1);
+        write_sgb_ext_test_start(&mut host);
+        write_joyp_line(&mut host, SgbJoypLineState::One);
+        assert_eq!(
+            host.snapshot().packet_transport.phase,
+            SgbPacketTransportPhase::DataPending
+        );
+        assert_eq!(host.snapshot().packet_transport.pending_data_bit, Some(1));
+
+        let saved = host.capture_save_state();
+        let mut restored = SgbHost::new(HostPlatform::Sgb);
+        restored.restore_save_state(&saved);
+
+        write_joyp_line(&mut restored, SgbJoypLineState::Idle);
+        for bit_index in 1..128 {
+            let byte = packet[bit_index / 8];
+            write_sgb_ext_test_bit(&mut restored, (byte >> (bit_index % 8)) & 0x01);
+        }
+        write_sgb_ext_test_bit(&mut restored, 0);
+
+        let snapshot = restored.snapshot();
+        assert_eq!(snapshot.packet_transport.pending_data_bit, None);
         assert_eq!(
             snapshot.packet_transport.last_trace.status,
             SgbPacketTraceStatus::Complete

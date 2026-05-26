@@ -63,7 +63,7 @@ make run-gbmicrotest   # exploratory/internal DocBoy gbmicrotest DMG suite
 make run-docboy-dmg    # exploratory/internal DocBoy docboy/* DMG suite
 make run-daid          # workflow-managed Daid DMG suite
 make run-cpp           # curated cpp MBC3 subset
-make run-cpp-sgb       # informational cpp SGB packet suite
+make run-cpp-sgb       # curated cpp SGB packet fixture suite
 make run-ashiepaws       # curated ashiepaws DMG subset
 make run-mealybug      # workflow-managed Mealybug-tearoom DMG suite
 make run-mooneye       # workflow-managed Mooneye DMG acceptance suite
@@ -190,7 +190,7 @@ Tracks `bully.gb` and `strikethrough.gb` from the active `GBEmulatorShootout` `a
 
 ### Cpp
 
-Curated `cpp` currently has a blocking DMG MBC3 subset under `cpp-dmg-curated` plus the informational SGB packet-extension row `sgb-ext-test.gb` under `cpp-sgb`; both are exercised by `make test-roms` and the GitHub `test-roms` workflow. The SGB row now carries a committed reference fixture at `crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png`, reconstructed from CasualPokePlayer/test-roms `sgb-ext-test` `pass.png`, but it is not promoted as the suite oracle yet because current gb-cycle and SameBoy captures still diverge from that JOYP packet-edge pass signal.
+Curated `cpp` currently has a blocking DMG MBC3 subset under `cpp-dmg-curated` plus the SGB packet-extension row `sgb-ext-test.gb` under `cpp-sgb`; both are exercised by `make test-roms` and the GitHub `test-roms` workflow. The SGB row uses the committed DMG LCD framebuffer fixture at `crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png`, reconstructed from CasualPokePlayer/test-roms `sgb-ext-test` `pass.png`, and validates the SGB JOYP transport edge matrix rather than SGB host RGB555 colorization.
 
 ### Daid
 

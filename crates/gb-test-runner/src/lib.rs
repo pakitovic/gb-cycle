@@ -4696,7 +4696,7 @@ mod tests {
     }
 
     #[test]
-    fn built_in_rom_suite_lookup_returns_cpp_sgb_informational_suite() {
+    fn built_in_rom_suite_lookup_returns_cpp_sgb_fixture_suite() {
         let suite = built_in_rom_suite_by_name("cpp-sgb").expect("known suite should exist");
 
         assert_eq!(suite, cpp_sgb_suite());
@@ -4708,7 +4708,9 @@ mod tests {
         assert_eq!(case.host_platform, HostPlatform::Sgb);
         assert_eq!(
             case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png"
+            ))
         );
     }
 
