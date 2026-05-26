@@ -1,13 +1,13 @@
 [package]
 name = "gb-cli"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-gb-benchmark = { version = "0.1.7", path = "../gb-benchmark" }
-gb-core = { version = "0.1.7", path = "../gb-core" }
-gb-persistence = { version = "0.1.7", path = "../gb-persistence" }
+gb-benchmark = { version = "0.1.8", path = "../gb-benchmark" }
+gb-core = { version = "0.1.8", path = "../gb-core" }
+gb-persistence = { version = "0.1.8", path = "../gb-persistence" }
 png = "0.18"
 sha2 = "0.10"
