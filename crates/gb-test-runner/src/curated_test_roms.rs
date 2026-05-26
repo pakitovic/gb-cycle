@@ -46,7 +46,7 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "docboy-cgb",
     "docboy-cgb-dmg",
     "docboy-cgb-dmg-ext",
-    "hacktix",
+    "ashiepaws",
     "cpp",
     "mealybug-tearoom-tests",
     "little-things-gb",
@@ -273,6 +273,10 @@ pub fn samesuite_sgb_suite() -> RomSuite {
     manifest_suite_by_name("samesuite-sgb")
 }
 
+pub fn cpp_sgb_suite() -> RomSuite {
+    manifest_suite_by_name("cpp-sgb")
+}
+
 pub fn magen_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("magen-cgb-extra")
 }
@@ -355,8 +359,8 @@ pub fn daid_dmg_curated_suite() -> RomSuite {
     manifest_suite("daid")
 }
 
-pub fn hacktix_dmg_curated_suite() -> RomSuite {
-    manifest_suite("hacktix")
+pub fn ashiepaws_dmg_curated_suite() -> RomSuite {
+    manifest_suite("ashiepaws")
 }
 
 pub fn cpp_dmg_curated_suite() -> RomSuite {
@@ -435,7 +439,7 @@ pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
         blargg_dmg_curated_suite(),
         cpp_dmg_curated_suite(),
         daid_dmg_curated_suite(),
-        hacktix_dmg_curated_suite(),
+        ashiepaws_dmg_curated_suite(),
         mealybug_tearoom_dmg_curated_suite(),
         mooneye_acceptance_dmg_curated_suite(),
     ]
@@ -1271,7 +1275,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 31] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 32] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1378,8 +1382,12 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 31] {
             include_str!("../data/cpp.toml"),
         ),
         (
-            "crates/gb-test-runner/data/hacktix.toml",
-            include_str!("../data/hacktix.toml"),
+            "crates/gb-test-runner/data/cpp-sgb.toml",
+            include_str!("../data/cpp-sgb.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/ashiepaws.toml",
+            include_str!("../data/ashiepaws.toml"),
         ),
         (
             "crates/gb-test-runner/data/mealybug-tearoom-tests.toml",
@@ -2232,7 +2240,7 @@ mod tests {
         blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
         capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
         cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom, cpp_sgb_suite,
         curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
         curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
         docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
@@ -2667,9 +2675,9 @@ mod tests {
         );
 
         let case = &suite.cases[3];
-        assert_eq!(case.id, "cgb-ppu-basic-hacktix-bully-gbc");
+        assert_eq!(case.id, "cgb-ppu-basic-ashiepaws-bully-gbc");
         assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
-        assert_eq!(case.rom_path, PathBuf::from("hacktix/bully.gb"));
+        assert_eq!(case.rom_path, PathBuf::from("ashiepaws/bully.gb"));
         assert_eq!(
             case.external_rom_root_key.as_deref(),
             Some(TEST_ROM_ROOT_ENV_VAR)
@@ -2677,7 +2685,7 @@ mod tests {
         assert_eq!(
             case.pass_condition,
             PassCondition::FramebufferRgb555Fixture(PathBuf::from(
-                "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+                "crates/gb-test-runner/data/fixtures/ashiepaws/bully.cgb.png"
             ))
         );
         assert_eq!(case.startup_timer_state, None);
@@ -2965,6 +2973,39 @@ mod tests {
             assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
             assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
         }
+    }
+
+    #[test]
+    fn cpp_sgb_suite_runs_informational_row_on_sgb_host() {
+        let suite = cpp_sgb_suite();
+
+        assert_eq!(suite.name, "cpp-sgb");
+        assert_eq!(suite.family.as_deref(), Some("cpp"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 1);
+        assert!(crate::built_in_rom_suite_by_name("cpp-sgb").is_some());
+        assert!(!suite_uses_extra_test_report("cpp-sgb"));
+        assert!(!suite_uses_docboy_test_report("cpp-sgb"));
+
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cpp-sgb-ext-test");
+        assert_eq!(case.console_model, ConsoleModel::GameBoy);
+        assert_eq!(case.host_platform, HostPlatform::Sgb);
+        assert_eq!(case.startup_mode, StartupMode::SkipBoot);
+        assert_eq!(case.timeout, Timeout::Frames(30));
+        assert_eq!(case.rom_path, PathBuf::from("cpp/sgb-ext-test.gb"));
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(TEST_ROM_ROOT_ENV_VAR)
+        );
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::Informational(CaptureKind::Framebuffer)
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
     }
 
     #[test]
@@ -3871,7 +3912,7 @@ mod tests {
             ("acid", "which.gb"),
             ("daid", "ppu_scanline_bgp.gb"),
             ("daid", "stop_instr.gb"),
-            ("hacktix", "bully.gb"),
+            ("ashiepaws", "bully.gb"),
             ("mealybug-tearoom-tests", "ppu/m2_win_en_toggle.gb"),
             ("mealybug-tearoom-tests", "ppu/m3_bgp_change.gb"),
             ("mealybug-tearoom-tests", "ppu/m3_bgp_change_sprites.gb"),
@@ -3967,11 +4008,11 @@ mod tests {
             .iter()
             .flat_map(|manifest| &manifest.cases)
             .find(|case| {
-                case.family == "hacktix"
+                case.family == "ashiepaws"
                     && case.rom == Path::new("bully.gb")
                     && case.console_model == ConsoleModel::GameBoyColor
             })
-            .expect("CGB Hacktix bully row should exist");
+            .expect("CGB Ashiepaws bully row should exist");
         assert!(cgb_bully.report_model_suffix);
         assert_eq!(
             manifest_case_report_rom_display(cgb_bully),
@@ -3991,12 +4032,12 @@ mod tests {
     }
 
     #[test]
-    fn hacktix_manifest_uses_ashiepaws_upstream_paths_with_stable_local_family() {
+    fn ashiepaws_manifest_uses_ashiepaws_upstream_paths_and_family() {
         let manifests = curated_test_rom_manifests();
-        let hacktix_cases = manifests
+        let ashiepaws_cases = manifests
             .iter()
             .flat_map(|manifest| &manifest.cases)
-            .filter(|case| case.family == "hacktix")
+            .filter(|case| case.family == "ashiepaws")
             .map(|case| {
                 (
                     case.id.as_str(),
@@ -4007,20 +4048,20 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(
-            hacktix_cases,
+            ashiepaws_cases,
             BTreeSet::from([
                 (
-                    "cgb-ppu-basic-hacktix-bully-gbc",
+                    "cgb-ppu-basic-ashiepaws-bully-gbc",
                     Path::new("bully.gb"),
                     Path::new("testroms/ashiepaws/bully.gb")
                 ),
                 (
-                    "hacktix-bully",
+                    "ashiepaws-bully",
                     Path::new("bully.gb"),
                     Path::new("testroms/ashiepaws/bully.gb")
                 ),
                 (
-                    "hacktix-strikethrough",
+                    "ashiepaws-strikethrough",
                     Path::new("strikethrough.gb"),
                     Path::new("testroms/ashiepaws/strikethrough.gb")
                 ),
@@ -4039,7 +4080,7 @@ mod tests {
         assert!(
             suites
                 .iter()
-                .any(|suite| suite.name == "hacktix-dmg-curated")
+                .any(|suite| suite.name == "ashiepaws-dmg-curated")
         );
         assert!(
             suites
@@ -4124,24 +4165,24 @@ mod tests {
         assert_eq!(mealybug_case.startup_mode, StartupMode::CustomBoot);
         assert!(mealybug_case.startup_memory_writes.is_empty());
 
-        let hacktix_case = suites
+        let ashiepaws_case = suites
             .iter()
-            .find(|suite| suite.family.as_deref() == Some("hacktix"))
-            .and_then(|suite| suite.cases.iter().find(|case| case.id == "hacktix-bully"))
-            .expect("hacktix skip-boot case should exist");
-        assert_eq!(hacktix_case.startup_mode, StartupMode::SkipBoot);
-        assert!(hacktix_case.startup_memory_writes.is_empty());
+            .find(|suite| suite.family.as_deref() == Some("ashiepaws"))
+            .and_then(|suite| suite.cases.iter().find(|case| case.id == "ashiepaws-bully"))
+            .expect("ashiepaws skip-boot case should exist");
+        assert_eq!(ashiepaws_case.startup_mode, StartupMode::SkipBoot);
+        assert!(ashiepaws_case.startup_memory_writes.is_empty());
 
         let strikethrough_case = suites
             .iter()
-            .find(|suite| suite.family.as_deref() == Some("hacktix"))
+            .find(|suite| suite.family.as_deref() == Some("ashiepaws"))
             .and_then(|suite| {
                 suite
                     .cases
                     .iter()
-                    .find(|case| case.id == "hacktix-strikethrough")
+                    .find(|case| case.id == "ashiepaws-strikethrough")
             })
-            .expect("hacktix framebuffer case should exist");
+            .expect("ashiepaws framebuffer case should exist");
         assert!(matches!(
             strikethrough_case.pass_condition,
             PassCondition::FramebufferFixture(_)
@@ -4180,6 +4221,7 @@ mod tests {
             curated_test_rom_families(),
             vec![
                 "acid".to_string(),
+                "ashiepaws".to_string(),
                 "ax6".to_string(),
                 "blargg".to_string(),
                 "cpp".to_string(),
@@ -4189,7 +4231,6 @@ mod tests {
                 "docboy-cgb-dmg-ext".to_string(),
                 "docboy-dmg".to_string(),
                 "gbmicrotest".to_string(),
-                "hacktix".to_string(),
                 "little-things-gb".to_string(),
                 "magen".to_string(),
                 "mealybug-tearoom-tests".to_string(),
@@ -5455,7 +5496,7 @@ status = "PASS"
         assert!(!rendered.contains("| daid | - | - |"));
         assert!(!rendered.contains("| ax6 | - | - |"));
         assert!(!rendered.contains("| samesuite | - | - |"));
-        assert!(!rendered.contains("| hacktix | - | - |"));
+        assert!(!rendered.contains("| ashiepaws | - | - |"));
         assert!(!rendered.contains("| cpp | - | - |"));
         assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
         assert!(!rendered.contains("| little-things-gb | - | - |"));

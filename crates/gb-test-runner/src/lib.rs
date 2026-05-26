@@ -53,12 +53,12 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME,
-    TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite, blargg_dmg_curated_suite,
-    blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-    cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-    cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite, curated_test_rom_families,
-    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
-    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite, ashiepaws_dmg_curated_suite,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cgb_audio_blargg_suite,
+    cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
+    cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_speed_suite, cpp_dmg_curated_suite,
+    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
+    discover_test_rom_store_root, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite, test_rom_store_root,
     update_curated_test_report,
 };
@@ -1104,6 +1104,10 @@ pub fn samesuite_sgb_suite() -> RomSuite {
     curated_test_roms::samesuite_sgb_suite()
 }
 
+pub fn cpp_sgb_suite() -> RomSuite {
+    curated_test_roms::cpp_sgb_suite()
+}
+
 pub fn magen_cgb_extra_suite() -> RomSuite {
     curated_test_roms::magen_cgb_extra_suite()
 }
@@ -1155,6 +1159,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         samesuite_dmg_extra_suite(),
         samesuite_cgb_extra_suite(),
         samesuite_sgb_suite(),
+        cpp_sgb_suite(),
         magen_cgb_extra_suite(),
         mealybug_tearoom_cgb_extra_suite(),
         little_things_gb_dmg_extra_suite(),
@@ -1300,7 +1305,7 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "acid-dmg-curated",
                 "mealybug-tearoom-dmg-curated",
                 "mealybug-tearoom-dmg-sameboy-differential",
-                "hacktix-dmg-curated",
+                "ashiepaws-dmg-curated",
             ],
             active_oracles: &[
                 "trace-fixture",
@@ -3365,13 +3370,13 @@ mod tests {
         MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult, PassCondition,
         RomCaseFailure, RomCaseOutcome, RomCaseValidationError, RomExecutionError, RomRunner,
         RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout,
-        artifact_file_name, ax6_dmg_extra_suite, blargg_console_text_complete,
-        blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite, budget_exhausted,
-        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
-        cgb_audio_blargg_suite, cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite,
-        cgb_dma_suite, cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite,
-        cgb_speed_suite, detect_mooneye_result, early_phase_9_partial_checklist,
-        hacktix_dmg_curated_suite, little_things_gb_cgb_extra_suite,
+        artifact_file_name, ashiepaws_dmg_curated_suite, ax6_dmg_extra_suite,
+        blargg_console_text_complete, blargg_dmg_curated_split_suites, blargg_dmg_repo_gated_suite,
+        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
+        capture_memory_text_output, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite, cpp_sgb_suite,
+        detect_mooneye_result, early_phase_9_partial_checklist, little_things_gb_cgb_extra_suite,
         little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
         memory_text_output_completion_reached, mooneye_cgb_extra_suite,
         mooneye_dmg_curated_split_suites, mooneye_result_completion_candidate,
@@ -3707,14 +3712,14 @@ mod tests {
         assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
 
         let case = &suite.cases[3];
-        assert_eq!(case.id, "cgb-ppu-basic-hacktix-bully-gbc");
+        assert_eq!(case.id, "cgb-ppu-basic-ashiepaws-bully-gbc");
         assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
-        assert_eq!(case.rom_path, PathBuf::from("hacktix/bully.gb"));
+        assert_eq!(case.rom_path, PathBuf::from("ashiepaws/bully.gb"));
         assert_eq!(case.timeout, Timeout::Frames(30));
         assert_eq!(
             case.pass_condition,
             PassCondition::FramebufferRgb555Fixture(PathBuf::from(
-                "crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png"
+                "crates/gb-test-runner/data/fixtures/ashiepaws/bully.cgb.png"
             ))
         );
         assert_eq!(case.startup_timer_state, None);
@@ -4687,13 +4692,30 @@ mod tests {
     }
 
     #[test]
-    fn hacktix_bully_dmg_skip_boot_seeds_the_expected_boot_logo_vram_bytes() {
-        let suite = hacktix_dmg_curated_suite();
+    fn built_in_rom_suite_lookup_returns_cpp_sgb_informational_suite() {
+        let suite = built_in_rom_suite_by_name("cpp-sgb").expect("known suite should exist");
+
+        assert_eq!(suite, cpp_sgb_suite());
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.family.as_deref(), Some("cpp"));
+        assert_eq!(suite.cases.len(), 1);
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "cpp-sgb-ext-test");
+        assert_eq!(case.host_platform, HostPlatform::Sgb);
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::Informational(CaptureKind::Framebuffer)
+        );
+    }
+
+    #[test]
+    fn ashiepaws_bully_dmg_skip_boot_seeds_the_expected_boot_logo_vram_bytes() {
+        let suite = ashiepaws_dmg_curated_suite();
         let case = suite
             .cases
             .into_iter()
-            .find(|case| case.id == "hacktix-bully")
-            .expect("hacktix bully case should exist");
+            .find(|case| case.id == "ashiepaws-bully")
+            .expect("ashiepaws bully case should exist");
         assert_eq!(case.startup_mode, StartupMode::SkipBoot);
         let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
         machine
@@ -4956,7 +4978,7 @@ mod tests {
             ppu.current_evidence
                 .contains(&"mealybug-tearoom-dmg-sameboy-differential")
         );
-        assert!(ppu.current_evidence.contains(&"hacktix-dmg-curated"));
+        assert!(ppu.current_evidence.contains(&"ashiepaws-dmg-curated"));
         assert!(ppu.active_oracles.contains(&"differential-case-bundle"));
         assert!(!ppu.remaining_gaps.contains(&"repo-gated-dmg-acid2"));
         assert!(

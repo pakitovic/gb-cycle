@@ -25,7 +25,7 @@ pub(super) const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(super) struct HacktixStrikethroughLine68Observation {
+pub(super) struct AshiepawsStrikethroughLine68Observation {
     t_cycle: u64,
     line_dot: u16,
     visible_pixels_output: u8,
@@ -307,7 +307,7 @@ pub(super) fn drain_ppu_interrupts(ppu: &mut Ppu) -> Vec<InterruptSource> {
     requests
 }
 
-pub(super) fn seed_hacktix_dmg_boot_logo_vram(machine: &mut Machine<TraceSummaryBuffer>) {
+pub(super) fn seed_ashiepaws_dmg_boot_logo_vram(machine: &mut Machine<TraceSummaryBuffer>) {
     for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
         machine.write_bus(DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2), byte);
     }
@@ -316,30 +316,30 @@ pub(super) fn seed_hacktix_dmg_boot_logo_vram(machine: &mut Machine<TraceSummary
     }
 }
 
-pub(super) fn load_hacktix_strikethrough_machine() -> Machine<TraceSummaryBuffer> {
+pub(super) fn load_ashiepaws_strikethrough_machine() -> Machine<TraceSummaryBuffer> {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test/hacktix/strikethrough.gb");
-    let rom = std::fs::read(&rom_path).expect("hacktix strikethrough ROM should be present");
+        .join("../../test/ashiepaws/strikethrough.gb");
+    let rom = std::fs::read(&rom_path).expect("ashiepaws strikethrough ROM should be present");
     let mut machine = Machine::new_summary(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom)
-        .expect("hacktix ROM should load");
-    seed_hacktix_dmg_boot_logo_vram(&mut machine);
+        .expect("ashiepaws ROM should load");
+    seed_ashiepaws_dmg_boot_logo_vram(&mut machine);
     machine
 }
 
-pub(super) fn sample_hacktix_strikethrough_line(
+pub(super) fn sample_ashiepaws_strikethrough_line(
     target_ly: u8,
     max_events: usize,
 ) -> (
     Vec<PpuSelectedSprite>,
-    Vec<HacktixStrikethroughLine68Observation>,
+    Vec<AshiepawsStrikethroughLine68Observation>,
     [u8; 8],
     [u8; 8],
 ) {
-    let mut machine = load_hacktix_strikethrough_machine();
+    let mut machine = load_ashiepaws_strikethrough_machine();
     let mut current_selected_sprites = Vec::new();
     let mut current_events = Vec::with_capacity(max_events);
     let mut last_completed_line68 = None;
@@ -377,7 +377,7 @@ pub(super) fn sample_hacktix_strikethrough_line(
             || dma_byte_destination_address.is_some())
             && current_events.len() < max_events
         {
-            current_events.push(HacktixStrikethroughLine68Observation {
+            current_events.push(AshiepawsStrikethroughLine68Observation {
                 t_cycle: machine.next_t_cycle().get().saturating_sub(1),
                 line_dot: ppu.line_dot,
                 visible_pixels_output: ppu.bg_pipeline_state.visible_pixels_output,
@@ -431,7 +431,7 @@ pub(super) fn sample_hacktix_strikethrough_line(
     }
 
     panic!(
-        "hacktix strikethrough line sample did not reach the halted framebuffer; target_ly={} pc={:#06X} state={:?} ly={} line_dot={} mode={:?}",
+        "ashiepaws strikethrough line sample did not reach the halted framebuffer; target_ly={} pc={:#06X} state={:?} ly={} line_dot={} mode={:?}",
         target_ly,
         machine.cpu().registers().pc,
         machine.cpu().execution_state(),

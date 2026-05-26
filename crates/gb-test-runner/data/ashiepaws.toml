@@ -1,23 +1,23 @@
 version = 1
-family = "hacktix"
-suite_name = "hacktix-dmg-curated"
+family = "ashiepaws"
+suite_name = "ashiepaws-dmg-curated"
 subsystem = "CrossSubsystem"
 
 [[case]]
-id = "hacktix-bully"
+id = "ashiepaws-bully"
 rom = "bully.gb"
 source_path = "testroms/ashiepaws/bully.gb"
 console = "dmg"
 report_model_suffix = true
 timeout_frames = 30
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.dmg.png"
+fixture = "crates/gb-test-runner/data/fixtures/ashiepaws/bully.dmg.png"
 
 [[case]]
-id = "hacktix-strikethrough"
+id = "ashiepaws-strikethrough"
 rom = "strikethrough.gb"
 source_path = "testroms/ashiepaws/strikethrough.gb"
 console = "dmg"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/data/fixtures/hacktix/strikethrough.dmg.png"
+fixture = "crates/gb-test-runner/data/fixtures/ashiepaws/strikethrough.dmg.png"

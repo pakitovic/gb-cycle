@@ -19,7 +19,7 @@ Each curated family directory contains:
 
 - only the currently supported ROM assets for that family
 
-The runner updates `/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
+The runner updates `/test/test-report.md` with a simple `family | rom | status` table after promoted curated family runs, while non-DocBoy extra/internal suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `little-things-gb-cgb-extra`, `gbmicrotest-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio` update `/test/test-report-extra.md`, and the large DocBoy single-machine suites `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra` update `/test/test-report-docboy.md`; all reports use `✅`, `❌`, and `ℹ️` in the status column. The `# Test Report (...)` header also summarizes `non-failing/total` across the exact persisted rows rendered in that file, counting both `PASS` and `INFO` in the numerator, so a first partial run reports only its own rows while later partial updates keep the full persisted context. The report keeps a fixed family inventory order: `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `magen`, `gbmicrotest`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `ashiepaws`, `cpp`, `mealybug-tearoom-tests`, `little-things-gb`. Families that have not produced persisted case statuses do not appear in the table.
 
 ## Current curated families
 
@@ -69,14 +69,18 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   source family: `daid`
   current status: exploratory local-only
   oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
-- `hacktix-dmg-curated`
-  source family: repo-local `hacktix`, materialized from upstream `ashiepaws`
+- `ashiepaws-dmg-curated`
+  source family: `ashiepaws`
   current status: workflow-managed and Phase 9 LibSameBoy differential matched
   oracle mix: framebuffer fixture
 - `cpp-dmg-curated`
   source family: `cpp`
   current status: workflow-managed
   oracle mix: framebuffer fixture
+- `cpp-sgb`
+  source family: `cpp`
+  current status: workflow-managed informational SGB lane
+  oracle mix: informational framebuffer capture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory local-only
@@ -136,9 +140,10 @@ Run one family directly through `make`:
 ```bash
 make run-daid
 make run-cpp
+make run-cpp-sgb
 make run-blargg
 make run-acid
-make run-hacktix
+make run-ashiepaws
 make run-mealybug
 make run-mooneye
 make run-little-things-gb
@@ -186,21 +191,21 @@ cargo run -p gb-test-runner --bin run_differential -- \
   --suite mealybug-tearoom-dmg-sameboy-differential
 ```
 
-Compare the curated Hacktix family against LibSameBoy case-bundle artifacts:
+Compare the curated Ashiepaws family against LibSameBoy case-bundle artifacts:
 
 ```bash
 cargo run -p gb-test-runner --bin run_differential -- \
   --oracle sameboy \
   --oracle-layout case-bundle \
-  --suite hacktix-dmg-curated
+  --suite ashiepaws-dmg-curated
 ```
 
-Capture Hacktix first-divergence probe windows against LibSameBoy:
+Capture Ashiepaws first-divergence probe windows against LibSameBoy:
 
 ```bash
 cargo run -p gb-test-runner --bin run_first_divergence -- \
   --oracle sameboy \
-  --suite hacktix-dmg-curated \
+  --suite ashiepaws-dmg-curated \
   --probe-interval-tcycles 70224 \
   --build-if-missing \
   --allow-divergence

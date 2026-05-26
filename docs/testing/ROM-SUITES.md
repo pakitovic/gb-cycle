@@ -29,7 +29,7 @@ make fetch-test-roms FAMILIES="blargg acid"
   cgb-dmg/
   cgb-dmg-ext/
 /test/gbmicrotest/
-/test/hacktix/
+/test/ashiepaws/
 /test/mealybug-tearoom-tests/
 /test/mooneye/
 /test/samesuite/
@@ -63,7 +63,8 @@ make run-gbmicrotest   # exploratory/internal DocBoy gbmicrotest DMG suite
 make run-docboy-dmg    # exploratory/internal DocBoy docboy/* DMG suite
 make run-daid          # workflow-managed Daid DMG suite
 make run-cpp           # curated cpp MBC3 subset
-make run-hacktix       # curated hacktix DMG subset
+make run-cpp-sgb       # informational cpp SGB packet suite
+make run-ashiepaws       # curated ashiepaws DMG subset
 make run-mealybug      # workflow-managed Mealybug-tearoom DMG suite
 make run-mooneye       # workflow-managed Mooneye DMG acceptance suite
 make run-mooneye-acceptance # Mooneye acceptance/manual chunk used by CI
@@ -95,8 +96,8 @@ make phase9-determinism-local # replay/save-load sample across CPU/interrupts, M
 make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
 make phase9-diff-acid         # compare Acid framebuffer artifacts against LibSameBoy case-bundle output
 make phase9-diff-mealybug     # compare the SameBoy-PASS Mealybug framebuffer subset against LibSameBoy case-bundle output
-make phase9-diff-hacktix      # compare Hacktix framebuffer artifacts against LibSameBoy case-bundle output
-make phase9-first-divergence-hacktix # capture Hacktix local/LibSameBoy first-divergence probe windows
+make phase9-diff-ashiepaws      # compare Ashiepaws framebuffer artifacts against LibSameBoy case-bundle output
+make phase9-first-divergence-ashiepaws # capture Ashiepaws local/LibSameBoy first-divergence probe windows
 ```
 
 The aggregate `make test-roms-real-boot`, `make test-roms-extra-real-boot`, `make test-roms-docboy-real-boot`, `make test-roms-cgb-real-boot`, and `make test-roms-cgb-extra-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames derived from each case revision, such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without direct-start `SkipBoot` or `CustomBoot` overlays, and start each case timeout after the `FF50` handoff. Manifests expose only `revision`, not a separate `boot_rom` selector: in default skip/custom-boot lanes no firmware bytes are read, and any revision-specific behavior must come from `revision` / `MachineConfig::revision`, which is also exposed by `gb-cli --revision` and `gb-desktop --revision`. Re-run `make test-roms` after a DMG RealBoot pass, `make test-roms-extra` after an extra DMG RealBoot pass, `make test-roms-docboy` after a DocBoy RealBoot pass, `make test-roms-cgb` after a promoted CGB RealBoot pass, or `make test-roms-cgb-extra` after an extra CGB RealBoot pass if you want the matching report to reflect the default manifest startup baseline again. The promoted `make test-roms` aggregate now also runs `samesuite-sgb` as informational SGB packet/multiplayer bring-up evidence and writes those rows to `/test/test-report.md`; SGB real-boot validation remains future work because SGB boot-ROM asset verification is not part of the current DMG/CGB RealBoot lane. The extra DMG aggregate target `make test-roms-extra-real-boot` currently drives `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `gbmicrotest-dmg-extra`, and writes `/test/test-report-extra.md`. The DocBoy aggregate target `make test-roms-docboy-real-boot` drives `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra`, writes single-machine rows to `/test/test-report-docboy.md`, and leaves linked-session rows in `run_linked_session` stdout plus retained failure artifacts. The CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb` and writes `/test/test-report.md`, while `make test-roms-cgb-extra` and `make test-roms-cgb-extra-real-boot` currently drive `cgb-boot-hwio`, `mooneye-cgb-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `mealybug-tearoom-cgb-extra`, and `little-things-gb-cgb-extra`, keep running later child suites after earlier red rows, return non-zero if any child suite fails, and write `/test/test-report-extra.md`.
@@ -183,13 +184,13 @@ Uses only individual ROMs from `GBEmulatorShootout` (not multi-ROM bundles such 
 
 The upstream `oam_bug/7-timing_effect.gb`, CGB-only ROMs, and other still-red cases stay outside the default managed block until intentionally promoted.
 
-### Hacktix
+### Ashiepaws
 
-Tracks `bully.gb` and `strikethrough.gb` from the active `GBEmulatorShootout` `ashiepaws` paths, while keeping the repo-local `hacktix` family name stable after the upstream rename from `testroms/hacktix`; uses framebuffer fixtures and is exercised by the GitHub `test-roms` workflow.
+Tracks `bully.gb` and `strikethrough.gb` from the active `GBEmulatorShootout` `ashiepaws` paths; uses `ashiepaws` as the repo-local family and is exercised by the GitHub `test-roms` workflow.
 
 ### Cpp
 
-Curated `cpp` MBC3 subset; exercised by the GitHub `test-roms` workflow.
+Curated `cpp` currently has a blocking DMG MBC3 subset under `cpp-dmg-curated` plus the informational SGB packet-extension row `sgb-ext-test.gb` under `cpp-sgb`; both are exercised by `make test-roms` and the GitHub `test-roms` workflow.
 
 ### Daid
 
@@ -284,8 +285,8 @@ make test-roms-cgb-extra-real-boot
 - `run-docboy-cgb-dmg-ext` materializes its upstream family with `make fetch-test-roms FAMILIES=docboy-cgb-dmg-ext` before invoking `cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-ext-extra --failure-artifact-root .artifacts/docboy-cgb-dmg-ext`; it is included in `make test-roms-docboy` and the local RealBoot DocBoy aggregate, but intentionally stays outside `make test-roms-cgb`, `make test-roms-cgb-extra`, and GitHub `test-roms` until promoted intentionally.
 - `cgb-speed` is the Phase `10` Slice `2` CGB speed-domain suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-speed.toml`, and `make run-cgb-speed` fetches `daid blargg` before invoking `run_rom_suite`.
 - `cgb-speed` now promotes Daid `stop_instr.gb (GBC)` to a blocking final `framebuffer-rgb555-grayscale-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr.gbc.png`, preserving the absolute solid-black STOP result through a grayscale decode of the CGB RGB555 framebuffer; `stop_instr_gbc_mode3.gb` is a blocking rank-normalized `framebuffer-rgb555-fixture` using `crates/gb-test-runner/data/fixtures/daid/stop_instr_gbc_mode3.png`, matching the SameBoy/GBEmulatorShootout PASS screen where CGB STOP entered during Mode `3` leaves the LCD displaying the PASS text; `speed_switch_timing_div.gbc`, `speed_switch_timing_ly.gbc`, and `speed_switch_timing_stat.gbc` are blocking rank-normalized `framebuffer-rgb555-fixture` oracles using their matching `crates/gb-test-runner/data/fixtures/daid/speed_switch_timing_*.png` artifacts. These Daid cases use a `180`-frame budget so the terminal STOP or timing output has been presented to the framebuffer before comparison. Blargg `interrupt_time.gb` is promoted to a blocking `blargg-console-contains` oracle with expected text `Passed` and a `1800`-frame budget, because the CGB run emits its result through the upstream BG-map console rather than serial. Every current `cgb-speed` row now has a blocking oracle.
-- `cgb-ppu-basic` is the Phase `10` Slice `4` CGB PPU baseline promotion suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-ppu-basic.toml`, and `make run-cgb-ppu-basic` fetches `samesuite daid acid hacktix` before invoking `run_rom_suite`.
-- `cgb-ppu-basic` currently contains four blocking rows in roadmap order: SameSuite `ppu/blocking_bgpi_increase.gb`, using the `framebuffer-rgb555-fixture` oracle at `crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png`; Daid `ppu_scanline_bgp.gb (GBC)`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png`; Acid `cgb-acid2.gbc`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png`; and the local Hacktix/Ashiepaws `bully.gb (GBC)` row, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/hacktix/bully.cgb.png` and `startup = "custom-boot"` for the CGB custom cartridge-entry raster phase on top of the shared logo-tile seed without the DMG logo tilemap overlay. BullyGB's unconfirmed initial-`DIV` check is satisfied by the core header-aware CGB direct-start timer bucket rather than by any manifest timer override.
+- `cgb-ppu-basic` is the Phase `10` Slice `4` CGB PPU baseline promotion suite, not a repo-gated DMG closure lane; its ROM inventory is declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-ppu-basic.toml`, and `make run-cgb-ppu-basic` fetches `samesuite daid acid ashiepaws` before invoking `run_rom_suite`.
+- `cgb-ppu-basic` currently contains four blocking rows in roadmap order: SameSuite `ppu/blocking_bgpi_increase.gb`, using the `framebuffer-rgb555-fixture` oracle at `crates/gb-test-runner/data/fixtures/samesuite/ppu/blocking_bgpi_increase.png`; Daid `ppu_scanline_bgp.gb (GBC)`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp.gbc.png`; Acid `cgb-acid2.gbc`, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/acid/cgb-acid2-cgb.png`; and the local Ashiepaws `bully.gb (GBC)` row, using the `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/ashiepaws/bully.cgb.png` and `startup = "custom-boot"` for the CGB custom cartridge-entry raster phase on top of the shared logo-tile seed without the DMG logo tilemap overlay. BullyGB's unconfirmed initial-`DIV` check is satisfied by the core header-aware CGB direct-start timer bucket rather than by any manifest timer override.
 - `cgb-ppu-hard` is the Phase `10` Slice `9` native-CGB PPU hardening suite, not a repo-gated DMG closure lane; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-ppu-hard.toml`, and `make run-cgb-ppu-hard` fetches `acid` before invoking `run_rom_suite`.
 - `cgb-ppu-hard` currently runs Acid `cgb-acid-hell.gbc` on `ConsoleModel::GameBoyColor` with a blocking `framebuffer-rgb555-fixture` oracle against `crates/gb-test-runner/data/fixtures/acid/cgb-acid-hell.png`; the manifest intentionally uses the ordinary fixed `180`-frame budget rather than a runner-only stop condition so the captured framebuffer matches the `gb-cli` / `gb-desktop` screenshot path. The target is part of `make test-roms-cgb`, the GitHub `test-roms` matrix, and the local boot-ROM-backed `make test-roms-cgb-real-boot` aggregate.
 - `cgb-dma` is the Phase `10` Slice `5` CGB GDMA/HDMA suite, not a repo-gated DMG closure lane; its ROM inventory and PNG fixture hashes are declared in `crates/gb-test-runner/data/sources.toml`, its suite definition is `crates/gb-test-runner/data/cgb-dma.toml`, and `make run-cgb-dma` fetches `samesuite` before invoking `run_rom_suite`.
@@ -301,8 +302,8 @@ make test-roms-cgb-extra-real-boot
 ## CI integration
 
 - `make ci` stays as the fast local pre-push gate and does not fetch or run external ROM suites; it includes the Rust checks plus the coverage threshold gate through `cargo cov-check`.
-- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG/SGB suites currently wired in `Makefile`: `acid`, the full Blargg lane via the three `run-blargg-*` chunks, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, the full Mooneye lane via the three `run-mooneye-*` chunks, and informational `samesuite-sgb`.
-- GitHub uses three core validation workflows: `ci` for Rust checks plus coverage, `test-roms` for the promoted workflow-managed ROM subset (`acid`, `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam`, `daid`, `hacktix`, `cpp`, `mooneye-acceptance`, `mooneye-mbc1-mbc5`, `mooneye-mbc2`, `mealybug-tearoom-tests`, `cgb-smoke`, `cgb-boot-div`, `cgb-speed`, `cgb-ppu-basic`, `cgb-ppu-hard`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, and `cgb-rtc`), and `test-roms-extra` for the green non-DocBoy extra/internal subset (`ax6`, `samesuite`, `little-things-gb`, `gbmicrotest`, `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-cgb`, and `little-things-gb-cgb`).
+- `make test-roms` fetches the curated ROM store if needed and runs all local curated DMG/SGB suites currently wired in `Makefile`: `acid`, the full Blargg lane via the three `run-blargg-*` chunks, `daid`, `ashiepaws`, `cpp`, `cpp-sgb`, `mealybug-tearoom-tests`, the full Mooneye lane via the three `run-mooneye-*` chunks, and informational `samesuite-sgb`.
+- GitHub uses three core validation workflows: `ci` for Rust checks plus coverage, `test-roms` for the promoted workflow-managed ROM subset (`acid`, `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam`, `daid`, `ashiepaws`, `cpp`, `cpp-sgb`, `mooneye-acceptance`, `mooneye-mbc1-mbc5`, `mooneye-mbc2`, `mealybug-tearoom-tests`, `cgb-smoke`, `cgb-boot-div`, `cgb-speed`, `cgb-ppu-basic`, `cgb-ppu-hard`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, and `cgb-rtc`), and `test-roms-extra` for the green non-DocBoy extra/internal subset (`ax6`, `samesuite`, `little-things-gb`, `gbmicrotest`, `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-cgb`, and `little-things-gb-cgb`).
 - The GitHub `test-roms` and `test-roms-extra` workflows fan those suites out through matrices; every matrix child performs its own checkout, Rust toolchain setup, and Rust cache restore because GitHub-hosted runners are isolated per job.
 
 ## Commercial ROM testing
@@ -417,12 +418,12 @@ The Phase `9` first-divergence lane reuses the LibSameBoy helper but asks it for
 ```bash
 cargo run -p gb-test-runner --bin run_first_divergence -- \
   --oracle sameboy \
-  --suite hacktix-dmg-curated \
+  --suite ashiepaws-dmg-curated \
   --probe-interval-tcycles 70224 \
   --build-if-missing
 ```
 
-When `--probe-root` is omitted, local and SameBoy probe streams are written under `/.oracles/sameboy/first-divergence/<case-id>/local_probes.jsonl` and `sameboy_probes.jsonl`. The default `--compare-mode framebuffer` compares normalized framebuffer hashes and keeps CPU registers, timer/IRQ registers, PPU timing/register values, raw VRAM/OAM/WRAM/HRAM hashes, and serial output as context; `--compare-mode state` compares all captured state fields except probe timestamp drift. Use `--allow-divergence` for exploratory Make targets such as `phase9-first-divergence-hacktix`, where the command should report the first known intermediate timing window while still returning success for local investigation.
+When `--probe-root` is omitted, local and SameBoy probe streams are written under `/.oracles/sameboy/first-divergence/<case-id>/local_probes.jsonl` and `sameboy_probes.jsonl`. The default `--compare-mode framebuffer` compares normalized framebuffer hashes and keeps CPU registers, timer/IRQ registers, PPU timing/register values, raw VRAM/OAM/WRAM/HRAM hashes, and serial output as context; `--compare-mode state` compares all captured state fields except probe timestamp drift. Use `--allow-divergence` for exploratory Make targets such as `phase9-first-divergence-ashiepaws`, where the command should report the first known intermediate timing window while still returning success for local investigation.
 
 ### SameBoy Tester compatibility path
 

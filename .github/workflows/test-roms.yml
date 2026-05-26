@@ -25,10 +25,12 @@ jobs:
             command: make run-blargg-timing-memory-oam
           - name: daid
             command: make run-daid
-          - name: hacktix
-            command: make run-hacktix
+          - name: ashiepaws
+            command: make run-ashiepaws
           - name: cpp
             command: make run-cpp
+          - name: cpp-sgb
+            command: make run-cpp-sgb
           - name: mooneye-acceptance
             command: make run-mooneye-acceptance
           - name: mooneye-mbc1-mbc5
