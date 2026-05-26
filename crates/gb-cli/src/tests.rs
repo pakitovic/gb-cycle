@@ -2366,7 +2366,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::Color.name(), "CGB");
     assert_eq!(
         RunModel::Color.console_model().default_revision(),
-        HardwareRevision::CpuCgbC
+        HardwareRevision::CpuCgbE
     );
     assert_eq!(RunModel::SuperGameBoy.name(), "SGB");
     assert_eq!(RunModel::SuperGameBoy2.name(), "SGB2");

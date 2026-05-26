@@ -23001,7 +23001,7 @@ mod tests {
         );
         assert_eq!(
             cgb_options.config.launch.revision,
-            HardwareRevision::CpuCgbC
+            HardwareRevision::CpuCgbE
         );
         assert_eq!(
             cgb_options.config.video.display_palette,
