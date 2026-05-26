@@ -51,10 +51,11 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 10] = [
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "mooneye-cgb-extra",
+    "mooneye-sgb-boot-regs-extra",
     "samesuite-dmg-extra",
     "samesuite-cgb-extra",
     "magen-cgb-extra",
@@ -1208,6 +1209,10 @@ pub fn mooneye_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("mooneye-cgb-extra")
 }
 
+pub fn mooneye_sgb_boot_regs_extra_suite() -> RomSuite {
+    manifest_suite_by_name("mooneye-sgb-boot-regs-extra")
+}
+
 pub fn cgb_audio_blargg_suite() -> RomSuite {
     manifest_suite_by_name("cgb-audio-blargg")
 }
@@ -1275,7 +1280,7 @@ fn parse_curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 32] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 33] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -1344,6 +1349,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 32] {
         (
             "crates/gb-test-runner/data/cgb-boot-hwio.toml",
             include_str!("../data/cgb-boot-hwio.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/mooneye-sgb-boot-regs.toml",
+            include_str!("../data/mooneye-sgb-boot-regs.toml"),
         ),
         (
             "crates/gb-test-runner/data/cgb-smoke.toml",
@@ -2250,12 +2259,12 @@ mod tests {
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
         mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
-        mooneye_cgb_extra_suite, parse_manifest_case, parse_manifest_console_model,
-        parse_manifest_host_platform, parse_manifest_subsystem, render_markdown_report,
-        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
-        samesuite_dmg_extra_suite, samesuite_sgb_suite, sort_persisted_case_statuses,
-        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
-        update_curated_test_report,
+        mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
+        parse_manifest_console_model, parse_manifest_host_platform, parse_manifest_subsystem,
+        render_markdown_report, report_rom_display, report_status_display,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
+        sort_persisted_case_statuses, suite_uses_docboy_test_report, suite_uses_extra_test_report,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -2615,6 +2624,51 @@ mod tests {
         assert!(crate::built_in_rom_suite_by_name("mooneye-cgb-extra").is_some());
         assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
         assert!(!suite_uses_docboy_test_report("mooneye-cgb-extra"));
+    }
+
+    #[test]
+    fn mooneye_sgb_boot_regs_extra_suite_runs_sgb_profiles_as_extra_rows() {
+        let suite = mooneye_sgb_boot_regs_extra_suite();
+
+        assert_eq!(suite.name, "mooneye-sgb-boot-regs-extra");
+        assert_eq!(suite.family.as_deref(), Some("mooneye-sgb-boot-regs-extra"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 2);
+        assert!(crate::built_in_rom_suite_by_name("mooneye-sgb-boot-regs-extra").is_some());
+        assert!(suite_uses_extra_test_report("mooneye-sgb-boot-regs-extra"));
+        assert!(!suite_uses_docboy_test_report(
+            "mooneye-sgb-boot-regs-extra"
+        ));
+
+        let expected = [
+            (
+                "mooneye-sgb-boot-regs-sgb",
+                HostPlatform::Sgb,
+                "acceptance/boot_regs-sgb.gb",
+            ),
+            (
+                "mooneye-sgb-boot-regs-sgb2",
+                HostPlatform::Sgb2,
+                "acceptance/boot_regs-sgb2.gb",
+            ),
+        ];
+        for (case, (id, host_platform, rom_path)) in suite.cases.iter().zip(expected) {
+            assert_eq!(case.id, id);
+            assert_eq!(case.console_model, ConsoleModel::GameBoy);
+            assert_eq!(case.host_platform, host_platform);
+            assert_eq!(case.startup_mode, StartupMode::SkipBoot);
+            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(case.rom_path, PathBuf::from("mooneye").join(rom_path));
+            assert_eq!(
+                case.external_rom_root_key.as_deref(),
+                Some(TEST_ROM_ROOT_ENV_VAR)
+            );
+            assert_eq!(case.pass_condition, PassCondition::MooneyeResult);
+            assert!(case.capture_plan.contains(CaptureKind::Serial));
+            assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+            assert!(case.failure_artifacts.contains(CaptureKind::Serial));
+            assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+        }
     }
 
     #[test]

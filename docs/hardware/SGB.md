@@ -219,13 +219,14 @@ Open-source emulator code is a comparison aid, not hardware truth. If references
 
 - Packet-decode unit tests for JOYP bit framing, packet counts, command IDs, malformed packets, reset behavior, packet busy/suppression gates, and partial-packet save/load.
 - SameSuite SGB `command_mlt_req.gb` and `command_mlt_req_1_incrementing.gb` run as `console = "sgb"` multiplayer evidence now that Slice 5 implements `MLT_REQ`; the promoted report rows remain informational while framebuffer/oracle policy stays separate from the core hardware contract.
+- Mooneye `acceptance/boot_regs-sgb.gb` and `acceptance/boot_regs-sgb2.gb` run in the extra report as SGB/SGB2 `SkipBoot` public oracles for the direct-start register fingerprints `A=$01, C=$14` and `A=$FF, C=$14`; they do not claim SNES/SFC host startup-shell or SGB/SGB2 `RealBoot` closure.
 - The cpp `sgb-ext-test.gb` packet-edge ROM runs as a promoted framebuffer fixture reconstructed from CasualPokePlayer/test-roms `pass.png` and validates corrupt-stop, missing-idle, intermediate P14/P15 transition, mid-packet `$00`, and short-start behavior through the DMG LCD/tilemap result matrix.
 - Boot/title palette tests proving SGB BIOS default/title seeding affects host RGB555 LCD output for command-rejected DMG software before any command packet, while SGB-command-capable titles and CGB framebuffer hardware remain unaffected.
 - Palette composition tests proving direct `PALxx` commands affect host RGB555 LCD output without changing DMG PPU state or CGB palette state; attribute composition remains Slice 4.
 - `PAL_PRI` tests proving player-selected palette overrides remain visible while priority is disabled, application palette/attribute commands regain visible priority when enabled, and transfer-only backing-data commands do not switch visible priority by themselves.
 - Border transfer/composition tests for static border load, shared color-0/backdrop behavior, LCD and application-backdrop stability across `PCT_TRN`, repeated updates, mask behavior, and save/load continuation.
 - `MLT_REQ` tests for one/two/four-player modes, player selection, P1 cycling, and frontend/test-runner input slots.
-- SGB/SGB2 profile and startup tests for PAL/NTSC validity, corrected SGB2 clock profile, SGB/SGB2 direct-start register fingerprints, original SGB no-link behavior, and SGB2 Game Link availability.
+- SGB/SGB2 profile and startup tests for PAL/NTSC validity, corrected SGB2 clock profile, SGB/SGB2 direct-start register fingerprints with Mooneye SGB/SGB2 boot-register external rows, original SGB no-link behavior, and SGB2 Game Link availability.
 - Host startup shell tests for deterministic generic border state, startup animation timeline, SGB jingle events, save/load continuation, and replacement by cartridge-side border transfers.
 - System-command tests for `ATRC_EN`, `TEST_EN`, `ICON_EN` packet suppression, `OBJ_TRN` state/OAM capture, and save/load coverage.
 - Host-audio command tests for deterministic event/state capture without replacing the GB APU.

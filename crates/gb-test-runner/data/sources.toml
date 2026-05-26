@@ -1144,6 +1144,14 @@ path = "testroms/mooneye/acceptance/boot_regs-dmgABC.gb"
 sha256 = "39bcdaa3787c3a36bc1b36c04be7b2f8cd91f2e0361732e0d4f5523f0e1ee112"
 
 [[source.required_file]]
+path = "testroms/mooneye/acceptance/boot_regs-sgb.gb"
+sha256 = "741b3c52d32ced88afd3a143f1321cf408837ccb9b39999bfb3dc4224a978200"
+
+[[source.required_file]]
+path = "testroms/mooneye/acceptance/boot_regs-sgb2.gb"
+sha256 = "55d55796452c3386afe53f24117e5d2cdfd4ca1bef6325fc9e3b3e5fa2ec7e43"
+
+[[source.required_file]]
 path = "testroms/mooneye/acceptance/call_cc_timing.gb"
 sha256 = "fdc87a9276a5b2430f05ad071134df8501a808d3463cf2e5a1f0891daffa27e3"
 

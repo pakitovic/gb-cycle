@@ -525,8 +525,8 @@ mod tests {
         cpp_sgb_suite, curated_test_rom_families, curated_test_rom_family_suites,
         docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
         docboy_dmg_extra_suite, gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite,
-        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
-        test_rom_store_root,
+        mooneye_sgb_boot_regs_extra_suite, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
+        samesuite_sgb_suite, test_rom_store_root,
     };
 
     use super::{
@@ -680,6 +680,7 @@ mod tests {
                 cgb_audio_samesuite_suite(),
                 samesuite_cgb_extra_suite(),
                 samesuite_sgb_suite(),
+                mooneye_sgb_boot_regs_extra_suite(),
                 cpp_sgb_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
@@ -753,6 +754,7 @@ mod tests {
             cgb_audio_samesuite_suite(),
             samesuite_cgb_extra_suite(),
             samesuite_sgb_suite(),
+            mooneye_sgb_boot_regs_extra_suite(),
             cpp_sgb_suite(),
         ]) {
             for case in suite.cases {

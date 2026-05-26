@@ -17,7 +17,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ### Phase 11 — SGB/SGB2
 
-- [SGB][EXTERNAL-ORACLES] Synthetic coverage now validates `ATRC_EN`, `TEST_EN`, `ICON_EN` suppression, `OBJ_TRN` state, SGB/SGB2 direct-start fingerprints, five-frame `_TRN` timing, mid-transfer save/load, and packet busy rejection, but no public ROM row is currently pinned with a crisp oracle for those exact behaviors. If adding external coverage, use a public ROM with explicit expected signal for one of these gaps rather than promoting commercial compatibility examples or ambiguous framebuffer output.
+- [SGB][EXTERNAL-ORACLES] Mooneye `acceptance/boot_regs-sgb.gb` and `acceptance/boot_regs-sgb2.gb` now pin SGB/SGB2 direct-start fingerprints in the extra report. The only remaining SGB public-ROM oracle gaps are `ATRC_EN`, `TEST_EN`, `ICON_EN`, `OBJ_TRN`, `_TRN` timing, and packet busy; synthetic coverage already validates those behaviors internally, but no public ROM row is currently pinned with a crisp oracle for them. If adding external coverage, use a public ROM with explicit expected signal for one of these six gaps rather than promoting commercial compatibility examples or ambiguous framebuffer output.
 
 ### Testing tooling
 
