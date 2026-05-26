@@ -108,6 +108,6 @@ fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
         cgb.write_profile(),
         UnusableAreaWriteProfile::CgbRevisionDependentRam
     );
-    assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
+    assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
     assert!(cgb.runtime_fallback_writes_ignored());
 }

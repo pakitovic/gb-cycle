@@ -52,6 +52,10 @@ fn public_model_api_exposes_revision_defaults_and_active_sets() {
         HardwareRevision::CpuMgb
     );
     assert_eq!(
+        ConsoleModel::GameBoyColor.default_revision(),
+        HardwareRevision::CpuCgbE
+    );
+    assert_eq!(
         ConsoleModel::GameBoyColor.active_revisions(),
         &[
             HardwareRevision::CpuCgbC,

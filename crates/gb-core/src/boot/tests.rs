@@ -164,7 +164,7 @@ fn console_model_defaults_to_the_expected_boot_kind() {
             empty_assets()
         )
         .revision(),
-        HardwareRevision::CpuCgbC
+        HardwareRevision::CpuCgbE
     );
 }
 

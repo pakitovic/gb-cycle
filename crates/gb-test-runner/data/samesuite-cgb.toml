@@ -96,8 +96,9 @@ console = "cgb"
 revision = "cpu-cgb-e"
 report_model_suffix = true
 timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
+oracle = "info-framebuffer"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_sweep_restart_2-cgbE.png"
+comment = "Informational only: this DocBoy-only variant carries a short-hold CGB-E fixture that conflicts with the public GBEmulatorShootout SameSuite channel_1_sweep_restart_2.gb oracle, which owns the promoted CGB-E APU model."
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-volume-div-cgbe"

@@ -1263,7 +1263,7 @@ fn cgb_standard_channel_1_shift_zero_sweep_restart_hold_uses_long_window() {
         CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES
     );
 
-    for _ in 0..CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES {
+    for _ in 0..(CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES - 1) {
         apu.channels.channel_1.tick_fast_timer();
     }
     apu.channels
@@ -1272,6 +1272,15 @@ fn cgb_standard_channel_1_shift_zero_sweep_restart_hold_uses_long_window() {
 
     assert!(apu.channels.channel_1.pulse.runtime.active);
     assert_eq!(apu.channels.channel_1.sweep.delayed_calculation_t_cycles, 0);
+}
+
+#[test]
+fn cgb_e_channel_1_shift_zero_sweep_restart_hold_uses_promoted_public_window() {
+    assert_eq!(CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES, 9);
+    assert_eq!(
+        CGB_E_CH1_SWEEP_RESTART_HOLD_T_CYCLES,
+        CGB_STANDARD_CH1_SWEEP_RESTART_HOLD_T_CYCLES
+    );
 }
 
 #[test]

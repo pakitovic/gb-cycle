@@ -1061,7 +1061,7 @@ fn unusable_area_descriptor_is_model_aware() {
         cgb.write_profile(),
         UnusableAreaWriteProfile::CgbRevisionDependentRam
     );
-    assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
+    assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
     assert!(cgb.runtime_fallback_writes_ignored());
 
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());

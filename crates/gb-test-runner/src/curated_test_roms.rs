@@ -3852,10 +3852,14 @@ mod tests {
                 && case.timeout == Timeout::Frames(180)
                 && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.rom_path.starts_with("samesuite/apu")
-                && matches!(
+                && (matches!(
                     case.pass_condition,
                     PassCondition::FramebufferRgb555Fixture(_)
-                )
+                ) || (case.id == "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-2-cgbe"
+                    && matches!(
+                        case.pass_condition,
+                        PassCondition::Informational(CaptureKind::Framebuffer)
+                    )))
         }));
         assert!(suite.cases.iter().any(|case| {
             case.id == "samesuite-cgb-apu-channel-3-channel-3-wave-ram-dac-on-rw"

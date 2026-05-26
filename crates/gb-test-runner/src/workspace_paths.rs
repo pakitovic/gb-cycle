@@ -129,11 +129,15 @@ mod tests {
         );
         assert_eq!(
             boot_rom_revision_for_console_model(ConsoleModel::GameBoyColor),
-            HardwareRevision::CpuCgbC
+            HardwareRevision::CpuCgbE
         );
         assert_eq!(
             boot_rom_image_path(root, HardwareRevision::DmgCpuC),
             root.join("dmg_boot.bin")
+        );
+        assert_eq!(
+            boot_rom_image_path(root, HardwareRevision::CpuCgbE),
+            root.join("cgbE_boot.bin")
         );
         assert_eq!(
             boot_rom_asset_for_console_profile(ConsoleModel::GameBoy, HostPlatform::Sgb),

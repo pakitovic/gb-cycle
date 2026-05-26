@@ -8,7 +8,7 @@ fn cgb_real_boot_uses_a_cgb_boot_asset_for_the_split_boot_windows() {
             .with_boot_rom_assets(
                 BootRomAssets::none()
                     .with_bytes(
-                        HardwareRevision::CpuCgbC,
+                        HardwareRevision::CpuCgbE,
                         build_cgb_boot_rom_image(0x99, 0x77),
                     )
                     .expect("configured CGB boot ROM should validate"),
@@ -19,7 +19,7 @@ fn cgb_real_boot_uses_a_cgb_boot_asset_for_the_split_boot_windows() {
         .load_cartridge(build_test_rom(0x7F))
         .expect("supported NoMBC image should load");
 
-    assert_eq!(machine.boot().revision(), HardwareRevision::CpuCgbC);
+    assert_eq!(machine.boot().revision(), HardwareRevision::CpuCgbE);
     assert!(machine.boot().is_boot_rom_mapped());
     assert!(machine.boot().has_boot_rom_asset());
     assert_eq!(machine.read_bus(0x0000), 0x99);

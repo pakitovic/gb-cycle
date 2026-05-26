@@ -4,7 +4,7 @@ use super::map::{
     UnusableAreaWriteProfile,
 };
 use super::{BLOCKED_READ_VALUE, BusAccessKind, BusArbitrationState, DMG_UNUSABLE_READ_VALUE};
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, HardwareRevision};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct AddressRouter;
@@ -35,6 +35,11 @@ const fn non_functional_io(
         access,
         kind,
     )
+}
+
+const fn cgb_e_extra_oam_read_value(address: u16) -> u8 {
+    let low_address = address as u8;
+    (low_address & 0xF0) | (low_address >> 4)
 }
 
 impl AddressRouter {
@@ -588,6 +593,7 @@ impl AddressRouter {
     pub fn describe_unusable_area(
         &self,
         console_model: ConsoleModel,
+        revision: HardwareRevision,
         address: u16,
     ) -> Option<UnusableAreaInfo> {
         if !(0xFEA0..=0xFEFF).contains(&address) {
@@ -604,13 +610,19 @@ impl AddressRouter {
                     true,
                 )
             }
-            ConsoleModel::GameBoyColor => UnusableAreaInfo::new(
-                address,
-                UnusableAreaReadProfile::CgbRevisionDependent,
-                UnusableAreaWriteProfile::CgbRevisionDependentRam,
-                BLOCKED_READ_VALUE,
-                true,
-            ),
+            ConsoleModel::GameBoyColor => {
+                let fallback_read_value = match revision {
+                    HardwareRevision::CpuCgbE => cgb_e_extra_oam_read_value(address),
+                    _ => BLOCKED_READ_VALUE,
+                };
+                UnusableAreaInfo::new(
+                    address,
+                    UnusableAreaReadProfile::CgbRevisionDependent,
+                    UnusableAreaWriteProfile::CgbRevisionDependentRam,
+                    fallback_read_value,
+                    true,
+                )
+            }
         })
     }
 
