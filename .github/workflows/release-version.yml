@@ -1,10 +1,12 @@
 name: release-version
 
+run-name: publish ${{ inputs.version }}
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: SemVer version to release, for example 0.1.7 or v0.1.7.
+        description: Post-merge SemVer version to tag and publish, for example 0.1.8 or v0.1.8.
         required: true
         type: string
       dry_run:
