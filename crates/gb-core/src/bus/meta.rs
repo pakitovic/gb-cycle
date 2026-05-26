@@ -1,4 +1,4 @@
-use crate::model::ConsoleModel;
+use crate::model::{ConsoleModel, HardwareRevision};
 use crate::scheduler::CycleContext;
 
 use super::{Bus, BusArbitrationState, BusStatus};
@@ -6,6 +6,7 @@ use super::{Bus, BusArbitrationState, BusStatus};
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusSnapshot {
     pub console_model: ConsoleModel,
+    pub revision: HardwareRevision,
     pub status: BusStatus,
     pub arbitration: BusArbitrationState,
 }
@@ -14,6 +15,7 @@ impl Bus {
     pub fn snapshot(&self, arbitration: BusArbitrationState) -> BusSnapshot {
         BusSnapshot {
             console_model: self.console_model,
+            revision: self.revision,
             status: self.status,
             arbitration,
         }

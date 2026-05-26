@@ -16,7 +16,7 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
     );
     assert_eq!(
         ConsoleModel::GameBoyColor.default_revision(),
-        HardwareRevision::CpuCgbC
+        HardwareRevision::CpuCgbE
     );
     assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::GbCompatible));
     assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::CgbDmgExt));

@@ -4171,7 +4171,7 @@ mod tests {
         assert_eq!(suite.name, "samesuite-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
         assert_eq!(suite.subsystem, TestSubsystem::Apu);
-        assert_eq!(suite.cases.len(), 10);
+        assert_eq!(suite.cases.len(), 9);
 
         for case in &suite.cases {
             assert_eq!(case.console_model, ConsoleModel::GameBoyColor);
@@ -4190,6 +4190,10 @@ mod tests {
                 PassCondition::FramebufferRgb555Fixture(_)
             ));
         }
+        assert!(!suite
+            .cases
+            .iter()
+            .any(|case| case.id == "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-2-cgbe"));
 
         assert!(
             built_in_rom_suite_by_name("samesuite-cgb-extra")

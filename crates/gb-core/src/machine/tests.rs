@@ -1157,6 +1157,7 @@ fn cgb_real_boot_overlay_gap_routes_cartridge_header_for_compact_and_sparse_imag
 
         let mut machine = Machine::new(
             MachineConfig::new(ConsoleModel::GameBoyColor)
+                .with_revision(HardwareRevision::CpuCgbC)
                 .with_startup_mode(StartupMode::RealBoot)
                 .with_boot_rom_assets(assets),
         );

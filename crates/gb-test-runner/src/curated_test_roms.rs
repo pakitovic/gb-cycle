@@ -3838,13 +3838,29 @@ mod tests {
                 && case.source_path.starts_with("tests/roms/cgb/samesuite")
                 && case.report_model_suffix
         }));
+        let disabled_sweep_restart_2 = manifest
+            .cases
+            .iter()
+            .find(|case| case.id == "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-2-cgbe")
+            .expect("DocBoy CGB-E sweep-restart-2 variant should stay tracked");
+        assert!(disabled_sweep_restart_2.disabled);
+        assert_eq!(
+            disabled_sweep_restart_2.oracle,
+            "framebuffer-rgb555-fixture"
+        );
+        assert!(
+            disabled_sweep_restart_2
+                .comment
+                .as_deref()
+                .is_some_and(|comment| comment.contains("promoted public GBEmulatorShootout"))
+        );
 
         let suite = samesuite_cgb_extra_suite();
 
         assert_eq!(suite.name, "samesuite-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
         assert_eq!(suite.subsystem, TestSubsystem::Apu);
-        assert_eq!(suite.cases.len(), 10);
+        assert_eq!(suite.cases.len(), 9);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
@@ -3857,6 +3873,10 @@ mod tests {
                     PassCondition::FramebufferRgb555Fixture(_)
                 )
         }));
+        assert!(!suite
+            .cases
+            .iter()
+            .any(|case| case.id == "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-2-cgbe"));
         assert!(suite.cases.iter().any(|case| {
             case.id == "samesuite-cgb-apu-channel-3-channel-3-wave-ram-dac-on-rw"
                 && case.rom_path

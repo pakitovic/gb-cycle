@@ -13,7 +13,7 @@ mod view;
 mod wram;
 
 use crate::cartridge::{CartridgeHeader, CgbFlag};
-use crate::model::{ConsoleModel, HeuristicPolicy, OperatingMode, StartupMode};
+use crate::model::{ConsoleModel, HardwareRevision, HeuristicPolicy, OperatingMode, StartupMode};
 pub use infrared::CgbInfraredStatus;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
@@ -55,6 +55,8 @@ pub struct DebugWramAddressSample {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Bus {
     console_model: ConsoleModel,
+    #[serde(default)]
+    revision: HardwareRevision,
     operating_mode: OperatingMode,
     status: BusStatus,
     router: AddressRouter,
@@ -67,6 +69,8 @@ pub struct Bus {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusSaveState {
     console_model: ConsoleModel,
+    #[serde(default)]
+    revision: HardwareRevision,
     operating_mode: OperatingMode,
     status: BusStatus,
     router: AddressRouter,
@@ -86,15 +90,40 @@ impl BusSaveState {
 
 impl Bus {
     pub fn new(console_model: ConsoleModel) -> Self {
-        Self::new_with_operating_mode(console_model, console_model.default_operating_mode())
+        Self::new_with_revision_and_operating_mode(
+            console_model,
+            console_model.default_revision(),
+            console_model.default_operating_mode(),
+        )
+    }
+
+    pub fn new_with_revision(console_model: ConsoleModel, revision: HardwareRevision) -> Self {
+        Self::new_with_revision_and_operating_mode(
+            console_model,
+            revision,
+            console_model.default_operating_mode(),
+        )
     }
 
     pub fn new_with_operating_mode(
         console_model: ConsoleModel,
         operating_mode: OperatingMode,
     ) -> Self {
+        Self::new_with_revision_and_operating_mode(
+            console_model,
+            console_model.default_revision(),
+            operating_mode,
+        )
+    }
+
+    pub fn new_with_revision_and_operating_mode(
+        console_model: ConsoleModel,
+        revision: HardwareRevision,
+        operating_mode: OperatingMode,
+    ) -> Self {
         Self {
             console_model,
+            revision,
             operating_mode,
             status: BusStatus::Ready,
             router: AddressRouter::new(),
@@ -107,6 +136,10 @@ impl Bus {
 
     pub fn console_model(&self) -> ConsoleModel {
         self.console_model
+    }
+
+    pub fn revision(&self) -> HardwareRevision {
+        self.revision
     }
 
     pub fn operating_mode(&self) -> OperatingMode {
@@ -141,6 +174,7 @@ impl Bus {
     pub(crate) fn capture_save_state(&self) -> BusSaveState {
         BusSaveState {
             console_model: self.console_model,
+            revision: self.revision,
             operating_mode: self.operating_mode,
             status: self.status,
             router: self.router,
@@ -153,6 +187,11 @@ impl Bus {
 
     pub(crate) fn restore_save_state(&mut self, state: &BusSaveState) {
         self.console_model = state.console_model;
+        self.revision = if self.console_model.supports_revision(state.revision) {
+            state.revision
+        } else {
+            self.console_model.default_revision()
+        };
         self.operating_mode = state.operating_mode;
         self.status = state.status;
         self.router = state.router;
@@ -176,7 +215,7 @@ impl Bus {
 
     pub fn describe_unusable_area(&self, address: u16) -> Option<UnusableAreaInfo> {
         self.router
-            .describe_unusable_area(self.console_model, address)
+            .describe_unusable_area(self.console_model, self.revision, address)
     }
 
     /// Returns the raw VRAM backing bytes for deterministic debug probes.

@@ -45,7 +45,7 @@ impl ConsoleModel {
         match self {
             Self::GameBoy => HardwareRevision::DmgCpuC,
             Self::GameBoyPocket | Self::GameBoyLight => HardwareRevision::CpuMgb,
-            Self::GameBoyColor => HardwareRevision::CpuCgbC,
+            Self::GameBoyColor => HardwareRevision::CpuCgbE,
         }
     }
 

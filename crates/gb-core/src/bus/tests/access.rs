@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::HardwareRevision;
 
 #[test]
 fn resolve_access_uses_boot_overlay_for_reads_but_not_for_writes() {
@@ -120,6 +121,33 @@ fn cgb_unusable_placeholder_writes_are_currently_ignored_but_not_advertised_as_n
     );
     assert!(descriptor.runtime_fallback_writes_ignored());
     assert_eq!(bus.read(0xFEA0), descriptor.runtime_fallback_read_value());
+}
+
+#[test]
+fn cgb_e_unusable_extra_oam_reads_address_derived_values_and_ignores_writes() {
+    let mut bus = Bus::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE);
+
+    for (address, value) in [
+        (0xFEA0, 0xAA),
+        (0xFEA1, 0xAA),
+        (0xFEB8, 0xBB),
+        (0xFEC0, 0xCC),
+        (0xFEFF, 0xFF),
+    ] {
+        bus.write(address, 0x55);
+        assert_eq!(bus.read(address), value, "address {address:#06x}");
+    }
+}
+
+#[test]
+fn cgb_c_unusable_extra_oam_keeps_deferred_revision_placeholder() {
+    let mut bus = Bus::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbC);
+
+    bus.write(0xFEA0, 0x55);
+
+    let descriptor = bus.describe_unusable_area(0xFEA0).unwrap();
+    assert_eq!(descriptor.runtime_fallback_read_value(), BLOCKED_READ_VALUE);
+    assert_eq!(bus.read(0xFEA0), BLOCKED_READ_VALUE);
 }
 
 #[test]

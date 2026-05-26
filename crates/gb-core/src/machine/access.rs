@@ -213,7 +213,11 @@ impl<S: TraceSink> Machine<S> {
         self.scheduler.reset();
         self.tracer.reset();
         self.cpu = CpuCore::new(console_model);
-        self.bus = crate::bus::Bus::new_with_operating_mode(console_model, operating_mode);
+        self.bus = crate::bus::Bus::new_with_revision_and_operating_mode(
+            console_model,
+            revision,
+            operating_mode,
+        );
         self.apu = Apu::new_with_revision(console_model, revision);
         self.ppu = Ppu::new(console_model);
         self.dma = DmaController::new(console_model);
