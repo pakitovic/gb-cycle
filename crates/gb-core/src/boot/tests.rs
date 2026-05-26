@@ -354,7 +354,7 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     assert_eq!(direct_boot.io.interrupt_flag, 0xE1);
     assert_eq!(
         direct_boot.startup_memory_policy,
-        StartupMemoryPolicy::DeterministicPatterned
+        StartupMemoryPolicy::DmgBootLogoVram
     );
 }
 
@@ -510,7 +510,7 @@ fn cgb_skip_and_custom_boot_share_header_derived_timer_for_native_non_nintendo_r
     }
     assert_eq!(
         machine_skip_boot.startup_memory_policy,
-        StartupMemoryPolicy::CgbRealBootEntry
+        StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
     );
     assert_eq!(
         machine_custom_boot.startup_memory_policy,
@@ -668,10 +668,16 @@ fn cgb_real_boot_entry_with_dmg_logo_vram_policy_overlays_tiles_and_tilemap() {
 }
 
 #[test]
-fn custom_boot_policy_is_model_specific_for_dmg_tilemap_residue() {
+fn skip_and_custom_boot_policies_seed_model_specific_boot_logo_vram() {
+    let dmg_skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     let dmg_custom_boot = boot(
         ConsoleModel::GameBoy,
         StartupMode::CustomBoot,
+        empty_assets(),
+    );
+    let cgb_skip_boot = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::SkipBoot,
         empty_assets(),
     );
     let cgb_custom_boot = boot(
@@ -681,8 +687,16 @@ fn custom_boot_policy_is_model_specific_for_dmg_tilemap_residue() {
     );
 
     assert_eq!(
+        dmg_skip_boot.startup_memory_policy(),
+        StartupMemoryPolicy::DmgBootLogoVram
+    );
+    assert_eq!(
         dmg_custom_boot.startup_memory_policy(),
         StartupMemoryPolicy::DmgBootLogoVram
+    );
+    assert_eq!(
+        cgb_skip_boot.startup_memory_policy(),
+        StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
     );
     assert_eq!(
         cgb_custom_boot.startup_memory_policy(),

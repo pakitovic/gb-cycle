@@ -1,6 +1,9 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use super::*;
-use crate::boot::{BootRomAssetKind, BootRomAssets};
+use crate::boot::{
+    BootRomAssetKind, BootRomAssets, DMG_BOOT_LOGO_MAP_BYTES, DMG_BOOT_LOGO_MAP_VRAM_START,
+    DMG_BOOT_LOGO_TILE_BYTES, DMG_BOOT_LOGO_TILE_VRAM_START,
+};
 use crate::bus::DmaMemoryRegionImpact;
 use crate::cartridge::{
     CartridgeSlotState, PersistentCartState, PocketCameraFrame, PocketCameraFrameError,
@@ -231,6 +234,16 @@ fn dmg_skip_boot_keeps_plain_synthetic_ppu_readback() {
             0x18, 0xFE, // jr .
         ]))
         .expect("NoMBC test ROM should load");
+
+    let vram = machine.debug_vram_bytes();
+    assert_eq!(
+        vram[usize::from(DMG_BOOT_LOGO_TILE_VRAM_START - 0x8000)],
+        DMG_BOOT_LOGO_TILE_BYTES[0]
+    );
+    assert_eq!(
+        vram[usize::from(DMG_BOOT_LOGO_MAP_VRAM_START - 0x8000)],
+        DMG_BOOT_LOGO_MAP_BYTES[0]
+    );
 
     step_until(
         &mut machine,

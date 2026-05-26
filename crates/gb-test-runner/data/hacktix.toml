@@ -12,7 +12,6 @@ report_model_suffix = true
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.dmg.png"
-startup = "custom-boot"
 
 [[case]]
 id = "hacktix-strikethrough"

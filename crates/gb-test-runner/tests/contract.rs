@@ -810,7 +810,7 @@ fn curated_hacktix_suite_tracks_the_active_dmg_framebuffer_cases() {
         .expect("hacktix suite should include bully.gb");
     assert_eq!(bully.rom_path, PathBuf::from("hacktix/bully.gb"));
     assert_eq!(bully.console_model, ConsoleModel::GameBoy);
-    assert_eq!(bully.startup_mode, StartupMode::CustomBoot);
+    assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
     assert!(bully.startup_memory_writes.is_empty());
 
     let strikethrough = suite

@@ -881,8 +881,9 @@ fn linked_session_runner_polling_framebuffer_until_match_waits_for_vblank() {
     let left_rom = temp_dir.join("left.gb");
     let right_rom = temp_dir.join("right.gb");
     let fixture_path = temp_dir.join("left.pgm");
-    fs::write(&left_rom, build_test_rom(&[0xC3, 0x00, 0x01])).expect("left ROM should be writable");
-    fs::write(&right_rom, build_test_rom(&[0xC3, 0x00, 0x01]))
+    fs::write(&left_rom, build_test_rom(&[0xAF, 0xE0, 0x47, 0x18, 0xFE]))
+        .expect("left ROM should be writable");
+    fs::write(&right_rom, build_test_rom(&[0xAF, 0xE0, 0x47, 0x18, 0xFE]))
         .expect("right ROM should be writable");
     fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
         .expect("participant framebuffer fixture should be writable");

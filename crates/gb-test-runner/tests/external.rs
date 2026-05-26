@@ -155,7 +155,7 @@ fn test_rom_startup_defaults_to_manifest_startup_modes() {
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     remove_env_var(TEST_ROM_STARTUP_ENV_VAR);
 
-    let suite = hacktix_dmg_curated_suite();
+    let suite = mealybug_tearoom_dmg_curated_suite();
     assert!(
         suite
             .cases
@@ -181,7 +181,7 @@ fn test_rom_startup_real_boot_overrides_custom_boot_cases() {
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     set_env_var(TEST_ROM_STARTUP_ENV_VAR, "real-boot");
 
-    let suite = hacktix_dmg_curated_suite();
+    let suite = mealybug_tearoom_dmg_curated_suite();
     assert!(
         suite
             .cases

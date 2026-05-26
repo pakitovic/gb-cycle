@@ -59,7 +59,7 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   source family: `little-things-gb`
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
-  fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses `startup = "custom-boot"` so its boot-logo/map checks see the core DMG boot-logo VRAM seed without requiring private boot ROM assets
+  fixture ownership: committed DocBoy DMG fixtures for `double-halt-cancel.png` and `whichboot.png`; `whichboot.gb` uses `startup = "skip-boot"` so its boot-logo/map checks see the ordinary fast DMG boot-logo VRAM seed without requiring private boot ROM assets or the reset-facing `CustomBoot` PPU publication phase
 - `little-things-gb-cgb-extra`
   source family: `little-things-gb`
   current status: extra/internal local-only

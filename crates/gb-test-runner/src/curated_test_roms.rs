@@ -2968,7 +2968,7 @@ mod tests {
     }
 
     #[test]
-    fn little_things_gb_dmg_extra_suite_forces_dmg_model_and_boot_logo_seed() {
+    fn little_things_gb_dmg_extra_suite_uses_skip_boot_logo_seed() {
         let suite = little_things_gb_dmg_extra_suite();
 
         assert_eq!(suite.name, "little-things-gb-dmg-extra");
@@ -2989,7 +2989,7 @@ mod tests {
                 "little-things-gb/whichboot.gb",
                 "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png",
                 "whichboot.gb",
-                StartupMode::CustomBoot,
+                StartupMode::SkipBoot,
             ),
         ];
         let manifest = curated_test_rom_manifests()
@@ -4128,8 +4128,8 @@ mod tests {
             .iter()
             .find(|suite| suite.family.as_deref() == Some("hacktix"))
             .and_then(|suite| suite.cases.iter().find(|case| case.id == "hacktix-bully"))
-            .expect("hacktix custom-boot case should exist");
-        assert_eq!(hacktix_case.startup_mode, StartupMode::CustomBoot);
+            .expect("hacktix skip-boot case should exist");
+        assert_eq!(hacktix_case.startup_mode, StartupMode::SkipBoot);
         assert!(hacktix_case.startup_memory_writes.is_empty());
 
         let strikethrough_case = suites
