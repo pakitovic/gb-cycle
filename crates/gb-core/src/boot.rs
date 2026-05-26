@@ -756,11 +756,12 @@ impl BootController {
 
     pub fn startup_memory_policy(&self) -> StartupMemoryPolicy {
         match (self.startup_mode, self.console_model.is_cgb_family()) {
-            (StartupMode::CustomBoot, true) => {
+            (StartupMode::SkipBoot | StartupMode::CustomBoot, true) => {
                 StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
             }
-            (StartupMode::CustomBoot, false) => StartupMemoryPolicy::DmgBootLogoVram,
-            (StartupMode::SkipBoot, true) => StartupMemoryPolicy::CgbRealBootEntry,
+            (StartupMode::SkipBoot | StartupMode::CustomBoot, false) => {
+                StartupMemoryPolicy::DmgBootLogoVram
+            }
             _ => StartupMemoryPolicy::DeterministicPatterned,
         }
     }

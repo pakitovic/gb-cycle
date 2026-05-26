@@ -13,7 +13,7 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     assert_eq!(machine.cpu().startup_state().f, 0xB0);
     assert_eq!(
         machine.boot().startup_memory_policy(),
-        StartupMemoryPolicy::DeterministicPatterned
+        StartupMemoryPolicy::DmgBootLogoVram
     );
 
     assert_eq!(machine.read_bus(0xFF00), 0xCF);
@@ -45,7 +45,7 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     );
     assert_eq!(
         second_machine.boot().startup_memory_policy(),
-        StartupMemoryPolicy::DeterministicPatterned
+        StartupMemoryPolicy::DmgBootLogoVram
     );
     assert_eq!(second_machine.read_bus(0xC000), wram_seed);
     assert_eq!(second_machine.read_bus(0xFF80), hram_seed);

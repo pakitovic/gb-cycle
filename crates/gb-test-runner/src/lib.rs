@@ -4687,21 +4687,19 @@ mod tests {
     }
 
     #[test]
-    fn hacktix_bully_dmg_startup_writes_seed_the_expected_boot_logo_vram_bytes() {
+    fn hacktix_bully_dmg_skip_boot_seeds_the_expected_boot_logo_vram_bytes() {
         let suite = hacktix_dmg_curated_suite();
         let case = suite
             .cases
             .into_iter()
             .find(|case| case.id == "hacktix-bully")
             .expect("hacktix bully case should exist");
+        assert_eq!(case.startup_mode, StartupMode::SkipBoot);
         let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
         machine
             .load_cartridge(build_test_rom(&[0x00]))
             .expect("fixture rom should load");
-
-        for write in &case.startup_memory_writes {
-            machine.write_bus(write.address, write.value);
-        }
+        assert!(case.startup_memory_writes.is_empty());
 
         assert_eq!(machine.read_bus(0x8000), 0x00);
         assert_eq!(machine.read_bus(0x800F), 0x00);
@@ -5773,7 +5771,7 @@ mod tests {
         fs::create_dir_all(&workspace).expect("workspace should be creatable");
         let rom_path = workspace.join("idle.gb");
         let fixture_path = workspace.join("white.pgm");
-        fs::write(&rom_path, build_test_rom(&[0xC3, 0x00, 0x01]))
+        fs::write(&rom_path, build_test_rom(&[0xAF, 0xE0, 0x47, 0x18, 0xFE]))
             .expect("test ROM should be writable");
         fs::write(&fixture_path, encode_framebuffer_pgm(&vec![0; 160 * 144]))
             .expect("framebuffer fixture should be writable");

@@ -428,7 +428,10 @@ fn append_startup_memory_write_args(command: &mut Command, write: StartupMemoryW
 }
 
 fn append_case_startup_memory_write_args(command: &mut Command, case: &crate::RomTestCase) {
-    if case.startup_mode == StartupMode::CustomBoot {
+    if matches!(
+        case.startup_mode,
+        StartupMode::SkipBoot | StartupMode::CustomBoot
+    ) {
         append_custom_boot_vram_startup_write_args(command, case.console_model);
     }
     for write in &case.startup_memory_writes {
