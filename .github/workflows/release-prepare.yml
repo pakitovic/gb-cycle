@@ -1,0 +1,231 @@
+name: release-prepare
+
+run-name: prepare ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer version to prepare, for example 0.1.8 or v0.1.8.
+        required: true
+        type: string
+      source_ref:
+        description: Branch, tag, or SHA to release from. Empty uses the selected workflow ref.
+        required: false
+        default: ''
+        type: string
+      base_branch:
+        description: Branch that will receive the release pull request.
+        required: false
+        default: main
+        type: string
+      dry_run:
+        description: Validate the version bump without pushing a branch or creating a pull request.
+        required: false
+        default: false
+        type: boolean
+      dispatch_checks:
+        description: Dispatch the CI and ROM check workflows for the generated pull-request branch.
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-prepare-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+
+      - name: Normalize release inputs
+        id: release
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          SOURCE_REF_INPUT: ${{ inputs.source_ref }}
+          BASE_BRANCH_INPUT: ${{ inputs.base_branch }}
+          DEFAULT_SOURCE_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          version="$(scripts/bump-workspace-version.sh --print-normalized "${VERSION_INPUT}")"
+          tag="v${version}"
+          branch="codex/release-${version}"
+          source_ref="${SOURCE_REF_INPUT:-${DEFAULT_SOURCE_REF}}"
+          base_branch="${BASE_BRANCH_INPUT:-main}"
+
+          if ! git check-ref-format --branch "${base_branch}" >/dev/null; then
+            echo "invalid base branch name: ${base_branch}" >&2
+            exit 2
+          fi
+          if ! git check-ref-format --branch "${branch}" >/dev/null; then
+            echo "invalid release branch name: ${branch}" >&2
+            exit 2
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
+          echo "base_branch=${base_branch}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check target tag and release do not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+
+          git fetch --force --tags origin
+          git fetch --force origin "+refs/heads/${{ steps.release.outputs.base_branch }}:refs/remotes/origin/${{ steps.release.outputs.base_branch }}"
+
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            echo "tag ${tag} already exists" >&2
+            exit 1
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "GitHub Release ${tag} already exists" >&2
+            exit 1
+          fi
+
+      - name: Configure Git identity
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump workspace versions
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+        run: |
+          set -euo pipefail
+          git switch -c "${BRANCH}"
+          git merge --no-edit "origin/${BASE_BRANCH}"
+
+          scripts/bump-workspace-version.sh "${VERSION}"
+          scripts/bump-workspace-version.sh --check --allow-same "${VERSION}"
+          cargo metadata --locked --format-version=1 --no-deps >/tmp/gb-cycle-release-metadata.json
+          cargo fmt --all --check
+          git diff --check
+
+          if git diff --quiet -- Cargo.lock crates/*/Cargo.toml; then
+            echo "release version bump produced no file changes" >&2
+            exit 1
+          fi
+
+      - name: Show dry-run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "Release prepare dry run passed for ${{ steps.release.outputs.tag }}"
+          echo "No branch or pull request was created."
+          git diff --stat
+
+      - name: Commit release bump
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add Cargo.lock crates/*/Cargo.toml
+          git commit -m "chore(release): bump crates to ${VERSION}"
+
+      - name: Push release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${BRANCH}" | awk '{print $1}')"
+          if [[ -n "${remote_sha}" ]]; then
+            git push --force-with-lease="refs/heads/${BRANCH}:${remote_sha}" origin "HEAD:refs/heads/${BRANCH}"
+          else
+            git push origin "HEAD:refs/heads/${BRANCH}"
+          fi
+
+      - name: Create or update release pull request
+        if: ${{ !inputs.dry_run }}
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+          SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+          DISPATCH_CHECKS: ${{ inputs.dispatch_checks }}
+        run: |
+          set -euo pipefail
+          title="chore(release): bump crates to ${VERSION}"
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<BODY
+          Prepara la release \`${TAG}\`.
+
+          - Version de crates: \`${VERSION}\`
+          - Rama base: \`${BASE_BRANCH}\`
+          - Ref fuente: \`${SOURCE_REF}\`
+          - Rama generada: \`${BRANCH}\`
+          - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Cuando este PR esté en verde y mergeado en \`${BASE_BRANCH}\`, lanza el workflow \`release-version\` desde \`main\` con la versión \`${VERSION}\` para crear el tag, la GitHub Release y los paquetes.
+          BODY
+
+          if [[ "${DISPATCH_CHECKS}" == "true" ]]; then
+            cat >> "${body_file}" <<BODY
+
+          El workflow de preparación despacha explícitamente \`ci.yml\`, \`test-roms.yml\` y \`test-roms-extra.yml\` para esta rama porque los PR creados con \`GITHUB_TOKEN\` no deben depender de triggers implícitos.
+          BODY
+          fi
+
+          if pr_url="$(gh pr view "${BRANCH}" --json url --jq .url 2>/dev/null)"; then
+            gh pr edit "${BRANCH}" --title "${title}" --body-file "${body_file}" --base "${BASE_BRANCH}"
+          else
+            pr_url="$(gh pr create --head "${BRANCH}" --base "${BASE_BRANCH}" --title "${title}" --body-file "${body_file}")"
+          fi
+
+          echo "url=${pr_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch release pull-request checks
+        if: ${{ !inputs.dry_run && inputs.dispatch_checks }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          set -euo pipefail
+          for workflow in ci.yml test-roms.yml test-roms-extra.yml; do
+            gh workflow run "${workflow}" --ref "${BRANCH}"
+          done
+
+      - name: Write release prepare summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release prepare ${{ steps.release.outputs.tag }}"
+            echo
+            echo "Pull request: ${{ steps.pr.outputs.url }}"
+            echo "Branch: \`${{ steps.release.outputs.branch }}\`"
+            echo "Base: \`${{ steps.release.outputs.base_branch }}\`"
+            if [[ "${{ inputs.dispatch_checks }}" == "true" ]]; then
+              echo "Dispatched checks: \`ci.yml\`, \`test-roms.yml\`, \`test-roms-extra.yml\`."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
