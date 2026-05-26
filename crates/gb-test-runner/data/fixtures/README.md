@@ -80,7 +80,8 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
 - `cpp-sgb`
   source family: `cpp`
   current status: workflow-managed informational SGB lane
-  oracle mix: informational framebuffer capture
+  oracle mix: informational framebuffer capture plus a committed non-promoted SGB reference fixture `cpp-sgb/sgb-ext-test.sgb.png`
+  fixture ownership: `sgb-ext-test.sgb.png` is a clean 160×144 rank-only reconstruction from CasualPokePlayer/test-roms `sgb-ext-test` `pass.png`; it is retained as a future promotion oracle because current gb-cycle and SameBoy captures do not yet match the packet-edge pass signal
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory local-only

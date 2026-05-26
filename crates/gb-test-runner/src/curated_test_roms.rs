@@ -3009,6 +3009,54 @@ mod tests {
     }
 
     #[test]
+    fn cpp_sgb_reference_fixture_matches_upstream_pass_signature() {
+        const TILE_0: [u8; 8] = [0x00, 0xEE, 0xAA, 0xAA, 0xAA, 0xAA, 0xEE, 0x00];
+        const TILE_1: [u8; 8] = [0x00, 0xE4, 0xAC, 0xA4, 0xA4, 0xA4, 0xEE, 0x00];
+        const TILE_2: [u8; 8] = [0x00, 0xEE, 0xAA, 0xA2, 0xAE, 0xA8, 0xEE, 0x00];
+        const TILE_4: [u8; 8] = [0x00, 0xEA, 0xAA, 0xAE, 0xA2, 0xA2, 0xE2, 0x00];
+        const PASS_VALUES: [u8; 27] = [
+            0x04, 0x01, 0x04, 0x01, 0x01, 0x01, 0x04, 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 0x01,
+            0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+        ];
+
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("data/fixtures/cpp-sgb/sgb-ext-test.sgb.png");
+        let fixture = crate::framebuffer_oracle::decode_fixture_framebuffer_path(&fixture_path)
+            .expect("cpp SGB reference fixture should decode");
+
+        assert_eq!(fixture.width, 160);
+        assert_eq!(fixture.height, 144);
+
+        let mut expected = vec![0_u8; 160 * 144];
+        for tile_y in 0..18 {
+            for tile_x in 0..20 {
+                let output_index = tile_y * 16 + tile_x;
+                let tile = if tile_x < 16 && output_index < PASS_VALUES.len() {
+                    PASS_VALUES[output_index]
+                } else {
+                    0x00
+                };
+                let rows = match tile {
+                    0x00 => TILE_0,
+                    0x01 => TILE_1,
+                    0x02 => TILE_2,
+                    0x04 => TILE_4,
+                    _ => panic!("unexpected cpp SGB pass fixture tile {tile:#04X}"),
+                };
+                for (row, bits) in rows.iter().enumerate() {
+                    for col in 0..8 {
+                        if *bits & (0x80_u8 >> col) != 0 {
+                            expected[(tile_y * 8 + row) * 160 + tile_x * 8 + col] = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(fixture.palette_ranks, expected);
+    }
+
+    #[test]
     fn little_things_gb_dmg_extra_suite_uses_skip_boot_logo_seed() {
         let suite = little_things_gb_dmg_extra_suite();
 

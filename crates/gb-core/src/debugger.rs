@@ -586,7 +586,7 @@ impl MachineSnapshot {
                 "timer.console_model={:?} timer.status={:?}\n",
                 "serial.console_model={:?} serial.status={:?} serial.sb={:#04X} serial.clock_mode={:?} serial.transfer_state={:?}\n",
                 "speed.console_model={:?} speed.operating_mode={:?} speed.status={:?} speed.current_speed={:?} speed.switch_armed={} speed.cgb_speed_switch_enabled={}\n",
-                "sgb.host_platform={:?} sgb.status={:?} sgb.profile={:?} sgb.backend={:?} sgb.startup={:?} sgb.command_acceptance={:?} sgb.packet_bits={} sgb.packet_bytes={} sgb.last_packet_status={:?} sgb.last_command={:?} sgb.accepted_commands={} sgb.game_link_supported={} sgb.corrected_clock={}\n",
+                "sgb.host_platform={:?} sgb.status={:?} sgb.profile={:?} sgb.backend={:?} sgb.startup={:?} sgb.command_acceptance={:?} sgb.packet_bits={} sgb.packet_bytes={} sgb.last_packet_status={:?} sgb.last_command={:?} sgb.accepted_commands={} sgb.packet_busy_frames={} sgb.icon_suppressed_packets={} sgb.busy_rejected_packets={} sgb.last_suppressed_command={:?} sgb.vram_transfer_phase={:?} sgb.obj_enabled={} sgb.game_link_supported={} sgb.corrected_clock={}\n",
                 "external_port.attachment_kind={:?} external_port.reset_policy={:?}\n",
                 "boot.console_model={:?} boot.revision={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
@@ -686,6 +686,16 @@ impl MachineSnapshot {
             self.sgb_host.packet_transport.last_trace.status,
             self.sgb_host.command.last_command_id,
             self.sgb_host.command.accepted_command_count,
+            self.sgb_host.packet_gate.busy_frames_remaining,
+            self.sgb_host.packet_gate.icon_suppressed_packet_count,
+            self.sgb_host.packet_gate.busy_rejected_packet_count,
+            self.sgb_host.packet_gate.last_suppressed_command_id,
+            self.sgb_host
+                .video
+                .vram_transfer
+                .pending
+                .map(|pending| pending.phase),
+            self.sgb_host.video.obj.enabled,
             self.sgb_host
                 .profile
                 .is_some_and(|profile| profile.game_link_supported()),

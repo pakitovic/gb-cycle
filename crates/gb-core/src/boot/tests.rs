@@ -717,13 +717,13 @@ fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
         "empty-slot fallback keeps the common DMG preset"
     );
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(&header)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, None, Some(&header)).f,
         0x80
     );
     rom[0x014D] = 0x7F;
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, Some(&header)).f,
+        build_skip_boot_cpu_state(ConsoleModel::GameBoy, None, Some(&header)).f,
         0xB0
     );
 }

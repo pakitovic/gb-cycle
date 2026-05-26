@@ -190,7 +190,7 @@ Tracks `bully.gb` and `strikethrough.gb` from the active `GBEmulatorShootout` `a
 
 ### Cpp
 
-Curated `cpp` currently has a blocking DMG MBC3 subset under `cpp-dmg-curated` plus the informational SGB packet-extension row `sgb-ext-test.gb` under `cpp-sgb`; both are exercised by `make test-roms` and the GitHub `test-roms` workflow.
+Curated `cpp` currently has a blocking DMG MBC3 subset under `cpp-dmg-curated` plus the informational SGB packet-extension row `sgb-ext-test.gb` under `cpp-sgb`; both are exercised by `make test-roms` and the GitHub `test-roms` workflow. The SGB row now carries a committed reference fixture at `crates/gb-test-runner/data/fixtures/cpp-sgb/sgb-ext-test.sgb.png`, reconstructed from CasualPokePlayer/test-roms `sgb-ext-test` `pass.png`, but it is not promoted as the suite oracle yet because current gb-cycle and SameBoy captures still diverge from that JOYP packet-edge pass signal.
 
 ### Daid
 
