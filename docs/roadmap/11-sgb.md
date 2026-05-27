@@ -8,7 +8,7 @@ SGB is a DMG-compatible GB core hosted by an SGB/SNES shell. The GB core keeps o
 
 Do not model SGB as CGB mode, do not duplicate a second DMG core, and do not hide host-shell behavior behind generic DMG or CGB conditionals. Use `HostPlatform::Sgb` for the original Super Game Boy whenever possible, reserve `HostPlatform::Sgb2` for Super Game Boy 2, and route most behavior through explicit SGB capabilities instead of raw model checks.
 
-The host implementation should be pluggable from Slice 0. The preferred path is hybrid: implement validated deterministic HLE host behavior first for startup shell UX, command effects, and audio events, but keep the public interfaces shaped so a real or equivalent SNES-side backend can later own `DATA_SND`, `DATA_TRN`, `JUMP`, S-APU-related behavior, and titles such as Space Invaders without refactoring GB-core APIs.
+The host implementation should be pluggable from Slice 0. The preferred path is utility-first hybrid: implement validated deterministic HLE command effects and host-audio events before startup-shell aesthetics, but keep the public interfaces shaped so a real or equivalent SNES-side backend can later own `DATA_SND`, `DATA_TRN`, `JUMP`, S-APU-related behavior, and titles such as Space Invaders without refactoring GB-core APIs.
 
 ## Public profiles and boot assets
 
@@ -21,11 +21,11 @@ The host implementation should be pluggable from Slice 0. The preferred path is 
 
 Private boot ROM assets should use the same root-discovery style as existing boot-ROM work. A documented example root is `$HOME/emu/roms/bootrom`, containing `sgb_boot.bin` and/or `sgb2_boot.bin` when local RealBoot validation is enabled.
 
-## Current public milestone and deferred host-shell slices
+## Current public milestone and deferred utility slices
 
 The current Phase 11 public milestone is slices 0-6 plus the documented post-Slice-2, post-Slice-4, and post-Slice-6 hardening refinements. That means SGB/SGB2 construction, save states, profile-aware direct-start registers, RealBoot asset selection, JOYP packet transport, SGB-header unlock policy, packet busy/suppression gates, base palettes, BIOS title/default palettes, five-frame `_TRN` timing, VRAM-transfer-backed borders, advanced screen coloring, `PAL_PRI`, `MLT_REQ` multiplayer, `ATRC_EN`, `TEST_EN`, `ICON_EN`, `OBJ_TRN`, SGB PAL/NTSC/SGB2 NTSC profiles, desktop/CLI exposure, and SGB2 Game Link routing are in scope for the current repo update.
 
-Slices 7, 8, and 9 are intentionally deferred to a later SGB host-shell milestone. They cover SNES/SFC-side startup presentation and jingle, general SGB special audio, and SNES-side data transfer / 16-bit execution. This split keeps the current feature announcement accurate: SGB-enhanced palettes, borders, coloring, multiplayer, profiles, direct-start fingerprints, command hardening, and SGB2 link are available now, while the real host firmware startup shell and uploaded SNES-code execution remain planned follow-up work.
+Slices 7 and 8 are intentionally deferred to the next utility-focused SGB milestone. They cover general SGB special audio and SNES-side data transfer / 16-bit execution before optional startup-shell aesthetics. The former startup-shell slice is now optional Slice 9 and should only proceed if the Slice 7/8 backend work justifies an LLE or semi-LLE SGB/SGB2-only host model. This split keeps the current feature announcement accurate: SGB-enhanced palettes, borders, coloring, multiplayer, profiles, direct-start fingerprints, command hardening, and SGB2 link are available now, while host audio, uploaded SNES-code execution, and the real host firmware startup shell remain planned follow-up work.
 
 ## Slice 0 — SGB architecture base
 
@@ -201,7 +201,7 @@ Status: implemented as the Slice 6 baseline and later tightened at the frontend 
 
 ## Post-Slice 6 hardening — command, direct-start, transfer, and packet-gate closure
 
-Scope: close the SGB/SGB2 gaps found after slices 0-6 without pulling in the deferred Slice 7-9 host-shell features.
+Scope: close the SGB/SGB2 gaps found after slices 0-6 without pulling in the deferred Slice 7-8 utility features or optional Slice 9 startup-shell work.
 
 Implementation notes:
 
@@ -220,31 +220,9 @@ Acceptance criteria:
 - Packet-gate tests prove packets sent while busy are rejected deterministically, packets suppressed by `ICON_EN` bit 2 are counted/traced without side effects, and packets after busy release are accepted normally.
 - External ROM coverage should stay in the extra report unless a public ROM has a clear oracle for the exact gap; Mooneye `acceptance/boot_regs-sgb.gb` and `acceptance/boot_regs-sgb2.gb` are the public oracle rows for the SGB/SGB2 direct-start fingerprints, while absence of comparable rows for other system-command and transfer behaviors remains an oracle gap rather than an implementation gap.
 
-Status: implemented as post-Slice-6 hardening. `SgbHostSaveState` now persists system-control flags/counters, packet busy/suppression counters, partial `_TRN` payloads, transfer phases, and OBJ transfer state; snapshots/traces expose packet busy status, last suppressed command, transfer phase, and OBJ enablement. Synthetic coverage closes command recognition, `ICON_EN` suppression, direct-start SGB/SGB2 fingerprints, five-frame `_TRN` timing, mid-transfer save/load, packet busy rejection, and OBJ transfer state while preserving the deferred Slice 7-9 boundary; Mooneye `boot_regs-sgb.gb` and `boot_regs-sgb2.gb` now pin the direct-start fingerprint portion as public extra-report ROM evidence.
+Status: implemented as post-Slice-6 hardening. `SgbHostSaveState` now persists system-control flags/counters, packet busy/suppression counters, partial `_TRN` payloads, transfer phases, and OBJ transfer state; snapshots/traces expose packet busy status, last suppressed command, transfer phase, and OBJ enablement. Synthetic coverage closes command recognition, `ICON_EN` suppression, direct-start SGB/SGB2 fingerprints, five-frame `_TRN` timing, mid-transfer save/load, packet busy rejection, and OBJ transfer state while preserving the deferred Slice 7-8 and optional Slice 9 boundary; Mooneye `boot_regs-sgb.gb` and `boot_regs-sgb2.gb` now pin the direct-start fingerprint portion as public extra-report ROM evidence.
 
-## Deferred Slice 7 — SGB jingle, startup transfers, animation, and generic border
-
-Scope: model the SNES/SFC-side startup shell that real hardware shows before cartridge-side border transfers, including the Super Game Boy logo animation, SGB jingle, transfer-driven startup presentation, and built-in generic border, without pretending those assets live in the 256-byte GB-side boot ROM.
-
-Implementation notes:
-
-- Keep `sgb_boot.bin` / `sgb2_boot.bin` as GB-side low-window boot ROM assets executed by the shared DMG-compatible core.
-- Implement the first version as a hardware-validated deterministic HLE host-startup sequence that writes through the same SGB host video/audio state used by command transfers: border tile data, tilemap, palettes/backdrop, optional mask/freeze state, host-audio/jingle events, and a deterministic startup timeline.
-- Keep the HLE startup shell replaceable by a later real/pluggable SNES-side backend; do not bake assumptions into frontend presentation or GB-core CPU/PPU/APU paths.
-- Do not hardcode a frontend-only border; the default border/animation must be core-owned SGB host state so desktop, CLI screenshots, save states, and tests observe the same startup behavior.
-- Preserve cartridge-side `CHR_TRN`/`PCT_TRN` ownership: once a game transfers its own border, the startup border is replaced through the normal border pipeline.
-- Keep the SGB jingle separate from ordinary GB APU audio; initial playback may be deterministic HLE host-audio events, while Slice 8 owns general `SOUND`/`SOU_TRN` command behavior.
-
-Acceptance criteria:
-
-- `gb-desktop` and `gb-cli` SGB/SGB2 `RealBoot` show the host startup border before cartridge-side SGB border transfers when border presentation is enabled.
-- The startup animation/jingle timeline is deterministic, save-state visible, and resumable without replaying frontend-only effects.
-- Boot-ROM asset tests still prove `sgb_boot.bin` / `sgb2_boot.bin` are selected for GB-side boot execution, while host-startup tests cover the separate SNES/SFC-side state.
-- The implementation uses the same host video/audio seams that Slice 8 host audio and Slice 9 SNES-side execution will reuse.
-
-Status: deferred to the next SGB host-shell milestone. The current implementation intentionally does not fake this in the frontend; it leaves border state blank until implemented host command effects or cartridge-side transfers populate it.
-
-## Deferred Slice 8 — SGB special audio
+## Deferred Slice 7 — SGB special audio
 
 Scope: implement SGB host-audio commands without compromising the GB APU model.
 
@@ -252,7 +230,7 @@ Implementation notes:
 
 - Implement `SOUND` and `SOU_TRN` through the typed host-audio backend request seam owned by the SGB host.
 - Keep ordinary DMG APU generation in the shared GB core; SGB special audio is mixed or exported by the host layer.
-- The first backend may be deterministic HLE/event-driven, but the interface must leave room for a later S-APU/SNES audio implementation.
+- The first backend should be deterministic HLE/event-driven and state-complete, with interfaces that leave room for a later S-APU/SNES audio implementation.
 
 Acceptance criteria:
 
@@ -260,11 +238,11 @@ Acceptance criteria:
 - Audio output APIs can distinguish GB APU audio from SGB host audio without frontend-specific hacks.
 - Donkey Kong (GB) special audio is documented as the main manual compatibility example.
 
-Status: deferred to the next SGB host-shell milestone.
+Status: deferred to the next SGB utility milestone.
 
-## Deferred Slice 9 — SNES-side data transfer and 16-bit execution
+## Deferred Slice 8 — SNES-side data transfer and 16-bit execution
 
-Scope: implement the final pluggable host backend needed for SNES-side program execution.
+Scope: implement the pluggable host backend needed for SNES-side program execution.
 
 Implementation notes:
 
@@ -278,11 +256,31 @@ Acceptance criteria:
 - Save/load captures SNES-side execution state needed for deterministic continuation.
 - The implementation can still run earlier SGB color, border, multiplayer, and audio slices through the same host boundary.
 
-Status: deferred to the next SGB host-shell milestone.
+Status: deferred to the next SGB utility milestone.
+
+## Optional Slice 9 — SGB/SGB2 startup shell, animation, and generic border
+
+Scope: model the SNES/SFC-side startup shell that real hardware shows before cartridge-side border transfers, including the Super Game Boy logo animation, SGB jingle, transfer-driven startup presentation, and built-in generic border, without pretending those assets live in the 256-byte GB-side boot ROM.
+
+Implementation notes:
+
+- Keep `sgb_boot.bin` / `sgb2_boot.bin` as GB-side low-window boot ROM assets executed by the shared DMG-compatible core.
+- Only start this slice if the Slice 7 host-audio work and Slice 8 SNES-side backend make an LLE or semi-LLE SGB/SGB2-only host model worthwhile.
+- Do not load `.sfc` firmware as an active asset in the current milestone; if this optional slice later uses private `.sfc` files, they must remain local inputs for validation/extraction or host execution and must not be committed.
+- Do not hardcode a frontend-only border; any startup border, logo animation, or jingle must be core-owned SGB host state so desktop, CLI screenshots, save states, and tests observe the same startup behavior.
+- Preserve cartridge-side `CHR_TRN`/`PCT_TRN` ownership: once a game transfers its own border, startup presentation must not overwrite it again.
+
+Acceptance criteria:
+
+- `gb-desktop` and `gb-cli` SGB/SGB2 `RealBoot` show startup presentation only when the optional host-startup model is explicitly implemented and enabled by valid host assets/backend state.
+- The startup animation/jingle timeline is deterministic, save-state visible, and resumable without replaying frontend-only effects.
+- Boot-ROM asset tests still prove `sgb_boot.bin` / `sgb2_boot.bin` are selected for GB-side boot execution, while host-startup tests cover the separate SNES/SFC-side state.
+
+Status: optional and intentionally not active in the current milestone; the current implementation leaves border state blank until implemented host command effects or cartridge-side transfers populate it.
 
 ## Cross-cutting save-state and determinism rule
 
-Any slice that adds live SGB state must extend typed whole-machine save states before the slice is considered closed. Required state grows with the owning slice: Slice 1 adds packet accumulator state, Slice 2 adds SGB palette state, Slice 3 adds transfer and border state, Slice 4 adds attribute maps, Slice 5 adds multiplayer controller state, Slice 6 adds SGB profile/link state, post-Slice-6 hardening adds system-control flags, packet gates, direct-start profile dependency, `_TRN` partial payloads, and OBJ transfer state, Slice 7 adds host startup shell video/audio/timeline state, Slice 8 adds general host-audio command state, and Slice 9 adds SNES-side execution state.
+Any slice that adds live SGB state must extend typed whole-machine save states before the slice is considered closed. Required state grows with the owning slice: Slice 1 adds packet accumulator state, Slice 2 adds SGB palette state, Slice 3 adds transfer and border state, Slice 4 adds attribute maps, Slice 5 adds multiplayer controller state, Slice 6 adds SGB profile/link state, post-Slice-6 hardening adds system-control flags, packet gates, direct-start profile dependency, `_TRN` partial payloads, and OBJ transfer state, Slice 7 adds general host-audio command state, Slice 8 adds SNES-side execution state, and optional Slice 9 adds host startup shell video/audio/timeline state only if that work proceeds.
 
 Restores must preserve hidden temporal state directly; do not reconstruct SGB host state from MMIO reads, frontend state, or replayed command logs.
 
@@ -295,7 +293,7 @@ These titles and built-in startup effects are optional manual compatibility exam
 | Base SGB color for DMG games | Alleyway; Super Mario Land 2: 6 Golden Coins; Pokémon Red / Blue / Yellow |
 | Normal/dynamic borders | Donkey Kong (GB); Animaniacs; Killer Instinct; Kirby’s Dream Land 2 |
 | Advanced screen coloring | Pokémon Yellow; Kirby’s Dream Land 2; Balloon Kid |
-| Host startup shell | Built-in Super Game Boy / Super Game Boy 2 startup animation, SGB jingle, and generic border |
+| Optional host startup shell | Built-in Super Game Boy / Super Game Boy 2 startup animation, SGB jingle, and generic border |
 | Special SGB audio | Donkey Kong (GB) |
 | `MLT_REQ` multiplayer | Wario Blast / Bomberman GB |
 | SNES-side execution | Space Invaders |
