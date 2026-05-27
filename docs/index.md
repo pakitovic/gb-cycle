@@ -20,6 +20,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 
 - `core/MODEL-AXES.md`: usage and migration guidance for `ConsoleModel`, `OperatingMode`, `HostPlatform`, and `CapabilitySet`.
 - `core/TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
+- `core/CGB-INFRARED.md`: CGB infrared topologies, Pokémon Pikachu 2 accessory behavior, and western GSC Mystery Gift sender behavior.
 
 ## Frontend and tooling docs
 
