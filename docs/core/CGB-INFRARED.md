@@ -1,4 +1,4 @@
-# CGB infrared, Pokémon Pikachu 2, and GSC Mystery Gift
+# CGB infrared, Pokémon Pikachu 2 and GSC Mystery Gift
 
 `gb-core` models CGB infrared as bus-owned `RP` state plus explicit optical topologies. Native CGB-to-CGB IR sessions route light between two independent `Machine` instances, while accessory sessions pair one CGB `Machine` with a protocol device that only injects external IR light into the sensor.
 
@@ -7,6 +7,8 @@
 `IR -> SAME GAME` clones the loaded CGB ROM into a fresh second console with an isolated P2 save slot. `IR -> SELECT GAME` asks for a second CGB ROM and supports different Gold / Silver / Crystal cartridges on the two IR sides, matching Mystery Gift station and two-console flows without treating IR as a Game Link cable mode.
 
 The native CGB-to-CGB infrared path has been locally tested successfully with Pokémon Gold / Silver / Crystal, Super Mario Bros. DX, Pokémon Trading Card Game, Donkey Kong Country, Pokémon Pinball, and Perfect Dark.
+
+## Pokémon Pikachu Color
 
 `IR -> PIKACHU 2` enables the Pokémon Pikachu Color / Pokémon Pikachu 2 GS / Pocket Pikachu Color accessory model for western Pokémon Gold, Silver, and Crystal. The implementation generates the PP2 Mystery Gift protocol rather than replaying external waveform data, acts as PP2 role A, mirrors the receiving game's supported western region code (`0x90`, `0x96`, `0x99`, `0x9A`, or `0x9F`), re-arms after each successful send, and currently leaves Japanese / Korean validation as future work.
 
@@ -25,6 +27,8 @@ The `PIKACHU 2` gift selector is enabled only after `PIKACHU 2 ✓` is active an
 | `800W` | `ELIXIR` |
 | `900W` | `REVIVE` |
 | `999W` | `RARE CANDY` |
+
+## Custom GSC Mystery Gift IR Sender
 
 `IR -> MYSTERY GIFT` enables a custom western Pokémon Gold / Silver / Crystal Mystery Gift sender. It uses the same generated role-A IR protocol helper as `PIKACHU 2`, sends only the first 20-byte payload with version `0x03`, ID `0x0000`, trainer name `GB-CYCLE`, western region auto-detection, and no Trainer House team payload. `GIFT ITEM` / `GIFT DECORATION` selects the payload type and the gift selector cycles the documented `0x00..=0x24` table by name only, such as `BERRY`, `EON MAIL`, `WEEDLE DOLL`, and `TENTACOOL DOLL`; long labels scroll in the same way as `PIKACHU 2`.
 
