@@ -14,26 +14,25 @@ A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator 
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF. |
 | Joypad / serial / external I/O | `JOYP`, `SB`, `SC` and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, `DMG-04` game link, `DMG-07` 2/3/4-player adapter, SGB `MLT_REQ`, CGB-to-CGB infrared sessions. |
 | Cartridges | `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, `RTC`, flash / EEPROM / accelerometer paths, rumble-capable metadata. |
-| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, Pokémon Pikachu Color, Custom GSC Mystery Gift IR Sender |
+| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, [Pokémon Pikachu Color](docs/core/CGB-INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/core/CGB-INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
 | Validation | [GBEmulatorShootout fork](https://pakitovic.github.io/GBEmulatorShootout/) currently reports `gb-cycle` green on every counted ROM-test row in the fork (`264/264` in the latest generated dashboard). |
 
 ## Current structure
 
-The canonical structure and ownership boundaries are defined in `docs/ARCHITECTURE.md`.
-The current workspace uses the `crates/`-based layout below.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the canonical structure and ownership boundaries; the current workspace uses the `crates/`-based layout below.
 
 ```text
 crates/
-  gb-core/         Pure DMG/CGB emulation core, hardware state, link/IR devices, debugger snapshots, and save-state / rewind DTOs
-  gb-test-runner/  Typed ROM harness, DMG/CGB executable suites, differential tooling, determinism checks, and linked-session validation
-  gb-benchmark/    Portable benchmark TOML parsing, deterministic joypad stimuli, shared artifact paths, and frontend-neutral stats
-  gb-cli/          Headless CLI frontend, ROM inspection, battery-save runtime/conversion, and `.gbstate` run tooling
-  gb-desktop/      SDL3 desktop frontend with CGB RGB555 presentation, local link/IR sessions, printer, Pocket Camera, audio/video diagnostics, battery saves, save states, rewind, and Fast Forward
-  gb-persistence/  Host-side cartridge save storage (`.sav/.saN` primary plus `.gbsav/.gbsaN` fallback), external conversion, and `.gbstate` envelope formats
+  gb-core/         Portable emulator core API and state model
+  gb-test-runner/  ROM-suite harness and validation tooling
+  gb-benchmark/    Benchmark case format and reporting helpers
+  gb-cli/          Headless command-line frontend
+  gb-desktop/      SDL3 desktop frontend
+  gb-persistence/  Host persistence formats and conversion helpers
 
-docs/              Architecture, roadmap, testing, frontend, hardware, and reference documentation
-Makefile           Local verification pipeline, ROM-suite helpers, CGB gates, and Phase 9 differential/determinism utilities
-scripts/           Benchmark and desktop development launch helpers
+docs/              Project handbook and subsystem notes
+Makefile           Local verification entry points
+scripts/           Developer helper scripts
 ```
 
 ## Quick start
@@ -106,32 +105,13 @@ See [docs/frontends/CLI.md](docs/frontends/CLI.md) and [docs/frontends/DESKTOP.m
 
 ## Release packages
 
-Tag pushes matching `v*` build the SDL3 desktop frontend with the `release-max` profile and attach packaged artifacts to the GitHub Release:
+Run the [`release`](.github/workflows/release.yml) GitHub Actions workflow to publish the GitHub Release and platform packages:
 
 - `gb-cycle-windows-x86_64.zip`
 - `gb-cycle-linux-x86_64.tar.gz`
 - `gb-cycle-macos-aarch64.zip`
 
-Release versioning is a single manual GitHub Actions flow so `main` can stay protected while the release itself remains autonomous. Before using it, create a fine-grained PAT named `gb-cycle release automation`, scoped only to `pakitovic/gb-cycle`, expiring after 90 days, with repository permissions `Contents: Read and write` and `Pull requests: Read and write`; store it as the repository secret `RELEASE_PAT`. Do not grant `Actions`, `Workflows`, `Administration`, `Secrets`, `Packages`, or `Deployments` permissions unless a future workflow explicitly needs them.
-
-Run `release` with the crate SemVer version, for example `0.1.9` or `v0.1.9`. It normalizes the version, rejects an existing tag or GitHub Release, checks out the selected workflow ref unless `source_ref` is provided, merges the latest `base_branch` (`main` by default), runs `scripts/bump-workspace-version.sh`, validates locked Cargo metadata and formatting, pushes `codex/release-<version>` using `RELEASE_PAT`, opens or updates a ready PR titled `chore(release): bump crates to <version>`, waits for the required pull-request checks to pass, squash-merges the PR, verifies the merged workspace state, creates the annotated `v<version>` tag, and creates the GitHub Release. The PAT-created PR and PAT-pushed tag trigger normal `pull_request` and `push tag` events, so the CI/ROM checks and platform package workflows run without manual dispatch. Use `dry_run` when you only want validation without creating the branch, PR, merge, tag, GitHub Release, or package workflows. Prerelease versions such as `0.1.9-rc.1` create GitHub prereleases; SemVer build metadata is intentionally not accepted for crate-release automation. If you need a local fallback, `scripts/bump-workspace-version.sh 0.1.9` still updates every workspace crate package version plus internal workspace dependency requirements and `Cargo.lock`.
-
-The macOS release is Apple Silicon only. The bundle is ad-hoc signed for internal consistency, but it is not notarized with Apple Developer ID credentials, so a downloaded ZIP may need the normal macOS Privacy & Security "Open Anyway" override on first launch.
-
-### Requirements
-
-- Rust `1.93.1` via `rustup`
-- Workspace MSRV: `1.93`
-
 ## Tooling
-
-This repository uses:
-
-- `rustfmt` for formatting
-- `clippy` for linting
-- `cargo-llvm-cov` for coverage
-- `cargo-deny` for dependency, advisory and license checks
-- `typos` for spellchecking
 
 ### Install local tooling
 
@@ -154,16 +134,11 @@ make test-roms
 make test-roms-extra
 make test-roms-cgb
 make test-roms-cgb-extra
-make coverage
 ```
 
 ### External ROM suites
 
-See [docs/testing/ROM-SUITES.md](docs/testing/ROM-SUITES.md) for the full external ROM suite workflow: fetching, running, promoted DMG and CGB gates, extra/internal CGB lanes, RealBoot reruns, differential oracles, determinism lanes, and private manifest-based commercial ROM smoke workflows.
-
-### Benchmark helper
-
-`scripts/run-benchmark.sh` runs portable benchmark TOML cases through `gb-desktop` by default and can add matching `gb-cli` artifacts with `--gb-cli`. It can also create a sample case, normalize case filenames, generate cases from a ROM directory, rewrite ROM roots, run a single `--test` case, and skip missing/empty/unreadable ROM paths before launching either frontend.
+See [docs/testing/ROM-SUITES.md](docs/testing/ROM-SUITES.md) for fetching, running, promoted gates, RealBoot reruns, oracle comparisons, determinism lanes, and private smoke workflows.
 
 ## Documentation
 
@@ -176,7 +151,7 @@ gb-cycle is an independent emulator, but its hardware-fidelity work benefits hea
 - [SameBoy](https://github.com/LIJI32/SameBoy), for its high-accuracy DMG/CGB implementation, mature tester/oracle paths, and readable hardware behavior cross-checks.
 - [DocBoy](https://github.com/Docheinstein/docboy) and the [docboy-test-suite](https://github.com/Docheinstein/docboy-test-suite/), for precision-focused emulator architecture ideas and high-value timing, PPU, APU, bus, and linked-session tests.
 - [GBE+](https://github.com/shonumi/gbe-plus), for its broad accessory/peripheral coverage and practical examples around less common Game Boy hardware.
-- [bayleef](https://projectpokemon.org/home/forums/topic/43930-mystery-gift-reverse-engineering-of-ir-protocol/#comment-232992), for the ProjectPokemon post [“Mystery Gift: Reverse Engineering of IR Protocol”](https://projectpokemon.org/home/forums/topic/43930-mystery-gift-reverse-engineering-of-ir-protocol/#comment-232992), which documents the Generation 2 IR Mystery Gift protocol and Pokémon Pikachu 2 GS behavior.
+- [bayleef](https://projectpokemon.org/home/forums/topic/43930-mystery-gift-reverse-engineering-of-ir-protocol/#comment-232992), for the ProjectPokemon post “Mystery Gift: Reverse Engineering of IR Protocol”, which documents the Generation 2 IR Mystery Gift protocol and Pokémon Pikachu 2 GS behavior.
 
 These projects are used as references, examples, and inspiration; primary documentation, hardware research, and explicit tests remain the source of truth for gb-cycle behavior. See [docs/REFERENCES.md](docs/REFERENCES.md) for the project consultation policy.
 
