@@ -93,6 +93,7 @@ jobs:
           )
           if ((${#sdl_libs[@]} > 0)); then
             cp "${sdl_libs[@]}" "${package_dir}/"
+            # shellcheck disable=SC2016
             patchelf --set-rpath '$ORIGIN' "${package_dir}/gb-desktop"
           else
             ldd_output="$(ldd "${package_dir}/gb-desktop" 2>&1 || true)"
