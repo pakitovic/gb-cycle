@@ -1,0 +1,352 @@
+name: release
+
+run-name: release ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer version to release, for example 0.1.9 or v0.1.9.
+        required: true
+        type: string
+      source_ref:
+        description: Branch, tag, or SHA to release from. Empty uses the selected workflow ref.
+        required: false
+        default: ''
+        type: string
+      base_branch:
+        description: Branch that will receive the release pull request.
+        required: false
+        default: main
+        type: string
+      dry_run:
+        description: Validate the release without pushing a branch, creating a pull request, merging, tagging, or creating a GitHub Release.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+  statuses: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate release automation token
+        if: ${{ !inputs.dry_run }}
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_PAT}" ]]; then
+            echo "Missing RELEASE_PAT secret. Create a fine-grained PAT named 'gb-cycle release automation' scoped only to this repository with Contents: read/write and Pull requests: read/write." >&2
+            exit 1
+          fi
+
+      - name: Checkout release source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT || github.token }}
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+
+      - name: Normalize release inputs
+        id: release
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          SOURCE_REF_INPUT: ${{ inputs.source_ref }}
+          BASE_BRANCH_INPUT: ${{ inputs.base_branch }}
+          DEFAULT_SOURCE_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          version="$(scripts/bump-workspace-version.sh --print-normalized "${VERSION_INPUT}")"
+          tag="v${version}"
+          branch="codex/release-${version}"
+          source_ref="${SOURCE_REF_INPUT:-${DEFAULT_SOURCE_REF}}"
+          base_branch="${BASE_BRANCH_INPUT:-main}"
+
+          if ! git check-ref-format --branch "${base_branch}" >/dev/null; then
+            echo "invalid base branch name: ${base_branch}" >&2
+            exit 2
+          fi
+          if ! git check-ref-format --branch "${branch}" >/dev/null; then
+            echo "invalid release branch name: ${branch}" >&2
+            exit 2
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "branch=${branch}"
+            echo "source_ref=${source_ref}"
+            echo "base_branch=${base_branch}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check target tag and release do not exist
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+          git fetch --force origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "tag ${TAG} already exists" >&2
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "GitHub Release ${TAG} already exists" >&2
+            exit 1
+          fi
+
+      - name: Configure Git identity
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump workspace versions
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+        run: |
+          set -euo pipefail
+          git switch -c "${BRANCH}"
+          git merge --no-edit "origin/${BASE_BRANCH}"
+
+          scripts/bump-workspace-version.sh "${VERSION}"
+          scripts/bump-workspace-version.sh --check --allow-same "${VERSION}"
+          cargo metadata --locked --format-version=1 --no-deps >/tmp/gb-cycle-release-metadata.json
+          cargo fmt --all --check
+          git diff --check
+
+          if git diff --quiet -- Cargo.lock crates/*/Cargo.toml; then
+            echo "release version bump produced no file changes" >&2
+            exit 1
+          fi
+
+      - name: Show dry-run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "Release dry run passed for ${{ steps.release.outputs.tag }}"
+          echo "No branch, pull request, merge, tag, GitHub Release, or package workflow was created."
+          git diff --stat
+
+      - name: Commit release bump
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add Cargo.lock crates/*/Cargo.toml
+          git commit -m "chore(release): bump crates to ${VERSION}"
+
+      - name: Push release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${RELEASE_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${BRANCH}" | awk '{print $1}')"
+          if [[ -n "${remote_sha}" ]]; then
+            git push --force-with-lease="refs/heads/${BRANCH}:${remote_sha}" origin "HEAD:refs/heads/${BRANCH}"
+          else
+            git push origin "HEAD:refs/heads/${BRANCH}"
+          fi
+
+      - name: Create or update release pull request
+        if: ${{ !inputs.dry_run }}
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+          SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          title="chore(release): bump crates to ${VERSION}"
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<BODY
+          Prepares release \`${TAG}\`.
+
+          - Crate version: \`${VERSION}\`
+          - Base branch: \`${BASE_BRANCH}\`
+          - Source ref: \`${SOURCE_REF}\`
+          - Generated branch: \`${BRANCH}\`
+          - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          This PR was created by the PAT-backed release workflow. Pull request checks should run from normal \`pull_request\` events; when they pass, the same workflow will squash-merge this PR, create \`${TAG}\`, create the GitHub Release, and let the tag-push package workflows attach assets.
+          BODY
+
+          pr_number="$(gh pr list --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "${pr_number}" ]]; then
+            gh pr edit "${pr_number}" --title "${title}" --body-file "${body_file}" --base "${BASE_BRANCH}"
+            pr_url="$(gh pr view "${pr_number}" --json url --jq .url)"
+          else
+            pr_url="$(gh pr create --head "${BRANCH}" --base "${BASE_BRANCH}" --title "${title}" --body-file "${body_file}")"
+            pr_number="$(gh pr view "${BRANCH}" --json number --jq .number)"
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          {
+            echo "number=${pr_number}"
+            echo "url=${pr_url}"
+            echo "head_sha=${head_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for required pull request checks
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+
+          while true; do
+            set +e
+            checks_json="$(gh pr checks "${PR_NUMBER}" --required --json name,state,bucket,workflow,link 2>/tmp/gb-cycle-release-checks.err)"
+            checks_status=$?
+            set -e
+
+            if [[ ${checks_status} -ne 0 && ${checks_status} -ne 1 && ${checks_status} -ne 8 ]]; then
+              cat /tmp/gb-cycle-release-checks.err >&2
+              exit "${checks_status}"
+            fi
+
+            check_count="$(jq 'length' <<<"${checks_json:-[]}")"
+            if (( check_count > 0 )); then
+              fail_count="$(jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' <<<"${checks_json}")"
+              pending_count="$(jq '[.[] | select(.bucket == "pending")] | length' <<<"${checks_json}")"
+              pass_count="$(jq '[.[] | select(.bucket == "pass")] | length' <<<"${checks_json}")"
+              other_count=$((check_count - fail_count - pending_count - pass_count))
+
+              printf 'Required checks: %s pass, %s pending, %s failed/cancelled, %s other, %s total\n' "${pass_count}" "${pending_count}" "${fail_count}" "${other_count}" "${check_count}"
+              jq -r '.[] | "- \(.name): \(.state) [\(.bucket)]"' <<<"${checks_json}"
+
+              if (( fail_count > 0 )); then
+                echo "At least one required check failed or was cancelled" >&2
+                exit 1
+              fi
+              if (( other_count > 0 )); then
+                echo "At least one required check reached an unsupported non-passing state" >&2
+                exit 1
+              fi
+              if (( checks_status == 0 && pending_count == 0 && pass_count == check_count )); then
+                break
+              fi
+            else
+              echo "No required checks reported yet for PR #${PR_NUMBER}."
+            fi
+
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for required checks on PR #${PR_NUMBER}" >&2
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Squash-merge release pull request
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh pr merge "${PR_NUMBER}" \
+            --squash \
+            --delete-branch \
+            --match-head-commit "${PR_HEAD_SHA}" \
+            --subject "chore(release): bump crates to ${VERSION}" \
+            --body "Release ${TAG}"
+
+      - name: Verify merged release state
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --force origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+          git switch --detach "origin/${BASE_BRANCH}"
+          scripts/bump-workspace-version.sh --check --allow-same "${VERSION}"
+          cargo metadata --locked --format-version=1 --no-deps >/tmp/gb-cycle-release-merged-metadata.json
+          cargo fmt --all --check
+          git diff --check
+
+      - name: Push release tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${RELEASE_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --force --tags origin
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "tag ${TAG} already exists" >&2
+            exit 1
+          fi
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PRERELEASE: ${{ contains(steps.release.outputs.version, '-') }}
+        run: |
+          set -euo pipefail
+          release_args=("${TAG}" --verify-tag --title "${TAG}" --generate-notes)
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "release ${TAG} already exists"
+          elif ! gh release create "${release_args[@]}"; then
+            gh release view "${TAG}" >/dev/null
+          fi
+
+      - name: Write release summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release ${{ steps.release.outputs.tag }}"
+            echo
+            echo "Pull request: ${{ steps.pr.outputs.url }}"
+            echo "Branch: \`${{ steps.release.outputs.branch }}\`"
+            echo "Base: \`${{ steps.release.outputs.base_branch }}\`"
+            echo "Tag: \`${{ steps.release.outputs.tag }}\`"
+            echo
+            echo "The tag push should trigger \`release-linux.yml\`, \`release-macos.yml\`, and \`release-windows.yml\` so package assets attach to the GitHub Release."
+          } >> "${GITHUB_STEP_SUMMARY}"
