@@ -243,8 +243,9 @@ jobs:
               fail_count="$(jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' <<<"${checks_json}")"
               pending_count="$(jq '[.[] | select(.bucket == "pending")] | length' <<<"${checks_json}")"
               pass_count="$(jq '[.[] | select(.bucket == "pass")] | length' <<<"${checks_json}")"
+              other_count=$((check_count - fail_count - pending_count - pass_count))
 
-              printf 'Required checks: %s pass, %s pending, %s failed/cancelled, %s total\n' "${pass_count}" "${pending_count}" "${fail_count}" "${check_count}"
+              printf 'Required checks: %s pass, %s pending, %s failed/cancelled, %s other, %s total\n' "${pass_count}" "${pending_count}" "${fail_count}" "${other_count}" "${check_count}"
               jq -r '.[] | "- \(.name): \(.state) [\(.bucket)]"' <<<"${checks_json}"
 
               if (( fail_count > 0 )); then
