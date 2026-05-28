@@ -11,6 +11,6 @@ Current fixtures:
 - `phase6_mbc5_rom_banking_rumble_and_ram.gb`
 - `phase6_mbc6_split_window_flash.gb`
 
-The builders in [phase6.rs](../../../phase6.rs) and [synthetic_cartridge.rs](../../../common/synthetic_cartridge.rs) are the source of truth for regenerating these fixtures. Regenerate the ROM fixtures with:
+The builders in `phase6.rs` and `synthetic_cartridge.rs` are the source of truth for regenerating these fixtures. Regenerate the ROM fixtures with:
 
 `GB_CYCLE_ACCEPT_PHASE6_FIXTURES=1 cargo test -q -p gb-core --test phase6 -- --test-threads=1`

@@ -80,8 +80,8 @@ Own passive and active external-port topologies that span more than one console,
 
 ## Dependencies
 
-- `hardware/SERIAL.md`
-- `ARCHITECTURE.md`
+- [`hardware/SERIAL.md`](SERIAL.md)
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - Pan Docs serial and connector sections
 - Pan Docs 4-Player Adapter section
 

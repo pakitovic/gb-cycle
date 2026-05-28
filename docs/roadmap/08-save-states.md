@@ -136,7 +136,7 @@ Establish one explicit full-emulator save-state system, separate from cartridge 
 - CLI rewind is intentionally not required: manual CLI rewind is not a target workflow, and rewind correctness is validated through the core and desktop rewind tests.
 - Linked-session save states and rewind for `DMG-04` 2-player Game Link and `DMG-07` 4-Player Adapter sessions are intentionally unsupported, not hidden blockers for Phase 8.
 - Compression, delta encoding, manual `.gbstate` file dialogs, and richer telemetry/settings are not Phase 8 blockers. If future measured memory pressure makes rewind optimization necessary, evaluate keyframes plus deltas first, then optional compression, then any increase to desktop memory defaults.
-- There are no remaining Phase 8 TODOs in `docs/TODO.md`; future save-state or rewind work should open a new focused roadmap item instead of reopening Phase 8 by default.
+- There are no remaining Phase 8 TODOs in [`docs/TODO.md`](../TODO.md); future save-state or rewind work should open a new focused roadmap item instead of reopening Phase 8 by default.
 
 #### Risks if delayed or underspecified
 

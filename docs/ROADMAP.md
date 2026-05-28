@@ -17,7 +17,7 @@ This roadmap sequences work but is not the behavioral source of truth. It define
 Two workstreams span multiple phases:
 
 - **Scheduler foundation** — explicit scheduler phases (Phase 0), central bus arbitration (Phase 1), IRQ aggregation (Phase 2), cycle logging (Phase 0+), and global-order regression tests (Phase 2+).
-- **State persistence** — cartridge persistence boundary (Phase 6), whole-machine save states (Phase 8), and determinism/closure integration (Phase 9). See `ARCHITECTURE.md` for the top-level boundary and `hardware/CARTRIDGES-MBC.md` for cartridge-persistence semantics.
+- **State persistence** — cartridge persistence boundary (Phase 6), whole-machine save states (Phase 8), and determinism/closure integration (Phase 9). See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the top-level boundary and [`hardware/CARTRIDGES-MBC.md`](hardware/CARTRIDGES-MBC.md) for cartridge-persistence semantics.
 
 ## Phases
 

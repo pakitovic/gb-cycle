@@ -4,7 +4,7 @@ This directory stores repo-owned synthetic fixtures for linked-session validatio
 
 The current `dmg04/` set contains seven minimal redistributable ROMs plus retained session-level and participant-level fixtures for deterministic two-console `DMG-04` cable exchanges. These fixtures validate the linked-session harness and participant-scoped oracles; they are not commercial game workflows.
 
-`dmg04/README.md`, `dmg07/README.md`, and `cgb-ir/README.md` record the exact synthetic ROM template and byte program for each committed `.gb` fixture so the binaries remain auditable.
+[`dmg04/README.md`](dmg04/README.md), [`dmg07/README.md`](dmg07/README.md), and [`cgb-ir/README.md`](cgb-ir/README.md) record the exact synthetic ROM template and byte program for each committed `.gb` fixture so the binaries remain auditable.
 
 The `basic-*.gb` ROM pair exercises one ordinary master/slave byte exchange over the `DMG-04` cable.
 

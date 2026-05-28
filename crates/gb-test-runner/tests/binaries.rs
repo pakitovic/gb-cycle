@@ -90,45 +90,11 @@ fn fetch_test_roms_binary_handles_help_and_parse_errors() {
 }
 
 #[test]
-fn run_differential_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_differential",
-        &["--oracle", "unknown", "--suite", "phase-2-cpu-timing"],
-        "unknown oracle",
-    );
-}
-
-#[test]
 fn run_rom_suite_binary_handles_help_and_parse_errors() {
     assert_help_and_parse_error(
         "run_rom_suite",
         &["--timeout-frames", "nope"],
         "invalid --timeout-frames value",
-    );
-}
-
-#[test]
-fn run_determinism_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_determinism",
-        &["--suite", "phase-2-cpu-timing", "--save-at-tcycles", "nope"],
-        "invalid --save-at-tcycles",
-    );
-}
-
-#[test]
-fn run_first_divergence_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_first_divergence",
-        &[
-            "--oracle",
-            "sameboy",
-            "--suite",
-            "ashiepaws-dmg-curated",
-            "--probe-interval-tcycles",
-            "nope",
-        ],
-        "invalid --probe-interval-tcycles",
     );
 }
 
@@ -237,22 +203,4 @@ fn run_linked_session_binary_returns_non_zero_and_writes_failure_artifacts() {
     assert!(session_dir.join("right_snapshot.txt").is_file());
 
     std::fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
-}
-
-#[test]
-fn run_sameboy_case_bundle_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_sameboy_case_bundle",
-        &["--timeout-tcycles", "nope"],
-        "invalid --timeout-tcycles value",
-    );
-}
-
-#[test]
-fn run_sameboy_tester_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_sameboy_tester",
-        &["--image-format", "unknown", "--suite", "acid-dmg-curated"],
-        "unknown image format",
-    );
 }

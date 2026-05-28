@@ -92,4 +92,4 @@ Use this order when implementation examples or behavioral cross-checks are neede
 ## Retained source-level cross-check notes
 
 - SameBoy source-level timing cross-checks previously used by this repo remain useful around `Core/timing.c`, `Core/memory.c`, and `Core/sm83_cpu.c`: timer bit selection and falling-edge TIMA behavior, explicit `DIV` / `TAC` glitch handling, delayed timer interrupt visibility through a reload state, `FF50` boot-overlay disable behavior, immediate `DI`, delayed `EI`, immediate `RETI` re-enable, and bytewise stack operations for call/return/interrupt paths.
-- SameBoy's public SDL frontend should not be treated as a documented headless oracle runner. The supported repo-local oracle workflows are the imported `sameboy-tester` framebuffer layout and the `case-bundle` layout documented in `docs/testing/ROM-SUITES.md`.
+- SameBoy's public SDL frontend should not be treated as a documented headless oracle runner. SameBoy oracle generation and comparison now live in a separate local SameBoy-oriented repository and are run manually when needed, not through gb-cycle repo-local Make targets or binaries.

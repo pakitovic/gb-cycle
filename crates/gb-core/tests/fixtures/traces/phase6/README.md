@@ -10,6 +10,6 @@ Current fixtures:
 - `phase6_mbc3_banking_ram_and_rtc.trace`
 - `phase6_mbc5_rom_banking_rumble_and_ram.trace`
 
-There is no `MBC6` trace in this directory because `MBC6` is covered by the dedicated built-in `phase-6-mbc6-oracle` serial/state case rather than the shared SameBoy-compatible Phase `6` cartridge trace set.
+There is no `MBC6` trace in this directory because `MBC6` is covered by automated cargo tests for the dedicated synthetic split-window/flash fixture rather than by the shared Phase `6` cartridge trace set.
 
 `crates/gb-core/tests/phase6.rs` owns the synthetic ROM builders and can regenerate the ROM fixtures. If these retained trace artifacts are intentionally refreshed, document the generator or runner path in the same change instead of relying on an implicit command.

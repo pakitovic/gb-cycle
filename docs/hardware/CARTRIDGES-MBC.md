@@ -110,9 +110,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ## Compatibility policy and execution modes
 
-- `docs/ARCHITECTURE.md` is the authoritative home for the typed `CompatibilityPolicy` shape, execution-mode invariants, and cross-system metadata requirements.
+- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) is the authoritative home for the typed `CompatibilityPolicy` shape, execution-mode invariants, and cross-system metadata requirements.
 - This handbook owns the cartridge-specific classification categories, decision matrix, loader diagnostics, and mapper-specific compatibility implications that plug into that shared policy shape.
-- `docs/TESTING.md` owns CI/oracle usage of execution modes and the save/load determinism expectations attached to `Strict`.
+- [`docs/TESTING.md`](../TESTING.md) owns CI/oracle usage of execution modes and the save/load determinism expectations attached to `Strict`.
 - Compatibility policy is a stable loader/config layer that consumes typed cartridge classification; it is not a license to change the hardware truth of already supported cartridges.
 - This project is T-cycle based. Once a supported cartridge device exists, cartridge-visible reads, writes, mapper commands, and mapper-side effects still happen on the access T-cycle regardless of execution mode.
 - The loader should classify the cartridge once from the header and validated metadata, then hand that typed classification to one policy decision point.
@@ -264,7 +264,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MBC6` flash write-enable models the flash `/WP` behavior rather than a generic bus-write gate: it protects sector `0` and hidden/protection commands, while sectors `1..=7` remain erasable/programmable when flash is otherwise enabled.
 - MBC6 flash operations currently complete synchronously and expose a done status byte immediately after the command-side effect, because no stronger project-local timing evidence exists yet; this is an explicit timing baseline rather than a claim about real erase/program latency.
 - `MBC6` persistence owns the full `32 KiB` SRAM, `1 MiB` main flash, `256`-byte hidden region, and non-volatile sector-0 protection bit. Raw external `.sav` import/export is intentionally narrower and only represents `SRAM || main flash` when hidden flash is default `0xFF` and sector-0 protection is clear; runtime save storage therefore starts on `.sav` only while that state remains representable and sticks to the internal `.gbsav/.gbsaN` fallback once the lossless hidden/protection state is present.
-- `MBC6` has two complementary validation signals in this branch: the repo-gated synthetic `phase-6-mbc6-oracle` fixture covers split ROM/SRAM windows plus main and hidden flash command behavior without using commercial data, while manual local smoke validation of `Net de Get: Minigame @ 100` confirms boot, minigame execution, and cartridge saving on the real documented title shape.
+- `MBC6` has two complementary validation signals in this branch: automated cargo tests for the repo-owned synthetic split-window/flash fixture cover split ROM/SRAM windows plus main and hidden flash command behavior without using commercial data, while manual local smoke validation of `Net de Get: Minigame @ 100` confirms boot, minigame execution, and cartridge saving on the real documented title shape.
 - `MBC7` must not fall back to `MBC5 + rumble + RAM`; Pan Docs documents a `7`-bit ROM-bank register, two independent enable gates, an `A000-AFFF` sensor / EEPROM register aperture, and `B000-BFFF` reads as `$FF`.
 - MBC7 register access requires both enables: writes of `$0A` to `0000-1FFF` and `$40` to `4000-5FFF`; the switchable ROM window at `4000-7FFF` uses the low `7` bits written to `2000-3FFF`, while `0000-3FFF` remains ROM bank `0`.
 - MBC7 accelerometer support models the documented latch protocol: writing `$55` to `Ax0x` clears the latched X/Y values to `$8000`, writing `$AA` to `Ax1x` captures deterministic host-provided X/Y raw values only after that clear, `Ax2x/Ax3x` expose X low/high, `Ax4x/Ax5x` expose Y low/high, `Ax6x` reads `$00`, and other undocumented selectors read `$FF`.
@@ -277,7 +277,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Treat `Pocket Camera` as dedicated cartridge-local hardware rather than as an ordinary MBC or an accessory-special unsupported placeholder.
 - `Pocket Camera` should classify as a supported dedicated family, while `Bandai TAMA5` should remain `AccessorySpecialCase` until implemented.
 - Header code `0xFC` should classify as `Pocket Camera`, and header code `0xFD` should classify as `Bandai TAMA5`.
-- The `Pocket Camera` loader path should accept only the official `1 MiB` ROM / `128 KiB` RAM shape in `Strict`, keep the hardware inside the cartridge subsystem, and expose a host-frame seam instead of a frontend-owned fake mapper. See `GAME-BOY-CAMERA.md` for the detailed register, timing, and frontend-boundary notes.
+- The `Pocket Camera` loader path should accept only the official `1 MiB` ROM / `128 KiB` RAM shape in `Strict`, keep the hardware inside the cartridge subsystem, and expose a host-frame seam instead of a frontend-owned fake mapper. See [`GAME-BOY-CAMERA.md`](GAME-BOY-CAMERA.md) for the detailed register, timing, and frontend-boundary notes.
 - `Bandai TAMA5` diagnostics should continue to state explicitly that the type requires dedicated cartridge-local accessory hardware rather than only ROM / RAM banking.
 - The loader must not try to execute `Pocket Camera` or `Bandai TAMA5` under an approximate supported mapper "just to see if they boot."
 
@@ -306,7 +306,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ## Persistence baseline
 
-- Full emulator save states remain a separate whole-machine snapshot system owned by the global save-state boundary in `docs/ARCHITECTURE.md` and phased in `docs/ROADMAP.md` Phase `8`.
+- Full emulator save states remain a separate whole-machine snapshot system owned by the global save-state boundary in [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) and phased in [`docs/ROADMAP.md`](../ROADMAP.md) Phase `8`.
 - Battery-backed persistence must be modeled as cartridge-owned state, not as "dump the currently visible `0xA000-0xBFFF` window."
 - `0xA000-0xBFFF` is only a mapper-controlled access window on the shared T-cycle runtime. The persistible payload is the cartridge's full backing store, not whichever bank or register file happens to be visible on one access.
 - The decision that a cartridge should produce hardware-style persistent state must come from header byte `0x0147`, not from filename heuristics, game title, or RAM-size guesses.
@@ -600,7 +600,7 @@ Priority order:
 
 ## Tests
 
-`docs/TESTING.md` owns the detailed cartridge test matrix. Keep this handbook focused on hardware contracts and avoid duplicating every closed unit, integration, synthetic-ROM, or commercial-oracle case here.
+[`docs/TESTING.md`](../TESTING.md) owns the detailed cartridge test matrix. Keep this handbook focused on hardware contracts and avoid duplicating every closed unit, integration, synthetic-ROM, or commercial-oracle case here.
 
 Cartridge verification should continue to cover these boundaries:
 
@@ -610,7 +610,7 @@ Cartridge verification should continue to cover these boundaries:
 - cartridge-owned persistence for full backing stores, battery-gated save eligibility, `MBC2` nibble RAM, `MBC3` live RTC state plus powered-off elapsed time, and external `.sav` import/export boundaries
 - retained oracle coverage for intentionally narrow compatibility choices, especially the current MBC3 relatch rule, reserved selector values `0x04..=0x07`, and advisory-only RTC access spacing
 
-New cartridge tests should be added to the concrete owning test module or ROM oracle lane, then summarized in `docs/TESTING.md` or the relevant roadmap entry only when the coverage changes project policy.
+New cartridge tests should be added to the concrete owning test module or ROM oracle lane, then summarized in [`docs/TESTING.md`](../TESTING.md) or the relevant roadmap entry only when the coverage changes project policy.
 
 ## Implementation notes for this repo
 
@@ -641,7 +641,7 @@ New cartridge tests should be added to the concrete owning test module or ROM or
 - `MBC6` is a dedicated device with two independent `8 KiB` ROM/flash windows, two independent `4 KiB` SRAM windows, cartridge-local main flash plus hidden flash state, synchronous status-mode flash side effects, and typed persistence for SRAM, main flash, hidden flash, and sector-0 protection.
 - `MMM01`, the supported `MBC1M` signature path, and `M161` are first-class multicart paths. Do not redistribute their boot-header, menu, mask-locking, or latch-until-power-off behavior into ordinary `MBC1` or `NoMbc` code.
 - `HuC1` and `HuC-3` are dedicated supported mapper families. `HuC1` owns its RAM/IR mode split; `HuC-3` owns its mailbox, semaphore, MCU-window RTC model, IR mode, and dedicated persistence shape. Neither should fall back to `MBC1` or `MBC3`.
-- `Pocket Camera` is a dedicated cartridge-local hardware family with camera registers, capture timing, SRAM, and host-frame state inside the cartridge subsystem. See `GAME-BOY-CAMERA.md` for the detailed camera contract.
+- `Pocket Camera` is a dedicated cartridge-local hardware family with camera registers, capture timing, SRAM, and host-frame state inside the cartridge subsystem. See [`GAME-BOY-CAMERA.md`](GAME-BOY-CAMERA.md) for the detailed camera contract.
 - `MBC30` is implemented as a supported `MBC3`-family variant. `MBC6` is a dedicated supported split-window SRAM/ROM/flash cartridge family, and `MBC7` is a dedicated supported sensor / EEPROM cartridge family with explicit no-rumble runtime policy.
 
 ### Persistence and external save boundaries

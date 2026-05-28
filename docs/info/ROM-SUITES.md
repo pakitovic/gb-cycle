@@ -92,13 +92,6 @@ make run-cgb-dma       # manifest-backed Phase 10 CGB DMA suite
 make run-cgb-audio-blargg # manifest-backed Phase 10 CGB Blargg audio suite
 make run-cgb-audio-samesuite # manifest-backed Phase 10 CGB SameSuite audio suite
 make run-cgb-rtc       # manifest-backed Phase 10 CGB MBC3 RTC suite
-make phase9-determinism-smoke # replay/save-load smoke checks for Phase 2 and Phase 6 fixtures
-make phase9-determinism-local # replay/save-load sample across CPU/interrupts, Mooneye Timer/DMA, Acid/Mealybug PPU, cartridge, and one APU Blargg case
-make phase9-diff-cartridge    # compare Phase 6 cartridge artifacts against SameBoy case-bundle output
-make phase9-diff-acid         # compare Acid framebuffer artifacts against LibSameBoy case-bundle output
-make phase9-diff-mealybug     # compare the SameBoy-PASS Mealybug framebuffer subset against LibSameBoy case-bundle output
-make phase9-diff-ashiepaws      # compare Ashiepaws framebuffer artifacts against LibSameBoy case-bundle output
-make phase9-first-divergence-ashiepaws # capture Ashiepaws local/LibSameBoy first-divergence probe windows
 ```
 
 The aggregate `make test-roms-real-boot`, `make test-roms-extra-real-boot`, `make test-roms-docboy-real-boot`, `make test-roms-cgb-real-boot`, and `make test-roms-cgb-extra-real-boot` ROM-suite targets are local-only validation lanes. They require `GB_CYCLE_BOOT_ROM_ROOT` to point at a private boot-ROM directory with canonical filenames derived from each case revision, such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`, set `GB_CYCLE_TEST_ROM_STARTUP=real-boot` while invoking the normal `run-*` suite targets, run clean `RealBoot` without direct-start `SkipBoot` or `CustomBoot` overlays, and start each case timeout after the `FF50` handoff. Manifests expose only `revision`, not a separate `boot_rom` selector: in default skip/custom-boot lanes no firmware bytes are read, and any revision-specific behavior must come from `revision` / `MachineConfig::revision`, which is also exposed by `gb-cli --revision` and `gb-desktop --revision`. Re-run `make test-roms` after a DMG RealBoot pass, `make test-roms-extra` after an extra DMG RealBoot pass, `make test-roms-docboy` after a DocBoy RealBoot pass, `make test-roms-cgb` after a promoted CGB RealBoot pass, or `make test-roms-cgb-extra` after an extra CGB RealBoot pass if you want the matching report to reflect the default manifest startup baseline again. The promoted `make test-roms` aggregate now also runs `samesuite-sgb` as fixture-backed SGB packet/multiplayer bring-up evidence and writes those rows to `/test/test-report.md`; SGB real-boot validation remains future work because SGB boot-ROM asset verification is not part of the current DMG/CGB RealBoot lane. The default extra aggregate `make test-roms-extra` also runs `mooneye-sgb-boot-regs-extra` under SGB/SGB2 `SkipBoot` as public direct-start fingerprint evidence; it is intentionally not part of `make test-roms-extra-real-boot` until SGB/SGB2 RealBoot external-oracle policy exists. The extra DMG aggregate target `make test-roms-extra-real-boot` currently drives `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `gbmicrotest-dmg-extra`, and writes `/test/test-report-extra.md`. The DocBoy aggregate target `make test-roms-docboy-real-boot` drives `docboy-dmg-extra`, `docboy-cgb-extra`, `docboy-cgb-dmg-extra`, and `docboy-cgb-dmg-ext-extra`, writes single-machine rows to `/test/test-report-docboy.md`, and leaves linked-session rows in `run_linked_session` stdout plus retained failure artifacts. The CGB aggregate target `make test-roms-cgb-real-boot` drives the same promoted-green CGB suite list as `make test-roms-cgb` and writes `/test/test-report.md`, while `make test-roms-cgb-extra` and `make test-roms-cgb-extra-real-boot` currently drive `cgb-boot-hwio`, `mooneye-cgb-extra`, `samesuite-cgb-extra`, `magen-cgb-extra`, `mealybug-tearoom-cgb-extra`, and `little-things-gb-cgb-extra`, keep running later child suites after earlier red rows, return non-zero if any child suite fails, and write `/test/test-report-extra.md`.
@@ -147,8 +140,6 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-extra
 # Run the DocBoy CGB DMG-ext extra suite
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-ext-extra
 
-# Run deterministic replay plus in-memory save/load continuation checks
-cargo run -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
 ```
 
 ### Retaining failure artifacts
@@ -203,9 +194,7 @@ Workflow-managed DMG subset using committed framebuffer fixtures for the curated
 
 The full local gate remains `mealybug-tearoom-dmg-curated` and keeps all 24 curated cases, including cases where gb-cycle passes but the current GBEmulatorShootout table marks SameBoy as `FAIL`.
 
-The Phase `9` SameBoy differential uses the narrower built-in suite `mealybug-tearoom-dmg-sameboy-differential`, which excludes the nine Mealybug rows that GBEmulatorShootout updated on March 22, 2026 marks as SameBoy non-PASS: `mealybug-m3-lcdc-bg-en-change`, `mealybug-m3-lcdc-bg-map-change`, `mealybug-m3-lcdc-obj-size-change`, `mealybug-m3-lcdc-obj-size-change-scx`, `mealybug-m3-lcdc-tile-sel-change`, `mealybug-m3-lcdc-tile-sel-win-change`, `mealybug-m3-lcdc-win-en-change-multiple-wx`, `mealybug-m3-lcdc-win-map-change`, and `mealybug-m3-scy-change`.
-
-Do not treat those excluded cases as gb-cycle regressions just because `mealybug-tearoom-dmg-curated` diverges from SameBoy; for Phase `9.3`, the full local fixture gate is accepted as the gb-cycle signal and the SameBoy divergence is recorded as an oracle limitation unless stronger hardware-facing evidence or another passing oracle supersedes it.
+SameBoy comparisons for Mealybug are no longer represented as a built-in gb-cycle differential suite. Keep `mealybug-tearoom-dmg-curated` as the repo-owned fixture gate; external SameBoy shootout or local SameBoy-repo checks may still be used manually for investigation, but their artifacts and filtered case lists live outside this repository.
 
 The extra/internal CGB companion suite `mealybug-tearoom-cgb-extra` runs the same 24 ROM programs on `console = "cgb"` with `report_model_suffix = true`, `timeout_frames = 30`, framebuffer fixtures under `crates/gb-test-runner/data/fixtures/mealybug-cgb/`, and `oracle = "framebuffer-rgb555-fixture"` for every CGB framebuffer row. The experimental `m3_lcdc_win_en_change_multiple_wx.gb` row uses the RGB555 oracle against the real-CGB-C/D `m3_lcdc_win_en_change_multiple_wx.png` capture, with path-specific quantization of sparse near-black, near-green, and forced-white capture noise before RGB555 rank comparison. The suite owns the byte-identical Mealybug coverage that used to appear under `docboy-cgb-dmg`, reports as `mealybug-tearoom-tests | ppu/*.gb (GBC)` in `/test/test-report-extra.md`, and mirrors the base DMG manifest's per-ROM timeout/startup shape instead of running a longer until-match CGB-only policy. The `m3_bgp_change_sprites.gb`, `m3_lcdc_bg_map_change.gb`, `m3_lcdc_obj_en_change.gb`, `m3_lcdc_obj_en_change_variant.gb`, `m3_lcdc_tile_sel_change.gb`, `m3_obp0_change.gb`, and `m3_scx_low_3_bits.gb` rows pin `startup = "custom-boot"` because their fixtures exercise the boot-logo tile bytes through BG, window, sprite/OBJ, or BG scroll paths while still avoiding a full private CGB boot ROM dependency.
 
@@ -384,107 +373,13 @@ pressed = false
 
 ## Determinism and save/load continuation
 
-`run_determinism` is the accepted Phase `9` in-memory determinism lane:
+Deterministic replay plus in-memory save/load continuation coverage is automated through cargo tests in `crates/gb-test-runner/src/determinism.rs`, not exposed as a manual ROM-suite CLI.
 
-```bash
-cargo run -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
-cargo run -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
-make phase9-determinism-smoke
-make phase9-determinism-local
-```
+Those tests perform independent replays, compare final `MachineSaveState` plus serial output, capture a mid-run save state, dirty and restore the machine, check continuation against uninterrupted execution, and verify that a mismatched console-model restore is rejected. Non-`Strict` cases intentionally fail fast so this path remains closure evidence instead of permissive compatibility evidence.
 
-For each selected strict case, the runner performs two independent replays, compares the final `MachineSaveState` plus serial output, captures a mid-run save state, dirties and restores the machine, checks continuation against the uninterrupted run, and verifies that a mismatched console-model restore is rejected. Non-`Strict` cases intentionally fail fast so this path remains usable as closure evidence instead of permissive compatibility evidence.
+## External SameBoy cross-checks
 
-## Differential oracle testing
-
-### LibSameBoy case-bundle artifacts
-
-The Phase `9` SameBoy materialization path uses a small repo-owned C helper linked against SameBoy's `lib` target:
-
-```bash
-cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
-  --suite phase-6-cartridge-oracle \
-  --sameboy-root /path/to/SameBoy \
-  --build-if-missing
-
-cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
-  --suite acid-dmg-curated \
-  --sameboy-root /path/to/SameBoy \
-  --build-if-missing
-```
-
-When `--oracle-root` is omitted, artifacts are written under `/.oracles/sameboy/case-bundle/<case-id>/`. Serial-hex cases emit `serial_hex.txt`; framebuffer cases emit `framebuffer.pgm`. The helper applies the suite's startup cartridge RTC seconds, startup memory writes, and the synthetic SkipBoot internal `DIV` phase before execution, so cartridge and PPU lanes share the same controlled LibSameBoy entrypoint instead of depending on a prebuilt SameBoy application binary.
-
-### First-divergence probe windows
-
-The Phase `9` first-divergence lane reuses the LibSameBoy helper but asks it for periodic JSONL probes instead of only final artifacts:
-
-```bash
-cargo run -p gb-test-runner --bin run_first_divergence -- \
-  --oracle sameboy \
-  --suite ashiepaws-dmg-curated \
-  --probe-interval-tcycles 70224 \
-  --build-if-missing
-```
-
-When `--probe-root` is omitted, local and SameBoy probe streams are written under `/.oracles/sameboy/first-divergence/<case-id>/local_probes.jsonl` and `sameboy_probes.jsonl`. The default `--compare-mode framebuffer` compares normalized framebuffer hashes and keeps CPU registers, timer/IRQ registers, PPU timing/register values, raw VRAM/OAM/WRAM/HRAM hashes, and serial output as context; `--compare-mode state` compares all captured state fields except probe timestamp drift. Use `--allow-divergence` for exploratory Make targets such as `phase9-first-divergence-ashiepaws`, where the command should report the first known intermediate timing window while still returning success for local investigation.
-
-### SameBoy Tester compatibility path
-
-To materialize SameBoy Tester artifacts under a compatible oracle root:
-
-```bash
-cargo run -p gb-test-runner --bin run_sameboy_tester -- \
-  --sameboy-root /path/to/SameBoy \
-  --suite acid-dmg-curated \
-  --image-format bmp \
-  --build-if-missing
-```
-
-This stages ROMs under the default repo-local oracle root `/.oracles/sameboy/sameboy-tester/`, runs SameBoy's internal `tester` binary, and leaves `.bmp` / `.tga` plus `.log` artifacts in the `sameboy-tester` layout that `run_differential` can consume directly.
-
-SameBoy Tester always boots through a boot ROM, so this path is best suited to end-of-test framebuffer convergence rather than boot-path arbitration. The current wrapper intentionally does not override SameBoy's boot-ROM path. If you need a specific SameBoy firmware choice for oracle generation, control it from the SameBoy checkout or build itself rather than through `gb-test-runner`.
-
-### Running differentials
-
-```bash
-cargo run -p gb-test-runner --bin run_differential -- \
-  --oracle sameboy \
-  --oracle-layout case-bundle \
-  --suite acid-dmg-curated
-```
-
-If `--oracle-artifact-root` is omitted, the default repo-local root is `/.oracles/<oracle>/<layout>/`.
-
-For Mealybug Phase `9` closure, use `--suite mealybug-tearoom-dmg-sameboy-differential` rather than the full local `mealybug-tearoom-dmg-curated` gate, because the full gate intentionally includes rows where SameBoy is not a passing GBEmulatorShootout oracle.
-
-#### Layouts
-
-- **`case-bundle`** (default) — oracle root contains one subdirectory per case id using the same artifact filenames that `gb-test-runner` emits locally or a legacy `framebuffer.pgm` for LibSameBoy framebuffer captures (`serial.txt`, `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.png`, `framebuffer.pgm`, `trace.txt`).
-- **`sameboy-tester`** — framebuffer-only compatibility layout; expects SameBoy Tester artifacts mirrored by ROM-relative path (e.g. `acid/dmg-acid2.bmp`).
-
-### Case-bundle oracle example
-
-The built-in cartridge mapper oracle lane uses the `case-bundle` layout:
-
-```bash
-cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
-  --suite phase-6-cartridge-oracle \
-  --sameboy-root /path/to/SameBoy \
-  --build-if-missing
-
-cargo run -p gb-test-runner --bin run_differential -- \
-  --oracle sameboy \
-  --suite phase-6-cartridge-oracle
-```
-
-That suite compares retained synthetic `MBC1`, `MBC2`, `MBC3`, and `MBC5` Phase `6` `serial_hex` artifacts, and its `MBC3` case includes explicit pre-run RTC advancement in the typed runner metadata.
-
-## Other local-only assets
-
-Repo-managed local-only support assets live under gitignored roots:
-
-- `/.oracles/<oracle>/<layout>/` — imported differential oracle artifacts.
+Repo-local Phase `9` SameBoy oracle helpers have been retired. SameBoy comparisons now live in a separate local SameBoy-oriented repository and are run manually when investigation needs them; gb-cycle should not document repo-local `.oracles/` stores, `phase9-*` Make targets, or SameBoy materialization commands as active validation paths.
 
 ## Environment variables
 

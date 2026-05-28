@@ -8,8 +8,8 @@ This file is a code-facing usage and migration note. It exists to keep DMG, CGB,
 
 ## Authority boundaries
 
-- `ARCHITECTURE.md` owns the existence of the separate axes and the high-level architectural reason for them.
-- `hardware/CGB.md`, `hardware/SGB.md`, and `hardware/BOOT-ROM.md` own the subsystem behavior that consumes those axes.
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the existence of the separate axes and the high-level architectural reason for them.
+- [`hardware/CGB.md`](../hardware/CGB.md), [`hardware/SGB.md`](../hardware/SGB.md), and [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md) own the subsystem behavior that consumes those axes.
 - This file owns the global model-profile reference table that aligns the public axes with hardware-profile names, without making those hardware-profile names functional behavior gates.
 - This file owns the practical "which type should I consult here?" guidance for production code and follow-up refactors.
 

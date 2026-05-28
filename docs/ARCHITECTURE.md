@@ -1,488 +1,142 @@
 # Architecture
 
+## Scope
+
+This document owns the project-level crate layout, core ownership boundaries, scheduler shape, persistence boundaries, and portability rules. Detailed hardware behavior lives in `docs/hardware/*.md`; public model-axis guidance lives in [`info/MODEL-AXES.md`](info/MODEL-AXES.md); shared timing terminology lives in [`info/TIMING-AND-ACCURACY.md`](info/TIMING-AND-ACCURACY.md); validation policy lives in [`TESTING.md`](TESTING.md) and [`info/ROM-SUITES.md`](info/ROM-SUITES.md).
+
+Keep this file architectural: it should say where behavior belongs and which contracts must stay stable, not duplicate subsystem handbooks or frontend manuals.
+
 ## Goals
 
-- Prioritize hardware-accurate behavior.
-- Keep the core modular enough to support DMG, CGB, and SGB host-shell behavior while leaving room for later SNES/SFC-side execution.
-- Keep portability high so the core remains platform-agnostic.
-- Preserve determinism, debuggability, and testability across all implementation phases.
+- Prioritize hardware-accurate behavior over convenience.
+- Keep one shared GB core that can run DMG-family, CGB-family, and SGB/SGB2 host-shell configurations without duplicating subsystems.
+- Model execution on a deterministic T-cycle timeline so CPU, PPU, DMA, timer, APU, serial, joypad, bus, interrupts, and cartridge behavior remain observable and testable.
+- Keep `gb-core` platform-agnostic so CLI, desktop, tests, benchmarks, tools, and future WebAssembly frontends reuse the same core-facing contracts.
+- Preserve debuggability and explicit ownership when adding accuracy, performance, or new hardware families.
 
-## Recommended high-level layout
-
-Current crate and core-module structure:
+## Repository layout
 
 ```text
 crates/
-  gb-core/
-    src/
-      apu/
-      boot/
-      bus/
-      cartridge/
-      cpu/
-      debugger/
-      dma/
-      external_port/
-      interrupts/
-      joypad/
-      link/
-      machine/
-      model/
-      ppu/
-      scheduler/
-      serial/
-      timer/
-      lib.rs
-  gb-persistence/
-  gb-test-runner/
-  gb-benchmark/
-  gb-cli/
-  gb-desktop/
+  gb-core/          hardware model, scheduler, machine composition, save-state and rewind contracts
+  gb-persistence/   host storage policy for cartridge saves and .gbstate envelopes
+  gb-test-runner/   automated ROM-suite execution, manifests, fixtures, and reports
+  gb-benchmark/     portable benchmark TOML parsing, run expansion, stimulus, and artifact metadata
+  gb-cli/           headless frontend/tooling surface
+  gb-desktop/       SDL3 desktop frontend and host UX
+
 docs/
+  info/             cross-cutting guidance, frontend usage, ROM-suite operation, model axes, and timing vocabulary
+  hardware/         subsystem hardware behavior and MMIO/timing semantics
+  roadmap/          implementation phase context
 ```
 
-Future frontends such as WebAssembly should reuse the same core-facing contracts rather than adding platform-specific APIs inside `gb-core`.
-
-`gb-benchmark` owns portable benchmark TOML parsing, fresh per-run expansion, deterministic joypad stimulus scheduling, shared frontend artifact path conventions, and benchmark stats serialization so `gb-cli` and `gb-desktop` consume the same one-file-per-game contract without duplicating that tooling logic in either frontend.
-
-## Rust module layout policy
-
-- Use `foo.rs` for small subsystems.
-- When a subsystem grows, prefer `foo.rs` plus `foo/` as the default production layout.
-- Treat the top-level subsystem file as the facade for module declarations, re-exports, and narrow orchestration.
-- Move hardware responsibilities into focused child files instead of letting timing-sensitive logic accumulate in one large file.
-- Avoid layout churn during behavior work; structural migrations should be isolated when possible.
-
-## Core design principles
-
-- Model hardware by responsibilities, not by frontend features.
-- Favor explicit state transitions over implicit side effects.
-- Keep timing ownership clear.
-- Treat MMIO registers as device interfaces with explicit contracts, not as generic stored bytes.
-- Separate behavior specification from optimization strategy.
-- Make room for CGB-specific extensions without spreading model checks everywhere.
-- Use types to reflect hardware concepts such as model, interrupt source, PPU mode, and cartridge kind.
-
-## Timing foundation
-
-- The project timing foundation is T-cycle based.
-- M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
-- Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
-- CPU execution on that timeline should be expressed through ordered fetch/read/write/internal steps rather than a black-box opcode plus aggregate duration.
-- For the PPU, that shared T-cycle timeline is also the dot timeline; dot-by-dot behavior is the intended baseline.
-- Long-running hardware operations triggered by MMIO writes, such as OAM DMA, should become explicit in-flight subsystem state on that shared timeline rather than immediate bulk side effects.
-
-## Global scheduler policy
-
-- The DMG core must have one global scheduler that advances the whole machine on one deterministic T-cycle timeline.
-- A `GlobalScheduler` plus `step_t_cycle()`-style entry point, or an equally explicit equivalent, is the preferred architectural shape.
-- Do not run PPU, timer, APU, serial, joypad, DMA, or interrupt production as unsynchronized threads or independently clocked loops inside the core.
-- The recommended per-T-cycle phase order is:
-  1. external event ingress
-  2. master clock / shared system-counter tick
-  3. resolution of free-running counter-derived edges
-  4. autonomous peripheral ticks
-  5. bus arbitration for the current T-cycle
-  6. CPU micro-operation
-  7. MMIO side-effect commit
-  8. interrupt aggregation into `IF`
-  9. CPU wake / interrupt-accept evaluation
-- This phase order is an architectural contract for observable behavior, not a claim that Nintendo published one canonical internal scheduler.
-- Another internal decomposition is acceptable only if it preserves the same observable dependencies for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge timing, MMIO visibility, same-cycle Timer queued-request opcode preemption, and CPU interrupt acceptance.
-- Phase `3` is for events derived from the free-running shared clock. Device-local MMIO semantics such as `DIV` reset effects, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions still belong to the device that owns the register when the access commits in phase `7`.
-- The scheduler should keep one cycle-local context object or equivalent that can carry at least:
-  - the global T-cycle index
-  - current-cycle external events
-  - already-derived counter-edge signals
-  - current ownership or arbitration facts
-  - queued side effects and interrupt requests
-- The scheduler coordinates ordering and synchronization points; it must not reimplement timer, PPU, DMA, serial, joypad, APU, cartridge, or CPU-local quirks internally.
-- Idle fast paths inside a scheduler phase may skip subsystem calls only when the owning subsystem exposes that no hardware-visible work is pending for the current T-cycle; they must not batch elapsed time or hide a pending MMIO, interrupt, DMA, serial, or video-domain edge.
-
-## Console model policy
-
-- The core must expose an explicit console model concept.
-- The core exposes `DMG0`, `DMG`, `MGB`, and `CGB` model entries, and the current functional target includes both the closed DMG-family path and the promoted base CGB-family path.
-- Keep the shared DMG/CGB/SGB core extensible for later CGB revision, AGB-family compatibility, and SGB SNES/SFC host-shell work without duplicating subsystem implementations.
-- The goal is to avoid major later refactors while keeping each implemented CGB-only path owned by an explicit subsystem.
-- Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
-- `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
-- CGB must enter as an extension of the shared architecture, not as a second emulator with duplicated subsystems.
-- No critical subsystem should be rigidly tied to a single hardware variant if that would block natural extension to other models.
-- The public model surface keeps three explicit axes instead of collapsing everything into one enum:
-  - `ConsoleModel` for the silicon family / revision baseline
-  - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
-  - `HostPlatform` for the surrounding host shell, such as handheld standalone or `SGB` / `SGB2`
-- The project also exposes one derived `CapabilitySet` view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
-- `ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
-- `SGB` / `SGB2` support enters through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
-
-## DMG-stable, CGB-integrated policy
-
-- The base core must preserve DMG-family closure while CGB behavior extends the same scheduler, bus, CPU, PPU, DMA, APU, timer, serial, cartridge, and persistence contracts.
-- Implemented CGB behavior should still live behind explicit owners and capability gates rather than ad hoc product-model checks.
-- Shared subsystems should keep banked VRAM, banked WRAM, extra CGB I/O registers, HDMA, palette state, and double speed explicit without re-architecting the whole core.
-- Avoid rigid fixed-size assumptions in subsystem interfaces when the hardware family naturally extends them later.
-- Keep the common GB model solid; CGB work must not regress the DMG `167/167` closure gate.
-- For CGB, prefer one standard CGB model before attempting fine-grained CGB hardware revision support.
-- Architecture should allow the same core to run in DMG-family mode or CGB mode without duplicating subsystem implementations.
-
-## Compatibility-policy architecture
-
-- Compatibility policy is a loader/config contract around the T-cycle core, not a second hardware model.
-- The project exposes a typed execution-mode concept, `ExecutionMode::{Strict, Permissive, Experimental}`, rather than scattered booleans.
-- The project exposes one central `CompatibilityPolicy` structure that carries:
-  - `execution_mode`
-  - `validation_policy`
-  - `heuristic_policy`
-  - `override_policy`
-  - `diagnostic_policy`
-- One central decision point should translate typed cartridge classification, the active compatibility policy, and explicit manual overrides into a final load decision.
-- That decision point must not reparse cartridge headers differently per frontend, per mode, or per call site.
-- For already supported hardware, switching execution mode must not change T-cycle-visible hardware truth such as timing, arbitration, memory mapping, IRQ behavior, or mapper semantics.
-- Mode changes are allowed to affect admission, validation severity, heuristic enablement, manual overrides, diagnostics, and access to explicitly experimental implementations.
-- Any temporary exception where a mode changes supported-hardware runtime behavior should be documented as technical debt rather than normalized as ordinary behavior.
-- `Strict` is the oracle and CI mode for official accuracy claims.
-- `Permissive` is the intended tolerant interactive/tooling mode for ordinary users when a frontend or CLI exposes execution-mode selection.
-- `Experimental` is for research, bring-up, and partial hardware paths; it must not be treated as evidence for official accuracy claims.
-- Save states, replays, and official test artifacts must record the execution mode and active overrides that produced them.
-- Restoring or replaying under a different execution mode should fail by default unless a later explicit developer-only conversion workflow is designed on top of the recorded metadata.
-
-## Suggested subsystem boundaries
-
-- CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, HALT/STOP semantics, and micro-operation visibility for timing-sensitive hardware interactions
-- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, temporal arbitration of blocked accesses, delegation to the base cartridge interface for cartridge-owned regions, and routing of access attempts that carry hardware-visible side effects such as DMG OAM corruption triggers
-- Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and only simple storage-backed MMIO state whose semantics are not owned by a dedicated subsystem
-- Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
-- Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
-- PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions, Mode 2 OAM-scan row state, and DMG-family OAM corruption behavior
-- DMA: OAM DMA and future HDMA scheduling and blocking rules
-- APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
-- Joypad and serial: hardware-visible registers and signaling
-- External port: attachment identity, attachment reset/startup policy, printer protocol state, and per-console attachment snapshots, but not `SB` / `SC` transfer semantics
-- Link topology: `DMG-04` cable routing, `DMG-07` adapter topology, CGB infrared optical-pair routing, and shared multi-console T-cycle coordination, but not frontend player-slot UX
-- Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
-- Boot ROM and model config: power-up state, revision differences, direct-boot setup
-- Machine/session boundary: composition of one configured console, lifecycle reset/ROM replacement, pending host ingress, stepping APIs, and narrow core-facing host seams
-- Model-specific extensions: CGB and SGB host shell
-
-## Detailed module responsibility guide
-
-This section complements `Suggested subsystem boundaries` by mapping the source layout to concrete ownership. The goal is to keep one canonical reference for module responsibilities while still allowing behavior-neutral structural migrations to land separately from timing-sensitive fixes.
-
-### `model/`
-
-- DMG-family hardware model definitions
-- system base types
-- enums for hardware variants and shared configuration
-- structural core configuration
-- shared compatibility-policy types such as execution mode and override metadata
-- architectural extension points for future variants such as CGB
-
-### `scheduler/`
-
-- global T-cycle stepping
-- temporal coordination between subsystems
-- stable per-T-cycle subsystem stepping order
-- explicit global synchronization points
-- orchestration between CPU, PPU, DMA, timer, APU, and peripherals
-- ingress of timestamped external events such as host input changes or external serial clocks
-- explicit separation between free-running device ticks, bus arbitration, MMIO commit, interrupt aggregation, and CPU wake / accept points
-- cycle-local context and tracing support so phase order remains visible in code and logs
-- subsystem-facing APIs that keep stage boundaries explicit, for example free-running tick, CPU step, MMIO commit, and interrupt-request aggregation steps, even if final names differ
-
-### `bus/`
-
-- memory reads and writes
-- memory-map region resolution
-- one central address-decode path over the full `0x0000-0xFFFF` map
-- one pure address-router layer that resolves nominal domain and region ownership without owning live timing
-- access arbitration
-- integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
-- domain-oriented controllers or handlers for cartridge, VRAM, WRAM, OAM, boot-overlay, unusable-space, and IO/HRAM/IE behavior
-- modeling of access restrictions and conflicts when hardware makes them visible
-- two-layer arbitration made of decode / nominal ownership followed by requester-aware access policy
-- requester-facing or device-facing views for VRAM and OAM so PPU and DMA do not borrow raw backing arrays directly from unrelated call sites
-- routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
-- MMIO routing to the subsystem-owned register contract for each mapped address
-- one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
-- if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so CGB banking remains visible in the architecture
-- The current bus split is `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs`.
-- In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so CGB bankability does not get buried inside an internal bus.
-- Video-domain acquisition or release is scheduler-visible state, not router behavior; ownership changes for `VRAM` and `OAM` should stay synchronized to the shared T-cycle timeline around PPU and DMA ticks rather than being invented inside the router.
-- DMG-family OAM-corruption trigger classification is a good fit for a dedicated bus child module such as `bus/corruption.rs`: the bus still routes address-space and IDU-originated triggers, while the PPU remains the owner of the corruption formulas and live Mode `2` row behavior.
-- Shared requester, blocked-access, and arbitration-state types are a good fit for `bus/state.rs` so the bus facade can stay focused on orchestration while the public T-cycle-visible bus contract remains explicit and reusable across CPU, DMA, boot, and tests.
-- A requester-facing access pipeline module such as `bus/dispatch.rs` is a good fit for `resolve_access`, `read/write` entry points, and the DMG CPU↔DMA source-bus redirection rule, leaving `bus.rs` as composition plus narrow façade.
-- Metadata and observability helpers such as `BusSnapshot` and the bus scheduler trace formatter are a good fit for `bus/meta.rs`, keeping the facade focused on composition rather than debug-facing presentation.
-
-### `memory/` or bus-owned storage helpers
-
-- WRAM and HRAM backing storage
-- echo-RAM alias backing without duplicate storage
-- plain storage ownership for regions that are not device-defined MMIO, plus any simple storage-backed MMIO fields that remain bus-owned and have no dedicated device semantics
-- explicit uninitialized-memory policy inputs for direct-boot paths
-- narrow storage helpers that remain subordinate to bus-owned address decode and access policy
-
-### `interrupts/` or a tightly scoped interrupt-controller component
-
-- `IF` and `IE` ownership
-- interrupt-source bookkeeping
-- centralized interrupt request / clear helpers
-- fixed-priority pending selection
-- MMIO exposure of `FF0F` and `FFFF`
-- separation between controller-owned request state and CPU-owned `IME` / acceptance flow
-- aggregation of source requests into `IF` without collapsing that step into CPU dispatch
-
-### `boot/`
-
-- boot ROM assets and selection
-- startup-mode selection such as real boot versus direct post-boot entry
-- initial mapping state
-- boot ROM unmapping
-- model-aware post-boot initialization for explicit skip-boot paths
-- centralized post-boot snapshot data and cartridge-derived startup adjustments
-- coordination of subsystem-owned hidden-state synthesis needed for temporally coherent direct-boot entry
-- startup-visible boot behavior from the system perspective
-
-### `machine/`
-
-- composition of one configured handheld core from scheduler, CPU, bus, PPU, APU, DMA, timer, serial, external port, boot, interrupts, joypad, and cartridge owners
-- public stepping APIs and observer hooks that keep scheduler regions visible without moving subsystem behavior into the facade
-- startup reset and ROM replacement orchestration that rebuilds hardware-owned state through the configured startup path
-- pending host ingress queues for joypad state and external serial clocks before they cross the scheduler ingress boundary
-- narrow host-facing helpers such as cartridge persistence access, Pocket Camera frame injection, printer-page collection, and debug snapshots
-- `MachineParts`-style decomposition for tests and tooling without making frontends owners of subsystem internals
-
-### `cpu/`
-
-- SM83 core execution
-- fetch / decode / execute at T-cycle granularity
-- per-instruction reads, writes, and internal steps
-- explicit address-bearing `16`-bit increment/decrement micro-events where hardware quirks depend on them
-- interrupt acceptance and servicing
-- HALT / STOP / HALT bug behavior
-
-### `ppu/`
-
-- LCD control state
-- PPU mode sequencing
-- OAM scan
-- current Mode `2` OAM row tracking
-- pixel fetcher
-- pixel FIFO
-- BG / window / OBJ mixing
-- LCD-facing registers owned by the PPU path
-- LY / LYC / STAT behavior
-- DMG-family OAM corruption controller and formulas
-
-### `dma/`
-
-- shared DMA controller and active-transfer state
-- DMG OAM DMA
-- transfer lifecycle such as `Idle`, `Starting`, `Active`, `Completed`, and future `Cancelled`
-- transfer timing over the shared scheduler timeline
-- per-transfer timing policy, block granularity, and advance-condition modeling
-- publication of CPU-impact and memory-region-impact state for bus and PPU consumption
-- DMA-owned validation and normalization of source and destination contracts
-- integration with bus arbitration
-- architectural preparation for future GDMA and HDMA without scheduler redesign
-
-### `timer/`
-
-- DIV / TIMA / TMA / TAC
-- edge-sensitive timer timing
-- timer interrupt request generation
-- ownership of the timer overflow pipeline, including the delayed `IF` request relative to logical overflow
-
-### `joypad/`
-
-- hardware-facing state of the `8` buttons
-- `P1/JOYP` row-selection ownership
-- visible low-nibble composition from the selected matrix rows
-- previous-visible-state tracking or equivalent edge detection
-- joypad interrupt generation through the shared interrupt-controller path
-- input-driven wake signaling for CPU `STOP` integration
-- separation between frontend input collection and emulated joypad semantics
-- distinction between hardware-facing button changes, visible `JOYP` changes, joypad IRQ requests, and `STOP` wake signaling
-
-### `serial/`
-
-- `SB` and `SC` ownership
-- bit-level serial transfer state
-- internal-clock versus external-clock behavior
-- peer or link-endpoint boundary
-- serial interrupt generation through the shared interrupt-controller path
-- separation between emulated serial hardware and any host transport implementation
-- ownership of transfer-complete detection, `SC.7` clear timing, and completion-triggered serial IRQ requests
-
-### `external_port/`
-
-- attachment-kind and attachment-runtime-state ownership for the handheld's external port
-- public seam(s) for selecting attachment kind and attachment reset/startup policy without exposing unrelated serial-internal state
-- printer protocol state and typed printer output artifacts
-- per-console attachment endpoint state for loopback, printer, `DMG-04`, and `DMG-07` connections
-- conversion between attachment state and the narrow serial-peer or external-clock boundary consumed by `serial/`
-- attachment snapshots for debugger, traces, and tests
-- separation between core attachment ownership and frontend-owned UX such as file export, printer-page presentation, player slots, mute policy, and window/layout policy
-
-### `link/`
-
-- `DMG-04` cable routing, `DMG-07` adapter topology, and native CGB-to-CGB infrared optical-pair topology
-- shared multi-console session orchestration on one T-cycle timeline
-- linked stepping over two or more `Machine` instances without moving per-console `SB` / `SC` semantics out of `serial/`
-- `DMG-07` participant/port identity, adapter packet routing, and adapter timing state
-- CGB IR peer-emitter sampling and optical input routing without treating infrared as an external-port cable attachment
-- separation between attachment/topology ownership and the per-console serial controller that consumes only a narrow signal boundary
-- separation between core attachment/session ownership and frontend-owned player-slot UX, mute policy, and window/layout policy
-
-### `cartridge/`
-
-- base cartridge interface
-- typed cartridge-header parsing over `0x0100-0x014F`
-- decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
-- explicit capability metadata for battery-backed RAM, RTC, and rumble derived from the validated header type
-- central cartridge factory, compatibility-policy consumption, and validation policy
-- typed loader result that separates supported cartridge construction from structured special / unsupported classification, preserving raw `0x0147`, detected name, category, and reason
-- one central load-decision path that combines cartridge classification, compatibility policy, and explicit overrides into admit / warn / reject results
-- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, `Mbc5Cartridge`, `Mmm01Cartridge`, `M161Cartridge`, `Huc1Cartridge`, `Huc3Cartridge`, and `PocketCameraCartridge`
-- No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
-- MBC implementations
-- explicit supported-family taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, `MMM01`, `M161`, `HuC1`, `HuC-3`, and `Pocket Camera`, plus structured unsupported categories rather than one opaque `Unsupported`
-- explicit supported signature/variant paths for close derivatives such as `MBC1M` and `MBC30`
-- separate classification path for special multicarts, documented-but-unsupported mappers, accessory cartridges, experimental heuristics, and unknown codes
-- explicit separation between raw mapper register state, header-derived wiring / variant metadata, mapper-local RAM organization, and helper logic that resolves effective ROM and RAM banks
-- cartridge-visible RAM, whether external or mapper-local to the mapper
-- RTC-backed cartridges
-- bus-facing ownership of `0x0000-0x7FFF` and `0xA000-0xBFFF` through one stable device contract
-- typed cartridge persistence contract for full cartridge-owned backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, or MBC3 SRAM plus RTC
-- host storage backends kept outside the core runtime API, with only a narrow typed cartridge-persistence surface exposed when needed
-
-### `apu/`
-
-- global audio architecture
-- `NR50`, `NR51`, and `NR52` ownership
-- channel state machines
-- per-channel digital output, DAC-enable state, and active-state tracking
-- frame sequencer
-- `DIV-APU` ownership derived from the shared divider timeline
-- mixing logic
-- DAC and output-facing emulated state
-- stereo master-volume and HPF state
-- host-facing sample/export boundary kept separate from hardware stepping
-
-### `debugger/`
-
-- tracing
-- non-recording trace summary sinks may skip event sequence advancement entirely; `next_sequence` is meaningful for recording trace buffers, while summary snapshots remain observational counters/state only
-- breakpoints
-- watchpoints
-- snapshots
-- state inspection
-- keep typed breakpoint/watchpoint target categories stable so `PC`, memory, MMIO, and cartridge-visible evaluation hooks can grow without public API redesign
-- targeted subsystem viewers or equivalent structured dumps for CPU, scheduler, PPU, DMA, APU, IRQ, and cartridge state
-- expand debugger infrastructure incrementally whenever a later roadmap block requires additional observability, without changing its transversal role across subsystems
-- internal analysis and comparison tools
-- utilities for synchronization and trace-debug workflows
-
-## State persistence and snapshot boundaries
-
-### Cartridge persistence
-
-- The powered-on core remains T-cycle driven. Cartridge persistence is a boundary around cartridge-owned state, not a second bus or scheduler path.
-- The core exposes narrow typed persistence hooks through `PersistentCartState`-style payloads, and the cartridge implementation remains the owner of payload semantics.
-- That contract should be able to represent no persistent storage, persistent RAM only, persistent RTC only, or combined RAM plus RTC without forcing the backend to reverse-engineer mapper details from the visible `0xA000-0xBFFF` window.
-- Storage backends such as disk or in-memory adapters should own serialization format, versioning, file naming, path mapping, timestamps, and atomic replacement policy, not cartridge semantics.
-- The `gb-persistence` crate owns cartridge save storage policy, durable `.gbsav` fallback envelopes, primary external `.sav/.saN` files when the mapper state has a lossless external representation, safe file replacement, elapsed-time integration, and external conversion around the typed `PersistentCartState` payloads exported by `gb-core`.
-- Runtime frontends treat `.sav` for P1 and `.sa2/.sa3/.sa4` for linked slots as authoritative when the mapper state is external-stable; `.gbsav/.gbsaN` remains the lossless fallback for HuC-3, MBC6 once hidden flash or sector-0 protection is persistent, and future mapper state without a documented raw-save contract. Legacy `.gbsav` files for external-stable carts are intentionally not auto-loaded; users must migrate them through explicit tooling.
-- Frontend and tooling layers may decide when to flush, such as on close, on explicit manual save, or via optional auto-flush, but they should do so through the persistence backend rather than through bus hooks or cartridge-local file I/O.
-- Tests and tools must be able to use an in-memory persistence backend so cartridge persistence can be validated without host file I/O.
-
-### Full emulator save states and replays
-
-- Cartridge persistence and emulator save states must remain separate systems. Cartridge persistence stores only cartridge-owned hardware state; emulator save states may snapshot the whole machine.
-- Whole-machine save states should capture subsystem-owned live state through explicit typed snapshot contracts rather than by reverse-engineering hidden state from MMIO readback.
-- Cartridge data included inside a whole-machine save state should enter through cartridge-owned runtime snapshot semantics, not by reusing the hardware-style persistence payload as a proxy for full console state.
-- Emulator save states and replays should preserve the execution mode and active compatibility overrides that were in effect when they were created.
-- Restoring or replaying under a different execution mode should fail by default unless a later explicit conversion workflow is designed on top of recorded metadata.
-- Debugger or tooling snapshots should layer on top of the same core-owned save-state contracts instead of creating a second incompatible serialization path.
-- `MachineSaveState` is the core-owned whole-machine boundary. It is distinct from `MachineSnapshot` (debug/inspection only) and cartridge battery-save persistence.
-- Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, SGB profile, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
-- The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `1`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
-- During active development the `.gbstate` payload schema is current-only; incompatible local slot files from earlier builds may be rejected and should be recreated instead of migrated.
-- The Phase 8 durability layer stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
-- Rewind is layered over repeated in-memory `MachineSaveState` capture/restore. Phase 8.4 defines the core-only frame/subframe `MachineRewindBuffer` ring buffer and memory telemetry; Phase 8.7 accounts `MachineSaveState` payload bytes by deterministic deep-size of owned snapshot storage while still excluding allocator/RSS overhead. `gb-desktop` owns the single-machine host integration by recording frame/subframe snapshots during normal runtime, exposing a remappable hold hotkey (`Left Shift` by default), persistent rewind capture/capacity/playback-speed options under `SYSTEM -> REWIND`, compact HUD telemetry plus a top-right active-rewind indicator, and host input/audio/pacing/RTC/save-baseline cleanup after restore. Multi-machine coordination, compression, deltas, and debugger-grade reverse T-cycle stepping remain outside the core contract.
-- Host-facing `.gbstate` I/O is a frontend/tooling policy on top of the core contract. `gb-cli run --state-in/--state-out` restores after ROM load and saves after the normal run budget, while `gb-desktop` stores single-machine slots under `<rom-dir>/states/<state-key>.slot<N>.gbstate` and keeps `LOAD STATE` visible but disabled until the selected ROM-related slot exists. Loading a `.gbstate` must not apply elapsed RTC off-session time or replay cartridge battery-save storage; any cartridge save session uses the restored cartridge state as its new baseline, and the desktop rewind buffer is cleared because the host timeline has jumped to an externally loaded state.
-
-## Module mapping notes
-
-- `Memory and MMIO` may remain a dedicated module or stay split across bus-owned storage helpers and subsystem-owned registers, but ownership must stay explicit.
-- `Interrupt controller` may exist as its own module or as a tightly scoped core component, but `IF` / `IE` ownership must remain distinct from CPU-owned `IME`, `halted`, and `stopped` state.
-- `model/`, `scheduler/`, `debugger/`, `machine/`, `external_port/`, and `link/` are architectural modules with current source-level owners; do not fold their responsibilities back into unrelated subsystem facades.
-
-## Ownership boundary notes
-
-- The scheduler owns phase order, cycle context, and subsystem call order; it must not become a second implementation of timer, PPU, DMA, serial, joypad, or CPU rules.
-- The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
-- The boot subsystem also owns the source-of-truth startup snapshot for direct-boot entry, while the target subsystems still own the live semantics of their registers once execution begins.
-- The DMA subsystem owns transfer state and transfer requests over time.
-- The DMA subsystem also owns transfer-kind-specific validation, lifecycle, progress, CPU-impact policy, and region-impact publication; the bus and PPU should consume that common state instead of reverse-engineering DMA behavior from MMIO register details.
-- The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
-- The PPU also owns the live Mode `2` OAM-row state and the DMG-family OAM corruption formulas, while the bus routes relevant access attempts and the CPU exposes the micro-events needed to classify IDU-driven triggers.
-- The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
-- Frontends, test harnesses, and tooling should submit abstract button press/release state changes rather than prebuilt `JOYP` bytes or direct CPU wake requests.
-- The joypad subsystem owns the translation from host-facing button state plus `P1` row selection into visible `JOYP` readback, joypad interrupt requests, and any input-driven `STOP` wake signal.
-- Frontends, test harnesses, and tooling should provide serial peers, scripted bits, loopback, or external clock pulses through a serial-endpoint boundary rather than by writing received bytes directly into `SB`.
-- The serial subsystem owns the translation from MMIO-visible `SB` / `SC` plus peer-provided bits and clocks into live transfer progress, `SB` intermediate state, and serial interrupt requests.
-- External-port attachment ownership belongs outside the local serial controller. Attachment identity, printer protocol state, `DMG-04` cable routing, and `DMG-07` adapter state should not be smuggled into ad hoc serial-only fields.
-- Linked multi-console session ownership also belongs outside the local serial controller. Shared T-cycle coordination across two or more `Machine` instances is a session/topology concern, not a per-console `SB` / `SC` concern.
-- The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
-- The bus owns central decode, requester arbitration, and blocked-access policy; CPU, DMA, and future transfer engines must not bypass that one policy path with caller-specific memory shortcuts.
-- The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
-- The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
-- The interrupt controller owns `IF` / `IE` state and fixed-priority pending selection, but it does not decide when the CPU actually accepts an interrupt or wakes from `HALT` / `STOP`.
-- The cartridge owns the meaning of persistent RAM and RTC content, while the save backend owns durable storage mechanics such as file format, paths, versioning, and atomic replacement.
-- Save-state machinery must not be smuggled into the cartridge persistence boundary; CPU, PPU, APU, WRAM, and other console-owned state belong to a different system.
-- MMIO metadata should be centralized enough that readable bits, writable bits, dynamic bits, reserved bits, and model-specific availability are not re-declared ad hoc in several modules.
-- CPU code, DMA helpers, and frontend input/audio/video layers must not bypass MMIO-owned subsystem state by poking internal register-shaped fields directly.
-- The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
-- Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
-- Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
-- Input events must enter that same shared scheduling model as changes to hardware-facing button state; they must not live only on a host video-frame cadence if that would hide `JOYP`, interrupt, or `STOP`-wake ordering.
-- Serial peer activity and external serial clock pulses must enter that same shared scheduling model rather than living on host transport threads or timers that bypass the core timeline.
-- Frontend-facing player-slot abstractions such as `P1..P4`, per-player mute defaults, and per-player host input profiles belong to frontend session UX, not to `gb-core` serial, attachment, or linked-session ownership.
-
-## Boot ROM architecture policy
-
-- Treat boot ROM as firmware executed by the real CPU model, not as a fake initialization script.
-- Keep DMG-family hardware separate from boot ROM assets: one hardware core, multiple selectable boot ROM images.
-- Boot ROM selection should depend on the console model and support at least real boot ROM execution, custom boot ROM injection, and direct boot without firmware.
-- Direct-boot helpers are a testing and tooling feature, not a replacement for real boot ROM execution.
-- The boot subsystem should not assume every model uses the same boot firmware size or address mapping layout; keep those details inside the boot and bus design, not spread through unrelated subsystems.
-
-## Portability policy
-
-- No platform-specific APIs inside the emulation core.
-- Keep file I/O, audio output, video output, and input outside the core.
-- Use traits or narrow interfaces where frontend services must be injected.
-- The same core should be usable by CLI tools, desktop apps, benchmarks, tests, and WebAssembly.
-- Frontend crates should adapt one shared core-facing session contract while owning host-only concerns such as boot-ROM search paths, battery-save paths and flush policy, video presentation, frame pacing / `vsync` policy, audio backend configuration, frontend-owned settings persistence, preferred host-device selection, remappable input bindings, native file dialogs plus their ROM-selection filters, recent-ROM history, user-facing error or warning message boxes, compact performance HUDs, and overlay menus.
-- Frontend-owned overlay menus may expose hierarchical settings surfaces such as video, audio, input, system, and recent-ROM launch actions, including binding-capture flows for keyboard joypad bindings, keyboard menu bindings, frontend hotkeys, SDL gamepad button bindings, or SDL gamepad menu bindings, but they must remain host policy rather than leaking UI concepts into the core.
-- Frontend-owned menu controls should remain distinct from emulated joypad bindings so that host UI navigation stays manageable even after the user remaps emulated controls.
-- Frontend-owned video and audio submenu actions should only expose settings that the host frontend can actually apply or persist coherently, such as fullscreen, `vsync`, integer or letterboxed presentation policy, window size, mute, host volume, or performance-HUD visibility, instead of surfacing inert toggles that do not affect the running session.
-- Frontend-owned settings menus may expose reset-to-default actions for host-side video, audio, or input configuration as long as those resets restore frontend defaults without inventing new core state or cartridge semantics.
-- Frontend-side performance HUDs and timing readouts should report host-observed presentation metrics such as emulation, rendering, pacing, or audio-queue behavior rather than inventing new core timing semantics.
-- When a frontend persists host window state such as fullscreen, it should persist the final observed host state on shutdown rather than assuming every state change came through a frontend-owned toggle path.
-- For battery-backed cartridge persistence, frontend-owned flush policy may include host-timed debounce behavior plus mandatory lifecycle flushes on shutdown or ROM replacement, because those scheduling choices are host UX concerns rather than cartridge hardware semantics.
-- If a frontend exposes a manual cartridge-save action in an overlay menu, it should treat that action as a frontend UX surface tied to the active save policy and may hide it entirely when automatic flush policy already makes the manual action redundant.
-- The shared session contract may represent "no cartridge loaded" for interactive frontends, and those frontends may keep the root overlay modal as a launcher until a cartridge is selected, but that idle host state should remain a frontend policy instead of becoming a second startup mode inside `gb-core`.
-- That same host/core session contract should also keep ROM replacement explicit: replacing the loaded cartridge on an existing `Machine` must restart the emulated hardware and scheduler timeline from the configured startup path rather than injecting a new cartridge into stale boot, timer, or scheduler state, while host-owned controls such as debugger configuration, serial-peer choice, and current effective joypad input may remain outside that hardware reset boundary.
-- Frontend host input adapters may aggregate multiple host sources such as keyboard and SDL gamepad state, and they may refresh host controller state explicitly after pumping host events when that reduces backend-specific latency or event-queue quirks, but they must only publish effective `JoypadButton` transitions into the core rather than bypassing joypad-owned hardware semantics or writing precomposed `JOYP` state. Frontend-owned active-device focus, preferred-device locking, and persisted preferred-controller identity are acceptable host policies as long as they stay entirely on the host side and still reduce to ordinary `JoypadButton` transitions at the core boundary.
-
-## Scalability policy
-
-- New hardware quirks must be added behind well-defined subsystem boundaries.
-- Avoid spreading model checks across unrelated modules.
-- Centralize model and revision capabilities.
-- Do not couple DMG-only shortcuts into APIs that would block CGB banking, palettes, HDMA, or double speed later.
-- Prefer capability-driven branching from a shared model description over ad hoc per-subsystem variant checks.
-- Prefer bus-side dynamic mapping and access-state rules over flattening everything into static memory ownership tables.
+Future frontends should adapt these contracts instead of introducing platform-specific APIs inside `gb-core`.
+
+## Crate ownership
+
+| Crate | Owns | Must not own |
+| --- | --- | --- |
+| `gb-core` | Emulated hardware state, T-cycle stepping, subsystem contracts, machine composition, typed cartridge persistence payloads, whole-machine save-state DTOs, rewind buffer primitives, debug snapshots | Disk paths, UI state, audio/video backends, host input APIs, frontend settings, release packaging |
+| `gb-persistence` | Durable cartridge-save policy, `.gbsav` fallback envelopes, external `.sav/.saN` conversion when lossless, `.gbstate` envelopes, safe replacement, timestamps, host paths | Live hardware semantics, mapper behavior, scheduler state mutation |
+| `gb-test-runner` | Automated ROM-suite catalogues, manifest parsing, fixture materialization, runner contracts, deterministic report generation, CI-facing validation helpers | Manual SameBoy oracle workflows that now live outside this repository, frontend UX |
+| `gb-benchmark` | Shared benchmark cases, deterministic input stimulus, one-file-per-game benchmark contract, stats serialization, artifact path conventions | Frontend-specific rendering/audio/input implementations |
+| `gb-cli` | Headless user/tooling commands, run budgets, state import/export orchestration, report presentation | Hardware shortcuts, duplicated loader policy, host UI state |
+| `gb-desktop` | SDL3 windows, presentation, audio backend configuration, menus, dialogs, settings persistence, controller selection, host hotkeys, desktop rewind integration | Core hardware state, cartridge semantics, independent timing model |
+
+## Core invariants
+
+- Model hardware by ownership boundaries, not by frontend features.
+- Keep MMIO registers as device interfaces with explicit read/write/side-effect contracts, not generic byte storage unless the register is truly storage-backed.
+- Prefer strongly typed model, mode, interrupt, requester, cartridge, save-state, and capability data over booleans or stringly typed policy.
+- Keep hidden global state out of the core; lifecycle, reset, ROM replacement, and host ingress must enter through explicit machine/session boundaries.
+- Do not let timing-sensitive behavior depend on host frame cadence, host threads, or whole-instruction CPU completion.
+- Avoid layout churn during behavior fixes; split modules when it clarifies ownership, and keep behavior-neutral migrations separate when possible.
+
+## Timing and scheduler contract
+
+The project timing foundation is T-cycle based. M-cycles may appear in documentation or instruction summaries, but core execution, arbitration, and subsystem synchronization must be representable on one shared T-cycle timeline.
+
+The DMG/CGB/SGB core uses one deterministic machine scheduler. A `GlobalScheduler` plus `step_t_cycle()`-style entry point, or an equally explicit equivalent, is the preferred shape.
+
+Recommended observable per-T-cycle phase order:
+
+1. external event ingress
+2. master clock / shared system-counter tick
+3. resolution of free-running counter-derived edges
+4. autonomous peripheral ticks
+5. bus arbitration for the current T-cycle
+6. CPU micro-operation
+7. MMIO side-effect commit
+8. interrupt aggregation into `IF`
+9. CPU wake / interrupt-accept evaluation
+
+This phase order is an architectural contract for observable dependencies, not a claim that Nintendo published one canonical internal scheduler. Another internal decomposition is acceptable only if it preserves the same visible ordering for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge IRQs, MMIO visibility, same-cycle timer queued-request opcode preemption, and CPU interrupt acceptance.
+
+The scheduler coordinates ordering, cycle-local context, trace points, and synchronization; it must not reimplement timer, PPU, DMA, serial, joypad, APU, cartridge, or CPU-local quirks. Idle fast paths may skip subsystem calls only when the owning subsystem exposes that no hardware-visible work is pending for the current T-cycle.
+
+## Model and compatibility policy
+
+The public model surface uses separate axes instead of one catch-all enum: `ConsoleModel` for silicon family/revision baseline, `OperatingMode` for software-visible GB/CGB compatibility mode, and `HostPlatform` for the surrounding shell such as handheld, `SGB`, or `SGB2`. `CapabilitySet` is the derived view shared subsystems may query for high-level facts such as CGB extensions, DMG-family silicon quirks, DMG software contract, or SGB host enhancements.
+
+`ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` represents CGB-family silicon running monochrome software; it is not the same hardware as DMG-family silicon. `SGB` and `SGB2` enter through `HostPlatform` around the shared GB core, not through a cloned DMG emulator path.
+
+The base core must preserve DMG-family closure while CGB behavior extends the same scheduler, bus, CPU, PPU, DMA, APU, timer, serial, cartridge, persistence, and save-state contracts. Implemented CGB behavior should live behind explicit subsystem ownership and capability gates; avoid ad hoc product-model checks that spread hardware policy across unrelated modules.
+
+Compatibility policy is a loader/config contract around the T-cycle core, not a second hardware model. The central `CompatibilityPolicy` combines `ExecutionMode::{Strict, Permissive, Experimental}`, validation policy, heuristic policy, override policy, and diagnostic policy into one load/admit/warn/reject decision path. Switching mode must not change T-cycle-visible truth for already-supported hardware; it may affect admission, validation severity, heuristic enablement, manual overrides, diagnostics, and access to explicitly experimental implementations.
+
+`Strict` is the oracle and CI mode for official accuracy claims. `Permissive` is tolerant interactive/tooling mode. `Experimental` is for research and partial hardware paths and must not be used as evidence for official accuracy claims. Save states, replays, and official artifacts must record execution mode and active overrides; restoring or replaying under a different mode should fail by default unless an explicit conversion workflow exists.
+
+## `gb-core` module ownership
+
+| Module(s) | Owns |
+| --- | --- |
+| `model/`, `speed.rs`, `sgb.rs` | Public model axes, capability derivation, speed profile data, SGB profile data, compatibility-policy types, and shared configuration that other subsystems consume without redefining product taxonomy. |
+| `scheduler/` | Global T-cycle stepping, ordered subsystem calls, cycle-local context, host-ingress boundary, traceable synchronization points, and separation between free-running ticks, arbitration, MMIO commit, interrupt aggregation, and CPU wake/accept. |
+| `machine/` | Composition of one configured console, startup/reset/ROM replacement orchestration, public stepping APIs, host-ingress queues, observer hooks, cartridge persistence access, Pocket Camera frame injection, printer-page collection, and debug snapshots. |
+| `cpu/` | SM83 registers, fetch/decode/execute state, T-cycle-level reads/writes/internal steps, address-bearing increment/decrement micro-events, IME, interrupt acceptance/dispatch, `HALT`, `STOP`, and HALT bug behavior. |
+| `bus/` | Central address decode, requester-aware access policy, dynamic mapping, boot overlay, WRAM/HRAM and simple storage-backed regions, MMIO dispatch, video-domain access state, OAM corruption trigger routing, CGB infrared `RP` register ownership, and observability metadata. |
+| `boot/` | Boot ROM assets and selection, real/custom/skip boot startup modes, boot mapping, model-aware direct-boot snapshots, `FF50` handoff policy, and startup-visible boot behavior from the system perspective. |
+| `interrupts/` | `IF`/`IE` register state, source request bookkeeping, request/clear helpers, fixed-priority pending selection, MMIO exposure, and aggregation into `IF`; CPU still owns `IME`, wake, and service acceptance. |
+| `timer/` | Shared divider/system-counter-derived `DIV`, `TIMA/TMA/TAC`, edge-sensitive increments, overflow pipeline, and delayed timer interrupt request timing. |
+| `ppu/` | LCD control, mode sequencing, OAM scan, Mode `2` row tracking, pixel fetcher/FIFO, BG/window/OBJ mixing, LCD-facing registers, `LY/LYC/STAT`, CGB palettes/VRAM behavior, and DMG-family OAM corruption formulas. |
+| `dma/` | OAM DMA, GDMA/HDMA lifecycle and timing, active-transfer state, CPU-impact and memory-region-impact publication, per-transfer validation, bus-arbitration integration, and cancellation/completion state. |
+| `apu/` | `NR50/NR51/NR52`, channel state machines, DAC-enable and channel-active state, frame sequencer / `DIV-APU`, mixing, HPF, sample capture, and host sample/export boundary without owning audio backends. |
+| `joypad/` | Hardware-facing button matrix, `P1/JOYP` row selection, visible low-nibble composition, edge detection, joypad IRQ requests, and input-driven `STOP` wake signaling from abstract button transitions. |
+| `serial/` | `SB/SC`, bit-level transfer state, internal and external clock behavior, peer bit/clock boundary, transfer-complete timing, `SC.7` clear timing, and serial IRQ requests. |
+| `external_port/` | Attachment identity and runtime state for loopback, printer, `DMG-04`, and `DMG-07`; printer protocol state; attachment reset/startup policy; per-console endpoint snapshots; conversion to the narrow serial-peer/external-clock boundary. |
+| `link/` | Multi-console T-cycle session orchestration, `DMG-04` cable routing, `DMG-07` adapter topology, native CGB IR optical-pair routing, Pokémon Pikachu Color and Mystery Gift protocol helpers, and separation from frontend player-slot UX. |
+| `cartridge/` | Header parsing, typed classification, central load decision, mapper/device construction, ROM/RAM banking, RTC, rumble, flash/EEPROM/sensor behavior, cartridge-visible RAM, and typed cartridge-persistence payload semantics. |
+| `save_state.rs`, `rewind.rs` | Core-owned whole-machine save-state DTOs, capture/restore boundaries, restore validation, frame/subframe rewind ring buffers, deterministic memory telemetry, and debug/tooling reuse without owning host storage. |
+| `debugger/` | Tracing, trace summaries, breakpoints, watchpoints, structured subsystem snapshots, comparison/debug utilities, and observability infrastructure without taking ownership of subsystem behavior. |
+
+The bus may route a register, access attempt, or address-bearing micro-event, but the device that owns the hardware behavior owns the semantics. CPU, DMA, frontends, tests, and tools must not bypass bus/MMIO/subsystem contracts by poking internal register-shaped fields directly.
+
+## Cartridge, persistence, save-state, and rewind boundaries
+
+Cartridge persistence stores cartridge-owned hardware state only. The core exposes typed `PersistentCartState`-style payloads; cartridge implementations own payload semantics; storage backends own serialization, paths, versioning, timestamps, atomic replacement, and external conversion.
+
+Runtime frontends treat `.sav` for P1 and `.sa2/.sa3/.sa4` for linked slots as authoritative when mapper state has a lossless external representation. `.gbsav/.gbsaN` remains the lossless fallback for mappers or future hardware state without a documented raw-save contract. Legacy `.gbsav` files for external-stable carts are intentionally not auto-loaded; users need explicit migration tooling.
+
+Whole-machine save states are separate from cartridge persistence. `MachineSaveState` is the core-owned save-state boundary, distinct from `MachineSnapshot` debug inspection and cartridge battery-save persistence. Capture happens at a stable public T-cycle boundary; restore validates model, operating mode, host platform, SGB profile, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating subsystem-owned state directly, without replaying MMIO writes.
+
+The `.gbstate` envelope belongs to `gb-persistence`, uses `GBSTATE\0` magic and format version `1`, and carries host metadata around the core payload. During active development, the payload schema is current-only; incompatible local slot files may be rejected and recreated instead of migrated.
+
+Rewind is layered over repeated in-memory `MachineSaveState` capture/restore. The core owns the ring buffer and memory telemetry; `gb-desktop` owns host capture cadence, hotkeys, menu settings, HUD indicators, input/audio/pacing cleanup, and clearing rewind history after externally loaded state jumps. Multi-machine rewind coordination, compression, deltas, and debugger-grade reverse T-cycle stepping remain outside the current core contract.
+
+## Frontend, tooling, and host boundaries
+
+Frontends and tools submit abstract hardware-facing events, not precomposed hardware state. Joypad input enters as button transitions; serial peers provide bits or external clocks; camera and printer seams use typed core boundaries; ROM replacement restarts the emulated hardware and scheduler timeline through the configured startup path.
+
+Frontend-owned state includes windows, audio devices, video presentation, frame pacing, `vsync`, file dialogs, ROM filters, recent files, settings persistence, controller discovery/selection, menu navigation, hotkeys, user-facing warnings, performance HUDs, and lifecycle flush policy. These concerns must not leak into `gb-core` as alternate hardware modes.
+
+`gb-benchmark` centralizes benchmark case parsing, deterministic stimulus, artifact names, and result metadata so `gb-cli` and `gb-desktop` do not diverge in benchmark behavior. `gb-test-runner` centralizes automated validation workflows; manual external oracles and one-off emulator comparisons remain operator workflows rather than core architecture.
+
+## Evolution guardrails
+
+- Add new hardware quirks behind explicit subsystem ownership and document them in the matching hardware handbook.
+- Prefer capability-driven branching from shared model data over scattered model checks.
+- Avoid DMG-only API shortcuts that would block CGB banking, palettes, HDMA, double speed, AGB-family compatibility, SGB host behavior, or later SNES/SFC-side execution.
+- Keep bus-side dynamic mapping and requester-aware access policy explicit instead of flattening everything into static storage tables.
+- Keep model, timing, persistence, and validation policies centralized enough that frontends and tools cannot accidentally fork hardware truth.
+- Optimize only after correctness and observability are preserved; fast paths must not hide pending MMIO, interrupt, DMA, serial, video-domain, or joypad edges.

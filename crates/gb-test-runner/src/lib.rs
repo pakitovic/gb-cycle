@@ -1,23 +1,15 @@
 mod boot_rom_verification;
 mod curated_test_roms;
+#[cfg(test)]
 mod determinism;
-mod differential;
 pub mod external_roms;
 mod fetch_external_roms;
-mod first_divergence;
 mod framebuffer_oracle;
 mod linked_session_manifest;
 mod linked_session_runner;
 mod local_rom_suite_manifest;
-mod run_determinism_cli;
-mod run_differential_cli;
-mod run_first_divergence_cli;
 mod run_linked_session_cli;
 mod run_rom_suite_cli;
-mod run_sameboy_case_bundle_cli;
-mod run_sameboy_tester_cli;
-mod sameboy_case_bundle;
-mod sameboy_tester;
 #[cfg(test)]
 mod test_support;
 mod workspace_paths;
@@ -40,9 +32,10 @@ use gb_core::{
     BootRomAssetError, BootRomAssetKind, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError,
     CgbSpeedMode, CompatibilityPolicy, ConsoleModel, CpuBusAccessKind, CpuDiagnosticTrap,
     CpuExecutionState, CpuSnapshot, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton,
-    Machine, MachineConfig, MachineSaveState, MachineSaveStateRestoreError, StartupMode,
-    TimerStartupState, TraceBuffer, TraceSummaryBuffer,
+    Machine, MachineConfig, StartupMode, TimerStartupState, TraceBuffer, TraceSummaryBuffer,
 };
+#[cfg(test)]
+use gb_core::{MachineSaveState, MachineSaveStateRestoreError};
 use rayon::prelude::*;
 
 pub use boot_rom_verification::{
@@ -62,26 +55,12 @@ pub use curated_test_roms::{
     materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite, test_rom_store_root,
     update_curated_test_report,
 };
-pub use determinism::{
-    DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismCaseReport,
-    DeterminismExecutionError, DeterminismRunner, DeterminismSuiteReport,
-};
-pub use differential::{
-    DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialCaseReport,
-    DifferentialExecutionError, DifferentialOracle, DifferentialOracleLayout, DifferentialRunner,
-    DifferentialSuiteReport,
-};
 pub use external_roms::{
     EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomRequiredFile, ExternalRomSource,
     ExternalRomSourceManifest, discover_external_rom_root_for_key,
     external_rom_source_manifest_path, load_external_rom_source_manifest,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
-pub use first_divergence::{
-    DifferentialProbeSnapshot, FirstDivergenceCaseOutcome, FirstDivergenceCaseReport,
-    FirstDivergenceCompareMode, FirstDivergenceExecutionError, FirstDivergenceRunner,
-    FirstDivergenceSuiteReport, ProbeFieldMismatch,
-};
 pub use linked_session_manifest::{
     LinkedSessionCaptureKind, LinkedSessionCapturePlan, LinkedSessionCase,
     LinkedSessionCaseValidationError, LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant,
@@ -95,28 +74,11 @@ pub use linked_session_runner::{
     LinkedSessionParticipantReport, LinkedSessionRunner, LinkedSessionSuiteReport,
 };
 pub use local_rom_suite_manifest::{LocalRomSuiteManifestError, load_local_rom_suite_manifest};
-pub use run_determinism_cli::{determinism_cli_help_text, run_determinism_command};
-pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
-pub use run_first_divergence_cli::{first_divergence_cli_help_text, run_first_divergence_command};
 pub use run_linked_session_cli::{linked_session_cli_help_text, run_linked_session_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
-pub use run_sameboy_case_bundle_cli::{
-    run_sameboy_case_bundle_command, sameboy_case_bundle_cli_help_text,
-};
-pub use run_sameboy_tester_cli::{run_sameboy_tester_command, sameboy_tester_cli_help_text};
-pub use sameboy_case_bundle::{
-    SameBoyCaseBundleExecutionError, SameBoyCaseBundleRunner, SameBoyCaseBundleSuiteReport,
-    SameBoyProbeCaseReport,
-};
-pub use sameboy_tester::{
-    SameBoyTesterExecutionError, SameBoyTesterImageFormat, SameBoyTesterRunner,
-    SameBoyTesterSuiteReport,
-};
 pub use workspace_paths::{
-    BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_asset_for_console_profile,
-    boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
-    oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
-    sameboy_tester_oracle_root,
+    BOOT_ROM_ROOT_ENV_VAR, boot_rom_asset_for_console_profile, boot_rom_image_path,
+    boot_rom_revision_for_console_model, discover_boot_rom_root,
 };
 
 pub(crate) fn boot_rom_asset_is_required_for_runner_gate(asset: BootRomAssetKind) -> bool {
@@ -1072,10 +1034,6 @@ pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mealybug_tearoom_dmg_curated_suite()
 }
 
-pub fn mealybug_tearoom_dmg_sameboy_differential_suite() -> RomSuite {
-    curated_test_roms::mealybug_tearoom_dmg_sameboy_differential_suite()
-}
-
 pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mooneye_acceptance_dmg_curated_suite()
 }
@@ -1158,7 +1116,6 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         phase_6_cartridge_oracle_suite(),
-        phase_6_mbc6_oracle_suite(),
         ax6_dmg_extra_suite(),
         samesuite_dmg_extra_suite(),
         samesuite_cgb_extra_suite(),
@@ -1189,7 +1146,6 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
     suites.extend(curated_test_rom_family_suites());
     suites.extend(blargg_dmg_curated_split_suites());
     suites.extend(mooneye_dmg_curated_split_suites());
-    suites.push(mealybug_tearoom_dmg_sameboy_differential_suite());
     suites
 }
 
@@ -1309,15 +1265,9 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "blargg-dmg-repo-gated-family",
                 "acid-dmg-curated",
                 "mealybug-tearoom-dmg-curated",
-                "mealybug-tearoom-dmg-sameboy-differential",
                 "ashiepaws-dmg-curated",
             ],
-            active_oracles: &[
-                "trace-fixture",
-                "memory-text-output",
-                "framebuffer-fixture",
-                "differential-case-bundle",
-            ],
+            active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
             remaining_gaps: &[],
         },
         EarlyHardeningChecklistEntry {
@@ -1327,16 +1277,10 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "gb-core-unit-and-integration-coverage",
                 "hardware-style-persistence-tests",
                 "phase-6-cartridge-oracle",
-                "phase-6-mbc6-oracle",
-                "sameboy-case-bundle-differential",
-                "phase-9-save-load-determinism",
+                "phase-6-mbc6-fixture-tests",
+                "save-load-determinism-tests",
             ],
-            active_oracles: &[
-                "unit-contracts",
-                "trace-fixture",
-                "synthetic-serial-hex",
-                "differential-case-bundle",
-            ],
+            active_oracles: &["unit-contracts", "trace-fixture", "synthetic-serial-hex"],
             remaining_gaps: &[],
         },
         EarlyHardeningChecklistEntry {
@@ -1677,47 +1621,6 @@ impl RunnerMachine {
         }
     }
 
-    fn read_bus_for_probe(&self, address: u16) -> u8 {
-        match self {
-            Self::Buffered(machine) => {
-                let mut clone = machine.clone();
-                clone.read_bus(address)
-            }
-            Self::Summary(machine) => {
-                let mut clone = machine.clone();
-                clone.read_bus(address)
-            }
-        }
-    }
-
-    fn debug_vram_bytes(&self) -> &[u8] {
-        match self {
-            Self::Buffered(machine) => machine.debug_vram_bytes(),
-            Self::Summary(machine) => machine.debug_vram_bytes(),
-        }
-    }
-
-    fn debug_oam_bytes(&self) -> &[u8] {
-        match self {
-            Self::Buffered(machine) => machine.debug_oam_bytes(),
-            Self::Summary(machine) => machine.debug_oam_bytes(),
-        }
-    }
-
-    fn debug_wram_bytes(&self) -> &[u8] {
-        match self {
-            Self::Buffered(machine) => machine.debug_wram_bytes(),
-            Self::Summary(machine) => machine.debug_wram_bytes(),
-        }
-    }
-
-    fn debug_hram_bytes(&self) -> &[u8] {
-        match self {
-            Self::Buffered(machine) => machine.debug_hram_bytes(),
-            Self::Summary(machine) => machine.debug_hram_bytes(),
-        }
-    }
-
     fn write_bus(&mut self, address: u16, value: u8) {
         match self {
             Self::Buffered(machine) => machine.write_bus(address, value),
@@ -1817,6 +1720,7 @@ impl RunnerMachine {
         }
     }
 
+    #[cfg(test)]
     fn capture_save_state(&self) -> MachineSaveState {
         match self {
             Self::Buffered(machine) => machine.capture_save_state(),
@@ -1824,6 +1728,7 @@ impl RunnerMachine {
         }
     }
 
+    #[cfg(test)]
     fn restore_save_state(
         &mut self,
         state: &MachineSaveState,
@@ -3290,6 +3195,7 @@ fn encode_bytes_as_upper_hex(bytes: &[u8]) -> String {
     rendered
 }
 
+#[cfg(test)]
 pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
     match capture {
         CaptureKind::Serial => "serial.txt",
@@ -4679,40 +4585,6 @@ mod tests {
     }
 
     #[test]
-    fn built_in_rom_suite_lookup_returns_sameboy_eligible_mealybug_subset() {
-        let suite = built_in_rom_suite_by_name("mealybug-tearoom-dmg-sameboy-differential")
-            .expect("known suite should exist");
-
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
-        assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
-        assert_eq!(suite.cases.len(), 15);
-        assert!(suite.cases.iter().all(|case| {
-            case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.capture_plan.contains(CaptureKind::Framebuffer)
-                && case.capture_plan.contains(CaptureKind::Snapshot)
-                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
-        }));
-        assert!(
-            suite
-                .cases
-                .iter()
-                .any(|case| case.id == "mealybug-m3-window-timing")
-        );
-        assert!(
-            suite
-                .cases
-                .iter()
-                .all(|case| case.id != "mealybug-m3-lcdc-bg-en-change")
-        );
-        assert!(
-            suite
-                .cases
-                .iter()
-                .all(|case| case.id != "mealybug-m3-scy-change")
-        );
-    }
-
-    #[test]
     fn built_in_rom_suite_lookup_returns_curated_cpp_suite_with_framebuffer_oracles() {
         let suite =
             built_in_rom_suite_by_name("cpp-dmg-curated").expect("known suite should exist");
@@ -5014,20 +4886,12 @@ mod tests {
             ppu.current_evidence
                 .contains(&"mealybug-tearoom-dmg-curated")
         );
-        assert!(
-            ppu.current_evidence
-                .contains(&"mealybug-tearoom-dmg-sameboy-differential")
-        );
         assert!(ppu.current_evidence.contains(&"ashiepaws-dmg-curated"));
-        assert!(ppu.active_oracles.contains(&"differential-case-bundle"));
+        assert!(ppu.active_oracles.contains(&"framebuffer-fixture"));
         assert!(!ppu.remaining_gaps.contains(&"repo-gated-dmg-acid2"));
         assert!(
             !ppu.remaining_gaps
                 .contains(&"green-repo-gated-mealybug-tearoom")
-        );
-        assert!(
-            !ppu.remaining_gaps
-                .contains(&"mealybug-sameboy-non-pass-arbitration")
         );
     }
 
@@ -5065,12 +4929,12 @@ mod tests {
         assert!(
             cartridge
                 .current_evidence
-                .contains(&"sameboy-case-bundle-differential")
+                .contains(&"save-load-determinism-tests")
         );
         assert!(
             !cartridge
                 .remaining_gaps
-                .contains(&"phase-9-save-load-determinism")
+                .contains(&"save-load-determinism-tests")
         );
     }
 

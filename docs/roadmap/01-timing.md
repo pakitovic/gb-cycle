@@ -222,7 +222,7 @@ These steps define register-contract groundwork only. They do not move full joyp
 3. Add the cartridge factory.
    Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or a structured special / unsupported classification from `0x0147`, and unsupported types preserve raw `0x0147`, detected name, category, and reason for diagnostics.
 4. Introduce the typed compatibility-policy foundation.
-   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy, as defined authoritatively in `docs/ARCHITECTURE.md`.
+   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy, as defined authoritatively in [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md).
    Acceptance criteria: execution modes are not represented as scattered booleans, one shared policy object exists for loader, tooling, and frontends, and the T-cycle core does not need to read ad hoc global compatibility flags.
 5. Close initial validation and diagnostics plumbing against that shared policy.
    Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and strict / permissive / experimental admission already goes through the shared policy foundation instead of per-call-site booleans.
@@ -244,7 +244,7 @@ These steps define register-contract groundwork only. They do not move full joyp
 
 #### Compatibility-policy sequencing across cartridge bring-up
 
-This subsection operationalizes the cartridge-specific decision matrix defined authoritatively in `docs/hardware/CARTRIDGES-MBC.md` on top of the Phase `1` policy foundation above. `docs/ARCHITECTURE.md` remains the source of truth for the policy shape and supported-hardware invariant, and `docs/TESTING.md` remains the source of truth for CI/oracle usage of execution modes.
+This subsection operationalizes the cartridge-specific decision matrix defined authoritatively in [`docs/hardware/CARTRIDGES-MBC.md`](../hardware/CARTRIDGES-MBC.md) on top of the Phase `1` policy foundation above. [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) remains the source of truth for the policy shape and supported-hardware invariant, and [`docs/TESTING.md`](../TESTING.md) remains the source of truth for CI/oracle usage of execution modes.
 
 1. Centralize the category-by-mode decision table.
    Scope: resolve `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode` through one shared matrix driven by typed cartridge classification.

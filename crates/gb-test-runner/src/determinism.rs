@@ -5,9 +5,8 @@ use gb_core::{
 };
 
 use crate::{
-    DMG_FAMILY_FRAME_T_CYCLES, RomCaseValidationError, RomExecutionError, RomRunner,
-    RomSuiteValidationError, RomTestCase, RunnerMachine, TestSubsystem, Timeout,
-    encode_bytes_as_upper_hex,
+    DMG_FAMILY_FRAME_T_CYCLES, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
+    TestSubsystem, Timeout, encode_bytes_as_upper_hex,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +64,8 @@ impl DeterminismSuiteReport {
 
 #[derive(Debug)]
 pub enum DeterminismExecutionError {
-    InvalidCase(RomCaseValidationError),
-    InvalidSuite(RomSuiteValidationError),
+    InvalidCase,
+    InvalidSuite,
 }
 
 struct DeterminismRunState {
@@ -99,11 +98,6 @@ impl DeterminismRunner {
         }
     }
 
-    pub fn with_rom_runner(mut self, rom_runner: RomRunner) -> Self {
-        self.rom_runner = rom_runner;
-        self
-    }
-
     pub fn with_save_at_t_cycles(mut self, save_at_t_cycles: u64) -> Self {
         self.save_at_t_cycles = Some(save_at_t_cycles);
         self
@@ -120,7 +114,7 @@ impl DeterminismRunner {
     ) -> Result<DeterminismSuiteReport, DeterminismExecutionError> {
         suite
             .validate()
-            .map_err(DeterminismExecutionError::InvalidSuite)?;
+            .map_err(|_| DeterminismExecutionError::InvalidSuite)?;
 
         let mut case_reports = Vec::with_capacity(suite.cases.len());
         for case in &suite.cases {
@@ -139,7 +133,7 @@ impl DeterminismRunner {
         case: &RomTestCase,
     ) -> Result<DeterminismCaseReport, DeterminismExecutionError> {
         case.validate()
-            .map_err(DeterminismExecutionError::InvalidCase)?;
+            .map_err(|_| DeterminismExecutionError::InvalidCase)?;
 
         let (save_at_t_cycles, continuation_t_cycles) = self.case_windows(case);
         let outcome = self
@@ -414,7 +408,7 @@ mod tests {
         let suite = RomSuite::new("", TestSubsystem::Cpu);
         assert!(matches!(
             DeterminismRunner::new().run_suite(&suite),
-            Err(DeterminismExecutionError::InvalidSuite(_))
+            Err(DeterminismExecutionError::InvalidSuite)
         ));
     }
 

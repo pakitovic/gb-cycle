@@ -13,7 +13,6 @@
 *.log
 /.artifacts/
 /scripts/benchmark/
-/.oracles/
 
 # Local test ROMs
 /test/
