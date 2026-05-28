@@ -1,6 +1,8 @@
 # Phase 6 trace fixtures
 
-Retained synthetic cartridge traces for shipped Phase `6` ROM fixtures:
+This directory contains retained synthetic cartridge traces for the Phase `6` `MBC1`, `MBC2`, `MBC3`, and `MBC5` oracle cases.
+
+Current fixtures:
 
 - `phase6_mbc1_standard_banking.trace`
 - `phase6_mbc1_small_rom_mask_and_ram.trace`
@@ -8,6 +10,6 @@ Retained synthetic cartridge traces for shipped Phase `6` ROM fixtures:
 - `phase6_mbc3_banking_ram_and_rtc.trace`
 - `phase6_mbc5_rom_banking_rumble_and_ram.trace`
 
-Regenerate with:
+There is no `MBC6` trace in this directory because `MBC6` is covered by the dedicated built-in `phase-6-mbc6-oracle` serial/state case rather than the shared SameBoy-compatible Phase `6` cartridge trace set.
 
-`GB_CYCLE_ACCEPT_PHASE6_FIXTURES=1 cargo test -q -p gb-core --test phase6 -- --test-threads=1`
+`crates/gb-core/tests/phase6.rs` owns the synthetic ROM builders and can regenerate the ROM fixtures. If these retained trace artifacts are intentionally refreshed, document the generator or runner path in the same change instead of relying on an implicit command.

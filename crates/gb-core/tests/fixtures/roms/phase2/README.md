@@ -1,18 +1,15 @@
-# Phase 2 ROM targets
+# Phase 2 ROM fixtures
 
-These filenames are reserved for the first `gb-test-runner` Phase 2 automation
-targets.
+This directory contains shipped synthetic `NoMBC` ROM fixtures for the Phase `2` CPU, interrupt, timer, `HALT`, `STOP`, and HALT-bug timing targets consumed by `gb-core` tests and the built-in `gb-test-runner` Phase `2` suite.
 
-All current Phase 2 synthetic ROM targets are now shipped as locally generated
-`NoMBC` fixtures. The typed suite metadata in `gb-test-runner` remains the
-source of truth for the intended CPU and interrupt timing targets:
+Current fixtures:
 
-- `phase2_fetch_immediate_order.gb` (`shipped`)
-- `phase2_control_flow_stack_cb.gb` (`shipped`)
-- `phase2_ei_delay_priority.gb` (`shipped`)
-- `phase2_halt_stop_and_halt_bug.gb` (`shipped`)
-- `phase2_timer_if_visibility_and_service.gb` (`shipped`)
+- `phase2_fetch_immediate_order.gb`
+- `phase2_control_flow_stack_cb.gb`
+- `phase2_ei_delay_priority.gb`
+- `phase2_halt_stop_and_halt_bug.gb`
+- `phase2_timer_if_visibility_and_service.gb`
 
-Prefer tiny synthetic ROMs that produce trace-based pass conditions first.
-`crates/gb-core/tests/phase2.rs` is the source of truth for the shipped
-builders and their expected end states.
+`crates/gb-core/tests/phase2.rs` owns the Rust builders and expected end states. Regenerate the ROM fixtures and paired trace fixtures with:
+
+`GB_CYCLE_ACCEPT_PHASE2_FIXTURES=1 cargo test -q -p gb-core --test phase2 -- --test-threads=1`
