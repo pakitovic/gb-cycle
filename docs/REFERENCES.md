@@ -40,15 +40,12 @@ Consult primary documentation and hardware research before emulator source code.
 
 Use this default order only when implementation examples or behavioral cross-checks are needed and no subsystem handbook names a stronger oracle. The order reflects sources the project has actually used for current DMG/CGB/SGB work, not a universal accuracy ranking.
 
-1. [docboy](https://github.com/Docheinstein/docboy) — high-precision structural cross-check for PPU, bus domains, startup/boot residue, linked-session rows, and large DocBoy suite behavior.
-2. [binjgb](https://github.com/binji/binjgb) — compact timing, CPU/bus, timer, DMA, and memory behavior reference.
+1. [SameBoy](https://github.com/LIJI32/SameBoy) — first implementation cross-check when emulator source is useful, especially for DMG/CGB/SGB behavior that already has primary evidence or executable-test pressure.
+2. [docboy](https://github.com/Docheinstein/docboy) — high-precision structural cross-check for PPU, bus domains, startup/boot residue, linked-session rows, and large DocBoy suite behavior.
 3. [GameRoy](https://github.com/Rodrigodd/gameroy) — Rust-oriented structure and corroborating CPU/bus/PPU/APU reference.
-4. [accurateboy](https://github.com/Atem2069/accurateboy) — useful PPU/fetcher/pixel FIFO and DMA timing cross-check.
-5. [Mooneye GB](https://github.com/Gekkio/mooneye-gb) — implementation plus documentary reasoning for CPU, timer, interrupts, boot, DMA, and model edge cases.
-6. [Danger Boy](https://github.com/austinthresher/dangerboy) — smaller codebase for DMG timing study.
-7. [Gambatte](https://github.com/gb-archive/gambatte) — historical high-accuracy corroborating implementation for practical accuracy and corner cases.
-8. [GBE+](https://github.com/shonumi/gbe-plus) — specialized cross-check for obscure peripherals, accessories, and link/cartridge-adjacent flows after primary documentation and Dan Docs.
-9. [mGBA](https://github.com/mgba-emu/mgba) — specialized reference for Pocket Camera behavior and external `.sav` compatibility shapes, not a broad Game Boy oracle for this project.
+4. [Mooneye GB](https://github.com/Gekkio/mooneye-gb) — implementation plus documentary reasoning for CPU, timer, interrupts, boot, DMA, and model edge cases.
+5. [GBE+](https://github.com/shonumi/gbe-plus) — specialized cross-check for obscure peripherals, accessories, and link/cartridge-adjacent flows after primary documentation and Dan Docs.
+6. [mGBA](https://github.com/mgba-emu/mgba) — specialized reference for external `.sav` compatibility shapes, not a broad Game Boy oracle for this project.
 
 ## Usage notes
 
