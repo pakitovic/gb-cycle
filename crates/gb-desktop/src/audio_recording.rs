@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn format_inference_accepts_sameboy_style_extensions() {
+    fn format_inference_accepts_common_audio_extensions() {
         assert_eq!(
             AudioRecordingFormat::from_output_path(&PathBuf::from("test.wav")),
             Ok(AudioRecordingFormat::Wav)
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn aifc_recording_writer_finalizes_a_sameboy_style_header() {
+    fn aifc_recording_writer_finalizes_a_valid_header() {
         let output_path = temp_recording_path("aifc");
         let mut writer =
             AudioRecordingWriter::new(&output_path, DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ)

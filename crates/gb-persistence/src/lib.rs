@@ -4340,7 +4340,7 @@ mod tests {
     }
 
     #[test]
-    fn external_save_exports_mbc2_in_mgba_packed_form_and_imports_sameboy_form() {
+    fn external_save_exports_mbc2_in_packed_form_and_imports_one_byte_per_nibble_form() {
         let metadata = CartridgePersistenceMetadata {
             has_battery: true,
             has_rtc: false,
@@ -4375,14 +4375,15 @@ mod tests {
             state
         );
 
-        let mut sameboy = vec![0; MBC2_RAM_NIBBLE_COUNT];
-        sameboy[0] = 0xF1;
-        sameboy[1] = 0xE2;
-        sameboy[2] = 0xCA;
-        sameboy[3] = 0xBB;
-        sameboy[511] = 0xFF;
-        let imported = import_external_cartridge_save(metadata, &state, &sameboy, 1_700_000_000)
-            .expect("SameBoy one-byte-per-nibble MBC2 should import");
+        let mut one_byte_per_nibble = vec![0; MBC2_RAM_NIBBLE_COUNT];
+        one_byte_per_nibble[0] = 0xF1;
+        one_byte_per_nibble[1] = 0xE2;
+        one_byte_per_nibble[2] = 0xCA;
+        one_byte_per_nibble[3] = 0xBB;
+        one_byte_per_nibble[511] = 0xFF;
+        let imported =
+            import_external_cartridge_save(metadata, &state, &one_byte_per_nibble, 1_700_000_000)
+                .expect("one-byte-per-nibble MBC2 should import");
         let PersistentCartState::Mbc2Ram { ram_nibbles } = imported else {
             panic!("expected MBC2 state");
         };
