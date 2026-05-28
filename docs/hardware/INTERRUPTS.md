@@ -106,13 +106,6 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - AntonioND timing material
 - Gekkio/Mooneye interrupt edge-case research
 
-## Open-source emulator references
-
-- SameBoy
-- binjgb
-- Mooneye GB
-- GameRoy
-
 ## Tests
 
 - Mooneye interrupt timing tests

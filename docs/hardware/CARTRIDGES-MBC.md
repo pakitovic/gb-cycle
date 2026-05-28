@@ -588,16 +588,6 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Pan Docs cartridge and MBC sections
 - cartridge-specific research and test ROMs
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. binjgb
-3. GameRoy
-4. Mooneye GB
-5. Gambatte
-
 ## Tests
 
 [`docs/TESTING.md`](../TESTING.md) owns the detailed cartridge test matrix. Keep this handbook focused on hardware contracts and avoid duplicating every closed unit, integration, synthetic-ROM, or commercial-oracle case here.

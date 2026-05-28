@@ -501,21 +501,6 @@ For fetcher/FIFO behavior and raster-visible glitches, use the references in thi
 
 Do not treat docboy or any other emulator as a normative source for DMG fetcher behavior when it conflicts with the primary references above.
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. docboy
-3. accurateboy
-4. binjgb
-5. GameRoy
-6. Mooneye GB
-7. Gambatte
-8. Danger Boy
-
-For PPU work, this order is weighted by usefulness for DMG pixel FIFO, window timing, and raster-visible behavior, not only by aggregate shootout score.
-
 ## Tests
 
 The following DMG ROMs are the PPU no-regression catalog for the already-closed external raster and timing work. Treat the order as a diagnostic grouping, not as an active phase-progress ledger:

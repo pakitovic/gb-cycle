@@ -207,14 +207,6 @@ Space Invaders should be treated as a manual compatibility example for this capa
 - Pan Docs SGB System Commands: https://gbdev.io/pandocs/SGB_Command_System.html
 - Gekkio research and hardware references when SGB/SGB2 startup, clocks, boot ROMs, or ICD2 behavior need hardware confirmation.
 
-## Open-source emulator references
-
-- SameBoy for practical SGB/SGB2 architecture, command behavior, and differential comparison after primary references.
-- bsnes/higan-class SNES references for later host-side 65C816/SNES/S-APU behavior when Slice 8 begins.
-- GBE+ as an accessory/peripheral-oriented cross-check after primary references, especially for obscure SGB-adjacent behavior.
-
-Open-source emulator code is a comparison aid, not hardware truth. If references disagree, prefer real hardware documentation/research, then model clarity and deterministic tests.
-
 ## Tests
 
 - Packet-decode unit tests for JOYP bit framing, packet counts, command IDs, malformed packets, reset behavior, packet busy/suppression gates, and partial-packet save/load.

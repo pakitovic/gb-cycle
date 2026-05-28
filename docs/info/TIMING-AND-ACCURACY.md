@@ -1,120 +1,95 @@
 # Timing and Accuracy
 
-## Accuracy policy
+This document owns shared timing vocabulary, accuracy-claim policy, and the project-level scheduler contract. Subsystem-specific behavior lives in the matching `docs/hardware/` handbook; crate/module ownership lives in [`../ARCHITECTURE.md`](../ARCHITECTURE.md); validation policy lives in [`../TESTING.md`](../TESTING.md); ROM-suite operation lives in [`ROM-SUITES.md`](ROM-SUITES.md); source consultation order lives in [`../REFERENCES.md`](../REFERENCES.md).
 
-This project aims for hardware-faithful behavior, with special care for timing-sensitive subsystems.
+## Accuracy claim policy
 
-## Important distinction
+Do not use "cycle accurate" as a blanket project label. Make claims at the narrowest supported scope: CPU instruction timing, bus arbitration, timer edge behavior, interrupt ordering, PPU dot/fetcher/FIFO behavior, DMA timing, serial/link timing, APU sequencing, startup/boot handoff, cartridge side effects, save-state continuation, or a specific ROM-suite lane.
 
-Do not use "cycle accurate" loosely. Track accuracy by subsystem:
+`Strict` evidence is the only evidence that supports official accuracy, CI, closure, and promotion claims. `Permissive` and `Experimental` results may be useful for compatibility or research, but they must stay labeled as such and must not be used as strict accuracy evidence.
 
-- CPU execution timing
-- bus access timing
-- timer edge behavior
-- interrupt ordering
-- PPU mode timing
-- pixel fetch and FIFO timing
-- DMA timing
-- APU sequencing and output timing
+A timing claim should state what was validated, where the behavior is owned, which evidence supports it, and what remains unverified. A final framebuffer, a game booting, or a matching aggregate instruction count is not enough for timing-sensitive behavior if the path to that output can still hide wrong ordering.
 
-## Practical rule
+## Evidence order and current resources
 
-A subsystem should only be described as cycle accurate when there is evidence for that claim.
+Use this order unless a subsystem handbook narrows it with a stronger source:
 
-## Sources of confidence
+1. Real hardware evidence, official/manual documentation, and hardware research listed in [`../REFERENCES.md`](../REFERENCES.md), especially Pan Docs, AntonioND, and Gekkio.
+2. The owning local handbook under `docs/hardware/`, plus shared architecture and testing policy in [`../ARCHITECTURE.md`](../ARCHITECTURE.md), [`../TESTING.md`](../TESTING.md), and this file.
+3. Executable evidence from typed tests, manifests, GBEmulatorShootout-sourced rows, DocBoy rows, linked-session manifests, retained traces, snapshots, and report channels documented in [`ROM-SUITES.md`](ROM-SUITES.md).
+4. Open-source emulator source or differential comparison when it provides comparable observables, without treating implementation behavior as hardware truth.
+5. Project-local assumptions, which must be documented as assumptions or TODOs rather than promoted to hardware fact.
 
-Use this order:
+Current executable resources include promoted DMG/SGB, promoted CGB, green extra/internal, large DocBoy, RealBoot-local, private-manifest, and linked-session lanes. Keep their report separation intact: `/test/test-report.md` for promoted rows, `/test/test-report-extra.md` for green non-DocBoy extra/internal rows, `/test/test-report-docboy.md` for large DocBoy single-machine rows, and stdout/artifacts for linked-session rows.
 
-1. hardware documentation and research
-2. test ROM behavior
-3. comparison with trusted emulators
-4. project-local assumptions
+## Timing vocabulary
 
-## Development policy
+- `T-cycle` is the fundamental project timing unit for powered-on core execution.
+- `M-cycle` is a descriptive grouping of four T-cycles, not the scheduler granularity.
+- `dot` is the LCD/PPU scan-domain unit; on DMG-family normal-speed execution it aligns with T-cycle reasoning, while CGB double speed separates CPU-visible scheduler cadence from LCD-domain dot cadence.
+- `RealBoot`, `SkipBoot`, and `CustomBoot` are startup modes with different evidence value; boot-ROM bytes are private/local and selected through model/revision policy rather than a repo-hosted firmware path.
+- `Strict`, `Permissive`, and `Experimental` are execution/evidence modes around the same hardware model, not alternate timing models for already-supported hardware.
 
-When implementing timing:
+When external documentation expresses timing in M-cycles, dots, frames, hertz, or microseconds, restate the behaviorally relevant value in T-cycles or in an explicit domain relationship before encoding it in code, tests, or deferred work.
 
-- document the expected ordering of events
-- document the level of confidence
-- state which source supports the model
-- avoid claiming global cycle accuracy from local evidence
+## Shared timeline model
 
-## Closure and validation claims
+CPU, PPU, DMA, timer, APU, serial, joypad, bus, interrupt, boot, cartridge, and link-visible effects must be explainable on one deterministic shared timeline. Avoid whole-instruction, whole-M-cycle, frame callback, host-thread, or audio-callback designs that advance hardware after the fact and then patch visible state.
 
-- Do not treat "boots a few games" as evidence that DMG timing is closed.
-- Do not treat one matching final framebuffer as sufficient evidence for a timing-sensitive subsystem when the path to that output is still unverified.
-- Closing a timing-sensitive DMG subsystem should rest on layered evidence: focused automated tests, ROM-based validation, trusted-oracle comparison, and determinism checks.
-- Because this project is T-cycle based, the validation stack should be able to compare behavior at end-of-test, end-of-instruction, and short per-T-cycle windows when locating the first divergence matters.
-- If coarser summaries are used for ergonomics, keep a path back to the underlying T-cycle ordering rather than hiding it behind aggregate instruction or frame-level claims.
-- Trace, comparison, and debugging instrumentation must preserve the same hardware-visible T-cycle behavior they are trying to explain.
+Host work is outside the emulated T-cycle timeline. File I/O, save flushing, atomic replacement, UI events, audio device callbacks, and wall-clock sleeps must not reorder already-committed hardware-visible state. Battery-backed off-session behavior such as MBC3 RTC advance may use an explicit elapsed-time source at the persistence boundary, but powered-on bus-visible behavior still needs a T-cycle-domain contract when it matters.
 
-## Modeling policy
+CGB double speed extends the same model instead of creating a second emulator core. The scheduler T-cycle remains CPU-visible; the LCD/video domain keeps its own cadence, so a full double-speed CPU-visible frame can span `140448` scheduler T-cycles while the LCD domain still advances `70224` dots by gating video work to every other scheduler T-cycle. Do not model double speed as a generic multiplier for every subsystem.
 
-- Prefer explicit clock ownership.
-- Make temporal edges visible in code and tests.
-- Do not replace hardware ordering with convenience batching unless the behavior is proven equivalent for the target accuracy.
-- Favor clarity and testability over shortcuts that obscure the phase model.
-- Treat any local simplification that contradicts the T-cycle model or dot-by-dot PPU as explicit documented technical debt, not as a normalized convenience.
-- When implementation ease conflicts with temporal fidelity, preserve temporal fidelity as long as the resulting model remains maintainable and observable.
-- Use T-cycles as the fundamental execution unit for the core timing model.
-- Use dot or T-cycle level reasoning as the baseline timing vocabulary for the core.
-- The shared T-cycle timeline governs powered-on hardware execution; it does not imply that battery-backed off-session progression, such as `MBC3` RTC advance while the console is off, is derived from CPU T-cycles.
-- Treat M-cycles only as a descriptive grouping of four T-cycles, not as the project's primary timing abstraction.
-- When external documentation expresses a timing rule in M-cycles or microseconds, restate the corresponding T-cycle value in project docs and code whenever that rule becomes behaviorally relevant or is recorded as deferred validation work.
-- Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
-- In CGB double-speed mode the scheduler T-cycle remains CPU-visible, so a full LCD frame can contain `140448` scheduler T-cycles while the LCD/video domain still advances `70224` dots by gating video-domain work to every other scheduler T-cycle.
+## Global scheduler contract
 
-## Global scheduler rule
+The preferred shape is one deterministic scheduler, such as `GlobalScheduler` plus a `step_t_cycle()`-style entry point, or an equally explicit equivalent. The scheduler coordinates ordering, cycle-local context, trace points, and synchronization; it must not reimplement subsystem-owned quirks.
 
-- The core should advance through one fixed per-T-cycle scheduler contract, not through ad hoc call chains between subsystems.
-- The recommended ordering is:
-  1. external event ingress
-  2. master clock / shared system-counter tick
-  3. free-running counter-derived edge resolution
-  4. autonomous peripheral ticks
-  5. bus arbitration
-  6. CPU micro-operation
-  7. MMIO side-effect commit
-  8. interrupt aggregation into `IF`
-  9. CPU wake / interrupt-accept evaluation
-- This is a project-level deterministic ordering rule chosen to preserve documented dependencies; it is not presented as the one true internal Nintendo implementation.
-- Free-running divider-derived events such as timer input edges and `DIV-APU` edge detection belong to step `3`, after the shared counter advances and before autonomous peripherals consume those edges.
-- Immediate MMIO effects produced by a write on the access T-cycle, such as `DIV` reset behavior, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions, still belong to the owning device when the access commits in step `7`.
-- In the current March 27, 2026 DMG baseline, the shared scheduler now stages CPU-originated PPU MMIO writes during step `6` and commits them during step `7`. That keeps the runtime aligned with the documented phase contract without changing the existing DMG `Mode 3` rule that active-pipeline register snapshots only become visible on the next PPU dot after the commit.
-- `IF` updates from hardware sources belong to step `8`; CPU acceptance is a later CPU-owned decision and must not be collapsed into the producer path, except that Timer reload requests already queued before CPU step `6` may preempt the next opcode slot and are consumed so step `8` does not reassert an already accepted Timer source.
-- Another internal implementation shape is acceptable only if these same observable dependencies remain true.
+Observable per-T-cycle phase order:
 
-## Practical timing rule
+1. external event ingress
+2. master clock / shared system-counter tick
+3. free-running counter-derived edge resolution
+4. autonomous peripheral ticks
+5. bus arbitration for the current T-cycle
+6. CPU micro-operation
+7. MMIO side-effect commit
+8. interrupt aggregation into `IF`
+9. CPU wake / interrupt-accept evaluation
 
-- CPU, PPU, timer, APU, DMA, and bus-visible effects should be expressible on a shared T-cycle timeline.
-- Avoid architectures that execute a whole instruction or whole M-cycle and only then advance the rest of the hardware.
-- If higher-level helpers exist for ergonomics, they must preserve the same per-T-cycle ordering semantics internally.
-- For the CPU specifically, opcode fetch, immediate fetch, stack transfer, indirect memory access, conditional timing splits, and internal no-bus steps should all remain expressible as ordered events on that timeline.
-- Long-running hardware activity started by a register write, such as OAM DMA, should become explicit in-flight state on the shared timeline rather than a one-shot side effect.
-- When a subsystem progresses in repeated temporal slices, such as one DMA byte every four dots on DMG OAM DMA, that phase relationship should remain visible in code and tests.
-- The timing model must support both fixed-duration burst transfers and windowed or block transfers that only advance in eligible windows such as HBlank, while keeping both on the same shared T-cycle timeline.
-- A transfer's CPU or bus impact and its data-copy action should be expressible separately per T-cycle, because arbitration may be visible on cycles where no byte commits and future block DMA may stall only for selected windows.
-- Future transfer advance may depend on other live machine state such as PPU HBlank visibility or CPU `HALT` state; keep that dependency explicit in the transfer model rather than hiding it in bus code.
-- Edge-driven subsystems such as the timer should derive visible events from clocked internal state transitions, not from coarse accumulated-period shortcuts.
-- CPU interrupt acceptance, delayed `EI`, `HALT` wake-up, and `HALT` bug behavior should be expressed as ordered events on that same shared timeline rather than as opaque instruction-level shortcuts.
-- For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.
-- MMIO reads and writes should also be modeled as ordered T-cycle events on that same timeline, not as timeless getters/setters attached to instruction completion.
-- Read or write side effects triggered by MMIO, such as `DIV` reset, `LCDC.7` LCD enable changes, `FF46` DMA start, `FF50` boot-ROM unmapping, `SC.7` transfer control, or `NRx4` channel triggers, should occur on the access T-cycle unless hardware evidence says otherwise.
-- Public setup/debug helpers such as `Machine::write_bus()` are outside that shared scheduler timeline and may still apply owner-visible MMIO state immediately; do not use those helpers as evidence that the runtime CPU path has no phase-`7` MMIO commit boundary.
-- Reads of dynamic MMIO state such as `LY`, `STAT` mode bits, interrupt flags, in-progress serial state, or APU channel-status bits should observe the live hardware state at the instant of the read.
-- Host-side persistence work such as save flushes, timestamp capture, or atomic file replacement is outside the emulated T-cycle timeline; it must not be used to reorder or retroactively redefine already-committed hardware-visible cartridge state.
-- `JOYP` should follow that same MMIO rule: `FF00` selection writes take effect on the access T-cycle, and later reads should observe the currently selected rows and current hardware-facing button state at the instant of the read.
-- `SB` and `SC` should follow that same MMIO rule: writes change serial state on the access T-cycle, and reads during transfer should be able to observe live serial progress rather than a deferred final-byte snapshot.
-- If hardware truly defers an MMIO-visible effect, model that deferral explicitly as timed state rather than as an informal "apply MMIO side effects later" queue.
-- Host input should enter the core as changes to abstract button state on the shared timeline, not as end-of-frame batches that overwrite the final visible `JOYP` value.
-- Joypad interrupt requests should be derived from `High -> Low` transitions in the visible `P1` low nibble after row selection has been resolved, not from raw host input events detached from `JOYP` visibility.
-- If input timing affects CPU `STOP` wake-up, that wake path should preserve the same ordered T-cycle relationship between button-state change, any resulting `JOYP` visibility change, any resulting interrupt request, and the CPU state transition.
-- DMG master-mode serial clocking should derive from the shared machine timeline at the documented `8192` Hz rate rather than from host sleep or wall-clock timers.
-- Slave-mode serial clock pulses should be injectible on the shared timeline with arbitrary spacing, and serial completion plus IRQ request should occur on the exact pulse that completes the eighth shift.
-- For the APU specifically, internal channel state, `DIV-APU`, frame-sequencer phase, mixer-visible DAC state, and HPF state should advance on that shared T-cycle timeline rather than on host audio callback cadence.
-- The APU frame sequencer should derive its slow control clock from the same shared divider timeline as `DIV`; for the current DMG target, that means reacting to the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge occurs.
-- Slow APU control clocks such as length, envelope, and CH1 sweep must remain distinct from each channel's own fast waveform timer and from the host sample or resampler cadence.
-- Host-rate sample production should observe already-stepped hardware state; it must not become the clock that drives the APU core.
-- When cartridge hardware uses wall-clock-like progression outside powered-on execution, such as battery-backed `MBC3` RTC advance between sessions, model that through an explicit elapsed-time source at the persistence boundary and restate any powered-on bus-visible timing rule in T-cycles when it becomes behaviorally relevant.
-- Timer, joypad, serial, and the APU frame sequencer must not be tied to video-frame or VBlank callbacks; they live on the shared machine timeline even when their visible effects are unrelated to the LCD.
-- Bus restrictions and MMIO-visible state must tell one coherent story on that timeline. For example, `STAT.mode`, VRAM/OAM accessibility, DMA blocking, `SC.7`, `TIMA/TMA/IF`, and visible `JOYP` state must align with the same current-cycle machine state the scheduler uses internally.
+This order is an architectural contract for visible dependencies, not a claim that Nintendo published one canonical internal scheduler. Another implementation shape is acceptable only if it preserves the same observable ordering for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge IRQs, MMIO visibility, same-cycle timer queued-request opcode preemption, and CPU interrupt acceptance.
+
+Free-running divider-derived events such as timer input edges and `DIV-APU` edge detection belong after the shared counter advances and before autonomous peripherals consume those edges. Immediate MMIO effects produced by a write on the access T-cycle, such as `DIV` reset, `FF46` DMA start, `SC.7` transfer start, `LCDC.7` transitions, or `FF50` unmapping, belong to the owning device when the access commits.
+
+Hardware interrupt sources publish into the interrupt controller during aggregation; CPU acceptance is a later CPU-owned decision. Keep those contracts separate even when same-cycle behavior needs a documented exception, such as timer reload requests already queued before the CPU opcode slot.
+
+## Subsystem timing expectations
+
+- CPU execution should remain an in-flight fetch/decode/execute model made of ordered opcode fetch, immediate fetch, memory read/write, stack, branch, interrupt-service, `HALT`, `STOP`, and internal no-bus steps.
+- Bus-visible access policy must be coherent with the same current-cycle state that software can read through MMIO, including `STAT`, `LY`, VRAM/OAM accessibility, DMA blocking, timer/interrupt state, serial progress, and joypad visibility.
+- Timer behavior should derive visible events from clocked internal state transitions, including divider/TAC edge cases and the delayed timer reload/IRQ path, rather than from coarse accumulated-period shortcuts.
+- APU timing should derive frame-sequencer, `DIV-APU`, channel timers, mixer-visible DAC state, and HPF state from the shared timeline; host sample production observes hardware state and must not drive it.
+- PPU behavior should be dot-by-dot enough that mode visibility, fetcher/FIFO behavior, register snapshot timing, and bus restrictions can be tested against the same timeline.
+- DMA should expose in-flight transfer state, CPU/bus impact, source/destination visibility, and byte/block commit timing separately enough to support OAM DMA, GDMA, HDMA, and future windowed transfers.
+- Serial and linked-session timing should enter external clocks, peer bits, cable routing, DMG-07 adapter behavior, and CGB IR optical routing through explicit ingress/topology seams, not frontend sleeps or serial-local shortcuts.
+- Joypad input should enter as hardware-facing button transitions on the shared timeline; visible `P1` low-nibble transitions, interrupt requests, and `STOP` wake must stay ordered.
+- Boot/startup timing should distinguish RealBoot firmware execution, skip/custom direct-start state synthesis, `FF50` handoff, and model/revision-specific hidden-state seeds.
+- Cartridge timing should keep powered-on mapper side effects on the shared timeline and keep off-session persistence advancement explicit at the persistence boundary.
+
+## Validation and trace policy
+
+Validate timing-sensitive work with the narrowest useful unit/integration tests first, then ROM suites, retained artifacts, report comparisons, or external manual differentials when they add evidence. For known external-ROM failures or timing-sensitive reruns, follow the before/after report workflow from [`../TESTING.md`](../TESTING.md) and [`ROM-SUITES.md`](ROM-SUITES.md).
+
+Traces, snapshots, debug instrumentation, and failure artifacts must preserve the hardware-visible T-cycle behavior they explain. Prefer first-divergence evidence over final-frame summaries when diagnosing scheduler, bus, PPU, timer, interrupt, serial, joypad, DMA, APU, startup, or linked-session regressions.
+
+Determinism and save/load continuation are timing evidence. Replays, save states, rewind restore paths, startup overrides, execution modes, external stimuli, injected clocks, and ROM fingerprints must be explicit enough that two runs with the same inputs reproduce the same observable timeline.
+
+## Claim checklist
+
+Before calling timing work closed, be able to answer:
+
+- Which subsystem or cross-subsystem contract owns the behavior?
+- Is the claim expressed in T-cycles, dots, or an explicit cross-domain relationship?
+- Which strict tests, ROM rows, reports, traces, snapshots, or external comparisons support it?
+- Are `Permissive`, `Experimental`, DocBoy-extra, RealBoot-local, private-manifest, or other non-strict results clearly labeled and kept out of strict closure claims?
+- Does the implementation preserve the scheduler phase contract and owner boundaries instead of hiding timing in convenience batching?
+- Are remaining assumptions or gaps recorded in [`../TODO.md`](../TODO.md) or the owning hardware handbook?

@@ -45,12 +45,6 @@ DMG exposes simple WRAM behavior, while native CGB mode exposes banked WRAM thro
 - Pan Docs memory map
 - Gekkio references for hardware differences
 
-## Open-source emulator references
-
-- SameBoy
-- binjgb
-- GameRoy
-
 ## Tests
 
 - memory map tests

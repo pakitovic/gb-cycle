@@ -267,17 +267,6 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - AntonioND timing material
 - Gekkio documentation and tests
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. docboy
-3. binjgb
-4. GameRoy
-5. Mooneye GB
-6. Gambatte
-
 ## Tests
 
 - Mooneye memory and MMIO behavior tests
