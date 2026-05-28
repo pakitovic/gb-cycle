@@ -7,12 +7,14 @@ subsystem = "CrossSubsystem"
 id = "samesuite-sgb-command-mlt-req"
 rom = "sgb/command_mlt_req.gb"
 console = "sgb"
-timeout_frames = 180
-oracle = "info-framebuffer"
+timeout_frames = 300
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/sgb/command_mlt_req.png"
 
 [[case]]
 id = "samesuite-sgb-command-mlt-req-1-incrementing"
 rom = "sgb/command_mlt_req_1_incrementing.gb"
 console = "sgb"
 timeout_frames = 180
-oracle = "info-framebuffer"
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/fixtures/samesuite/sgb/command_mlt_req_1_incrementing.png"

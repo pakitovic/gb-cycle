@@ -29,7 +29,7 @@ help:
 	@echo "  make run-ax6              Fetch and run the extra AX6 DMG RTC suite"
 	@echo "  make run-samesuite        Fetch and run the extra SameSuite DMG suite"
 	@echo "  make run-samesuite-cgb    Fetch and run the extra SameSuite CGB variant suite"
-	@echo "  make run-samesuite-sgb    Fetch and run the informational SameSuite SGB suite"
+	@echo "  make run-samesuite-sgb    Fetch and run the fixture-backed SameSuite SGB suite"
 	@echo "  make run-mooneye-sgb-boot-regs Fetch and run the extra Mooneye SGB/SGB2 boot register suite"
 	@echo "  make run-magen-cgb        Fetch and run the extra Magen CGB suite"
 	@echo "  make run-little-things-gb Fetch and run the extra little-things-gb DMG suite"
