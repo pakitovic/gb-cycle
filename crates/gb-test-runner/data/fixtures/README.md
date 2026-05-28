@@ -45,6 +45,11 @@ The runner updates `/test/test-report.md` with a simple `family | rom | status` 
   current status: extra/internal local-only
   oracle mix: framebuffer fixture
   fixture ownership: shares the upstream SameSuite `div_write_trigger*.png` PNG references with `cgb-audio-samesuite`; DocBoy `interrupt/ei_delay_halt.png` is committed locally
+- `samesuite-sgb`
+  source family: `samesuite`
+  current status: promoted SGB command/multiplayer fixture lane
+  oracle mix: framebuffer fixture
+  fixture ownership: committed DMG LCD PNG fixtures under `samesuite/sgb/`, copied from CasualPokePlayer/GBEmulatorShootout commit `0eab01ca7dc69d02c9892d7175eea62a73728b71` while gbdev/GBEmulatorShootout PR `91` is unmerged; switch this local exception to normal upstream-origin materialization after refreshing the GBEmulatorShootout source fork
 - `samesuite-cgb-extra`
   source family: `samesuite`
   current status: extra/internal local-only
@@ -163,7 +168,7 @@ make run-docboy-cgb-dmg-ext
 make test-roms-docboy
 ```
 
-Each `make run-*` target materializes its own family before executing and updates `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` for the large DocBoy single-machine suites. The currently exploratory local-only families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye` (DMG, CGB, and SGB/SGB2 extra variants), and `samesuite` (DMG and CGB extra variants).
+Each `make run-*` target materializes its own family before executing and updates `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` for the large DocBoy single-machine suites. The non-default direct-run families include `ax6`, `daid`, `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, `docboy-cgb-dmg-ext`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `mooneye` (DMG, CGB, and SGB/SGB2 extra variants), and `samesuite` (DMG, SGB, and CGB variants).
 
 Run one curated family directly and update the report:
 

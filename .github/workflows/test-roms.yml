@@ -31,6 +31,8 @@ jobs:
             command: make run-cpp
           - name: cpp-sgb
             command: make run-cpp-sgb
+          - name: samesuite-sgb
+            command: make run-samesuite-sgb
           - name: mooneye-acceptance
             command: make run-mooneye-acceptance
           - name: mooneye-mbc1-mbc5

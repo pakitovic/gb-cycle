@@ -33,23 +33,31 @@ static CURATED_TEST_ROM_MANIFEST_CACHE: OnceLock<Vec<CuratedTestRomManifest>> = 
 static CURATED_SOURCE_ROM_PATH_CACHE: OnceLock<Vec<(String, PathBuf)>> = OnceLock::new();
 static CURATED_SOURCE_ROM_ORDER_CACHE: OnceLock<BTreeMap<(String, PathBuf), usize>> =
     OnceLock::new();
-const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 16] = [
+const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
     "acid",
     "blargg",
     "daid",
     "ax6",
     "mooneye",
     "samesuite",
+    "ashiepaws",
+    "cpp",
+    "mealybug-tearoom-tests",
+];
+const CURATED_TEST_ROM_EXTRA_REPORT_FAMILY_ORDER: [&str; 7] = [
+    "ax6",
+    "mooneye",
+    "samesuite",
     "magen",
     "gbmicrotest",
+    "mealybug-tearoom-tests",
+    "little-things-gb",
+];
+const CURATED_TEST_ROM_DOCBOY_REPORT_FAMILY_ORDER: [&str; 4] = [
     "docboy-dmg",
     "docboy-cgb",
     "docboy-cgb-dmg",
     "docboy-cgb-dmg-ext",
-    "ashiepaws",
-    "cpp",
-    "mealybug-tearoom-tests",
-    "little-things-gb",
 ];
 const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
     "ax6-dmg-extra",
@@ -829,8 +837,6 @@ pub fn update_curated_test_report(
         );
     }
 
-    suites.sort_by(compare_report_suites);
-
     let standard_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Standard);
     let extra_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Extra);
     let docboy_suites = report_suites_for_kind(&suites, CuratedTestReportKind::DocBoy);
@@ -838,16 +844,19 @@ pub fn update_curated_test_report(
         &store_root,
         TEST_ROM_REPORT_FILE_NAME,
         &standard_suites,
+        CuratedTestReportKind::Standard,
     )?;
     let extra_report_path = write_markdown_report_file_if_needed(
         &store_root,
         TEST_ROM_EXTRA_REPORT_FILE_NAME,
         &extra_suites,
+        CuratedTestReportKind::Extra,
     )?;
     let docboy_report_path = write_markdown_report_file_if_needed(
         &store_root,
         TEST_ROM_DOCBOY_REPORT_FILE_NAME,
         &docboy_suites,
+        CuratedTestReportKind::DocBoy,
     )?;
 
     let report_path = if suite_uses_status_only_test_report(&report.suite_name) {
@@ -906,13 +915,26 @@ fn suite_uses_status_only_test_report(suite_name: &str) -> bool {
     STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
 }
 
+fn report_family_order_for_kind(report_kind: CuratedTestReportKind) -> &'static [&'static str] {
+    match report_kind {
+        CuratedTestReportKind::Standard => &CURATED_TEST_ROM_REPORT_FAMILY_ORDER,
+        CuratedTestReportKind::Extra => &CURATED_TEST_ROM_EXTRA_REPORT_FAMILY_ORDER,
+        CuratedTestReportKind::DocBoy => &CURATED_TEST_ROM_DOCBOY_REPORT_FAMILY_ORDER,
+    }
+}
+
 fn write_markdown_report_file(
     store_root: &Path,
     file_name: &str,
     suites: &[PersistedSuiteStatus],
+    report_kind: CuratedTestReportKind,
 ) -> Result<PathBuf, String> {
     let report_path = store_root.join(file_name);
-    fs::write(&report_path, render_markdown_report(suites)).map_err(|error| {
+    fs::write(
+        &report_path,
+        render_markdown_report_for_kind(suites, report_kind),
+    )
+    .map_err(|error| {
         format!(
             "failed to write curated test ROM report {}: {error}",
             report_path.display()
@@ -926,6 +948,7 @@ fn write_markdown_report_file_if_needed(
     store_root: &Path,
     file_name: &str,
     suites: &[PersistedSuiteStatus],
+    report_kind: CuratedTestReportKind,
 ) -> Result<Option<PathBuf>, String> {
     if suites.is_empty() {
         let report_path = store_root.join(file_name);
@@ -933,7 +956,7 @@ fn write_markdown_report_file_if_needed(
         return Ok(None);
     }
 
-    write_markdown_report_file(store_root, file_name, suites).map(Some)
+    write_markdown_report_file(store_root, file_name, suites, report_kind).map(Some)
 }
 
 fn remove_markdown_report_file_if_present(report_path: &Path) -> Result<(), String> {
@@ -1162,9 +1185,10 @@ fn sort_persisted_case_statuses(
     family: &str,
     case_statuses: &mut [PersistedCaseStatus],
 ) {
+    let family_order = report_family_order_for_kind(suite_test_report_kind(suite_name));
     case_statuses.sort_by_cached_key(|entry| {
         let entry_family = entry.family.as_deref().unwrap_or(family);
-        let rank = report_family_rank(entry_family);
+        let rank = report_family_rank(entry_family, family_order);
         let order = manifest_case_order(suite_name, entry_family, &entry.rom);
         (
             rank.is_none(),
@@ -1914,13 +1938,28 @@ fn blargg_memory_text_output_spec() -> MemoryTextOutputSpec {
     )
 }
 
+#[cfg(test)]
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
+    render_markdown_report_for_kind(suites, CuratedTestReportKind::Standard)
+}
+
+fn render_markdown_report_for_kind(
+    suites: &[PersistedSuiteStatus],
+    report_kind: CuratedTestReportKind,
+) -> String {
+    render_markdown_report_with_family_order(suites, report_family_order_for_kind(report_kind))
+}
+
+fn render_markdown_report_with_family_order(
+    suites: &[PersistedSuiteStatus],
+    family_order: &[&str],
+) -> String {
     let mut ordered_suites = suites
         .iter()
         .cloned()
         .map(normalize_persisted_suite_status)
         .collect::<Vec<_>>();
-    ordered_suites.sort_by(compare_report_suites);
+    ordered_suites.sort_by(|left, right| compare_report_suites(left, right, family_order));
     let (non_failing_cases, total_cases) = report_summary_counts(&ordered_suites);
     let mut rows = ordered_suites
         .iter()
@@ -1936,8 +1975,8 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
          (right_suite_name, right_default_family, right)| {
             let left_family = left.family.as_deref().unwrap_or(left_default_family);
             let right_family = right.family.as_deref().unwrap_or(right_default_family);
-            let left_rank = report_family_rank(left_family);
-            let right_rank = report_family_rank(right_family);
+            let left_rank = report_family_rank(left_family, family_order);
+            let right_rank = report_family_rank(right_family, family_order);
             let left_order = manifest_case_order(left_suite_name, left_family, &left.rom);
             let right_order = manifest_case_order(right_suite_name, right_family, &right.rom);
 
@@ -1996,8 +2035,8 @@ fn report_summary_counts(suites: &[PersistedSuiteStatus]) -> (usize, usize) {
     (non_failing_cases, total_cases)
 }
 
-fn report_family_rank(family: &str) -> Option<usize> {
-    CURATED_TEST_ROM_REPORT_FAMILY_ORDER
+fn report_family_rank(family: &str, family_order: &[&str]) -> Option<usize> {
+    family_order
         .iter()
         .position(|known_family| *known_family == family)
 }
@@ -2005,9 +2044,10 @@ fn report_family_rank(family: &str) -> Option<usize> {
 fn compare_report_suites(
     left: &PersistedSuiteStatus,
     right: &PersistedSuiteStatus,
+    family_order: &[&str],
 ) -> std::cmp::Ordering {
-    let left_rank = report_family_rank(&left.family);
-    let right_rank = report_family_rank(&right.family);
+    let left_rank = report_family_rank(&left.family, family_order);
+    let right_rank = report_family_rank(&right.family, family_order);
 
     (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
         .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
@@ -2240,20 +2280,20 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
-        GBEMU_SHOOTOUT_SOURCE_ID, MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus,
-        PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
-        REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
-        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
-        TEST_ROM_STATUS_DIR_NAME, ax6_dmg_extra_suite, blargg_dmg_curated_suite,
-        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
-        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
-        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
-        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom, cpp_sgb_suite,
-        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
-        curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
-        docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
-        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
+        CURATED_TEST_ROM_REPORT_FAMILY_ORDER, CuratedTestReportKind, CuratedTestRomCase,
+        CuratedTestRomCaseFile, CuratedTestRomManifestFile, GBEMU_SHOOTOUT_SOURCE_ID,
+        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
+        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
+        TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
+        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
+        ax6_dmg_extra_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
+        blargg_memory_text_output_spec, capture_plan_for_pass_condition, cgb_audio_blargg_suite,
+        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
+        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
+        cpp_sgb_suite, curated_test_rom_families, curated_test_rom_family_suites,
+        curated_test_rom_manifest_texts, curated_test_rom_manifests, discover_test_rom_store_root,
+        docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
+        docboy_dmg_extra_suite, failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
         little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
         load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
@@ -2261,10 +2301,11 @@ mod tests {
         mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
         mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
         parse_manifest_console_model, parse_manifest_host_platform, parse_manifest_subsystem,
-        render_markdown_report, report_rom_display, report_status_display,
-        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
-        sort_persisted_case_statuses, suite_uses_docboy_test_report, suite_uses_extra_test_report,
-        test_rom_store_root, update_curated_test_report,
+        render_markdown_report, report_family_order_for_kind, report_family_rank,
+        report_rom_display, report_status_display, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite, samesuite_sgb_suite, sort_persisted_case_statuses,
+        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
+        update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
@@ -2985,7 +3026,7 @@ mod tests {
     }
 
     #[test]
-    fn samesuite_sgb_suite_runs_informational_rows_on_sgb_host() {
+    fn samesuite_sgb_suite_runs_fixture_rows_on_sgb_host() {
         let suite = samesuite_sgb_suite();
 
         assert_eq!(suite.name, "samesuite-sgb");
@@ -3000,19 +3041,23 @@ mod tests {
             (
                 "samesuite-sgb-command-mlt-req",
                 "samesuite/sgb/command_mlt_req.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/sgb/command_mlt_req.png",
+                Timeout::Frames(300),
             ),
             (
                 "samesuite-sgb-command-mlt-req-1-incrementing",
                 "samesuite/sgb/command_mlt_req_1_incrementing.gb",
+                "crates/gb-test-runner/data/fixtures/samesuite/sgb/command_mlt_req_1_incrementing.png",
+                Timeout::Frames(180),
             ),
         ];
 
-        for (case, (id, rom_path)) in suite.cases.iter().zip(expected) {
+        for (case, (id, rom_path, fixture_path, timeout)) in suite.cases.iter().zip(expected) {
             assert_eq!(case.id, id);
             assert_eq!(case.console_model, ConsoleModel::GameBoy);
             assert_eq!(case.host_platform, HostPlatform::Sgb);
             assert_eq!(case.startup_mode, StartupMode::SkipBoot);
-            assert_eq!(case.timeout, Timeout::Frames(180));
+            assert_eq!(case.timeout, timeout);
             assert_eq!(case.rom_path, PathBuf::from(rom_path));
             assert_eq!(
                 case.external_rom_root_key.as_deref(),
@@ -3020,7 +3065,7 @@ mod tests {
             );
             assert_eq!(
                 case.pass_condition,
-                PassCondition::Informational(CaptureKind::Framebuffer)
+                PassCondition::FramebufferFixture(PathBuf::from(fixture_path))
             );
             assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
             assert!(case.capture_plan.contains(CaptureKind::Snapshot));
@@ -5447,12 +5492,12 @@ status = "PASS"
                     PersistedCaseStatus {
                         family: None,
                         rom: "sgb/command_mlt_req.gb".to_string(),
-                        status: "INFO".to_string(),
+                        status: "PASS".to_string(),
                     },
                     PersistedCaseStatus {
                         family: None,
                         rom: "sgb/command_mlt_req_1_incrementing.gb".to_string(),
-                        status: "INFO".to_string(),
+                        status: "PASS".to_string(),
                     },
                 ],
             },
@@ -5475,12 +5520,12 @@ status = "PASS"
             .expect("SameSuite CGB blocking BGPI row should exist");
         let mlt_req = rendered
             .find(&format!(
-                "| samesuite | sgb/command_mlt_req.gb | {REPORT_STATUS_INFO_EMOJI} |"
+                "| samesuite | sgb/command_mlt_req.gb | {REPORT_STATUS_PASS_EMOJI} |"
             ))
             .expect("SameSuite SGB MLT_REQ row should exist");
         let mlt_req_incrementing = rendered
             .find(&format!(
-                "| samesuite | sgb/command_mlt_req_1_incrementing.gb | {REPORT_STATUS_INFO_EMOJI} |"
+                "| samesuite | sgb/command_mlt_req_1_incrementing.gb | {REPORT_STATUS_PASS_EMOJI} |"
             ))
             .expect("SameSuite SGB MLT_REQ incrementing row should exist");
 
@@ -5963,5 +6008,56 @@ status = "PASS"
         assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
         assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
         assert!(!suite_uses_extra_test_report("cgb-smoke"));
+    }
+
+    #[test]
+    fn standard_report_family_order_matches_promoted_markdown_report_families() {
+        assert_eq!(
+            CURATED_TEST_ROM_REPORT_FAMILY_ORDER,
+            [
+                "acid",
+                "blargg",
+                "daid",
+                "ax6",
+                "mooneye",
+                "samesuite",
+                "ashiepaws",
+                "cpp",
+                "mealybug-tearoom-tests",
+            ]
+        );
+
+        for family in [
+            "magen",
+            "gbmicrotest",
+            "docboy-dmg",
+            "docboy-cgb",
+            "docboy-cgb-dmg",
+            "docboy-cgb-dmg-ext",
+            "little-things-gb",
+        ] {
+            assert_eq!(
+                report_family_rank(
+                    family,
+                    report_family_order_for_kind(CuratedTestReportKind::Standard)
+                ),
+                None,
+                "{family} should not be ranked in {TEST_ROM_REPORT_FILE_NAME}"
+            );
+        }
+        assert!(
+            report_family_rank(
+                "magen",
+                report_family_order_for_kind(CuratedTestReportKind::Extra)
+            )
+            .is_some()
+        );
+        assert!(
+            report_family_rank(
+                "docboy-dmg",
+                report_family_order_for_kind(CuratedTestReportKind::DocBoy)
+            )
+            .is_some()
+        );
     }
 }
