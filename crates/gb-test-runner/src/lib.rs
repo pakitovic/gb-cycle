@@ -1278,10 +1278,9 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "hardware-style-persistence-tests",
                 "phase-6-cartridge-oracle",
                 "phase-6-mbc6-fixture-tests",
-                "save-load-determinism-tests",
             ],
             active_oracles: &["unit-contracts", "trace-fixture", "synthetic-serial-hex"],
-            remaining_gaps: &[],
+            remaining_gaps: &["cartridge-save-load-determinism"],
         },
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Joypad,
@@ -4927,14 +4926,14 @@ mod tests {
             super::EarlyHardeningStatus::RepoGatePresent
         );
         assert!(
-            cartridge
+            !cartridge
                 .current_evidence
                 .contains(&"save-load-determinism-tests")
         );
         assert!(
-            !cartridge
+            cartridge
                 .remaining_gaps
-                .contains(&"save-load-determinism-tests")
+                .contains(&"cartridge-save-load-determinism")
         );
     }
 
