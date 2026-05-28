@@ -1,74 +1,75 @@
 # Execution
 
-## Standard workflow
+This file owns the day-to-day implementation workflow: how to choose authority docs, keep changes scoped, select validation, and record follow-up work. It does not redefine hardware behavior, test-suite membership, or roadmap scope; those live in the linked owning documents.
 
-1. Identify the owning subsystem or workflow and use `docs/index.md` to route to the authoritative document.
-2. For hardware behavior, read the matching `docs/hardware/*.md`; for cross-cutting core design, read `docs/ARCHITECTURE.md` plus the relevant `docs/core/*.md`; for frontend behavior, read `docs/frontends/*.md`; for validation workflow, read `docs/TESTING.md` or `docs/testing/ROM-SUITES.md`.
-3. Read `docs/ROADMAP.md` when the task maps to a roadmap phase, resumes prior work, or may leave deferred follow-up work; read `docs/TODO.md` when closing, rewriting, or adding an active gap.
-4. Read matching primary references from `docs/REFERENCES.md` when hardware behavior, timing, or oracle policy depends on external evidence.
-5. Use the open-source emulator consultation notes in `docs/REFERENCES.md` only if implementation examples or source-level emulator cross-checks are needed.
-6. Define contracts, invariants, and ownership boundaries before coding.
-7. Implement the smallest correct change.
-8. Validate with the narrowest useful automated tests first, then ROM-based tests or oracle comparison when the behavior requires them.
-9. Cross-check against a trusted emulator or retained oracle when behavior is timing-sensitive or when a compatibility decision depends on non-obvious evidence.
-10. Update docs when assumptions, sequencing, scope limits, ownership boundaries, validation policy, or rules change.
+## Working loop
+
+1. Identify the owning subsystem or workflow and route through [`docs/index.md`](index.md) before editing.
+2. Read only the relevant authority docs: hardware behavior in the matching `docs/hardware/` handbook, architecture and scheduler boundaries in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md), timing vocabulary in [`docs/info/TIMING-AND-ACCURACY.md`](info/TIMING-AND-ACCURACY.md), model-axis guidance in [`docs/info/MODEL-AXES.md`](info/MODEL-AXES.md), frontend behavior in [`docs/info/CLI.md`](info/CLI.md) or [`docs/info/DESKTOP.md`](info/DESKTOP.md), validation policy in [`docs/TESTING.md`](TESTING.md), and ROM-suite mechanics in [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md).
+3. Read [`docs/ROADMAP.md`](ROADMAP.md) when work maps to a phase, resumes an incomplete slice, changes sequencing, or leaves known follow-up work; read [`docs/TODO.md`](TODO.md) when adding, closing, or rewriting an active gap.
+4. Read [`docs/REFERENCES.md`](REFERENCES.md) when hardware behavior, timing, oracle policy, or external-resource choice depends on evidence outside the repository.
+5. State the contract, invariants, evidence source, and ownership boundary before changing behavior.
+6. Implement the smallest correct change that preserves debuggability, determinism, and the T-cycle timing model.
+7. Validate with the narrowest useful automated check first, then widen to integration tests, ROM suites, retained artifacts, or external cross-checks only when the behavior requires that evidence.
+8. Update the owning docs in the same change when assumptions, scope, sequencing, limitations, validation policy, public commands, or authority boundaries change.
+
+## Active resources
+
+- [`docs/index.md`](index.md) is the map of authority boundaries; start there when ownership is unclear.
+- [`docs/ARCHITECTURE.md`](ARCHITECTURE.md), [`docs/CODING-RULES.md`](CODING-RULES.md), and subsystem handbooks under `docs/hardware/` are the local source of design and hardware-model constraints.
+- [`docs/TESTING.md`](TESTING.md) owns validation policy; [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) owns external ROM materialization, Make targets, reports, and runner commands.
+- [`docs/REFERENCES.md`](REFERENCES.md) owns the current consultation order for Pan Docs, AntonioND, Gekkio, GBEmulatorShootout, DocBoy, and other active references.
+- `crates/gb-test-runner/data/sources.toml` owns pinned external ROM sources and hashes; update it rather than documenting ad hoc source lists elsewhere.
+- `/test/test-report.md`, `/test/test-report-extra.md`, and `/test/test-report-docboy.md` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
 
 ## Change policy
 
-- One behavioral change at a time.
-- Documentation-only cleanups may group related moves or stale-text removal when they preserve behavior and make authority boundaries clearer.
-- Avoid mixing refactors with timing fixes unless required.
-- When in doubt, preserve debuggability over micro-optimizations.
-- Use Conventional Commits for commit messages.
-- Use Conventional Commits for pull request titles as well, so branch history and PR metadata follow the same naming contract.
-- Before refactoring behavior-sensitive paths, verify coverage exists for the target behavior; add it first if missing.
-- Keep bug fixes minimal and isolated from unrelated cleanup.
-- Keep file moves separate from behavior changes when possible; if a move is required, update `docs/index.md`, README links, and stale path references in the same change.
-- New production code should normally land with automated unit tests or integration tests in the same change.
-- If a code change cannot reasonably add automated tests yet, document the reason, the remaining validation gap, and the associated risk explicitly in the change report.
-- Do not use `Permissive` or `Experimental` results as evidence for `Strict` accuracy claims unless the docs explicitly frame them as non-oracle exploratory data.
+- Keep one behavioral change per patch when practical; group documentation-only cleanup only when it clarifies the same authority boundary or removes the same stale workflow.
+- Do not mix refactors with timing fixes unless the refactor is required to make the timing fix explicit and testable.
+- Before touching behavior-sensitive code, verify useful coverage exists or add focused coverage first.
+- New production code normally lands with unit, integration, or ROM-backed coverage in the same change.
+- If automated coverage cannot be added yet, report the reason, the remaining validation gap, and the risk explicitly, then record concrete follow-up in [`docs/TODO.md`](TODO.md) when the gap survives the change.
+- Keep file moves separate from behavior changes when possible; if a move is required, update [`docs/index.md`](index.md), README links, and stale Markdown references in the same change.
+- Preserve Conventional Commits for commits and pull request titles.
+- Do not treat `Permissive` or `Experimental` ROM results as `Strict` accuracy evidence unless the owning docs explicitly frame the result as non-oracle exploratory data.
 
-## Roadmap coordination policy
+## Roadmap and TODO policy
 
-- `docs/ROADMAP.md` is a living document, not a one-time planning artifact.
-- Use it to understand recommended implementation order, phase dependencies, and phase-level done criteria.
-- Treat roadmap phase order as the recommended implementation order, not as a strict merge-order constraint when parallel work can land cleanly without violating subsystem authority docs.
-- `docs/TODO.md` owns the active TODO ledger. When a task lands with known gaps, deferred fixes, incomplete validation, or partially unmet roadmap done criteria, add or update the concrete TODO there in the same change.
-- Remove or rewrite TODO entries when the underlying work is completed, invalidated, or superseded by a better plan.
-- Keep TODOs lean in status noise and rich in re-entry context: exact remaining behavior, evidence already in hand, superseded directions not to retry first, and the highest-value next step.
-- Do not record speculative ideas there; keep TODOs tied to concrete implemented or partially implemented work.
-- Update `docs/ROADMAP.md` or `docs/roadmap/*.md` only when phase structure, sequencing, scope, or done criteria changes.
+- [`docs/ROADMAP.md`](ROADMAP.md) owns phase order, dependencies, scope summaries, and done criteria; roadmap order is the recommended implementation sequence, not a strict merge-order rule for independent work.
+- [`docs/TODO.md`](TODO.md) owns concrete remaining work across phases; it should contain re-entry context, evidence already gathered, superseded directions not to retry first, and the highest-value next step.
+- Add or update TODOs when a change leaves known gaps, deferred fixes, incomplete validation, or partially unmet phase criteria.
+- Remove or rewrite TODOs when the underlying work is completed, invalidated, or superseded.
+- Do not store speculative ideas in [`docs/TODO.md`](TODO.md); keep speculation in discussion until it becomes a concrete follow-up.
 
-## Documentation workflow
+## Documentation policy
 
-- Keep root `docs/` for top-level routing and project-wide policy; place cross-cutting core design under `docs/core/`, frontend usage under `docs/frontends/`, validation tooling workflows under `docs/testing/`, hardware behavior under `docs/hardware/`, and phase plans under `docs/roadmap/`.
-- When moving or renaming docs, update `docs/index.md` and any README or cross-doc links in the same change.
+- Keep root `docs/` for top-level routing and project-wide policy, `docs/info/` for cross-cutting core/frontends/tooling guidance, `docs/hardware/` for subsystem behavior, and `docs/roadmap/` for phase plans.
+- Link concrete Markdown file references so GitHub navigation works; keep local non-Markdown file paths as plain code unless there is a specific reason to link them.
 - Do not hard-wrap Markdown prose. Keep each paragraph, bullet item, numbered item, and roadmap field on one physical line unless it is a fenced block, table, or intentional standalone formula.
-- For documentation-only changes, validate with stale-reference searches and `git diff --check`; run code tests only when the docs change executable examples, commands, workflows, or behavior claims that need verification.
+- For documentation-only changes, run stale-reference/link checks plus `git diff --check`; run code tests only when docs change executable examples, commands, workflows, or behavior claims that need verification.
 
-## When touching timing-sensitive code
+## Timing-sensitive work
 
-- Document the expected ordering of events.
-- State whether reasoning is based on Pan Docs, AntonioND, Gekkio, tests, or reference emulators.
-- Prefer reproducible validation over intuition.
-- Preserve the project's T-cycle timing foundation; do not introduce M-cycle-first scheduling shortcuts as a local convenience.
-- Preserve retained traces, snapshots, or before/after artifacts when they are the only practical way to explain a regression.
-- When rerunning curated external ROM suites for an existing failure or timing-sensitive change, follow the mandatory matching `/test/test-report.md`, `/test/test-report-extra.md`, or `/test/test-report-docboy.md` before/after workflow from `docs/index.md` and `docs/TESTING.md`.
-
-## When touching the global scheduler or cross-subsystem ordering
-
-- Preserve the fixed per-T-cycle phase contract defined by `docs/ARCHITECTURE.md` and `docs/core/TIMING-AND-ACCURACY.md`.
-- Update the matching hardware docs together when the observable ordering of DMA, PPU mode visibility, MMIO side effects, interrupt visibility, or CPU acceptance changes.
+- Preserve the project-wide T-cycle foundation and the fixed per-T-cycle scheduler contract from [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/info/TIMING-AND-ACCURACY.md`](info/TIMING-AND-ACCURACY.md).
+- Document expected event ordering, the evidence source, and whether the reasoning comes from Pan Docs, AntonioND, Gekkio, ROM tests, retained traces, or emulator cross-checks.
+- Prefer reproducible validation over intuition; keep cycle traces, snapshots, or before/after artifacts when they are the practical evidence for a regression or fix.
+- When global ordering changes, update matching hardware docs for observable DMA, PPU mode visibility, MMIO side effects, interrupt visibility, CPU acceptance, serial/link completion, joypad edges, or scheduler arbitration.
 - Keep requester arbitration, MMIO commit, and interrupt aggregation explicit; do not replace them with ad hoc subsystem-to-subsystem calls just because one local test passes.
-- Add or update focused cross-subsystem tests such as DMA-vs-CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible-edge IRQ, `HALT` / IRQ priority, and `STAT`-versus-bus coherence.
-- Prefer cycle traces over aggregate instruction summaries when validating scheduler work.
+- Add or update focused cross-subsystem tests for the affected ordering path, such as DMA-vs-CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible-edge IRQ, `HALT`/IRQ priority, or `STAT`-versus-bus coherence.
+
+## Validation selection
+
+- Start with formatting, typos, unit tests, or targeted cargo tests when they directly cover the change.
+- Use `make ci` as the local pre-push gate when the change affects code paths covered by the default repository gate.
+- Use ROM-suite Make targets from [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) when behavior depends on external ROM evidence, and keep the generated report channel aligned with the suite being rerun.
+- For already-known external ROM failures or timing-sensitive reruns, follow the before/after report workflow from [`docs/index.md`](index.md) and [`docs/TESTING.md`](TESTING.md) before deciding whether to keep the change.
+- Use external emulator source or differential cross-checks only as corroborating evidence after primary documentation, hardware research, and executable tests have been considered.
 
 ## Definition of done
 
-- Behavior is implemented consistently with hardware semantics and project architecture.
-- New code paths are covered by unit tests or integration tests unless a documented limitation makes that temporarily impossible.
-- Unit, integration, and ROM-based validation are updated where applicable.
-- Non-executed validation steps are reported explicitly with the remaining risk.
-- If the change only partially satisfies the relevant roadmap phase or leaves concrete follow-up work, that remainder is recorded or updated in `docs/TODO.md`.
-- Matching `docs/*` docs are updated when scope, limitations, workflow, or assumptions changed.
-- Renamed or moved docs have updated routing entries and no stale path references.
+- Behavior matches the owning hardware semantics, architecture boundaries, and explicit model constraints.
+- New or changed code paths have appropriate automated coverage, or the limitation and risk are documented.
+- Relevant unit, integration, ROM-based, report, or artifact validation has been run, or skipped steps are listed with the remaining risk.
+- Matching documentation has been updated for changed scope, assumptions, commands, limitations, workflow, or authority boundaries.
+- Known remaining work is recorded or updated in [`docs/TODO.md`](TODO.md).
+- Renamed or moved docs have updated routing entries, README links, and no stale Markdown references.

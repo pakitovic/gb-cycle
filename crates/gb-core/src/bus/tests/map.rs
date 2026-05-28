@@ -554,7 +554,7 @@ fn cgb_compatibility_mode_exposes_boot_hwio_visible_register_subset() {
 }
 
 #[test]
-fn cgb_dmg_ext_mode_exposes_docboy_register_subset_without_native_palette_or_hdma_data() {
+fn cgb_dmg_ext_mode_exposes_direct_boot_register_subset_without_native_palette_or_hdma_data() {
     let mut bus = Bus::new_with_operating_mode(
         ConsoleModel::GameBoyColor,
         crate::model::OperatingMode::CgbDmgExt,

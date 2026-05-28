@@ -205,16 +205,6 @@ Phase 11 SGB/SGB2 extends the same derived asset model without adding an indepen
 - Gekkio hardware documentation and revision material
 - Mooneye documentation and tests
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. Mooneye GB
-3. binjgb
-4. GameRoy
-5. Gambatte
-
 ## Tests
 
 - real-boot versus skip-boot entry-path tests

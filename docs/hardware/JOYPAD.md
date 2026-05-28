@@ -93,12 +93,6 @@ Keep the hardware-visible register behavior separate from host input collection.
 
 - Pan Docs joypad sections
 
-## Open-source emulator references
-
-- SameBoy
-- binjgb
-- GameRoy
-
 ## Tests
 
 - register behavior tests

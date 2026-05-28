@@ -184,13 +184,13 @@ Space Invaders should be treated as a manual compatibility example for this capa
 
 ## Dependencies
 
-- `core/MODEL-AXES.md` for `HostPlatform`, operating-mode, and capability guidance.
-- `hardware/BOOT-ROM.md` for startup mode and boot-ROM asset policy.
-- `hardware/JOYPAD.md` for P1/JOYP ownership and button-read semantics.
-- `hardware/PPU.md` for the DMG LCD image source consumed by SGB host composition.
-- `hardware/APU.md` for the GB APU boundary that SGB host audio must not replace.
-- `hardware/SERIAL.md` and `hardware/LINK.md` for SGB2 Game Link routing.
-- `docs/roadmap/11-sgb.md` for implementation sequencing.
+- [`info/MODEL-AXES.md`](../info/MODEL-AXES.md) for `HostPlatform`, operating-mode, and capability guidance.
+- [`hardware/BOOT-ROM.md`](BOOT-ROM.md) for startup mode and boot-ROM asset policy.
+- [`hardware/JOYPAD.md`](JOYPAD.md) for P1/JOYP ownership and button-read semantics.
+- [`hardware/PPU.md`](PPU.md) for the DMG LCD image source consumed by SGB host composition.
+- [`hardware/APU.md`](APU.md) for the GB APU boundary that SGB host audio must not replace.
+- [`hardware/SERIAL.md`](SERIAL.md) and [`hardware/LINK.md`](LINK.md) for SGB2 Game Link routing.
+- [`docs/roadmap/11-sgb.md`](../roadmap/11-sgb.md) for implementation sequencing.
 
 ## Primary references
 
@@ -206,14 +206,6 @@ Space Invaders should be treated as a manual compatibility example for this capa
 - Pan Docs SGB Sound: https://gbdev.io/pandocs/SGB_Command_Sound.html
 - Pan Docs SGB System Commands: https://gbdev.io/pandocs/SGB_Command_System.html
 - Gekkio research and hardware references when SGB/SGB2 startup, clocks, boot ROMs, or ICD2 behavior need hardware confirmation.
-
-## Open-source emulator references
-
-- SameBoy for practical SGB/SGB2 architecture, command behavior, and differential comparison after primary references.
-- bsnes/higan-class SNES references for later host-side 65C816/SNES/S-APU behavior when Slice 8 begins.
-- GBE+ as an accessory/peripheral-oriented cross-check after primary references, especially for obscure SGB-adjacent behavior.
-
-Open-source emulator code is a comparison aid, not hardware truth. If references disagree, prefer real hardware documentation/research, then model clarity and deterministic tests.
 
 ## Tests
 

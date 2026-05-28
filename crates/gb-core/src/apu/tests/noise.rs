@@ -172,7 +172,7 @@ fn channel_4_hidden_counter_stays_idle_until_the_channel_has_started() {
 }
 
 #[test]
-fn channel_4_trigger_uses_the_sameboy_guided_hidden_counter_start_state() {
+fn channel_4_trigger_keeps_hidden_counter_start_state() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.nr43_live_write.alignment = 0;

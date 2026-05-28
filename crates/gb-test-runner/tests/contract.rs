@@ -7,7 +7,7 @@ use gb_test_runner::{
     RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
     TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, acid_dmg_curated_suite,
     ashiepaws_dmg_curated_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
-    daid_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    built_in_rom_suite_by_name, daid_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
     phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
@@ -1074,6 +1074,14 @@ fn phase_6_mbc6_oracle_suite_tracks_the_dedicated_flash_fixture() {
     assert!(case.capture_plan.contains(CaptureKind::SerialHex));
     assert!(case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(case.failure_artifacts.contains(CaptureKind::SerialHex));
+}
+
+#[test]
+fn phase_6_mbc6_oracle_suite_stays_out_of_manual_rom_runner_catalog() {
+    assert!(
+        built_in_rom_suite_by_name("phase-6-mbc6-oracle").is_none(),
+        "MBC6 synthetic oracle should remain cargo-test-only instead of a manual run_rom_suite target"
+    );
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

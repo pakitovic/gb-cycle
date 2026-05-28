@@ -176,7 +176,7 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - The bus should decode the address and delegate to the owning subsystem; it should not embed the full internal logic of `JOYP`, `STAT`, `DIV`, `NR52`, or other subsystem-owned registers.
 - CPU code should perform ordinary bus/MMIO accesses and let the owning device decide what the register read or write means.
 - MMIO side effects should remain on the shared T-cycle timeline of the actual access; they must not be deferred to an unrelated end-of-instruction cleanup pass.
-- In the current scheduler-backed CPU baseline, writes targeting PPU-owned MMIO keep one explicit `CPU phase -> PPU MMIO commit phase -> interrupt aggregation` seam. The owning PPU-side effect therefore lands after the earlier CPU micro-operation subphase but before the same T-cycle interrupt aggregation step documented in `PPU.md`.
+- In the current scheduler-backed CPU baseline, writes targeting PPU-owned MMIO keep one explicit `CPU phase -> PPU MMIO commit phase -> interrupt aggregation` seam. The owning PPU-side effect therefore lands after the earlier CPU micro-operation subphase but before the same T-cycle interrupt aggregation step documented in [`PPU.md`](PPU.md).
 - Reads of dynamic MMIO registers should sample the subsystem's live hardware state at that exact access point.
 
 ## Arbitration layering baseline
@@ -266,17 +266,6 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 - Pan Docs memory map sections
 - AntonioND timing material
 - Gekkio documentation and tests
-
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. docboy
-3. binjgb
-4. GameRoy
-5. Mooneye GB
-6. Gambatte
 
 ## Tests
 

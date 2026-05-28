@@ -1,22 +1,17 @@
-# Phase 2 trace targets
+# Phase 2 trace fixtures
 
-These filenames are reserved for the first `gb-test-runner` Phase 2 CPU and
-interrupt timing automation targets.
+This directory contains golden text traces paired with the Phase `2` synthetic CPU, interrupt, timer, `HALT`, `STOP`, and HALT-bug ROM fixtures.
 
-All current Phase 2 synthetic trace targets are now shipped as golden text
-traces. The typed suite metadata in `gb-test-runner` remains the source of
-truth for the intended trace artifacts:
+Current fixtures:
 
-- `phase2_fetch_immediate_order.trace` (`shipped`)
-- `phase2_control_flow_stack_cb.trace` (`shipped`)
-- `phase2_ei_delay_priority.trace` (`shipped`)
-- `phase2_halt_stop_and_halt_bug.trace` (`shipped`)
-- `phase2_timer_if_visibility_and_service.trace` (`shipped`)
+- `phase2_fetch_immediate_order.trace`
+- `phase2_control_flow_stack_cb.trace`
+- `phase2_ei_delay_priority.trace`
+- `phase2_halt_stop_and_halt_bug.trace`
+- `phase2_timer_if_visibility_and_service.trace`
 
-Prefer short text traces that pinpoint the first timing divergence rather than
-large end-of-test dumps. The shipped traces are full golden machine traces
-generated from the reproducible builders in `crates/gb-core/tests/phase2.rs`.
-The `halt_stop_and_halt_bug` case now also has one explicit timed joypad wake
-recorded in `gb-test-runner` metadata at `t_cycle = 380`, so the external
-stimulus is part of the typed test contract rather than an undocumented local
-detail.
+`crates/gb-core/tests/phase2.rs` owns the trace-producing scenarios. The `halt_stop_and_halt_bug` case includes one explicit timed joypad wake recorded in `gb-test-runner` metadata at `t_cycle = 380`, so the external stimulus is part of the typed test contract rather than an undocumented local detail.
+
+Regenerate the trace fixtures and paired ROM fixtures with:
+
+`GB_CYCLE_ACCEPT_PHASE2_FIXTURES=1 cargo test -q -p gb-core --test phase2 -- --test-threads=1`

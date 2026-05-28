@@ -106,17 +106,6 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - AntonioND timing docs
 - Gekkio research and Mooneye timer tests
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. binjgb
-3. Mooneye GB
-4. Danger Boy
-5. GameRoy
-6. Gambatte
-
 ## Tests
 
 - Mooneye timer and DIV/TIMA tests

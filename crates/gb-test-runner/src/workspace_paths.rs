@@ -4,29 +4,12 @@ use std::path::{Path, PathBuf};
 use gb_core::{BootRomAssetKind, ConsoleModel, HardwareRevision, HostPlatform};
 
 pub const BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
-pub const ORACLE_STORE_DIR: &str = ".oracles";
 
 pub fn discover_boot_rom_root() -> Option<PathBuf> {
     if let Some(root) = env::var_os(BOOT_ROM_ROOT_ENV_VAR) {
         return Some(PathBuf::from(root));
     }
     None
-}
-
-pub fn oracle_store_root(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(ORACLE_STORE_DIR)
-}
-
-pub fn oracle_layout_root(workspace_root: &Path, oracle: &str, layout: &str) -> PathBuf {
-    oracle_store_root(workspace_root).join(oracle).join(layout)
-}
-
-pub fn sameboy_tester_oracle_root(workspace_root: &Path) -> PathBuf {
-    oracle_layout_root(workspace_root, "sameboy", "sameboy-tester")
-}
-
-pub fn sameboy_case_bundle_oracle_root(workspace_root: &Path) -> PathBuf {
-    oracle_layout_root(workspace_root, "sameboy", "case-bundle")
 }
 
 pub fn boot_rom_revision_for_console_model(console_model: ConsoleModel) -> HardwareRevision {
@@ -56,9 +39,8 @@ mod tests {
     use gb_core::{BootRomAssetKind, ConsoleModel, HardwareRevision, HostPlatform};
 
     use super::{
-        BOOT_ROM_ROOT_ENV_VAR, ORACLE_STORE_DIR, boot_rom_asset_for_console_profile,
-        boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
-        oracle_layout_root, sameboy_case_bundle_oracle_root, sameboy_tester_oracle_root,
+        BOOT_ROM_ROOT_ENV_VAR, boot_rom_asset_for_console_profile, boot_rom_image_path,
+        boot_rom_revision_for_console_model, discover_boot_rom_root,
     };
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -75,24 +57,6 @@ mod tests {
         unsafe {
             env::remove_var(key);
         }
-    }
-
-    #[test]
-    fn workspace_paths_follow_repo_local_oracle_layout() {
-        let workspace_root = Path::new("/tmp/gb-cycle");
-
-        assert_eq!(
-            oracle_layout_root(workspace_root, "sameboy", "sameboy-tester"),
-            workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/sameboy-tester"))
-        );
-        assert_eq!(
-            sameboy_tester_oracle_root(workspace_root),
-            workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/sameboy-tester"))
-        );
-        assert_eq!(
-            sameboy_case_bundle_oracle_root(workspace_root),
-            workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/case-bundle"))
-        );
     }
 
     #[test]

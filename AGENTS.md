@@ -29,7 +29,7 @@ Never trade an earlier priority for a later one without making the tradeoff expl
 
 ## Primary rule
 
-Read only the `docs/` files relevant to the task at hand. Do not preload documentation speculatively. `docs/index.md` has the full map and authority boundaries if you need to locate a specific document.
+Read only the `docs/` files relevant to the task at hand. Do not preload documentation speculatively. [`docs/index.md`](docs/index.md) has the full map and authority boundaries if you need to locate a specific document.
 
 ## Core rules
 
@@ -70,7 +70,7 @@ Read only the `docs/` files relevant to the task at hand. Do not preload documen
 - Define contracts and invariants before editing code.
 - Add or update tests and ROM-based validation.
 - Compare behavior against at least one trusted oracle when touching timing-sensitive logic.
-- If a change leaves known gaps or deferred work, record it in `docs/ROADMAP.md`.
+- If a change leaves known gaps or deferred work, record it in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - Update docs when architecture, rules, timing assumptions, or references change.
 
 ## Commit message rules

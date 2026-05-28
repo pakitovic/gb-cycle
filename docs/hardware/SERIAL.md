@@ -135,11 +135,6 @@ Keep hardware serial state explicit even if link support is stubbed initially. M
 
 - Pan Docs serial sections
 
-## Open-source emulator references
-
-- SameBoy
-- binjgb
-
 ## Tests
 
 - register semantics tests

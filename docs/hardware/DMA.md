@@ -195,17 +195,6 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - AntonioND timing material
 - relevant CGB documentation for HDMA
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. binjgb
-3. accurateboy
-4. Mooneye GB
-5. Danger Boy
-6. Gambatte
-
 ## Tests
 
 - Mooneye DMA tests

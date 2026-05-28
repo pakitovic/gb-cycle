@@ -1,19 +1,12 @@
 # gb-core test layout
 
-This directory owns automated tests that exercise the public `gb-core` API and
-cross-module wiring.
+This directory owns integration tests that exercise the public `gb-core` API and cross-module wiring while staying independent of CLI, desktop, web, audio, file-dialog, or other frontend crates.
 
 ## Layout
 
-- `*.rs`: integration tests compiled as separate crates
-- `common/`: shared helpers for fixture lookup and future harness code
-- `fixtures/roms/`: ROM fixtures for automated harnesses
-- `fixtures/traces/`: golden trace artifacts and text snapshots
+- `*.rs`: integration-test entry points compiled as separate crates.
+- `common/`: shared integration-test helpers for fixture lookup, machine driving, and synthetic cartridge construction.
+- `fixtures/roms/`: small core-owned synthetic ROM fixtures used by `gb-core` tests.
+- `fixtures/traces/`: golden trace artifacts and text snapshots used by deterministic core tests.
 
-## Phase 0 baseline
-
-- Keep fast, deterministic smoke coverage here even before the scheduler exists.
-- Prefer unit tests in `src/` for local pure logic.
-- Prefer integration tests here when behavior depends on the public API or
-  multiple modules.
-- Do not make these tests depend on `gb-cli` or any frontend crate.
+Prefer unit tests next to local pure logic under `src/`; use this directory when behavior depends on the public API, the top-level `Machine`, or multiple subsystems. Phase-specific fixture README files are retained only where they name exact shipped assets, source-of-truth builders, or regeneration commands. Project-wide validation policy and fixture ownership rules live in [docs/TESTING.md](../../../docs/TESTING.md).

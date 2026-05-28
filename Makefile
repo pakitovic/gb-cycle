@@ -3,7 +3,7 @@
 FAMILIES ?= all
 ROM_PROFILE ?= release-max
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-cpp-sgb run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc run-mbc6-oracle phase9-determinism-smoke phase9-determinism-local phase9-diff-cartridge phase9-sameboy-cartridge-oracles phase9-diff-acid phase9-sameboy-acid-oracles phase9-diff-mealybug phase9-sameboy-mealybug-oracles phase9-diff-ashiepaws phase9-sameboy-ashiepaws-oracles phase9-first-divergence-ashiepaws
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-cpp-sgb run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc
 
 help:
 	@echo "Available targets:"
@@ -64,18 +64,6 @@ help:
 	@echo "  make run-cgb-audio-blargg Fetch and run the curated CGB Blargg sound suite"
 	@echo "  make run-cgb-audio-samesuite Fetch and run the exploratory CGB SameSuite APU suite"
 	@echo "  make run-cgb-rtc          Fetch and run the curated CGB MBC3 RTC suite"
-	@echo "  make run-mbc6-oracle      Run the built-in synthetic MBC6 split-window/flash oracle"
-	@echo "  make phase9-determinism-smoke Run Phase 9 replay/save-load smoke checks"
-	@echo "  make phase9-determinism-local Run Phase 9 replay/save-load local closure sample"
-	@echo "  make phase9-diff-cartridge    Compare Phase 6 cartridge oracle against SameBoy case-bundle artifacts"
-	@echo "  make phase9-sameboy-cartridge-oracles Materialize SameBoy case-bundle artifacts for cartridge differential"
-	@echo "  make phase9-diff-acid         Compare Acid framebuffer cases against LibSameBoy case-bundle artifacts"
-	@echo "  make phase9-sameboy-acid-oracles Materialize LibSameBoy case-bundle artifacts for Acid"
-	@echo "  make phase9-diff-mealybug     Compare SameBoy-PASS Mealybug framebuffer cases against LibSameBoy case-bundle artifacts"
-	@echo "  make phase9-sameboy-mealybug-oracles Materialize LibSameBoy case-bundle artifacts for the SameBoy-PASS Mealybug subset"
-	@echo "  make phase9-diff-ashiepaws      Compare Ashiepaws framebuffer cases against LibSameBoy case-bundle artifacts"
-	@echo "  make phase9-sameboy-ashiepaws-oracles Materialize LibSameBoy case-bundle artifacts for Ashiepaws"
-	@echo "  make phase9-first-divergence-ashiepaws Capture Ashiepaws local/LibSameBoy first-divergence probe windows"
 
 setup: hooks tools
 
@@ -367,53 +355,3 @@ run-cgb-audio-samesuite:
 run-cgb-rtc:
 	$(MAKE) fetch-test-roms FAMILIES=ax6
 	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-rtc --failure-artifact-root .artifacts/cgb-rtc
-
-run-mbc6-oracle:
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite phase-6-mbc6-oracle --failure-artifact-root .artifacts/phase-6-mbc6-oracle
-
-phase9-determinism-smoke:
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-2-cpu-timing
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-2-interrupt-timing
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite phase-6-cartridge-oracle --save-at-tcycles 1024 --continuation-tcycles 1024
-
-phase9-determinism-local: phase9-determinism-smoke
-	$(MAKE) fetch-test-roms FAMILIES="mooneye acid mealybug-tearoom-tests blargg"
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-timer-div-write --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mooneye-acceptance-dmg-curated --case mooneye-oam-dma-basic --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite acid-dmg-curated --case dmg-acid2 --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite mealybug-tearoom-dmg-curated --case mealybug-m3-window-timing --save-at-tcycles 1024 --continuation-tcycles 1024
-	cargo run --release -q -p gb-test-runner --bin run_determinism -- --suite blargg-dmg-curated --case blargg-dmg-sound-01-registers --save-at-tcycles 1024 --continuation-tcycles 1024
-
-phase9-sameboy-cartridge-oracles:
-	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite phase-6-cartridge-oracle --build-if-missing
-
-phase9-diff-cartridge:
-	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite phase-6-cartridge-oracle
-
-phase9-sameboy-acid-oracles:
-	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite acid-dmg-curated --build-if-missing
-
-phase9-diff-acid:
-	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite acid-dmg-curated
-
-phase9-sameboy-mealybug-oracles:
-	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite mealybug-tearoom-dmg-sameboy-differential --build-if-missing
-
-phase9-diff-mealybug:
-	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite mealybug-tearoom-dmg-sameboy-differential
-
-phase9-sameboy-ashiepaws-oracles:
-	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
-	cargo run --release -p gb-test-runner --bin run_sameboy_case_bundle -- --suite ashiepaws-dmg-curated --build-if-missing
-
-phase9-diff-ashiepaws:
-	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
-	cargo run --release -p gb-test-runner --bin run_differential -- --oracle sameboy --oracle-layout case-bundle --suite ashiepaws-dmg-curated
-
-phase9-first-divergence-ashiepaws:
-	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
-	cargo run --release -p gb-test-runner --bin run_first_divergence -- --oracle sameboy --suite ashiepaws-dmg-curated --probe-interval-tcycles 70224 --build-if-missing --allow-divergence

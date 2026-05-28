@@ -80,18 +80,6 @@ const DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
 ];
 const STATUS_ONLY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] =
     ["mooneye-acceptance-dmg-curated"];
-/// Mealybug DMG rows where GBEmulatorShootout marks SameBoy as non-PASS in the 2026-03-22 table.
-pub const MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS: &[&str] = &[
-    "mealybug-m3-lcdc-bg-en-change",
-    "mealybug-m3-lcdc-bg-map-change",
-    "mealybug-m3-lcdc-obj-size-change",
-    "mealybug-m3-lcdc-obj-size-change-scx",
-    "mealybug-m3-lcdc-tile-sel-change",
-    "mealybug-m3-lcdc-tile-sel-win-change",
-    "mealybug-m3-lcdc-win-en-change-multiple-wx",
-    "mealybug-m3-lcdc-win-map-change",
-    "mealybug-m3-scy-change",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedTestRomManifestFile {
@@ -382,15 +370,6 @@ pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
 
 pub fn mealybug_tearoom_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("mealybug-tearoom-cgb-extra")
-}
-
-pub fn mealybug_tearoom_dmg_sameboy_differential_suite() -> RomSuite {
-    let mut suite = mealybug_tearoom_dmg_curated_suite();
-    suite.name = "mealybug-tearoom-dmg-sameboy-differential".to_string();
-    suite
-        .cases
-        .retain(|case| !MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS.contains(&case.id.as_str()));
-    suite
 }
 
 pub fn mooneye_acceptance_dmg_curated_suite() -> RomSuite {
@@ -2282,23 +2261,22 @@ mod tests {
     use super::{
         CURATED_TEST_ROM_REPORT_FAMILY_ORDER, CuratedTestReportKind, CuratedTestRomCase,
         CuratedTestRomCaseFile, CuratedTestRomManifestFile, GBEMU_SHOOTOUT_SOURCE_ID,
-        MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS, PersistedCaseStatus, PersistedSuiteStatus,
-        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
-        TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
-        TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
-        ax6_dmg_extra_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
-        blargg_memory_text_output_spec, capture_plan_for_pass_condition, cgb_audio_blargg_suite,
-        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom,
-        cpp_sgb_suite, curated_test_rom_families, curated_test_rom_family_suites,
-        curated_test_rom_manifest_texts, curated_test_rom_manifests, discover_test_rom_store_root,
-        docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
-        docboy_dmg_extra_suite, failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
+        PersistedCaseStatus, PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI,
+        REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
+        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
+        TEST_ROM_STATUS_DIR_NAME, ax6_dmg_extra_suite, blargg_dmg_curated_suite,
+        blargg_dmg_repo_gated_suite, blargg_memory_text_output_spec,
+        capture_plan_for_pass_condition, cgb_audio_blargg_suite, cgb_audio_samesuite_suite,
+        cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite, cgb_ppu_basic_suite,
+        cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, copy_curated_rom, cpp_sgb_suite,
+        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifest_texts,
+        curated_test_rom_manifests, discover_test_rom_store_root, docboy_cgb_dmg_ext_extra_suite,
+        docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite, docboy_dmg_extra_suite,
+        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
         little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
         load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
-        mealybug_tearoom_dmg_curated_suite, mealybug_tearoom_dmg_sameboy_differential_suite,
         mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
         parse_manifest_console_model, parse_manifest_host_platform, parse_manifest_subsystem,
         render_markdown_report, report_family_order_for_kind, report_family_rank,
@@ -2463,45 +2441,6 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
-        );
-    }
-
-    #[test]
-    fn sameboy_mealybug_differential_suite_excludes_shootout_non_pass_cases_only() {
-        let full_suite = mealybug_tearoom_dmg_curated_suite();
-        let sameboy_suite = mealybug_tearoom_dmg_sameboy_differential_suite();
-
-        assert_eq!(full_suite.cases.len(), 24);
-        assert_eq!(
-            sameboy_suite.name,
-            "mealybug-tearoom-dmg-sameboy-differential"
-        );
-        assert_eq!(
-            sameboy_suite.family.as_deref(),
-            Some("mealybug-tearoom-tests")
-        );
-        assert_eq!(
-            sameboy_suite.cases.len(),
-            full_suite.cases.len() - MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS.len()
-        );
-        for excluded_id in MEALYBUG_SAMEBOY_SHOOTOUT_NON_PASS_CASE_IDS {
-            assert!(
-                full_suite.cases.iter().any(|case| case.id == *excluded_id),
-                "excluded id {excluded_id} should still exist in the full curated suite"
-            );
-            assert!(
-                sameboy_suite
-                    .cases
-                    .iter()
-                    .all(|case| case.id != *excluded_id),
-                "excluded id {excluded_id} must not be judged in the SameBoy differential subset"
-            );
-        }
-        assert!(
-            sameboy_suite
-                .cases
-                .iter()
-                .any(|case| case.id == "mealybug-m3-window-timing")
         );
     }
 

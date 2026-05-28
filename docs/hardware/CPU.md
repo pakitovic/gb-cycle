@@ -129,16 +129,6 @@ For this project, the CPU timing model should be expressed in T-cycles as the fu
 - AntonioND cycle-accurate docs
 - Gekkio CPU/material where applicable
 
-## Open-source emulator references
-
-Priority order:
-
-1. SameBoy
-2. binjgb
-3. GameRoy
-4. Danger Boy
-5. Gambatte
-
 ## Tests
 
 - blargg CPU instruction tests

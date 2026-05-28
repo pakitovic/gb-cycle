@@ -132,5 +132,3 @@ Non-retail variants are tracked separately:
 ## References
 
 - [Pan Docs — Game Boy Camera](https://gbdev.io/pandocs/Gameboy_Camera.html)
-- [SameBoy `camera.c`](https://github.com/LIJI32/SameBoy/blob/208ba4afabffab9edde416f2dbb8ae459e34adb8/Core/camera.c)
-- [mGBA `pocket-cam.c`](https://github.com/mgba-emu/mgba/blob/f3f6589efdecb0b7f878d26444b05d0d7cb69d68/src/gb/mbc/pocket-cam.c)

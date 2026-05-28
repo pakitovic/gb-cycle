@@ -630,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn sameboy_zelda_tail_staircase_matches_expected_pass_actions() {
+    fn zelda_tail_staircase_matches_expected_pass_actions() {
         #[derive(Clone, Copy)]
         struct Case {
             old: u8,
