@@ -12,7 +12,7 @@ use crate::external_roms::GB_EMULATOR_SHOOTOUT_REPORT_ID;
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
     ExternalStimulusAction, FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec,
-    PassCondition, RomSuite, RomSuiteReport, RomTestCase, TestSubsystem, Timeout,
+    PassCondition, RomSuite, RomSuiteReport, RomTestCase, Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = "test";
@@ -82,7 +82,6 @@ const DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
 struct CuratedTestRomManifestFile {
     family: Option<String>,
     suite_name: String,
-    subsystem: String,
     #[serde(rename = "case")]
     cases: Vec<CuratedTestRomCaseFile>,
 }
@@ -136,7 +135,6 @@ struct CuratedRomStimulusFile {
 struct CuratedTestRomManifest {
     suite_family: Option<String>,
     suite_name: String,
-    subsystem: TestSubsystem,
     cases: Vec<CuratedTestRomCase>,
 }
 
@@ -1262,7 +1260,7 @@ fn manifest_suite(family: &str) -> RomSuite {
         .unwrap_or_else(|| panic!("missing curated test ROM manifest for family {family}"));
 
     let report_id = suite_report_id(&manifest.suite_name);
-    let mut suite = RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(family);
+    let mut suite = RomSuite::new(manifest.suite_name).with_family(family);
     if let Some(report_id) = report_id {
         suite = suite.with_report_id(report_id);
     }
@@ -1339,8 +1337,7 @@ fn manifest_suite_by_name(suite_name: &str) -> RomSuite {
         .to_string();
 
     let report_id = suite_report_id(&manifest.suite_name);
-    let mut suite =
-        RomSuite::new(manifest.suite_name, manifest.subsystem).with_family(suite_family);
+    let mut suite = RomSuite::new(manifest.suite_name).with_family(suite_family);
     if let Some(report_id) = report_id {
         suite = suite.with_report_id(report_id);
     }
@@ -1534,7 +1531,6 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
     CuratedTestRomManifest {
         suite_family: parsed.family.clone(),
         suite_name: parsed.suite_name,
-        subsystem: parse_manifest_subsystem(source_path, &parsed.subsystem),
         cases: parsed
             .cases
             .into_iter()
@@ -1682,17 +1678,6 @@ fn parse_manifest_timeout(
                 source_path.display()
             )
         }
-    }
-}
-
-fn parse_manifest_subsystem(source_path: &str, subsystem: &str) -> TestSubsystem {
-    match subsystem {
-        "Ppu" => TestSubsystem::Ppu,
-        "Dma" => TestSubsystem::Dma,
-        "Apu" => TestSubsystem::Apu,
-        "Cartridge" => TestSubsystem::Cartridge,
-        "CrossSubsystem" => TestSubsystem::CrossSubsystem,
-        other => panic!("unsupported subsystem {other:?} in {source_path}"),
     }
 }
 
@@ -2420,17 +2405,17 @@ mod tests {
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
         materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
         mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
-        parse_manifest_console_model, parse_manifest_host_platform, parse_manifest_subsystem,
-        render_markdown_report, report_family_order_for_kind, report_family_rank,
-        report_rom_display, report_status_display, required_file_family,
-        rom_path_without_store_prefix, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
-        samesuite_sgb_suite, sort_persisted_case_statuses, suite_report_id,
-        suite_uses_docboy_test_report, suite_uses_extra_test_report, test_rom_store_root,
-        test_rom_store_root_for_report, update_curated_test_report,
+        parse_manifest_console_model, parse_manifest_host_platform, render_markdown_report,
+        report_family_order_for_kind, report_family_rank, report_rom_display,
+        report_status_display, required_file_family, rom_path_without_store_prefix,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_sgb_suite,
+        sort_persisted_case_statuses, suite_report_id, suite_uses_docboy_test_report,
+        suite_uses_extra_test_report, test_rom_store_root, test_rom_store_root_for_report,
+        update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, MemoryByteExpectation, PassCondition, RomCaseFailure,
-        RomCaseOutcome, RomCaseReport, RomSuiteReport, TestSubsystem, Timeout,
+        RomCaseOutcome, RomCaseReport, RomSuiteReport, Timeout,
     };
     use gb_core::{ConsoleModel, HardwareRevision, HostPlatform, StartupMode};
     use std::collections::BTreeSet;
@@ -2585,8 +2570,7 @@ mod tests {
         assert!(
             split_suites
                 .iter()
-                .all(|suite| suite.family.as_deref() == Some("blargg")
-                    && suite.subsystem == TestSubsystem::CrossSubsystem)
+                .all(|suite| suite.family.as_deref() == Some("blargg"))
         );
         assert_eq!(cases.len(), 38);
         assert!(cases.iter().any(|case| case.id == "blargg-instr-timing"));
@@ -2625,7 +2609,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-smoke");
         assert_eq!(suite.family.as_deref(), Some("cgb-smoke"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -2656,7 +2639,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-boot-div");
         assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
         assert_eq!(
             rom_path_without_store_prefix(&suite.cases[0].rom_path),
@@ -2676,7 +2658,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-boot-hwio");
         assert_eq!(suite.family.as_deref(), Some("cgb-boot-hwio"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
         assert_eq!(
             rom_path_without_store_prefix(&suite.cases[0].rom_path),
@@ -2724,7 +2705,6 @@ mod tests {
 
         assert_eq!(suite.name, "mooneye-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("mooneye"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 10);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -2763,7 +2743,6 @@ mod tests {
 
         assert_eq!(suite.name, "mooneye-sgb-boot-regs-extra");
         assert_eq!(suite.family.as_deref(), Some("mooneye-sgb-boot-regs-extra"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(crate::built_in_rom_suite_by_name("mooneye-sgb-boot-regs-extra").is_some());
         assert!(suite_uses_extra_test_report("mooneye-sgb-boot-regs-extra"));
@@ -2807,7 +2786,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 4);
 
         let case = &suite.cases[0];
@@ -2876,7 +2854,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-ppu-hard");
         assert_eq!(suite.family.as_deref(), Some("acid"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -2902,7 +2879,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-dma");
         assert_eq!(suite.family.as_deref(), Some("cgb-dma"));
-        assert_eq!(suite.subsystem, TestSubsystem::Dma);
         assert_eq!(suite.cases.len(), 4);
 
         let expected = [
@@ -2948,7 +2924,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-rtc");
         assert_eq!(suite.family.as_deref(), Some("cgb-rtc"));
-        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -2993,7 +2968,6 @@ mod tests {
 
         assert_eq!(suite.name, "ax6-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("ax6"));
-        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -3052,7 +3026,6 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -3108,7 +3081,6 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-sgb");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(crate::built_in_rom_suite_by_name("samesuite-sgb").is_some());
         assert!(!suite_uses_extra_test_report("samesuite-sgb"));
@@ -3156,7 +3128,6 @@ mod tests {
 
         assert_eq!(suite.name, "cpp-sgb");
         assert_eq!(suite.family.as_deref(), Some("cpp"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
         assert!(crate::built_in_rom_suite_by_name("cpp-sgb").is_some());
         assert!(!suite_uses_extra_test_report("cpp-sgb"));
@@ -3238,7 +3209,6 @@ mod tests {
 
         assert_eq!(suite.name, "little-things-gb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
 
         let expected = [
@@ -3292,7 +3262,6 @@ mod tests {
 
         assert_eq!(suite.name, "little-things-gb-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -3387,7 +3356,6 @@ mod tests {
 
         assert_eq!(suite.name, "gbmicrotest-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("gbmicrotest"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 438);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
@@ -3487,7 +3455,6 @@ mod tests {
 
         assert_eq!(suite.name, "docboy-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-dmg"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2326);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
@@ -3590,7 +3557,6 @@ mod tests {
 
         assert_eq!(suite.name, "docboy-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 6172);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3696,7 +3662,6 @@ mod tests {
 
         assert_eq!(suite.name, "docboy-cgb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 467);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3818,7 +3783,6 @@ mod tests {
 
         assert_eq!(suite.name, "mealybug-tearoom-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3865,7 +3829,6 @@ mod tests {
 
         assert_eq!(suite.name, "docboy-cgb-dmg-ext-extra");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg-ext"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 26);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3909,7 +3872,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-audio-blargg");
         assert_eq!(suite.family.as_deref(), Some("cgb-audio-blargg"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 12);
 
         let expected = [
@@ -3988,7 +3950,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-audio-samesuite");
         assert_eq!(suite.family.as_deref(), Some("cgb-audio-samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 61);
 
         let first = suite.cases.first().expect("suite should have cases");
@@ -4058,7 +4019,6 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 9);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -4103,7 +4063,6 @@ mod tests {
 
         assert_eq!(suite.name, "magen-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("magen"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 8);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -4866,7 +4825,6 @@ mod tests {
         let first_report = RomSuiteReport {
             suite_name: "blargg-cpu-instrs".to_string(),
             family: Some("blargg".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![RomCaseReport {
                 case_id: "blargg-cpu-instrs-01-special".to_string(),
                 rom_path: PathBuf::from("blargg/cpu_instrs/01-special.gb"),
@@ -4884,7 +4842,6 @@ mod tests {
         let second_report = RomSuiteReport {
             suite_name: "blargg-cpu-instrs".to_string(),
             family: Some("blargg".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![RomCaseReport {
                 case_id: "blargg-cpu-instrs-02-interrupts".to_string(),
                 rom_path: PathBuf::from("blargg/cpu_instrs/02-interrupts.gb"),
@@ -4932,7 +4889,6 @@ mod tests {
         let failing_report = RomSuiteReport {
             suite_name: "blargg-timing-memory-oam".to_string(),
             family: Some("blargg".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "blargg-halt-bug",
                 "blargg/halt_bug.gb",
@@ -4945,7 +4901,6 @@ mod tests {
         let passing_report = RomSuiteReport {
             suite_name: "blargg-timing-memory-oam".to_string(),
             family: Some("blargg".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "blargg-halt-bug",
                 "blargg/halt_bug.gb",
@@ -4984,7 +4939,6 @@ mod tests {
         let report = RomSuiteReport {
             suite_name: "acid-dmg-curated".to_string(),
             family: Some("acid".to_string()),
-            subsystem: TestSubsystem::Ppu,
             cases: vec![report_case(
                 "which-dmg",
                 "acid/which.gb",
@@ -5021,7 +4975,6 @@ mod tests {
         let report = RomSuiteReport {
             suite_name: "cgb-smoke".to_string(),
             family: Some("cgb-smoke".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![
                 report_case(
                     "cgb-smoke-boot-regs-cgb",
@@ -5095,7 +5048,6 @@ status = "FAIL"
         let report = RomSuiteReport {
             suite_name: "mooneye-cgb-extra".to_string(),
             family: Some("mooneye".to_string()),
-            subsystem: TestSubsystem::Ppu,
             cases: vec![report_case(
                 "mooneye-cgb-ppu-intr-2-mode0-timing",
                 "mooneye/acceptance/ppu/intr_2_mode0_timing.gb",
@@ -5133,7 +5085,6 @@ status = "FAIL"
         let cgb_smoke_report = RomSuiteReport {
             suite_name: "cgb-smoke".to_string(),
             family: Some("cgb-smoke".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "cgb-smoke-boot-regs-cgb",
                 "mooneye/misc/boot_regs-cgb.gb",
@@ -5146,7 +5097,6 @@ status = "FAIL"
         let cgb_rtc_report = RomSuiteReport {
             suite_name: "cgb-rtc".to_string(),
             family: Some("cgb-rtc".to_string()),
-            subsystem: TestSubsystem::Cartridge,
             cases: vec![report_case(
                 "cgb-rtc-rtc3test-1",
                 "ax6/rtc3test-1.gb",
@@ -5159,7 +5109,6 @@ status = "FAIL"
         let cgb_audio_samesuite_report = RomSuiteReport {
             suite_name: "cgb-audio-samesuite".to_string(),
             family: Some("cgb-audio-samesuite".to_string()),
-            subsystem: TestSubsystem::Apu,
             cases: vec![
                 report_case(
                     "cgb-audio-samesuite-div-write-trigger",
@@ -5179,7 +5128,6 @@ status = "FAIL"
         let cgb_boot_hwio_report = RomSuiteReport {
             suite_name: "cgb-boot-hwio".to_string(),
             family: Some("cgb-boot-hwio".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "cgb-boot-hwio-boot-hwio-c",
                 "mooneye/misc/boot_hwio-C.gb",
@@ -5193,7 +5141,6 @@ status = "FAIL"
         let mooneye_cgb_report = RomSuiteReport {
             suite_name: "mooneye-cgb-extra".to_string(),
             family: Some("mooneye".to_string()),
-            subsystem: TestSubsystem::Ppu,
             cases: vec![report_case(
                 "mooneye-cgb-ppu-intr-2-mode0-timing",
                 "mooneye/acceptance/ppu/intr_2_mode0_timing.gb",
@@ -5207,7 +5154,6 @@ status = "FAIL"
         let ax6_report = RomSuiteReport {
             suite_name: "ax6-dmg-extra".to_string(),
             family: Some("ax6".to_string()),
-            subsystem: TestSubsystem::Cartridge,
             cases: vec![
                 report_case(
                     "ax6-dmg-rtc3test-1",
@@ -5233,7 +5179,6 @@ status = "FAIL"
         let samesuite_report = RomSuiteReport {
             suite_name: "samesuite-dmg-extra".to_string(),
             family: Some("samesuite".to_string()),
-            subsystem: TestSubsystem::Apu,
             cases: vec![
                 report_case(
                     "samesuite-dmg-div-write-trigger",
@@ -5259,7 +5204,6 @@ status = "FAIL"
         let samesuite_cgb_report = RomSuiteReport {
             suite_name: "samesuite-cgb-extra".to_string(),
             family: Some("samesuite".to_string()),
-            subsystem: TestSubsystem::Apu,
             cases: vec![report_case(
                 "samesuite-cgb-apu-channel-1-channel-1-align-12-cgbe",
                 "samesuite/apu/channel_1/channel_1_align_12-cgbE.gb",
@@ -5273,7 +5217,6 @@ status = "FAIL"
         let magen_report = RomSuiteReport {
             suite_name: "magen-cgb-extra".to_string(),
             family: Some("magen".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "magen-cgb-bg-oam-priority",
                 "magen/bg_oam_priority.gbc",
@@ -5287,7 +5230,6 @@ status = "FAIL"
         let little_things_report = RomSuiteReport {
             suite_name: "little-things-gb-dmg-extra".to_string(),
             family: Some("little-things-gb".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![
                 report_case(
                     "little-things-gb-dmg-double-halt-cancel",
@@ -5308,7 +5250,6 @@ status = "FAIL"
         let little_things_cgb_report = RomSuiteReport {
             suite_name: "little-things-gb-cgb-extra".to_string(),
             family: Some("little-things-gb".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "little-things-gb-cgb-whichboot",
                 "little-things-gb/whichboot.gb",
@@ -5418,7 +5359,6 @@ status = "FAIL"
         let docboy_report = RomSuiteReport {
             suite_name: "docboy-cgb-extra".to_string(),
             family: Some("docboy-cgb".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "docboy-cgb-docboy-boot-boot-bg-palettes",
                 "docboy/cgb/boot/boot_bg_palettes.gbc",
@@ -5450,7 +5390,6 @@ status = "FAIL"
         let cgb_smoke_report = RomSuiteReport {
             suite_name: "cgb-smoke".to_string(),
             family: Some("cgb-smoke".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "cgb-smoke-boot-regs-cgb",
                 "mooneye/misc/boot_regs-cgb.gb",
@@ -5463,7 +5402,6 @@ status = "FAIL"
         let extra_report = RomSuiteReport {
             suite_name: "gbmicrotest-dmg-extra".to_string(),
             family: Some("gbmicrotest".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "gbmicrotest-boot-poweron-bgp-000",
                 "gbmicrotest/boot/poweron_bgp_000.gb",
@@ -5476,7 +5414,6 @@ status = "FAIL"
         let docboy_report = RomSuiteReport {
             suite_name: "docboy-cgb-extra".to_string(),
             family: Some("docboy-cgb".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![
                 report_case(
                     "docboy-cgb-docboy-boot-boot-bg-palettes",
@@ -5550,7 +5487,6 @@ status = "PASS"
         let cgb_rtc_report = RomSuiteReport {
             suite_name: "cgb-rtc".to_string(),
             family: Some("cgb-rtc".to_string()),
-            subsystem: TestSubsystem::Cartridge,
             cases: vec![report_case(
                 "cgb-rtc-rtc3test-1",
                 "ax6/rtc3test-1.gb",
@@ -5731,7 +5667,6 @@ status = "PASS"
         let report = RomSuiteReport {
             suite_name: "phase-2-cpu-timing".to_string(),
             family: None,
-            subsystem: TestSubsystem::Cpu,
             cases: vec![report_case(
                 "phase-2-fetch-immediate-order",
                 "phase2/fetch_immediate_order.gb",
@@ -5752,7 +5687,6 @@ status = "PASS"
         let report = RomSuiteReport {
             suite_name: "acid-dmg-curated".to_string(),
             family: Some("acid".to_string()),
-            subsystem: TestSubsystem::Ppu,
             cases: vec![report_case(
                 "which-dmg",
                 "acid/which.gb",
@@ -5894,7 +5828,6 @@ status = "PASS"
         let acid_report = RomSuiteReport {
             suite_name: "acid-dmg-curated".to_string(),
             family: Some("acid".to_string()),
-            subsystem: TestSubsystem::Ppu,
             cases: vec![
                 report_case("acid-which", "acid/which.gb", RomCaseOutcome::Informational),
                 report_case(
@@ -5910,7 +5843,6 @@ status = "PASS"
         let blargg_report = RomSuiteReport {
             suite_name: "blargg-timing-memory-oam".to_string(),
             family: Some("blargg".to_string()),
-            subsystem: TestSubsystem::CrossSubsystem,
             cases: vec![report_case(
                 "blargg-halt-bug",
                 "blargg/halt_bug.gb",
@@ -6002,12 +5934,6 @@ status = "PASS"
         let failure_artifacts = failure_artifacts_for_pass_condition(&pass_condition);
         assert!(failure_artifacts.contains(CaptureKind::Trace));
         assert!(failure_artifacts.contains(CaptureKind::Snapshot));
-    }
-
-    #[test]
-    #[should_panic(expected = "unsupported subsystem")]
-    fn parse_manifest_subsystem_rejects_unknown_values() {
-        let _ = parse_manifest_subsystem("test-manifest.toml", "Cpu");
     }
 
     #[test]

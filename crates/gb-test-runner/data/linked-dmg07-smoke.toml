@@ -1,6 +1,5 @@
 suite_name = "linked-dmg07-smoke"
 family = "linked"
-subsystem = "serial"
 
 [[session]]
 id = "dmg07-sparse-p1-p4"

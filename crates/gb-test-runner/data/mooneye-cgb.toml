@@ -1,6 +1,5 @@
 family = "mooneye"
 suite_name = "mooneye-cgb-extra"
-subsystem = "Ppu"
 
 [[case]]
 id = "mooneye-cgb-ppu-hblank-ly-scx-timing-gs"

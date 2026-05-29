@@ -5,7 +5,7 @@ use super::{
     LinkedSessionTopology, load_linked_session_suite_manifest,
 };
 use crate::{
-    ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan, StimulusTime, TestSubsystem,
+    ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan, StimulusTime,
     built_in_linked_session_suite_catalog, default_workspace_root,
 };
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
@@ -137,7 +137,6 @@ timeout_tcycles = 8192
         .expect("linked manifest should load cleanly");
 
     assert_eq!(suite.name, "dmg04-defaults");
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.sessions.len(), 1);
 
     let session = &suite.sessions[0];
@@ -216,7 +215,6 @@ fn linked_session_manifest_supports_explicit_metadata_and_trace_fixture_oracles(
         &r#"
 suite_name = "linked-commercial-smoke"
 family = "serial-ext"
-subsystem = "serial"
 
 [[session]]
 id = "pokemon-trade"
@@ -273,7 +271,6 @@ fixture = "fixtures/snapshot.txt"
 
     assert_eq!(suite.name, "linked-commercial-smoke");
     assert_eq!(suite.family.as_deref(), Some("serial-ext"));
-    assert_eq!(suite.subsystem, TestSubsystem::Serial);
     assert_eq!(suite.sessions.len(), 2);
 
     let trace_session = &suite.sessions[0];
@@ -332,7 +329,6 @@ fn linked_session_manifest_supports_participant_scoped_serial_hex_oracles() {
         "participant-serial-hex.toml",
         r#"
 suite_name = "participant-serial-hex"
-subsystem = "serial"
 
 [[session]]
 id = "dmg04-byte-expectation"
@@ -386,7 +382,6 @@ fn linked_session_manifest_supports_participant_scoped_snapshot_fixture_oracles(
         &format!(
             r#"
 suite_name = "participant-snapshot-fixture"
-subsystem = "serial"
 
 [[session]]
 id = "dmg04-snapshot-expectation"
@@ -442,7 +437,6 @@ fn linked_session_manifest_supports_participant_scoped_trace_fixture_oracles() {
         &format!(
             r#"
 suite_name = "participant-trace-fixture"
-subsystem = "serial"
 
 [[session]]
 id = "dmg04-trace-expectation"
@@ -503,7 +497,6 @@ fn linked_session_manifest_supports_participant_scoped_framebuffer_until_match_o
         &format!(
             r#"
 suite_name = "participant-framebuffer-fixture"
-subsystem = "ppu"
 
 [[session]]
 id = "dmg04-framebuffer-expectation"

@@ -1,5 +1,4 @@
 suite_name = "cgb-speed"
-subsystem = "CrossSubsystem"
 
 [[case]]
 family = "daid"

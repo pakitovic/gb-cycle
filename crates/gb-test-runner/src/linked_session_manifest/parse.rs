@@ -9,7 +9,7 @@ use super::model::{
     LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant, LinkedSessionPassCondition,
     LinkedSessionSuite, LinkedSessionSuiteManifestError, LinkedSessionTopology,
 };
-use crate::{ExternalStimulus, ExternalStimulusAction, TestSubsystem, Timeout};
+use crate::{ExternalStimulus, ExternalStimulusAction, Timeout};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManifestOracle {
@@ -71,7 +71,6 @@ impl ManifestOracle {
 struct LinkedSessionSuiteManifestFile {
     suite_name: Option<String>,
     family: Option<String>,
-    subsystem: Option<String>,
     #[serde(rename = "session", default)]
     sessions: Vec<LinkedSessionCaseManifest>,
 }
@@ -140,13 +139,7 @@ pub fn load_linked_session_suite_manifest(
     let suite_name = parsed
         .suite_name
         .unwrap_or_else(|| default_suite_name_for_manifest(path));
-    let subsystem = parse_subsystem(parsed.subsystem.as_deref().unwrap_or("cross-subsystem"))
-        .map_err(|message| LinkedSessionSuiteManifestError::Build {
-            path: path.to_path_buf(),
-            message,
-        })?;
-
-    let mut suite = LinkedSessionSuite::new(suite_name, subsystem);
+    let mut suite = LinkedSessionSuite::new(suite_name);
     if let Some(family) = parsed.family {
         suite = suite.with_family(family);
     }
@@ -406,25 +399,6 @@ fn missing_oracle_field(session_id: &str, oracle: ManifestOracle, field: &str) -
         "linked session {session_id} is missing {field} for {}",
         oracle.manifest_name()
     )
-}
-
-fn parse_subsystem(subsystem: &str) -> Result<TestSubsystem, String> {
-    match subsystem {
-        "cpu" => Ok(TestSubsystem::Cpu),
-        "interrupts" => Ok(TestSubsystem::Interrupts),
-        "bus" => Ok(TestSubsystem::Bus),
-        "cartridge" => Ok(TestSubsystem::Cartridge),
-        "timer" => Ok(TestSubsystem::Timer),
-        "ppu" => Ok(TestSubsystem::Ppu),
-        "dma" => Ok(TestSubsystem::Dma),
-        "apu" => Ok(TestSubsystem::Apu),
-        "boot" => Ok(TestSubsystem::Boot),
-        "joypad" => Ok(TestSubsystem::Joypad),
-        "serial" => Ok(TestSubsystem::Serial),
-        "scheduler" => Ok(TestSubsystem::Scheduler),
-        "cross-subsystem" => Ok(TestSubsystem::CrossSubsystem),
-        other => Err(format!("unsupported subsystem {other:?}")),
-    }
 }
 
 fn parse_console_model(console: &str, participant_id: &str) -> Result<ConsoleModel, String> {

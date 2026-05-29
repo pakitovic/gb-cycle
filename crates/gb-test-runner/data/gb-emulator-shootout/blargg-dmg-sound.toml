@@ -1,6 +1,5 @@
 family = "blargg"
 suite_name = "blargg-dmg-sound"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "blargg-dmg-sound-01-registers"

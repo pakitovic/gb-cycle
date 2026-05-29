@@ -1,6 +1,5 @@
 family = "docboy-cgb-dmg"
 suite_name = "docboy-cgb-dmg-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "docboy-cgb-dmg-apu-pcm12-ch1-read"

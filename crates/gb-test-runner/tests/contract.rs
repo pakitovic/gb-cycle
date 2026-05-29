@@ -5,10 +5,10 @@ use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
     FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec, PassCondition,
     RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
-    TEST_ROM_STORE_DIR, TestSubsystem, Timeout, acid_dmg_curated_suite,
-    ashiepaws_dmg_curated_suite, blargg_curated_suites, built_in_rom_suite_by_name,
-    daid_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite, mooneye_curated_suites,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
+    TEST_ROM_STORE_DIR, Timeout, acid_dmg_curated_suite, ashiepaws_dmg_curated_suite,
+    blargg_curated_suites, built_in_rom_suite_by_name, daid_dmg_curated_suite,
+    mealybug_tearoom_dmg_curated_suite, mooneye_curated_suites, phase_2_cpu_timing_suite,
+    phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
     phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
 
@@ -241,9 +241,7 @@ fn rom_suite_rejects_duplicate_case_ids() {
     .with_startup_mode(StartupMode::RealBoot)
     .with_execution_mode(ExecutionMode::Permissive);
 
-    let suite = RomSuite::new("cpu", TestSubsystem::Cpu)
-        .with_case(first)
-        .with_case(second);
+    let suite = RomSuite::new("cpu").with_case(first).with_case(second);
 
     assert_eq!(
         suite.validate(),
@@ -255,13 +253,12 @@ fn rom_suite_rejects_duplicate_case_ids() {
 
 #[test]
 fn rom_suite_validates_a_scheduler_grouped_contract() {
-    let suite =
-        RomSuite::new("scheduler-ordering", TestSubsystem::Scheduler).with_case(RomTestCase::new(
-            "phase-order-trace",
-            PathBuf::from("synthetic/scheduler-order.gb"),
-            Timeout::TCycles(1024),
-            PassCondition::TraceFixture(PathBuf::from("expected/scheduler-order.trace")),
-        ));
+    let suite = RomSuite::new("scheduler-ordering").with_case(RomTestCase::new(
+        "phase-order-trace",
+        PathBuf::from("synthetic/scheduler-order.gb"),
+        Timeout::TCycles(1024),
+        PassCondition::TraceFixture(PathBuf::from("expected/scheduler-order.trace")),
+    ));
 
     assert_eq!(suite.validate(), Ok(()));
 }
@@ -342,8 +339,8 @@ fn rom_suite_rejects_empty_name_and_invalid_cases() {
         Timeout::Frames(1),
         PassCondition::SerialExact("Passed".to_string()),
     );
-    let empty_name = RomSuite::new("", TestSubsystem::Cpu);
-    let invalid_suite = RomSuite::new("invalid-cases", TestSubsystem::Cpu).with_case(invalid_case);
+    let empty_name = RomSuite::new("");
+    let invalid_suite = RomSuite::new("invalid-cases").with_case(invalid_case);
 
     assert_eq!(
         empty_name.validate(),
@@ -406,7 +403,7 @@ fn external_stimulus_plan_builders_expose_the_registered_schedule() {
 
 #[test]
 fn rom_suite_can_be_built_incrementally_with_push_case() {
-    let mut suite = RomSuite::new("boot", TestSubsystem::Boot);
+    let mut suite = RomSuite::new("boot");
     suite.push_case(RomTestCase::new(
         "skip-boot-handshake",
         PathBuf::from("boot.gb"),
@@ -423,8 +420,6 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
     let cpu_suite = phase_2_cpu_timing_suite();
     let interrupt_suite = phase_2_interrupt_timing_suite();
 
-    assert_eq!(cpu_suite.subsystem, TestSubsystem::Cpu);
-    assert_eq!(interrupt_suite.subsystem, TestSubsystem::Interrupts);
     assert_eq!(cpu_suite.validate(), Ok(()));
     assert_eq!(interrupt_suite.validate(), Ok(()));
     assert!(
@@ -509,7 +504,6 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
 fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
     let suite = phase_4_ppu_oam_corruption_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
     assert!(
         suite
@@ -594,11 +588,11 @@ fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
             "blargg-timing-memory-oam"
         ]
     );
-    assert!(split_suites.iter().all(|suite| {
-        suite.subsystem == TestSubsystem::CrossSubsystem
-            && suite.validate() == Ok(())
-            && suite.family.as_deref() == Some("blargg")
-    }));
+    assert!(
+        split_suites.iter().all(|suite| {
+            suite.validate() == Ok(()) && suite.family.as_deref() == Some("blargg")
+        })
+    );
     assert_eq!(cases.len(), 38);
     assert!(
         cases
@@ -622,7 +616,6 @@ fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
 fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
     let suite = acid_dmg_curated_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("acid"));
     assert_eq!(suite.cases.len(), 2);
@@ -670,7 +663,6 @@ fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
 fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
     let suite = daid_dmg_curated_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("daid"));
     assert_eq!(suite.cases.len(), 3);
@@ -725,7 +717,6 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
 fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
     let suite = mealybug_tearoom_dmg_curated_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
     assert_eq!(suite.cases.len(), 24);
@@ -790,7 +781,6 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
 fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
     let suite = ashiepaws_dmg_curated_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("ashiepaws"));
     assert_eq!(suite.cases.len(), 2);
@@ -845,11 +835,11 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
             "mooneye-emulator-mbc2"
         ]
     );
-    assert!(split_suites.iter().all(|suite| {
-        suite.subsystem == TestSubsystem::CrossSubsystem
-            && suite.validate() == Ok(())
-            && suite.family.as_deref() == Some("mooneye")
-    }));
+    assert!(
+        split_suites.iter().all(|suite| {
+            suite.validate() == Ok(()) && suite.family.as_deref() == Some("mooneye")
+        })
+    );
     assert_eq!(cases.len(), 95);
     let expected_rom_paths = [
         "mooneye/acceptance/add_sp_e_timing.gb",
@@ -1043,7 +1033,6 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
 fn phase_6_cartridge_oracle_suite_tracks_reserved_mapper_fixtures() {
     let suite = phase_6_cartridge_oracle_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.cases.len(), 5);
     assert!(suite.cases.iter().all(|case| {
@@ -1072,7 +1061,6 @@ fn phase_6_mbc6_oracle_suite_tracks_the_dedicated_flash_fixture() {
     let suite = phase_6_mbc6_oracle_suite();
 
     assert_eq!(suite.name, "phase-6-mbc6-oracle");
-    assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.cases.len(), 1);
 

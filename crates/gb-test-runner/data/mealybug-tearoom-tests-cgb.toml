@@ -1,6 +1,5 @@
 family = "mealybug-tearoom-tests"
 suite_name = "mealybug-tearoom-cgb-extra"
-subsystem = "Ppu"
 
 [[case]]
 id = "mealybug-cgb-m2-win-en-toggle"

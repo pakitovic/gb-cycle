@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use gb_core::{ConsoleModel, Dmg07Port, ExecutionMode, StartupMode};
 
-use crate::{ExternalStimulus, ExternalStimulusPlan, TestSubsystem, Timeout};
+use crate::{ExternalStimulus, ExternalStimulusPlan, Timeout};
 
 #[derive(Debug)]
 pub enum LinkedSessionSuiteManifestError {
@@ -349,16 +349,14 @@ pub enum LinkedSessionSuiteValidationError {
 pub struct LinkedSessionSuite {
     pub name: String,
     pub family: Option<String>,
-    pub subsystem: TestSubsystem,
     pub sessions: Vec<LinkedSessionCase>,
 }
 
 impl LinkedSessionSuite {
-    pub fn new(name: impl Into<String>, subsystem: TestSubsystem) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             family: None,
-            subsystem,
             sessions: Vec::new(),
         }
     }

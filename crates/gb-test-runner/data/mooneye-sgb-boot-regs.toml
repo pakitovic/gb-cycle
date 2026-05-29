@@ -1,5 +1,4 @@
 suite_name = "mooneye-sgb-boot-regs-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 family = "mooneye"

@@ -1,6 +1,5 @@
 family = "ax6"
 suite_name = "ax6-dmg-extra"
-subsystem = "Cartridge"
 
 [[case]]
 id = "ax6-dmg-rtc3test-1"

@@ -266,7 +266,7 @@ fn select_case_for_options(mut suite: RomSuite, case_id: Option<&str>) -> Result
                 suite.name, case_id
             ));
         };
-        let mut selected_suite = RomSuite::new(suite.name, suite.subsystem);
+        let mut selected_suite = RomSuite::new(suite.name);
         if let Some(family) = suite.family {
             selected_suite = selected_suite.with_family(family);
         }
@@ -404,10 +404,9 @@ fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
         writeln_checked(
             output,
             &format!(
-                "suite={} family={} subsystem={:?}",
+                "suite={} family={}",
                 suite.name,
                 suite.family.as_deref().unwrap_or("-"),
-                suite.subsystem,
             ),
         )?;
         for case in &suite.cases {
@@ -425,10 +424,9 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
         writeln_checked(
             output,
             &format!(
-                "suite={} family={} subsystem={} cases={} sources={} oracles={} captures={} artifacts={}",
+                "suite={} family={} cases={} sources={} oracles={} captures={} artifacts={}",
                 suite.name,
                 suite.family.as_deref().unwrap_or("-"),
-                subsystem_name(suite.subsystem),
                 suite.cases.len(),
                 join_csv(&suite_sources),
                 join_csv(&suite_oracles),
@@ -482,13 +480,7 @@ fn write_early_hardening_checklist<W: Write>(output: &mut W) -> Result<(), Strin
 }
 
 fn write_suite_report<W: Write>(output: &mut W, report: &RomSuiteReport) -> Result<(), String> {
-    writeln_checked(
-        output,
-        &format!(
-            "suite={} subsystem={:?}",
-            report.suite_name, report.subsystem
-        ),
-    )?;
+    writeln_checked(output, &format!("suite={}", report.suite_name))?;
 
     for case in &report.cases {
         writeln_checked(
@@ -778,7 +770,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::{CapturedMemoryByte, CapturedMemoryBytes, CapturedMemoryTextOutput, TestSubsystem};
+    use crate::{CapturedMemoryByte, CapturedMemoryBytes, CapturedMemoryTextOutput};
 
     use super::{
         ConfiguredRomSuiteStartup, RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget,
@@ -994,7 +986,7 @@ mod tests {
 
     #[test]
     fn startup_env_skip_boot_overrides_real_and_custom_boot_cases_without_requiring_assets() {
-        let mut suite = RomSuite::new("real-boot-fixture", TestSubsystem::CrossSubsystem)
+        let mut suite = RomSuite::new("real-boot-fixture")
             .with_case(
                 RomTestCase::new(
                     "real-boot-case",
@@ -1042,22 +1034,21 @@ mod tests {
 
     #[test]
     fn startup_env_real_boot_overrides_suite_and_clears_direct_start_state() {
-        let mut suite = RomSuite::new("startup-state-fixture", TestSubsystem::CrossSubsystem)
-            .with_case(
-                RomTestCase::new(
-                    "custom-boot-state-case",
-                    "fixture.gb",
-                    Timeout::Frames(1),
-                    PassCondition::MooneyeResult,
-                )
-                .with_startup_mode(gb_core::StartupMode::CustomBoot)
-                .with_startup_timer_state(gb_core::TimerStartupState {
-                    system_counter: 0x1234,
-                    tima: 0x00,
-                    tma: 0x00,
-                    tac: 0x00,
-                }),
-            );
+        let mut suite = RomSuite::new("startup-state-fixture").with_case(
+            RomTestCase::new(
+                "custom-boot-state-case",
+                "fixture.gb",
+                Timeout::Frames(1),
+                PassCondition::MooneyeResult,
+            )
+            .with_startup_mode(gb_core::StartupMode::CustomBoot)
+            .with_startup_timer_state(gb_core::TimerStartupState {
+                system_counter: 0x1234,
+                tima: 0x00,
+                tma: 0x00,
+                tac: 0x00,
+            }),
+        );
         assert!(
             suite
                 .cases
@@ -1133,11 +1124,9 @@ mod tests {
         .expect("detailed list command should succeed");
         let detailed_output =
             String::from_utf8(detailed_output).expect("detailed output should be utf-8");
-        assert!(
-            detailed_output.contains(
-                "suite=blargg-timing-memory-oam family=blargg subsystem=cross-subsystem cases=15 sources=test-rom-store"
-            )
-        );
+        assert!(detailed_output.contains(
+            "suite=blargg-timing-memory-oam family=blargg cases=15 sources=test-rom-store"
+        ));
         assert!(
             detailed_output.contains(
                 "oracles=blargg-console-text,serial-contains,memory-text-output captures=blargg-console-text,snapshot,serial,memory-text-output"
@@ -1147,7 +1136,7 @@ mod tests {
             "case=blargg-oam-bug-1-lcd-sync family=blargg source=test-rom-store oracle=memory-text-output"
         ));
         assert!(detailed_output.contains(
-            "suite=cgb-smoke family=cgb-smoke subsystem=cross-subsystem cases=2 sources=test-rom-store oracles=mooneye-result,info-framebuffer"
+            "suite=cgb-smoke family=cgb-smoke cases=2 sources=test-rom-store oracles=mooneye-result,info-framebuffer"
         ));
         assert!(detailed_output.contains(
             "case=cgb-smoke-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
@@ -1176,7 +1165,6 @@ mod tests {
         let report = RomSuiteReport {
             suite_name: "synthetic".to_string(),
             family: None,
-            subsystem: TestSubsystem::Cpu,
             cases: vec![RomCaseReport {
                 case_id: "case-a".to_string(),
                 rom_path: PathBuf::from("synthetic/case-a.gb"),
@@ -1214,7 +1202,7 @@ mod tests {
         write_suite_report(&mut output, &report).expect("report writer should succeed");
         let output = String::from_utf8(output).expect("report output should be utf-8");
 
-        assert!(output.contains("suite=synthetic subsystem=Cpu"));
+        assert!(output.contains("suite=synthetic"));
         assert!(output.contains("case=case-a outcome=Failed"));
         assert!(output.contains("serial=\nserial-text"));
         assert!(output.contains("memory_bytes=\naddress=0xFF82 expected=0x01 actual=0x56"));
@@ -1231,7 +1219,6 @@ mod tests {
         let report = RomSuiteReport {
             suite_name: "synthetic-cgb".to_string(),
             family: None,
-            subsystem: TestSubsystem::Ppu,
             cases: vec![RomCaseReport {
                 case_id: "case-cgb".to_string(),
                 rom_path: PathBuf::from("synthetic/case-cgb.gbc"),
@@ -1328,7 +1315,7 @@ oracle = "info-framebuffer"
             .expect("explicit thread count should apply to this invocation only");
 
             let rendered = String::from_utf8(output).expect("manifest output should be utf-8");
-            assert!(rendered.contains("suite=local-case subsystem=CrossSubsystem"));
+            assert!(rendered.contains("suite=local-case"));
             assert!(rendered.contains("case=phase2-threaded outcome=Informational"));
         }
 
@@ -1386,7 +1373,7 @@ oracle = "info-framebuffer"
 
         let rendered = String::from_utf8(output).expect("manifest output should be utf-8");
         let png_path = rom_path.with_extension("png");
-        assert!(rendered.contains("suite=local-case subsystem=CrossSubsystem"));
+        assert!(rendered.contains("suite=local-case"));
         assert!(rendered.contains("case=phase2-export outcome=Informational"));
         assert!(rendered.contains(&format!(
             "case=phase2-export framebuffer_png={} channel=grayscale",

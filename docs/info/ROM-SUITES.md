@@ -35,6 +35,7 @@ The generated `/test/` store is gitignored. The promoted GB Emulator Shootout re
 - Built-in promoted GB Emulator Shootout manifests live under `crates/gb-test-runner/data/gb-emulator-shootout/*.toml`; built-in legacy extra/DocBoy manifests remain under `crates/gb-test-runner/data/*.toml`; local/private manifests passed with `--manifest` may live outside the repo.
 - Every built-in external ROM suite must have a dedicated manifest; chunked promoted lanes such as `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam`, `mooneye-acceptance-manual`, `mooneye-emulator-mbc1-mbc5`, and `mooneye-emulator-mbc2` are standalone `*.toml` files, not Rust-filtered views of a larger family catalog.
 - Omit `execution_mode` in built-in manifests for the default `Strict` mode; set it only for intentional `permissive` or `experimental` rows with an explicit reason in the owning manifest or doc.
+- Do not declare a suite subsystem in manifests; external ROM suite grouping is owned by report, family, suite name, and case metadata rather than a separate manifest-level classification.
 - Use `disabled = true` only with a non-empty `comment = "..."`; disabled rows are for explicit overfit, duplicate, impossible, upstream-disabled, or CI-budget cases, not for quietly hiding a failing oracle.
 - Use `report_model_suffix = true` only when the same upstream report label needs model-disambiguated rows such as `(DMG)` or `(GBC)`.
 - Prefer typed oracles (`serial-contains`, `mooneye-result`, `memory-byte-equals`, framebuffer fixtures, RGB555 framebuffer fixtures, explicitly named tolerance fixtures, trace fixtures, linked participant oracles) over manual visual inspection.
@@ -145,7 +146,6 @@ Keep commercial ROMs and private firmware outside the repo, outside `/test/`, an
 ```toml
 suite_name = "private-smoke"
 family = "private-commercial"
-subsystem = "joypad"
 
 [[case]]
 id = "private-start-button"

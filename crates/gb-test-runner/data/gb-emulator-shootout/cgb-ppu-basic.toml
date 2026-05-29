@@ -1,5 +1,4 @@
 suite_name = "cgb-ppu-basic"
-subsystem = "Ppu"
 
 [[case]]
 family = "samesuite"

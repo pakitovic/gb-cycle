@@ -1,6 +1,5 @@
 family = "samesuite"
 suite_name = "samesuite-dmg-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger"

@@ -1379,8 +1379,7 @@ fn linked_session_runner_executes_suites() {
         ),
     );
 
-    let suite =
-        LinkedSessionSuite::new("linked-suite", crate::TestSubsystem::Serial).with_session(session);
+    let suite = LinkedSessionSuite::new("linked-suite").with_session(session);
     let report = LinkedSessionRunner::new()
         .run_suite(&suite)
         .expect("linked suite should execute");
@@ -1740,7 +1739,6 @@ fn linked_session_report_helpers_distinguish_passed_and_non_failing_states() {
     let passing_suite = LinkedSessionSuiteReport {
         suite_name: "passing".to_string(),
         family: None,
-        subsystem: crate::TestSubsystem::Serial,
         sessions: vec![passing_report],
     };
     assert!(passing_suite.all_passed());
@@ -1749,7 +1747,6 @@ fn linked_session_report_helpers_distinguish_passed_and_non_failing_states() {
     let mixed_suite = LinkedSessionSuiteReport {
         suite_name: "mixed".to_string(),
         family: Some("serial-ext".to_string()),
-        subsystem: crate::TestSubsystem::Serial,
         sessions: vec![informational_report, failing_report],
     };
     assert!(!mixed_suite.all_passed());

@@ -1,6 +1,5 @@
 family = "cpp"
 suite_name = "cpp-dmg-curated"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "cpp-rtc-invalid-banks"

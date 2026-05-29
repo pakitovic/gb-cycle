@@ -5,8 +5,8 @@ use gb_core::{
 };
 
 use crate::{
-    DMG_FAMILY_FRAME_T_CYCLES, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
-    TestSubsystem, Timeout, encode_bytes_as_upper_hex,
+    DMG_FAMILY_FRAME_T_CYCLES, RomExecutionError, RomRunner, RomTestCase, RunnerMachine, Timeout,
+    encode_bytes_as_upper_hex,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +52,6 @@ pub struct DeterminismCaseReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeterminismSuiteReport {
     pub suite_name: String,
-    pub subsystem: TestSubsystem,
     pub cases: Vec<DeterminismCaseReport>,
 }
 
@@ -123,7 +122,6 @@ impl DeterminismRunner {
 
         Ok(DeterminismSuiteReport {
             suite_name: suite.name.clone(),
-            subsystem: suite.subsystem,
             cases: case_reports,
         })
     }
@@ -343,7 +341,7 @@ fn mismatched_console_model(model: ConsoleModel) -> ConsoleModel {
 mod tests {
     use gb_core::{ConsoleModel, ExecutionMode};
 
-    use crate::{PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout};
+    use crate::{PassCondition, RomSuite, RomTestCase, Timeout};
 
     use super::{
         DeterminismCaseFailure, DeterminismCaseOutcome, DeterminismExecutionError,
@@ -405,7 +403,7 @@ mod tests {
 
     #[test]
     fn run_suite_reports_invalid_suite_without_io() {
-        let suite = RomSuite::new("", TestSubsystem::Cpu);
+        let suite = RomSuite::new("");
         assert!(matches!(
             DeterminismRunner::new().run_suite(&suite),
             Err(DeterminismExecutionError::InvalidSuite)
@@ -446,7 +444,6 @@ mod tests {
 
         assert!(report.all_passed());
         assert_eq!(report.suite_name, "phase-2-cpu-timing");
-        assert_eq!(report.subsystem, TestSubsystem::Cpu);
         assert_eq!(report.cases.len(), 1);
         assert_eq!(report.cases[0].case_id, "phase2-fetch-immediate-order");
         assert_eq!(report.cases[0].outcome, DeterminismCaseOutcome::Passed);

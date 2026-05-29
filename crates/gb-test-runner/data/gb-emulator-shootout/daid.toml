@@ -1,6 +1,5 @@
 family = "daid"
 suite_name = "daid-dmg-curated"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "daid-ppu-scanline-bgp"

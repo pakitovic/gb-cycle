@@ -1,6 +1,5 @@
 suite_name = "linked-cgb-ir-smoke"
 family = "internal"
-subsystem = "cross-subsystem"
 
 [[session]]
 id = "cgb-ir-emitter-to-receiver"

@@ -1,5 +1,4 @@
 suite_name = "cgb-rtc"
-subsystem = "Cartridge"
 
 [[case]]
 family = "ax6"

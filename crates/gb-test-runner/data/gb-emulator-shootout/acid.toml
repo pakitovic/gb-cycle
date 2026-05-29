@@ -1,6 +1,5 @@
 family = "acid"
 suite_name = "acid-dmg-curated"
-subsystem = "Ppu"
 
 [[case]]
 id = "which-dmg"

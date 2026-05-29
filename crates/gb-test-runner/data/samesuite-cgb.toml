@@ -1,6 +1,5 @@
 family = "samesuite"
 suite_name = "samesuite-cgb-extra"
-subsystem = "Apu"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-align-12-cgbe"

@@ -1,6 +1,5 @@
 family = "little-things-gb"
 suite_name = "little-things-gb-dmg-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "little-things-gb-dmg-double-halt-cancel"

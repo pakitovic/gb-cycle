@@ -1,6 +1,5 @@
 family = "mooneye"
 suite_name = "mooneye-acceptance-manual"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "mooneye-add-sp-e-timing"

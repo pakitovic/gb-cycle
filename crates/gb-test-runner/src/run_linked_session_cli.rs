@@ -208,11 +208,11 @@ fn select_session_for_options(
         };
 
         suite = if let Some(family) = suite.family {
-            LinkedSessionSuite::new(suite.name, suite.subsystem)
+            LinkedSessionSuite::new(suite.name)
                 .with_family(family)
                 .with_session(session)
         } else {
-            LinkedSessionSuite::new(suite.name, suite.subsystem).with_session(session)
+            LinkedSessionSuite::new(suite.name).with_session(session)
         };
     }
 
@@ -295,10 +295,9 @@ fn write_suite_report<W: Write>(
     writeln_checked(
         output,
         &format!(
-            "suite={} family={} subsystem={:?}",
+            "suite={} family={}",
             report.suite_name,
             report.family.as_deref().unwrap_or("-"),
-            report.subsystem
         ),
     )?;
 
@@ -403,7 +402,7 @@ mod tests {
     use super::*;
     use crate::{
         LinkedSessionCaptureKind, LinkedSessionCase, LinkedSessionParticipant,
-        LinkedSessionPassCondition, TestSubsystem, Timeout, default_workspace_root,
+        LinkedSessionPassCondition, Timeout, default_workspace_root,
     };
     use std::path::PathBuf;
 
@@ -451,8 +450,7 @@ mod tests {
             LinkedSessionParticipant::new("right", "right.gb")
                 .with_startup_mode(StartupMode::SkipBoot),
         );
-        let mut suite =
-            LinkedSessionSuite::new("startup-suite", TestSubsystem::Serial).with_session(session);
+        let mut suite = LinkedSessionSuite::new("startup-suite").with_session(session);
 
         apply_configured_startup_override_for(&mut suite, ConfiguredLinkedSessionStartup::RealBoot)
             .expect("startup override should succeed");

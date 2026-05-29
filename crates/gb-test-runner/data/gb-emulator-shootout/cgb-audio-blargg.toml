@@ -1,5 +1,4 @@
 suite_name = "cgb-audio-blargg"
-subsystem = "Apu"
 
 [[case]]
 family = "blargg"

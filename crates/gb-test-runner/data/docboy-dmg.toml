@@ -1,6 +1,5 @@
 family = "docboy-dmg"
 suite_name = "docboy-dmg-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "docboy-cpu-cb-interrupt"

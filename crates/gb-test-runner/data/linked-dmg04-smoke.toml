@@ -1,6 +1,5 @@
 suite_name = "linked-dmg04-smoke"
 family = "serial-ext"
-subsystem = "serial"
 
 [[session]]
 id = "dmg04-basic-exchange"

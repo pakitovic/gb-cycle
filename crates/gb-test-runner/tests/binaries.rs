@@ -158,7 +158,6 @@ fn run_linked_session_binary_returns_non_zero_and_writes_failure_artifacts() {
         concat!(
             "suite_name = \"linked-fixture-mismatch\"\n",
             "family = \"serial-ext\"\n",
-            "subsystem = \"serial\"\n\n",
             "[[session]]\n",
             "id = \"dmg04-basic-exchange\"\n",
             "topology = \"dmg04\"\n",

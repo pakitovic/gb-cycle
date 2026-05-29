@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, FailureArtifactPolicy,
-    MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout,
+    MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, Timeout,
 };
 
 const DEFAULT_LOCAL_ORACLE: &str = "info-framebuffer";
@@ -53,7 +53,6 @@ impl std::error::Error for LocalRomSuiteManifestError {}
 struct LocalRomSuiteManifestFile {
     suite_name: Option<String>,
     family: Option<String>,
-    subsystem: Option<String>,
     #[serde(rename = "case", default)]
     cases: Vec<LocalRomSuiteCase>,
 }
@@ -126,13 +125,7 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
     let suite_name = parsed
         .suite_name
         .unwrap_or_else(|| default_suite_name_for_manifest(path));
-    let subsystem = parse_subsystem(parsed.subsystem.as_deref().unwrap_or("cross-subsystem"))
-        .map_err(|message| LocalRomSuiteManifestError::Build {
-            path: path.to_path_buf(),
-            message,
-        })?;
-
-    let mut suite = RomSuite::new(suite_name, subsystem);
+    let mut suite = RomSuite::new(suite_name);
     if let Some(family) = parsed.family {
         suite = suite.with_family(family);
     }
@@ -452,25 +445,6 @@ fn parse_execution_mode(mode: &str, case_id: &str) -> Result<ExecutionMode, Stri
     }
 }
 
-fn parse_subsystem(subsystem: &str) -> Result<TestSubsystem, String> {
-    match subsystem {
-        "cpu" => Ok(TestSubsystem::Cpu),
-        "interrupts" => Ok(TestSubsystem::Interrupts),
-        "bus" => Ok(TestSubsystem::Bus),
-        "cartridge" => Ok(TestSubsystem::Cartridge),
-        "timer" => Ok(TestSubsystem::Timer),
-        "ppu" => Ok(TestSubsystem::Ppu),
-        "dma" => Ok(TestSubsystem::Dma),
-        "apu" => Ok(TestSubsystem::Apu),
-        "boot" => Ok(TestSubsystem::Boot),
-        "joypad" => Ok(TestSubsystem::Joypad),
-        "serial" => Ok(TestSubsystem::Serial),
-        "scheduler" => Ok(TestSubsystem::Scheduler),
-        "cross-subsystem" => Ok(TestSubsystem::CrossSubsystem),
-        other => Err(format!("unsupported subsystem {other:?}")),
-    }
-}
-
 fn parse_joypad_button(button: &str, case_id: &str) -> Result<JoypadButton, String> {
     match button {
         "right" => Ok(JoypadButton::Right),
@@ -587,7 +561,7 @@ mod tests {
     };
     use crate::{
         CaptureKind, ExternalStimulusAction, MemoryByteExpectation, MemoryTextOutputSpec,
-        PassCondition, StimulusTime, TestSubsystem,
+        PassCondition, StimulusTime,
     };
     use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
     use std::fs;
@@ -648,7 +622,6 @@ pressed = false
         let suite =
             load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
         assert_eq!(suite.name, "tetris-start");
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -782,7 +755,6 @@ pressed = true
                 r#"
 suite_name = "commercial-smoke"
 family = "private-commercial"
-subsystem = "joypad"
 
 [[case]]
 id = "mgb-serial"
@@ -878,7 +850,6 @@ fixture = "fixtures/cgb-acid2.png"
             load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
-        assert_eq!(suite.subsystem, TestSubsystem::Joypad);
         assert_eq!(suite.cases.len(), 9);
 
         let serial_case = &suite.cases[0];
@@ -1046,28 +1017,8 @@ fixture = "fixtures/cgb-acid2.png"
     }
 
     #[test]
-    fn local_manifest_reports_unsupported_subsystem_and_missing_timeout_errors() {
+    fn local_manifest_reports_missing_timeout_errors() {
         let workspace = unique_temp_dir("invalid-contract");
-
-        let unsupported_subsystem_manifest = write_manifest(
-            &workspace,
-            "unsupported-subsystem.toml",
-            r#"
-subsystem = "video"
-
-[[case]]
-rom = "commercial/tetris.gb"
-timeout_frames = 1
-"#,
-        );
-        let unsupported_subsystem = load_local_rom_suite_manifest(&unsupported_subsystem_manifest)
-            .expect_err("unsupported subsystem should fail");
-        match unsupported_subsystem {
-            LocalRomSuiteManifestError::Build { message, .. } => {
-                assert!(message.contains("unsupported subsystem"));
-            }
-            other => panic!("unexpected manifest error: {other:?}"),
-        }
 
         let missing_timeout_manifest = write_manifest(
             &workspace,

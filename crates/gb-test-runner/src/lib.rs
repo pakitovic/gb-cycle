@@ -697,17 +697,15 @@ pub struct RomSuite {
     pub name: String,
     pub family: Option<String>,
     pub report_id: Option<String>,
-    pub subsystem: TestSubsystem,
     pub cases: Vec<RomTestCase>,
 }
 
 impl RomSuite {
-    pub fn new(name: impl Into<String>, subsystem: TestSubsystem) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             family: None,
             report_id: None,
-            subsystem,
             cases: Vec::new(),
         }
     }
@@ -779,7 +777,7 @@ const PHASE_SENTINEL_VALUE: u8 = 0xA5;
 const PHASE_6_MBC3_STARTUP_RTC_SECONDS: u64 = 93_784;
 
 pub fn phase_2_cpu_timing_suite() -> RomSuite {
-    RomSuite::new("phase-2-cpu-timing", TestSubsystem::Cpu)
+    RomSuite::new("phase-2-cpu-timing")
         .with_case(
             RomTestCase::new(
                 "phase2-fetch-immediate-order",
@@ -814,7 +812,7 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
     const PHASE_2_HALT_STOP_WAKE_T_CYCLE: u64 = 356;
     const PHASE_2_HALT_STOP_IF_INJECT_T_CYCLE: u64 = 357;
 
-    RomSuite::new("phase-2-interrupt-timing", TestSubsystem::Interrupts)
+    RomSuite::new("phase-2-interrupt-timing")
         .with_case(
             RomTestCase::new(
                 "phase2-ei-delay-priority",
@@ -872,7 +870,7 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
 }
 
 pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
-    RomSuite::new("phase-4-ppu-oam-corruption", TestSubsystem::Ppu)
+    RomSuite::new("phase-4-ppu-oam-corruption")
         .with_case(
             RomTestCase::new(
                 "phase4-oam-direct-mode2-oam-access",
@@ -981,7 +979,7 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
 }
 
 pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
-    RomSuite::new("phase-6-cartridge-oracle", TestSubsystem::Cartridge)
+    RomSuite::new("phase-6-cartridge-oracle")
         .with_case(RomTestCase::new(
             "phase6-mbc1-standard-banking",
             phase_6_rom_path("phase6_mbc1_standard_banking.gb"),
@@ -1018,7 +1016,7 @@ pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
 }
 
 pub fn phase_6_mbc6_oracle_suite() -> RomSuite {
-    RomSuite::new("phase-6-mbc6-oracle", TestSubsystem::Cartridge).with_case(
+    RomSuite::new("phase-6-mbc6-oracle").with_case(
         RomTestCase::new(
             "phase6-mbc6-split-window-flash",
             phase_6_rom_path("phase6_mbc6_split_window_flash.gb"),
@@ -1450,7 +1448,6 @@ impl RomCaseReport {
 pub struct RomSuiteReport {
     pub suite_name: String,
     pub family: Option<String>,
-    pub subsystem: TestSubsystem,
     pub cases: Vec<RomCaseReport>,
 }
 
@@ -1813,7 +1810,6 @@ impl RomRunner {
         Ok(RomSuiteReport {
             suite_name: suite.name.clone(),
             family: suite.family.clone(),
-            subsystem: suite.subsystem,
             cases: case_reports,
         })
     }
@@ -3480,7 +3476,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-smoke");
         assert_eq!(suite.family.as_deref(), Some("cgb-smoke"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3511,7 +3506,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-boot-div");
         assert_eq!(suite.family.as_deref(), Some("cgb-boot-div"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -3536,7 +3530,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-boot-hwio");
         assert_eq!(suite.family.as_deref(), Some("cgb-boot-hwio"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -3561,7 +3554,6 @@ mod tests {
 
         assert_eq!(suite.name, "mooneye-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("mooneye"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 10);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
@@ -3594,7 +3586,6 @@ mod tests {
 
         assert_eq!(suite.name, "mooneye-sgb-boot-regs-extra");
         assert_eq!(suite.family.as_deref(), Some("mooneye-sgb-boot-regs-extra"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
         assert!(built_in_rom_suite_by_name("mooneye-sgb-boot-regs-extra").is_some());
         assert!(suite.cases.iter().all(|case| {
@@ -3623,7 +3614,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-ppu-basic");
         assert_eq!(suite.family.as_deref(), Some("cgb-ppu-basic"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 4);
 
         let case = &suite.cases[0];
@@ -3712,7 +3702,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-ppu-hard");
         assert_eq!(suite.family.as_deref(), Some("acid"));
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -3744,7 +3733,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-dma");
         assert_eq!(suite.family.as_deref(), Some("cgb-dma"));
-        assert_eq!(suite.subsystem, TestSubsystem::Dma);
         assert_eq!(suite.cases.len(), 4);
 
         let expected = [
@@ -3795,7 +3783,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-rtc");
         assert_eq!(suite.family.as_deref(), Some("cgb-rtc"));
-        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -3846,7 +3833,6 @@ mod tests {
 
         assert_eq!(suite.name, "ax6-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("ax6"));
-        assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -3897,7 +3883,6 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 3);
 
         let expected = [
@@ -3945,7 +3930,6 @@ mod tests {
 
         assert_eq!(suite.name, "little-things-gb-dmg-extra");
         assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 2);
 
         let expected = [
@@ -3988,7 +3972,6 @@ mod tests {
 
         assert_eq!(suite.name, "little-things-gb-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("little-things-gb"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 1);
 
         let case = &suite.cases[0];
@@ -4043,7 +4026,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-audio-blargg");
         assert_eq!(suite.family.as_deref(), Some("cgb-audio-blargg"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 12);
 
         for case in &suite.cases {
@@ -4090,7 +4072,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-audio-samesuite");
         assert_eq!(suite.family.as_deref(), Some("cgb-audio-samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 61);
 
         for case in &suite.cases {
@@ -4127,7 +4108,6 @@ mod tests {
 
         assert_eq!(suite.name, "samesuite-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.subsystem, TestSubsystem::Apu);
         assert_eq!(suite.cases.len(), 9);
 
         for case in &suite.cases {
@@ -4165,7 +4145,6 @@ mod tests {
 
         assert_eq!(suite.name, "magen-cgb-extra");
         assert_eq!(suite.family.as_deref(), Some("magen"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.cases.len(), 8);
 
         for case in &suite.cases {
@@ -4197,7 +4176,6 @@ mod tests {
 
         assert_eq!(suite.name, "cgb-speed");
         assert_eq!(suite.family.as_deref(), Some("cgb-speed"));
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
 
         let stop_case = suite
             .cases
@@ -4448,7 +4426,6 @@ mod tests {
         let suite =
             built_in_rom_suite_by_name("acid-dmg-curated").expect("known suite should exist");
 
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("acid"));
         assert_eq!(suite.cases.len(), 2);
         let which_case = suite
@@ -4489,7 +4466,6 @@ mod tests {
         let suite = built_in_rom_suite_by_name("mealybug-tearoom-dmg-curated")
             .expect("known suite should exist");
 
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
         assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
@@ -4531,7 +4507,6 @@ mod tests {
             "mealybug-cgb-m3-obp0-change",
             "mealybug-cgb-m3-scx-low-3-bits",
         ];
-        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
         assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
@@ -4569,7 +4544,6 @@ mod tests {
         let suite =
             built_in_rom_suite_by_name("cpp-dmg-curated").expect("known suite should exist");
 
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.family.as_deref(), Some("cpp"));
         assert_eq!(suite.cases.len(), 3);
         assert!(suite.cases.iter().all(|case| {
@@ -4586,7 +4560,6 @@ mod tests {
         let suite = built_in_rom_suite_by_name("cpp-sgb").expect("known suite should exist");
 
         assert_eq!(suite, cpp_sgb_suite());
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.family.as_deref(), Some("cpp"));
         assert_eq!(suite.cases.len(), 1);
         let case = &suite.cases[0];
@@ -4711,7 +4684,6 @@ mod tests {
         let suite = built_in_rom_suite_by_name("mooneye-acceptance-manual")
             .expect("known suite should exist");
 
-        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.family.as_deref(), Some("mooneye"));
         assert_eq!(suite.cases.len(), 67);
         assert!(

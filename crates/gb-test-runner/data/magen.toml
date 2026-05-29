@@ -1,6 +1,5 @@
 family = "magen"
 suite_name = "magen-cgb-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "magen-cgb-bg-oam-priority"

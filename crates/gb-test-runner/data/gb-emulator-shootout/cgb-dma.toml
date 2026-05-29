@@ -1,5 +1,4 @@
 suite_name = "cgb-dma"
-subsystem = "Dma"
 
 [[case]]
 family = "samesuite"

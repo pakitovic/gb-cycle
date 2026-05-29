@@ -1,5 +1,4 @@
 suite_name = "cgb-smoke"
-subsystem = "CrossSubsystem"
 
 [[case]]
 family = "mooneye"

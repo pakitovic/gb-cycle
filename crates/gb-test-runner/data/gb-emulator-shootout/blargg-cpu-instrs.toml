@@ -1,6 +1,5 @@
 family = "blargg"
 suite_name = "blargg-cpu-instrs"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "blargg-cpu-instrs-01-special"

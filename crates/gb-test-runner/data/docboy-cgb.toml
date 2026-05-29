@@ -1,6 +1,5 @@
 family = "docboy-cgb"
 suite_name = "docboy-cgb-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "docboy-cgb-docboy-boot-boot-bg-palettes"

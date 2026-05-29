@@ -1,6 +1,5 @@
 family = "little-things-gb"
 suite_name = "little-things-gb-cgb-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "little-things-gb-cgb-whichboot"

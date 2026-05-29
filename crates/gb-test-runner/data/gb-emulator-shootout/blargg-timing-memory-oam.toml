@@ -1,6 +1,5 @@
 family = "blargg"
 suite_name = "blargg-timing-memory-oam"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "blargg-halt-bug"

@@ -1,6 +1,5 @@
 family = "mooneye"
 suite_name = "mooneye-emulator-mbc1-mbc5"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "mooneye-emulator-only-mbc1-bits-bank1"

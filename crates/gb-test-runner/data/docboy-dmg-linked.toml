@@ -1,6 +1,5 @@
 suite_name = "docboy-dmg-linked-extra"
 family = "docboy-dmg"
-subsystem = "serial"
 
 [[session]]
 id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-master-framebuffer"

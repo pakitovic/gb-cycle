@@ -1,6 +1,5 @@
 family = "cpp"
 suite_name = "cpp-sgb"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "cpp-sgb-ext-test"

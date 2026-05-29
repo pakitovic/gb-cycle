@@ -1,6 +1,5 @@
 family = "samesuite"
 suite_name = "samesuite-sgb"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "samesuite-sgb-command-mlt-req"

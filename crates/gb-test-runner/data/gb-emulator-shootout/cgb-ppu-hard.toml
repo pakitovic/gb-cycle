@@ -1,6 +1,5 @@
 family = "acid"
 suite_name = "cgb-ppu-hard"
-subsystem = "Ppu"
 
 [[case]]
 id = "cgb-ppu-hard-cgb-acid-hell"

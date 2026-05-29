@@ -117,7 +117,6 @@ impl LinkedSessionCaseReport {
 pub struct LinkedSessionSuiteReport {
     pub suite_name: String,
     pub family: Option<String>,
-    pub subsystem: crate::TestSubsystem,
     pub sessions: Vec<LinkedSessionCaseReport>,
 }
 
@@ -454,7 +453,6 @@ impl LinkedSessionRunner {
         Ok(LinkedSessionSuiteReport {
             suite_name: suite.name.clone(),
             family: suite.family.clone(),
-            subsystem: suite.subsystem,
             sessions: session_reports,
         })
     }

@@ -1,6 +1,5 @@
 family = "gbmicrotest"
 suite_name = "gbmicrotest-dmg-extra"
-subsystem = "CrossSubsystem"
 
 [[case]]
 id = "gbmicrotest-halt-halt-bug"
