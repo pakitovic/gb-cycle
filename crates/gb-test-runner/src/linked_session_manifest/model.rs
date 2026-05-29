@@ -11,7 +11,6 @@ use crate::{ExternalStimulus, ExternalStimulusPlan, TestSubsystem, Timeout};
 pub enum LinkedSessionSuiteManifestError {
     Read { path: PathBuf, source: io::Error },
     Parse { path: PathBuf, message: String },
-    UnsupportedVersion { path: PathBuf, version: u32 },
     Build { path: PathBuf, message: String },
 }
 
@@ -30,14 +29,6 @@ impl fmt::Display for LinkedSessionSuiteManifestError {
                     f,
                     "failed to parse linked-session suite manifest {}: {message}",
                     path.display()
-                )
-            }
-            Self::UnsupportedVersion { path, version } => {
-                write!(
-                    f,
-                    "linked-session suite manifest {} uses unsupported version {}",
-                    path.display(),
-                    version
                 )
             }
             Self::Build { path, message } => {
@@ -198,7 +189,6 @@ impl LinkedSessionFailureArtifactPolicy {
 pub enum LinkedSessionParticipantValidationError {
     EmptyParticipantId,
     MissingRomPath,
-    EmptyExternalRomRootKey,
     DuplicateExternalStimulus(ExternalStimulus),
 }
 
@@ -206,7 +196,6 @@ pub enum LinkedSessionParticipantValidationError {
 pub struct LinkedSessionParticipant {
     pub id: String,
     pub rom_path: PathBuf,
-    pub external_rom_root_key: Option<String>,
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
@@ -219,18 +208,12 @@ impl LinkedSessionParticipant {
         Self {
             id: id.into(),
             rom_path: rom_path.into(),
-            external_rom_root_key: None,
             console_model: ConsoleModel::GameBoy,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             adapter_port: None,
             external_stimuli: ExternalStimulusPlan::new(),
         }
-    }
-
-    pub fn with_external_rom_root_key(mut self, external_rom_root_key: impl Into<String>) -> Self {
-        self.external_rom_root_key = Some(external_rom_root_key.into());
-        self
     }
 
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {

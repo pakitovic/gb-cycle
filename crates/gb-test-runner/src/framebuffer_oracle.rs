@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+pub(crate) const GBEMU_SHOOTOUT_GRAYSCALE_TOLERANCE: u8 = 50;
 const EXPERIMENTAL_MEALYBUG_CGB_LCDC5_WX_FIXTURE: &str =
     "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png";
 
@@ -207,6 +208,21 @@ pub(crate) fn encode_rgb555_framebuffer_png(pixels: &[u16]) -> io::Result<Vec<u8
         .map(rgb555_to_rgb888)
         .collect::<Vec<_>>();
     encode_rgb_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &colors)
+}
+
+pub(crate) fn grayscale_framebuffers_match_with_tolerance(
+    actual: &GrayscaleFramebuffer,
+    expected: &GrayscaleFramebuffer,
+    tolerance: u8,
+) -> bool {
+    actual.width == expected.width
+        && actual.height == expected.height
+        && actual.pixels.len() == expected.pixels.len()
+        && actual
+            .pixels
+            .iter()
+            .zip(&expected.pixels)
+            .all(|(left, right)| left.abs_diff(*right) <= tolerance)
 }
 
 #[cfg(test)]
@@ -600,6 +616,7 @@ mod tests {
         decode_local_pgm_framebuffer, decode_local_pgm_grayscale_framebuffer,
         decode_local_rgb555_framebuffer, decode_local_rgb555_grayscale_framebuffer,
         encode_framebuffer_pgm, encode_framebuffer_png, encode_rgb555_framebuffer_png,
+        grayscale_framebuffers_match_with_tolerance,
     };
     use std::fs;
     use std::path::Path;
@@ -809,6 +826,31 @@ mod tests {
         assert!(missing.path.ends_with("missing.png"));
 
         fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn grayscale_tolerance_compare_matches_gbemu_shootout_threshold_contract() {
+        let actual = decode_local_pgm_grayscale_framebuffer("actual", b"P5\n2 1\n255\n\x64\xc8")
+            .expect("local grayscale framebuffer should decode");
+        let within = decode_local_pgm_grayscale_framebuffer("within", b"P5\n2 1\n255\n\x32\xfa")
+            .expect("within-tolerance grayscale framebuffer should decode");
+        let outside = decode_local_pgm_grayscale_framebuffer("outside", b"P5\n2 1\n255\n\x31\xfa")
+            .expect("outside-tolerance grayscale framebuffer should decode");
+        let wrong_size =
+            decode_local_pgm_grayscale_framebuffer("wrong-size", b"P5\n1 1\n255\n\x64")
+                .expect("wrong-size grayscale framebuffer should decode");
+
+        assert!(grayscale_framebuffers_match_with_tolerance(
+            &actual, &within, 50
+        ));
+        assert!(!grayscale_framebuffers_match_with_tolerance(
+            &actual, &outside, 50
+        ));
+        assert!(!grayscale_framebuffers_match_with_tolerance(
+            &actual,
+            &wrong_size,
+            50
+        ));
     }
 
     #[test]

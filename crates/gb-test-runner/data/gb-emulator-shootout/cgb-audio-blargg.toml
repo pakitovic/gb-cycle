@@ -1,0 +1,110 @@
+suite_name = "cgb-audio-blargg"
+subsystem = "Apu"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-01-registers"
+rom = "cgb_sound/01-registers.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-02-len-ctr"
+rom = "cgb_sound/02-len_ctr.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-03-trigger"
+rom = "cgb_sound/03-trigger.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-04-sweep"
+rom = "cgb_sound/04-sweep.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-05-sweep-details"
+rom = "cgb_sound/05-sweep_details.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-06-overflow-on-trigger"
+rom = "cgb_sound/06-overflow_on_trigger.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-07-len-sweep-period-sync"
+rom = "cgb_sound/07-len_sweep_period_sync.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-08-len-ctr-during-power"
+rom = "cgb_sound/08-len_ctr_during_power.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-09-wave-read-while-on"
+rom = "cgb_sound/09-wave_read_while_on.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-10-wave-trigger-while-on"
+rom = "cgb_sound/10-wave_trigger_while_on.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-11-regs-after-power"
+rom = "cgb_sound/11-regs_after_power.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"
+
+[[case]]
+family = "blargg"
+id = "cgb-audio-blargg-12-wave"
+rom = "cgb_sound/12-wave.gb"
+console = "cgb"
+timeout_frames = 3600
+oracle = "blargg-memory-text-contains"
+expected = "Passed"

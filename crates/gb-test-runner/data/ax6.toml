@@ -1,4 +1,3 @@
-version = 1
 family = "ax6"
 suite_name = "ax6-dmg-extra"
 subsystem = "Cartridge"

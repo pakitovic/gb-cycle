@@ -19,8 +19,8 @@ This file owns the day-to-day implementation workflow: how to choose authority d
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md), [`docs/CODING-RULES.md`](CODING-RULES.md), and subsystem handbooks under `docs/hardware/` are the local source of design and hardware-model constraints.
 - [`docs/TESTING.md`](TESTING.md) owns validation policy; [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) owns external ROM materialization, Make targets, reports, and runner commands.
 - [`docs/REFERENCES.md`](REFERENCES.md) owns the current consultation order for Pan Docs, AntonioND, Gekkio, GBEmulatorShootout, DocBoy, and other active references.
-- `crates/gb-test-runner/data/sources.toml` owns pinned external ROM sources and hashes; update it rather than documenting ad hoc source lists elsewhere.
-- `/test/test-report.md`, `/test/test-report-extra.md`, and `/test/test-report-docboy.md` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
+- `crates/gb-test-runner/data/gb-emulator-shootout/sources.toml` owns pinned external ROM and upstream oracle-fixture sources and hashes for the promoted GB Emulator Shootout report; `crates/gb-test-runner/data/sources.toml` owns only the legacy extra/DocBoy source inventory until those reports split out. Update those files rather than documenting ad hoc source lists elsewhere.
+- `/test/gb-emulator-shootout/test-report.md`, `/test/test-report-extra.md`, and `/test/test-report-docboy.md` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
 
 ## Change policy
 

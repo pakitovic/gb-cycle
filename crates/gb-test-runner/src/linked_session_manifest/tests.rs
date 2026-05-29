@@ -108,7 +108,6 @@ fn linked_session_manifest_defaults_to_trace_info_and_resolves_relative_rom_path
         &workspace,
         "dmg04-defaults.toml",
         r#"
-version = 1
 
 [[session]]
 id = "basic-exchange"
@@ -215,7 +214,6 @@ fn linked_session_manifest_supports_explicit_metadata_and_trace_fixture_oracles(
         &workspace,
         "linked-commercial-smoke.toml",
         &r#"
-version = 1
 suite_name = "linked-commercial-smoke"
 family = "serial-ext"
 subsystem = "serial"
@@ -230,7 +228,6 @@ fixture = "fixtures/pokemon.trace"
   [[session.participant]]
   id = "left"
   rom = "commercial/pokemon-red.gb"
-  external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
   console = "mgb"
   startup = "real-boot"
   mode = "permissive"
@@ -296,8 +293,11 @@ fixture = "fixtures/snapshot.txt"
     assert_eq!(left.startup_mode, StartupMode::RealBoot);
     assert_eq!(left.execution_mode, ExecutionMode::Permissive);
     assert_eq!(
-        left.external_rom_root_key.as_deref(),
-        Some("GB_CYCLE_PRIVATE_ROM_ROOT")
+        left.rom_path,
+        manifest_path
+            .parent()
+            .expect("manifest path should have a parent")
+            .join("commercial/pokemon-red.gb")
     );
     assert_eq!(
         left.external_stimuli.stimuli()[0].action,
@@ -331,7 +331,6 @@ fn linked_session_manifest_supports_participant_scoped_serial_hex_oracles() {
         &workspace,
         "participant-serial-hex.toml",
         r#"
-version = 1
 suite_name = "participant-serial-hex"
 subsystem = "serial"
 
@@ -386,7 +385,6 @@ fn linked_session_manifest_supports_participant_scoped_snapshot_fixture_oracles(
         "participant-snapshot-fixture.toml",
         &format!(
             r#"
-version = 1
 suite_name = "participant-snapshot-fixture"
 subsystem = "serial"
 
@@ -443,7 +441,6 @@ fn linked_session_manifest_supports_participant_scoped_trace_fixture_oracles() {
         "participant-trace-fixture.toml",
         &format!(
             r#"
-version = 1
 suite_name = "participant-trace-fixture"
 subsystem = "serial"
 
@@ -505,7 +502,6 @@ fn linked_session_manifest_supports_participant_scoped_framebuffer_until_match_o
         "participant-framebuffer-fixture.toml",
         &format!(
             r#"
-version = 1
 suite_name = "participant-framebuffer-fixture"
 subsystem = "ppu"
 
@@ -568,7 +564,6 @@ fn linked_session_manifest_rejects_invalid_timeout_topology_and_participant_coun
         &workspace,
         "bad-timeout.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -597,7 +592,6 @@ timeout_tcycles = 2
         &workspace,
         "dmg07-sparse.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -633,7 +627,6 @@ oracle = "info-linked-trace"
         &workspace,
         "unsupported-topology.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -663,7 +656,6 @@ oracle = "info-linked-trace"
         &workspace,
         "cgb-ir-unexpected-port.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -696,7 +688,6 @@ oracle = "info-linked-trace"
         &workspace,
         "cgb-ir-bad-participant-count.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -724,7 +715,6 @@ oracle = "info-linked-trace"
         &workspace,
         "dmg07-missing-port.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -755,7 +745,6 @@ oracle = "info-linked-trace"
         &workspace,
         "dmg07-duplicate-port.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -787,7 +776,6 @@ oracle = "info-linked-trace"
         &workspace,
         "dmg07-missing-p1.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -819,7 +807,6 @@ oracle = "info-linked-trace"
         &workspace,
         "dmg04-unexpected-port.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -850,7 +837,6 @@ oracle = "info-linked-trace"
         &workspace,
         "bad-participant-count.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -880,7 +866,6 @@ fn linked_session_manifest_rejects_duplicate_ids_and_invalid_participant_metadat
         &workspace,
         "duplicate-sessions.toml",
         r#"
-version = 1
 
 [[session]]
 id = "duplicate"
@@ -920,7 +905,6 @@ timeout_frames = 1
         &workspace,
         "duplicate-participants.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -949,7 +933,6 @@ timeout_frames = 1
         &workspace,
         "invalid-participant-metadata.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -990,7 +973,7 @@ fn linked_session_manifest_reports_read_parse_and_remaining_stimulus_errors() {
     ));
 
     let workspace = unique_temp_dir("invalid-parse");
-    let invalid_toml = write_manifest(&workspace, "invalid.toml", "version = 1\n[[session]\n");
+    let invalid_toml = write_manifest(&workspace, "invalid.toml", "[[session]\n");
     let parse_error = load_linked_session_suite_manifest(&invalid_toml)
         .expect_err("invalid linked TOML should fail");
     assert!(matches!(
@@ -1002,7 +985,6 @@ fn linked_session_manifest_reports_read_parse_and_remaining_stimulus_errors() {
         &workspace,
         "bad-stimulus.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -1037,7 +1019,6 @@ oracle = "info-linked-trace"
         &workspace,
         "missing-stimulus-time.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -1070,7 +1051,6 @@ oracle = "info-linked-trace"
         &workspace,
         "bad-button.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -1156,7 +1136,6 @@ fn linked_session_manifest_rejects_unknown_participant_targets_for_participant_o
         &workspace,
         "unknown-participant.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken"
@@ -1189,7 +1168,6 @@ expected = "A5"
         &workspace,
         "unknown-participant-snapshot.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken-snapshot"
@@ -1222,7 +1200,6 @@ fixture = "ghost.snapshot"
         &workspace,
         "unknown-participant-trace.toml",
         r#"
-version = 1
 
 [[session]]
 id = "broken-trace"
@@ -1334,12 +1311,7 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
         },
     ));
     let participant = LinkedSessionParticipant::new("left", "left.gb")
-        .with_external_rom_root_key("GB_CYCLE_LINKED_ROOT")
         .with_external_stimuli(batched_stimuli.clone());
-    assert_eq!(
-        participant.external_rom_root_key.as_deref(),
-        Some("GB_CYCLE_LINKED_ROOT")
-    );
     assert_eq!(participant.external_stimuli, batched_stimuli);
 
     let read_error = LinkedSessionSuiteManifestError::Read {
@@ -1349,10 +1321,6 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
     let parse_error = LinkedSessionSuiteManifestError::Parse {
         path: PathBuf::from("suite.toml"),
         message: "bad toml".to_string(),
-    };
-    let unsupported_version = LinkedSessionSuiteManifestError::UnsupportedVersion {
-        path: PathBuf::from("suite.toml"),
-        version: 2,
     };
     let build_error = LinkedSessionSuiteManifestError::Build {
         path: PathBuf::from("suite.toml"),
@@ -1369,11 +1337,6 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
             .contains("failed to parse linked-session suite manifest")
     );
     assert!(
-        unsupported_version
-            .to_string()
-            .contains("uses unsupported version 2")
-    );
-    assert!(
         build_error
             .to_string()
             .contains("failed to build linked-session suite manifest")
@@ -1381,45 +1344,17 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
 }
 
 #[test]
-fn linked_session_manifest_rejects_unsupported_versions_and_supports_info_snapshot_oracles() {
-    let workspace = unique_temp_dir("version-and-info-snapshot");
+fn linked_session_manifest_supports_info_snapshot_oracles() {
+    let workspace = unique_temp_dir("info-snapshot");
     let left_rom = workspace.join("absolute-left.gb");
     fs::create_dir_all(&workspace).expect("workspace dir should be creatable");
     fs::write(&left_rom, [0x00_u8]).expect("left rom should be writable");
-
-    let unsupported_manifest_path = write_manifest(
-        &workspace,
-        "unsupported.toml",
-        r#"
-version = 2
-
-[[session]]
-id = "unsupported"
-timeout_tcycles = 128
-
-  [[session.participant]]
-  id = "left"
-  rom = "left.gb"
-
-  [[session.participant]]
-  id = "right"
-  rom = "right.gb"
-"#,
-    );
-
-    let unsupported = load_linked_session_suite_manifest(&unsupported_manifest_path)
-        .expect_err("unsupported manifest versions should be rejected");
-    assert!(matches!(
-        unsupported,
-        LinkedSessionSuiteManifestError::UnsupportedVersion { version: 2, .. }
-    ));
 
     let manifest_path = write_manifest(
         &workspace,
         "info-snapshot.toml",
         &format!(
             r#"
-version = 1
 
 [[session]]
 id = "info-snapshot"
@@ -1433,7 +1368,6 @@ oracle = "info-linked-snapshot"
   [[session.participant]]
   id = "right"
   rom = "commercial/right.gb"
-  external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 "#,
             left_rom.display(),
         ),
@@ -1453,7 +1387,10 @@ oracle = "info-linked-snapshot"
     );
     assert_eq!(session.participants[0].rom_path, left_rom);
     assert_eq!(
-        session.participants[1].external_rom_root_key.as_deref(),
-        Some("GB_CYCLE_PRIVATE_ROM_ROOT")
+        session.participants[1].rom_path,
+        manifest_path
+            .parent()
+            .expect("manifest path should have a parent")
+            .join("commercial/right.gb")
     );
 }

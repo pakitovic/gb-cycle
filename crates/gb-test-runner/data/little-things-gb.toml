@@ -1,4 +1,3 @@
-version = 1
 family = "little-things-gb"
 suite_name = "little-things-gb-dmg-extra"
 subsystem = "CrossSubsystem"

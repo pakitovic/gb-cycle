@@ -10,14 +10,12 @@ use crate::{
     MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout,
 };
 
-const SUPPORTED_LOCAL_ROM_SUITE_MANIFEST_VERSION: u32 = 1;
 const DEFAULT_LOCAL_ORACLE: &str = "info-framebuffer";
 
 #[derive(Debug)]
 pub enum LocalRomSuiteManifestError {
     Read { path: PathBuf, source: io::Error },
     Parse { path: PathBuf, message: String },
-    UnsupportedVersion { path: PathBuf, version: u32 },
     Build { path: PathBuf, message: String },
 }
 
@@ -38,14 +36,6 @@ impl fmt::Display for LocalRomSuiteManifestError {
                     path.display()
                 )
             }
-            Self::UnsupportedVersion { path, version } => {
-                write!(
-                    f,
-                    "local ROM suite manifest {} uses unsupported version {}",
-                    path.display(),
-                    version
-                )
-            }
             Self::Build { path, message } => {
                 write!(
                     f,
@@ -61,7 +51,6 @@ impl std::error::Error for LocalRomSuiteManifestError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct LocalRomSuiteManifestFile {
-    version: u32,
     suite_name: Option<String>,
     family: Option<String>,
     subsystem: Option<String>,
@@ -73,7 +62,6 @@ struct LocalRomSuiteManifestFile {
 struct LocalRomSuiteCase {
     id: Option<String>,
     rom: PathBuf,
-    external_rom_root_key: Option<String>,
     console: Option<String>,
     revision: Option<String>,
     startup: Option<String>,
@@ -133,13 +121,6 @@ pub fn load_local_rom_suite_manifest(path: &Path) -> Result<RomSuite, LocalRomSu
             path: path.to_path_buf(),
             message: error.to_string(),
         })?;
-
-    if parsed.version != SUPPORTED_LOCAL_ROM_SUITE_MANIFEST_VERSION {
-        return Err(LocalRomSuiteManifestError::UnsupportedVersion {
-            path: path.to_path_buf(),
-            version: parsed.version,
-        });
-    }
 
     let manifest_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let suite_name = parsed
@@ -219,7 +200,7 @@ fn build_case_from_manifest(
         return Err("local case id cannot be empty".to_string());
     }
 
-    let rom_path = if case.external_rom_root_key.is_some() || case.rom.is_absolute() {
+    let rom_path = if case.rom.is_absolute() || case.rom.starts_with(crate::TEST_ROM_STORE_DIR) {
         case.rom.clone()
     } else {
         manifest_dir.join(&case.rom)
@@ -266,10 +247,6 @@ fn build_case_from_manifest(
         )?)
         .with_capture_plan(capture_plan_for_pass_condition(&pass_condition))
         .with_failure_artifacts(failure_artifacts_for_pass_condition(&pass_condition));
-
-    if let Some(external_rom_root_key) = case.external_rom_root_key {
-        rom_case = rom_case.with_external_rom_root_key(external_rom_root_key);
-    }
 
     for stimulus in case.stimuli {
         rom_case = rom_case.with_external_stimulus(parse_stimulus(stimulus, &case_id)?);
@@ -386,6 +363,12 @@ fn parse_pass_condition(
         }
         "framebuffer-rgb555-grayscale-fixture" => Ok(
             PassCondition::FramebufferRgb555GrayscaleFixture(resolve_fixture_path(
+                manifest_dir,
+                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            )),
+        ),
+        "framebuffer-rgb555-grayscale-tolerance-fixture" => Ok(
+            PassCondition::FramebufferRgb555GrayscaleToleranceFixture(resolve_fixture_path(
                 manifest_dir,
                 fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
             )),
@@ -532,6 +515,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555GrayscaleToleranceFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => CapturePlan::new()
             .with_capture(CaptureKind::Framebuffer)
             .with_capture(CaptureKind::Snapshot),
@@ -564,6 +548,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         | PassCondition::FramebufferRgb555Fixture(_)
         | PassCondition::FramebufferRgb555FixtureUntilMatch { .. }
         | PassCondition::FramebufferRgb555GrayscaleFixture(_)
+        | PassCondition::FramebufferRgb555GrayscaleToleranceFixture(_)
         | PassCondition::FramebufferFixtureSet(_) => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::Framebuffer)
             .with_artifact(CaptureKind::Snapshot),
@@ -643,7 +628,6 @@ mod tests {
             &workspace,
             "tetris-start.toml",
             r#"
-version = 1
 
 [[case]]
 rom = "roms/tetris.gb"
@@ -701,7 +685,6 @@ pressed = false
             &workspace,
             "disabled.toml",
             r#"
-version = 1
 
 [[case]]
 id = "kept"
@@ -730,7 +713,6 @@ comment = "local reproduction is superseded by the curated oracle"
             &workspace,
             "disabled.toml",
             r#"
-version = 1
 
 [[case]]
 id = "skipped"
@@ -757,7 +739,6 @@ disabled = true
             &workspace,
             "invalid.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -799,7 +780,6 @@ pressed = true
             "commercial-smoke.toml",
             &format!(
                 r#"
-version = 1
 suite_name = "commercial-smoke"
 family = "private-commercial"
 subsystem = "joypad"
@@ -807,7 +787,6 @@ subsystem = "joypad"
 [[case]]
 id = "mgb-serial"
 rom = "commercial/pokemon.gb"
-external_rom_root_key = "GB_CYCLE_PRIVATE_ROM_ROOT"
 console = "mgb"
 startup = "real-boot"
 mode = "permissive"
@@ -882,7 +861,15 @@ oracle = "framebuffer-rgb555-fixture-until-match"
 fixture = "fixtures/rgb555-until-match.png"
 check_interval_tcycles = 2048
 check_at_tcycles = 8192
-"#,
+
+[[case]]
+id = "cgb-rgb555-grayscale-tolerance-framebuffer"
+rom = "commercial/cgb-acid2.gbc"
+console = "cgb"
+timeout_frames = 60
+oracle = "framebuffer-rgb555-grayscale-tolerance-fixture"
+fixture = "fixtures/cgb-acid2.png"
+	"#,
                 absolute_fixture = absolute_fixture.display()
             ),
         );
@@ -892,7 +879,7 @@ check_at_tcycles = 8192
         assert_eq!(suite.name, "commercial-smoke");
         assert_eq!(suite.family.as_deref(), Some("private-commercial"));
         assert_eq!(suite.subsystem, TestSubsystem::Joypad);
-        assert_eq!(suite.cases.len(), 8);
+        assert_eq!(suite.cases.len(), 9);
 
         let serial_case = &suite.cases[0];
         assert_eq!(serial_case.console_model, ConsoleModel::GameBoyPocket);
@@ -900,8 +887,8 @@ check_at_tcycles = 8192
         assert_eq!(serial_case.execution_mode, ExecutionMode::Permissive);
         assert_eq!(serial_case.timeout, crate::Timeout::TCycles(4096));
         assert_eq!(
-            serial_case.external_rom_root_key.as_deref(),
-            Some("GB_CYCLE_PRIVATE_ROM_ROOT")
+            serial_case.rom_path,
+            workspace.join("commercial/pokemon.gb")
         );
         assert_eq!(
             serial_case.pass_condition,
@@ -1034,6 +1021,28 @@ check_at_tcycles = 8192
                 .failure_artifacts
                 .contains(CaptureKind::Framebuffer)
         );
+
+        let rgb555_grayscale_tolerance_case = &suite.cases[8];
+        assert_eq!(
+            rgb555_grayscale_tolerance_case.console_model,
+            ConsoleModel::GameBoyColor
+        );
+        assert_eq!(
+            rgb555_grayscale_tolerance_case.pass_condition,
+            PassCondition::FramebufferRgb555GrayscaleToleranceFixture(
+                workspace.join("fixtures").join("cgb-acid2.png")
+            )
+        );
+        assert!(
+            rgb555_grayscale_tolerance_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            rgb555_grayscale_tolerance_case
+                .failure_artifacts
+                .contains(CaptureKind::Framebuffer)
+        );
     }
 
     #[test]
@@ -1044,7 +1053,6 @@ check_at_tcycles = 8192
             &workspace,
             "unsupported-subsystem.toml",
             r#"
-version = 1
 subsystem = "video"
 
 [[case]]
@@ -1065,7 +1073,6 @@ timeout_frames = 1
             &workspace,
             "missing-timeout.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1084,25 +1091,6 @@ oracle = "info-serial"
     }
 
     #[test]
-    fn local_manifest_rejects_unsupported_version() {
-        let workspace = unique_temp_dir("version");
-        let manifest_path = write_manifest(
-            &workspace,
-            "unsupported.toml",
-            r#"
-version = 9
-"#,
-        );
-
-        let error = load_local_rom_suite_manifest(&manifest_path)
-            .expect_err("unsupported manifest version should fail");
-        assert!(matches!(
-            error,
-            LocalRomSuiteManifestError::UnsupportedVersion { version: 9, .. }
-        ));
-    }
-
-    #[test]
     fn local_manifest_supports_informational_oracles_and_absolute_rom_paths() {
         let workspace = unique_temp_dir("informational-oracles");
         let absolute_rom = workspace.join("absolute.gb");
@@ -1114,7 +1102,6 @@ version = 9
             "info.toml",
             &format!(
                 r#"
-version = 1
 
 [[case]]
 id = "serial-info"
@@ -1179,7 +1166,7 @@ oracle = "info-snapshot"
         );
 
         let workspace = unique_temp_dir("invalid-parse");
-        let invalid_toml = write_manifest(&workspace, "invalid.toml", "version = 1\n[[case]\n");
+        let invalid_toml = write_manifest(&workspace, "invalid.toml", "[[case]\n");
         let parse_error =
             load_local_rom_suite_manifest(&invalid_toml).expect_err("invalid TOML should fail");
         assert!(matches!(
@@ -1196,7 +1183,6 @@ oracle = "info-snapshot"
             &workspace,
             "unsupported-oracle.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1226,7 +1212,6 @@ oracle = "magic"
             &workspace,
             "missing-fixture.toml",
             r#"
-version = 1
 
 [[case]]
 id = "framebuffer"
@@ -1248,7 +1233,6 @@ oracle = "framebuffer-fixture"
             &workspace,
             "bad-console.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1271,7 +1255,6 @@ oracle = "info-framebuffer"
             &workspace,
             "bad-stimulus.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1303,7 +1286,6 @@ pressed = true
             &workspace,
             "serial-contains.toml",
             r#"
-version = 1
 
 [[case]]
 rom = "roms/serial-contract.gb"
@@ -1330,7 +1312,6 @@ expected = "Passed"
             &workspace,
             "missing-serial-expected.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1352,7 +1333,6 @@ oracle = "serial-exact"
             &workspace,
             "missing-fixture-set.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1379,7 +1359,6 @@ oracle = "framebuffer-fixture-set"
             &workspace,
             "duplicate-ids.toml",
             r#"
-version = 1
 
 [[case]]
 id = "duplicate"
@@ -1408,7 +1387,6 @@ oracle = "info-snapshot"
             &workspace,
             "blank-id.toml",
             r#"
-version = 1
 
 [[case]]
 id = "   "
@@ -1430,7 +1408,6 @@ oracle = "info-framebuffer"
             &workspace,
             "bad-startup.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1453,7 +1430,6 @@ oracle = "info-framebuffer"
             &workspace,
             "bad-mode.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1476,7 +1452,6 @@ oracle = "info-framebuffer"
             &workspace,
             "bad-button.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"
@@ -1503,7 +1478,6 @@ pressed = true
             &workspace,
             "missing-stimulus-time.toml",
             r#"
-version = 1
 
 [[case]]
 id = "broken"

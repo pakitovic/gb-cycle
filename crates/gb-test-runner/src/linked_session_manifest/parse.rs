@@ -11,8 +11,6 @@ use super::model::{
 };
 use crate::{ExternalStimulus, ExternalStimulusAction, TestSubsystem, Timeout};
 
-const SUPPORTED_LINKED_SESSION_SUITE_MANIFEST_VERSION: u32 = 1;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManifestOracle {
     TraceFixture,
@@ -71,7 +69,6 @@ impl ManifestOracle {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct LinkedSessionSuiteManifestFile {
-    version: u32,
     suite_name: Option<String>,
     family: Option<String>,
     subsystem: Option<String>,
@@ -109,7 +106,6 @@ struct LinkedSessionPassConditionFields {
 struct LinkedSessionParticipantManifest {
     id: Option<String>,
     rom: PathBuf,
-    external_rom_root_key: Option<String>,
     console: Option<String>,
     startup: Option<String>,
     mode: Option<String>,
@@ -139,13 +135,6 @@ pub fn load_linked_session_suite_manifest(
             path: path.to_path_buf(),
             message: error.to_string(),
         })?;
-
-    if parsed.version != SUPPORTED_LINKED_SESSION_SUITE_MANIFEST_VERSION {
-        return Err(LinkedSessionSuiteManifestError::UnsupportedVersion {
-            path: path.to_path_buf(),
-            version: parsed.version,
-        });
-    }
 
     let manifest_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let suite_name = parsed
@@ -245,7 +234,9 @@ fn build_participant_from_manifest(
         ));
     }
 
-    let rom_path = if participant.external_rom_root_key.is_some() || participant.rom.is_absolute() {
+    let rom_path = if participant.rom.is_absolute()
+        || participant.rom.starts_with(crate::TEST_ROM_STORE_DIR)
+    {
         participant.rom.clone()
     } else {
         manifest_dir.join(&participant.rom)
@@ -264,10 +255,6 @@ fn build_participant_from_manifest(
             participant.mode.as_deref().unwrap_or("strict"),
             &participant_id,
         )?);
-
-    if let Some(external_rom_root_key) = participant.external_rom_root_key {
-        built_participant = built_participant.with_external_rom_root_key(external_rom_root_key);
-    }
 
     if let Some(adapter_port) = participant.adapter_port {
         built_participant = built_participant

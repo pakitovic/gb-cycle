@@ -10,7 +10,7 @@ where
     S: AsRef<str>,
     W: std::io::Write,
 {
-    gb_test_runner::run_fetch_external_roms_command(arguments, workspace_root, output)
+    gb_test_runner::run_fetch_test_roms_command(arguments, workspace_root, output)
 }
 
 fn exit_code<I, S, W, E>(
@@ -65,7 +65,7 @@ mod tests {
         let mut error = Vec::new();
         let code = super::exit_code(
             std::path::Path::new("."),
-            ["all", "blargg"],
+            ["legacy", "all"],
             &mut output,
             &mut error,
         );
@@ -75,7 +75,7 @@ mod tests {
         assert!(
             String::from_utf8(error)
                 .expect("stderr should be utf-8")
-                .contains("cannot be combined")
+                .contains("not a valid curated test ROM family selector")
         );
     }
 }

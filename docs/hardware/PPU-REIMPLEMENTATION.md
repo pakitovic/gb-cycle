@@ -10,7 +10,7 @@ This file is not a phase-progress ledger. The Phase `4` PPU work is considered c
 
 - Start from [PPU.md](./PPU.md) when changing hardware behavior; use this file only to preserve repo-local seams while editing the current implementation.
 - Treat the PPU ROM table in [PPU.md](./PPU.md#tests) as the diagnostic no-regression catalog, not as an active roadmap. Keep the relevant rows green for accepted PPU behavior changes.
-- For exploratory ROM-driven work, preserve baseline and final `/test/test-report.md` snapshots for promoted suites, `/test/test-report-extra.md` snapshots for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` snapshots for the large DocBoy suites, compare them before keeping the change, and isolate one failing family at a time.
+- For exploratory ROM-driven work, preserve baseline and final `/test/gb-emulator-shootout/test-report.md` snapshots for promoted GB Emulator Shootout suites, `/test/test-report-extra.md` snapshots for non-DocBoy extra/internal suites, or `/test/test-report-docboy.md` snapshots for the large DocBoy suites, compare them before keeping the change, and isolate one failing family at a time.
 - If an old broad fix looks tempting, first check the subsystem-specific guardrails below; most closed regressions depended on narrow ownership seams, not on global retiming or scanline-wide rewrites.
 
 ## Repo-Local Seams To Preserve

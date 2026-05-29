@@ -1,4 +1,3 @@
-version = 1
 family = "docboy-cgb-dmg"
 suite_name = "docboy-cgb-dmg-extra"
 subsystem = "CrossSubsystem"

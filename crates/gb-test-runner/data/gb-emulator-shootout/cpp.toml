@@ -1,0 +1,27 @@
+family = "cpp"
+suite_name = "cpp-dmg-curated"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "cpp-rtc-invalid-banks"
+rom = "rtc-invalid-banks-test.gb"
+console = "dmg"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "test/gb-emulator-shootout/cpp/rtc-invalid-banks-test.png"
+
+[[case]]
+id = "cpp-latch-rtc"
+rom = "latch-rtc-test.gb"
+console = "dmg"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "test/gb-emulator-shootout/cpp/latch-rtc-test.png"
+
+[[case]]
+id = "cpp-ramg-mbc3"
+rom = "ramg-mbc3-test.gb"
+console = "dmg"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "test/gb-emulator-shootout/cpp/ramg-mbc3-test.png"

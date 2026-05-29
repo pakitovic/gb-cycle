@@ -1,0 +1,42 @@
+suite_name = "cgb-ppu-basic"
+subsystem = "Ppu"
+
+[[case]]
+family = "samesuite"
+id = "cgb-ppu-basic-blocking-bgpi-increase"
+rom = "ppu/blocking_bgpi_increase.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/samesuite/ppu/blocking_bgpi_increase.png"
+
+[[case]]
+family = "daid"
+id = "cgb-ppu-basic-ppu-scanline-bgp-gbc"
+rom = "ppu_scanline_bgp.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/ppu_scanline_bgp.gbc.png"
+
+[[case]]
+family = "acid"
+id = "cgb-ppu-basic-cgb-acid2"
+rom = "cgb-acid2.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-grayscale-tolerance-fixture"
+fixture = "test/gb-emulator-shootout/acid/cgb-acid2.png"
+
+[[case]]
+family = "ashiepaws"
+id = "cgb-ppu-basic-ashiepaws-bully-gbc"
+rom = "bully.gb"
+source_path = "testroms/ashiepaws/bully.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 30
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
+startup = "custom-boot"

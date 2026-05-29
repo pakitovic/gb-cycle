@@ -1,4 +1,3 @@
-version = 1
 suite_name = "linked-dmg04-contracts"
 family = "serial-ext"
 subsystem = "serial"

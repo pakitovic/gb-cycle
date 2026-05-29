@@ -86,7 +86,11 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 
 #[test]
 fn fetch_test_roms_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error("fetch_test_roms", &["all", "blargg"], "cannot be combined");
+    assert_help_and_parse_error(
+        "fetch_test_roms",
+        &["legacy", "all"],
+        "not a valid curated test ROM family selector",
+    );
 }
 
 #[test]
@@ -152,7 +156,6 @@ fn run_linked_session_binary_returns_non_zero_and_writes_failure_artifacts() {
         workspace_root().join("crates/gb-test-runner/data/fixtures/linked/dmg04/basic-right.gb");
     let manifest = format!(
         concat!(
-            "version = 1\n",
             "suite_name = \"linked-fixture-mismatch\"\n",
             "family = \"serial-ext\"\n",
             "subsystem = \"serial\"\n\n",

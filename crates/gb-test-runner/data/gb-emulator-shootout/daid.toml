@@ -1,0 +1,33 @@
+family = "daid"
+suite_name = "daid-dmg-curated"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "daid-ppu-scanline-bgp"
+rom = "ppu_scanline_bgp.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-fixture-set"
+fixtures = [
+  "test/gb-emulator-shootout/daid/ppu_scanline_bgp_0.dmg.png",
+  "test/gb-emulator-shootout/daid/ppu_scanline_bgp_1.dmg.png",
+  "test/gb-emulator-shootout/daid/ppu_scanline_bgp_2.dmg.png",
+]
+
+[[case]]
+id = "daid-stop-instr"
+rom = "stop_instr.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-grayscale-fixture"
+fixture = "test/gb-emulator-shootout/daid/stop_instr.dmg.png"
+
+[[case]]
+id = "daid-rom-and-ram"
+rom = "rom_and_ram.gb"
+console = "dmg"
+timeout_frames = 180
+oracle = "info-framebuffer"
+execution_mode = "permissive"

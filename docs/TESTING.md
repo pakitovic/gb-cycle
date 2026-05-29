@@ -42,11 +42,11 @@ Save states, replay logs, retained artifacts, and official reports must record t
 
 External ROM execution must be automatable. Manual LCD inspection is useful for debugging, but acceptance should prefer typed oracles such as serial output, cartridge-RAM status, text-console extraction, register-signature breakpoints, framebuffer fixtures, snapshots, or short traces.
 
-When working on already-known external ROM failures, timing regressions, exploratory PPU/MMIO fixes, or any ROM-driven iteration whose output may influence a go/no-go decision, preserve a baseline copy of the matching report before the run and a final copy after the run, then compare them explicitly. Use `/test/test-report.md` for promoted suites, `/test/test-report-extra.md` for non-DocBoy extra/internal single-machine suites, and `/test/test-report-docboy.md` for large DocBoy single-machine suites. Name changed rows before summarizing the result as improved, unchanged, or regressed.
+When working on already-known external ROM failures, timing regressions, exploratory PPU/MMIO fixes, or any ROM-driven iteration whose output may influence a go/no-go decision, preserve a baseline copy of the matching report before the run and a final copy after the run, then compare them explicitly. Use `/test/gb-emulator-shootout/test-report.md` for promoted GB Emulator Shootout suites, `/test/test-report-extra.md` for non-DocBoy extra/internal single-machine suites, and `/test/test-report-docboy.md` for large DocBoy single-machine suites. Name changed rows before summarizing the result as improved, unchanged, or regressed.
 
 If the working tree is not a clean baseline, compare against a clean reference such as `main` in a separate branch or worktree. Do not infer "no regressions" from memory.
 
-`gb-test-runner` owns typed ROM-case and suite metadata: console model, startup mode, execution mode, timeout, pass/fail rule, external stimulus, requested captures, report classification, and retained failure artifacts. Repo-managed redistributable ROMs live in the gitignored `/test/` store materialized from versioned manifests and source hashes; raw upstream checkouts should be temporary. Private commercial ROMs must stay outside the repository, outside CI, and outside official closure claims.
+`gb-test-runner` owns typed ROM-case and suite metadata: console model, startup mode, execution mode, timeout, pass/fail rule, external stimulus, requested captures, report/catalog classification, and retained failure artifacts. Repo-managed redistributable ROMs live in the gitignored `/test/` store materialized from manifests and source hashes; promoted GB Emulator Shootout rows live below `/test/gb-emulator-shootout/`, while extra and DocBoy rows currently keep the legacy `/test/` layout. Raw upstream checkouts should be temporary. Private commercial ROMs must stay outside the repository, outside CI, and outside official closure claims.
 
 Detailed suite names, fetch commands, report ordering, RealBoot overrides, commercial local manifests, and environment variables live in [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md).
 
@@ -88,8 +88,8 @@ Failure artifacts should make reruns unnecessary for first diagnosis: include lo
 - Keep public API and cross-module smoke coverage under `crates/gb-core/tests/*.rs`, with helpers under `crates/gb-core/tests/common/`.
 - Keep core-owned synthetic ROM fixtures and golden traces under `crates/gb-core/tests/fixtures/roms/` and `crates/gb-core/tests/fixtures/traces/`.
 - Keep runner-owned manifests, external-suite fixtures, linked-session fixtures, and committed oracle artifacts under `crates/gb-test-runner/data/**`.
-- Keep runnable redistributable external ROMs in the gitignored `/test/` store and do not scatter long-lived validation assets under `/tmp`.
-- Keep commercial ROMs in developer-owned private locations only; local manifests may reference them through explicit external root keys, but repo docs and CI must not standardize private paths.
+- Keep runnable redistributable external ROMs in the gitignored `/test/` store; report-scoped stores such as `/test/gb-emulator-shootout/` must stay below that global root and long-lived validation assets must not be scattered under `/tmp`.
+- Keep commercial ROMs in developer-owned private locations only; local manifests may reference them with manifest-relative or absolute paths, but repo docs and CI must not standardize private paths.
 
 ## Linked-session policy
 
@@ -102,7 +102,7 @@ Prefer participant-scoped oracles such as per-participant serial output, snapsho
 Keep detailed edge-case lists in the owning hardware handbook and use this section only as routing guidance.
 
 - CPU, interrupts, timer, DMA, bus, and scheduler tests should name the ordering contract under test and retain enough trace or snapshot context to isolate instruction-level or T-cycle-level divergence.
-- PPU and LCD tests should distinguish blocking framebuffer oracles from informational captures and document whether each fixture is an upstream reference, committed project oracle, or exploratory artifact.
+- PPU and LCD tests should distinguish blocking framebuffer oracles from informational captures and document whether each fixture is an upstream reference, committed project oracle, or exploratory artifact; any tolerance-based image comparison must be an explicitly named oracle rather than a hidden weakening of a strict framebuffer fixture.
 - APU tests should separate core timing/mixer semantics from frontend audio delivery; external Blargg `dmg_sound` evidence complements, but does not replace, channel-local and mixer/HPF unit coverage.
 - Boot/startup tests should distinguish `RealBoot`, `SkipBoot`, and `CustomBoot`, including `FF50` handoff, boot overlay visibility, model-specific cartridge-entry state, and hidden-state continuity for timer, PPU, and APU.
 - Cartridge and mapper tests should cover header parsing, support-category diagnostics, bank behavior, persistence capability, and special-cartridge identification; MBC6 remains automated through cargo tests and runner execution tests rather than a manual Makefile or built-in suite target.

@@ -134,16 +134,8 @@ impl LinkedSessionRunner {
         participant: &LinkedSessionParticipant,
     ) -> Result<PathBuf, LinkedSessionExecutionError> {
         self.runner
-            .resolve_case_path(
-                &participant.rom_path,
-                participant.external_rom_root_key.as_deref(),
-            )
+            .resolve_case_path(&participant.rom_path)
             .map_err(|error| match error {
-                crate::RomExecutionError::ExternalRomSourceManifest { source } => {
-                    LinkedSessionExecutionError::ExternalRomSourceManifest {
-                        source: Box::new(source),
-                    }
-                }
                 crate::RomExecutionError::MissingExternalRomRoot { key, relative_path } => {
                     LinkedSessionExecutionError::MissingExternalRomRoot { key, relative_path }
                 }

@@ -4,10 +4,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
-    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport,
-    TEST_ROM_ROOT_ENV_VAR, Timeout, built_in_rom_suite_by_name, built_in_rom_suites,
-    early_phase_9_partial_checklist, load_local_rom_suite_manifest, render_memory_bytes,
-    update_curated_test_report,
+    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport, Timeout,
+    built_in_rom_suite_by_name, built_in_rom_suites, early_phase_9_partial_checklist,
+    load_local_rom_suite_manifest, render_memory_bytes, update_curated_test_report,
 };
 
 const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
@@ -267,13 +266,14 @@ fn select_case_for_options(mut suite: RomSuite, case_id: Option<&str>) -> Result
                 suite.name, case_id
             ));
         };
-        suite = if let Some(family) = suite.family {
-            RomSuite::new(suite.name, suite.subsystem)
-                .with_family(family)
-                .with_case(case)
-        } else {
-            RomSuite::new(suite.name, suite.subsystem).with_case(case)
-        };
+        let mut selected_suite = RomSuite::new(suite.name, suite.subsystem);
+        if let Some(family) = suite.family {
+            selected_suite = selected_suite.with_family(family);
+        }
+        if let Some(report_id) = suite.report_id {
+            selected_suite = selected_suite.with_report_id(report_id);
+        }
+        suite = selected_suite.with_case(case);
     }
 
     Ok(suite)
@@ -440,7 +440,7 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
             writeln_checked(
                 output,
                 &format!(
-                    "  case={} family={} source={} oracle={} console={} revision={:?} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
+                    "  case={} family={} source={} oracle={} console={} revision={:?} startup={} mode={} timeout={} rom={} captures={} artifacts={}",
                     case.id,
                     case_catalog_family(&suite, case),
                     case_source_name(case),
@@ -451,7 +451,6 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
                     execution_mode_name(case.execution_mode),
                     timeout_name(case.timeout),
                     case.rom_path.display(),
-                    case.external_rom_root_key.as_deref().unwrap_or("-"),
                     join_csv(&capture_names(case.capture_plan.captures().iter().copied())),
                     join_csv(&capture_names(
                         case.failure_artifacts.retained().iter().copied()
@@ -665,6 +664,9 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
             "framebuffer-rgb555-grayscale-fixture"
         }
+        crate::PassCondition::FramebufferRgb555GrayscaleToleranceFixture(_) => {
+            "framebuffer-rgb555-grayscale-tolerance-fixture"
+        }
         crate::PassCondition::FramebufferFixtureSet(_) => "framebuffer-fixture-set",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }
@@ -694,28 +696,34 @@ where
 }
 
 fn case_source_name(case: &crate::RomTestCase) -> &'static str {
-    if case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR) {
+    if case.rom_path.starts_with(crate::TEST_ROM_STORE_DIR) {
         "test-rom-store"
-    } else if case.external_rom_root_key.is_some() {
-        "external-rom"
     } else {
         "repo-fixture"
     }
 }
 
 fn case_catalog_family<'a>(suite: &'a RomSuite, case: &'a crate::RomTestCase) -> &'a str {
-    if case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-        && let Some(family) = case.rom_path.components().next().and_then(|component| {
-            component
-                .as_os_str()
-                .to_str()
-                .filter(|value| !value.is_empty())
-        })
-    {
-        family
-    } else {
-        suite.family.as_deref().unwrap_or("-")
+    if let Ok(mut store_relative_path) = case.rom_path.strip_prefix(crate::TEST_ROM_STORE_DIR) {
+        if let Some(report_id) = case.report_id.as_deref()
+            && let Ok(report_relative_path) = store_relative_path.strip_prefix(report_id)
+        {
+            store_relative_path = report_relative_path;
+        }
+        if let Some(family) = store_relative_path
+            .components()
+            .next()
+            .and_then(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .filter(|value| !value.is_empty())
+            })
+        {
+            return family;
+        }
     }
+    suite.family.as_deref().unwrap_or("-")
 }
 
 fn case_console_name(case: &crate::RomTestCase) -> &'static str {
@@ -1127,12 +1135,12 @@ mod tests {
             String::from_utf8(detailed_output).expect("detailed output should be utf-8");
         assert!(
             detailed_output.contains(
-                "suite=blargg-dmg-curated family=blargg subsystem=cross-subsystem cases=38 sources=test-rom-store"
+                "suite=blargg-timing-memory-oam family=blargg subsystem=cross-subsystem cases=15 sources=test-rom-store"
             )
         );
         assert!(
             detailed_output.contains(
-                "oracles=serial-contains,blargg-console-text,memory-text-output captures=serial,snapshot,blargg-console-text,memory-text-output"
+                "oracles=blargg-console-text,serial-contains,memory-text-output captures=blargg-console-text,snapshot,serial,memory-text-output"
             )
         );
         assert!(detailed_output.contains(
@@ -1296,7 +1304,6 @@ mod tests {
             "local-case.toml",
             &format!(
                 r#"
-version = 1
 
 [[case]]
 id = "phase2-threaded"
@@ -1353,7 +1360,6 @@ oracle = "info-framebuffer"
             "local-case.toml",
             &format!(
                 r#"
-version = 1
 
 [[case]]
 id = "phase2-export"

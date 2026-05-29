@@ -16,8 +16,8 @@ use crate::framebuffer_oracle::{
     NormalizedFramebuffer, decode_fixture_framebuffer_path, normalize_dmg_framebuffer,
 };
 use crate::{
-    BootRomVerificationIssue, ExternalRomSourceManifestError, LinkedSessionCaptureKind,
-    LinkedSessionCase, LinkedSessionParticipant, LinkedSessionPassCondition, LinkedSessionSuite,
+    BootRomVerificationIssue, LinkedSessionCaptureKind, LinkedSessionCase,
+    LinkedSessionParticipant, LinkedSessionPassCondition, LinkedSessionSuite,
     LinkedSessionSuiteValidationError, RomRunner, Timeout, discard_trace_events_if_needed,
 };
 
@@ -153,9 +153,6 @@ pub enum LinkedSessionExecutionError {
         participant_id: String,
         path: PathBuf,
         source: Box<CartridgeLoadError>,
-    },
-    ExternalRomSourceManifest {
-        source: Box<ExternalRomSourceManifestError>,
     },
     MissingExternalRomRoot {
         key: String,
@@ -434,15 +431,6 @@ impl LinkedSessionRunner {
         self.runner = self
             .runner
             .with_boot_rom_verification_mode(boot_rom_verification_mode);
-        self
-    }
-
-    pub fn with_external_rom_root(
-        mut self,
-        key: impl Into<String>,
-        root: impl Into<PathBuf>,
-    ) -> Self {
-        self.runner = self.runner.with_external_rom_root(key, root);
         self
     }
 

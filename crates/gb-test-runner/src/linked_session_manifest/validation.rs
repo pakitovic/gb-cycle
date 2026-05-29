@@ -16,14 +16,6 @@ impl LinkedSessionParticipant {
             return Err(LinkedSessionParticipantValidationError::MissingRomPath);
         }
 
-        if self
-            .external_rom_root_key
-            .as_deref()
-            .is_some_and(|key| key.trim().is_empty())
-        {
-            return Err(LinkedSessionParticipantValidationError::EmptyExternalRomRootKey);
-        }
-
         for (index, stimulus) in self.external_stimuli.stimuli().iter().enumerate() {
             if self.external_stimuli.stimuli()[index + 1..].contains(stimulus) {
                 return Err(

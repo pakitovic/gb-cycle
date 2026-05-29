@@ -1,17 +1,19 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::{env, fs, io};
+use std::{fs, io};
 
 use serde::Deserialize;
 
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
-const SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION: u32 = 1;
+pub const GB_EMULATOR_SHOOTOUT_REPORT_ID: &str = "gb-emulator-shootout";
+pub const GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH: &str =
+    "crates/gb-test-runner/data/gb-emulator-shootout/sources.toml";
 
 #[derive(Debug)]
 pub enum ExternalRomSourceManifestError {
     Read { path: PathBuf, source: io::Error },
     Parse { path: PathBuf, message: String },
-    UnsupportedVersion { path: PathBuf, version: u32 },
+    UnknownReport { report_id: String },
 }
 
 impl fmt::Display for ExternalRomSourceManifestError {
@@ -31,12 +33,9 @@ impl fmt::Display for ExternalRomSourceManifestError {
                     path.display()
                 )
             }
-            Self::UnsupportedVersion { path, version } => write!(
-                f,
-                "external ROM manifest {} uses unsupported version {}",
-                path.display(),
-                version
-            ),
+            Self::UnknownReport { report_id } => {
+                write!(f, "unknown external ROM report {report_id:?}")
+            }
         }
     }
 }
@@ -45,7 +44,6 @@ impl std::error::Error for ExternalRomSourceManifestError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ExternalRomSourceManifestFile {
-    version: u32,
     #[serde(rename = "source")]
     sources: Vec<ExternalRomSource>,
 }
@@ -56,7 +54,6 @@ pub struct ExternalRomSource {
     pub git_url: String,
     pub git_rev: String,
     pub local_dir: String,
-    pub root_env_var: String,
     #[serde(default, rename = "required_file")]
     pub required_files: Vec<ExternalRomRequiredFile>,
 }
@@ -66,6 +63,7 @@ pub struct ExternalRomRequiredFile {
     pub path: PathBuf,
     pub family: Option<String>,
     pub rom: Option<PathBuf>,
+    pub target: Option<PathBuf>,
     pub sha256: String,
 }
 
@@ -82,64 +80,67 @@ impl ExternalRomSourceManifest {
     pub fn source_by_id(&self, id: &str) -> Option<&ExternalRomSource> {
         self.sources.iter().find(|source| source.id == id)
     }
-
-    pub fn source_by_env_var(&self, env_var: &str) -> Option<&ExternalRomSource> {
-        self.sources
-            .iter()
-            .find(|source| source.root_env_var == env_var)
-    }
 }
 
 pub fn external_rom_source_manifest_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
 }
 
+pub fn external_rom_source_manifest_path_for_report(
+    workspace_root: &Path,
+    report_id: Option<&str>,
+) -> Result<PathBuf, ExternalRomSourceManifestError> {
+    match report_id {
+        Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) => {
+            Ok(workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH))
+        }
+        Some(report_id) => Err(ExternalRomSourceManifestError::UnknownReport {
+            report_id: report_id.to_string(),
+        }),
+        None => Ok(external_rom_source_manifest_path(workspace_root)),
+    }
+}
+
 pub fn load_external_rom_source_manifest(
     workspace_root: &Path,
 ) -> Result<ExternalRomSourceManifest, ExternalRomSourceManifestError> {
-    let path = external_rom_source_manifest_path(workspace_root);
+    load_external_rom_source_manifest_from_path(&external_rom_source_manifest_path(workspace_root))
+}
+
+pub fn load_external_rom_source_manifest_for_report(
+    workspace_root: &Path,
+    report_id: Option<&str>,
+) -> Result<ExternalRomSourceManifest, ExternalRomSourceManifestError> {
+    let path = external_rom_source_manifest_path_for_report(workspace_root, report_id)?;
+    load_external_rom_source_manifest_from_path(&path)
+}
+
+fn load_external_rom_source_manifest_from_path(
+    path: &Path,
+) -> Result<ExternalRomSourceManifest, ExternalRomSourceManifestError> {
     let manifest_text =
-        fs::read_to_string(&path).map_err(|source| ExternalRomSourceManifestError::Read {
-            path: path.clone(),
+        fs::read_to_string(path).map_err(|source| ExternalRomSourceManifestError::Read {
+            path: path.to_path_buf(),
             source,
         })?;
     let parsed: ExternalRomSourceManifestFile =
         toml::from_str(&manifest_text).map_err(|error| ExternalRomSourceManifestError::Parse {
-            path: path.clone(),
+            path: path.to_path_buf(),
             message: error.to_string(),
         })?;
-
-    if parsed.version != SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION {
-        return Err(ExternalRomSourceManifestError::UnsupportedVersion {
-            path,
-            version: parsed.version,
-        });
-    }
 
     Ok(ExternalRomSourceManifest {
         sources: parsed.sources,
     })
 }
 
-pub fn discover_external_rom_root_for_key(
-    workspace_root: &Path,
-    key: &str,
-) -> Result<Option<PathBuf>, ExternalRomSourceManifestError> {
-    if let Some(root) = env::var_os(key) {
-        return Ok(Some(PathBuf::from(root)));
-    }
-
-    let _ = load_external_rom_source_manifest(workspace_root)?;
-
-    Ok(None)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomSourceManifestError,
-        discover_external_rom_root_for_key, external_rom_source_manifest_path,
-        load_external_rom_source_manifest,
+        GB_EMULATOR_SHOOTOUT_REPORT_ID, GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH,
+        external_rom_source_manifest_path, external_rom_source_manifest_path_for_report,
+        load_external_rom_source_manifest, load_external_rom_source_manifest_for_report,
     };
     use std::env;
     use std::fs;
@@ -156,22 +157,6 @@ mod tests {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ))
-    }
-
-    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
-        // SAFETY: these tests serialize environment mutation through `env_lock()`
-        // and restore the touched variables before dropping the guard.
-        unsafe {
-            env::set_var(key, value);
-        }
-    }
-
-    fn remove_env_var(key: &str) {
-        // SAFETY: these tests serialize environment mutation through `env_lock()`
-        // and restore the touched variables before dropping the guard.
-        unsafe {
-            env::remove_var(key);
-        }
     }
 
     fn write_manifest(workspace_root: &Path, body: &str) -> PathBuf {
@@ -193,22 +178,32 @@ mod tests {
             external_rom_source_manifest_path(workspace_root),
             workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
         );
+        assert_eq!(
+            external_rom_source_manifest_path_for_report(
+                workspace_root,
+                Some(GB_EMULATOR_SHOOTOUT_REPORT_ID)
+            )
+            .expect("GB Emulator Shootout report manifest path should resolve"),
+            workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH)
+        );
+        assert!(matches!(
+            external_rom_source_manifest_path_for_report(workspace_root, Some("unknown-report")),
+            Err(ExternalRomSourceManifestError::UnknownReport { .. })
+        ));
     }
 
     #[test]
     fn manifest_loading_and_lookup_cover_supported_catalog_paths() {
         let workspace_root = unique_temp_dir("manifest-success");
-        let manifest_path = write_manifest(
+        write_manifest(
             &workspace_root,
             r#"
-version = 1
 
 [[source]]
 id = "retrio"
 git_url = "https://example.invalid/retrio.git"
 git_rev = "abc123"
 local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
 
 [[source.required_file]]
 path = "cpu_instrs/individual/01-special.gb"
@@ -219,7 +214,6 @@ id = "gbemu-shootout"
 git_url = "https://example.invalid/shootout.git"
 git_rev = "def456"
 local_dir = "gbemu-shootout"
-root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
 "#,
         );
 
@@ -233,30 +227,11 @@ root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
                 .local_dir,
             "retrio-gb-test-roms"
         );
-        assert_eq!(
-            manifest
-                .source_by_env_var("GB_CYCLE_GBEMU_SHOOTOUT_ROOT")
-                .expect("shootout source should exist")
-                .id,
-            "gbemu-shootout"
-        );
-
-        let display = ExternalRomSourceManifestError::UnsupportedVersion {
-            path: manifest_path,
-            version: 9,
-        }
-        .to_string();
-        assert!(display.contains("unsupported version 9"));
         assert!(manifest.source_by_id("missing").is_none());
-        assert!(
-            manifest
-                .source_by_env_var("GB_CYCLE_UNKNOWN_EXTERNAL_ROOT")
-                .is_none()
-        );
     }
 
     #[test]
-    fn manifest_loading_reports_missing_parse_and_version_errors() {
+    fn manifest_loading_reports_missing_and_parse_errors() {
         let missing_root = unique_temp_dir("manifest-missing");
         let missing_error = load_external_rom_source_manifest(&missing_root)
             .expect_err("missing manifest should fail");
@@ -266,74 +241,68 @@ root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
         ));
 
         let parse_root = unique_temp_dir("manifest-parse");
-        write_manifest(&parse_root, "version = 1\n[[source]]\nid = [");
+        write_manifest(&parse_root, "[[source]]\nid = [");
         let parse_error = load_external_rom_source_manifest(&parse_root)
             .expect_err("invalid manifest should fail");
         assert!(matches!(
             parse_error,
             ExternalRomSourceManifestError::Parse { .. }
         ));
-
-        let unsupported_root = unique_temp_dir("manifest-version");
-        write_manifest(
-            &unsupported_root,
-            r#"
-version = 7
-
-[[source]]
-id = "retrio"
-git_url = "https://example.invalid/retrio.git"
-git_rev = "abc123"
-local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
-"#,
-        );
-        let unsupported_error = load_external_rom_source_manifest(&unsupported_root)
-            .expect_err("unsupported manifest version should fail");
-        assert!(matches!(
-            unsupported_error,
-            ExternalRomSourceManifestError::UnsupportedVersion { version: 7, .. }
-        ));
     }
 
     #[test]
-    fn discover_external_rom_root_prefers_env_then_none() {
-        let workspace_root = unique_temp_dir("discover-root");
-        write_manifest(
+    fn report_manifest_loading_uses_the_report_local_sources_file() {
+        let workspace_root = unique_temp_dir("report-manifest-success");
+        let report_manifest_path = external_rom_source_manifest_path_for_report(
             &workspace_root,
+            Some(GB_EMULATOR_SHOOTOUT_REPORT_ID),
+        )
+        .expect("report manifest path should resolve");
+        fs::create_dir_all(
+            report_manifest_path
+                .parent()
+                .expect("report manifest path should have a parent"),
+        )
+        .expect("report manifest parent should be creatable");
+        fs::write(
+            &report_manifest_path,
             r#"
-version = 1
 
 [[source]]
-id = "retrio"
-git_url = "https://example.invalid/retrio.git"
-git_rev = "abc123"
-local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
+id = "gbemu-shootout"
+git_url = "https://example.invalid/shootout.git"
+git_rev = "def456"
+local_dir = "gbemu-shootout"
+
+[[source.required_file]]
+path = "testroms/acid/which.gb"
+family = "acid"
+rom = "which.gb"
+sha256 = "01"
 "#,
+        )
+        .expect("report manifest should be writable");
+
+        let manifest = load_external_rom_source_manifest_for_report(
+            &workspace_root,
+            Some(GB_EMULATOR_SHOOTOUT_REPORT_ID),
+        )
+        .expect("report manifest should load");
+        assert_eq!(manifest.sources().len(), 1);
+        assert_eq!(manifest.sources()[0].id, "gbemu-shootout");
+        assert_eq!(
+            manifest.sources()[0].required_files[0].path,
+            PathBuf::from("testroms/acid/which.gb")
         );
 
-        let _guard = crate::test_support::lock_env();
-        let key = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT";
-        let previous = env::var_os(key);
-        remove_env_var(key);
+        let legacy_error = load_external_rom_source_manifest(&workspace_root)
+            .expect_err("legacy manifest path should remain independent");
+        assert!(matches!(
+            legacy_error,
+            ExternalRomSourceManifestError::Read { .. }
+        ));
 
-        let missing = discover_external_rom_root_for_key(&workspace_root, key)
-            .expect("missing discovery should still succeed");
-        assert_eq!(missing, None);
-
-        let env_root = workspace_root.join("custom-env-root");
-        set_env_var(key, &env_root);
-        let discovered_env = discover_external_rom_root_for_key(&workspace_root, key)
-            .expect("environment discovery should succeed");
-        assert_eq!(discovered_env, Some(env_root.clone()));
-
-        remove_env_var(key);
-
-        match previous {
-            Some(value) => set_env_var(key, value),
-            None => remove_env_var(key),
-        }
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
 
     #[test]

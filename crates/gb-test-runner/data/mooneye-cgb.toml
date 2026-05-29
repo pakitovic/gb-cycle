@@ -1,4 +1,3 @@
-version = 1
 family = "mooneye"
 suite_name = "mooneye-cgb-extra"
 subsystem = "Ppu"

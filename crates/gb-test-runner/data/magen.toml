@@ -1,4 +1,3 @@
-version = 1
 family = "magen"
 suite_name = "magen-cgb-extra"
 subsystem = "CrossSubsystem"

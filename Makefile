@@ -1,7 +1,12 @@
 .DEFAULT_GOAL := ci
-
-FAMILIES ?= all
 ROM_PROFILE ?= release-max
+LEGACY_REPORT := legacy
+GB_EMULATOR_SHOOTOUT_REPORT := gb-emulator-shootout
+GB_EMULATOR_SHOOTOUT_TEST_ROOT := test/$(GB_EMULATOR_SHOOTOUT_REPORT)
+GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT := $(GB_EMULATOR_SHOOTOUT_TEST_ROOT)/.artifacts
+LEGACY_TEST_ARTIFACT_ROOT := test/.artifacts
+RUN_ROM_SUITE = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite --
+RUN_LINKED_SESSION = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_linked_session --
 
 .PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6 run-samesuite run-samesuite-cgb run-samesuite-sgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-cpp-sgb run-mealybug run-mealybug-cgb run-cgb-smoke run-cgb-boot-div run-cgb-boot-hwio run-cgb-speed run-cgb-ppu-basic run-cgb-ppu-hard run-cgb-dma run-cgb-audio-blargg run-cgb-audio-samesuite run-cgb-rtc
 
@@ -23,8 +28,9 @@ help:
 	@echo "  make test-roms-cgb-real-boot Fetch and run the promoted green local curated CGB ROM suites through verified RealBoot"
 	@echo "  make test-roms-cgb-extra  Fetch and run the exploratory/internal CGB ROM suites"
 	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
-	@echo "  make fetch-test-roms      Materialize test from the pinned upstream source(s) using temporary checkout(s)"
-	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
+	@echo "  make fetch-test-roms      Materialize tests from the pinned upstream source(s) using temporary checkout(s)"
+	@echo "                           Set REPORT=legacy FAMILIES=\"ax6 samesuite\"; direct fetches require an explicit report and one or more explicit families"
+	@echo "                           Set REPORT=legacy for legacy extra/DocBoy families or REPORT=gb-emulator-shootout for promoted families"
 	@echo "  make run-acid             Fetch and run the curated Acid DMG suite"
 	@echo "  make run-ax6              Fetch and run the extra AX6 DMG RTC suite"
 	@echo "  make run-samesuite        Fetch and run the extra SameSuite DMG suite"
@@ -97,15 +103,17 @@ coverage:
 	cargo cov-html
 
 test-roms:
-	$(MAKE) run-acid
-	$(MAKE) run-blargg
-	$(MAKE) run-daid
-	$(MAKE) run-mooneye
-	$(MAKE) run-ashiepaws
-	$(MAKE) run-cpp
-	$(MAKE) run-cpp-sgb
-	$(MAKE) run-mealybug
-	$(MAKE) run-samesuite-sgb
+	@status=0; \
+	$(MAKE) run-acid || status=$$?; \
+	$(MAKE) run-blargg || status=$$?; \
+	$(MAKE) run-daid || status=$$?; \
+	$(MAKE) run-mooneye || status=$$?; \
+	$(MAKE) run-ashiepaws || status=$$?; \
+	$(MAKE) run-cpp || status=$$?; \
+	$(MAKE) run-cpp-sgb || status=$$?; \
+	$(MAKE) run-mealybug || status=$$?; \
+	$(MAKE) run-samesuite-sgb || status=$$?; \
+	exit $$status
 
 test-roms-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-acid
@@ -188,170 +196,175 @@ test-roms-cgb-extra-real-boot: require-boot-rom-root
 	exit $$status
 
 fetch-test-roms:
-	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
+	@if [ -z "$(strip $(REPORT))" ]; then echo "REPORT is required; use REPORT=$(LEGACY_REPORT) or REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT)"; exit 2; fi
+	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(REPORT) $(FAMILIES)
 
 require-boot-rom-root:
 	@if [ -z "$$GB_CYCLE_BOOT_ROM_ROOT" ]; then echo "GB_CYCLE_BOOT_ROM_ROOT must point at the directory containing verified boot ROM assets for RealBoot ROM test targets"; exit 2; fi
 
 run-acid:
-	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact acid_curated_suite_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=acid
+	$(RUN_ROM_SUITE) --suite acid-dmg-curated --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/acid-dmg-curated
 
 run-ax6:
-	$(MAKE) fetch-test-roms FAMILIES=ax6
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite ax6-dmg-extra --failure-artifact-root .artifacts/ax6
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=ax6
+	$(RUN_ROM_SUITE) --suite ax6-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/ax6
 
 run-samesuite:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-dmg-extra --failure-artifact-root .artifacts/samesuite
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=samesuite
+	$(RUN_ROM_SUITE) --suite samesuite-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/samesuite
 
 run-samesuite-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-cgb-extra --failure-artifact-root .artifacts/samesuite-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=samesuite
+	$(RUN_ROM_SUITE) --suite samesuite-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/samesuite-cgb
 
 run-samesuite-sgb:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite samesuite-sgb --failure-artifact-root .artifacts/samesuite-sgb
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=samesuite
+	$(RUN_ROM_SUITE) --suite samesuite-sgb --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/samesuite-sgb
 
 run-mooneye-sgb-boot-regs:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite mooneye-sgb-boot-regs-extra --failure-artifact-root .artifacts/mooneye-sgb-boot-regs
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite mooneye-sgb-boot-regs-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/mooneye-sgb-boot-regs
 
 run-magen-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=magen
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite magen-cgb-extra --failure-artifact-root .artifacts/magen-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=magen
+	$(RUN_ROM_SUITE) --suite magen-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/magen-cgb
 
 run-little-things-gb:
-	$(MAKE) fetch-test-roms FAMILIES=little-things-gb
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite little-things-gb-dmg-extra --failure-artifact-root .artifacts/little-things-gb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=little-things-gb
+	$(RUN_ROM_SUITE) --suite little-things-gb-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/little-things-gb
 
 run-little-things-gb-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=little-things-gb
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite little-things-gb-cgb-extra --failure-artifact-root .artifacts/little-things-gb-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=little-things-gb
+	$(RUN_ROM_SUITE) --suite little-things-gb-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/little-things-gb-cgb
 
 run-gbmicrotest:
-	$(MAKE) fetch-test-roms FAMILIES=gbmicrotest
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite gbmicrotest-dmg-extra --failure-artifact-root .artifacts/gbmicrotest
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=gbmicrotest
+	$(RUN_ROM_SUITE) --suite gbmicrotest-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/gbmicrotest
 
 run-docboy-dmg:
-	$(MAKE) fetch-test-roms FAMILIES=docboy-dmg
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-dmg
 	@status=0; \
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-dmg-extra --failure-artifact-root .artifacts/docboy-dmg || status=$$?; \
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_linked_session -- --suite docboy-dmg-linked-extra --failure-artifact-root .artifacts/docboy-dmg-linked || status=$$?; \
+	$(RUN_ROM_SUITE) --suite docboy-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-dmg || status=$$?; \
+	$(RUN_LINKED_SESSION) --suite docboy-dmg-linked-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-dmg-linked || status=$$?; \
 	exit $$status
 
 run-docboy-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=docboy-cgb
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-extra --failure-artifact-root .artifacts/docboy-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb
+	$(RUN_ROM_SUITE) --suite docboy-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb
 
 run-docboy-cgb-dmg:
-	$(MAKE) fetch-test-roms FAMILIES=docboy-cgb-dmg
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-extra --failure-artifact-root .artifacts/docboy-cgb-dmg
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb-dmg
+	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb-dmg
 
 run-docboy-cgb-dmg-ext:
-	$(MAKE) fetch-test-roms FAMILIES=docboy-cgb-dmg-ext
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite docboy-cgb-dmg-ext-extra --failure-artifact-root .artifacts/docboy-cgb-dmg-ext
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb-dmg-ext
+	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg-ext-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb-dmg-ext
 
 run-blargg:
-	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_cpu_instrs_chunk_passes_from_repo_store --no-capture
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_dmg_sound_chunk_passes_from_repo_store --no-capture
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_timing_memory_oam_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg
+	@status=0; \
+	$(RUN_ROM_SUITE) --suite blargg-cpu-instrs --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-cpu-instrs || status=$$?; \
+	$(RUN_ROM_SUITE) --suite blargg-dmg-sound --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-dmg-sound || status=$$?; \
+	$(RUN_ROM_SUITE) --suite blargg-timing-memory-oam --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-timing-memory-oam || status=$$?; \
+	exit $$status
 
 run-blargg-cpu-instrs:
-	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_cpu_instrs_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg
+	$(RUN_ROM_SUITE) --suite blargg-cpu-instrs --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-cpu-instrs
 
 run-blargg-dmg-sound:
-	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_dmg_sound_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg
+	$(RUN_ROM_SUITE) --suite blargg-dmg-sound --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-dmg-sound
 
 run-blargg-timing-memory-oam:
-	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_timing_memory_oam_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg
+	$(RUN_ROM_SUITE) --suite blargg-timing-memory-oam --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/blargg-timing-memory-oam
 
 run-daid:
-	$(MAKE) fetch-test-roms FAMILIES=daid
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact daid_curated_suite_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=daid
+	$(RUN_ROM_SUITE) --suite daid-dmg-curated --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/daid-dmg-curated
 
 run-mooneye:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_acceptance_chunk_passes_from_repo_store --no-capture
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc1_mbc5_chunk_passes_from_repo_store --no-capture
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc2_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
+	@status=0; \
+	$(RUN_ROM_SUITE) --suite mooneye-acceptance-manual --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-acceptance-manual || status=$$?; \
+	$(RUN_ROM_SUITE) --suite mooneye-emulator-mbc1-mbc5 --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-emulator-mbc1-mbc5 || status=$$?; \
+	$(RUN_ROM_SUITE) --suite mooneye-emulator-mbc2 --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-emulator-mbc2 || status=$$?; \
+	exit $$status
 
 run-mooneye-acceptance:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_acceptance_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite mooneye-acceptance-manual --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-acceptance-manual
 
 run-mooneye-mbc1-mbc5:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc1_mbc5_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite mooneye-emulator-mbc1-mbc5 --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-emulator-mbc1-mbc5
 
 run-mooneye-mbc2:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_mbc2_chunk_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite mooneye-emulator-mbc2 --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-emulator-mbc2
 
 run-ashiepaws:
-	$(MAKE) fetch-test-roms FAMILIES=ashiepaws
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact ashiepaws_curated_suite_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=ashiepaws
+	$(RUN_ROM_SUITE) --suite ashiepaws-dmg-curated --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/ashiepaws-dmg-curated
 
 run-cpp:
-	$(MAKE) fetch-test-roms FAMILIES=cpp
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=cpp
+	$(RUN_ROM_SUITE) --suite cpp-dmg-curated --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cpp-dmg-curated
 
 run-cpp-sgb:
-	$(MAKE) fetch-test-roms FAMILIES=cpp
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite cpp-sgb --failure-artifact-root .artifacts/cpp-sgb
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=cpp
+	$(RUN_ROM_SUITE) --suite cpp-sgb --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cpp-sgb
 
 run-mealybug:
-	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_passes_from_repo_store --no-capture
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mealybug-tearoom-tests
+	$(RUN_ROM_SUITE) --suite mealybug-tearoom-dmg-curated --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mealybug-tearoom-dmg-curated
 
 run-mealybug-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-cgb-extra --failure-artifact-root .artifacts/mealybug-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=mealybug-tearoom-tests
+	$(RUN_ROM_SUITE) --suite mealybug-tearoom-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/mealybug-cgb
 
 run-cgb-smoke:
-	$(MAKE) fetch-test-roms FAMILIES="mooneye acid"
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-smoke --failure-artifact-root .artifacts/cgb-smoke
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES="mooneye acid"
+	$(RUN_ROM_SUITE) --suite cgb-smoke --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-smoke
 
 run-cgb-boot-div:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-div --failure-artifact-root .artifacts/cgb-boot-div
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite cgb-boot-div --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-boot-div
 
 run-cgb-boot-hwio:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-boot-hwio --failure-artifact-root .artifacts/cgb-boot-hwio
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite cgb-boot-hwio --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/cgb-boot-hwio
 
 run-mooneye-cgb:
-	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite -- --suite mooneye-cgb-extra --failure-artifact-root .artifacts/mooneye-cgb
+	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=mooneye
+	$(RUN_ROM_SUITE) --suite mooneye-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/mooneye-cgb
 
 run-cgb-speed:
-	$(MAKE) fetch-test-roms FAMILIES="daid blargg"
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-speed --failure-artifact-root .artifacts/cgb-speed
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES="daid blargg"
+	$(RUN_ROM_SUITE) --suite cgb-speed --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-speed
 
 run-cgb-ppu-basic:
-	$(MAKE) fetch-test-roms FAMILIES="samesuite daid acid ashiepaws"
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-basic --failure-artifact-root .artifacts/cgb-ppu-basic
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES="samesuite daid acid ashiepaws"
+	$(RUN_ROM_SUITE) --suite cgb-ppu-basic --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-ppu-basic
 
 run-cgb-ppu-hard:
-	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-ppu-hard --failure-artifact-root .artifacts/cgb-ppu-hard
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=acid
+	$(RUN_ROM_SUITE) --suite cgb-ppu-hard --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-ppu-hard
 
 run-cgb-dma:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-dma --failure-artifact-root .artifacts/cgb-dma
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=samesuite
+	$(RUN_ROM_SUITE) --suite cgb-dma --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-dma
 
 run-cgb-audio-blargg:
-	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-blargg --failure-artifact-root .artifacts/cgb-audio-blargg
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg
+	$(RUN_ROM_SUITE) --suite cgb-audio-blargg --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-audio-blargg
 
 run-cgb-audio-samesuite:
-	$(MAKE) fetch-test-roms FAMILIES=samesuite
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-audio-samesuite --failure-artifact-root .artifacts/cgb-audio-samesuite
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=samesuite
+	$(RUN_ROM_SUITE) --suite cgb-audio-samesuite --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-audio-samesuite
 
 run-cgb-rtc:
-	$(MAKE) fetch-test-roms FAMILIES=ax6
-	cargo run --release -q -p gb-test-runner --bin run_rom_suite -- --suite cgb-rtc --failure-artifact-root .artifacts/cgb-rtc
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=ax6
+	$(RUN_ROM_SUITE) --suite cgb-rtc --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/cgb-rtc

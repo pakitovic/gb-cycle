@@ -1,4 +1,3 @@
-version = 1
 suite_name = "mooneye-sgb-boot-regs-extra"
 subsystem = "CrossSubsystem"
 

@@ -1,4 +1,3 @@
-version = 1
 family = "gbmicrotest"
 suite_name = "gbmicrotest-dmg-extra"
 subsystem = "CrossSubsystem"

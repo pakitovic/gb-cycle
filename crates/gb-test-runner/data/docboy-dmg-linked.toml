@@ -1,4 +1,3 @@
-version = 1
 suite_name = "docboy-dmg-linked-extra"
 family = "docboy-dmg"
 subsystem = "serial"
@@ -13,15 +12,13 @@ fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
 console = "dmg"
 mode = "strict"
 
 [[session.participant]]
 id = "slave"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_slave.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_slave.gb"
 console = "dmg"
 mode = "strict"
 
@@ -35,15 +32,13 @@ fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
 console = "dmg"
 mode = "strict"
 
 [[session.participant]]
 id = "slave"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_slave.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_slave.gb"
 console = "dmg"
 mode = "strict"
 
@@ -57,15 +52,13 @@ fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
 console = "dmg"
 mode = "strict"
 
 [[session.participant]]
 id = "slave"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
 console = "dmg"
 mode = "strict"
 
@@ -79,14 +72,12 @@ fixture = "fixtures/docboy/dmg/ok.png"
 
 [[session.participant]]
 id = "master"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_master.gb"
 console = "dmg"
 mode = "strict"
 
 [[session.participant]]
 id = "slave"
-rom = "docboy/dmg/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
-external_rom_root_key = "GB_CYCLE_TEST_ROM_ROOT"
+rom = "test/docboy/dmg/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
 console = "dmg"
 mode = "strict"

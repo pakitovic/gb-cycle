@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_core::ExecutionMode;
@@ -12,6 +13,7 @@ use gb_test_runner::{
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     build_test_rom_with_header(program, 0x00, 0x00, 0x00)
@@ -531,28 +533,37 @@ fn runner_marks_informational_cases_as_non_failing_without_promoting_them_to_pas
 }
 
 #[test]
-fn runner_resolves_roms_from_an_explicit_external_root() {
-    let temp_dir = unique_temp_dir("external-root");
+fn runner_resolves_roms_from_the_test_rom_root_environment_override() {
+    let temp_dir = unique_temp_dir("test-rom-root");
     let rom_root = temp_dir.join("test-rom-root");
     fs::create_dir_all(rom_root.join("blargg/cpu_instrs"))
-        .expect("external root directory should be creatable");
+        .expect("test ROM root directory should be creatable");
 
     let rom_path = rom_root.join("blargg/cpu_instrs/01-special.gb");
     fs::write(&rom_path, build_single_byte_serial_rom(b'P'))
-        .expect("external root rom should be writable");
+        .expect("test ROM root rom should be writable");
 
     let case = RomTestCase::new(
-        "external-root-pass",
-        "blargg/cpu_instrs/01-special.gb",
+        "test-rom-root-pass",
+        "test/blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(5_000),
         PassCondition::SerialContains("P".to_string()),
-    )
-    .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR);
+    );
 
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let previous = env::var_os(TEST_ROM_ROOT_ENV_VAR);
+    unsafe {
+        env::set_var(TEST_ROM_ROOT_ENV_VAR, &rom_root);
+    }
     let report = RomRunner::new()
-        .with_external_rom_root(TEST_ROM_ROOT_ENV_VAR, &rom_root)
         .run_case(&case)
-        .expect("external-root rom case should execute");
+        .expect("test ROM root rom case should execute");
+    unsafe {
+        match previous {
+            Some(value) => env::set_var(TEST_ROM_ROOT_ENV_VAR, value),
+            None => env::remove_var(TEST_ROM_ROOT_ENV_VAR),
+        }
+    }
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("P"));
@@ -573,11 +584,10 @@ fn runner_resolves_roms_from_the_default_repo_managed_test_rom_store() {
 
     let case = RomTestCase::new(
         "default-test-rom-root-pass",
-        "blargg/cpu_instrs/01-special.gb",
+        "test/blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(5_000),
         PassCondition::SerialContains("R".to_string()),
-    )
-    .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR);
+    );
 
     let report = RomRunner::new()
         .with_workspace_root(&temp_dir)
@@ -703,22 +713,24 @@ fn runner_rejects_unexpected_boot_rom_hashes_in_strict_real_boot_mode() {
 }
 
 #[test]
-fn runner_errors_when_external_root_is_missing() {
+fn runner_errors_when_test_rom_store_is_missing() {
+    let temp_dir = unique_temp_dir("missing-test-rom-store");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
     let case = RomTestCase::new(
-        "missing-external-root",
-        "blargg/cpu_instrs/01-special.gb",
+        "missing-test-rom-store",
+        "test/blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(64),
         PassCondition::SerialContains("Passed".to_string()),
-    )
-    .with_external_rom_root_key("GB_CYCLE_TEST_MISSING_ROOT");
+    );
 
     let error = RomRunner::new()
+        .with_workspace_root(&temp_dir)
         .run_case(&case)
-        .expect_err("missing external root should fail");
+        .expect_err("missing test ROM store should fail");
 
     match error {
         RomExecutionError::MissingExternalRomRoot { key, relative_path } => {
-            assert_eq!(key, "GB_CYCLE_TEST_MISSING_ROOT");
+            assert_eq!(key, TEST_ROM_ROOT_ENV_VAR);
             assert_eq!(
                 relative_path,
                 PathBuf::from("blargg/cpu_instrs/01-special.gb")
@@ -726,6 +738,8 @@ fn runner_errors_when_external_root_is_missing() {
         }
         other => panic!("unexpected error: {other:?}"),
     }
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
 
 #[test]

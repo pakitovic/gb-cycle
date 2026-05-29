@@ -1,0 +1,11 @@
+family = "acid"
+suite_name = "cgb-ppu-hard"
+subsystem = "Ppu"
+
+[[case]]
+id = "cgb-ppu-hard-cgb-acid-hell"
+rom = "cgb-acid-hell.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/acid/cgb-acid-hell.png"

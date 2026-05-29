@@ -1,4 +1,3 @@
-version = 1
 family = "samesuite"
 suite_name = "samesuite-cgb-extra"
 subsystem = "Apu"

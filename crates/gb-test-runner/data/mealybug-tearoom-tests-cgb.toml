@@ -1,4 +1,3 @@
-version = 1
 family = "mealybug-tearoom-tests"
 suite_name = "mealybug-tearoom-cgb-extra"
 subsystem = "Ppu"

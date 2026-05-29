@@ -5,12 +5,23 @@ use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
     FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec, PassCondition,
     RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
-    TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, acid_dmg_curated_suite,
-    ashiepaws_dmg_curated_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
-    built_in_rom_suite_by_name, daid_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
-    mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
-    phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
+    TEST_ROM_STORE_DIR, TestSubsystem, Timeout, acid_dmg_curated_suite,
+    ashiepaws_dmg_curated_suite, blargg_curated_suites, built_in_rom_suite_by_name,
+    daid_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite, mooneye_curated_suites,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
+    phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
+
+fn rom_path_without_store_prefix(rom_path: &Path) -> &Path {
+    let mut normalized_path = rom_path;
+    if let Ok(stripped) = normalized_path.strip_prefix(TEST_ROM_STORE_DIR) {
+        normalized_path = stripped;
+    }
+    if let Ok(stripped) = normalized_path.strip_prefix("gb-emulator-shootout") {
+        normalized_path = stripped;
+    }
+    normalized_path
+}
 
 #[test]
 fn new_rom_test_case_defaults_to_dmg_skip_boot_strict_with_debug_artifacts() {
@@ -275,14 +286,6 @@ fn rom_test_case_rejects_empty_id_empty_rom_path_and_zero_timeout() {
         Timeout::TCycles(0),
         PassCondition::SerialExact("ok".to_string()),
     );
-    let empty_external_root_key = RomTestCase::new(
-        "valid-id",
-        PathBuf::from("rom.gb"),
-        Timeout::Frames(1),
-        PassCondition::SerialExact("ok".to_string()),
-    )
-    .with_external_rom_root_key("   ");
-
     assert_eq!(
         empty_id.validate(),
         Err(RomCaseValidationError::EmptyCaseId)
@@ -294,10 +297,6 @@ fn rom_test_case_rejects_empty_id_empty_rom_path_and_zero_timeout() {
     assert_eq!(
         zero_timeout.validate(),
         Err(RomCaseValidationError::InvalidTimeout)
-    );
-    assert_eq!(
-        empty_external_root_key.validate(),
-        Err(RomCaseValidationError::EmptyExternalRomRootKey)
     );
 }
 
@@ -578,49 +577,42 @@ fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
 
 #[test]
 fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
-    let suite = blargg_dmg_curated_suite();
+    let split_suites = blargg_curated_suites();
+    let cases = split_suites
+        .iter()
+        .flat_map(|suite| suite.cases.iter())
+        .collect::<Vec<_>>();
 
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-    assert_eq!(suite.validate(), Ok(()));
-    assert_eq!(suite.family.as_deref(), Some("blargg"));
-    assert_eq!(suite.cases.len(), 38);
+    assert_eq!(
+        split_suites
+            .iter()
+            .map(|suite| suite.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "blargg-cpu-instrs",
+            "blargg-dmg-sound",
+            "blargg-timing-memory-oam"
+        ]
+    );
+    assert!(split_suites.iter().all(|suite| {
+        suite.subsystem == TestSubsystem::CrossSubsystem
+            && suite.validate() == Ok(())
+            && suite.family.as_deref() == Some("blargg")
+    }));
+    assert_eq!(cases.len(), 38);
     assert!(
-        suite
-            .cases
+        cases
             .iter()
             .any(|case| case.id == "blargg-cpu-instrs-01-special")
     );
     assert!(
-        suite
-            .cases
+        cases
             .iter()
             .any(|case| case.id == "blargg-oam-bug-8-instr-effect")
     );
+    assert!(cases.iter().any(|case| case.id == "blargg-instr-timing"));
     assert!(
-        suite
-            .cases
-            .iter()
-            .any(|case| case.id == "blargg-instr-timing")
-    );
-    assert!(
-        suite
-            .cases
-            .iter()
-            .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
-    );
-}
-
-#[test]
-fn repo_gated_blargg_suite_now_matches_the_promoted_curated_family() {
-    let suite = blargg_dmg_repo_gated_suite();
-
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-    assert_eq!(suite.validate(), Ok(()));
-    assert_eq!(suite.family.as_deref(), Some("blargg"));
-    assert_eq!(suite.cases.len(), 38);
-    assert!(
-        suite
-            .cases
+        cases
             .iter()
             .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
     );
@@ -641,10 +633,9 @@ fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
         .find(|case| case.id == "which-dmg")
         .expect("acid suite should include which.gb");
     assert_eq!(
-        which_case.external_rom_root_key.as_deref(),
-        Some(TEST_ROM_ROOT_ENV_VAR)
+        which_case.rom_path,
+        PathBuf::from("test/gb-emulator-shootout/acid/which.gb")
     );
-    assert_eq!(which_case.rom_path, PathBuf::from("acid/which.gb"));
     assert!(which_case.capture_plan.contains(CaptureKind::Framebuffer));
     assert!(which_case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(
@@ -663,10 +654,9 @@ fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
         .find(|case| case.id == "dmg-acid2")
         .expect("acid suite should include dmg-acid2");
     assert_eq!(
-        case.external_rom_root_key.as_deref(),
-        Some(TEST_ROM_ROOT_ENV_VAR)
+        case.rom_path,
+        PathBuf::from("test/gb-emulator-shootout/acid/dmg-acid2.gb")
     );
-    assert_eq!(case.rom_path, PathBuf::from("acid/dmg-acid2.gb"));
     assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
     assert!(case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
@@ -690,7 +680,10 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
         .iter()
         .find(|case| case.id == "daid-ppu-scanline-bgp")
         .expect("daid suite should include ppu_scanline_bgp");
-    assert_eq!(ppu_case.rom_path, PathBuf::from("daid/ppu_scanline_bgp.gb"));
+    assert_eq!(
+        rom_path_without_store_prefix(&ppu_case.rom_path),
+        Path::new("daid/ppu_scanline_bgp.gb")
+    );
     assert!(ppu_case.capture_plan.contains(CaptureKind::Framebuffer));
     assert!(ppu_case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(matches!(
@@ -703,7 +696,10 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
         .iter()
         .find(|case| case.id == "daid-stop-instr")
         .expect("daid suite should include stop_instr");
-    assert_eq!(stop_case.rom_path, PathBuf::from("daid/stop_instr.gb"));
+    assert_eq!(
+        rom_path_without_store_prefix(&stop_case.rom_path),
+        Path::new("daid/stop_instr.gb")
+    );
     assert!(matches!(
         stop_case.pass_condition,
         PassCondition::FramebufferGrayscaleFixture(_)
@@ -714,7 +710,10 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
         .iter()
         .find(|case| case.id == "daid-rom-and-ram")
         .expect("daid suite should include rom_and_ram");
-    assert_eq!(info_case.rom_path, PathBuf::from("daid/rom_and_ram.gb"));
+    assert_eq!(
+        rom_path_without_store_prefix(&info_case.rom_path),
+        Path::new("daid/rom_and_ram.gb")
+    );
     assert_eq!(info_case.execution_mode, ExecutionMode::Permissive);
     assert!(matches!(
         info_case.pass_condition,
@@ -731,7 +730,7 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
     assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
     assert_eq!(suite.cases.len(), 24);
     assert!(suite.cases.iter().all(|case| {
-        case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
             && case.capture_plan.contains(CaptureKind::Framebuffer)
             && case.capture_plan.contains(CaptureKind::Snapshot)
             && case.failure_artifacts.contains(CaptureKind::Framebuffer)
@@ -796,7 +795,7 @@ fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
     assert_eq!(suite.family.as_deref(), Some("ashiepaws"));
     assert_eq!(suite.cases.len(), 2);
     assert!(suite.cases.iter().all(|case| {
-        case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+        case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
             && case.capture_plan.contains(CaptureKind::Framebuffer)
             && case.capture_plan.contains(CaptureKind::Snapshot)
             && case.failure_artifacts.contains(CaptureKind::Framebuffer)
@@ -808,7 +807,10 @@ fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
         .iter()
         .find(|case| case.id == "ashiepaws-bully")
         .expect("ashiepaws suite should include bully.gb");
-    assert_eq!(bully.rom_path, PathBuf::from("ashiepaws/bully.gb"));
+    assert_eq!(
+        rom_path_without_store_prefix(&bully.rom_path),
+        Path::new("ashiepaws/bully.gb")
+    );
     assert_eq!(bully.console_model, ConsoleModel::GameBoy);
     assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
     assert!(bully.startup_memory_writes.is_empty());
@@ -819,19 +821,36 @@ fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
         .find(|case| case.id == "ashiepaws-strikethrough")
         .expect("ashiepaws suite should include strikethrough.gb");
     assert_eq!(
-        strikethrough.rom_path,
-        PathBuf::from("ashiepaws/strikethrough.gb")
+        rom_path_without_store_prefix(&strikethrough.rom_path),
+        Path::new("ashiepaws/strikethrough.gb")
     );
 }
 
 #[test]
 fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specific_oracles() {
-    let suite = mooneye_acceptance_dmg_curated_suite();
+    let split_suites = mooneye_curated_suites();
+    let cases = split_suites
+        .iter()
+        .flat_map(|suite| suite.cases.iter())
+        .collect::<Vec<_>>();
 
-    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-    assert_eq!(suite.validate(), Ok(()));
-    assert_eq!(suite.family.as_deref(), Some("mooneye"));
-    assert_eq!(suite.cases.len(), 95);
+    assert_eq!(
+        split_suites
+            .iter()
+            .map(|suite| suite.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "mooneye-acceptance-manual",
+            "mooneye-emulator-mbc1-mbc5",
+            "mooneye-emulator-mbc2"
+        ]
+    );
+    assert!(split_suites.iter().all(|suite| {
+        suite.subsystem == TestSubsystem::CrossSubsystem
+            && suite.validate() == Ok(())
+            && suite.family.as_deref() == Some("mooneye")
+    }));
+    assert_eq!(cases.len(), 95);
     let expected_rom_paths = [
         "mooneye/acceptance/add_sp_e_timing.gb",
         "mooneye/acceptance/bits/mem_oam.gb",
@@ -929,60 +948,59 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
         "mooneye/emulator-only/mbc5/rom_8Mb.gb",
         "mooneye/manual-only/sprite_priority.gb",
     ];
-    let expected_rom_paths = expected_rom_paths
+    let mut expected_rom_paths = expected_rom_paths
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    let actual_rom_paths = suite
-        .cases
+    let mut actual_rom_paths = cases
         .iter()
-        .map(|case| case.rom_path.to_string_lossy().into_owned())
+        .map(|case| {
+            rom_path_without_store_prefix(&case.rom_path)
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect::<Vec<_>>();
+    expected_rom_paths.sort();
+    actual_rom_paths.sort();
     assert_eq!(actual_rom_paths, expected_rom_paths);
-    assert!(suite.cases.iter().all(|case| {
+    assert!(cases.iter().all(|case| {
         case.console_model == ConsoleModel::GameBoy
-            && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-            && case.rom_path.starts_with(Path::new("mooneye"))
+            && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
+            && rom_path_without_store_prefix(&case.rom_path).starts_with(Path::new("mooneye"))
     }));
-    assert!(!suite.cases.iter().any(|case| {
-        let path = case.rom_path.to_string_lossy();
+    assert!(!cases.iter().any(|case| {
+        let path = rom_path_without_store_prefix(&case.rom_path).to_string_lossy();
         path.contains("sgb")
             || path.contains("cgb")
             || path.contains("apu")
             || path.contains("sound")
     }));
     assert!(
-        suite
-            .cases
+        cases
             .iter()
             .any(|case| case.id == "mooneye-boot-regs-dmgabc")
     );
     assert!(
-        suite
-            .cases
+        cases
             .iter()
             .any(|case| case.id == "mooneye-timer-tma-write-reloading")
     );
-    let mbc1_bits_ramg = suite
-        .cases
+    let mbc1_bits_ramg = cases
         .iter()
         .find(|case| case.id == "mooneye-emulator-only-mbc1-bits-ramg")
         .expect("mooneye suite should include emulator-only mbc1 bits_ramg");
     assert_eq!(mbc1_bits_ramg.timeout, Timeout::Frames(780));
-    let mbc2_bits_ramg = suite
-        .cases
+    let mbc2_bits_ramg = cases
         .iter()
         .find(|case| case.id == "mooneye-emulator-only-mbc2-bits-ramg")
         .expect("mooneye suite should include emulator-only mbc2 bits_ramg");
     assert_eq!(mbc2_bits_ramg.timeout, Timeout::Frames(900));
-    let mbc1_multicart = suite
-        .cases
+    let mbc1_multicart = cases
         .iter()
         .find(|case| case.id == "mooneye-emulator-only-mbc1-multicart-rom-8mb")
         .expect("mooneye suite should include emulator-only mbc1 multicart_rom_8Mb");
     assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Strict);
-    let sprite_priority = suite
-        .cases
+    let sprite_priority = cases
         .iter()
         .find(|case| case.id == "mooneye-manual-only-sprite-priority")
         .expect("mooneye suite should include manual-only sprite_priority");
@@ -1004,7 +1022,7 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
     ));
     assert_eq!(sprite_priority.execution_mode, ExecutionMode::Strict);
 
-    assert!(suite.cases.iter().all(|case| {
+    assert!(cases.iter().all(|case| {
         if case.id == "mooneye-manual-only-sprite-priority" {
             matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
         } else {

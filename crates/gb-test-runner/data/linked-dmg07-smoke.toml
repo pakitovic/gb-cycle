@@ -1,4 +1,3 @@
-version = 1
 suite_name = "linked-dmg07-smoke"
 family = "linked"
 subsystem = "serial"

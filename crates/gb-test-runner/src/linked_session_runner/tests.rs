@@ -3,7 +3,7 @@ use crate::{
     BOOT_ROM_ROOT_ENV_VAR, BootRomVerificationIssue, BootRomVerificationMode, ExternalStimulus,
     ExternalStimulusAction, LinkedSessionCapturePlan, LinkedSessionCase,
     LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant, LinkedSessionPassCondition,
-    LinkedSessionSuite, LinkedSessionTopology, external_rom_source_manifest_path,
+    LinkedSessionSuite, LinkedSessionTopology, TEST_ROM_ROOT_ENV_VAR,
     framebuffer_oracle::encode_framebuffer_pgm,
 };
 use gb_core::{Dmg07Port, JoypadButton};
@@ -466,33 +466,48 @@ fn linked_session_runner_replays_trace_fixtures_deterministically() {
 }
 
 #[test]
-fn linked_session_runner_reports_missing_external_rom_roots_as_typed_errors() {
+fn linked_session_runner_reports_missing_test_rom_store_as_typed_error() {
+    let temp_dir = unique_temp_dir("missing-test-rom-store");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
     let session = LinkedSessionCase::new(
-        "missing-external-root",
+        "missing-test-rom-store",
         LinkedSessionTopology::Dmg04,
         Timeout::TCycles(32),
         LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot),
     )
-    .with_participant(
-        LinkedSessionParticipant::new("left", Path::new("left.gb"))
-            .with_external_rom_root_key("GB_CYCLE_TEST_MISSING_ROOT"),
-    )
+    .with_participant(LinkedSessionParticipant::new(
+        "left",
+        Path::new("test/left.gb"),
+    ))
     .with_participant(LinkedSessionParticipant::new(
         "right",
         Path::new("right.gb"),
     ));
 
+    let _env_guard = crate::test_support::lock_env();
+    let previous_test_root = env::var_os(TEST_ROM_ROOT_ENV_VAR);
+    unsafe {
+        env::remove_var(TEST_ROM_ROOT_ENV_VAR);
+    }
     let error = LinkedSessionRunner::new()
+        .with_workspace_root(&temp_dir)
         .run_session(&session)
-        .expect_err("missing external ROM root should surface as a typed error");
+        .expect_err("missing test ROM store should surface as a typed error");
+    unsafe {
+        match previous_test_root {
+            Some(value) => env::set_var(TEST_ROM_ROOT_ENV_VAR, value),
+            None => env::remove_var(TEST_ROM_ROOT_ENV_VAR),
+        }
+    }
 
     assert!(matches!(
         error,
         LinkedSessionExecutionError::MissingExternalRomRoot {
             ref key,
             ref relative_path,
-        } if key == "GB_CYCLE_TEST_MISSING_ROOT" && relative_path == Path::new("left.gb")
+        } if key == TEST_ROM_ROOT_ENV_VAR && relative_path == Path::new("left.gb")
     ));
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
 
 #[test]
@@ -1490,36 +1505,6 @@ fn linked_session_runner_surfaces_missing_fixture_reads_as_typed_file_operations
 fn linked_session_runner_surfaces_loader_and_manifest_resolution_failures() {
     let temp_dir = unique_temp_dir("loader-errors");
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-
-    let manifest_path = external_rom_source_manifest_path(&temp_dir);
-    fs::create_dir_all(
-        manifest_path
-            .parent()
-            .expect("external manifest path should have a parent"),
-    )
-    .expect("external manifest parent should be creatable");
-    fs::write(&manifest_path, "version = 1\n[[source]]\nid = \"broken\"\n")
-        .expect("broken external ROM manifest should be writable");
-
-    let manifest_error_session = LinkedSessionCase::new(
-        "manifest-error",
-        LinkedSessionTopology::Dmg04,
-        Timeout::TCycles(64),
-        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot),
-    )
-    .with_participant(
-        LinkedSessionParticipant::new("left", "retrio/case.gb")
-            .with_external_rom_root_key("GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"),
-    )
-    .with_participant(LinkedSessionParticipant::new("right", "right.gb"));
-    let manifest_error = LinkedSessionRunner::new()
-        .with_workspace_root(&temp_dir)
-        .run_session(&manifest_error_session)
-        .expect_err("broken external ROM manifest should surface as a typed error");
-    assert!(matches!(
-        manifest_error,
-        LinkedSessionExecutionError::ExternalRomSourceManifest { .. }
-    ));
 
     let left_rom = temp_dir.join("left.gb");
     fs::write(

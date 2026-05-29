@@ -1,0 +1,22 @@
+family = "ashiepaws"
+suite_name = "ashiepaws-dmg-curated"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "ashiepaws-bully"
+rom = "bully.gb"
+source_path = "testroms/ashiepaws/bully.gb"
+console = "dmg"
+report_model_suffix = true
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
+
+[[case]]
+id = "ashiepaws-strikethrough"
+rom = "strikethrough.gb"
+source_path = "testroms/ashiepaws/strikethrough.gb"
+console = "dmg"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "test/gb-emulator-shootout/ashiepaws/strikethrough.png"
