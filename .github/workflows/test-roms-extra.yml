@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ax6
-            command: make run-ax6
+          - name: ax6-dmg
+            command: make run-ax6-dmg
           - name: samesuite
             command: make run-samesuite
           - name: little-things-gb

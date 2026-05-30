@@ -5,6 +5,7 @@ use std::{fs, io};
 use gb_core::{ConsoleModel, ExecutionMode, HardwareRevision, JoypadButton, StartupMode};
 use serde::Deserialize;
 
+use crate::manifest_fixture::ManifestFixtureField;
 use crate::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, FailureArtifactPolicy,
     MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, Timeout,
@@ -69,11 +70,9 @@ struct LocalRomSuiteCase {
     timeout_tcycles: Option<u64>,
     oracle: Option<String>,
     expected: Option<String>,
-    fixture: Option<PathBuf>,
+    fixture: Option<ManifestFixtureField>,
     check_interval_tcycles: Option<u64>,
     check_at_tcycles: Option<u64>,
-    #[serde(default)]
-    fixtures: Vec<PathBuf>,
     #[serde(default)]
     memory: Vec<LocalMemoryByteExpectation>,
     #[serde(rename = "stimulus", default)]
@@ -94,10 +93,9 @@ struct LocalMemoryByteExpectation {
 struct LocalPassConditionFields {
     oracle: Option<String>,
     expected: Option<String>,
-    fixture: Option<PathBuf>,
+    fixture: Option<ManifestFixtureField>,
     check_interval_tcycles: Option<u64>,
     check_at_tcycles: Option<u64>,
-    fixtures: Vec<PathBuf>,
     memory: Vec<LocalMemoryByteExpectation>,
 }
 
@@ -208,7 +206,6 @@ fn build_case_from_manifest(
             fixture: case.fixture,
             check_interval_tcycles: case.check_interval_tcycles,
             check_at_tcycles: case.check_at_tcycles,
-            fixtures: case.fixtures,
             memory: case.memory,
         },
     )?;
@@ -265,6 +262,26 @@ fn parse_timeout(
     }
 }
 
+fn required_fixture_path(
+    fixture: Option<ManifestFixtureField>,
+    case_id: &str,
+    oracle: &str,
+) -> Result<PathBuf, String> {
+    fixture
+        .ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?
+        .into_single_path(case_id, oracle)
+}
+
+fn required_fixture_paths(
+    fixture: Option<ManifestFixtureField>,
+    case_id: &str,
+    oracle: &str,
+) -> Result<Vec<PathBuf>, String> {
+    fixture
+        .ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?
+        .into_non_empty_paths(case_id, oracle)
+}
+
 fn parse_pass_condition(
     manifest_dir: &Path,
     case_id: &str,
@@ -276,7 +293,6 @@ fn parse_pass_condition(
         fixture,
         check_interval_tcycles,
         check_at_tcycles,
-        fixtures,
         memory,
     } = fields;
     let oracle = oracle.as_deref().unwrap_or(DEFAULT_LOCAL_ORACLE);
@@ -321,12 +337,12 @@ fn parse_pass_condition(
         "info-snapshot" => Ok(PassCondition::Informational(CaptureKind::Snapshot)),
         "framebuffer-fixture" => Ok(PassCondition::FramebufferFixture(resolve_fixture_path(
             manifest_dir,
-            fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            required_fixture_path(fixture, case_id, oracle)?,
         ))),
         "framebuffer-fixture-until-match" => Ok(PassCondition::FramebufferFixtureUntilMatch {
             fixture_path: resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                required_fixture_path(fixture, case_id, oracle)?,
             ),
             check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
             check_at_tcycles,
@@ -334,21 +350,20 @@ fn parse_pass_condition(
         "framebuffer-grayscale-fixture" => Ok(PassCondition::FramebufferGrayscaleFixture(
             resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                required_fixture_path(fixture, case_id, oracle)?,
             ),
         )),
         "framebuffer-rgb555-fixture" => Ok(PassCondition::FramebufferRgb555Fixture(
             resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                required_fixture_path(fixture, case_id, oracle)?,
             ),
         )),
         "framebuffer-rgb555-fixture-until-match" => {
             Ok(PassCondition::FramebufferRgb555FixtureUntilMatch {
                 fixture_path: resolve_fixture_path(
                     manifest_dir,
-                    fixture
-                        .ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                    required_fixture_path(fixture, case_id, oracle)?,
                 ),
                 check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
                 check_at_tcycles,
@@ -357,29 +372,24 @@ fn parse_pass_condition(
         "framebuffer-rgb555-grayscale-fixture" => Ok(
             PassCondition::FramebufferRgb555GrayscaleFixture(resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                required_fixture_path(fixture, case_id, oracle)?,
             )),
         ),
         "framebuffer-rgb555-grayscale-tolerance-fixture" => Ok(
             PassCondition::FramebufferRgb555GrayscaleToleranceFixture(resolve_fixture_path(
                 manifest_dir,
-                fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+                required_fixture_path(fixture, case_id, oracle)?,
             )),
         ),
-        "framebuffer-fixture-set" => {
-            if fixtures.is_empty() {
-                return Err(format!("case {case_id} is missing fixtures for {oracle}"));
-            }
-            Ok(PassCondition::FramebufferFixtureSet(
-                fixtures
-                    .into_iter()
-                    .map(|path| resolve_fixture_path(manifest_dir, path))
-                    .collect(),
-            ))
-        }
+        "framebuffer-fixture-set" => Ok(PassCondition::FramebufferFixtureSet(
+            required_fixture_paths(fixture, case_id, oracle)?
+                .into_iter()
+                .map(|path| resolve_fixture_path(manifest_dir, path))
+                .collect(),
+        )),
         "trace-fixture" => Ok(PassCondition::TraceFixture(resolve_fixture_path(
             manifest_dir,
-            fixture.ok_or_else(|| format!("case {case_id} is missing fixture for {oracle}"))?,
+            required_fixture_path(fixture, case_id, oracle)?,
         ))),
         other => Err(format!("case {case_id} uses unsupported oracle {other:?}")),
     }
@@ -787,7 +797,7 @@ rom = "commercial/links-awakening.gb"
 console = "cgb"
 timeout_frames = 24
 oracle = "framebuffer-fixture-set"
-fixtures = ["fixtures/frame-a.png", "{absolute_fixture}"]
+fixture = ["fixtures/frame-a.png", "{absolute_fixture}"]
 
 [[case.stimulus]]
 tcycle = 2048
@@ -1156,7 +1166,7 @@ oracle = "magic"
     }
 
     #[test]
-    fn local_manifest_rejects_missing_fixtures_and_unsupported_console_metadata() {
+    fn local_manifest_rejects_missing_fixture_and_unsupported_console_metadata() {
         let workspace = unique_temp_dir("invalid-metadata");
 
         let missing_fixture = write_manifest(
@@ -1280,7 +1290,7 @@ oracle = "serial-exact"
             other => panic!("unexpected error: {other:?}"),
         }
 
-        let missing_fixtures = write_manifest(
+        let missing_fixture = write_manifest(
             &workspace,
             "missing-fixture-set.toml",
             r#"
@@ -1292,11 +1302,11 @@ timeout_frames = 1
 oracle = "framebuffer-fixture-set"
 "#,
         );
-        let missing_fixtures_error = load_local_rom_suite_manifest(&missing_fixtures)
-            .expect_err("framebuffer-fixture-set without fixtures should fail");
-        match missing_fixtures_error {
+        let missing_fixture_error = load_local_rom_suite_manifest(&missing_fixture)
+            .expect_err("framebuffer-fixture-set without fixture should fail");
+        match missing_fixture_error {
             LocalRomSuiteManifestError::Build { message, .. } => {
-                assert!(message.contains("missing fixtures for framebuffer-fixture-set"));
+                assert!(message.contains("missing fixture for framebuffer-fixture-set"));
             }
             other => panic!("unexpected error: {other:?}"),
         }

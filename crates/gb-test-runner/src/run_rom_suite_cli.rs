@@ -945,19 +945,19 @@ mod tests {
     fn select_suite_can_filter_a_family_backed_built_in_suite_to_one_case() {
         let suite = select_suite_for_options(&RomSuiteCliOptions {
             target: RomSuiteCliTarget::BuiltIn {
-                suite_name: "acid-dmg-curated".to_string(),
+                suite_name: "acid".to_string(),
             },
-            case_id: Some("dmg-acid2".to_string()),
+            case_id: Some("acid-dmg-acid2".to_string()),
             failure_artifact_root: None,
             timeout_override: None,
             threads: None,
         })
         .expect("known curated case should be selectable");
 
-        assert_eq!(suite.name, "acid-dmg-curated");
+        assert_eq!(suite.name, "acid");
         assert_eq!(suite.family.as_deref(), Some("acid"));
         assert_eq!(suite.cases.len(), 1);
-        assert_eq!(suite.cases[0].id, "dmg-acid2");
+        assert_eq!(suite.cases[0].id, "acid-dmg-acid2");
     }
 
     #[test]
@@ -972,7 +972,7 @@ mod tests {
 
     #[test]
     fn startup_env_default_preserves_manifest_startup_modes_and_synthetic_state() {
-        let original_suite = crate::cgb_ppu_basic_suite();
+        let original_suite = crate::samesuite_suite();
         let mut configured_suite = original_suite.clone();
 
         apply_configured_startup_override_for(
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[test]
     fn startup_env_custom_boot_overrides_suite_without_requiring_assets() {
-        let mut suite = crate::cgb_ppu_basic_suite();
+        let mut suite = crate::samesuite_suite();
 
         apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::CustomBoot)
             .expect("custom-boot startup override should parse");
@@ -1125,7 +1125,7 @@ mod tests {
         let detailed_output =
             String::from_utf8(detailed_output).expect("detailed output should be utf-8");
         assert!(detailed_output.contains(
-            "suite=blargg-timing-memory-oam family=blargg cases=15 sources=test-rom-store"
+            "suite=blargg-timing-memory-oam family=blargg cases=16 sources=test-rom-store"
         ));
         assert!(
             detailed_output.contains(
@@ -1135,14 +1135,15 @@ mod tests {
         assert!(detailed_output.contains(
             "case=blargg-oam-bug-1-lcd-sync family=blargg source=test-rom-store oracle=memory-text-output"
         ));
+        assert!(
+            detailed_output
+                .contains("suite=samesuite family=samesuite cases=9 sources=test-rom-store")
+        );
         assert!(detailed_output.contains(
-            "suite=cgb-smoke family=cgb-smoke cases=2 sources=test-rom-store oracles=mooneye-result,info-framebuffer"
+            "case=mooneye-misc-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
         ));
         assert!(detailed_output.contains(
-            "case=cgb-smoke-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
-        ));
-        assert!(detailed_output.contains(
-            "case=cgb-smoke-which-gbc family=acid source=test-rom-store oracle=info-framebuffer console=color"
+            "case=acid-which-cgb family=acid source=test-rom-store oracle=info-framebuffer console=color"
         ));
 
         let mut checklist_output = Vec::new();

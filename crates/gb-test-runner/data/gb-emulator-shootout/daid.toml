@@ -1,27 +1,77 @@
 family = "daid"
-suite_name = "daid-dmg-curated"
+suite_name = "daid"
 
 [[case]]
-id = "daid-ppu-scanline-bgp"
+id = "daid-ppu-scanline-bgp-dmg"
 rom = "ppu_scanline_bgp.gb"
 console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-fixture-set"
-fixtures = [
+fixture = [
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_0.dmg.png",
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_1.dmg.png",
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_2.dmg.png",
 ]
 
 [[case]]
-id = "daid-stop-instr"
+id = "daid-ppu-scanline-bgp-gbc"
+rom = "ppu_scanline_bgp.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/ppu_scanline_bgp.gbc.png"
+
+[[case]]
+id = "daid-stop-instr-dmg"
 rom = "stop_instr.gb"
 console = "dmg"
 report_model_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-grayscale-fixture"
 fixture = "test/gb-emulator-shootout/daid/stop_instr.dmg.png"
+
+[[case]]
+id = "daid-stop-instr-gbc"
+rom = "stop_instr.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-grayscale-fixture"
+fixture = "test/gb-emulator-shootout/daid/stop_instr.gbc.png"
+
+[[case]]
+id = "daid-speed-switch-timing-div"
+rom = "speed_switch_timing_div.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/speed_switch_timing_div.png"
+
+[[case]]
+id = "daid-stop-instr-gbc-mode3"
+rom = "stop_instr_gbc_mode3.gb"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/stop_instr_gbc_mode3.png"
+
+[[case]]
+id = "daid-speed-switch-timing-ly"
+rom = "speed_switch_timing_ly.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/speed_switch_timing_ly.png"
+
+[[case]]
+id = "daid-speed-switch-timing-stat"
+rom = "speed_switch_timing_stat.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/daid/speed_switch_timing_stat.png"
 
 [[case]]
 id = "daid-rom-and-ram"

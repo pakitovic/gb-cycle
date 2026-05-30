@@ -5,10 +5,9 @@ use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
     FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec, PassCondition,
     RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
-    TEST_ROM_STORE_DIR, Timeout, acid_dmg_curated_suite, ashiepaws_dmg_curated_suite,
-    blargg_curated_suites, built_in_rom_suite_by_name, daid_dmg_curated_suite,
-    mealybug_tearoom_dmg_curated_suite, mooneye_curated_suites, phase_2_cpu_timing_suite,
-    phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
+    TEST_ROM_STORE_DIR, Timeout, acid_suite, ashiepaws_suite, blargg_curated_suites,
+    built_in_rom_suite_by_name, daid_suite, mealybug_tearoom_suite, mooneye_curated_suites,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
     phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
 
@@ -593,7 +592,7 @@ fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
             suite.validate() == Ok(()) && suite.family.as_deref() == Some("blargg")
         })
     );
-    assert_eq!(cases.len(), 38);
+    assert_eq!(cases.len(), 39);
     assert!(
         cases
             .iter()
@@ -605,6 +604,7 @@ fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
             .any(|case| case.id == "blargg-oam-bug-8-instr-effect")
     );
     assert!(cases.iter().any(|case| case.id == "blargg-instr-timing"));
+    assert!(cases.iter().any(|case| case.id == "blargg-interrupt-time"));
     assert!(
         cases
             .iter()
@@ -613,39 +613,68 @@ fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
 }
 
 #[test]
-fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
-    let suite = acid_dmg_curated_suite();
+fn acid_suite_tracks_framebuffer_oracle_and_informational_cases() {
+    let suite = acid_suite();
 
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("acid"));
-    assert_eq!(suite.cases.len(), 2);
+    assert_eq!(suite.cases.len(), 5);
 
-    let which_case = suite
+    let which_dmg_case = suite
         .cases
         .iter()
-        .find(|case| case.id == "which-dmg")
-        .expect("acid suite should include which.gb");
+        .find(|case| case.id == "acid-which-dmg")
+        .expect("acid suite should include which.gb DMG");
     assert_eq!(
-        which_case.rom_path,
+        which_dmg_case.rom_path,
         PathBuf::from("test/gb-emulator-shootout/acid/which.gb")
     );
-    assert!(which_case.capture_plan.contains(CaptureKind::Framebuffer));
-    assert!(which_case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(
-        which_case
+        which_dmg_case
+            .capture_plan
+            .contains(CaptureKind::Framebuffer)
+    );
+    assert!(which_dmg_case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(
+        which_dmg_case
             .failure_artifacts
             .contains(CaptureKind::Framebuffer)
     );
     assert!(matches!(
-        which_case.pass_condition,
+        which_dmg_case.pass_condition,
+        PassCondition::Informational(CaptureKind::Framebuffer)
+    ));
+
+    let which_cgb_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "acid-which-cgb")
+        .expect("acid suite should include which.gb CGB");
+    assert_eq!(
+        which_cgb_case.rom_path,
+        PathBuf::from("test/gb-emulator-shootout/acid/which.gb")
+    );
+    assert!(
+        which_cgb_case
+            .capture_plan
+            .contains(CaptureKind::Framebuffer)
+    );
+    assert!(which_cgb_case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(
+        which_cgb_case
+            .failure_artifacts
+            .contains(CaptureKind::Framebuffer)
+    );
+    assert!(matches!(
+        which_cgb_case.pass_condition,
         PassCondition::Informational(CaptureKind::Framebuffer)
     ));
 
     let case = suite
         .cases
         .iter()
-        .find(|case| case.id == "dmg-acid2")
-        .expect("acid suite should include dmg-acid2");
+        .find(|case| case.id == "acid-dmg-acid2")
+        .expect("acid suite should include acid-dmg-acid2");
     assert_eq!(
         case.rom_path,
         PathBuf::from("test/gb-emulator-shootout/acid/dmg-acid2.gb")
@@ -657,21 +686,55 @@ fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
         case.pass_condition,
         PassCondition::FramebufferFixture(_)
     ));
+
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "acid-cgb-acid2")
+        .expect("acid suite should include acid-cgb-acid2");
+    assert_eq!(
+        case.rom_path,
+        PathBuf::from("test/gb-emulator-shootout/acid/cgb-acid2.gbc")
+    );
+    assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+    assert!(matches!(
+        case.pass_condition,
+        PassCondition::FramebufferRgb555GrayscaleToleranceFixture(_)
+    ));
+
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "acid-cgb-acid-hell")
+        .expect("acid suite should include acid-cgb-acid-hell");
+    assert_eq!(
+        case.rom_path,
+        PathBuf::from("test/gb-emulator-shootout/acid/cgb-acid-hell.gbc")
+    );
+    assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+    assert!(matches!(
+        case.pass_condition,
+        PassCondition::FramebufferRgb555Fixture(_)
+    ));
 }
 
 #[test]
-fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
-    let suite = daid_dmg_curated_suite();
+fn daid_suite_tracks_mixed_framebuffer_oracles() {
+    let suite = daid_suite();
 
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("daid"));
-    assert_eq!(suite.cases.len(), 3);
+    assert_eq!(suite.cases.len(), 9);
 
     let ppu_case = suite
         .cases
         .iter()
-        .find(|case| case.id == "daid-ppu-scanline-bgp")
-        .expect("daid suite should include ppu_scanline_bgp");
+        .find(|case| case.id == "daid-ppu-scanline-bgp-dmg")
+        .expect("daid suite should include ppu_scanline_bgp DMG");
     assert_eq!(
         rom_path_without_store_prefix(&ppu_case.rom_path),
         Path::new("daid/ppu_scanline_bgp.gb")
@@ -683,11 +746,27 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
         PassCondition::FramebufferFixtureSet(_)
     ));
 
+    let ppu_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "daid-ppu-scanline-bgp-gbc")
+        .expect("daid suite should include ppu_scanline_bgp GBC");
+    assert_eq!(
+        rom_path_without_store_prefix(&ppu_case.rom_path),
+        Path::new("daid/ppu_scanline_bgp.gb")
+    );
+    assert!(ppu_case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(ppu_case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(matches!(
+        ppu_case.pass_condition,
+        PassCondition::FramebufferRgb555Fixture(_)
+    ));
+
     let stop_case = suite
         .cases
         .iter()
-        .find(|case| case.id == "daid-stop-instr")
-        .expect("daid suite should include stop_instr");
+        .find(|case| case.id == "daid-stop-instr-dmg")
+        .expect("daid suite should include stop_instr DMG");
     assert_eq!(
         rom_path_without_store_prefix(&stop_case.rom_path),
         Path::new("daid/stop_instr.gb")
@@ -715,7 +794,7 @@ fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
 
 #[test]
 fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
-    let suite = mealybug_tearoom_dmg_curated_suite();
+    let suite = mealybug_tearoom_suite();
 
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
@@ -734,69 +813,72 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         suite
             .cases
             .iter()
-            .any(|case| case.id == "mealybug-m2-win-en-toggle")
+            .any(|case| case.id == "mealybug-tearoom-tests-ppu-m2-win-en-toggle")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "mealybug-m3-window-timing-wx-0")
+            .any(|case| case.id == "mealybug-tearoom-tests-ppu-m3-window-timing-wx-0")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "mealybug-m3-lcdc-bg-en-change")
+            .any(|case| case.id == "mealybug-tearoom-tests-ppu-m3-lcdc-bg-en-change")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "mealybug-m3-wx-6-change")
+            .any(|case| case.id == "mealybug-tearoom-tests-ppu-m3-wx-6-change")
     );
     let obp0_change = suite
         .cases
         .iter()
-        .find(|case| case.id == "mealybug-m3-obp0-change")
+        .find(|case| case.id == "mealybug-tearoom-tests-ppu-m3-obp0-change")
         .expect("curated mealybug suite should include m3_obp0_change");
     assert_eq!(obp0_change.startup_mode, StartupMode::CustomBoot);
     assert!(obp0_change.startup_memory_writes.is_empty());
     let bgp_change_sprites = suite
         .cases
         .iter()
-        .find(|case| case.id == "mealybug-m3-bgp-change-sprites")
+        .find(|case| case.id == "mealybug-tearoom-tests-ppu-m3-bgp-change-sprites")
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
     assert_eq!(bgp_change_sprites.startup_mode, StartupMode::CustomBoot);
     assert!(bgp_change_sprites.startup_memory_writes.is_empty());
     let scx_low_3_bits = suite
         .cases
         .iter()
-        .find(|case| case.id == "mealybug-m3-scx-low-3-bits")
+        .find(|case| case.id == "mealybug-tearoom-tests-ppu-m3-scx-low-3-bits")
         .expect("curated mealybug suite should include m3_scx_low_3_bits");
     assert_eq!(scx_low_3_bits.startup_mode, StartupMode::CustomBoot);
     assert!(scx_low_3_bits.startup_memory_writes.is_empty());
 }
 
 #[test]
-fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
-    let suite = ashiepaws_dmg_curated_suite();
+fn curated_ashiepaws_suite_tracks_the_active_framebuffer_cases() {
+    let suite = ashiepaws_suite();
 
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("ashiepaws"));
-    assert_eq!(suite.cases.len(), 2);
+    assert_eq!(suite.cases.len(), 3);
     assert!(suite.cases.iter().all(|case| {
         case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
             && case.capture_plan.contains(CaptureKind::Framebuffer)
             && case.capture_plan.contains(CaptureKind::Snapshot)
             && case.failure_artifacts.contains(CaptureKind::Framebuffer)
-            && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+            && matches!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(_) | PassCondition::FramebufferRgb555Fixture(_)
+            )
     }));
 
     let bully = suite
         .cases
         .iter()
-        .find(|case| case.id == "ashiepaws-bully")
-        .expect("ashiepaws suite should include bully.gb");
+        .find(|case| case.id == "ashiepaws-bully-dmg")
+        .expect("ashiepaws suite should include bully.gb DMG");
     assert_eq!(
         rom_path_without_store_prefix(&bully.rom_path),
         Path::new("ashiepaws/bully.gb")
@@ -804,6 +886,27 @@ fn curated_ashiepaws_suite_tracks_the_active_dmg_framebuffer_cases() {
     assert_eq!(bully.console_model, ConsoleModel::GameBoy);
     assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
     assert!(bully.startup_memory_writes.is_empty());
+    assert!(matches!(
+        bully.pass_condition,
+        PassCondition::FramebufferFixture(_)
+    ));
+
+    let bully_cgb = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "ashiepaws-bully-cgb")
+        .expect("ashiepaws suite should include bully.gb CGB");
+    assert_eq!(
+        rom_path_without_store_prefix(&bully_cgb.rom_path),
+        Path::new("ashiepaws/bully.gb")
+    );
+    assert_eq!(bully_cgb.console_model, ConsoleModel::GameBoyColor);
+    assert_eq!(bully_cgb.startup_mode, StartupMode::CustomBoot);
+    assert!(bully_cgb.startup_memory_writes.is_empty());
+    assert!(matches!(
+        bully_cgb.pass_condition,
+        PassCondition::FramebufferRgb555Fixture(_)
+    ));
 
     let strikethrough = suite
         .cases
@@ -968,12 +1071,12 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
     assert!(
         cases
             .iter()
-            .any(|case| case.id == "mooneye-boot-regs-dmgabc")
+            .any(|case| case.id == "mooneye-acceptance-boot-regs-dmgabc")
     );
     assert!(
         cases
             .iter()
-            .any(|case| case.id == "mooneye-timer-tma-write-reloading")
+            .any(|case| case.id == "mooneye-acceptance-timer-tma-write-reloading")
     );
     let mbc1_bits_ramg = cases
         .iter()

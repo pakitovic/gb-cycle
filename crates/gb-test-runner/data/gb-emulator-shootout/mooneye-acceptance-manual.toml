@@ -2,462 +2,462 @@ family = "mooneye"
 suite_name = "mooneye-acceptance-manual"
 
 [[case]]
-id = "mooneye-add-sp-e-timing"
+id = "mooneye-acceptance-add-sp-e-timing"
 rom = "acceptance/add_sp_e_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-bits-mem-oam"
+id = "mooneye-acceptance-bits-mem-oam"
 rom = "acceptance/bits/mem_oam.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-bits-reg-f"
+id = "mooneye-acceptance-bits-reg-f"
 rom = "acceptance/bits/reg_f.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-bits-unused-hwio-gs"
+id = "mooneye-acceptance-bits-unused-hwio-gs"
 rom = "acceptance/bits/unused_hwio-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-boot-div-dmgabcmgb"
+id = "mooneye-acceptance-boot-div-dmgabcmgb"
 rom = "acceptance/boot_div-dmgABCmgb.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-boot-hwio-dmgabcmgb"
+id = "mooneye-acceptance-boot-hwio-dmgabcmgb"
 rom = "acceptance/boot_hwio-dmgABCmgb.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-boot-regs-dmgabc"
+id = "mooneye-acceptance-boot-regs-dmgabc"
 rom = "acceptance/boot_regs-dmgABC.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-call-cc-timing"
+id = "mooneye-acceptance-call-cc-timing"
 rom = "acceptance/call_cc_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-call-cc-timing2"
+id = "mooneye-acceptance-call-cc-timing2"
 rom = "acceptance/call_cc_timing2.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-call-timing"
+id = "mooneye-acceptance-call-timing"
 rom = "acceptance/call_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-call-timing2"
+id = "mooneye-acceptance-call-timing2"
 rom = "acceptance/call_timing2.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-div-timing"
+id = "mooneye-acceptance-div-timing"
 rom = "acceptance/div_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-di-timing-gs"
+id = "mooneye-acceptance-di-timing-gs"
 rom = "acceptance/di_timing-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ei-sequence"
+id = "mooneye-acceptance-ei-sequence"
 rom = "acceptance/ei_sequence.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ei-timing"
+id = "mooneye-acceptance-ei-timing"
 rom = "acceptance/ei_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-halt-ime0-ei"
+id = "mooneye-acceptance-halt-ime0-ei"
 rom = "acceptance/halt_ime0_ei.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-halt-ime0-nointr-timing"
+id = "mooneye-acceptance-halt-ime0-nointr-timing"
 rom = "acceptance/halt_ime0_nointr_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-halt-ime1-timing"
+id = "mooneye-acceptance-halt-ime1-timing"
 rom = "acceptance/halt_ime1_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-halt-ime1-timing2-gs"
+id = "mooneye-acceptance-halt-ime1-timing2-gs"
 rom = "acceptance/halt_ime1_timing2-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-if-ie-registers"
+id = "mooneye-acceptance-if-ie-registers"
 rom = "acceptance/if_ie_registers.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-instr-daa"
+id = "mooneye-acceptance-instr-daa"
 rom = "acceptance/instr/daa.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-interrupts-ie-push"
+id = "mooneye-acceptance-interrupts-ie-push"
 rom = "acceptance/interrupts/ie_push.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-intr-timing"
+id = "mooneye-acceptance-intr-timing"
 rom = "acceptance/intr_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-jp-cc-timing"
+id = "mooneye-acceptance-jp-cc-timing"
 rom = "acceptance/jp_cc_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-jp-timing"
+id = "mooneye-acceptance-jp-timing"
 rom = "acceptance/jp_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ld-hl-sp-e-timing"
+id = "mooneye-acceptance-ld-hl-sp-e-timing"
 rom = "acceptance/ld_hl_sp_e_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-basic"
+id = "mooneye-acceptance-oam-dma-basic"
 rom = "acceptance/oam_dma/basic.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-reg-read"
+id = "mooneye-acceptance-oam-dma-reg-read"
 rom = "acceptance/oam_dma/reg_read.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-sources-gs"
+id = "mooneye-acceptance-oam-dma-sources-gs"
 rom = "acceptance/oam_dma/sources-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-restart"
+id = "mooneye-acceptance-oam-dma-restart"
 rom = "acceptance/oam_dma_restart.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-start"
+id = "mooneye-acceptance-oam-dma-start"
 rom = "acceptance/oam_dma_start.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-oam-dma-timing"
+id = "mooneye-acceptance-oam-dma-timing"
 rom = "acceptance/oam_dma_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-pop-timing"
+id = "mooneye-acceptance-pop-timing"
 rom = "acceptance/pop_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-hblank-ly-scx-timing-gs"
+id = "mooneye-acceptance-ppu-hblank-ly-scx-timing-gs"
 rom = "acceptance/ppu/hblank_ly_scx_timing-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-1-2-timing-gs"
+id = "mooneye-acceptance-ppu-intr-1-2-timing-gs"
 rom = "acceptance/ppu/intr_1_2_timing-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-2-0-timing"
+id = "mooneye-acceptance-ppu-intr-2-0-timing"
 rom = "acceptance/ppu/intr_2_0_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-2-mode0-timing"
+id = "mooneye-acceptance-ppu-intr-2-mode0-timing"
 rom = "acceptance/ppu/intr_2_mode0_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-2-mode0-timing-sprites"
+id = "mooneye-acceptance-ppu-intr-2-mode0-timing-sprites"
 rom = "acceptance/ppu/intr_2_mode0_timing_sprites.gb"
 console = "dmg"
 timeout_frames = 660
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-2-mode3-timing"
+id = "mooneye-acceptance-ppu-intr-2-mode3-timing"
 rom = "acceptance/ppu/intr_2_mode3_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-intr-2-oam-ok-timing"
+id = "mooneye-acceptance-ppu-intr-2-oam-ok-timing"
 rom = "acceptance/ppu/intr_2_oam_ok_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-lcdon-timing-gs"
+id = "mooneye-acceptance-ppu-lcdon-timing-gs"
 rom = "acceptance/ppu/lcdon_timing-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-lcdon-write-timing-gs"
+id = "mooneye-acceptance-ppu-lcdon-write-timing-gs"
 rom = "acceptance/ppu/lcdon_write_timing-GS.gb"
 console = "dmg"
 timeout_frames = 240
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-stat-irq-blocking"
+id = "mooneye-acceptance-ppu-stat-irq-blocking"
 rom = "acceptance/ppu/stat_irq_blocking.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-stat-lyc-onoff"
+id = "mooneye-acceptance-ppu-stat-lyc-onoff"
 rom = "acceptance/ppu/stat_lyc_onoff.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ppu-vblank-stat-intr-gs"
+id = "mooneye-acceptance-ppu-vblank-stat-intr-gs"
 rom = "acceptance/ppu/vblank_stat_intr-GS.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-push-timing"
+id = "mooneye-acceptance-push-timing"
 rom = "acceptance/push_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-rapid-di-ei"
+id = "mooneye-acceptance-rapid-di-ei"
 rom = "acceptance/rapid_di_ei.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-reti-intr-timing"
+id = "mooneye-acceptance-reti-intr-timing"
 rom = "acceptance/reti_intr_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-reti-timing"
+id = "mooneye-acceptance-reti-timing"
 rom = "acceptance/reti_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ret-cc-timing"
+id = "mooneye-acceptance-ret-cc-timing"
 rom = "acceptance/ret_cc_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-ret-timing"
+id = "mooneye-acceptance-ret-timing"
 rom = "acceptance/ret_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-rst-timing"
+id = "mooneye-acceptance-rst-timing"
 rom = "acceptance/rst_timing.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-serial-boot-sclk-align-dmgabcmgb"
+id = "mooneye-acceptance-serial-boot-sclk-align-dmgabcmgb"
 rom = "acceptance/serial/boot_sclk_align-dmgABCmgb.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-div-write"
+id = "mooneye-acceptance-timer-div-write"
 rom = "acceptance/timer/div_write.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-rapid-toggle"
+id = "mooneye-acceptance-timer-rapid-toggle"
 rom = "acceptance/timer/rapid_toggle.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim00"
+id = "mooneye-acceptance-timer-tim00"
 rom = "acceptance/timer/tim00.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim00-div-trigger"
+id = "mooneye-acceptance-timer-tim00-div-trigger"
 rom = "acceptance/timer/tim00_div_trigger.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim01"
+id = "mooneye-acceptance-timer-tim01"
 rom = "acceptance/timer/tim01.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim01-div-trigger"
+id = "mooneye-acceptance-timer-tim01-div-trigger"
 rom = "acceptance/timer/tim01_div_trigger.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim10"
+id = "mooneye-acceptance-timer-tim10"
 rom = "acceptance/timer/tim10.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim10-div-trigger"
+id = "mooneye-acceptance-timer-tim10-div-trigger"
 rom = "acceptance/timer/tim10_div_trigger.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim11"
+id = "mooneye-acceptance-timer-tim11"
 rom = "acceptance/timer/tim11.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tim11-div-trigger"
+id = "mooneye-acceptance-timer-tim11-div-trigger"
 rom = "acceptance/timer/tim11_div_trigger.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tima-reload"
+id = "mooneye-acceptance-timer-tima-reload"
 rom = "acceptance/timer/tima_reload.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tima-write-reloading"
+id = "mooneye-acceptance-timer-tima-write-reloading"
 rom = "acceptance/timer/tima_write_reloading.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
 
 [[case]]
-id = "mooneye-timer-tma-write-reloading"
+id = "mooneye-acceptance-timer-tma-write-reloading"
 rom = "acceptance/timer/tma_write_reloading.gb"
 console = "dmg"
 timeout_frames = 180

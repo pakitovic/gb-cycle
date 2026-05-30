@@ -1,9 +1,7 @@
-# Pinned upstream source used to materialize the GB Emulator Shootout report.
 [[source]]
 id = "gbemu-shootout"
 git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
 git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
-local_dir = "gbemu-shootout"
 
 [[source.required_file]]
 path = "testroms/blargg/cpu_instrs/01-special.gb"

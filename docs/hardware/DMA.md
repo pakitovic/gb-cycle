@@ -242,7 +242,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - forgetting access restrictions during transfer
 - routing OAM DMA through a special path that bypasses bus arbitration
 - letting `FF46` perform the full transfer immediately instead of only arming DMA state
-- hard-coding the subsystem as a one-off DMG `FF46` copy path that cannot grow into CGB DMA variants
+- hard-coding the subsystem as a one-off DMG `FF46` copy path that cannot grow into SameSuite DMA variants
 
 ## Open questions
 

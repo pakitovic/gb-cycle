@@ -352,7 +352,7 @@ fn cleanup_fetched_sources(fetched_sources: &[FetchedExternalRomSource]) -> Resu
 }
 
 fn unique_temp_fetch_root(source: &ExternalRomSource) -> std::path::PathBuf {
-    let source_name = source.local_dir.replace('/', "-");
+    let source_name = source.id.replace('/', "-");
     unique_temp_path(&format!("test-rom-fetch-{source_name}"))
 }
 
@@ -575,14 +575,13 @@ mod tests {
 
     use crate::{
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, GB_EMULATOR_SHOOTOUT_REPORT_ID,
-        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, cgb_audio_blargg_suite,
-        cgb_audio_samesuite_suite, cgb_boot_div_suite, cgb_boot_hwio_suite, cgb_dma_suite,
-        cgb_ppu_basic_suite, cgb_ppu_hard_suite, cgb_rtc_suite, cgb_smoke_suite, cgb_speed_suite,
-        cpp_sgb_suite, curated_test_rom_families_for_report, curated_test_rom_family_suites,
-        docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
-        docboy_dmg_extra_suite, gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite,
-        mooneye_sgb_boot_regs_extra_suite, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite,
-        samesuite_sgb_suite, test_rom_store_root, test_rom_store_root_for_report,
+        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, ax6_suite,
+        blargg_cgb_sound_suite, cgb_boot_hwio_suite, curated_test_rom_families_for_report,
+        curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite,
+        docboy_cgb_extra_suite, docboy_dmg_extra_suite, gbmicrotest_dmg_extra_suite,
+        magen_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, samesuite_apu_suite,
+        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite, test_rom_store_root,
+        test_rom_store_root_for_report,
     };
 
     use super::{
@@ -688,10 +687,9 @@ mod tests {
                     "id = {:?}\n",
                     "git_url = {:?}\n",
                     "git_rev = {:?}\n",
-                    "local_dir = {:?}\n",
                     "{}",
                 ),
-                source.id, source.git_url, source.git_rev, source.local_dir, required_files,
+                source.id, source.git_url, source.git_rev, required_files,
             );
         }
 
@@ -722,7 +720,6 @@ mod tests {
             id: "gbemu-shootout".to_string(),
             git_url,
             git_rev,
-            local_dir: "gbemu-shootout".to_string(),
             required_files: vec![ExternalRomRequiredFile {
                 path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
                 family: None,
@@ -739,20 +736,13 @@ mod tests {
             .chain([
                 ax6_dmg_extra_suite(),
                 samesuite_dmg_extra_suite(),
-                cgb_smoke_suite(),
-                cgb_boot_div_suite(),
+                samesuite_suite(),
                 cgb_boot_hwio_suite(),
-                cgb_speed_suite(),
-                cgb_ppu_basic_suite(),
-                cgb_ppu_hard_suite(),
-                cgb_dma_suite(),
-                cgb_rtc_suite(),
-                cgb_audio_blargg_suite(),
-                cgb_audio_samesuite_suite(),
+                ax6_suite(),
+                blargg_cgb_sound_suite(),
+                samesuite_apu_suite(),
                 samesuite_cgb_extra_suite(),
-                samesuite_sgb_suite(),
                 mooneye_sgb_boot_regs_extra_suite(),
-                cpp_sgb_suite(),
             ])
             .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
             .map(|path| {
@@ -789,7 +779,6 @@ mod tests {
             id: "gbemu-shootout".to_string(),
             git_url,
             git_rev,
-            local_dir: "gbemu-shootout".to_string(),
             required_files,
         }
     }
@@ -862,20 +851,13 @@ mod tests {
         for suite in curated_test_rom_family_suites().into_iter().chain([
             ax6_dmg_extra_suite(),
             samesuite_dmg_extra_suite(),
-            cgb_smoke_suite(),
-            cgb_boot_div_suite(),
+            samesuite_suite(),
             cgb_boot_hwio_suite(),
-            cgb_speed_suite(),
-            cgb_ppu_basic_suite(),
-            cgb_ppu_hard_suite(),
-            cgb_dma_suite(),
-            cgb_rtc_suite(),
-            cgb_audio_blargg_suite(),
-            cgb_audio_samesuite_suite(),
+            ax6_suite(),
+            blargg_cgb_sound_suite(),
+            samesuite_apu_suite(),
             samesuite_cgb_extra_suite(),
-            samesuite_sgb_suite(),
             mooneye_sgb_boot_regs_extra_suite(),
-            cpp_sgb_suite(),
         ]) {
             for case in suite.cases {
                 let source_path = root.join(gbemu_test_fixture_source_path(&case.rom_path));
@@ -1131,7 +1113,6 @@ mod tests {
             id: "docboy".to_string(),
             git_url,
             git_rev,
-            local_dir: "docboy".to_string(),
             required_files: vec![
                 required_file(
                     "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb",
@@ -1418,7 +1399,6 @@ mod tests {
             id: "source".to_string(),
             git_url: "https://example.invalid/shootout.git".to_string(),
             git_rev: "deadbeef".to_string(),
-            local_dir: "gbemu-shootout".to_string(),
             required_files: vec![
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
@@ -1459,7 +1439,6 @@ mod tests {
             id: "gbemu-shootout".to_string(),
             git_url: "https://example.invalid/shootout.git".to_string(),
             git_rev: "deadbeef".to_string(),
-            local_dir: "gbemu-shootout".to_string(),
             required_files: vec![
                 ExternalRomRequiredFile {
                     path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
@@ -1624,6 +1603,7 @@ mod tests {
         assert!(report_store_root.join("acid/which.gb").exists());
         assert!(report_store_root.join("acid/dmg-acid2.gb").exists());
         assert!(report_store_root.join("acid/dmg-acid2.png").exists());
+        assert!(report_store_root.join("acid/cgb-acid2.gbc").exists());
         assert!(report_store_root.join("acid/cgb-acid2.png").exists());
         assert!(!test_rom_store_root(&workspace_root).join("acid").exists());
         assert!(
@@ -1716,7 +1696,6 @@ mod tests {
 id = "gbemu-shootout"
 git_url = "{}"
 git_rev = "{}"
-local_dir = "gbemu-shootout"
 
 [[source.required_file]]
 path = "testroms/samesuite/apu/div_write_trigger.gb"
@@ -1730,7 +1709,6 @@ sha256 = "{}"
 id = "docboy"
 git_url = "{}"
 git_rev = "{}"
-local_dir = "docboy"
 
 [[source.required_file]]
 path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"

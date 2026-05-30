@@ -1,8 +1,8 @@
-suite_name = "cgb-rtc"
+suite_name = "ax6"
+family = "ax6"
 
 [[case]]
-family = "ax6"
-id = "cgb-rtc-rtc3test-1"
+id = "ax6-rtc3test-1"
 rom = "rtc3test-1.gb"
 console = "cgb"
 timeout_frames = 1140
@@ -10,8 +10,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/ax6/rtc3test-1.png"
 
 [[case]]
-family = "ax6"
-id = "cgb-rtc-rtc3test-2"
+id = "ax6-rtc3test-2"
 rom = "rtc3test-2.gb"
 console = "cgb"
 timeout_frames = 900
@@ -19,8 +18,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/ax6/rtc3test-2.png"
 
 [[case]]
-family = "ax6"
-id = "cgb-rtc-rtc3test-3"
+id = "ax6-rtc3test-3"
 rom = "rtc3test-3.gb"
 console = "cgb"
 timeout_frames = 2400

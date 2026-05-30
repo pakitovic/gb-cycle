@@ -1,9 +1,0 @@
-suite_name = "cgb-boot-div"
-
-[[case]]
-family = "mooneye"
-id = "cgb-boot-div-boot-div-cgbabcde"
-rom = "misc/boot_div-cgbABCDE.gb"
-console = "cgb"
-timeout_frames = 180
-oracle = "mooneye-result"

@@ -1,8 +1,8 @@
-suite_name = "cgb-audio-samesuite"
+family = "samesuite"
+suite_name = "samesuite-apu"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-align"
+id = "samesuite-apu-channel-1-channel-1-align"
 rom = "apu/channel_1/channel_1_align.gb"
 console = "cgb"
 timeout_frames = 180
@@ -10,8 +10,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_align.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-align-cpu"
+id = "samesuite-apu-channel-1-channel-1-align-cpu"
 rom = "apu/channel_1/channel_1_align_cpu.gb"
 console = "cgb"
 timeout_frames = 180
@@ -19,8 +18,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_align_cpu.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-delay"
+id = "samesuite-apu-channel-1-channel-1-delay"
 rom = "apu/channel_1/channel_1_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -28,8 +26,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-duty"
+id = "samesuite-apu-channel-1-channel-1-duty"
 rom = "apu/channel_1/channel_1_duty.gb"
 console = "cgb"
 timeout_frames = 180
@@ -37,8 +34,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_duty.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-duty-delay"
+id = "samesuite-apu-channel-1-channel-1-duty-delay"
 rom = "apu/channel_1/channel_1_duty_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -46,8 +42,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_duty_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-freq-change"
+id = "samesuite-apu-channel-1-channel-1-freq-change"
 rom = "apu/channel_1/channel_1_freq_change.gb"
 console = "cgb"
 timeout_frames = 180
@@ -55,8 +50,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_freq_change.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-nrx2-glitch"
+id = "samesuite-apu-channel-1-channel-1-nrx2-glitch"
 rom = "apu/channel_1/channel_1_nrx2_glitch.gb"
 console = "cgb"
 timeout_frames = 180
@@ -64,8 +58,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_nrx2_glitch.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-nrx2-speed-change"
+id = "samesuite-apu-channel-1-channel-1-nrx2-speed-change"
 rom = "apu/channel_1/channel_1_nrx2_speed_change.gb"
 console = "cgb"
 timeout_frames = 420
@@ -73,8 +66,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_nrx2_speed_change.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-restart"
+id = "samesuite-apu-channel-1-channel-1-restart"
 rom = "apu/channel_1/channel_1_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -82,8 +74,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-restart-nrx2-glitch"
+id = "samesuite-apu-channel-1-channel-1-restart-nrx2-glitch"
 rom = "apu/channel_1/channel_1_restart_nrx2_glitch.gb"
 console = "cgb"
 timeout_frames = 180
@@ -91,8 +82,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-stop-div"
+id = "samesuite-apu-channel-1-channel-1-stop-div"
 rom = "apu/channel_1/channel_1_stop_div.gb"
 console = "cgb"
 timeout_frames = 180
@@ -100,8 +90,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_stop_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-stop-restart"
+id = "samesuite-apu-channel-1-channel-1-stop-restart"
 rom = "apu/channel_1/channel_1_stop_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -109,8 +98,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_stop_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-sweep"
+id = "samesuite-apu-channel-1-channel-1-sweep"
 rom = "apu/channel_1/channel_1_sweep.gb"
 console = "cgb"
 timeout_frames = 180
@@ -118,8 +106,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_sweep.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-sweep-restart"
+id = "samesuite-apu-channel-1-channel-1-sweep-restart"
 rom = "apu/channel_1/channel_1_sweep_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -127,8 +114,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_sweep_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-sweep-restart-2"
+id = "samesuite-apu-channel-1-channel-1-sweep-restart-2"
 rom = "apu/channel_1/channel_1_sweep_restart_2.gb"
 console = "cgb"
 timeout_frames = 180
@@ -136,8 +122,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_sweep_restart_2.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-volume"
+id = "samesuite-apu-channel-1-channel-1-volume"
 rom = "apu/channel_1/channel_1_volume.gb"
 console = "cgb"
 timeout_frames = 180
@@ -145,8 +130,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_volume.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-1-volume-div"
+id = "samesuite-apu-channel-1-channel-1-volume-div"
 rom = "apu/channel_1/channel_1_volume_div.gb"
 console = "cgb"
 timeout_frames = 300
@@ -154,8 +138,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_1/channel_1_volume_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-align"
+id = "samesuite-apu-channel-2-channel-2-align"
 rom = "apu/channel_2/channel_2_align.gb"
 console = "cgb"
 timeout_frames = 180
@@ -163,8 +146,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_align.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-align-cpu"
+id = "samesuite-apu-channel-2-channel-2-align-cpu"
 rom = "apu/channel_2/channel_2_align_cpu.gb"
 console = "cgb"
 timeout_frames = 180
@@ -172,8 +154,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_align_cpu.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-delay"
+id = "samesuite-apu-channel-2-channel-2-delay"
 rom = "apu/channel_2/channel_2_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -181,8 +162,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-duty"
+id = "samesuite-apu-channel-2-channel-2-duty"
 rom = "apu/channel_2/channel_2_duty.gb"
 console = "cgb"
 timeout_frames = 180
@@ -190,8 +170,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_duty.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-duty-delay"
+id = "samesuite-apu-channel-2-channel-2-duty-delay"
 rom = "apu/channel_2/channel_2_duty_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -199,8 +178,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_duty_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-freq-change"
+id = "samesuite-apu-channel-2-channel-2-freq-change"
 rom = "apu/channel_2/channel_2_freq_change.gb"
 console = "cgb"
 timeout_frames = 180
@@ -208,8 +186,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_freq_change.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-nrx2-glitch"
+id = "samesuite-apu-channel-2-channel-2-nrx2-glitch"
 rom = "apu/channel_2/channel_2_nrx2_glitch.gb"
 console = "cgb"
 timeout_frames = 180
@@ -217,8 +194,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_nrx2_glitch.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-nrx2-speed-change"
+id = "samesuite-apu-channel-2-channel-2-nrx2-speed-change"
 rom = "apu/channel_2/channel_2_nrx2_speed_change.gb"
 console = "cgb"
 timeout_frames = 420
@@ -226,8 +202,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_nrx2_speed_change.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-restart"
+id = "samesuite-apu-channel-2-channel-2-restart"
 rom = "apu/channel_2/channel_2_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -235,8 +210,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-restart-nrx2-glitch"
+id = "samesuite-apu-channel-2-channel-2-restart-nrx2-glitch"
 rom = "apu/channel_2/channel_2_restart_nrx2_glitch.gb"
 console = "cgb"
 timeout_frames = 180
@@ -244,8 +218,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-stop-div"
+id = "samesuite-apu-channel-2-channel-2-stop-div"
 rom = "apu/channel_2/channel_2_stop_div.gb"
 console = "cgb"
 timeout_frames = 180
@@ -253,8 +226,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_stop_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-stop-restart"
+id = "samesuite-apu-channel-2-channel-2-stop-restart"
 rom = "apu/channel_2/channel_2_stop_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -262,8 +234,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_stop_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-volume"
+id = "samesuite-apu-channel-2-channel-2-volume"
 rom = "apu/channel_2/channel_2_volume.gb"
 console = "cgb"
 timeout_frames = 180
@@ -271,8 +242,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_volume.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-2-volume-div"
+id = "samesuite-apu-channel-2-channel-2-volume-div"
 rom = "apu/channel_2/channel_2_volume_div.gb"
 console = "cgb"
 timeout_frames = 180
@@ -280,8 +250,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_2/channel_2_volume_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-and-glitch"
+id = "samesuite-apu-channel-3-channel-3-and-glitch"
 rom = "apu/channel_3/channel_3_and_glitch.gb"
 console = "cgb"
 timeout_frames = 180
@@ -289,8 +258,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_and_glitch.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-delay"
+id = "samesuite-apu-channel-3-channel-3-delay"
 rom = "apu/channel_3/channel_3_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -298,8 +266,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-first-sample"
+id = "samesuite-apu-channel-3-channel-3-first-sample"
 rom = "apu/channel_3/channel_3_first_sample.gb"
 console = "cgb"
 timeout_frames = 180
@@ -307,8 +274,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_first_sample.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-freq-change-delay"
+id = "samesuite-apu-channel-3-channel-3-freq-change-delay"
 rom = "apu/channel_3/channel_3_freq_change_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -316,8 +282,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_freq_change_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-restart-delay"
+id = "samesuite-apu-channel-3-channel-3-restart-delay"
 rom = "apu/channel_3/channel_3_restart_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -325,8 +290,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_restart_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-restart-during-delay"
+id = "samesuite-apu-channel-3-channel-3-restart-during-delay"
 rom = "apu/channel_3/channel_3_restart_during_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -334,8 +298,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_restart_during_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-restart-stop-delay"
+id = "samesuite-apu-channel-3-channel-3-restart-stop-delay"
 rom = "apu/channel_3/channel_3_restart_stop_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -343,8 +306,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_restart_stop_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-shift-delay"
+id = "samesuite-apu-channel-3-channel-3-shift-delay"
 rom = "apu/channel_3/channel_3_shift_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -352,8 +314,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_shift_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-shift-skip-delay"
+id = "samesuite-apu-channel-3-channel-3-shift-skip-delay"
 rom = "apu/channel_3/channel_3_shift_skip_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -361,8 +322,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_shift_skip_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-stop-delay"
+id = "samesuite-apu-channel-3-channel-3-stop-delay"
 rom = "apu/channel_3/channel_3_stop_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -370,8 +330,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_stop_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-stop-div"
+id = "samesuite-apu-channel-3-channel-3-stop-div"
 rom = "apu/channel_3/channel_3_stop_div.gb"
 console = "cgb"
 timeout_frames = 180
@@ -379,8 +338,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_stop_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-wave-ram-locked-write"
+id = "samesuite-apu-channel-3-channel-3-wave-ram-locked-write"
 rom = "apu/channel_3/channel_3_wave_ram_locked_write.gb"
 console = "cgb"
 timeout_frames = 180
@@ -388,8 +346,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-3-wave-ram-sync"
+id = "samesuite-apu-channel-3-channel-3-wave-ram-sync"
 rom = "apu/channel_3/channel_3_wave_ram_sync.gb"
 console = "cgb"
 timeout_frames = 180
@@ -397,8 +354,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_3/channel_3_wave_ram_sync.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-align"
+id = "samesuite-apu-channel-4-channel-4-align"
 rom = "apu/channel_4/channel_4_align.gb"
 console = "cgb"
 timeout_frames = 180
@@ -406,8 +362,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_align.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-delay"
+id = "samesuite-apu-channel-4-channel-4-delay"
 rom = "apu/channel_4/channel_4_delay.gb"
 console = "cgb"
 timeout_frames = 180
@@ -415,8 +370,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_delay.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-equivalent-frequencies"
+id = "samesuite-apu-channel-4-channel-4-equivalent-frequencies"
 rom = "apu/channel_4/channel_4_equivalent_frequencies.gb"
 console = "cgb"
 timeout_frames = 180
@@ -424,8 +378,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_equivalent_frequencies.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-frequency-alignment"
+id = "samesuite-apu-channel-4-channel-4-frequency-alignment"
 rom = "apu/channel_4/channel_4_frequency_alignment.gb"
 console = "cgb"
 timeout_frames = 180
@@ -433,8 +386,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_frequency_alignment.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-freq-change"
+id = "samesuite-apu-channel-4-channel-4-freq-change"
 rom = "apu/channel_4/channel_4_freq_change.gb"
 console = "cgb"
 timeout_frames = 180
@@ -442,8 +394,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_freq_change.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr"
+id = "samesuite-apu-channel-4-channel-4-lfsr"
 rom = "apu/channel_4/channel_4_lfsr.gb"
 console = "cgb"
 timeout_frames = 180
@@ -451,8 +402,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr15"
+id = "samesuite-apu-channel-4-channel-4-lfsr15"
 rom = "apu/channel_4/channel_4_lfsr15.gb"
 console = "cgb"
 timeout_frames = 180
@@ -460,8 +410,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr15.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr-15-7"
+id = "samesuite-apu-channel-4-channel-4-lfsr-15-7"
 rom = "apu/channel_4/channel_4_lfsr_15_7.gb"
 console = "cgb"
 timeout_frames = 180
@@ -469,8 +418,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr_15_7.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr-7-15"
+id = "samesuite-apu-channel-4-channel-4-lfsr-7-15"
 rom = "apu/channel_4/channel_4_lfsr_7_15.gb"
 console = "cgb"
 timeout_frames = 180
@@ -478,8 +426,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr_7_15.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr-restart"
+id = "samesuite-apu-channel-4-channel-4-lfsr-restart"
 rom = "apu/channel_4/channel_4_lfsr_restart.gb"
 console = "cgb"
 timeout_frames = 180
@@ -487,8 +434,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr_restart.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-lfsr-restart-fast"
+id = "samesuite-apu-channel-4-channel-4-lfsr-restart-fast"
 rom = "apu/channel_4/channel_4_lfsr_restart_fast.gb"
 console = "cgb"
 timeout_frames = 180
@@ -496,8 +442,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-channel-4-volume-div"
+id = "samesuite-apu-channel-4-channel-4-volume-div"
 rom = "apu/channel_4/channel_4_volume_div.gb"
 console = "cgb"
 timeout_frames = 300
@@ -505,8 +450,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/channel_4/channel_4_volume_div.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-div-trigger-volume-10"
+id = "samesuite-apu-div-trigger-volume-10"
 rom = "apu/div_trigger_volume_10.gb"
 console = "cgb"
 timeout_frames = 180
@@ -514,8 +458,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/div_trigger_volume_10.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-div-write-trigger"
+id = "samesuite-apu-div-write-trigger"
 rom = "apu/div_write_trigger.gb"
 console = "cgb"
 timeout_frames = 180
@@ -523,8 +466,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/div_write_trigger.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-div-write-trigger-10"
+id = "samesuite-apu-div-write-trigger-10"
 rom = "apu/div_write_trigger_10.gb"
 console = "cgb"
 timeout_frames = 180
@@ -532,8 +474,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/div_write_trigger_10.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-div-write-trigger-volume"
+id = "samesuite-apu-div-write-trigger-volume"
 rom = "apu/div_write_trigger_volume.gb"
 console = "cgb"
 timeout_frames = 180
@@ -541,8 +482,7 @@ oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/samesuite/apu/div_write_trigger_volume.png"
 
 [[case]]
-family = "samesuite"
-id = "cgb-audio-samesuite-div-write-trigger-volume-10"
+id = "samesuite-apu-div-write-trigger-volume-10"
 rom = "apu/div_write_trigger_volume_10.gb"
 console = "cgb"
 timeout_frames = 180

@@ -39,54 +39,48 @@ The generated `/test/` store is gitignored. The promoted GB Emulator Shootout re
 - Use `disabled = true` only with a non-empty `comment = "..."`; disabled rows are for explicit overfit, duplicate, impossible, upstream-disabled, or CI-budget cases, not for quietly hiding a failing oracle.
 - Use `report_model_suffix = true` only when the same upstream report label needs model-disambiguated rows such as `(DMG)` or `(GBC)`.
 - Prefer typed oracles (`serial-contains`, `mooneye-result`, `memory-byte-equals`, framebuffer fixtures, RGB555 framebuffer fixtures, explicitly named tolerance fixtures, trace fixtures, linked participant oracles) over manual visual inspection.
+- Use `fixture = "..."` for single-fixture oracles and `fixture = ["...", "..."]` for multi-reference oracles such as `framebuffer-fixture-set`; do not add a separate `fixtures` field.
 - Keep synthetic linked-session fixtures under `crates/gb-test-runner/data/fixtures/linked/**`; linked-session outputs currently retain artifacts and stdout summaries rather than Markdown report rows.
 
 ## Aggregate targets
 
 | Target | Lane | Report channel | Notes |
 | --- | --- | --- | --- |
-| `make test-roms` | Promoted local DMG/SGB aggregate | `/test/gb-emulator-shootout/test-report.md` | Runs `acid`, Blargg chunks, `daid`, Mooneye chunks, `ashiepaws`, `cpp`, `cpp-sgb`, `mealybug`, and fixture-backed `samesuite-sgb`; keeps running later children after earlier red rows and returns non-zero if any child fails. |
-| `make test-roms-real-boot` | Local RealBoot rerun for the promoted DMG subset | `/test/gb-emulator-shootout/test-report.md` | Requires `GB_CYCLE_BOOT_ROM_ROOT`; excludes SGB targets until SGB/SGB2 RealBoot policy exists. |
-| `make test-roms-extra` | Green extra/internal DMG/SGB aggregate | `/test/test-report-extra.md` | Runs `ax6`, `samesuite`, `mooneye-sgb-boot-regs`, `little-things-gb`, and `gbmicrotest`. |
+| `make test-roms` | Promoted local family aggregate | `/test/gb-emulator-shootout/test-report.md` | Runs `acid`, Blargg chunks, `daid`, Mooneye chunks, `ashiepaws`, `cpp`, `mealybug`, and promoted `samesuite`; keeps running later children after earlier red rows and returns non-zero if any child fails. |
+| `make test-roms-real-boot` | Local RealBoot rerun for the promoted family subset | `/test/gb-emulator-shootout/test-report.md` | Requires `GB_CYCLE_BOOT_ROM_ROOT`; excludes SGB targets until SGB/SGB2 RealBoot policy exists. |
+| `make test-roms-extra` | Green extra/internal DMG/SGB aggregate | `/test/test-report-extra.md` | Runs `ax6-dmg-extra`, `samesuite-dmg-extra`, `mooneye-sgb-boot-regs`, `little-things-gb`, and `gbmicrotest`. |
 | `make test-roms-extra-real-boot` | Local RealBoot rerun for the extra DMG subset | `/test/test-report-extra.md` | Requires `GB_CYCLE_BOOT_ROM_ROOT`; excludes SGB/SGB2 direct-start rows. |
-| `make test-roms-cgb` | Promoted local CGB aggregate | `/test/gb-emulator-shootout/test-report.md` | Runs `cgb-smoke`, `cgb-boot-div`, `cgb-speed`, `cgb-ppu-basic`, `cgb-ppu-hard`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, and `cgb-rtc`. |
+| `make test-roms-cgb` | Promoted local CGB aggregate | `/test/gb-emulator-shootout/test-report.md` | Runs `acid` through `make run-acid`, `ashiepaws` through `make run-ashiepaws`, `daid`, consolidated `samesuite`, `blargg-cgb-sound`, `samesuite-apu`, and `ax6`. |
 | `make test-roms-cgb-real-boot` | Local RealBoot rerun for the promoted CGB aggregate | `/test/gb-emulator-shootout/test-report.md` | Requires `GB_CYCLE_BOOT_ROM_ROOT`; uses revision-derived private boot ROM filenames such as `cgb_boot.bin` or `cgbE_boot.bin`. |
 | `make test-roms-cgb-extra` | Green extra/internal CGB aggregate | `/test/test-report-extra.md` | Runs `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-cgb`, and `little-things-gb-cgb`; keeps running later children after earlier red rows and returns non-zero if any child fails. |
 | `make test-roms-cgb-extra-real-boot` | Local RealBoot rerun for extra/internal CGB aggregate | `/test/test-report-extra.md` | Requires `GB_CYCLE_BOOT_ROM_ROOT`; useful for startup-policy comparison, not for redefining promoted CGB closure. |
 | `make test-roms-docboy` | Large exploratory DocBoy single-machine plus linked DMG lane | `/test/test-report-docboy.md` for single-machine rows; stdout/artifacts for linked rows | Runs `docboy-dmg`, `docboy-cgb`, `docboy-cgb-dmg`, and `docboy-cgb-dmg-ext`; `run-docboy-dmg` also runs `docboy-dmg-linked-extra`. |
 | `make test-roms-docboy-real-boot` | Local RealBoot rerun for DocBoy aggregate | `/test/test-report-docboy.md` for single-machine rows; stdout/artifacts for linked rows | Requires `GB_CYCLE_BOOT_ROM_ROOT`; intentionally stays local-only. |
 
-Promoted DMG/SGB and promoted CGB rows share the `gb-emulator-shootout` report channel at `/test/gb-emulator-shootout/test-report.md`, so rerun the aggregate that matches the evidence you want before quoting a report count. Non-DocBoy extra/internal rows share the legacy `/test/test-report-extra.md`. Large DocBoy single-machine rows use the legacy `/test/test-report-docboy.md`. Legacy Makefile failure artifacts share `/test/.artifacts/`. Linked-session rows such as `docboy-dmg-linked-extra` and `linked-cgb-ir-smoke` print participant-scoped status to stdout and retain failure artifacts, but they do not currently append Markdown report rows.
+Promoted family chunks and promoted CGB rows share the `gb-emulator-shootout` report channel at `/test/gb-emulator-shootout/test-report.md`, so rerun the aggregate that matches the evidence you want before quoting a report count. Non-DocBoy extra/internal rows share the legacy `/test/test-report-extra.md`. Large DocBoy single-machine rows use the legacy `/test/test-report-docboy.md`. Legacy Makefile failure artifacts share `/test/.artifacts/`. Linked-session rows such as `docboy-dmg-linked-extra` and `linked-cgb-ir-smoke` print participant-scoped status to stdout and retain failure artifacts, but they do not currently append Markdown report rows.
 
 ## Promoted target catalog
 
 | Target | Suite(s) | Source family | Purpose |
 | --- | --- | --- | --- |
-| `make run-acid` | `acid-dmg-curated` | `acid` | DMG Acid visual gate plus informational `which.gb`. |
-| `make run-blargg`, `make run-blargg-cpu-instrs`, `make run-blargg-dmg-sound`, `make run-blargg-timing-memory-oam` | `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam` | `blargg` | CPU, timing, memory, OAM, and DMG sound chunks; `run-blargg` fetches once and runs the chunk suites with collect-and-continue so the aggregate mirrors CI matrix lanes. |
-| `make run-daid` | `daid-dmg-curated` | `daid` | DMG framebuffer and compatibility smoke rows. |
-| `make run-mooneye`, `make run-mooneye-acceptance`, `make run-mooneye-mbc1-mbc5`, `make run-mooneye-mbc2` | `mooneye-acceptance-manual`, `mooneye-emulator-mbc1-mbc5`, `mooneye-emulator-mbc2` | `mooneye` | DMG acceptance/manual plus MBC1/MBC5 and MBC2 chunks; `run-mooneye` fetches once and runs the chunk suites with collect-and-continue. |
-| `make run-ashiepaws` | `ashiepaws-dmg-curated` | `ashiepaws` | DMG PPU/framebuffer curated subset. |
-| `make run-cpp` | `cpp-dmg-curated` | `cpp` | DMG MBC3/RTC curated subset. |
-| `make run-cpp-sgb` | `cpp-sgb` | `cpp` | Fixture-backed SGB packet-extension row, promoted to the main report without claiming full SGB closure. |
-| `make run-mealybug` | `mealybug-tearoom-dmg-curated` | `mealybug-tearoom-tests` | DMG PPU timing and LCD pipeline framebuffer rows. |
-| `make run-samesuite-sgb` | `samesuite-sgb` | `samesuite` | Fixture-backed SGB command/multiplayer bring-up rows from SameSuite material. |
-| `make run-cgb-smoke` | `cgb-smoke` | `mooneye acid` | CGB boot-register/visual smoke catalog. |
-| `make run-cgb-boot-div` | `cgb-boot-div` | `mooneye` | CGB boot/DIV timing gate. |
-| `make run-cgb-speed` | `cgb-speed` | `daid blargg` | KEY1/double-speed, STOP, DIV/LY/STAT speed-domain evidence. |
-| `make run-cgb-ppu-basic` | `cgb-ppu-basic` | `samesuite daid acid ashiepaws` | Baseline promoted CGB PPU framebuffer evidence. |
-| `make run-cgb-ppu-hard` | `cgb-ppu-hard` | `acid` | Native-CGB hard PPU Acid row. |
-| `make run-cgb-dma` | `cgb-dma` | `samesuite` | CGB GDMA/HDMA fixture-backed rows. |
-| `make run-cgb-audio-blargg` | `cgb-audio-blargg` | `blargg` | CGB Blargg sound memory-text baseline. |
-| `make run-cgb-audio-samesuite` | `cgb-audio-samesuite` | `samesuite` | Advanced SameSuite CGB APU framebuffer rows. |
-| `make run-cgb-rtc` | `cgb-rtc` | `ax6` | CGB MBC3 RTC AX6 framebuffer rows. |
+| `make run-acid` | `acid` | `acid` | DMG Acid visual gate, CGB Acid2 and Acid Hell framebuffer gates, plus informational `which.gb` rows for DMG and CGB. |
+| `make run-blargg-cpu-instrs`, `make run-blargg-dmg-sound`, `make run-blargg-timing-memory-oam` | `blargg-cpu-instrs`, `blargg-dmg-sound`, `blargg-timing-memory-oam` | `blargg` | CPU, timing, memory, OAM, the CGB `interrupt_time.gb` timing row, and DMG sound chunks; `make test-roms` invokes these chunks directly with collect-and-continue so the aggregate mirrors CI matrix lanes. |
+| `make run-daid` | `daid` | `daid` | DMG framebuffer, compatibility smoke, CGB live-BGP, and CGB speed/STOP rows. |
+| `make run-mooneye-acceptance`, `make run-mooneye-mbc1-mbc5`, `make run-mooneye-mbc2` | `mooneye-acceptance-manual`, `mooneye-emulator-mbc1-mbc5`, `mooneye-emulator-mbc2` | `mooneye` | DMG acceptance/manual plus MBC1/MBC5 and MBC2 chunks; `make test-roms` invokes these chunks directly with collect-and-continue. |
+| `make run-ashiepaws` | `ashiepaws` | `ashiepaws` | DMG and CGB Ashiepaws PPU/framebuffer curated subset. |
+| `make run-cpp` | `cpp` | `cpp` | DMG MBC3/RTC curated subset plus the SGB packet-extension fixture row. |
+| `make run-mealybug` | `mealybug-tearoom-tests` | `mealybug-tearoom-tests` | DMG PPU timing and LCD pipeline framebuffer rows. |
+| `make run-samesuite` | `samesuite` | `samesuite`, `mooneye` | Consolidated promoted SameSuite lane: SGB command/multiplayer fixtures, CGB PPU/DMA framebuffer rows, and Mooneye CGB misc boot/DIV rows. |
+| `make run-blargg-cgb-sound` | `blargg-cgb-sound` | `blargg` | Blargg CGB sound memory-text baseline. |
+| `make run-samesuite-apu` | `samesuite-apu` | `samesuite` | Advanced SameSuite CGB APU framebuffer rows. |
+| `make run-ax6-cgb` | `ax6` | `ax6` | CGB MBC3 RTC AX6 framebuffer rows. |
 
 ## Extra and exploratory target catalog
 
 | Target or command | Suite(s) | Report channel | Purpose |
 | --- | --- | --- | --- |
-| `make run-ax6` | `ax6-dmg-extra` | `/test/test-report-extra.md` | Extra/internal DMG MBC3 RTC AX6 rows. |
-| `make run-samesuite` | `samesuite-dmg-extra` | `/test/test-report-extra.md` | Extra/internal DMG SameSuite APU/interrupt rows. |
+| `make run-ax6-dmg` | `ax6-dmg-extra` | `/test/test-report-extra.md` | Extra/internal DMG MBC3 RTC AX6 rows. |
+| `make run-samesuite-dmg-extra` | `samesuite-dmg-extra` | `/test/test-report-extra.md` | Extra/internal DMG SameSuite APU/interrupt rows. |
 | `make run-mooneye-sgb-boot-regs` | `mooneye-sgb-boot-regs-extra` | `/test/test-report-extra.md` | SGB/SGB2 direct-start boot-register fingerprints. |
 | `make run-little-things-gb` | `little-things-gb-dmg-extra` | `/test/test-report-extra.md` | DocBoy-sourced DMG `little-things-gb` rows. |
 | `make run-gbmicrotest` | `gbmicrotest-dmg-extra` | `/test/test-report-extra.md` | Large DocBoy-sourced DMG memory-byte microtest corpus. |
@@ -109,7 +103,7 @@ Promoted DMG/SGB and promoted CGB rows share the `gb-emulator-shootout` report c
 
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
-cargo run -p gb-test-runner --bin run_rom_suite -- --suite cgb-dma --failure-artifact-root test/gb-emulator-shootout/.artifacts/cgb-dma
+cargo run -p gb-test-runner --bin run_rom_suite -- --suite samesuite --failure-artifact-root test/gb-emulator-shootout/.artifacts/samesuite
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-cgb-extra --case mooneye-cgb-ppu-intr-2-mode0-timing-sprites
 cargo run -p gb-test-runner --bin run_linked_session -- --suite docboy-dmg-linked-extra --failure-artifact-root test/.artifacts/docboy-dmg-linked
 cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/local-private-smoke.toml
@@ -135,8 +129,8 @@ Same-ROM model variants are ordered DMG before GBC before SGB before SGB2 when r
 
 - `make ci` remains the fast local pre-push gate and does not fetch or run external ROM suites; it covers formatting, linting, typos, dependency policy, workspace tests, and coverage gates.
 - GitHub `ci` mirrors the Rust checks and coverage gate.
-- GitHub `test-roms` fans out promoted DMG/SGB and promoted CGB targets as matrix children: `acid`, Blargg chunks, `daid`, `ashiepaws`, `cpp`, `cpp-sgb`, `samesuite-sgb`, Mooneye chunks, `mealybug`, `cgb-smoke`, `cgb-boot-div`, `cgb-speed`, `cgb-ppu-basic`, `cgb-ppu-hard`, `cgb-dma`, `cgb-audio-blargg`, `cgb-audio-samesuite`, and `cgb-rtc`.
-- GitHub `test-roms-extra` fans out the green non-DocBoy extra/internal targets: `ax6`, `samesuite`, `little-things-gb`, `gbmicrotest`, `mooneye-sgb-boot-regs`, `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-cgb`, and `little-things-gb-cgb`.
+- GitHub `test-roms` fans out promoted family chunks and promoted CGB targets as matrix children: `acid`, Blargg chunks, `daid`, `ashiepaws`, `cpp`, `samesuite`, Mooneye chunks, `mealybug`, `blargg-cgb-sound`, `samesuite-apu`, and `ax6`.
+- GitHub `test-roms-extra` fans out the green non-DocBoy extra/internal targets: `ax6-dmg`, `samesuite-dmg-extra`, `little-things-gb`, `gbmicrotest`, `mooneye-sgb-boot-regs`, `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-cgb`, and `little-things-gb-cgb`.
 - DocBoy aggregate targets, RealBoot targets, private commercial manifests, and red/experimental local investigations stay outside GitHub ROM workflows unless promoted intentionally.
 
 ## Private and commercial ROM manifests

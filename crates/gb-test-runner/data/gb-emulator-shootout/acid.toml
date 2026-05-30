@@ -1,8 +1,8 @@
 family = "acid"
-suite_name = "acid-dmg-curated"
+suite_name = "acid"
 
 [[case]]
-id = "which-dmg"
+id = "acid-which-dmg"
 rom = "which.gb"
 console = "dmg"
 report_model_suffix = true
@@ -10,9 +10,33 @@ timeout_frames = 180
 oracle = "info-framebuffer"
 
 [[case]]
-id = "dmg-acid2"
+id = "acid-which-cgb"
+rom = "which.gb"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "info-framebuffer"
+
+[[case]]
+id = "acid-dmg-acid2"
 rom = "dmg-acid2.gb"
 console = "dmg"
 timeout_frames = 180
 oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/acid/dmg-acid2.png"
+
+[[case]]
+id = "acid-cgb-acid2"
+rom = "cgb-acid2.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-grayscale-tolerance-fixture"
+fixture = "test/gb-emulator-shootout/acid/cgb-acid2.png"
+
+[[case]]
+id = "acid-cgb-acid-hell"
+rom = "cgb-acid-hell.gbc"
+console = "cgb"
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
+fixture = "test/gb-emulator-shootout/acid/cgb-acid-hell.png"

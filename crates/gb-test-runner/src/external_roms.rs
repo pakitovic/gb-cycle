@@ -53,7 +53,6 @@ pub struct ExternalRomSource {
     pub id: String,
     pub git_url: String,
     pub git_rev: String,
-    pub local_dir: String,
     #[serde(default, rename = "required_file")]
     pub required_files: Vec<ExternalRomRequiredFile>,
 }
@@ -203,7 +202,6 @@ mod tests {
 id = "retrio"
 git_url = "https://example.invalid/retrio.git"
 git_rev = "abc123"
-local_dir = "retrio-gb-test-roms"
 
 [[source.required_file]]
 path = "cpu_instrs/individual/01-special.gb"
@@ -213,7 +211,6 @@ sha256 = "01"
 id = "gbemu-shootout"
 git_url = "https://example.invalid/shootout.git"
 git_rev = "def456"
-local_dir = "gbemu-shootout"
 "#,
         );
 
@@ -224,8 +221,8 @@ local_dir = "gbemu-shootout"
             manifest
                 .source_by_id("retrio")
                 .expect("retrio source should exist")
-                .local_dir,
-            "retrio-gb-test-roms"
+                .git_rev,
+            "abc123"
         );
         assert!(manifest.source_by_id("missing").is_none());
     }
@@ -272,7 +269,6 @@ local_dir = "gbemu-shootout"
 id = "gbemu-shootout"
 git_url = "https://example.invalid/shootout.git"
 git_rev = "def456"
-local_dir = "gbemu-shootout"
 
 [[source.required_file]]
 path = "testroms/acid/which.gb"

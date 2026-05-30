@@ -1,8 +1,8 @@
 family = "mealybug-tearoom-tests"
-suite_name = "mealybug-tearoom-dmg-curated"
+suite_name = "mealybug-tearoom-tests"
 
 [[case]]
-id = "mealybug-m2-win-en-toggle"
+id = "mealybug-tearoom-tests-ppu-m2-win-en-toggle"
 rom = "ppu/m2_win_en_toggle.gb"
 console = "dmg"
 report_model_suffix = true
@@ -11,7 +11,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-bgp-change"
+id = "mealybug-tearoom-tests-ppu-m3-bgp-change"
 rom = "ppu/m3_bgp_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -20,7 +20,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_bgp_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-bgp-change-sprites"
+id = "mealybug-tearoom-tests-ppu-m3-bgp-change-sprites"
 rom = "ppu/m3_bgp_change_sprites.gb"
 console = "dmg"
 report_model_suffix = true
@@ -30,7 +30,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_bgp_change_sp
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-lcdc-bg-en-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-bg-en-change"
 rom = "ppu/m3_lcdc_bg_en_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -39,7 +39,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-bg-map-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-bg-map-change"
 rom = "ppu/m3_lcdc_bg_map_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -49,7 +49,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_c
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-lcdc-obj-en-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-en-change"
 rom = "ppu/m3_lcdc_obj_en_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -59,7 +59,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_c
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-lcdc-obj-en-change-variant"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-en-change-variant"
 rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
 console = "dmg"
 report_model_suffix = true
@@ -69,7 +69,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_c
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-lcdc-obj-size-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-size-change"
 rom = "ppu/m3_lcdc_obj_size_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -78,7 +78,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-obj-size-change-scx"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-size-change-scx"
 rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
 console = "dmg"
 report_model_suffix = true
@@ -87,7 +87,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-tile-sel-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-tile-sel-change"
 rom = "ppu/m3_lcdc_tile_sel_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -97,7 +97,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-lcdc-tile-sel-win-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-tile-sel-win-change"
 rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -106,7 +106,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-win-en-change-multiple"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-win-en-change-multiple"
 rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
 console = "dmg"
 report_model_suffix = true
@@ -115,7 +115,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-win-en-change-multiple-wx"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-win-en-change-multiple-wx"
 rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
 console = "dmg"
 report_model_suffix = true
@@ -124,7 +124,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-lcdc-win-map-change"
+id = "mealybug-tearoom-tests-ppu-m3-lcdc-win-map-change"
 rom = "ppu/m3_lcdc_win_map_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -133,7 +133,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-obp0-change"
+id = "mealybug-tearoom-tests-ppu-m3-obp0-change"
 rom = "ppu/m3_obp0_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -143,7 +143,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_obp0_change_d
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-scx-high-5-bits"
+id = "mealybug-tearoom-tests-ppu-m3-scx-high-5-bits"
 rom = "ppu/m3_scx_high_5_bits.gb"
 console = "dmg"
 report_model_suffix = true
@@ -152,7 +152,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-scx-low-3-bits"
+id = "mealybug-tearoom-tests-ppu-m3-scx-low-3-bits"
 rom = "ppu/m3_scx_low_3_bits.gb"
 console = "dmg"
 report_model_suffix = true
@@ -162,7 +162,7 @@ fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_scx_low_3_bit
 startup = "custom-boot"
 
 [[case]]
-id = "mealybug-m3-scy-change"
+id = "mealybug-tearoom-tests-ppu-m3-scy-change"
 rom = "ppu/m3_scy_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -171,7 +171,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_scy_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-window-timing"
+id = "mealybug-tearoom-tests-ppu-m3-window-timing"
 rom = "ppu/m3_window_timing.gb"
 console = "dmg"
 report_model_suffix = true
@@ -180,7 +180,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_window_timing_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-window-timing-wx-0"
+id = "mealybug-tearoom-tests-ppu-m3-window-timing-wx-0"
 rom = "ppu/m3_window_timing_wx_0.gb"
 console = "dmg"
 report_model_suffix = true
@@ -189,7 +189,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-wx-4-change"
+id = "mealybug-tearoom-tests-ppu-m3-wx-4-change"
 rom = "ppu/m3_wx_4_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -198,7 +198,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_wx_4_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-wx-4-change-sprites"
+id = "mealybug-tearoom-tests-ppu-m3-wx-4-change-sprites"
 rom = "ppu/m3_wx_4_change_sprites.gb"
 console = "dmg"
 report_model_suffix = true
@@ -207,7 +207,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-wx-5-change"
+id = "mealybug-tearoom-tests-ppu-m3-wx-5-change"
 rom = "ppu/m3_wx_5_change.gb"
 console = "dmg"
 report_model_suffix = true
@@ -216,7 +216,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png"
 
 [[case]]
-id = "mealybug-m3-wx-6-change"
+id = "mealybug-tearoom-tests-ppu-m3-wx-6-change"
 rom = "ppu/m3_wx_6_change.gb"
 console = "dmg"
 report_model_suffix = true

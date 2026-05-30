@@ -1,14 +1,7 @@
-# Pinned upstream sources used to materialize legacy extra/DocBoy runnable ROM families.
-# The promoted GB Emulator Shootout report has its own inventory under
-# `gb-emulator-shootout/sources.toml`; keep this root catalog for lanes that
-# still report through the legacy `/test` store.
-
-
 [[source]]
 id = "gbemu-shootout"
 git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
 git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
-local_dir = "gbemu-shootout"
 
 [[source.required_file]]
 path = "testroms/ax6/rtc3test-1.gb"
@@ -190,7 +183,6 @@ sha256 = "62840a75f224d4470442e1875c899a133b2f4d8ebd294339fc0f2df3fc8b28d4"
 id = "docboy"
 git_url = "https://github.com/Docheinstein/docboy.git"
 git_rev = "214905562590c35ba2bc41f36da3a5d636d99378"
-local_dir = "docboy"
 
 [[source.required_file]]
 path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"

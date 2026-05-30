@@ -1,8 +1,8 @@
 family = "cpp"
-suite_name = "cpp-dmg-curated"
+suite_name = "cpp"
 
 [[case]]
-id = "cpp-rtc-invalid-banks"
+id = "cpp-rtc-invalid-banks-test"
 rom = "rtc-invalid-banks-test.gb"
 console = "dmg"
 timeout_frames = 30
@@ -10,7 +10,7 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/cpp/rtc-invalid-banks-test.png"
 
 [[case]]
-id = "cpp-latch-rtc"
+id = "cpp-latch-rtc-test"
 rom = "latch-rtc-test.gb"
 console = "dmg"
 timeout_frames = 30
@@ -18,9 +18,17 @@ oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/cpp/latch-rtc-test.png"
 
 [[case]]
-id = "cpp-ramg-mbc3"
+id = "cpp-ramg-mbc3-test"
 rom = "ramg-mbc3-test.gb"
 console = "dmg"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/cpp/ramg-mbc3-test.png"
+
+[[case]]
+id = "cpp-sgb-ext-test"
+rom = "sgb-ext-test.gb"
+console = "sgb"
+timeout_frames = 240
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/data/gb-emulator-shootout/fixtures/cpp/sgb-ext-test.sgb.png"
