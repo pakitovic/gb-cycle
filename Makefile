@@ -1,12 +1,14 @@
 .DEFAULT_GOAL := ci
 ROM_PROFILE ?= release-max
 LEGACY_REPORT := legacy
+DOCBOY_REPORT := docboy
 GB_EMULATOR_SHOOTOUT_REPORT := gb-emulator-shootout
+DOCBOY_TEST_ROOT := test/$(DOCBOY_REPORT)
+DOCBOY_ARTIFACT_ROOT := $(DOCBOY_TEST_ROOT)/.artifacts
 GB_EMULATOR_SHOOTOUT_TEST_ROOT := test/$(GB_EMULATOR_SHOOTOUT_REPORT)
 GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT := $(GB_EMULATOR_SHOOTOUT_TEST_ROOT)/.artifacts
 LEGACY_TEST_ARTIFACT_ROOT := test/.artifacts
 RUN_ROM_SUITE = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite --
-RUN_LINKED_SESSION = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_linked_session --
 
 .PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6-dmg run-samesuite run-samesuite-dmg-extra run-samesuite-cgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-mealybug run-mealybug-cgb run-cgb-boot-hwio run-blargg-cgb-sound run-samesuite-apu run-ax6-cgb
 
@@ -28,7 +30,7 @@ help:
 	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
 	@echo "  make fetch-test-roms      Materialize tests from the pinned upstream source(s) using temporary checkout(s)"
 	@echo "                           Set REPORT=legacy FAMILIES=\"ax6 samesuite\"; direct fetches require an explicit report and one or more explicit families"
-	@echo "                           Set REPORT=legacy for legacy extra/DocBoy families or REPORT=gb-emulator-shootout for promoted families"
+	@echo "                           Set REPORT=legacy for legacy extra families, REPORT=docboy for DocBoy single-machine families, or REPORT=gb-emulator-shootout for promoted families"
 	@echo "  make run-acid             Fetch and run the curated Acid suite"
 	@echo "  make run-ax6-dmg          Fetch and run the extra AX6 DMG RTC suite"
 	@echo "  make run-samesuite        Fetch and run the promoted consolidated SameSuite suite"
@@ -176,7 +178,7 @@ test-roms-cgb-extra-real-boot: require-boot-rom-root
 	exit $$status
 
 fetch-test-roms:
-	@if [ -z "$(strip $(REPORT))" ]; then echo "REPORT is required; use REPORT=$(LEGACY_REPORT) or REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT)"; exit 2; fi
+	@if [ -z "$(strip $(REPORT))" ]; then echo "REPORT is required; use REPORT=$(LEGACY_REPORT), REPORT=$(DOCBOY_REPORT), or REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT)"; exit 2; fi
 	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(REPORT) $(FAMILIES)
 
 require-boot-rom-root:
@@ -223,23 +225,20 @@ run-gbmicrotest:
 	$(RUN_ROM_SUITE) --suite gbmicrotest-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/gbmicrotest
 
 run-docboy-dmg:
-	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-dmg
-	@status=0; \
-	$(RUN_ROM_SUITE) --suite docboy-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-dmg || status=$$?; \
-	$(RUN_LINKED_SESSION) --suite docboy-dmg-linked-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-dmg-linked || status=$$?; \
-	exit $$status
+	$(MAKE) fetch-test-roms REPORT=$(DOCBOY_REPORT) FAMILIES=docboy-dmg
+	$(RUN_ROM_SUITE) --suite docboy-dmg --failure-artifact-root $(DOCBOY_ARTIFACT_ROOT)/docboy-dmg
 
 run-docboy-cgb:
-	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb
-	$(RUN_ROM_SUITE) --suite docboy-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb
+	$(MAKE) fetch-test-roms REPORT=$(DOCBOY_REPORT) FAMILIES=docboy-cgb
+	$(RUN_ROM_SUITE) --suite docboy-cgb --failure-artifact-root $(DOCBOY_ARTIFACT_ROOT)/docboy-cgb
 
 run-docboy-cgb-dmg:
-	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb-dmg
-	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb-dmg
+	$(MAKE) fetch-test-roms REPORT=$(DOCBOY_REPORT) FAMILIES=docboy-cgb-dmg
+	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg --failure-artifact-root $(DOCBOY_ARTIFACT_ROOT)/docboy-cgb-dmg
 
 run-docboy-cgb-dmg-ext:
-	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=docboy-cgb-dmg-ext
-	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg-ext-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/docboy-cgb-dmg-ext
+	$(MAKE) fetch-test-roms REPORT=$(DOCBOY_REPORT) FAMILIES=docboy-cgb-dmg-ext
+	$(RUN_ROM_SUITE) --suite docboy-cgb-dmg-ext --failure-artifact-root $(DOCBOY_ARTIFACT_ROOT)/docboy-cgb-dmg-ext
 
 run-blargg-cpu-instrs:
 	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=blargg

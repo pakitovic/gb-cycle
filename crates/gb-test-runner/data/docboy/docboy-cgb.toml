@@ -1,5 +1,5 @@
 family = "docboy-cgb"
-suite_name = "docboy-cgb-extra"
+suite_name = "docboy-cgb"
 
 [[case]]
 id = "docboy-cgb-docboy-boot-boot-bg-palettes"
@@ -689,7 +689,7 @@ source_path = "tests/roms/cgb/docboy/boot/visual/boot_halt.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/boot/boot_halt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/boot/boot_halt.png"
 
 [[case]]
 id = "docboy-cgb-docboy-banks-vram-bank-switch"
@@ -8544,7 +8544,7 @@ source_path = "tests/roms/cgb/mattcurrie/cgb-acid-hell.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/mattcurrie/cgb-acid-hell.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/mattcurrie/cgb-acid-hell.png"
 disabled = true
 comment = "This does not pass even on real CGB-E!"
 
@@ -11706,7 +11706,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_bank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_bank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_bank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-horizontal-flip"
@@ -11716,7 +11716,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_horizontal_flip.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_horizontal_flip.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_horizontal_flip.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-palette"
@@ -11726,7 +11726,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_palette.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_palette.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_palette.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority"
@@ -11736,7 +11736,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_priority.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_priority.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-color-0"
@@ -11746,7 +11746,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_priority_color_0.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_priority_color_0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_color_0.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-color-0-lcdc-bit-0"
@@ -11756,7 +11756,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_priority_color_0_lcdc_bi
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_priority_color_0_lcdc_bit_0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_color_0_lcdc_bit_0.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-lcdc-bit-0"
@@ -11766,7 +11766,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_priority_lcdc_bit_0.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_priority_lcdc_bit_0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_lcdc_bit_0.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-vertical-flip"
@@ -11776,7 +11776,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_vertical_flip.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_vertical_flip.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_vertical_flip.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-vertical-flip-scy"
@@ -11786,7 +11786,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attr_vertical_flip_scy.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attr_vertical_flip_scy.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_vertical_flip_scy.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attrs-lcdc-bit-3"
@@ -11796,7 +11796,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_attrs_lcdc_bit_3.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_attrs_lcdc_bit_3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attrs_lcdc_bit_3.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-obj-overlap-bg-win-off"
@@ -11806,7 +11806,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_obj_overlap_bg_win_off.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_obj_overlap_bg_win_off.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_obj_overlap_bg_win_off.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-obj-overlap-bg-win-on"
@@ -11816,7 +11816,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/bg_obj_overlap_bg_win_on.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/bg_obj_overlap_bg_win_on.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_obj_overlap_bg_win_on.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops26"
@@ -11826,7 +11826,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_bg_tile_data_glitch_sprit
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_bg_tile_data_glitch_sprites_nops26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops26.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops27"
@@ -11836,7 +11836,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_bg_tile_data_glitch_sprit
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_bg_tile_data_glitch_sprites_nops27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops27.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops28"
@@ -11846,7 +11846,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_bg_tile_data_glitch_sprit
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_bg_tile_data_glitch_sprites_nops28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops28.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops29"
@@ -11856,7 +11856,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_bg_tile_data_glitch_sprit
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_bg_tile_data_glitch_sprites_nops29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops29.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops30"
@@ -11866,7 +11866,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_bg_tile_data_glitch_sprit
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_bg_tile_data_glitch_sprites_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops30.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops26"
@@ -11876,7 +11876,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_win_tile_data_glitch_wind
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_win_tile_data_glitch_window_nops26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops26.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops27"
@@ -11886,7 +11886,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_win_tile_data_glitch_wind
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_win_tile_data_glitch_window_nops27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops27.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops28"
@@ -11896,7 +11896,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_win_tile_data_glitch_wind
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_win_tile_data_glitch_window_nops28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops28.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops29"
@@ -11906,7 +11906,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_win_tile_data_glitch_wind
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_win_tile_data_glitch_window_nops29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops29.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops30"
@@ -11916,7 +11916,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_win_tile_data_glitch_wind
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_win_tile_data_glitch_window_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops30.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx6-nops16"
@@ -11926,7 +11926,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx6_nops16.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx6_nops16.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx6_nops16.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx6-nops17"
@@ -11936,7 +11936,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx6_nops17.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx6_nops17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx6_nops17.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx7-nops17"
@@ -11946,7 +11946,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx7_nops17.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx7_nops17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx7_nops17.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx7-nops18"
@@ -11956,7 +11956,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx7_nops18.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx7_nops18.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx7_nops18.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops17"
@@ -11966,7 +11966,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx8_nops17.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx8_nops17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops17.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops18"
@@ -11976,7 +11976,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx8_nops18.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx8_nops18.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops18.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops18-alt"
@@ -11986,7 +11986,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_wx8_nops18_alt.
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_wx8_nops18_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops18_alt.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch"
@@ -11996,7 +11996,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-alt"
@@ -12006,7 +12006,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/change_wx_glitch_alt.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/change_wx_glitch_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_alt.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-halt-ppu-off"
@@ -12016,7 +12016,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/halt_ppu_off.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/halt_ppu_off.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/halt_ppu_off.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-lcdc-bit-0"
@@ -12026,7 +12026,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/lcdc_bit_0.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/lcdc_bit_0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/lcdc_bit_0.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-attr-bank"
@@ -12036,7 +12036,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/obj_attr_bank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/obj_attr_bank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_attr_bank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-attr-palette"
@@ -12046,7 +12046,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/obj_attr_palette.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/obj_attr_palette.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_attr_palette.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority"
@@ -12056,7 +12056,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/obj_priority.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/obj_priority.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority-alt"
@@ -12066,7 +12066,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/obj_priority_alt.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/obj_priority_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority_alt.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority-change-opri"
@@ -12076,7 +12076,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/obj_priority_change_opri.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/obj_priority_change_opri.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority_change_opri.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-hblank"
@@ -12086,7 +12086,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_during_hblank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_during_hblank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_hblank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-oam-scan"
@@ -12096,7 +12096,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_during_oam_scan.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_during_oam_scan.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_oam_scan.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-pixel-transfer"
@@ -12106,7 +12106,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_during_pixel_transfer.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_during_pixel_transfer.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_pixel_transfer.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-pixel-transfer-alt"
@@ -12116,7 +12116,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_during_pixel_transfer_alt.g
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_during_pixel_transfer.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_pixel_transfer.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-vblank"
@@ -12126,7 +12126,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_during_vblank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_during_vblank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_vblank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-ly42-during-hblank-01-stop-ly42-during-hblank-a"
@@ -12137,7 +12137,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_ly42_during_hblank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_ly42_during_hblank_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ly42_during_hblank_a.png"
 check_at_tcycles = 4739304
 
 [[case]]
@@ -12149,7 +12149,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_ly42_during_hblank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_ly42_during_hblank_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ly42_during_hblank_b.png"
 check_at_tcycles = 4809528
 
 [[case]]
@@ -12160,7 +12160,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/stop_ppu_off.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/stop_ppu_off.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ppu_off.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y148-round1-01-turn-off-y42-turn-on-y148-round1-a"
@@ -12171,7 +12171,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y148_round1
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y148_round1_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_a.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12183,7 +12183,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y148_round1
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y148_round1_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_b.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12195,7 +12195,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y148_round2
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y148_round2_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_a.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12207,7 +12207,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y148_round2
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y148_round2_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_b.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12219,7 +12219,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y52_wait144
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y52_wait144_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_a.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12231,7 +12231,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y52_wait144
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y52_wait144_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_b.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12243,7 +12243,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y52_wait150
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y52_wait150_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_a.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12255,7 +12255,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_y52_wait150
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_y52_wait150_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_b.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12266,7 +12266,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y42_turn_on_off_y52_wai
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y42_turn_on_off_y52_wait150_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_off_y52_wait150_b.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12277,7 +12277,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_skip_y16_stall_nops50.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops50.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12288,7 +12288,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_skip_y16_stall_nops51.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops51.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12299,7 +12299,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_skip_y16_stall_nops99.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops99.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12310,7 +12310,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_skip_y16_stall_nops100.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops100.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12321,7 +12321,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y48_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y48_skip_y16_stall_nops50.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops50.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12332,7 +12332,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y48_skip_y16_stall_nops
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y48_skip_y16_stall_nops51.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops51.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12343,7 +12343,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_stall_nops50.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_stall_nops50.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_stall_nops50.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12354,7 +12354,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/turn_off_y50_stall_nops51.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/turn_off_y50_stall_nops51.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_stall_nops51.png"
 stop_condition = "ld-b-b"
 
 [[case]]
@@ -12365,7 +12365,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/win_activation_ly_bug.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/win_activation_ly_bug.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_activation_ly_bug.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attr-bank"
@@ -12375,7 +12375,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/win_attr_bank.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/win_attr_bank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attr_bank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attr-palette"
@@ -12385,7 +12385,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/win_attr_palette.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/win_attr_palette.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attr_palette.png"
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attrs-lcdc-bit-6"
@@ -12395,7 +12395,7 @@ source_path = "tests/roms/cgb/docboy/ppu/visual/win_attrs_lcdc_bit_6.gbc"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/ppu/win_attrs_lcdc_bit_6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attrs_lcdc_bit_6.png"
 
 [[case]]
 id = "docboy-cgb-docboy-apu-ch1-ch1-change-duty-cycle-75-50-delay3-0"
@@ -69514,7 +69514,7 @@ source_path = "tests/roms/cgb/docboy/double_speed/visual/speed_switch_to_double_
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/double_speed/speed_switch_to_double_stop_during_hblank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_hblank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-oam-scan"
@@ -69524,7 +69524,7 @@ source_path = "tests/roms/cgb/docboy/double_speed/visual/speed_switch_to_double_
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/double_speed/speed_switch_to_double_stop_during_oam_scan.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_oam_scan.png"
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-pixel-transfer"
@@ -69534,7 +69534,7 @@ source_path = "tests/roms/cgb/docboy/double_speed/visual/speed_switch_to_double_
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/double_speed/speed_switch_to_double_stop_during_pixel_transfer.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_pixel_transfer.png"
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-vblank"
@@ -69544,7 +69544,7 @@ source_path = "tests/roms/cgb/docboy/double_speed/visual/speed_switch_to_double_
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/double_speed/speed_switch_to_double_stop_during_vblank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_vblank.png"
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-ppu-off"
@@ -69554,4 +69554,4 @@ source_path = "tests/roms/cgb/docboy/double_speed/visual/speed_switch_to_double_
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-rgb555-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb/double_speed/speed_switch_to_double_stop_ppu_off.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_ppu_off.png"

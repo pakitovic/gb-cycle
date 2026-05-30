@@ -15,7 +15,7 @@ use crate::curated_test_roms::{
     replace_curated_test_rom_families_for_report,
 };
 use crate::{
-    ExternalRomRequiredFile, ExternalRomSource, GB_EMULATOR_SHOOTOUT_REPORT_ID,
+    DOCBOY_REPORT_ID, ExternalRomRequiredFile, ExternalRomSource, GB_EMULATOR_SHOOTOUT_REPORT_ID,
     curated_test_rom_families_for_report, load_external_rom_source_manifest_for_report,
 };
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -45,7 +45,7 @@ pub fn fetch_test_roms_help_text() -> &'static str {
         "Usage: cargo run -p gb-test-runner --bin fetch_test_roms -- [--force] <report-id> <family> [family ...]\n",
         "\n",
         "Fetches the pinned upstream ROM source(s) into temporary checkout(s), materializes the curated runnable families and upstream oracle fixtures under test/ or test/<report-id>, and removes the raw checkout afterwards.\n",
-        "Report ids: `legacy` for the legacy extra/DocBoy inventory, or `gb-emulator-shootout` for promoted GB Emulator Shootout families.\n",
+        "Report ids: `legacy` for the legacy extra inventory, `docboy` for DocBoy single-machine families, or `gb-emulator-shootout` for promoted GB Emulator Shootout families.\n",
         "At least one explicit family must be provided. `all`, `null`, and empty selections are not accepted.\n",
     )
 }
@@ -147,7 +147,7 @@ where
         match argument.as_ref() {
             "--force" => force = true,
             "--report" => return Err(
-                "fetch_test_roms expects the report as the first positional argument; use \"legacy\" or \"gb-emulator-shootout\"".to_string(),
+                "fetch_test_roms expects the report as the first positional argument; use \"legacy\", \"docboy\", or \"gb-emulator-shootout\"".to_string(),
             ),
             "--help" | "-h" => return Ok(FetchTestRomsAction::ShowHelp),
             other if report.is_none() => report = Some(other.to_string()),
@@ -157,7 +157,7 @@ where
 
     let Some(report) = report else {
         return Err(
-            "curated test ROM report must be provided; use \"legacy\" or \"gb-emulator-shootout\""
+            "curated test ROM report must be provided; use \"legacy\", \"docboy\", or \"gb-emulator-shootout\""
                 .to_string(),
         );
     };
@@ -186,9 +186,10 @@ where
 fn parse_fetch_report_id(report: &str) -> Result<Option<String>, String> {
     match report {
         LEGACY_REPORT_ID => Ok(None),
+        DOCBOY_REPORT_ID => Ok(Some(DOCBOY_REPORT_ID.to_string())),
         GB_EMULATOR_SHOOTOUT_REPORT_ID => Ok(Some(GB_EMULATOR_SHOOTOUT_REPORT_ID.to_string())),
         other => Err(format!(
-            "unknown curated test ROM report {other:?}; available reports: {LEGACY_REPORT_ID}, {GB_EMULATOR_SHOOTOUT_REPORT_ID}"
+            "unknown curated test ROM report {other:?}; available reports: {LEGACY_REPORT_ID}, {DOCBOY_REPORT_ID}, {GB_EMULATOR_SHOOTOUT_REPORT_ID}"
         )),
     }
 }
@@ -574,14 +575,14 @@ mod tests {
     use serde::Deserialize;
 
     use crate::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, GB_EMULATOR_SHOOTOUT_REPORT_ID,
-        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, ax6_suite,
-        blargg_cgb_sound_suite, cgb_boot_hwio_suite, curated_test_rom_families_for_report,
-        curated_test_rom_family_suites, docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite,
-        docboy_cgb_extra_suite, docboy_dmg_extra_suite, gbmicrotest_dmg_extra_suite,
-        magen_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, samesuite_apu_suite,
-        samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite, test_rom_store_root,
-        test_rom_store_root_for_report,
+        DOCBOY_REPORT_ID, DOCBOY_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_SOURCE_MANIFEST_PATH,
+        GB_EMULATOR_SHOOTOUT_REPORT_ID, GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH,
+        ax6_dmg_extra_suite, ax6_suite, blargg_cgb_sound_suite, cgb_boot_hwio_suite,
+        curated_test_rom_families_for_report, curated_test_rom_family_suites,
+        docboy_cgb_dmg_ext_suite, docboy_cgb_dmg_suite, docboy_cgb_suite, docboy_dmg_suite,
+        gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite,
+        samesuite_apu_suite, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite,
+        test_rom_store_root, test_rom_store_root_for_report,
     };
 
     use super::{
@@ -633,11 +634,15 @@ mod tests {
         );
     }
 
-    fn write_report_manifest_sources(workspace_root: &Path, sources: &[&ExternalRomSource]) {
+    fn write_gbemu_report_manifest_sources(workspace_root: &Path, sources: &[&ExternalRomSource]) {
         write_manifest_sources_at(
             &workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH),
             sources,
         );
+    }
+
+    fn write_docboy_report_manifest_sources(workspace_root: &Path, sources: &[&ExternalRomSource]) {
+        write_manifest_sources_at(&workspace_root.join(DOCBOY_SOURCE_MANIFEST_PATH), sources);
     }
 
     fn write_manifest_sources_at(manifest_path: &Path, sources: &[&ExternalRomSource]) {
@@ -1028,7 +1033,7 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
-        for case in docboy_dmg_extra_suite().cases {
+        for case in docboy_dmg_suite().cases {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
             write_required_file(
                 root,
@@ -1036,7 +1041,7 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
-        for case in docboy_cgb_extra_suite().cases {
+        for case in docboy_cgb_suite().cases {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb");
             write_required_file(
                 root,
@@ -1044,7 +1049,7 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
-        for case in docboy_cgb_dmg_extra_suite().cases {
+        for case in docboy_cgb_dmg_suite().cases {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
             write_required_file(
                 root,
@@ -1052,7 +1057,7 @@ mod tests {
                 case.id.as_bytes(),
             );
         }
-        for case in docboy_cgb_dmg_ext_extra_suite().cases {
+        for case in docboy_cgb_dmg_ext_suite().cases {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg-ext");
             write_required_file(
                 root,
@@ -1201,7 +1206,7 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
-            .chain(docboy_dmg_extra_suite().cases.into_iter().map(|case| {
+            .chain(docboy_dmg_suite().cases.into_iter().map(|case| {
                 let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
                 let rom = rom.display().to_string();
                 required_file(
@@ -1210,7 +1215,7 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
-            .chain(docboy_cgb_extra_suite().cases.into_iter().map(|case| {
+            .chain(docboy_cgb_suite().cases.into_iter().map(|case| {
                 let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb");
                 let rom = rom.display().to_string();
                 required_file(
@@ -1219,7 +1224,7 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
-            .chain(docboy_cgb_dmg_extra_suite().cases.into_iter().map(|case| {
+            .chain(docboy_cgb_dmg_suite().cases.into_iter().map(|case| {
                 let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg");
                 let rom = rom.display().to_string();
                 required_file(
@@ -1228,20 +1233,15 @@ mod tests {
                     Some(rom.as_str()),
                 )
             }))
-            .chain(
-                docboy_cgb_dmg_ext_extra_suite()
-                    .cases
-                    .into_iter()
-                    .map(|case| {
-                        let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg-ext");
-                        let rom = rom.display().to_string();
-                        required_file(
-                            &docboy_cgb_dmg_ext_source_rom_path(&rom),
-                            "docboy-cgb-dmg-ext",
-                            Some(rom.as_str()),
-                        )
-                    }),
-            )
+            .chain(docboy_cgb_dmg_ext_suite().cases.into_iter().map(|case| {
+                let rom = strip_curated_store_prefix(&case.rom_path, "docboy-cgb-dmg-ext");
+                let rom = rom.display().to_string();
+                required_file(
+                    &docboy_cgb_dmg_ext_source_rom_path(&rom),
+                    "docboy-cgb-dmg-ext",
+                    Some(rom.as_str()),
+                )
+            }))
             .chain(
                 crate::curated_test_roms::disabled_curated_rom_paths_for_family("docboy-dmg")
                     .into_iter()
@@ -1319,6 +1319,15 @@ mod tests {
             })
         );
         assert_eq!(
+            parse_fetch_test_roms_arguments(["docboy", "docboy-dmg"])
+                .expect("DocBoy report fetch args should parse"),
+            FetchTestRomsAction::Fetch(FetchTestRomsOptions {
+                force: false,
+                report_id: Some("docboy".to_string()),
+                requested_families: vec!["docboy-dmg".to_string()],
+            })
+        );
+        assert_eq!(
             parse_fetch_test_roms_arguments(["gb-emulator-shootout", "acid"])
                 .expect("report fetch args should parse"),
             FetchTestRomsAction::Fetch(FetchTestRomsOptions {
@@ -1381,6 +1390,10 @@ mod tests {
             .expect_err("promoted family should require an explicit report");
         assert!(error.contains("unknown curated test ROM family"));
         assert!(!error.contains("acid"));
+        let error = select_curated_families(&available_families, &["docboy-dmg".to_string()])
+            .expect_err("DocBoy family should require the DocBoy report");
+        assert!(error.contains("unknown curated test ROM family"));
+        assert!(!error.contains("docboy-cgb"));
 
         assert_eq!(
             select_curated_families(
@@ -1390,6 +1403,14 @@ mod tests {
             )
             .expect("promoted family should be available through the report"),
             vec!["blargg".to_string()]
+        );
+        assert_eq!(
+            select_curated_families(
+                &curated_test_rom_families_for_report(Some(DOCBOY_REPORT_ID)).unwrap(),
+                &["docboy-dmg".to_string()],
+            )
+            .expect("DocBoy family should be available through the report"),
+            vec!["docboy-dmg".to_string()]
         );
     }
 
@@ -1588,7 +1609,7 @@ mod tests {
         let git_rev = commit_upstream_repo(&upstream_root);
         let source =
             build_curated_source(upstream_root.display().to_string(), git_rev, &upstream_root);
-        write_report_manifest_sources(&workspace_root, &[&source]);
+        write_gbemu_report_manifest_sources(&workspace_root, &[&source]);
 
         let mut output = Vec::new();
         run_fetch_test_roms_command(
@@ -1611,6 +1632,48 @@ mod tests {
                 .expect("command output should be utf-8")
                 .contains(&format!(
                     "materialized curated test ROM families acid into {}",
+                    report_store_root.display()
+                ))
+        );
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
+    fn fetch_command_materializes_selected_docboy_family_below_the_docboy_report_store() {
+        let workspace_root = unique_temp_dir("materialize-docboy-report-family");
+        let docboy_root = workspace_root.join("docboy-upstream");
+        write_docboy_repo(&docboy_root);
+        let docboy_rev = commit_upstream_repo(&docboy_root);
+        let docboy_source =
+            build_docboy_source(docboy_root.display().to_string(), docboy_rev, &docboy_root);
+        write_docboy_report_manifest_sources(&workspace_root, &[&docboy_source]);
+
+        let mut output = Vec::new();
+        run_fetch_test_roms_command(
+            [DOCBOY_REPORT_ID, "docboy-dmg"],
+            &workspace_root,
+            &mut output,
+        )
+        .expect("DocBoy selected-family fetch command should succeed");
+
+        let report_store_root = test_rom_store_root_for_report(&workspace_root, DOCBOY_REPORT_ID);
+        assert!(report_store_root.join("dmg/cpu/cb_interrupt.gb").exists());
+        assert!(
+            report_store_root
+                .join("dmg/ppu/interactive_visual/stop_hello_world.gb")
+                .exists()
+        );
+        assert!(
+            !report_store_root
+                .join("dmg/serial/serial_two_players_basic_transfer_master.gb")
+                .exists()
+        );
+        assert!(
+            String::from_utf8(output)
+                .expect("command output should be utf-8")
+                .contains(&format!(
+                    "materialized curated test ROM families docboy-dmg into {}",
                     report_store_root.display()
                 ))
         );

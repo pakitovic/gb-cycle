@@ -1,5 +1,5 @@
 family = "docboy-cgb-dmg"
-suite_name = "docboy-cgb-dmg-extra"
+suite_name = "docboy-cgb-dmg"
 
 [[case]]
 id = "docboy-cgb-dmg-apu-pcm12-ch1-read"
@@ -633,7 +633,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/bg_obj_overlap_bg_win_o
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/bg_obj_overlap_bg_win_off.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_off.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-bg-obj-overlap-bg-win-on"
@@ -643,7 +643,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/bg_obj_overlap_bg_win_o
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/bg_obj_overlap_bg_win_on.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_on.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-bgp"
@@ -653,7 +653,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/bgp.gb"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/bgp.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bgp.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift0-delay0"
@@ -663,7 +663,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift1-delay0"
@@ -673,7 +673,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay0"
@@ -683,7 +683,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay0-alt-sprite-data"
@@ -693,7 +693,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0_alt_sprite_data.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0_alt_sprite_data.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift3-delay0"
@@ -703,7 +703,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift4-delay0"
@@ -713,7 +713,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift5-delay0"
@@ -723,7 +723,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift6-delay0"
@@ -733,7 +733,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift7-delay0"
@@ -743,7 +743,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift0-delay4"
@@ -753,7 +753,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift1-delay4"
@@ -763,7 +763,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay4"
@@ -773,7 +773,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift3-delay4"
@@ -783,7 +783,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift4-delay4"
@@ -793,7 +793,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift5-delay4"
@@ -803,7 +803,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift6-delay4"
@@ -813,7 +813,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift7-delay4"
@@ -823,7 +823,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0"
@@ -833,7 +833,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data"
@@ -843,7 +843,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var2"
@@ -853,7 +853,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var3"
@@ -863,7 +863,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var4"
@@ -873,7 +873,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay1"
@@ -883,7 +883,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay2"
@@ -893,7 +893,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay3"
@@ -903,7 +903,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay4"
@@ -913,7 +913,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay5"
@@ -923,7 +923,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var1"
@@ -933,7 +933,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var2"
@@ -943,7 +943,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var3"
@@ -953,7 +953,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var4"
@@ -963,7 +963,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var5"
@@ -973,7 +973,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var6"
@@ -983,7 +983,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var7"
@@ -993,7 +993,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var8"
@@ -1003,7 +1003,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var9"
@@ -1013,7 +1013,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var10"
@@ -1023,7 +1023,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var10.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var10.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var11"
@@ -1033,7 +1033,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var11.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var11.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var12"
@@ -1043,7 +1043,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var12.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var12.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var13"
@@ -1053,7 +1053,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var13.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var13.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var14"
@@ -1063,7 +1063,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var14.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var14.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var15"
@@ -1073,7 +1073,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var15.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var15.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var16"
@@ -1083,7 +1083,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var16.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var16.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var17"
@@ -1093,7 +1093,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var17.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var18"
@@ -1103,7 +1103,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var18.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var18.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var19"
@@ -1113,7 +1113,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var19.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var19.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var20"
@@ -1123,7 +1123,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var20.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var20.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var21"
@@ -1133,7 +1133,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var21.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var21.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var22"
@@ -1143,7 +1143,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var22.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var22.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var23"
@@ -1153,7 +1153,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var23.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var23.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var24"
@@ -1163,7 +1163,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var24.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var24.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var25"
@@ -1173,7 +1173,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var25.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var25.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var26"
@@ -1183,7 +1183,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var26.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var27"
@@ -1193,7 +1193,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var27.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var28"
@@ -1203,7 +1203,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var28.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var29"
@@ -1213,7 +1213,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var29.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var30"
@@ -1223,7 +1223,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var31"
@@ -1233,7 +1233,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var31.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var31.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var32"
@@ -1243,7 +1243,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var32.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var32.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var33"
@@ -1253,7 +1253,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var33.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var33.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var34"
@@ -1263,7 +1263,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var34.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var34.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var35"
@@ -1273,7 +1273,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var35.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var35.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var36"
@@ -1283,7 +1283,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var36.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var36.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var37"
@@ -1293,7 +1293,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var37.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var37.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var38"
@@ -1303,7 +1303,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var38.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var38.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var39"
@@ -1313,7 +1313,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var39.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var39.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var40"
@@ -1323,7 +1323,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var40.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var40.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var41"
@@ -1333,7 +1333,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var41.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var41.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var42"
@@ -1343,7 +1343,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var42.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var42.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43"
@@ -1353,7 +1353,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt"
@@ -1363,7 +1363,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt2"
@@ -1373,7 +1373,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt3"
@@ -1383,7 +1383,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt4"
@@ -1393,7 +1393,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var44"
@@ -1403,7 +1403,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var44-alt"
@@ -1413,7 +1413,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44_alt.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops26"
@@ -1423,7 +1423,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops26.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops27"
@@ -1433,7 +1433,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops27.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops28"
@@ -1443,7 +1443,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops28.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29"
@@ -1453,7 +1453,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-a"
@@ -1463,7 +1463,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-b"
@@ -1473,7 +1473,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-c"
@@ -1483,7 +1483,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-d"
@@ -1493,7 +1493,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var1"
@@ -1503,7 +1503,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var2"
@@ -1513,7 +1513,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var3"
@@ -1523,7 +1523,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops28"
@@ -1533,7 +1533,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops28.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops29"
@@ -1543,7 +1543,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops29.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops30"
@@ -1553,7 +1553,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops31"
@@ -1563,7 +1563,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops31.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops31.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops32"
@@ -1573,7 +1573,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops32.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops32.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops85"
@@ -1583,7 +1583,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops85.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops85.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops98"
@@ -1593,7 +1593,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops98.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops98.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops99"
@@ -1603,7 +1603,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops99.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops99.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops100"
@@ -1613,7 +1613,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops100.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops100.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops101"
@@ -1623,7 +1623,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops101.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops101.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops102"
@@ -1633,7 +1633,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops102.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops102.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var5-nops30"
@@ -1643,7 +1643,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var5-nops30-alt"
@@ -1653,7 +1653,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30_alt.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var6-nops30"
@@ -1663,7 +1663,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var6_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var6_nops30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-noop"
@@ -1673,7 +1673,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_noop.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_noop.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-12"
@@ -1683,7 +1683,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_12.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_12.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-17"
@@ -1693,7 +1693,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_17.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-100"
@@ -1703,7 +1703,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_100.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_100.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var9-vblank-nops-55"
@@ -1713,7 +1713,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_55.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_55.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var9-vblank-nops-56"
@@ -1723,7 +1723,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_56.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_56.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var10"
@@ -1733,7 +1733,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var10.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var10.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops30"
@@ -1743,7 +1743,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops34"
@@ -1753,7 +1753,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops34.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops34.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops35"
@@ -1763,7 +1763,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops35.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops35.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops36"
@@ -1773,7 +1773,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops36.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops36.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops37"
@@ -1783,7 +1783,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops37.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops37.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops38"
@@ -1793,7 +1793,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_tile_data_gli
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops38.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops38.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-win-enable-during-pixel-transfer"
@@ -1803,7 +1803,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bg_win_enable_du
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bg_win_enable_during_pixel_transfer.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_win_enable_during_pixel_transfer.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bgp-or-bug-checksum-d1"
@@ -1813,7 +1813,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bgp_or_bug_check
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bgp-or-bug-checksum-d1-first-dot"
@@ -1823,7 +1823,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_bgp_or_bug_check
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1_first_dot.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1_first_dot.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops26"
@@ -1833,7 +1833,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_win_tile_data_gl
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops26.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops27"
@@ -1843,7 +1843,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_win_tile_data_gl
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops27.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops28"
@@ -1853,7 +1853,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_win_tile_data_gl
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops28.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops29"
@@ -1863,7 +1863,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_win_tile_data_gl
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops29.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops30"
@@ -1873,7 +1873,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/change_win_tile_data_gl
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-enable-win-during-pixel-transfer-round1"
@@ -1883,7 +1883,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/enable_win_during_pixel
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/enable_win_during_pixel_transfer_round1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-enable-win-during-pixel-transfer-round2"
@@ -1893,7 +1893,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/enable_win_during_pixel
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/enable_win_during_pixel_transfer_round2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-oam-attributes-bank"
@@ -1903,7 +1903,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/oam_attributes_bank.gb"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/oam_attributes_bank.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/oam_attributes_bank.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority"
@@ -1913,7 +1913,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/obj_priority.gb"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/obj_priority.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority-alt"
@@ -1923,7 +1923,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/obj_priority_alt.gb"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/obj_priority_alt.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority_alt.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority-change-opri"
@@ -1933,7 +1933,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/obj_priority_change_opr
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/obj_priority_change_opri.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority_change_opri.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obp"
@@ -1943,7 +1943,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/obp.gb"
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/obp.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obp.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-01-checksum-01"
@@ -1953,7 +1953,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_cgb_flag_01_ch
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_cgb_flag_01_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_01_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-80-checksum-01"
@@ -1963,7 +1963,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_cgb_flag_80_ch
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_cgb_flag_80_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_80_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-81-checksum-01"
@@ -1973,7 +1973,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_cgb_flag_81_ch
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_cgb_flag_81_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_81_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-c0-checksum-01"
@@ -1983,7 +1983,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_cgb_flag_c0_ch
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_cgb_flag_c0_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_c0_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-00"
@@ -1993,7 +1993,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_00.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_00.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_00.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-01"
@@ -2003,7 +2003,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_01.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-02"
@@ -2013,7 +2013,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_02.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_02.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_02.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-03"
@@ -2023,7 +2023,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_03.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_03.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_03.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-04"
@@ -2033,7 +2033,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_04.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_04.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_04.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-05"
@@ -2043,7 +2043,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_05.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_05.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_05.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-06"
@@ -2053,7 +2053,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_06.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_06.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_06.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-07"
@@ -2063,7 +2063,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_07.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_07.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_07.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-08"
@@ -2073,7 +2073,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_08.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_08.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_08.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-09"
@@ -2083,7 +2083,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_09.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_09.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_09.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0a"
@@ -2093,7 +2093,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0b"
@@ -2103,7 +2103,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0c"
@@ -2113,7 +2113,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0d"
@@ -2123,7 +2123,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0e"
@@ -2133,7 +2133,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0f"
@@ -2143,7 +2143,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_0f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_0f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-10"
@@ -2153,7 +2153,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_10.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_10.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_10.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-11"
@@ -2163,7 +2163,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_11.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_11.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_11.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-12"
@@ -2173,7 +2173,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_12.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_12.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_12.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-13"
@@ -2183,7 +2183,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_13.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_13.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_13.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-14"
@@ -2193,7 +2193,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_14.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_14.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_14.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-15"
@@ -2203,7 +2203,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_15.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_15.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_15.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-16"
@@ -2213,7 +2213,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_16.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_16.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_16.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-17"
@@ -2223,7 +2223,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_17.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_17.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_17.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-18"
@@ -2233,7 +2233,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_18.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_18.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_18.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-19"
@@ -2243,7 +2243,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_19.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_19.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_19.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1a"
@@ -2253,7 +2253,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1b"
@@ -2263,7 +2263,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1c"
@@ -2273,7 +2273,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1d"
@@ -2283,7 +2283,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1e"
@@ -2293,7 +2293,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1f"
@@ -2303,7 +2303,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_1f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_1f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-20"
@@ -2313,7 +2313,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_20.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_20.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_20.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-21"
@@ -2323,7 +2323,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_21.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_21.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_21.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-22"
@@ -2333,7 +2333,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_22.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_22.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_22.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-23"
@@ -2343,7 +2343,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_23.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_23.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_23.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-24"
@@ -2353,7 +2353,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_24.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_24.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_24.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-25"
@@ -2363,7 +2363,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_25.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_25.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_25.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-26"
@@ -2373,7 +2373,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_26.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_26.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_26.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-27"
@@ -2383,7 +2383,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_27.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_27.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_27.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-28"
@@ -2393,7 +2393,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_28.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_28.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_28.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-29"
@@ -2403,7 +2403,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_29.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_29.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_29.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2a"
@@ -2413,7 +2413,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2b"
@@ -2423,7 +2423,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2c"
@@ -2433,7 +2433,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2d"
@@ -2443,7 +2443,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2e"
@@ -2453,7 +2453,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2f"
@@ -2463,7 +2463,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_2f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_2f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-30"
@@ -2473,7 +2473,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_30.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_30.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_30.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-31"
@@ -2483,7 +2483,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_31.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_31.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_31.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-32"
@@ -2493,7 +2493,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_32.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_32.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_32.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-33"
@@ -2503,7 +2503,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_33.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_33.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_33.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-34"
@@ -2513,7 +2513,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_34.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_34.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_34.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-35"
@@ -2523,7 +2523,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_35.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_35.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_35.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-36"
@@ -2533,7 +2533,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_36.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_36.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_36.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-37"
@@ -2543,7 +2543,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_37.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_37.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_37.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-38"
@@ -2553,7 +2553,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_38.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_38.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_38.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-39"
@@ -2563,7 +2563,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_39.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_39.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_39.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3a"
@@ -2573,7 +2573,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3b"
@@ -2583,7 +2583,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3c"
@@ -2593,7 +2593,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3d"
@@ -2603,7 +2603,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3e"
@@ -2613,7 +2613,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3f"
@@ -2623,7 +2623,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_3f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_3f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-40"
@@ -2633,7 +2633,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_40.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_40.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_40.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-41"
@@ -2643,7 +2643,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_41.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_41.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_41.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-42"
@@ -2653,7 +2653,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_42.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_42.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_42.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-43"
@@ -2663,7 +2663,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_43.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_43.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_43.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-44"
@@ -2673,7 +2673,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_44.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_44.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_44.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-45"
@@ -2683,7 +2683,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_45.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_45.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_45.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-46"
@@ -2693,7 +2693,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_46.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_46.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_46.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-47"
@@ -2703,7 +2703,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_47.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_47.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_47.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-48"
@@ -2713,7 +2713,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_48.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_48.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_48.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-49"
@@ -2723,7 +2723,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_49.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_49.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_49.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4a"
@@ -2733,7 +2733,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4b"
@@ -2743,7 +2743,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4c"
@@ -2753,7 +2753,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4d"
@@ -2763,7 +2763,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4e"
@@ -2773,7 +2773,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4f"
@@ -2783,7 +2783,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_4f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_4f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-50"
@@ -2793,7 +2793,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_50.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_50.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_50.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-51"
@@ -2803,7 +2803,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_51.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_51.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_51.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-52"
@@ -2813,7 +2813,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_52.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_52.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_52.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-53"
@@ -2823,7 +2823,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_53.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_53.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_53.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-54"
@@ -2833,7 +2833,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_54.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_54.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_54.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-55"
@@ -2843,7 +2843,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_55.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_55.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_55.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-56"
@@ -2853,7 +2853,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_56.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_56.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_56.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-57"
@@ -2863,7 +2863,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_57.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_57.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_57.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-58"
@@ -2873,7 +2873,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_58.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_58.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_58.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-59"
@@ -2883,7 +2883,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_59.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_59.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_59.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5a"
@@ -2893,7 +2893,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5b"
@@ -2903,7 +2903,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5c"
@@ -2913,7 +2913,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5d"
@@ -2923,7 +2923,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5e"
@@ -2933,7 +2933,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5f"
@@ -2943,7 +2943,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_5f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_5f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-60"
@@ -2953,7 +2953,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_60.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_60.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_60.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-61"
@@ -2963,7 +2963,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_61.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_61.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_61.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-62"
@@ -2973,7 +2973,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_62.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_62.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_62.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-63"
@@ -2983,7 +2983,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_63.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_63.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_63.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-64"
@@ -2993,7 +2993,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_64.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_64.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_64.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-65"
@@ -3003,7 +3003,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_65.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_65.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_65.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-66"
@@ -3013,7 +3013,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_66.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_66.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_66.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-67"
@@ -3023,7 +3023,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_67.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_67.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_67.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-68"
@@ -3033,7 +3033,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_68.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_68.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_68.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-69"
@@ -3043,7 +3043,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_69.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_69.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_69.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6a"
@@ -3053,7 +3053,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6b"
@@ -3063,7 +3063,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6c"
@@ -3073,7 +3073,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6d"
@@ -3083,7 +3083,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6e"
@@ -3093,7 +3093,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6f"
@@ -3103,7 +3103,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_6f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_6f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-70"
@@ -3113,7 +3113,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_70.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_70.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_70.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-71"
@@ -3123,7 +3123,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_71.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_71.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_71.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-72"
@@ -3133,7 +3133,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_72.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_72.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_72.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-73"
@@ -3143,7 +3143,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_73.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_73.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_73.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-74"
@@ -3153,7 +3153,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_74.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_74.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_74.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-75"
@@ -3163,7 +3163,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_75.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_75.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_75.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-76"
@@ -3173,7 +3173,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_76.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_76.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_76.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-77"
@@ -3183,7 +3183,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_77.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_77.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_77.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-78"
@@ -3193,7 +3193,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_78.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_78.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_78.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-79"
@@ -3203,7 +3203,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_79.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_79.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_79.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7a"
@@ -3213,7 +3213,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7b"
@@ -3223,7 +3223,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7c"
@@ -3233,7 +3233,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7d"
@@ -3243,7 +3243,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7e"
@@ -3253,7 +3253,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7f"
@@ -3263,7 +3263,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_7f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_7f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-80"
@@ -3273,7 +3273,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_80.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_80.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_80.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-81"
@@ -3283,7 +3283,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_81.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_81.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_81.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-82"
@@ -3293,7 +3293,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_82.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_82.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_82.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-83"
@@ -3303,7 +3303,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_83.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_83.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_83.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-84"
@@ -3313,7 +3313,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_84.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_84.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_84.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-85"
@@ -3323,7 +3323,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_85.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_85.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_85.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-86"
@@ -3333,7 +3333,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_86.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_86.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_86.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-87"
@@ -3343,7 +3343,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_87.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_87.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_87.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-88"
@@ -3353,7 +3353,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_88.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_88.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_88.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-89"
@@ -3363,7 +3363,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_89.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_89.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_89.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8a"
@@ -3373,7 +3373,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8b"
@@ -3383,7 +3383,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8c"
@@ -3393,7 +3393,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8d"
@@ -3403,7 +3403,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8e"
@@ -3413,7 +3413,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8f"
@@ -3423,7 +3423,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_8f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_8f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-90"
@@ -3433,7 +3433,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_90.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_90.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_90.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-91"
@@ -3443,7 +3443,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_91.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_91.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_91.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-92"
@@ -3453,7 +3453,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_92.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_92.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_92.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-93"
@@ -3463,7 +3463,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_93.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_93.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_93.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-94"
@@ -3473,7 +3473,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_94.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_94.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_94.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-95"
@@ -3483,7 +3483,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_95.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_95.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_95.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-96"
@@ -3493,7 +3493,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_96.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_96.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_96.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-97"
@@ -3503,7 +3503,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_97.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_97.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_97.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-98"
@@ -3513,7 +3513,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_98.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_98.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_98.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-99"
@@ -3523,7 +3523,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_99.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_99.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_99.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9a"
@@ -3533,7 +3533,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9a.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9a.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9a.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9b"
@@ -3543,7 +3543,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9b.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9b.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9b.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9c"
@@ -3553,7 +3553,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9c.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9c.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9c.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9d"
@@ -3563,7 +3563,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9d.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9d.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9d.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9e"
@@ -3573,7 +3573,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9e.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9e.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9e.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9f"
@@ -3583,7 +3583,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_9f.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_9f.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9f.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a0"
@@ -3593,7 +3593,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a1"
@@ -3603,7 +3603,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a2"
@@ -3613,7 +3613,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a3"
@@ -3623,7 +3623,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a4"
@@ -3633,7 +3633,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a5"
@@ -3643,7 +3643,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a6"
@@ -3653,7 +3653,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a7"
@@ -3663,7 +3663,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a8"
@@ -3673,7 +3673,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a9"
@@ -3683,7 +3683,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_a9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_a9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-aa"
@@ -3693,7 +3693,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_aa.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_aa.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_aa.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ab"
@@ -3703,7 +3703,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ab.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ab.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ab.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ac"
@@ -3713,7 +3713,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ac.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ac.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ac.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ad"
@@ -3723,7 +3723,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ad.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ad.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ad.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ae"
@@ -3733,7 +3733,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ae.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ae.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ae.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-af"
@@ -3743,7 +3743,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_af.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_af.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_af.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b0"
@@ -3753,7 +3753,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b1"
@@ -3763,7 +3763,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b2"
@@ -3773,7 +3773,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b3"
@@ -3783,7 +3783,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b4"
@@ -3793,7 +3793,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b5"
@@ -3803,7 +3803,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b6"
@@ -3813,7 +3813,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b7"
@@ -3823,7 +3823,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b8"
@@ -3833,7 +3833,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b9"
@@ -3843,7 +3843,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_b9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_b9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0xba"
@@ -3853,7 +3853,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ba.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ba.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ba.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bb"
@@ -3863,7 +3863,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_bb.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_bb.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bb.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bc"
@@ -3873,7 +3873,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_bc.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_bc.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bc.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bd"
@@ -3883,7 +3883,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_bd.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_bd.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bd.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-be"
@@ -3893,7 +3893,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_be.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_be.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_be.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bf"
@@ -3903,7 +3903,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_bf.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_bf.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bf.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c0"
@@ -3913,7 +3913,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c1"
@@ -3923,7 +3923,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c2"
@@ -3933,7 +3933,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c3"
@@ -3943,7 +3943,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c4"
@@ -3953,7 +3953,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c5"
@@ -3963,7 +3963,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c6"
@@ -3973,7 +3973,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c7"
@@ -3983,7 +3983,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c8"
@@ -3993,7 +3993,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c9"
@@ -4003,7 +4003,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_c9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_c9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ca"
@@ -4013,7 +4013,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ca.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ca.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ca.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cb"
@@ -4023,7 +4023,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_cb.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_cb.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cb.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cc"
@@ -4033,7 +4033,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_cc.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_cc.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cc.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cd"
@@ -4043,7 +4043,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_cd.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_cd.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cd.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ce"
@@ -4053,7 +4053,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ce.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ce.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ce.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cf"
@@ -4063,7 +4063,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_cf.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_cf.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cf.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d0"
@@ -4073,7 +4073,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d1"
@@ -4083,7 +4083,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d2"
@@ -4093,7 +4093,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d3"
@@ -4103,7 +4103,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d4"
@@ -4113,7 +4113,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d5"
@@ -4123,7 +4123,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d6"
@@ -4133,7 +4133,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d7"
@@ -4143,7 +4143,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d8"
@@ -4153,7 +4153,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d9"
@@ -4163,7 +4163,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_d9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_d9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-da"
@@ -4173,7 +4173,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_da.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_da.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_da.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-db"
@@ -4183,7 +4183,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_db.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_db.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_db.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-dc"
@@ -4193,7 +4193,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_dc.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_dc.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_dc.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-dd"
@@ -4203,7 +4203,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_dd.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_dd.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_dd.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-de"
@@ -4213,7 +4213,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_de.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_de.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_de.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-df"
@@ -4223,7 +4223,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_df.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_df.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_df.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e0"
@@ -4233,7 +4233,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e1"
@@ -4243,7 +4243,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e2"
@@ -4253,7 +4253,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e3"
@@ -4263,7 +4263,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e4"
@@ -4273,7 +4273,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e5"
@@ -4283,7 +4283,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e6"
@@ -4293,7 +4293,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e7"
@@ -4303,7 +4303,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e8"
@@ -4313,7 +4313,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e9"
@@ -4323,7 +4323,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_e9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_e9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ea"
@@ -4333,7 +4333,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ea.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ea.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ea.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-eb"
@@ -4343,7 +4343,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_eb.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_eb.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_eb.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ec"
@@ -4353,7 +4353,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ec.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ec.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ec.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ed"
@@ -4363,7 +4363,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ed.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ed.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ed.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ee"
@@ -4373,7 +4373,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ee.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ee.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ee.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ef"
@@ -4383,7 +4383,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_ef.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_ef.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ef.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f0"
@@ -4393,7 +4393,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f0.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f0.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f0.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f1"
@@ -4403,7 +4403,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f1.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f1.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f1.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f2"
@@ -4413,7 +4413,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f2.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f2.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f2.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f3"
@@ -4423,7 +4423,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f3.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f3.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f3.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f4"
@@ -4433,7 +4433,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f4.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f4.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f4.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f5"
@@ -4443,7 +4443,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f5.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f5.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f5.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f6"
@@ -4453,7 +4453,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f6.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f6.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f6.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f7"
@@ -4463,7 +4463,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f7.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f7.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f7.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f8"
@@ -4473,7 +4473,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f8.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f8.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f8.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f9"
@@ -4483,7 +4483,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_f9.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_f9.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f9.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fa"
@@ -4493,7 +4493,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_fa.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_fa.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fa.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fb"
@@ -4503,7 +4503,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_fb.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_fb.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fb.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fc"
@@ -4513,7 +4513,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_fc.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_fc.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fc.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fd"
@@ -4523,7 +4523,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_fd.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_fd.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fd.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fe"
@@ -4533,7 +4533,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_checksum_fe.gb
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_checksum_fe.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fe.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-00-checksum-00"
@@ -4543,7 +4543,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_00
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_00.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_00.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-00-checksum-01"
@@ -4553,7 +4553,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_00
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-01-checksum-00"
@@ -4563,7 +4563,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_00
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_00.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_00.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-01-checksum-01"
@@ -4573,7 +4573,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_00
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-00-checksum-00"
@@ -4583,7 +4583,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_33
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_00.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_00.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-00-checksum-01"
@@ -4593,7 +4593,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_33
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-01-checksum-00"
@@ -4603,7 +4603,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_33
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_00.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_00.png"
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-01-checksum-01"
@@ -4613,7 +4613,7 @@ source_path = "tests/roms/cgb_dmg_mode/docboy/ppu/visual/palettes_old_license_33
 console = "cgb"
 timeout_tcycles = 5000000
 oracle = "framebuffer-fixture-until-match"
-fixture = "crates/gb-test-runner/data/fixtures/docboy/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_01.png"
+fixture = "crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_01.png"
 
 [[case]]
 id = "docboy-cgb-dmg-serial-sc-write-read"

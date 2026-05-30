@@ -1,5 +1,5 @@
 family = "docboy-cgb-dmg-ext"
-suite_name = "docboy-cgb-dmg-ext-extra"
+suite_name = "docboy-cgb-dmg-ext"
 
 [[case]]
 id = "docboy-cgb-dmg-ext-apu-pcm12-ch1-read"

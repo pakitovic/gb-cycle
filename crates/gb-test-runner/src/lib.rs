@@ -46,7 +46,7 @@ pub use boot_rom_verification::{
     verify_boot_rom_file,
 };
 pub use curated_test_roms::{
-    TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
+    TEST_ROM_DOCBOY_REPORT_DIR, TEST_ROM_DOCBOY_REPORT_FILE_NAME, TEST_ROM_EXTRA_REPORT_FILE_NAME,
     TEST_ROM_GB_EMULATOR_SHOOTOUT_REPORT_DIR, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
     TEST_ROM_STORE_DIR, acid_suite, ashiepaws_suite, blargg_cgb_sound_suite, cgb_boot_hwio_suite,
     cpp_suite, curated_test_rom_families, curated_test_rom_families_for_report,
@@ -57,11 +57,11 @@ pub use curated_test_roms::{
     test_rom_store_root_for_report, update_curated_test_report,
 };
 pub use external_roms::{
-    EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomRequiredFile, ExternalRomSource,
-    ExternalRomSourceManifest, GB_EMULATOR_SHOOTOUT_REPORT_ID,
-    GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, external_rom_source_manifest_path,
-    external_rom_source_manifest_path_for_report, load_external_rom_source_manifest,
-    load_external_rom_source_manifest_for_report,
+    DOCBOY_REPORT_ID, DOCBOY_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_SOURCE_MANIFEST_PATH,
+    ExternalRomRequiredFile, ExternalRomSource, ExternalRomSourceManifest,
+    GB_EMULATOR_SHOOTOUT_REPORT_ID, GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH,
+    external_rom_source_manifest_path, external_rom_source_manifest_path_for_report,
+    load_external_rom_source_manifest, load_external_rom_source_manifest_for_report,
 };
 pub use fetch_test_roms_cli::{fetch_test_roms_help_text, run_fetch_test_roms_command};
 pub use linked_session_manifest::{
@@ -1063,20 +1063,20 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
     curated_test_roms::gbmicrotest_dmg_extra_suite()
 }
 
-pub fn docboy_dmg_extra_suite() -> RomSuite {
-    curated_test_roms::docboy_dmg_extra_suite()
+pub fn docboy_dmg_suite() -> RomSuite {
+    curated_test_roms::docboy_dmg_suite()
 }
 
-pub fn docboy_cgb_extra_suite() -> RomSuite {
-    curated_test_roms::docboy_cgb_extra_suite()
+pub fn docboy_cgb_suite() -> RomSuite {
+    curated_test_roms::docboy_cgb_suite()
 }
 
-pub fn docboy_cgb_dmg_extra_suite() -> RomSuite {
-    curated_test_roms::docboy_cgb_dmg_extra_suite()
+pub fn docboy_cgb_dmg_suite() -> RomSuite {
+    curated_test_roms::docboy_cgb_dmg_suite()
 }
 
-pub fn docboy_cgb_dmg_ext_extra_suite() -> RomSuite {
-    curated_test_roms::docboy_cgb_dmg_ext_extra_suite()
+pub fn docboy_cgb_dmg_ext_suite() -> RomSuite {
+    curated_test_roms::docboy_cgb_dmg_ext_suite()
 }
 
 pub fn ax6_suite() -> RomSuite {
@@ -1106,10 +1106,10 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         little_things_gb_dmg_extra_suite(),
         little_things_gb_cgb_extra_suite(),
         gbmicrotest_dmg_extra_suite(),
-        docboy_dmg_extra_suite(),
-        docboy_cgb_extra_suite(),
-        docboy_cgb_dmg_extra_suite(),
-        docboy_cgb_dmg_ext_extra_suite(),
+        docboy_dmg_suite(),
+        docboy_cgb_suite(),
+        docboy_cgb_dmg_suite(),
+        docboy_cgb_dmg_ext_suite(),
         cgb_boot_hwio_suite(),
         mooneye_cgb_extra_suite(),
         mooneye_sgb_boot_regs_extra_suite(),

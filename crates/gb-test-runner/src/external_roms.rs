@@ -5,6 +5,8 @@ use std::{fs, io};
 use serde::Deserialize;
 
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
+pub const DOCBOY_REPORT_ID: &str = "docboy";
+pub const DOCBOY_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/docboy/sources.toml";
 pub const GB_EMULATOR_SHOOTOUT_REPORT_ID: &str = "gb-emulator-shootout";
 pub const GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH: &str =
     "crates/gb-test-runner/data/gb-emulator-shootout/sources.toml";
@@ -90,6 +92,7 @@ pub fn external_rom_source_manifest_path_for_report(
     report_id: Option<&str>,
 ) -> Result<PathBuf, ExternalRomSourceManifestError> {
     match report_id {
+        Some(DOCBOY_REPORT_ID) => Ok(workspace_root.join(DOCBOY_SOURCE_MANIFEST_PATH)),
         Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) => {
             Ok(workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH))
         }
@@ -136,10 +139,11 @@ fn load_external_rom_source_manifest_from_path(
 #[cfg(test)]
 mod tests {
     use super::{
-        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, ExternalRomSourceManifestError,
-        GB_EMULATOR_SHOOTOUT_REPORT_ID, GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH,
-        external_rom_source_manifest_path, external_rom_source_manifest_path_for_report,
-        load_external_rom_source_manifest, load_external_rom_source_manifest_for_report,
+        DOCBOY_REPORT_ID, DOCBOY_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_SOURCE_MANIFEST_PATH,
+        ExternalRomSourceManifestError, GB_EMULATOR_SHOOTOUT_REPORT_ID,
+        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, external_rom_source_manifest_path,
+        external_rom_source_manifest_path_for_report, load_external_rom_source_manifest,
+        load_external_rom_source_manifest_for_report,
     };
     use std::env;
     use std::fs;
@@ -176,6 +180,11 @@ mod tests {
         assert_eq!(
             external_rom_source_manifest_path(workspace_root),
             workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH)
+        );
+        assert_eq!(
+            external_rom_source_manifest_path_for_report(workspace_root, Some(DOCBOY_REPORT_ID))
+                .expect("DocBoy report manifest path should resolve"),
+            workspace_root.join(DOCBOY_SOURCE_MANIFEST_PATH)
         );
         assert_eq!(
             external_rom_source_manifest_path_for_report(

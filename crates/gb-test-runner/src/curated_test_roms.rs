@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use gb_core::{ConsoleModel, HardwareRevision, HostPlatform, JoypadButton, StartupMode};
 use serde::{Deserialize, Serialize};
 
-use crate::external_roms::GB_EMULATOR_SHOOTOUT_REPORT_ID;
+use crate::external_roms::{DOCBOY_REPORT_ID, GB_EMULATOR_SHOOTOUT_REPORT_ID};
 use crate::manifest_fixture::ManifestFixtureField;
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
@@ -18,10 +18,11 @@ use crate::{
 
 pub const TEST_ROM_STORE_DIR: &str = "test";
 pub const TEST_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_ROOT";
+pub const TEST_ROM_DOCBOY_REPORT_DIR: &str = DOCBOY_REPORT_ID;
 pub const TEST_ROM_GB_EMULATOR_SHOOTOUT_REPORT_DIR: &str = GB_EMULATOR_SHOOTOUT_REPORT_ID;
 pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
 pub const TEST_ROM_EXTRA_REPORT_FILE_NAME: &str = "test-report-extra.md";
-pub const TEST_ROM_DOCBOY_REPORT_FILE_NAME: &str = "test-report-docboy.md";
+pub const TEST_ROM_DOCBOY_REPORT_FILE_NAME: &str = TEST_ROM_REPORT_FILE_NAME;
 
 const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const GBEMU_SHOOTOUT_SOURCE_ID: &str = "gbemu-shootout";
@@ -73,10 +74,10 @@ const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
     "little-things-gb-cgb-extra",
 ];
 const DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
-    "docboy-dmg-extra",
-    "docboy-cgb-extra",
-    "docboy-cgb-dmg-extra",
-    "docboy-cgb-dmg-ext-extra",
+    "docboy-dmg",
+    "docboy-cgb",
+    "docboy-cgb-dmg",
+    "docboy-cgb-dmg-ext",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -250,10 +251,10 @@ pub fn discover_test_rom_store_root_for_report(
 
 pub(crate) fn curated_family_store_prefix(family: &str) -> PathBuf {
     match family {
-        "docboy-dmg" => PathBuf::from("docboy").join("dmg"),
-        "docboy-cgb" => PathBuf::from("docboy").join("cgb"),
-        "docboy-cgb-dmg" => PathBuf::from("docboy").join("cgb-dmg"),
-        "docboy-cgb-dmg-ext" => PathBuf::from("docboy").join("cgb-dmg-ext"),
+        "docboy-dmg" => PathBuf::from("dmg"),
+        "docboy-cgb" => PathBuf::from("cgb"),
+        "docboy-cgb-dmg" => PathBuf::from("cgb-dmg"),
+        "docboy-cgb-dmg-ext" => PathBuf::from("cgb-dmg-ext"),
         _ => PathBuf::from(family),
     }
 }
@@ -298,20 +299,20 @@ pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
     manifest_suite_by_name("gbmicrotest-dmg-extra")
 }
 
-pub fn docboy_dmg_extra_suite() -> RomSuite {
-    manifest_suite_by_name("docboy-dmg-extra")
+pub fn docboy_dmg_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-dmg")
 }
 
-pub fn docboy_cgb_extra_suite() -> RomSuite {
-    manifest_suite_by_name("docboy-cgb-extra")
+pub fn docboy_cgb_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-cgb")
 }
 
-pub fn docboy_cgb_dmg_extra_suite() -> RomSuite {
-    manifest_suite_by_name("docboy-cgb-dmg-extra")
+pub fn docboy_cgb_dmg_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-cgb-dmg")
 }
 
-pub fn docboy_cgb_dmg_ext_extra_suite() -> RomSuite {
-    manifest_suite_by_name("docboy-cgb-dmg-ext-extra")
+pub fn docboy_cgb_dmg_ext_suite() -> RomSuite {
+    manifest_suite_by_name("docboy-cgb-dmg-ext")
 }
 
 pub fn blargg_cpu_instrs_suite() -> RomSuite {
@@ -384,6 +385,9 @@ pub(crate) fn rom_path_without_store_prefix(rom_path: &Path) -> &Path {
     if let Ok(stripped) = normalized_path.strip_prefix(GB_EMULATOR_SHOOTOUT_REPORT_ID) {
         normalized_path = stripped;
     }
+    if let Ok(stripped) = normalized_path.strip_prefix(DOCBOY_REPORT_ID) {
+        normalized_path = stripped;
+    }
     normalized_path
 }
 
@@ -414,7 +418,7 @@ pub fn curated_test_rom_families_for_report(
     report_id: Option<&str>,
 ) -> Result<Vec<String>, String> {
     if let Some(report_id) = report_id
-        && report_id != GB_EMULATOR_SHOOTOUT_REPORT_ID
+        && !matches!(report_id, DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID)
     {
         return Err(format!("unknown curated test ROM report {report_id:?}"));
     }
@@ -439,7 +443,7 @@ fn selected_families_for_report<'a>(
     selected_families: Option<&'a BTreeSet<&'a str>>,
 ) -> Result<Option<&'a BTreeSet<&'a str>>, String> {
     if let Some(report_id) = report_id
-        && report_id != GB_EMULATOR_SHOOTOUT_REPORT_ID
+        && !matches!(report_id, DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID)
     {
         return Err(format!("unknown curated test ROM report {report_id:?}"));
     }
@@ -675,6 +679,7 @@ fn required_file_family(path: &Path) -> Option<&str> {
 
 fn curated_source_manifest_text(report_id: Option<&str>) -> &'static str {
     match report_id {
+        Some(DOCBOY_REPORT_ID) => include_str!("../data/docboy/sources.toml"),
         Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) => {
             include_str!("../data/gb-emulator-shootout/sources.toml")
         }
@@ -884,9 +889,10 @@ pub fn update_curated_test_report(
             CuratedTestReportKind::Extra,
         )?
     } else {
+        remove_markdown_report_file_if_present(&store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME))?;
         None
     };
-    let docboy_report_path = if report_id.is_none() {
+    let docboy_report_path = if report_id == Some(DOCBOY_REPORT_ID) {
         write_markdown_report_file_if_needed(
             &store_root,
             TEST_ROM_DOCBOY_REPORT_FILE_NAME,
@@ -947,7 +953,8 @@ fn suite_test_report_kind(suite_name: &str) -> CuratedTestReportKind {
 fn suite_report_id(suite_name: &str) -> Option<&'static str> {
     match suite_test_report_kind(suite_name) {
         CuratedTestReportKind::Standard => Some(GB_EMULATOR_SHOOTOUT_REPORT_ID),
-        CuratedTestReportKind::Extra | CuratedTestReportKind::DocBoy => None,
+        CuratedTestReportKind::DocBoy => Some(DOCBOY_REPORT_ID),
+        CuratedTestReportKind::Extra => None,
     }
 }
 
@@ -1019,10 +1026,10 @@ fn remove_markdown_report_file_if_present(report_path: &Path) -> Result<(), Stri
 
 fn suite_status_file_stem(suite_name: &str) -> &str {
     match suite_name {
-        "docboy-dmg-extra" => "docboy-dmg",
-        "docboy-cgb-extra" => "docboy-cgb",
-        "docboy-cgb-dmg-extra" => "docboy-cgb-dmg",
-        "docboy-cgb-dmg-ext-extra" => "docboy-cgb-dmg-ext",
+        "docboy-dmg" => "docboy-dmg",
+        "docboy-cgb" => "docboy-cgb",
+        "docboy-cgb-dmg" => "docboy-cgb-dmg",
+        "docboy-cgb-dmg-ext" => "docboy-cgb-dmg-ext",
         _ => suite_name,
     }
 }
@@ -1381,20 +1388,20 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
             include_str!("../data/gbmicrotest.toml"),
         ),
         (
-            "crates/gb-test-runner/data/docboy-dmg.toml",
-            include_str!("../data/docboy-dmg.toml"),
+            "crates/gb-test-runner/data/docboy/docboy-dmg.toml",
+            include_str!("../data/docboy/docboy-dmg.toml"),
         ),
         (
-            "crates/gb-test-runner/data/docboy-cgb.toml",
-            include_str!("../data/docboy-cgb.toml"),
+            "crates/gb-test-runner/data/docboy/docboy-cgb.toml",
+            include_str!("../data/docboy/docboy-cgb.toml"),
         ),
         (
-            "crates/gb-test-runner/data/docboy-cgb-dmg.toml",
-            include_str!("../data/docboy-cgb-dmg.toml"),
+            "crates/gb-test-runner/data/docboy/docboy-cgb-dmg.toml",
+            include_str!("../data/docboy/docboy-cgb-dmg.toml"),
         ),
         (
-            "crates/gb-test-runner/data/docboy-cgb-dmg-ext.toml",
-            include_str!("../data/docboy-cgb-dmg-ext.toml"),
+            "crates/gb-test-runner/data/docboy/docboy-cgb-dmg-ext.toml",
+            include_str!("../data/docboy/docboy-cgb-dmg-ext.toml"),
         ),
         (
             "crates/gb-test-runner/data/gb-emulator-shootout/blargg-cgb-sound.toml",
@@ -2256,6 +2263,10 @@ fn parse_curated_source_rom_paths() -> Vec<(String, PathBuf)> {
             include_str!("../data/sources.toml"),
         ),
         (
+            "DocBoy curated source manifest",
+            include_str!("../data/docboy/sources.toml"),
+        ),
+        (
             "GB Emulator Shootout curated source manifest",
             include_str!("../data/gb-emulator-shootout/sources.toml"),
         ),
@@ -2348,10 +2359,10 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 mod tests {
     use super::{
         CURATED_TEST_ROM_REPORT_FAMILY_ORDER, CuratedSourceManifestFile, CuratedTestReportKind,
-        CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile,
+        CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile, DOCBOY_REPORT_ID,
         GB_EMULATOR_SHOOTOUT_REPORT_ID, GBEMU_SHOOTOUT_SOURCE_ID, PersistedCaseStatus,
         PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
-        REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
+        REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_DIR, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
         TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
         TEST_ROM_STATUS_DIR_NAME, TEST_ROM_STORE_DIR, ax6_dmg_extra_suite, ax6_suite,
         blargg_cgb_sound_suite, blargg_curated_suites, blargg_memory_text_output_spec,
@@ -2359,8 +2370,8 @@ mod tests {
         curated_source_manifest_text, curated_test_rom_families,
         curated_test_rom_families_for_report, curated_test_rom_family_suites,
         curated_test_rom_manifest_texts, curated_test_rom_manifests, discover_test_rom_store_root,
-        docboy_cgb_dmg_ext_extra_suite, docboy_cgb_dmg_extra_suite, docboy_cgb_extra_suite,
-        docboy_dmg_extra_suite, failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
+        docboy_cgb_dmg_ext_suite, docboy_cgb_dmg_suite, docboy_cgb_suite, docboy_dmg_suite,
+        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
         little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
         load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
         manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
@@ -3289,8 +3300,8 @@ mod tests {
     }
 
     #[test]
-    fn docboy_dmg_extra_suite_tracks_single_machine_docboy_rows() {
-        let manifest_text = include_str!("../data/docboy-dmg.toml");
+    fn docboy_dmg_suite_tracks_single_machine_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy/docboy-dmg.toml");
         assert!(
             !manifest_text.contains("startup ="),
             "docboy manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
@@ -3300,9 +3311,9 @@ mod tests {
             "docboy-dmg should not rely on runner-only PPU profiles"
         );
 
-        let suite = docboy_dmg_extra_suite();
+        let suite = docboy_dmg_suite();
 
-        assert_eq!(suite.name, "docboy-dmg-extra");
+        assert_eq!(suite.name, "docboy-dmg");
         assert_eq!(suite.family.as_deref(), Some("docboy-dmg"));
         assert_eq!(suite.cases.len(), 2326);
         assert!(suite.cases.iter().all(|case| {
@@ -3310,7 +3321,7 @@ mod tests {
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
-                && rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/dmg")
+                && rom_path_without_store_prefix(&case.rom_path).starts_with("dmg")
         }));
         assert_eq!(
             suite
@@ -3379,13 +3390,13 @@ mod tests {
                 "{case_id} timeout {timeout_tcycles} must reach check_at_tcycles {check_at_tcycles}"
             );
         }
-        assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-dmg"));
+        assert!(!suite_uses_extra_test_report("docboy-dmg"));
     }
 
     #[test]
-    fn docboy_cgb_extra_suite_tracks_native_cgb_docboy_rows() {
-        let manifest_text = include_str!("../data/docboy-cgb.toml");
+    fn docboy_cgb_suite_tracks_native_cgb_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy/docboy-cgb.toml");
         assert!(
             !manifest_text.contains("startup ="),
             "DocBoy CGB manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
@@ -3393,7 +3404,7 @@ mod tests {
 
         let manifest = curated_test_rom_manifests()
             .into_iter()
-            .find(|manifest| manifest.suite_name == "docboy-cgb-extra")
+            .find(|manifest| manifest.suite_name == "docboy-cgb")
             .expect("DocBoy CGB manifest should exist");
         assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb"));
         assert_eq!(manifest.cases.len(), 6815);
@@ -3402,9 +3413,9 @@ mod tests {
             643
         );
 
-        let suite = docboy_cgb_extra_suite();
+        let suite = docboy_cgb_suite();
 
-        assert_eq!(suite.name, "docboy-cgb-extra");
+        assert_eq!(suite.name, "docboy-cgb");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb"));
         assert_eq!(suite.cases.len(), 6172);
         assert!(suite.cases.iter().all(|case| {
@@ -3412,30 +3423,32 @@ mod tests {
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
-                && rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb")
+                && rom_path_without_store_prefix(&case.rom_path).starts_with("cgb")
         }));
         assert!(suite.cases.iter().all(|case| {
-            !rom_path_without_store_prefix(&case.rom_path)
-                .starts_with("docboy/cgb/blargg/cgb_sound")
+            !rom_path_without_store_prefix(&case.rom_path).starts_with("cgb/blargg/cgb_sound")
         }));
         assert!(suite.cases.iter().all(|case| {
-            !rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb/samesuite")
+            !rom_path_without_store_prefix(&case.rom_path).starts_with("cgb/samesuite")
         }));
         assert!(suite.cases.iter().all(|case| {
-            !rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb/magen")
+            !rom_path_without_store_prefix(&case.rom_path).starts_with("cgb/magen")
         }));
         assert!(suite.cases.iter().all(|case| {
-            !rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb/daid")
+            !rom_path_without_store_prefix(&case.rom_path).starts_with("cgb/daid")
         }));
         assert!(
             suite
                 .cases
                 .iter()
-                .all(|case| case.rom_path != Path::new("docboy/cgb/mattcurrie/cgb-acid2.gbc"))
+                .all(|case| case.rom_path != Path::new("cgb/mattcurrie/cgb-acid2.gbc"))
         );
-        assert!(suite.cases.iter().all(|case| {
-            case.rom_path != Path::new("docboy/cgb/little-things-gb/whichboot.gb")
-        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| { case.rom_path != Path::new("cgb/little-things-gb/whichboot.gb") })
+        );
         assert_eq!(
             suite
                 .cases
@@ -3457,7 +3470,7 @@ mod tests {
         );
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-docboy-ppu-visual-stop-ly42-during-hblank-01-stop-ly42-during-hblank-a"
-                && rom_path_without_store_prefix(&case.rom_path) == Path::new("docboy/cgb/ppu/visual/stop_ly42_during_hblank.gbc")
+                && rom_path_without_store_prefix(&case.rom_path) == Path::new("cgb/ppu/visual/stop_ly42_during_hblank.gbc")
                 && matches!(
                     case.pass_condition,
                     PassCondition::FramebufferRgb555FixtureUntilMatch {
@@ -3471,13 +3484,13 @@ mod tests {
                 == "docboy-cgb-docboy-double-speed-interactive-stop-key1-joypad0-interrupt1-ime0"
                 && !case.external_stimuli.stimuli().is_empty()
         }));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb"));
     }
 
     #[test]
-    fn docboy_cgb_dmg_extra_suite_tracks_compatibility_mode_docboy_rows() {
-        let manifest_text = include_str!("../data/docboy-cgb-dmg.toml");
+    fn docboy_cgb_dmg_suite_tracks_compatibility_mode_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy/docboy-cgb-dmg.toml");
         assert!(
             !manifest_text.contains("startup ="),
             "DocBoy CGB DMG manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
@@ -3485,7 +3498,7 @@ mod tests {
 
         let manifest = curated_test_rom_manifests()
             .into_iter()
-            .find(|manifest| manifest.suite_name == "docboy-cgb-dmg-extra")
+            .find(|manifest| manifest.suite_name == "docboy-cgb-dmg")
             .expect("DocBoy CGB DMG manifest should exist");
         assert_eq!(manifest.suite_family.as_deref(), Some("docboy-cgb-dmg"));
         assert_eq!(manifest.cases.len(), 467);
@@ -3507,16 +3520,16 @@ mod tests {
                     .starts_with(Path::new("tests/roms/cgb_dmg_mode/mooneye/ppu"))
         }));
 
-        let suite = docboy_cgb_dmg_extra_suite();
+        let suite = docboy_cgb_dmg_suite();
 
-        assert_eq!(suite.name, "docboy-cgb-dmg-extra");
+        assert_eq!(suite.name, "docboy-cgb-dmg");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg"));
         assert_eq!(suite.cases.len(), 467);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
-                && rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb-dmg")
+                && rom_path_without_store_prefix(&case.rom_path).starts_with("cgb-dmg")
         }));
         let experimental_case_ids = [
             "docboy-cgb-dmg-mode-mode-cgb-flag-84",
@@ -3557,14 +3570,14 @@ mod tests {
                 && case.id != "docboy-cgb-dmg-mooneye-boot-regs-cgb"
         }));
         assert!(suite.cases.iter().all(|case| {
-            !rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb-dmg/mealybug")
+            !rom_path_without_store_prefix(&case.rom_path).starts_with("cgb-dmg/mealybug")
         }));
         assert_eq!(
             suite
                 .cases
                 .iter()
                 .filter(|case| rom_path_without_store_prefix(&case.rom_path)
-                    == Path::new("docboy/cgb-dmg/boot/boot_vram.gb"))
+                    == Path::new("cgb-dmg/boot/boot_vram.gb"))
                 .count(),
             1,
             "DocBoy cgb_dmg_mode.json carries one exact boot_vram duplicate that should not create duplicate runnable rows"
@@ -3572,14 +3585,14 @@ mod tests {
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-mode-mode-cgb-flag-84"
                 && rom_path_without_store_prefix(&case.rom_path)
-                    == Path::new("docboy/cgb-dmg/mode/mode_cgb_flag_84.gb")
+                    == Path::new("cgb-dmg/mode/mode_cgb_flag_84.gb")
                 && case.pass_condition
                     == PassCondition::MemoryBytesEqual(vec![
                         MemoryByteExpectation::with_fail_value(0xFFF0, 0x01, 0x02),
                     ])
         }));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg"));
     }
 
     #[test]
@@ -3667,23 +3680,23 @@ mod tests {
     }
 
     #[test]
-    fn docboy_cgb_dmg_ext_extra_suite_tracks_mixed_strict_and_experimental_docboy_rows() {
-        let manifest_text = include_str!("../data/docboy-cgb-dmg-ext.toml");
+    fn docboy_cgb_dmg_ext_suite_tracks_mixed_strict_and_experimental_docboy_rows() {
+        let manifest_text = include_str!("../data/docboy/docboy-cgb-dmg-ext.toml");
         assert!(
             !manifest_text.contains("startup ="),
             "DocBoy CGB DMG-ext manifest must stay startup-neutral so Make targets choose SkipBoot or RealBoot"
         );
 
-        let suite = docboy_cgb_dmg_ext_extra_suite();
+        let suite = docboy_cgb_dmg_ext_suite();
 
-        assert_eq!(suite.name, "docboy-cgb-dmg-ext-extra");
+        assert_eq!(suite.name, "docboy-cgb-dmg-ext");
         assert_eq!(suite.family.as_deref(), Some("docboy-cgb-dmg-ext"));
         assert_eq!(suite.cases.len(), 26);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoyColor
                 && case.startup_mode == StartupMode::SkipBoot
                 && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
-                && rom_path_without_store_prefix(&case.rom_path).starts_with("docboy/cgb-dmg-ext")
+                && rom_path_without_store_prefix(&case.rom_path).starts_with("cgb-dmg-ext")
         }));
         let experimental_case_ids = [
             "docboy-cgb-dmg-ext-apu-pcm12-ch2-read",
@@ -3709,10 +3722,10 @@ mod tests {
         assert!(suite.cases.iter().any(|case| {
             case.id == "docboy-cgb-dmg-ext-mode-mode-cgb-flag-8c"
                 && rom_path_without_store_prefix(&case.rom_path)
-                    == Path::new("docboy/cgb-dmg-ext/mode/mode_cgb_flag_8c.gb")
+                    == Path::new("cgb-dmg-ext/mode/mode_cgb_flag_8c.gb")
         }));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext"));
     }
 
     #[test]
@@ -4349,10 +4362,6 @@ mod tests {
                 .expect("legacy family selection should resolve"),
             vec![
                 "ax6".to_string(),
-                "docboy-cgb".to_string(),
-                "docboy-cgb-dmg".to_string(),
-                "docboy-cgb-dmg-ext".to_string(),
-                "docboy-dmg".to_string(),
                 "gbmicrotest".to_string(),
                 "little-things-gb".to_string(),
                 "magen".to_string(),
@@ -4398,7 +4407,92 @@ mod tests {
                 .all(|case| case.report_id.as_deref() == Some(GB_EMULATOR_SHOOTOUT_REPORT_ID))
         );
         assert_eq!(mooneye_cgb_extra_suite().report_id, None);
-        assert_eq!(docboy_cgb_extra_suite().report_id, None);
+        assert_eq!(
+            docboy_cgb_suite().report_id.as_deref(),
+            Some(DOCBOY_REPORT_ID)
+        );
+    }
+
+    #[test]
+    fn curated_test_rom_families_can_be_limited_to_the_docboy_report() {
+        assert_eq!(
+            curated_test_rom_families_for_report(Some(DOCBOY_REPORT_ID))
+                .expect("DocBoy report families should resolve"),
+            vec![
+                "docboy-cgb".to_string(),
+                "docboy-cgb-dmg".to_string(),
+                "docboy-cgb-dmg-ext".to_string(),
+                "docboy-dmg".to_string(),
+            ]
+        );
+        let docboy_suite = docboy_cgb_suite();
+        assert_eq!(docboy_suite.report_id.as_deref(), Some(DOCBOY_REPORT_ID));
+        assert!(
+            docboy_suite
+                .cases
+                .iter()
+                .all(|case| case.report_id.as_deref() == Some(DOCBOY_REPORT_ID))
+        );
+    }
+
+    #[test]
+    fn docboy_report_uses_report_local_sources_and_committed_fixtures() {
+        let parsed: CuratedSourceManifestFile =
+            toml::from_str(curated_source_manifest_text(Some(DOCBOY_REPORT_ID)))
+                .expect("DocBoy source manifest should parse");
+        let allowed_families = BTreeSet::from([
+            "docboy-dmg",
+            "docboy-cgb",
+            "docboy-cgb-dmg",
+            "docboy-cgb-dmg-ext",
+        ]);
+        let required_files = parsed
+            .sources
+            .into_iter()
+            .flat_map(|source| source.required_files)
+            .collect::<Vec<_>>();
+
+        assert!(!required_files.is_empty());
+        assert!(required_files.iter().all(|file| {
+            file.family
+                .as_deref()
+                .is_some_and(|family| allowed_families.contains(family))
+        }));
+        assert!(
+            required_files
+                .iter()
+                .any(|file| { file.path.starts_with(Path::new("tests/results/dmg/docboy")) })
+        );
+        assert!(required_files.iter().all(|file| {
+            let path = file.path.to_string_lossy();
+            !path.contains("serial_two_players_basic_transfer") && !path.ends_with("ok.png")
+        }));
+
+        let fixture_prefix = Path::new("crates/gb-test-runner/data/docboy/fixtures");
+        let legacy_fixture_prefix = Path::new("crates/gb-test-runner/data/fixtures/docboy");
+        let fixture_paths = curated_test_rom_manifests()
+            .into_iter()
+            .filter(|manifest| suite_report_id(&manifest.suite_name) == Some(DOCBOY_REPORT_ID))
+            .flat_map(|manifest| manifest.cases)
+            .filter(|case| !case.disabled)
+            .flat_map(|case| {
+                case.fixture
+                    .into_iter()
+                    .flat_map(ManifestFixtureField::into_paths)
+            })
+            .collect::<Vec<_>>();
+
+        assert!(!fixture_paths.is_empty());
+        assert!(
+            fixture_paths
+                .iter()
+                .all(|path| path.starts_with(fixture_prefix))
+        );
+        assert!(
+            fixture_paths
+                .iter()
+                .all(|path| !path.starts_with(legacy_fixture_prefix))
+        );
     }
 
     #[test]
@@ -5255,8 +5349,8 @@ status = "FAIL"
     #[test]
     fn curated_test_report_omits_empty_standard_and_extra_markdown_files_for_docboy_only_runs() {
         let workspace_root = unique_temp_dir("report-docboy-only");
-        let store_root = test_rom_store_root(&workspace_root);
-        fs::create_dir_all(&store_root).expect("test rom store root should be creatable");
+        let store_root = test_rom_store_root_for_report(&workspace_root, DOCBOY_REPORT_ID);
+        fs::create_dir_all(&store_root).expect("DocBoy store root should be creatable");
         fs::write(
             store_root.join(TEST_ROM_REPORT_FILE_NAME),
             "# Test Report (0/0)\n",
@@ -5269,11 +5363,11 @@ status = "FAIL"
         .expect("stale extra report should be writable");
 
         let docboy_report = RomSuiteReport {
-            suite_name: "docboy-cgb-extra".to_string(),
+            suite_name: "docboy-cgb".to_string(),
             family: Some("docboy-cgb".to_string()),
             cases: vec![report_case(
                 "docboy-cgb-docboy-boot-boot-bg-palettes",
-                "docboy/cgb/boot/boot_bg_palettes.gbc",
+                "cgb/boot/boot_bg_palettes.gbc",
                 RomCaseOutcome::Passed,
             )],
         };
@@ -5287,8 +5381,13 @@ status = "FAIL"
             store_root.join(TEST_ROM_DOCBOY_REPORT_FILE_NAME)
         );
         assert!(report_path.exists());
-        assert!(!store_root.join(TEST_ROM_REPORT_FILE_NAME).exists());
+        assert_eq!(report_path, store_root.join(TEST_ROM_REPORT_FILE_NAME));
         assert!(!store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME).exists());
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("test-report-docboy.md")
+                .exists()
+        );
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
@@ -5324,17 +5423,17 @@ status = "FAIL"
             .expect("extra report should write");
 
         let docboy_report = RomSuiteReport {
-            suite_name: "docboy-cgb-extra".to_string(),
+            suite_name: "docboy-cgb".to_string(),
             family: Some("docboy-cgb".to_string()),
             cases: vec![
                 report_case(
                     "docboy-cgb-docboy-boot-boot-bg-palettes",
-                    "docboy/cgb/boot/boot_bg_palettes.gbc",
+                    "cgb/boot/boot_bg_palettes.gbc",
                     RomCaseOutcome::Passed,
                 ),
                 report_case(
                     "docboy-cgb-docboy-boot-boot-bg-palettes-fail",
-                    "docboy/cgb/boot/boot_bg_palettes.gbc",
+                    "cgb/boot/boot_bg_palettes.gbc",
                     RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded),
                 ),
             ],
@@ -5344,7 +5443,13 @@ status = "FAIL"
             .expect("DocBoy suite should emit a report path");
         assert_eq!(
             report_path,
-            test_rom_store_root(&workspace_root).join(TEST_ROM_DOCBOY_REPORT_FILE_NAME)
+            test_rom_store_root_for_report(&workspace_root, DOCBOY_REPORT_ID)
+                .join(TEST_ROM_DOCBOY_REPORT_FILE_NAME)
+        );
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join("test-report-docboy.md")
+                .exists()
         );
 
         let standard_report =
@@ -6025,21 +6130,22 @@ status = "PASS"
     fn report_file_name_stays_stable() {
         assert_eq!(TEST_ROM_REPORT_FILE_NAME, "test-report.md");
         assert_eq!(TEST_ROM_EXTRA_REPORT_FILE_NAME, "test-report-extra.md");
-        assert_eq!(TEST_ROM_DOCBOY_REPORT_FILE_NAME, "test-report-docboy.md");
+        assert_eq!(TEST_ROM_DOCBOY_REPORT_FILE_NAME, "test-report.md");
+        assert_eq!(TEST_ROM_DOCBOY_REPORT_DIR, DOCBOY_REPORT_ID);
         assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
         assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
         assert!(suite_uses_extra_test_report("mealybug-tearoom-cgb-extra"));
         assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
-        assert!(suite_uses_docboy_test_report("docboy-dmg-extra"));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-extra"));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-extra"));
-        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-dmg-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-extra"));
-        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext-extra"));
+        assert!(suite_uses_docboy_test_report("docboy-dmg"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg"));
+        assert!(suite_uses_docboy_test_report("docboy-cgb-dmg-ext"));
+        assert!(!suite_uses_extra_test_report("docboy-dmg"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg"));
+        assert!(!suite_uses_extra_test_report("docboy-cgb-dmg-ext"));
     }
 
     #[test]
