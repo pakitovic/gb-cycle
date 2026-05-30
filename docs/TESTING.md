@@ -42,11 +42,11 @@ Save states, replay logs, retained artifacts, and official reports must record t
 
 External ROM execution must be automatable. Manual LCD inspection is useful for debugging, but acceptance should prefer typed oracles such as serial output, cartridge-RAM status, text-console extraction, register-signature breakpoints, framebuffer fixtures, snapshots, or short traces.
 
-When working on already-known external ROM failures, timing regressions, exploratory PPU/MMIO fixes, or any ROM-driven iteration whose output may influence a go/no-go decision, preserve a baseline copy of the matching report before the run and a final copy after the run, then compare them explicitly. Use `/test/gb-emulator-shootout/test-report.md` for promoted GB Emulator Shootout suites, `/test/test-report-extra.md` for non-DocBoy extra/internal single-machine suites, and `/test/docboy/test-report.md` for large DocBoy single-machine suites. Name changed rows before summarizing the result as improved, unchanged, or regressed.
+When working on already-known external ROM failures, timing regressions, exploratory PPU/MMIO fixes, or any ROM-driven iteration whose output may influence a go/no-go decision, preserve a baseline copy of the matching report before the run and a final copy after the run, then compare them explicitly. Use `/test/gb-emulator-shootout/test-report.md` for promoted GB Emulator Shootout suites, `/test/test-report-extra.md` for non-DocBoy extra/internal single-machine suites, `/test/docboy/test-report.md` for large DocBoy single-machine suites, and `/test/gbmicrotest/test-report.md` for the gbmicrotest report suite. Name changed rows before summarizing the result as improved, unchanged, or regressed.
 
 If the working tree is not a clean baseline, compare against a clean reference such as `main` in a separate branch or worktree. Do not infer "no regressions" from memory.
 
-`gb-test-runner` owns typed ROM-case and suite metadata: console model, startup mode, execution mode, timeout, pass/fail rule, external stimulus, requested captures, report/catalog classification, and retained failure artifacts. Repo-managed redistributable ROMs live in the gitignored `/test/` store materialized from manifests and source hashes; promoted GB Emulator Shootout rows live below `/test/gb-emulator-shootout/`, DocBoy single-machine rows live below `/test/docboy/`, and non-DocBoy extra/internal rows keep the legacy `/test/` layout. Raw upstream checkouts should be temporary. Private commercial ROMs must stay outside the repository, outside CI, and outside official closure claims.
+`gb-test-runner` owns typed ROM-case and suite metadata: console model, startup mode, execution mode, timeout, pass/fail rule, external stimulus, requested captures, report/catalog classification, and retained failure artifacts. Repo-managed redistributable ROMs live in the gitignored `/test/` store materialized from manifests and source hashes; promoted GB Emulator Shootout rows live below `/test/gb-emulator-shootout/`, DocBoy single-machine rows live below `/test/docboy/`, gbmicrotest rows live directly below `/test/gbmicrotest/<rom>`, and non-DocBoy extra/internal rows keep the legacy `/test/` layout. Raw upstream checkouts should be temporary. Private commercial ROMs must stay outside the repository, outside CI, and outside official closure claims.
 
 Detailed suite names, fetch commands, report ordering, RealBoot overrides, commercial local manifests, and environment variables live in [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md).
 
@@ -78,7 +78,7 @@ Do not declare a closure area healthy while its accepted strict-mode gate is fai
 
 Coverage thresholds are enforced per repo-gated crate, not as one aggregate workspace percentage. The concrete `cargo llvm-cov --fail-under-*` values in `.cargo/config.toml` are authoritative and must not be lowered. New workspace crates should join the per-crate coverage gate in the same change that introduces them.
 
-GitHub workflows are stratified: `ci` runs Rust checks plus coverage; `test-roms` runs the promoted strict ROM subset; `test-roms-extra` runs green extra/internal exploratory lanes. Extra, DocBoy, RealBoot, commercial, red, or local-only lanes must publish separately and must not dilute the strict closure signal.
+GitHub workflows are stratified: `ci` runs Rust checks plus coverage; `test-roms` runs the promoted strict ROM subset; `test-roms-extra` runs green extra/internal exploratory lanes; `test-roms-gbmicrotest` runs gbmicrotest in its own report channel. Extra, DocBoy, RealBoot, commercial, red, or local-only lanes must publish separately and must not dilute the strict closure signal.
 
 Failure artifacts should make reruns unnecessary for first diagnosis: include logs, status rows, serial/text output, framebuffer output when relevant, snapshots, trace windows, and diffs against reference outputs when available.
 
@@ -88,7 +88,7 @@ Failure artifacts should make reruns unnecessary for first diagnosis: include lo
 - Keep public API and cross-module smoke coverage under `crates/gb-core/tests/*.rs`, with helpers under `crates/gb-core/tests/common/`.
 - Keep core-owned synthetic ROM fixtures and golden traces under `crates/gb-core/tests/fixtures/roms/` and `crates/gb-core/tests/fixtures/traces/`.
 - Keep runner-owned manifests, external-suite fixtures, linked-session fixtures, and committed oracle artifacts under `crates/gb-test-runner/data/**`.
-- Keep runnable redistributable external ROMs in the gitignored `/test/` store; report-scoped stores such as `/test/gb-emulator-shootout/` must stay below that global root and long-lived validation assets must not be scattered under `/tmp`.
+- Keep runnable redistributable external ROMs in the gitignored `/test/` store; report-scoped stores such as `/test/gb-emulator-shootout/`, `/test/docboy/`, and `/test/gbmicrotest/` must stay below that global root and long-lived validation assets must not be scattered under `/tmp`.
 - Keep commercial ROMs in developer-owned private locations only; local manifests may reference them with manifest-relative or absolute paths, but repo docs and CI must not standardize private paths.
 
 ## Linked-session policy

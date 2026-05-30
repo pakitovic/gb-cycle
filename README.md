@@ -132,8 +132,9 @@ make coverage
 make ci
 make test-roms
 make test-roms-extra
-make test-roms-cgb
 make test-roms-cgb-extra
+make test-roms-docboy
+make test-roms-gbmicrotest
 ```
 
 ### External ROM suites

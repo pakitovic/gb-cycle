@@ -8,7 +8,9 @@ use std::sync::OnceLock;
 use gb_core::{ConsoleModel, HardwareRevision, HostPlatform, JoypadButton, StartupMode};
 use serde::{Deserialize, Serialize};
 
-use crate::external_roms::{DOCBOY_REPORT_ID, GB_EMULATOR_SHOOTOUT_REPORT_ID};
+use crate::external_roms::{
+    DOCBOY_REPORT_ID, GB_EMULATOR_SHOOTOUT_REPORT_ID, GBMICROTEST_REPORT_ID,
+};
 use crate::manifest_fixture::ManifestFixtureField;
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
@@ -20,9 +22,11 @@ pub const TEST_ROM_STORE_DIR: &str = "test";
 pub const TEST_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_ROOT";
 pub const TEST_ROM_DOCBOY_REPORT_DIR: &str = DOCBOY_REPORT_ID;
 pub const TEST_ROM_GB_EMULATOR_SHOOTOUT_REPORT_DIR: &str = GB_EMULATOR_SHOOTOUT_REPORT_ID;
+pub const TEST_ROM_GBMICROTEST_REPORT_DIR: &str = GBMICROTEST_REPORT_ID;
 pub const TEST_ROM_REPORT_FILE_NAME: &str = "test-report.md";
 pub const TEST_ROM_EXTRA_REPORT_FILE_NAME: &str = "test-report-extra.md";
 pub const TEST_ROM_DOCBOY_REPORT_FILE_NAME: &str = TEST_ROM_REPORT_FILE_NAME;
+pub const TEST_ROM_GBMICROTEST_REPORT_FILE_NAME: &str = TEST_ROM_REPORT_FILE_NAME;
 
 const TEST_ROM_STATUS_DIR_NAME: &str = ".status";
 const GBEMU_SHOOTOUT_SOURCE_ID: &str = "gbemu-shootout";
@@ -45,12 +49,11 @@ const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
     "cpp",
     "mealybug-tearoom-tests",
 ];
-const CURATED_TEST_ROM_EXTRA_REPORT_FAMILY_ORDER: [&str; 7] = [
+const CURATED_TEST_ROM_EXTRA_REPORT_FAMILY_ORDER: [&str; 6] = [
     "ax6",
     "mooneye",
     "samesuite",
     "magen",
-    "gbmicrotest",
     "mealybug-tearoom-tests",
     "little-things-gb",
 ];
@@ -60,7 +63,8 @@ const CURATED_TEST_ROM_DOCBOY_REPORT_FAMILY_ORDER: [&str; 4] = [
     "docboy-cgb-dmg",
     "docboy-cgb-dmg-ext",
 ];
-const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
+const CURATED_TEST_ROM_GBMICROTEST_REPORT_FAMILY_ORDER: [&str; 1] = ["gbmicrotest"];
+const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 10] = [
     "ax6-dmg-extra",
     "cgb-boot-hwio",
     "mooneye-cgb-extra",
@@ -69,7 +73,6 @@ const EXTRA_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 11] = [
     "samesuite-cgb-extra",
     "magen-cgb-extra",
     "mealybug-tearoom-cgb-extra",
-    "gbmicrotest-dmg-extra",
     "little-things-gb-dmg-extra",
     "little-things-gb-cgb-extra",
 ];
@@ -79,13 +82,41 @@ const DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 4] = [
     "docboy-cgb-dmg",
     "docboy-cgb-dmg-ext",
 ];
+const GBMICROTEST_CURATED_TEST_ROM_REPORT_SUITE_NAMES: [&str; 1] = ["gbmicrotest"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedTestRomManifestFile {
     family: Option<String>,
     suite_name: String,
+    #[serde(flatten)]
+    defaults: CuratedTestRomCaseDefaultsFile,
     #[serde(rename = "case")]
     cases: Vec<CuratedTestRomCaseFile>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+struct CuratedTestRomCaseDefaultsFile {
+    source_id: Option<String>,
+    source_path: Option<PathBuf>,
+    report_model_suffix: Option<bool>,
+    report_label: Option<String>,
+    timeout_frames: Option<u32>,
+    timeout_tcycles: Option<u64>,
+    oracle: Option<String>,
+    expected: Option<String>,
+    fixture: Option<ManifestFixtureField>,
+    check_interval_tcycles: Option<u64>,
+    check_at_tcycles: Option<u64>,
+    memory: Option<Vec<CuratedMemoryByteExpectationFile>>,
+    #[serde(rename = "stimulus")]
+    stimuli: Option<Vec<CuratedRomStimulusFile>>,
+    console: Option<String>,
+    revision: Option<String>,
+    startup: Option<String>,
+    execution_mode: Option<String>,
+    stop_condition: Option<String>,
+    disabled: Option<bool>,
+    comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -99,22 +130,20 @@ struct CuratedTestRomCaseFile {
     report_label: Option<String>,
     timeout_frames: Option<u32>,
     timeout_tcycles: Option<u64>,
-    oracle: String,
+    oracle: Option<String>,
     expected: Option<String>,
     fixture: Option<ManifestFixtureField>,
     check_interval_tcycles: Option<u64>,
     check_at_tcycles: Option<u64>,
-    #[serde(default)]
-    memory: Vec<CuratedMemoryByteExpectationFile>,
-    #[serde(rename = "stimulus", default)]
-    stimuli: Vec<CuratedRomStimulusFile>,
+    memory: Option<Vec<CuratedMemoryByteExpectationFile>>,
+    #[serde(rename = "stimulus")]
+    stimuli: Option<Vec<CuratedRomStimulusFile>>,
     console: Option<String>,
     revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     stop_condition: Option<String>,
-    #[serde(default)]
-    disabled: bool,
+    disabled: Option<bool>,
     comment: Option<String>,
 }
 
@@ -263,6 +292,22 @@ pub(crate) fn curated_case_store_relative_path(family: &str, rom: &Path) -> Path
     curated_family_store_prefix(family).join(rom)
 }
 
+fn report_uses_flat_family_store(report_id: Option<&str>, family: &str) -> bool {
+    report_id == Some(GBMICROTEST_REPORT_ID) && family == GBMICROTEST_REPORT_ID
+}
+
+fn curated_case_store_relative_path_for_report(
+    family: &str,
+    rom: &Path,
+    report_id: Option<&str>,
+) -> PathBuf {
+    if report_uses_flat_family_store(report_id, family) {
+        rom.to_path_buf()
+    } else {
+        curated_case_store_relative_path(family, rom)
+    }
+}
+
 pub fn acid_suite() -> RomSuite {
     manifest_suite("acid")
 }
@@ -295,8 +340,8 @@ pub fn little_things_gb_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("little-things-gb-cgb-extra")
 }
 
-pub fn gbmicrotest_dmg_extra_suite() -> RomSuite {
-    manifest_suite_by_name("gbmicrotest-dmg-extra")
+pub fn gbmicrotest_suite() -> RomSuite {
+    manifest_suite_by_name("gbmicrotest")
 }
 
 pub fn docboy_dmg_suite() -> RomSuite {
@@ -388,6 +433,9 @@ pub(crate) fn rom_path_without_store_prefix(rom_path: &Path) -> &Path {
     if let Ok(stripped) = normalized_path.strip_prefix(DOCBOY_REPORT_ID) {
         normalized_path = stripped;
     }
+    if let Ok(stripped) = normalized_path.strip_prefix(GBMICROTEST_REPORT_ID) {
+        normalized_path = stripped;
+    }
     normalized_path
 }
 
@@ -418,7 +466,10 @@ pub fn curated_test_rom_families_for_report(
     report_id: Option<&str>,
 ) -> Result<Vec<String>, String> {
     if let Some(report_id) = report_id
-        && !matches!(report_id, DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID)
+        && !matches!(
+            report_id,
+            DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID | GBMICROTEST_REPORT_ID
+        )
     {
         return Err(format!("unknown curated test ROM report {report_id:?}"));
     }
@@ -443,7 +494,10 @@ fn selected_families_for_report<'a>(
     selected_families: Option<&'a BTreeSet<&'a str>>,
 ) -> Result<Option<&'a BTreeSet<&'a str>>, String> {
     if let Some(report_id) = report_id
-        && !matches!(report_id, DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID)
+        && !matches!(
+            report_id,
+            DOCBOY_REPORT_ID | GB_EMULATOR_SHOOTOUT_REPORT_ID | GBMICROTEST_REPORT_ID
+        )
     {
         return Err(format!("unknown curated test ROM report {report_id:?}"));
     }
@@ -553,21 +607,28 @@ fn replace_curated_test_rom_family_roots(
     let mut materialized_families = BTreeSet::new();
     for family in selected_cases_by_family.keys() {
         materialized_families.insert(family.clone());
-        let family_root = store_root.join(curated_family_store_prefix(family));
-        if family_root.exists() {
-            fs::remove_dir_all(&family_root).map_err(|error| {
+        let cases = selected_cases_by_family
+            .get(family)
+            .expect("selected family key should have cases");
+        if report_uses_flat_family_store(report_id, family) {
+            replace_curated_flat_family_roots(&store_root, cases, report_id)?;
+        } else {
+            let family_root = store_root.join(curated_family_store_prefix(family));
+            if family_root.exists() {
+                fs::remove_dir_all(&family_root).map_err(|error| {
+                    format!(
+                        "failed to replace curated family directory {}: {error}",
+                        family_root.display()
+                    )
+                })?;
+            }
+            fs::create_dir_all(&family_root).map_err(|error| {
                 format!(
-                    "failed to replace curated family directory {}: {error}",
+                    "failed to create curated family directory {}: {error}",
                     family_root.display()
                 )
             })?;
         }
-        fs::create_dir_all(&family_root).map_err(|error| {
-            format!(
-                "failed to create curated family directory {}: {error}",
-                family_root.display()
-            )
-        })?;
     }
 
     if let Some(selected_families) = selected_families {
@@ -581,6 +642,46 @@ fn replace_curated_test_rom_family_roots(
                 "unknown curated test ROM family selection: {}",
                 unknown_families.join(", ")
             ));
+        }
+    }
+
+    Ok(())
+}
+
+fn replace_curated_flat_family_roots(
+    store_root: &Path,
+    cases: &BTreeMap<PathBuf, CuratedTestRomCase>,
+    report_id: Option<&str>,
+) -> Result<(), String> {
+    let mut roots = BTreeSet::new();
+    for case in cases.values() {
+        let relative_path =
+            curated_case_store_relative_path_for_report(&case.family, &case.rom, report_id);
+        let Some(root) = relative_path.components().next() else {
+            continue;
+        };
+        roots.insert(PathBuf::from(root.as_os_str()));
+    }
+
+    for root in roots {
+        let root_path = store_root.join(&root);
+        if !root_path.exists() {
+            continue;
+        }
+        if root_path.is_dir() {
+            fs::remove_dir_all(&root_path).map_err(|error| {
+                format!(
+                    "failed to replace curated flat family directory {}: {error}",
+                    root_path.display()
+                )
+            })?;
+        } else {
+            fs::remove_file(&root_path).map_err(|error| {
+                format!(
+                    "failed to replace curated flat family file {}: {error}",
+                    root_path.display()
+                )
+            })?;
         }
     }
 
@@ -622,8 +723,11 @@ fn materialize_curated_test_rom_source_filtered(
         curated_test_rom_cases_by_family_from_source(selected_families, source_id, report_id)
     {
         for case in cases.into_values() {
-            let target_path =
-                store_root.join(curated_case_store_relative_path(&case.family, &case.rom));
+            let target_path = store_root.join(curated_case_store_relative_path_for_report(
+                &case.family,
+                &case.rom,
+                report_id,
+            ));
             copy_curated_source_rom(source_root, &case.source_path, &target_path)?;
             copied_targets.insert(target_path);
         }
@@ -632,7 +736,9 @@ fn materialize_curated_test_rom_source_filtered(
         for (family, source_path, target) in
             curated_explicit_required_files_for_source(source_id, selected_families, report_id)
         {
-            let target_path = store_root.join(curated_case_store_relative_path(&family, &target));
+            let target_path = store_root.join(curated_case_store_relative_path_for_report(
+                &family, &target, report_id,
+            ));
             if copied_targets.insert(target_path.clone()) {
                 copy_curated_source_rom(source_root, &source_path, &target_path)?;
             }
@@ -680,6 +786,7 @@ fn required_file_family(path: &Path) -> Option<&str> {
 fn curated_source_manifest_text(report_id: Option<&str>) -> &'static str {
     match report_id {
         Some(DOCBOY_REPORT_ID) => include_str!("../data/docboy/sources.toml"),
+        Some(GBMICROTEST_REPORT_ID) => include_str!("../data/gbmicrotest/sources.toml"),
         Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) => {
             include_str!("../data/gb-emulator-shootout/sources.toml")
         }
@@ -870,6 +977,7 @@ pub fn update_curated_test_report(
     let standard_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Standard);
     let extra_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Extra);
     let docboy_suites = report_suites_for_kind(&suites, CuratedTestReportKind::DocBoy);
+    let gbmicrotest_suites = report_suites_for_kind(&suites, CuratedTestReportKind::Gbmicrotest);
     let standard_report_path = if report_id == Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) {
         write_markdown_report_file_if_needed(
             &store_root,
@@ -902,8 +1010,20 @@ pub fn update_curated_test_report(
     } else {
         None
     };
+    let gbmicrotest_report_path = if report_id == Some(GBMICROTEST_REPORT_ID) {
+        write_markdown_report_file_if_needed(
+            &store_root,
+            TEST_ROM_GBMICROTEST_REPORT_FILE_NAME,
+            &gbmicrotest_suites,
+            CuratedTestReportKind::Gbmicrotest,
+        )?
+    } else {
+        None
+    };
 
-    let report_path = if suite_uses_docboy_test_report(&report.suite_name) {
+    let report_path = if suite_uses_gbmicrotest_test_report(&report.suite_name) {
+        gbmicrotest_report_path
+    } else if suite_uses_docboy_test_report(&report.suite_name) {
         docboy_report_path
     } else if suite_uses_extra_test_report(&report.suite_name) {
         extra_report_path
@@ -919,6 +1039,7 @@ enum CuratedTestReportKind {
     Standard,
     Extra,
     DocBoy,
+    Gbmicrotest,
 }
 
 fn report_suites_for_kind(
@@ -940,8 +1061,14 @@ fn suite_uses_docboy_test_report(suite_name: &str) -> bool {
     DOCBOY_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
 }
 
+fn suite_uses_gbmicrotest_test_report(suite_name: &str) -> bool {
+    GBMICROTEST_CURATED_TEST_ROM_REPORT_SUITE_NAMES.contains(&suite_name)
+}
+
 fn suite_test_report_kind(suite_name: &str) -> CuratedTestReportKind {
-    if suite_uses_docboy_test_report(suite_name) {
+    if suite_uses_gbmicrotest_test_report(suite_name) {
+        CuratedTestReportKind::Gbmicrotest
+    } else if suite_uses_docboy_test_report(suite_name) {
         CuratedTestReportKind::DocBoy
     } else if suite_uses_extra_test_report(suite_name) {
         CuratedTestReportKind::Extra
@@ -954,6 +1081,7 @@ fn suite_report_id(suite_name: &str) -> Option<&'static str> {
     match suite_test_report_kind(suite_name) {
         CuratedTestReportKind::Standard => Some(GB_EMULATOR_SHOOTOUT_REPORT_ID),
         CuratedTestReportKind::DocBoy => Some(DOCBOY_REPORT_ID),
+        CuratedTestReportKind::Gbmicrotest => Some(GBMICROTEST_REPORT_ID),
         CuratedTestReportKind::Extra => None,
     }
 }
@@ -974,6 +1102,7 @@ fn report_family_order_for_kind(report_kind: CuratedTestReportKind) -> &'static 
         CuratedTestReportKind::Standard => &CURATED_TEST_ROM_REPORT_FAMILY_ORDER,
         CuratedTestReportKind::Extra => &CURATED_TEST_ROM_EXTRA_REPORT_FAMILY_ORDER,
         CuratedTestReportKind::DocBoy => &CURATED_TEST_ROM_DOCBOY_REPORT_FAMILY_ORDER,
+        CuratedTestReportKind::Gbmicrotest => &CURATED_TEST_ROM_GBMICROTEST_REPORT_FAMILY_ORDER,
     }
 }
 
@@ -1384,8 +1513,8 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
             include_str!("../data/little-things-gb-cgb.toml"),
         ),
         (
-            "crates/gb-test-runner/data/gbmicrotest.toml",
-            include_str!("../data/gbmicrotest.toml"),
+            "crates/gb-test-runner/data/gbmicrotest/gbmicrotest.toml",
+            include_str!("../data/gbmicrotest/gbmicrotest.toml"),
         ),
         (
             "crates/gb-test-runner/data/docboy/docboy-dmg.toml",
@@ -1477,14 +1606,22 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
 fn parse_manifest(source_path: &'static str, source_text: &'static str) -> CuratedTestRomManifest {
     let parsed: CuratedTestRomManifestFile = toml::from_str(source_text)
         .unwrap_or_else(|error| panic!("failed to parse {source_path}: {error}"));
+    let CuratedTestRomManifestFile {
+        family,
+        suite_name,
+        defaults,
+        cases,
+    } = parsed;
+    let report_id = suite_report_id(&suite_name);
 
     CuratedTestRomManifest {
-        suite_family: parsed.family.clone(),
-        suite_name: parsed.suite_name,
-        cases: parsed
-            .cases
+        suite_family: family.clone(),
+        suite_name,
+        cases: cases
             .into_iter()
-            .map(|case| parse_manifest_case(source_path, parsed.family.as_deref(), case))
+            .map(|case| {
+                parse_manifest_case(source_path, family.as_deref(), report_id, &defaults, case)
+            })
             .collect(),
     }
 }
@@ -1492,6 +1629,8 @@ fn parse_manifest(source_path: &'static str, source_text: &'static str) -> Curat
 fn parse_manifest_case(
     source_path: &str,
     manifest_family: Option<&str>,
+    report_id: Option<&str>,
+    defaults: &CuratedTestRomCaseDefaultsFile,
     case: CuratedTestRomCaseFile,
 ) -> CuratedTestRomCase {
     let manifest_path = source_path;
@@ -1507,11 +1646,15 @@ fn parse_manifest_case(
     let (console_model, host_platform) = parse_manifest_console_profile(
         source_path,
         &case.id,
-        case.console.as_deref().unwrap_or("dmg"),
+        case.console
+            .as_deref()
+            .or(defaults.console.as_deref())
+            .unwrap_or("dmg"),
     );
     let revision = case
         .revision
         .as_deref()
+        .or(defaults.revision.as_deref())
         .map(|revision| parse_manifest_revision(source_path, &case.id, revision))
         .unwrap_or_else(|| console_model.default_revision());
     if !console_model.supports_revision(revision) {
@@ -1523,23 +1666,53 @@ fn parse_manifest_case(
     let startup_mode = parse_manifest_startup_mode(
         source_path,
         &case.id,
-        case.startup.as_deref().unwrap_or("skip-boot"),
+        case.startup
+            .as_deref()
+            .or(defaults.startup.as_deref())
+            .unwrap_or("skip-boot"),
     );
+    let default_source_id = defaults.source_id.clone();
+    let default_source_path = defaults.source_path.clone();
+    let (report_source_id, report_source_path) = if (case.source_id.is_none()
+        && default_source_id.is_none())
+        || (case.source_path.is_none() && default_source_path.is_none())
+    {
+        resolve_report_local_source_for_case(report_id, &family, &case.rom)
+    } else {
+        (None, None)
+    };
     let source_id = case
         .source_id
+        .or(default_source_id)
+        .or(report_source_id)
         .unwrap_or_else(|| GBEMU_SHOOTOUT_SOURCE_ID.to_string());
-    let source_path = case.source_path.unwrap_or_else(|| {
-        PathBuf::from(GBEMU_SHOOTOUT_TESTROMS_DIR)
-            .join(&family)
-            .join(&case.rom)
-    });
-    let timeout = parse_manifest_timeout(&source_path, case.timeout_frames, case.timeout_tcycles);
+    let source_path = case
+        .source_path
+        .or(default_source_path)
+        .or(report_source_path)
+        .unwrap_or_else(|| {
+            PathBuf::from(GBEMU_SHOOTOUT_TESTROMS_DIR)
+                .join(&family)
+                .join(&case.rom)
+        });
+    let (timeout_frames, timeout_tcycles) =
+        if case.timeout_frames.is_some() || case.timeout_tcycles.is_some() {
+            (case.timeout_frames, case.timeout_tcycles)
+        } else {
+            (defaults.timeout_frames, defaults.timeout_tcycles)
+        };
+    let timeout = parse_manifest_timeout(&source_path, timeout_frames, timeout_tcycles);
     let case_id = case.id;
+    let oracle = case
+        .oracle
+        .or_else(|| defaults.oracle.clone())
+        .unwrap_or_else(|| panic!("missing oracle for curated case {case_id} in {manifest_path}"));
+    let disabled = case.disabled.or(defaults.disabled).unwrap_or(false);
     let comment = normalize_manifest_case_comment(
         Path::new(manifest_path),
         &case_id,
-        case.disabled,
-        case.comment,
+        disabled,
+        case.comment.or_else(|| defaults.comment.clone()),
     );
 
     CuratedTestRomCase {
@@ -1548,31 +1721,28 @@ fn parse_manifest_case(
         rom: case.rom,
         source_id,
         source_path: source_path.clone(),
-        report_model_suffix: case.report_model_suffix.unwrap_or(false),
-        report_label: case.report_label,
+        report_model_suffix: case
+            .report_model_suffix
+            .or(defaults.report_model_suffix)
+            .unwrap_or(false),
+        report_label: case.report_label.or_else(|| defaults.report_label.clone()),
         timeout,
-        oracle: case.oracle,
-        expected: case.expected,
-        fixture: case.fixture,
-        check_interval_tcycles: case.check_interval_tcycles,
-        check_at_tcycles: case.check_at_tcycles,
-        memory: case
-            .memory
-            .into_iter()
-            .map(|expectation| {
-                if let Some(fail_value) = expectation.fail_value {
-                    MemoryByteExpectation::with_fail_value(
-                        expectation.address,
-                        expectation.value,
-                        fail_value,
-                    )
-                } else {
-                    MemoryByteExpectation::new(expectation.address, expectation.value)
-                }
-            })
-            .collect(),
+        oracle,
+        expected: case.expected.or_else(|| defaults.expected.clone()),
+        fixture: case.fixture.or_else(|| defaults.fixture.clone()),
+        check_interval_tcycles: case
+            .check_interval_tcycles
+            .or(defaults.check_interval_tcycles),
+        check_at_tcycles: case.check_at_tcycles.or(defaults.check_at_tcycles),
+        memory: parse_manifest_memory(
+            case.memory
+                .or_else(|| defaults.memory.clone())
+                .unwrap_or_default(),
+        ),
         stimuli: case
             .stimuli
+            .or_else(|| defaults.stimuli.clone())
+            .unwrap_or_default()
             .into_iter()
             .map(|stimulus| parse_manifest_stimulus(&source_path, &case_id, stimulus))
             .collect(),
@@ -1580,11 +1750,81 @@ fn parse_manifest_case(
         host_platform,
         revision,
         startup_mode,
-        execution_mode: case.execution_mode,
-        stop_condition: case.stop_condition,
-        disabled: case.disabled,
+        execution_mode: case
+            .execution_mode
+            .or_else(|| defaults.execution_mode.clone()),
+        stop_condition: case
+            .stop_condition
+            .or_else(|| defaults.stop_condition.clone()),
+        disabled,
         comment,
     }
+}
+
+fn resolve_report_local_source_for_case(
+    report_id: Option<&str>,
+    family: &str,
+    rom: &Path,
+) -> (Option<String>, Option<PathBuf>) {
+    let Some(report_id) = report_id else {
+        return (None, None);
+    };
+
+    let parsed: CuratedSourceManifestFile =
+        toml::from_str(curated_source_manifest_text(Some(report_id))).unwrap_or_else(|error| {
+            panic!("failed to parse curated source manifest for report {report_id:?}: {error}")
+        });
+    for source in parsed.sources {
+        for file in source.required_files {
+            if curated_required_file_matches_case(&file, family, rom) {
+                return (Some(source.id), Some(file.path));
+            }
+        }
+    }
+
+    panic!(
+        "missing report-local source path for curated case {family}/{} in report {report_id:?}",
+        rom.display()
+    );
+}
+
+fn curated_required_file_matches_case(
+    file: &CuratedRequiredFile,
+    family: &str,
+    rom: &Path,
+) -> bool {
+    if !matches!(
+        file.path
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some("gb" | "gbc")
+    ) {
+        return false;
+    }
+
+    let Some((file_family, file_rom)) = curated_required_rom_path(file.clone()) else {
+        return false;
+    };
+    file_family == family && file_rom == rom
+}
+
+fn parse_manifest_memory(
+    memory: Vec<CuratedMemoryByteExpectationFile>,
+) -> Vec<MemoryByteExpectation> {
+    memory
+        .into_iter()
+        .map(|expectation| {
+            if let Some(fail_value) = expectation.fail_value {
+                MemoryByteExpectation::with_fail_value(
+                    expectation.address,
+                    expectation.value,
+                    fail_value,
+                )
+            } else {
+                MemoryByteExpectation::new(expectation.address, expectation.value)
+            }
+        })
+        .collect()
 }
 
 fn normalize_manifest_case_comment(
@@ -1715,7 +1955,7 @@ fn parse_manifest_joypad_button(source_path: &Path, case_id: &str, button: &str)
 }
 
 fn curated_case_test_store_path(family: &str, rom: &Path, report_id: Option<&str>) -> PathBuf {
-    let store_relative_path = curated_case_store_relative_path(family, rom);
+    let store_relative_path = curated_case_store_relative_path_for_report(family, rom, report_id);
     match report_id {
         Some(report_id) => Path::new(TEST_ROM_STORE_DIR)
             .join(report_id)
@@ -2267,6 +2507,10 @@ fn parse_curated_source_rom_paths() -> Vec<(String, PathBuf)> {
             include_str!("../data/docboy/sources.toml"),
         ),
         (
+            "gbmicrotest curated source manifest",
+            include_str!("../data/gbmicrotest/sources.toml"),
+        ),
+        (
             "GB Emulator Shootout curated source manifest",
             include_str!("../data/gb-emulator-shootout/sources.toml"),
         ),
@@ -2359,11 +2603,13 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 mod tests {
     use super::{
         CURATED_TEST_ROM_REPORT_FAMILY_ORDER, CuratedSourceManifestFile, CuratedTestReportKind,
-        CuratedTestRomCase, CuratedTestRomCaseFile, CuratedTestRomManifestFile, DOCBOY_REPORT_ID,
-        GB_EMULATOR_SHOOTOUT_REPORT_ID, GBEMU_SHOOTOUT_SOURCE_ID, PersistedCaseStatus,
-        PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
-        REPORT_STATUS_PASS_EMOJI, TEST_ROM_DOCBOY_REPORT_DIR, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
-        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
+        CuratedTestRomCase, CuratedTestRomCaseDefaultsFile, CuratedTestRomCaseFile,
+        CuratedTestRomManifestFile, DOCBOY_REPORT_ID, GB_EMULATOR_SHOOTOUT_REPORT_ID,
+        GBEMU_SHOOTOUT_SOURCE_ID, GBMICROTEST_REPORT_ID, PersistedCaseStatus, PersistedSuiteStatus,
+        REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
+        TEST_ROM_DOCBOY_REPORT_DIR, TEST_ROM_DOCBOY_REPORT_FILE_NAME,
+        TEST_ROM_EXTRA_REPORT_FILE_NAME, TEST_ROM_GBMICROTEST_REPORT_DIR,
+        TEST_ROM_GBMICROTEST_REPORT_FILE_NAME, TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR,
         TEST_ROM_STATUS_DIR_NAME, TEST_ROM_STORE_DIR, ax6_dmg_extra_suite, ax6_suite,
         blargg_cgb_sound_suite, blargg_curated_suites, blargg_memory_text_output_spec,
         capture_plan_for_pass_condition, cgb_boot_hwio_suite, copy_curated_rom, cpp_suite,
@@ -2371,19 +2617,19 @@ mod tests {
         curated_test_rom_families_for_report, curated_test_rom_family_suites,
         curated_test_rom_manifest_texts, curated_test_rom_manifests, discover_test_rom_store_root,
         docboy_cgb_dmg_ext_suite, docboy_cgb_dmg_suite, docboy_cgb_suite, docboy_dmg_suite,
-        failure_artifacts_for_pass_condition, gbmicrotest_dmg_extra_suite,
-        little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
-        load_persisted_suite_status, magen_cgb_extra_suite, manifest_case_report_rom_display,
-        manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
-        materialize_curated_test_rom_store, mealybug_tearoom_cgb_extra_suite,
-        mooneye_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite, parse_manifest_case,
+        failure_artifacts_for_pass_condition, gbmicrotest_suite, little_things_gb_cgb_extra_suite,
+        little_things_gb_dmg_extra_suite, load_persisted_suite_status, magen_cgb_extra_suite,
+        manifest_case_report_rom_display, manifest_case_to_rom_test_case,
+        materialize_curated_test_rom_families, materialize_curated_test_rom_store,
+        mealybug_tearoom_cgb_extra_suite, mooneye_cgb_extra_suite,
+        mooneye_sgb_boot_regs_extra_suite, parse_manifest, parse_manifest_case,
         parse_manifest_console_model, parse_manifest_host_platform, render_markdown_report,
         report_family_order_for_kind, report_family_rank, report_rom_display,
         report_status_display, required_file_family, rom_path_without_store_prefix,
         samesuite_apu_suite, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite,
         sort_persisted_case_statuses, suite_report_id, suite_uses_docboy_test_report,
-        suite_uses_extra_test_report, test_rom_store_root, test_rom_store_root_for_report,
-        update_curated_test_report,
+        suite_uses_extra_test_report, suite_uses_gbmicrotest_test_report, test_rom_store_root,
+        test_rom_store_root_for_report, update_curated_test_report,
     };
     use crate::manifest_fixture::ManifestFixtureField;
     use crate::{
@@ -2559,20 +2805,20 @@ mod tests {
     }
 
     #[test]
-    fn curated_manifest_cases_declare_console_explicitly() {
+    fn curated_manifest_cases_resolve_console_explicitly() {
         for (source_path, source_text) in curated_test_rom_manifest_texts() {
             let manifest: CuratedTestRomManifestFile = toml::from_str(source_text)
                 .unwrap_or_else(|error| panic!("failed to parse {source_path}: {error}"));
             let missing_console = manifest
                 .cases
                 .iter()
-                .filter(|case| case.console.is_none())
+                .filter(|case| case.console.is_none() && manifest.defaults.console.is_none())
                 .map(|case| case.id.as_str())
                 .collect::<Vec<_>>();
 
             assert!(
                 missing_console.is_empty(),
-                "{source_path} cases missing explicit console: {missing_console:?}"
+                "{source_path} cases missing case-level or manifest-level console: {missing_console:?}"
             );
         }
     }
@@ -3165,43 +3411,43 @@ mod tests {
     }
 
     #[test]
-    fn gbmicrotest_dmg_extra_suite_marks_only_reset_facing_rows_custom_boot() {
+    fn gbmicrotest_suite_marks_only_reset_facing_rows_custom_boot() {
         const CUSTOM_BOOT_PPU_TIMING_ROMS: &[&str] = &[
-            "gbmicrotest/ppu/hblank_int_scx0_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx0_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx0_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx1_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx1_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx1_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx1_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx2_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx2_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx2_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx2_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx3_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx3_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx3_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx3_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx4_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx4_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx4_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx4_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx5_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx5_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx5_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx5_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx6_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx6_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx6_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx6_nops_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx7_if_a.gb",
-            "gbmicrotest/ppu/hblank_int_scx7_if_b.gb",
-            "gbmicrotest/ppu/hblank_int_scx7_if_c.gb",
-            "gbmicrotest/ppu/hblank_int_scx7_nops_b.gb",
-            "gbmicrotest/ppu/line_65_ly.gb",
+            "ppu/hblank_int_scx0_if_a.gb",
+            "ppu/hblank_int_scx0_if_b.gb",
+            "ppu/hblank_int_scx0_if_c.gb",
+            "ppu/hblank_int_scx1_if_a.gb",
+            "ppu/hblank_int_scx1_if_b.gb",
+            "ppu/hblank_int_scx1_if_c.gb",
+            "ppu/hblank_int_scx1_nops_b.gb",
+            "ppu/hblank_int_scx2_if_a.gb",
+            "ppu/hblank_int_scx2_if_b.gb",
+            "ppu/hblank_int_scx2_if_c.gb",
+            "ppu/hblank_int_scx2_nops_b.gb",
+            "ppu/hblank_int_scx3_if_a.gb",
+            "ppu/hblank_int_scx3_if_b.gb",
+            "ppu/hblank_int_scx3_if_c.gb",
+            "ppu/hblank_int_scx3_nops_b.gb",
+            "ppu/hblank_int_scx4_if_a.gb",
+            "ppu/hblank_int_scx4_if_b.gb",
+            "ppu/hblank_int_scx4_if_c.gb",
+            "ppu/hblank_int_scx4_nops_b.gb",
+            "ppu/hblank_int_scx5_if_a.gb",
+            "ppu/hblank_int_scx5_if_b.gb",
+            "ppu/hblank_int_scx5_if_c.gb",
+            "ppu/hblank_int_scx5_nops_b.gb",
+            "ppu/hblank_int_scx6_if_a.gb",
+            "ppu/hblank_int_scx6_if_b.gb",
+            "ppu/hblank_int_scx6_if_c.gb",
+            "ppu/hblank_int_scx6_nops_b.gb",
+            "ppu/hblank_int_scx7_if_a.gb",
+            "ppu/hblank_int_scx7_if_b.gb",
+            "ppu/hblank_int_scx7_if_c.gb",
+            "ppu/hblank_int_scx7_nops_b.gb",
+            "ppu/line_65_ly.gb",
         ];
 
-        let manifest_text = include_str!("../data/gbmicrotest.toml");
+        let manifest_text = include_str!("../data/gbmicrotest/gbmicrotest.toml");
         assert!(
             manifest_text.matches("startup = \"custom-boot\"").count()
                 == 62 + CUSTOM_BOOT_PPU_TIMING_ROMS.len(),
@@ -3211,21 +3457,37 @@ mod tests {
             !manifest_text.contains("startup_ppu_profile"),
             "gbmicrotest should rely on core CustomBoot PPU publication instead of runner profiles"
         );
+        assert!(!manifest_text.contains("source_id ="));
+        assert!(!manifest_text.contains("source_path ="));
+        assert_eq!(
+            manifest_text
+                .matches("oracle = \"memory-byte-equals\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            manifest_text
+                .matches("memory = [{ address = 65410, value = 1 }]")
+                .count(),
+            1
+        );
 
-        let suite = gbmicrotest_dmg_extra_suite();
+        let suite = gbmicrotest_suite();
 
-        assert_eq!(suite.name, "gbmicrotest-dmg-extra");
+        assert_eq!(suite.name, "gbmicrotest");
         assert_eq!(suite.family.as_deref(), Some("gbmicrotest"));
+        assert_eq!(suite.report_id.as_deref(), Some(GBMICROTEST_REPORT_ID));
         assert_eq!(suite.cases.len(), 438);
         assert!(suite.cases.iter().all(|case| {
             case.console_model == ConsoleModel::GameBoy
                 && case.execution_mode == crate::ExecutionMode::Strict
                 && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
+                && case.rom_path.starts_with(Path::new("test/gbmicrotest"))
                 && case.capture_plan.contains(CaptureKind::MemoryBytes)
                 && case.capture_plan.contains(CaptureKind::Snapshot)
                 && case.failure_artifacts.contains(CaptureKind::MemoryBytes)
                 && case.failure_artifacts.contains(CaptureKind::Snapshot)
-                && rom_path_without_store_prefix(&case.rom_path).starts_with("gbmicrotest")
+                && !rom_path_without_store_prefix(&case.rom_path).starts_with("gbmicrotest")
                 && case.pass_condition
                     == PassCondition::MemoryBytesEqual(vec![MemoryByteExpectation::new(
                         0xFF82, 0x01,
@@ -3238,7 +3500,7 @@ mod tests {
                 .filter(|case| {
                     rom_path_without_store_prefix(&case.rom_path)
                         .to_string_lossy()
-                        .starts_with("gbmicrotest/boot/poweron_")
+                        .starts_with("boot/poweron_")
                         && case.startup_mode == StartupMode::CustomBoot
                 })
                 .count(),
@@ -3263,7 +3525,7 @@ mod tests {
             case.startup_mode
                 == if rom_path_without_store_prefix(&case.rom_path)
                     .to_string_lossy()
-                    .starts_with("gbmicrotest/boot/poweron_")
+                    .starts_with("boot/poweron_")
                     || reset_facing_ppu_timing_row
                 {
                     StartupMode::CustomBoot
@@ -3272,12 +3534,12 @@ mod tests {
                 }
         }));
         let dma_rows = [
-            "gbmicrotest/dma/dma_0x1000.gb",
-            "gbmicrotest/dma/dma_0x9000.gb",
-            "gbmicrotest/dma/dma_0xA000.gb",
-            "gbmicrotest/dma/dma_0xC000.gb",
-            "gbmicrotest/dma/dma_0xE000.gb",
-            "gbmicrotest/dma/dma_timing_a.gb",
+            "dma/dma_0x1000.gb",
+            "dma/dma_0x9000.gb",
+            "dma/dma_0xA000.gb",
+            "dma/dma_0xC000.gb",
+            "dma/dma_0xE000.gb",
+            "dma/dma_timing_a.gb",
         ];
         for rom_path in dma_rows {
             assert!(
@@ -3292,11 +3554,14 @@ mod tests {
             .iter()
             .find(|case| case.id == "gbmicrotest-interrupts-is-if-set-during-ime0")
             .expect("long IME=0 IF visibility row should stay in the DocBoy manifest");
-        assert_eq!(long_spin_if_ime0.timeout, Timeout::TCycles(2_000_000));
+        assert_eq!(long_spin_if_ime0.timeout, Timeout::Frames(30));
         assert!(suite.cases.iter().all(|case| {
-            case.id == long_spin_if_ime0.id || case.timeout == Timeout::TCycles(1_000_000)
+            case.id == long_spin_if_ime0.id || case.timeout == Timeout::Frames(15)
         }));
-        assert!(suite_uses_extra_test_report("gbmicrotest-dmg-extra"));
+        assert!(suite_uses_gbmicrotest_test_report("gbmicrotest"));
+        assert!(!suite_uses_extra_test_report("gbmicrotest"));
+        assert!(crate::built_in_rom_suite_by_name("gbmicrotest").is_some());
+        assert!(crate::built_in_rom_suite_by_name("gbmicrotest-dmg-extra").is_none());
     }
 
     #[test]
@@ -4362,7 +4627,6 @@ mod tests {
                 .expect("legacy family selection should resolve"),
             vec![
                 "ax6".to_string(),
-                "gbmicrotest".to_string(),
                 "little-things-gb".to_string(),
                 "magen".to_string(),
                 "mealybug-tearoom-tests".to_string(),
@@ -4411,6 +4675,10 @@ mod tests {
             docboy_cgb_suite().report_id.as_deref(),
             Some(DOCBOY_REPORT_ID)
         );
+        assert_eq!(
+            gbmicrotest_suite().report_id.as_deref(),
+            Some(GBMICROTEST_REPORT_ID)
+        );
     }
 
     #[test]
@@ -4432,6 +4700,23 @@ mod tests {
                 .cases
                 .iter()
                 .all(|case| case.report_id.as_deref() == Some(DOCBOY_REPORT_ID))
+        );
+    }
+
+    #[test]
+    fn curated_test_rom_families_can_be_limited_to_the_gbmicrotest_report() {
+        assert_eq!(
+            curated_test_rom_families_for_report(Some(GBMICROTEST_REPORT_ID))
+                .expect("gbmicrotest report families should resolve"),
+            vec!["gbmicrotest".to_string()]
+        );
+        let suite = gbmicrotest_suite();
+        assert_eq!(suite.report_id.as_deref(), Some(GBMICROTEST_REPORT_ID));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.report_id.as_deref() == Some(GBMICROTEST_REPORT_ID))
         );
     }
 
@@ -4493,6 +4778,44 @@ mod tests {
                 .iter()
                 .all(|path| !path.starts_with(legacy_fixture_prefix))
         );
+    }
+
+    #[test]
+    fn gbmicrotest_report_uses_report_local_sources_without_case_source_fields() {
+        let parsed: CuratedSourceManifestFile =
+            toml::from_str(curated_source_manifest_text(Some(GBMICROTEST_REPORT_ID)))
+                .expect("gbmicrotest source manifest should parse");
+        assert_eq!(parsed.sources.len(), 1);
+        assert_eq!(parsed.sources[0].id, "gbmicrotest");
+        assert_eq!(parsed.sources[0].required_files.len(), 438);
+        assert!(parsed.sources[0].required_files.iter().all(|file| {
+            file.family.as_deref() == Some("gbmicrotest")
+                && file.rom.is_some()
+                && file
+                    .path
+                    .starts_with(Path::new("tests/roms/dmg/gbmicrotest"))
+        }));
+
+        let manifest: CuratedTestRomManifestFile =
+            toml::from_str(include_str!("../data/gbmicrotest/gbmicrotest.toml"))
+                .expect("gbmicrotest manifest should parse");
+        assert_eq!(manifest.suite_name, "gbmicrotest");
+        assert_eq!(manifest.family.as_deref(), Some("gbmicrotest"));
+        assert_eq!(
+            manifest.defaults.oracle.as_deref(),
+            Some("memory-byte-equals")
+        );
+        assert_eq!(manifest.defaults.console.as_deref(), Some("dmg"));
+        assert_eq!(manifest.defaults.timeout_frames, Some(15));
+        assert_eq!(manifest.defaults.memory.as_ref().map(Vec::len), Some(1));
+        assert!(manifest.cases.iter().all(|case| {
+            case.source_id.is_none()
+                && case.source_path.is_none()
+                && case.oracle.is_none()
+                && case.memory.is_none()
+                && case.timeout_tcycles.is_none()
+                && (case.timeout_frames.is_none() || case.timeout_frames == Some(30))
+        }));
     }
 
     #[test]
@@ -5411,11 +5734,11 @@ status = "FAIL"
             .expect("SameSuite report should write");
 
         let extra_report = RomSuiteReport {
-            suite_name: "gbmicrotest-dmg-extra".to_string(),
-            family: Some("gbmicrotest".to_string()),
+            suite_name: "little-things-gb-dmg-extra".to_string(),
+            family: Some("little-things-gb".to_string()),
             cases: vec![report_case(
-                "gbmicrotest-boot-poweron-bgp-000",
-                "gbmicrotest/boot/poweron_bgp_000.gb",
+                "little-things-gb-dmg-double-halt-cancel",
+                "little-things-gb/double-halt-cancel.gb",
                 RomCaseOutcome::Passed,
             )],
         };
@@ -5457,13 +5780,13 @@ status = "FAIL"
                 .expect("standard report should be readable");
         assert!(standard_report.contains("boot_regs-cgb.gb"));
         assert!(!standard_report.contains("boot_bg_palettes.gbc"));
-        assert!(!standard_report.contains("poweron_bgp_000.gb"));
+        assert!(!standard_report.contains("double-halt-cancel.gb"));
 
         let rendered_extra = fs::read_to_string(
             test_rom_store_root(&workspace_root).join(TEST_ROM_EXTRA_REPORT_FILE_NAME),
         )
         .expect("extra report should be readable");
-        assert!(rendered_extra.contains("poweron_bgp_000.gb"));
+        assert!(rendered_extra.contains("double-halt-cancel.gb"));
         assert!(!rendered_extra.contains("boot_bg_palettes.gbc"));
 
         let rendered_docboy =
@@ -5474,6 +5797,56 @@ status = "FAIL"
         )));
         assert!(!rendered_docboy.contains("boot_regs-cgb.gb"));
         assert!(!rendered_docboy.contains("poweron_bgp_000.gb"));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
+    }
+
+    #[test]
+    fn curated_test_report_routes_gbmicrotest_suite_to_gbmicrotest_markdown_file() {
+        let workspace_root = unique_temp_dir("report-gbmicrotest");
+        let store_root = test_rom_store_root_for_report(&workspace_root, GBMICROTEST_REPORT_ID);
+        fs::create_dir_all(&store_root).expect("gbmicrotest store root should be creatable");
+        fs::write(
+            store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME),
+            "# Test Report (0/0)\n",
+        )
+        .expect("stale extra report should be writable");
+
+        let gbmicrotest_report = RomSuiteReport {
+            suite_name: "gbmicrotest".to_string(),
+            family: Some("gbmicrotest".to_string()),
+            cases: vec![report_case(
+                "gbmicrotest-halt-halt-bug",
+                "test/gbmicrotest/halt/halt_bug.gb",
+                RomCaseOutcome::Passed,
+            )],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &gbmicrotest_report)
+            .expect("gbmicrotest report should write")
+            .expect("gbmicrotest suite should emit a report path");
+
+        assert_eq!(
+            report_path,
+            store_root.join(TEST_ROM_GBMICROTEST_REPORT_FILE_NAME)
+        );
+        assert_eq!(
+            fs::read_to_string(&report_path).expect("gbmicrotest report should be readable"),
+            format!(
+                "# Test Report (1/1)\n\n| family | rom | status |\n| --- | --- | --- |\n| gbmicrotest | halt/halt_bug.gb | {REPORT_STATUS_PASS_EMOJI} |\n"
+            )
+        );
+        assert!(
+            store_root
+                .join(TEST_ROM_STATUS_DIR_NAME)
+                .join("gbmicrotest.toml")
+                .exists()
+        );
+        assert!(!store_root.join(TEST_ROM_EXTRA_REPORT_FILE_NAME).exists());
+        assert!(
+            !test_rom_store_root(&workspace_root)
+                .join(TEST_ROM_EXTRA_REPORT_FILE_NAME)
+                .exists()
+        );
 
         fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
@@ -5987,11 +6360,77 @@ status = "PASS"
     }
 
     #[test]
+    fn parse_manifest_applies_case_defaults_from_manifest_header() {
+        let manifest = parse_manifest(
+            "test-manifest.toml",
+            r#"
+family = "defaulted"
+suite_name = "ax6-dmg-extra"
+source_id = "custom-source"
+console = "cgb"
+startup = "custom-boot"
+execution_mode = "permissive"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "info-framebuffer"
+memory = [{ address = 65410, value = 1 }]
+
+[[stimulus]]
+tcycle = 4
+button = "a"
+pressed = true
+
+[[case]]
+id = "inherited"
+rom = "inherited.gb"
+
+[[case]]
+id = "overridden"
+rom = "overridden.gb"
+console = "dmg"
+timeout_frames = 30
+oracle = "serial-contains"
+expected = "Passed"
+memory = []
+stimulus = []
+"#,
+        );
+
+        assert_eq!(manifest.cases.len(), 2);
+        assert_eq!(manifest.cases[0].source_id, "custom-source");
+        assert_eq!(
+            manifest.cases[0].source_path,
+            Path::new("testroms/defaulted/inherited.gb")
+        );
+        assert_eq!(manifest.cases[0].console_model, ConsoleModel::GameBoyColor);
+        assert_eq!(manifest.cases[0].startup_mode, StartupMode::CustomBoot);
+        assert_eq!(
+            manifest.cases[0].execution_mode.as_deref(),
+            Some("permissive")
+        );
+        assert!(manifest.cases[0].report_model_suffix);
+        assert_eq!(manifest.cases[0].timeout, Timeout::Frames(180));
+        assert_eq!(manifest.cases[0].oracle, "info-framebuffer");
+        assert_eq!(manifest.cases[0].memory.len(), 1);
+        assert_eq!(manifest.cases[0].stimuli.len(), 1);
+
+        assert_eq!(manifest.cases[1].console_model, ConsoleModel::GameBoy);
+        assert_eq!(manifest.cases[1].timeout, Timeout::Frames(30));
+        assert_eq!(manifest.cases[1].oracle, "serial-contains");
+        assert_eq!(manifest.cases[1].expected.as_deref(), Some("Passed"));
+        assert!(manifest.cases[1].report_model_suffix);
+        assert!(manifest.cases[1].memory.is_empty());
+        assert!(manifest.cases[1].stimuli.is_empty());
+    }
+
+    #[test]
     #[should_panic(expected = "missing family")]
     fn parse_manifest_case_rejects_familyless_mixed_cases() {
         let _ = parse_manifest_case(
             "test-manifest.toml",
             None,
+            None,
+            &CuratedTestRomCaseDefaultsFile::default(),
             CuratedTestRomCaseFile {
                 family: None,
                 id: "familyless".to_string(),
@@ -6002,19 +6441,19 @@ status = "PASS"
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
-                oracle: "info-framebuffer".to_string(),
+                oracle: Some("info-framebuffer".to_string()),
                 expected: None,
                 fixture: None,
                 check_interval_tcycles: None,
                 check_at_tcycles: None,
-                memory: Vec::new(),
-                stimuli: Vec::new(),
+                memory: None,
+                stimuli: None,
                 console: None,
                 revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                disabled: false,
+                disabled: None,
                 comment: None,
             },
         );
@@ -6025,6 +6464,8 @@ status = "PASS"
         let case = parse_manifest_case(
             "test-manifest.toml",
             Some("docboy-dmg"),
+            None,
+            &CuratedTestRomCaseDefaultsFile::default(),
             CuratedTestRomCaseFile {
                 family: None,
                 id: "disabled-with-comment".to_string(),
@@ -6035,19 +6476,19 @@ status = "PASS"
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
-                oracle: "info-framebuffer".to_string(),
+                oracle: Some("info-framebuffer".to_string()),
                 expected: None,
                 fixture: None,
                 check_interval_tcycles: None,
                 check_at_tcycles: None,
-                memory: Vec::new(),
-                stimuli: Vec::new(),
+                memory: None,
+                stimuli: None,
                 console: Some("dmg".to_string()),
                 revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                disabled: true,
+                disabled: Some(true),
                 comment: Some("  hardware-incompatible oracle  ".to_string()),
             },
         );
@@ -6065,6 +6506,8 @@ status = "PASS"
         let _ = parse_manifest_case(
             "test-manifest.toml",
             Some("docboy-dmg"),
+            None,
+            &CuratedTestRomCaseDefaultsFile::default(),
             CuratedTestRomCaseFile {
                 family: None,
                 id: "disabled-without-comment".to_string(),
@@ -6075,19 +6518,19 @@ status = "PASS"
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
-                oracle: "info-framebuffer".to_string(),
+                oracle: Some("info-framebuffer".to_string()),
                 expected: None,
                 fixture: None,
                 check_interval_tcycles: None,
                 check_at_tcycles: None,
-                memory: Vec::new(),
-                stimuli: Vec::new(),
+                memory: None,
+                stimuli: None,
                 console: Some("dmg".to_string()),
                 revision: None,
                 startup: None,
                 execution_mode: None,
                 stop_condition: None,
-                disabled: true,
+                disabled: Some(true),
                 comment: Some("   ".to_string()),
             },
         );
@@ -6132,12 +6575,16 @@ status = "PASS"
         assert_eq!(TEST_ROM_EXTRA_REPORT_FILE_NAME, "test-report-extra.md");
         assert_eq!(TEST_ROM_DOCBOY_REPORT_FILE_NAME, "test-report.md");
         assert_eq!(TEST_ROM_DOCBOY_REPORT_DIR, DOCBOY_REPORT_ID);
+        assert_eq!(TEST_ROM_GBMICROTEST_REPORT_FILE_NAME, "test-report.md");
+        assert_eq!(TEST_ROM_GBMICROTEST_REPORT_DIR, GBMICROTEST_REPORT_ID);
         assert!(suite_uses_extra_test_report("ax6-dmg-extra"));
         assert!(suite_uses_extra_test_report("cgb-boot-hwio"));
         assert!(suite_uses_extra_test_report("mooneye-cgb-extra"));
         assert!(suite_uses_extra_test_report("samesuite-dmg-extra"));
         assert!(suite_uses_extra_test_report("mealybug-tearoom-cgb-extra"));
         assert!(suite_uses_extra_test_report("little-things-gb-dmg-extra"));
+        assert!(!suite_uses_extra_test_report("gbmicrotest"));
+        assert!(suite_uses_gbmicrotest_test_report("gbmicrotest"));
         assert!(suite_uses_docboy_test_report("docboy-dmg"));
         assert!(suite_uses_docboy_test_report("docboy-cgb"));
         assert!(suite_uses_docboy_test_report("docboy-cgb-dmg"));
@@ -6187,6 +6634,20 @@ status = "PASS"
             report_family_rank(
                 "magen",
                 report_family_order_for_kind(CuratedTestReportKind::Extra)
+            )
+            .is_some()
+        );
+        assert_eq!(
+            report_family_rank(
+                "gbmicrotest",
+                report_family_order_for_kind(CuratedTestReportKind::Extra)
+            ),
+            None
+        );
+        assert!(
+            report_family_rank(
+                "gbmicrotest",
+                report_family_order_for_kind(CuratedTestReportKind::Gbmicrotest)
             )
             .is_some()
         );

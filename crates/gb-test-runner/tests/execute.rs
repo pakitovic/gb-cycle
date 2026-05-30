@@ -589,10 +589,21 @@ fn runner_resolves_roms_from_the_default_repo_managed_test_rom_store() {
         PassCondition::SerialContains("R".to_string()),
     );
 
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let previous = env::var_os(TEST_ROM_ROOT_ENV_VAR);
+    unsafe {
+        env::remove_var(TEST_ROM_ROOT_ENV_VAR);
+    }
     let report = RomRunner::new()
         .with_workspace_root(&temp_dir)
         .run_case(&case)
         .expect("default test-rom-store case should execute");
+    unsafe {
+        match previous {
+            Some(value) => env::set_var(TEST_ROM_ROOT_ENV_VAR, value),
+            None => env::remove_var(TEST_ROM_ROOT_ENV_VAR),
+        }
+    }
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("R"));

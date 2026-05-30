@@ -16,7 +16,8 @@ use crate::curated_test_roms::{
 };
 use crate::{
     DOCBOY_REPORT_ID, ExternalRomRequiredFile, ExternalRomSource, GB_EMULATOR_SHOOTOUT_REPORT_ID,
-    curated_test_rom_families_for_report, load_external_rom_source_manifest_for_report,
+    GBMICROTEST_REPORT_ID, curated_test_rom_families_for_report,
+    load_external_rom_source_manifest_for_report,
 };
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const LEGACY_REPORT_ID: &str = "legacy";
@@ -45,7 +46,7 @@ pub fn fetch_test_roms_help_text() -> &'static str {
         "Usage: cargo run -p gb-test-runner --bin fetch_test_roms -- [--force] <report-id> <family> [family ...]\n",
         "\n",
         "Fetches the pinned upstream ROM source(s) into temporary checkout(s), materializes the curated runnable families and upstream oracle fixtures under test/ or test/<report-id>, and removes the raw checkout afterwards.\n",
-        "Report ids: `legacy` for the legacy extra inventory, `docboy` for DocBoy single-machine families, or `gb-emulator-shootout` for promoted GB Emulator Shootout families.\n",
+        "Report ids: `legacy` for the legacy extra inventory, `docboy` for DocBoy single-machine families, `gbmicrotest` for gbmicrotest, or `gb-emulator-shootout` for promoted GB Emulator Shootout families.\n",
         "At least one explicit family must be provided. `all`, `null`, and empty selections are not accepted.\n",
     )
 }
@@ -147,7 +148,7 @@ where
         match argument.as_ref() {
             "--force" => force = true,
             "--report" => return Err(
-                "fetch_test_roms expects the report as the first positional argument; use \"legacy\", \"docboy\", or \"gb-emulator-shootout\"".to_string(),
+                "fetch_test_roms expects the report as the first positional argument; use \"legacy\", \"docboy\", \"gbmicrotest\", or \"gb-emulator-shootout\"".to_string(),
             ),
             "--help" | "-h" => return Ok(FetchTestRomsAction::ShowHelp),
             other if report.is_none() => report = Some(other.to_string()),
@@ -157,7 +158,7 @@ where
 
     let Some(report) = report else {
         return Err(
-            "curated test ROM report must be provided; use \"legacy\", \"docboy\", or \"gb-emulator-shootout\""
+            "curated test ROM report must be provided; use \"legacy\", \"docboy\", \"gbmicrotest\", or \"gb-emulator-shootout\""
                 .to_string(),
         );
     };
@@ -187,9 +188,10 @@ fn parse_fetch_report_id(report: &str) -> Result<Option<String>, String> {
     match report {
         LEGACY_REPORT_ID => Ok(None),
         DOCBOY_REPORT_ID => Ok(Some(DOCBOY_REPORT_ID.to_string())),
+        GBMICROTEST_REPORT_ID => Ok(Some(GBMICROTEST_REPORT_ID.to_string())),
         GB_EMULATOR_SHOOTOUT_REPORT_ID => Ok(Some(GB_EMULATOR_SHOOTOUT_REPORT_ID.to_string())),
         other => Err(format!(
-            "unknown curated test ROM report {other:?}; available reports: {LEGACY_REPORT_ID}, {DOCBOY_REPORT_ID}, {GB_EMULATOR_SHOOTOUT_REPORT_ID}"
+            "unknown curated test ROM report {other:?}; available reports: {LEGACY_REPORT_ID}, {DOCBOY_REPORT_ID}, {GBMICROTEST_REPORT_ID}, {GB_EMULATOR_SHOOTOUT_REPORT_ID}"
         )),
     }
 }
@@ -577,12 +579,13 @@ mod tests {
     use crate::{
         DOCBOY_REPORT_ID, DOCBOY_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_SOURCE_MANIFEST_PATH,
         GB_EMULATOR_SHOOTOUT_REPORT_ID, GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH,
-        ax6_dmg_extra_suite, ax6_suite, blargg_cgb_sound_suite, cgb_boot_hwio_suite,
-        curated_test_rom_families_for_report, curated_test_rom_family_suites,
-        docboy_cgb_dmg_ext_suite, docboy_cgb_dmg_suite, docboy_cgb_suite, docboy_dmg_suite,
-        gbmicrotest_dmg_extra_suite, magen_cgb_extra_suite, mooneye_sgb_boot_regs_extra_suite,
-        samesuite_apu_suite, samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite,
-        test_rom_store_root, test_rom_store_root_for_report,
+        GBMICROTEST_REPORT_ID, GBMICROTEST_SOURCE_MANIFEST_PATH, ax6_dmg_extra_suite, ax6_suite,
+        blargg_cgb_sound_suite, cgb_boot_hwio_suite, curated_test_rom_families_for_report,
+        curated_test_rom_family_suites, docboy_cgb_dmg_ext_suite, docboy_cgb_dmg_suite,
+        docboy_cgb_suite, docboy_dmg_suite, gbmicrotest_suite, magen_cgb_extra_suite,
+        mooneye_sgb_boot_regs_extra_suite, samesuite_apu_suite, samesuite_cgb_extra_suite,
+        samesuite_dmg_extra_suite, samesuite_suite, test_rom_store_root,
+        test_rom_store_root_for_report,
     };
 
     use super::{
@@ -643,6 +646,16 @@ mod tests {
 
     fn write_docboy_report_manifest_sources(workspace_root: &Path, sources: &[&ExternalRomSource]) {
         write_manifest_sources_at(&workspace_root.join(DOCBOY_SOURCE_MANIFEST_PATH), sources);
+    }
+
+    fn write_gbmicrotest_report_manifest_sources(
+        workspace_root: &Path,
+        sources: &[&ExternalRomSource],
+    ) {
+        write_manifest_sources_at(
+            &workspace_root.join(GBMICROTEST_SOURCE_MANIFEST_PATH),
+            sources,
+        );
     }
 
     fn write_manifest_sources_at(manifest_path: &Path, sources: &[&ExternalRomSource]) {
@@ -1025,14 +1038,6 @@ mod tests {
             "tests/results/cgb/little-things-gb/whichboot.png",
             b"docboy-cgb-whichboot-png",
         );
-        for case in gbmicrotest_dmg_extra_suite().cases {
-            let rom_path = crate::curated_test_roms::rom_path_without_store_prefix(&case.rom_path);
-            write_required_file(
-                root,
-                &format!("tests/roms/dmg/{}", rom_path.display()),
-                case.id.as_bytes(),
-            );
-        }
         for case in docboy_dmg_suite().cases {
             let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
             write_required_file(
@@ -1101,6 +1106,17 @@ mod tests {
             "docboy/serial/serial_two_players_basic_transfer_slave_sc_00.gb",
         ] {
             write_required_file(root, &format!("tests/roms/dmg/{rom}"), rom.as_bytes());
+        }
+    }
+
+    fn write_gbmicrotest_repo(root: &Path) {
+        for case in gbmicrotest_suite().cases {
+            let rom_path = crate::curated_test_roms::rom_path_without_store_prefix(&case.rom_path);
+            write_required_file(
+                root,
+                &format!("tests/roms/dmg/gbmicrotest/{}", rom_path.display()),
+                case.id.as_bytes(),
+            );
         }
     }
 
@@ -1193,19 +1209,6 @@ mod tests {
                     None,
                 ),
             ])
-            .chain(gbmicrotest_dmg_extra_suite().cases.into_iter().map(|case| {
-                let rom_path =
-                    crate::curated_test_roms::rom_path_without_store_prefix(&case.rom_path);
-                let rom = rom_path
-                    .strip_prefix("gbmicrotest")
-                    .expect("gbmicrotest manifest ROMs should stay under the gbmicrotest family");
-                let rom = rom.display().to_string();
-                required_file(
-                    &format!("tests/roms/dmg/{}", rom_path.display()),
-                    "gbmicrotest",
-                    Some(rom.as_str()),
-                )
-            }))
             .chain(docboy_dmg_suite().cases.into_iter().map(|case| {
                 let rom = strip_curated_store_prefix(&case.rom_path, "docboy-dmg");
                 let rom = rom.display().to_string();
@@ -1303,6 +1306,37 @@ mod tests {
         }
     }
 
+    fn build_gbmicrotest_source(
+        git_url: String,
+        git_rev: String,
+        root: &Path,
+    ) -> ExternalRomSource {
+        let required_file = |path: &str, rom: &str| ExternalRomRequiredFile {
+            path: PathBuf::from(path),
+            family: Some("gbmicrotest".to_string()),
+            rom: Some(PathBuf::from(rom)),
+            target: None,
+            sha256: sha256_hex(
+                &fs::read(root.join(path)).expect("required gbmicrotest file should be readable"),
+            ),
+        };
+        ExternalRomSource {
+            id: "gbmicrotest".to_string(),
+            git_url,
+            git_rev,
+            required_files: gbmicrotest_suite()
+                .cases
+                .into_iter()
+                .map(|case| {
+                    let rom_path =
+                        crate::curated_test_roms::rom_path_without_store_prefix(&case.rom_path);
+                    let rom = rom_path.display().to_string();
+                    required_file(&format!("tests/roms/dmg/gbmicrotest/{rom}"), rom.as_str())
+                })
+                .collect(),
+        }
+    }
+
     #[test]
     fn parse_fetch_command_arguments_supports_help_force_and_family_selection() {
         assert_eq!(
@@ -1325,6 +1359,15 @@ mod tests {
                 force: false,
                 report_id: Some("docboy".to_string()),
                 requested_families: vec!["docboy-dmg".to_string()],
+            })
+        );
+        assert_eq!(
+            parse_fetch_test_roms_arguments(["gbmicrotest", "gbmicrotest"])
+                .expect("gbmicrotest report fetch args should parse"),
+            FetchTestRomsAction::Fetch(FetchTestRomsOptions {
+                force: false,
+                report_id: Some("gbmicrotest".to_string()),
+                requested_families: vec!["gbmicrotest".to_string()],
             })
         );
         assert_eq!(
@@ -1674,6 +1717,48 @@ mod tests {
                 .expect("command output should be utf-8")
                 .contains(&format!(
                     "materialized curated test ROM families docboy-dmg into {}",
+                    report_store_root.display()
+                ))
+        );
+
+        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    }
+
+    #[test]
+    fn fetch_command_materializes_gbmicrotest_without_a_nested_family_directory() {
+        let workspace_root = unique_temp_dir("materialize-gbmicrotest-report-family");
+        let gbmicrotest_root = workspace_root.join("gbmicrotest-upstream");
+        write_gbmicrotest_repo(&gbmicrotest_root);
+        let gbmicrotest_rev = commit_upstream_repo(&gbmicrotest_root);
+        let gbmicrotest_source = build_gbmicrotest_source(
+            gbmicrotest_root.display().to_string(),
+            gbmicrotest_rev,
+            &gbmicrotest_root,
+        );
+        write_gbmicrotest_report_manifest_sources(&workspace_root, &[&gbmicrotest_source]);
+
+        let mut output = Vec::new();
+        run_fetch_test_roms_command(
+            [GBMICROTEST_REPORT_ID, "gbmicrotest"],
+            &workspace_root,
+            &mut output,
+        )
+        .expect("gbmicrotest selected-family fetch command should succeed");
+
+        let report_store_root =
+            test_rom_store_root_for_report(&workspace_root, GBMICROTEST_REPORT_ID);
+        assert!(report_store_root.join("halt/halt_bug.gb").exists());
+        assert!(
+            report_store_root
+                .join("interrupts/is_if_set_during_ime0.gb")
+                .exists()
+        );
+        assert!(!report_store_root.join("gbmicrotest").exists());
+        assert!(
+            String::from_utf8(output)
+                .expect("command output should be utf-8")
+                .contains(&format!(
+                    "materialized curated test ROM store into {}",
                     report_store_root.display()
                 ))
         );

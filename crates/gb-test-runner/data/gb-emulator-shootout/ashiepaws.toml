@@ -1,13 +1,13 @@
 family = "ashiepaws"
 suite_name = "ashiepaws"
+console = "dmg"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
 
 [[case]]
 id = "ashiepaws-bully-dmg"
 rom = "bully.gb"
-console = "dmg"
 report_model_suffix = true
-timeout_frames = 30
-oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
 
 [[case]]
@@ -15,7 +15,6 @@ id = "ashiepaws-bully-cgb"
 rom = "bully.gb"
 console = "cgb"
 report_model_suffix = true
-timeout_frames = 30
 oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
 startup = "custom-boot"
@@ -23,7 +22,4 @@ startup = "custom-boot"
 [[case]]
 id = "ashiepaws-strikethrough"
 rom = "strikethrough.gb"
-console = "dmg"
-timeout_frames = 30
-oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/ashiepaws/strikethrough.png"

@@ -2,15 +2,18 @@
 ROM_PROFILE ?= release-max
 LEGACY_REPORT := legacy
 DOCBOY_REPORT := docboy
+GBMICROTEST_REPORT := gbmicrotest
 GB_EMULATOR_SHOOTOUT_REPORT := gb-emulator-shootout
 DOCBOY_TEST_ROOT := test/$(DOCBOY_REPORT)
 DOCBOY_ARTIFACT_ROOT := $(DOCBOY_TEST_ROOT)/.artifacts
+GBMICROTEST_TEST_ROOT := test/$(GBMICROTEST_REPORT)
+GBMICROTEST_ARTIFACT_ROOT := $(GBMICROTEST_TEST_ROOT)/.artifacts
 GB_EMULATOR_SHOOTOUT_TEST_ROOT := test/$(GB_EMULATOR_SHOOTOUT_REPORT)
 GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT := $(GB_EMULATOR_SHOOTOUT_TEST_ROOT)/.artifacts
 LEGACY_TEST_ARTIFACT_ROOT := test/.artifacts
 RUN_ROM_SUITE = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite --
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6-dmg run-samesuite run-samesuite-dmg-extra run-samesuite-cgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-mealybug run-mealybug-cgb run-cgb-boot-hwio run-blargg-cgb-sound run-samesuite-apu run-ax6-cgb
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-gbmicrotest test-roms-gbmicrotest-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6-dmg run-samesuite run-samesuite-dmg-extra run-samesuite-cgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-mealybug run-mealybug-cgb run-cgb-boot-hwio run-blargg-cgb-sound run-samesuite-apu run-ax6-cgb
 
 help:
 	@echo "Available targets:"
@@ -26,11 +29,13 @@ help:
 	@echo "  make test-roms-extra-real-boot Fetch and run the exploratory/internal extra ROM suites through verified RealBoot"
 	@echo "  make test-roms-docboy     Fetch and run all exploratory DocBoy single-machine ROM suites"
 	@echo "  make test-roms-docboy-real-boot Fetch and run all exploratory DocBoy single-machine ROM suites through verified RealBoot"
+	@echo "  make test-roms-gbmicrotest Fetch and run the gbmicrotest report suite"
+	@echo "  make test-roms-gbmicrotest-real-boot Fetch and run the gbmicrotest report suite through verified RealBoot"
 	@echo "  make test-roms-cgb-extra  Fetch and run the exploratory/internal CGB ROM suites"
 	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
 	@echo "  make fetch-test-roms      Materialize tests from the pinned upstream source(s) using temporary checkout(s)"
 	@echo "                           Set REPORT=legacy FAMILIES=\"ax6 samesuite\"; direct fetches require an explicit report and one or more explicit families"
-	@echo "                           Set REPORT=legacy for legacy extra families, REPORT=docboy for DocBoy single-machine families, or REPORT=gb-emulator-shootout for promoted families"
+	@echo "                           Set REPORT=legacy for legacy extra families, REPORT=docboy for DocBoy single-machine families, REPORT=gbmicrotest for gbmicrotest, or REPORT=gb-emulator-shootout for promoted families"
 	@echo "  make run-acid             Fetch and run the curated Acid suite"
 	@echo "  make run-ax6-dmg          Fetch and run the extra AX6 DMG RTC suite"
 	@echo "  make run-samesuite        Fetch and run the promoted consolidated SameSuite suite"
@@ -40,7 +45,7 @@ help:
 	@echo "  make run-magen-cgb        Fetch and run the extra Magen CGB suite"
 	@echo "  make run-little-things-gb Fetch and run the extra little-things-gb DMG suite"
 	@echo "  make run-little-things-gb-cgb Fetch and run the extra little-things-gb CGB suite"
-	@echo "  make run-gbmicrotest      Fetch and run the extra DocBoy gbmicrotest DMG suite"
+	@echo "  make run-gbmicrotest      Fetch and run the gbmicrotest report suite"
 	@echo "  make run-docboy-dmg       Fetch and run the DocBoy docboy/* DMG suite"
 	@echo "  make run-docboy-cgb       Fetch and run the DocBoy native CGB suite"
 	@echo "  make run-docboy-cgb-dmg   Fetch and run the DocBoy CGB GB-compatible suite"
@@ -133,13 +138,11 @@ test-roms-extra:
 	$(MAKE) run-samesuite-dmg-extra
 	$(MAKE) run-mooneye-sgb-boot-regs
 	$(MAKE) run-little-things-gb
-	$(MAKE) run-gbmicrotest
 
 test-roms-extra-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ax6-dmg
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite-dmg-extra
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-little-things-gb
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-gbmicrotest
 
 test-roms-docboy:
 	@status=0; \
@@ -156,6 +159,12 @@ test-roms-docboy-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg || status=$$?; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg-ext || status=$$?; \
 	exit $$status
+
+test-roms-gbmicrotest:
+	$(MAKE) run-gbmicrotest
+
+test-roms-gbmicrotest-real-boot: require-boot-rom-root
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-gbmicrotest
 
 test-roms-cgb-extra:
 	@status=0; \
@@ -178,7 +187,7 @@ test-roms-cgb-extra-real-boot: require-boot-rom-root
 	exit $$status
 
 fetch-test-roms:
-	@if [ -z "$(strip $(REPORT))" ]; then echo "REPORT is required; use REPORT=$(LEGACY_REPORT), REPORT=$(DOCBOY_REPORT), or REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT)"; exit 2; fi
+	@if [ -z "$(strip $(REPORT))" ]; then echo "REPORT is required; use REPORT=$(LEGACY_REPORT), REPORT=$(DOCBOY_REPORT), REPORT=$(GBMICROTEST_REPORT), or REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT)"; exit 2; fi
 	cargo run --release -q -p gb-test-runner --bin fetch_test_roms -- $(REPORT) $(FAMILIES)
 
 require-boot-rom-root:
@@ -221,8 +230,8 @@ run-little-things-gb-cgb:
 	$(RUN_ROM_SUITE) --suite little-things-gb-cgb-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/little-things-gb-cgb
 
 run-gbmicrotest:
-	$(MAKE) fetch-test-roms REPORT=$(LEGACY_REPORT) FAMILIES=gbmicrotest
-	$(RUN_ROM_SUITE) --suite gbmicrotest-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/gbmicrotest
+	$(MAKE) fetch-test-roms REPORT=$(GBMICROTEST_REPORT) FAMILIES=gbmicrotest
+	$(RUN_ROM_SUITE) --suite gbmicrotest --failure-artifact-root $(GBMICROTEST_ARTIFACT_ROOT)/gbmicrotest
 
 run-docboy-dmg:
 	$(MAKE) fetch-test-roms REPORT=$(DOCBOY_REPORT) FAMILIES=docboy-dmg

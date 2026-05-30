@@ -7,6 +7,9 @@ use serde::Deserialize;
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
 pub const DOCBOY_REPORT_ID: &str = "docboy";
 pub const DOCBOY_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/docboy/sources.toml";
+pub const GBMICROTEST_REPORT_ID: &str = "gbmicrotest";
+pub const GBMICROTEST_SOURCE_MANIFEST_PATH: &str =
+    "crates/gb-test-runner/data/gbmicrotest/sources.toml";
 pub const GB_EMULATOR_SHOOTOUT_REPORT_ID: &str = "gb-emulator-shootout";
 pub const GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH: &str =
     "crates/gb-test-runner/data/gb-emulator-shootout/sources.toml";
@@ -93,6 +96,7 @@ pub fn external_rom_source_manifest_path_for_report(
 ) -> Result<PathBuf, ExternalRomSourceManifestError> {
     match report_id {
         Some(DOCBOY_REPORT_ID) => Ok(workspace_root.join(DOCBOY_SOURCE_MANIFEST_PATH)),
+        Some(GBMICROTEST_REPORT_ID) => Ok(workspace_root.join(GBMICROTEST_SOURCE_MANIFEST_PATH)),
         Some(GB_EMULATOR_SHOOTOUT_REPORT_ID) => {
             Ok(workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH))
         }
@@ -141,7 +145,8 @@ mod tests {
     use super::{
         DOCBOY_REPORT_ID, DOCBOY_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_SOURCE_MANIFEST_PATH,
         ExternalRomSourceManifestError, GB_EMULATOR_SHOOTOUT_REPORT_ID,
-        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, external_rom_source_manifest_path,
+        GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH, GBMICROTEST_REPORT_ID,
+        GBMICROTEST_SOURCE_MANIFEST_PATH, external_rom_source_manifest_path,
         external_rom_source_manifest_path_for_report, load_external_rom_source_manifest,
         load_external_rom_source_manifest_for_report,
     };
@@ -193,6 +198,14 @@ mod tests {
             )
             .expect("GB Emulator Shootout report manifest path should resolve"),
             workspace_root.join(GB_EMULATOR_SHOOTOUT_SOURCE_MANIFEST_PATH)
+        );
+        assert_eq!(
+            external_rom_source_manifest_path_for_report(
+                workspace_root,
+                Some(GBMICROTEST_REPORT_ID)
+            )
+            .expect("gbmicrotest report manifest path should resolve"),
+            workspace_root.join(GBMICROTEST_SOURCE_MANIFEST_PATH)
         );
         assert!(matches!(
             external_rom_source_manifest_path_for_report(workspace_root, Some("unknown-report")),

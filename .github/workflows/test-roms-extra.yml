@@ -21,8 +21,6 @@ jobs:
             command: make run-samesuite
           - name: little-things-gb
             command: make run-little-things-gb
-          - name: gbmicrotest
-            command: make run-gbmicrotest
           - name: mooneye-sgb-boot-regs
             command: make run-mooneye-sgb-boot-regs
           - name: cgb-boot-hwio

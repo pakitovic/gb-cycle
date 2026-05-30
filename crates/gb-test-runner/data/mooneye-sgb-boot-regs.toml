@@ -1,17 +1,15 @@
 suite_name = "mooneye-sgb-boot-regs-extra"
+timeout_frames = 180
+oracle = "mooneye-result"
 
 [[case]]
 family = "mooneye"
 id = "mooneye-sgb-boot-regs-sgb"
 rom = "acceptance/boot_regs-sgb.gb"
 console = "sgb"
-timeout_frames = 180
-oracle = "mooneye-result"
 
 [[case]]
 family = "mooneye"
 id = "mooneye-sgb-boot-regs-sgb2"
 rom = "acceptance/boot_regs-sgb2.gb"
 console = "sgb2"
-timeout_frames = 180
-oracle = "mooneye-result"

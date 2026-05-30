@@ -936,6 +936,7 @@ sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
 path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
 target = "ppu/blocking_bgpi_increase.png"
 sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
+
 [[source.required_file]]
 path = "testroms/samesuite/sgb/command_mlt_req.gb"
 sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
@@ -943,9 +944,6 @@ sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
 [[source.required_file]]
 path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
 sha256 = "7c95c4b134c200dd3fcef71d0a61c110990c0b953a70988f2b4a54eda47992ca"
-
-# Ashiepaws rows live under GBEmulatorShootout's active `testroms/ashiepaws` paths
-# and use `ashiepaws` as the repo-local curated family.
 
 [[source.required_file]]
 path = "testroms/ashiepaws/bully.gb"

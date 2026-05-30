@@ -198,7 +198,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 ## Tests
 
 - Mooneye DMA tests
-- DocBoy `gbmicrotest/dma` ROMs in `gbmicrotest-dmg-extra`
+- DocBoy `gbmicrotest/dma` ROMs in `gbmicrotest`
 - `FF46` trigger and source-page selection tests
 - focused OAM-blocking tests
 - DMG timing-window tests that keep the documented `160`-M-cycle burst body visible while also locking the current post-`FF46` CPU-visible start/end seam

@@ -1,100 +1,65 @@
 family = "samesuite"
 suite_name = "samesuite-cgb-extra"
+source_id = "docboy"
+console = "cgb"
+report_model_suffix = true
+timeout_frames = 180
+oracle = "framebuffer-rgb555-fixture"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-align-12-cgbe"
 rom = "apu/channel_1/channel_1_align_12-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_12-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_align_12-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-align-25-cgbe"
 rom = "apu/channel_1/channel_1_align_25-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_25-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_align_25-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-align-75-cgbe"
 rom = "apu/channel_1/channel_1_align_75-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_75-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_align_75-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-freq-change-timing-cgbde"
 rom = "apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
-console = "cgb"
 revision = "cpu-cgb-d"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_freq_change_timing-cgbDE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-stop-div-cgbe"
 rom = "apu/channel_1/channel_1_stop_div-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_stop_div-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_stop_div-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-sweep-cgbe"
 rom = "apu/channel_1/channel_1_sweep-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_sweep-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-cgbe"
 rom = "apu/channel_1/channel_1_sweep_restart-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_sweep_restart-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-sweep-restart-2-cgbe"
 rom = "apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_sweep_restart_2-cgbE.png"
 disabled = true
 comment = "Disabled DocBoy-only variant: its short-hold CGB-E fixture conflicts with the promoted public GBEmulatorShootout SameSuite apu/channel_1/channel_1_sweep_restart_2.gb CGB-E oracle, which owns the APU model until stronger hardware evidence reconciles both rows."
@@ -102,22 +67,12 @@ comment = "Disabled DocBoy-only variant: its short-hold CGB-E fixture conflicts 
 [[case]]
 id = "samesuite-cgb-apu-channel-1-channel-1-volume-div-cgbe"
 rom = "apu/channel_1/channel_1_volume_div-cgbE.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_volume_div-cgbE.gb"
-console = "cgb"
 revision = "cpu-cgb-e"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_1/channel_1_volume_div-cgbE.png"
 
 [[case]]
 id = "samesuite-cgb-apu-channel-3-channel-3-wave-ram-dac-on-rw"
 rom = "apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
-source_id = "docboy"
 source_path = "tests/roms/cgb/samesuite/apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
-console = "cgb"
-report_model_suffix = true
-timeout_frames = 180
-oracle = "framebuffer-rgb555-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/samesuite-cgb/apu/channel_3/channel_3_wave_ram_dac_on_rw.png"
