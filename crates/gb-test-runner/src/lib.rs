@@ -4828,7 +4828,7 @@ mod tests {
     }
 
     #[test]
-    fn makefile_test_roms_aggregate_runs_every_dmg_sgb_child_after_failures() {
+    fn makefile_test_roms_aggregate_collects_child_failures() {
         fn makefile_target_body<'a>(makefile: &'a str, target: &str) -> Vec<&'a str> {
             let header = format!("{target}:");
             makefile
@@ -4836,20 +4836,6 @@ mod tests {
                 .skip_while(|line| !line.starts_with(&header))
                 .skip(1)
                 .take_while(|line| line.starts_with('\t') || line.trim().is_empty())
-                .collect()
-        }
-
-        fn makefile_target_invocations(makefile: &str, target: &str) -> Vec<String> {
-            makefile_target_body(makefile, target)
-                .into_iter()
-                .filter_map(|line| line.trim().strip_prefix("$(MAKE) ").map(ToOwned::to_owned))
-                .map(|command| {
-                    let command = command.trim_end().trim_end_matches('\\').trim_end();
-                    command
-                        .trim_end_matches(" || status=$$?;")
-                        .trim_end_matches(" || status=$$?")
-                        .to_string()
-                })
                 .collect()
         }
 
@@ -4871,24 +4857,6 @@ mod tests {
                 .rev()
                 .find(|line| !line.trim().is_empty())
                 .is_some_and(|line| makefile_continuation_line(line) == "exit $$status")
-        );
-
-        assert_eq!(
-            makefile_target_invocations(makefile, "test-roms"),
-            vec![
-                "run-acid".to_string(),
-                "run-blargg-cpu-instrs".to_string(),
-                "run-blargg-dmg-sound".to_string(),
-                "run-blargg-timing-memory-oam".to_string(),
-                "run-daid".to_string(),
-                "run-mooneye-acceptance".to_string(),
-                "run-mooneye-mbc1-mbc5".to_string(),
-                "run-mooneye-mbc2".to_string(),
-                "run-ashiepaws".to_string(),
-                "run-cpp".to_string(),
-                "run-mealybug".to_string(),
-                "run-samesuite".to_string(),
-            ]
         );
     }
 

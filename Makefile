@@ -8,7 +8,7 @@ LEGACY_TEST_ARTIFACT_ROOT := test/.artifacts
 RUN_ROM_SUITE = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_rom_suite --
 RUN_LINKED_SESSION = cargo run --profile $(ROM_PROFILE) -q -p gb-test-runner --bin run_linked_session --
 
-.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb test-roms-cgb-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6-dmg run-samesuite run-samesuite-dmg-extra run-samesuite-cgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-mealybug run-mealybug-cgb run-cgb-boot-hwio run-blargg-cgb-sound run-samesuite-apu run-ax6-cgb
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms test-roms-real-boot test-roms-extra test-roms-extra-real-boot test-roms-docboy test-roms-docboy-real-boot test-roms-cgb-extra test-roms-cgb-extra-real-boot fetch-test-roms require-boot-rom-root run-acid run-ax6-dmg run-samesuite run-samesuite-dmg-extra run-samesuite-cgb run-mooneye-sgb-boot-regs run-magen-cgb run-little-things-gb run-little-things-gb-cgb run-gbmicrotest run-docboy-dmg run-docboy-cgb run-docboy-cgb-dmg run-docboy-cgb-dmg-ext run-blargg-cpu-instrs run-blargg-dmg-sound run-blargg-timing-memory-oam run-daid run-mooneye-acceptance run-mooneye-mbc1-mbc5 run-mooneye-mbc2 run-mooneye-cgb run-ashiepaws run-cpp run-mealybug run-mealybug-cgb run-cgb-boot-hwio run-blargg-cgb-sound run-samesuite-apu run-ax6-cgb
 
 help:
 	@echo "Available targets:"
@@ -19,13 +19,11 @@ help:
 	@echo "  make coverage-check       Run one workspace coverage sweep, then enforce per-crate coverage gates"
 	@echo "  make coverage             Run complete workspace coverage and emit the HTML report"
 	@echo "  make test-roms            Fetch and run all local curated promoted ROM suites"
-	@echo "  make test-roms-real-boot  Fetch and run all local curated promoted family suites through verified RealBoot"
+	@echo "  make test-roms-real-boot  Fetch and run local curated promoted RealBoot-compatible ROM suites through verified RealBoot"
 	@echo "  make test-roms-extra      Fetch and run the exploratory/internal extra ROM suites"
 	@echo "  make test-roms-extra-real-boot Fetch and run the exploratory/internal extra ROM suites through verified RealBoot"
 	@echo "  make test-roms-docboy     Fetch and run all exploratory DocBoy single-machine ROM suites"
 	@echo "  make test-roms-docboy-real-boot Fetch and run all exploratory DocBoy single-machine ROM suites through verified RealBoot"
-	@echo "  make test-roms-cgb        Fetch and run the promoted green local curated CGB ROM suites"
-	@echo "  make test-roms-cgb-real-boot Fetch and run the promoted green local curated CGB ROM suites through verified RealBoot"
 	@echo "  make test-roms-cgb-extra  Fetch and run the exploratory/internal CGB ROM suites"
 	@echo "  make test-roms-cgb-extra-real-boot Fetch and run the exploratory/internal CGB ROM suites through verified RealBoot"
 	@echo "  make fetch-test-roms      Materialize tests from the pinned upstream source(s) using temporary checkout(s)"
@@ -107,6 +105,9 @@ test-roms:
 	$(MAKE) run-cpp || status=$$?; \
 	$(MAKE) run-mealybug || status=$$?; \
 	$(MAKE) run-samesuite || status=$$?; \
+	$(MAKE) run-blargg-cgb-sound || status=$$?; \
+	$(MAKE) run-samesuite-apu || status=$$?; \
+	$(MAKE) run-ax6-cgb || status=$$?; \
 	exit $$status
 
 test-roms-real-boot: require-boot-rom-root
@@ -121,6 +122,9 @@ test-roms-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ashiepaws
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-cpp
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-mealybug
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-blargg-cgb-sound
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite-apu
+	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ax6-cgb
 
 test-roms-extra:
 	$(MAKE) run-ax6-dmg
@@ -150,24 +154,6 @@ test-roms-docboy-real-boot: require-boot-rom-root
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg || status=$$?; \
 	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-docboy-cgb-dmg-ext || status=$$?; \
 	exit $$status
-
-test-roms-cgb:
-	$(MAKE) run-acid
-	$(MAKE) run-ashiepaws
-	$(MAKE) run-daid
-	$(MAKE) run-samesuite
-	$(MAKE) run-blargg-cgb-sound
-	$(MAKE) run-samesuite-apu
-	$(MAKE) run-ax6-cgb
-
-test-roms-cgb-real-boot: require-boot-rom-root
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-acid
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ashiepaws
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-daid
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-blargg-cgb-sound
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-samesuite-apu
-	GB_CYCLE_TEST_ROM_STARTUP=real-boot $(MAKE) run-ax6-cgb
 
 test-roms-cgb-extra:
 	@status=0; \
