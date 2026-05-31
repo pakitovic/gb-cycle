@@ -1986,6 +1986,18 @@ fn required_manifest_fixture_paths(
         .unwrap_or_else(|error| panic!("{error}"))
 }
 
+fn framebuffer_fixture_pass_condition(
+    fixture: Option<ManifestFixtureField>,
+    case_id: &str,
+    oracle: &str,
+) -> PassCondition {
+    let fixture_paths = required_manifest_fixture_paths(fixture, case_id, oracle);
+    match fixture_paths.as_slice() {
+        [fixture_path] => PassCondition::FramebufferFixture(fixture_path.clone()),
+        _ => PassCondition::FramebufferFixtureSet(fixture_paths),
+    }
+}
+
 fn manifest_case_to_rom_test_case(
     case: CuratedTestRomCase,
     report_id: Option<&str>,
@@ -2038,9 +2050,7 @@ fn manifest_case_to_rom_test_case(
         "info-snapshot" => PassCondition::Informational(InformationalCaptureKind::Snapshot),
         "info-framebuffer" => PassCondition::Informational(InformationalCaptureKind::Framebuffer),
         "info-trace" => PassCondition::Informational(InformationalCaptureKind::Trace),
-        "framebuffer-fixture" => {
-            PassCondition::FramebufferFixture(required_manifest_fixture_path(fixture, &id, &oracle))
-        }
+        "framebuffer-fixture" => framebuffer_fixture_pass_condition(fixture, &id, &oracle),
         "framebuffer-fixture-until-match" => PassCondition::FramebufferFixtureUntilMatch {
             fixture_path: required_manifest_fixture_path(fixture, &id, &oracle),
             check_interval_tcycles: check_interval_tcycles.unwrap_or(100_000),
@@ -2067,9 +2077,6 @@ fn manifest_case_to_rom_test_case(
                 required_manifest_fixture_path(fixture, &id, &oracle),
             )
         }
-        "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
-            required_manifest_fixture_paths(fixture, &id, &oracle),
-        ),
         other => panic!("unsupported oracle {other:?} for case {id}"),
     };
 

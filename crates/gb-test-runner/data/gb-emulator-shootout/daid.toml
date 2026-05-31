@@ -9,7 +9,7 @@ id = "daid-ppu-scanline-bgp-dmg"
 rom = "ppu_scanline_bgp.gb"
 console = "dmg"
 report_model_suffix = true
-oracle = "framebuffer-fixture-set"
+oracle = "framebuffer-fixture"
 fixture = [
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_0.dmg.png",
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_1.dmg.png",

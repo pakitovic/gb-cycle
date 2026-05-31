@@ -60,7 +60,7 @@ The generated `/test/` store is gitignored. The promoted GB Emulator Shootout re
 - Use `disabled = true` only with a non-empty `comment = "..."`; disabled rows are for explicit overfit, duplicate, impossible, upstream-disabled, or CI-budget cases, not for quietly hiding a failing oracle.
 - Use `report_model_suffix = true` only when the same upstream report label needs model-disambiguated rows such as `(DMG)` or `(GBC)`.
 - Prefer typed oracles (`serial-contains`, `mooneye-result`, `memory-byte-equals`, framebuffer fixtures, RGB555 framebuffer fixtures, explicitly named tolerance fixtures, trace fixtures, linked participant oracles) over manual visual inspection.
-- Use `fixture = "..."` for single-fixture oracles and `fixture = ["...", "..."]` for multi-reference oracles such as `framebuffer-fixture-set`; do not add a separate `fixtures` field.
+- Use `fixture = "..."` for single-fixture oracles and `fixture = ["...", "..."]` for multi-reference framebuffer fixtures; do not add a separate `fixtures` field.
 - Keep synthetic linked-session fixtures under `crates/gb-test-runner/data/fixtures/linked/**`; linked-session outputs currently retain artifacts and stdout summaries rather than Markdown report rows.
 
 ## Aggregate targets

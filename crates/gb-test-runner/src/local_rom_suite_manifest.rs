@@ -282,6 +282,22 @@ fn required_fixture_paths(
         .into_non_empty_paths(case_id, oracle)
 }
 
+fn framebuffer_fixture_pass_condition(
+    manifest_dir: &Path,
+    fixture: Option<ManifestFixtureField>,
+    case_id: &str,
+    oracle: &str,
+) -> Result<PassCondition, String> {
+    let fixture_paths = required_fixture_paths(fixture, case_id, oracle)?
+        .into_iter()
+        .map(|path| resolve_fixture_path(manifest_dir, path))
+        .collect::<Vec<_>>();
+    Ok(match fixture_paths.as_slice() {
+        [fixture_path] => PassCondition::FramebufferFixture(fixture_path.clone()),
+        _ => PassCondition::FramebufferFixtureSet(fixture_paths),
+    })
+}
+
 fn parse_pass_condition(
     manifest_dir: &Path,
     case_id: &str,
@@ -345,10 +361,9 @@ fn parse_pass_condition(
         "info-snapshot" => Ok(PassCondition::Informational(
             InformationalCaptureKind::Snapshot,
         )),
-        "framebuffer-fixture" => Ok(PassCondition::FramebufferFixture(resolve_fixture_path(
-            manifest_dir,
-            required_fixture_path(fixture, case_id, oracle)?,
-        ))),
+        "framebuffer-fixture" => {
+            framebuffer_fixture_pass_condition(manifest_dir, fixture, case_id, oracle)
+        }
         "framebuffer-fixture-until-match" => Ok(PassCondition::FramebufferFixtureUntilMatch {
             fixture_path: resolve_fixture_path(
                 manifest_dir,
@@ -391,12 +406,6 @@ fn parse_pass_condition(
                 required_fixture_path(fixture, case_id, oracle)?,
             )),
         ),
-        "framebuffer-fixture-set" => Ok(PassCondition::FramebufferFixtureSet(
-            required_fixture_paths(fixture, case_id, oracle)?
-                .into_iter()
-                .map(|path| resolve_fixture_path(manifest_dir, path))
-                .collect(),
-        )),
         "trace-fixture" => Ok(PassCondition::TraceFixture(resolve_fixture_path(
             manifest_dir,
             required_fixture_path(fixture, case_id, oracle)?,
@@ -806,7 +815,7 @@ id = "cgb-framebuffer"
 rom = "commercial/links-awakening.gb"
 console = "cgb"
 timeout_frames = 24
-oracle = "framebuffer-fixture-set"
+oracle = "framebuffer-fixture"
 fixture = ["fixtures/frame-a.png", "{absolute_fixture}"]
 
 [[case.stimulus]]
@@ -1302,21 +1311,21 @@ oracle = "serial-exact"
 
         let missing_fixture = write_manifest(
             &workspace,
-            "missing-fixture-set.toml",
+            "missing-framebuffer-fixture.toml",
             r#"
 
 [[case]]
 id = "broken"
 rom = "broken.gb"
 timeout_frames = 1
-oracle = "framebuffer-fixture-set"
+oracle = "framebuffer-fixture"
 "#,
         );
         let missing_fixture_error = load_local_rom_suite_manifest(&missing_fixture)
-            .expect_err("framebuffer-fixture-set without fixture should fail");
+            .expect_err("framebuffer-fixture without fixture should fail");
         match missing_fixture_error {
             LocalRomSuiteManifestError::Build { message, .. } => {
-                assert!(message.contains("missing fixture for framebuffer-fixture-set"));
+                assert!(message.contains("missing fixture for framebuffer-fixture"));
             }
             other => panic!("unexpected error: {other:?}"),
         }
