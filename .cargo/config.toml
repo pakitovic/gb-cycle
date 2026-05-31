@@ -1,4 +1,5 @@
 [alias]
+rom-fetch = "run -p gb-test-runner --bin fetch --"
 fmt-check = "fmt --all --check"
 lint = "clippy --workspace --all-targets -- -D warnings"
 tests = "test --workspace"

@@ -3,6 +3,7 @@ mod curated_test_roms;
 #[cfg(test)]
 mod determinism;
 pub mod external_roms;
+mod fetch;
 mod fetch_test_roms_cli;
 mod framebuffer_oracle;
 mod linked_session_manifest;
@@ -65,6 +66,7 @@ pub use external_roms::{
     external_rom_source_manifest_path_for_report, load_external_rom_source_manifest,
     load_external_rom_source_manifest_for_report,
 };
+pub use fetch::{fetch_help_text, run_fetch_command};
 pub use fetch_test_roms_cli::{fetch_test_roms_help_text, run_fetch_test_roms_command};
 pub use linked_session_manifest::{
     LinkedSessionCaptureKind, LinkedSessionCapturePlan, LinkedSessionCase,

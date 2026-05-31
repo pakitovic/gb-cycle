@@ -1,0 +1,35 @@
+status_dir = ".status"
+artifact_dir = ".artifacts"
+report_file = "test-report.md"
+
+[[report]]
+id = "gb-emulator-shootout"
+store_dir = "gb-emulator-shootout"
+sources = "gb-emulator-shootout/sources.report.toml"
+family_order = [
+  "acid",
+  "blargg",
+  "daid",
+  "ax6",
+  "mooneye",
+  "samesuite",
+  "ashiepaws",
+  "cpp",
+  "mealybug-tearoom-tests",
+]
+
+[[report]]
+id = "docboy"
+store_dir = "docboy"
+sources = "docboy/sources.report.toml"
+family_order = [
+  "docboy-dmg",
+  "docboy-cgb",
+  "docboy-cgb-dmg",
+  "docboy-cgb-dmg-ext",
+]
+
+[[report]]
+id = "gbmicrotest"
+store_dir = "gbmicrotest"
+sources = "gbmicrotest/sources.report.toml"
