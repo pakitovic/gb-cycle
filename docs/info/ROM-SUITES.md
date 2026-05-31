@@ -123,7 +123,6 @@ Promoted family chunks and promoted CGB rows share the `gb-emulator-shootout` re
 ## Direct runner usage
 
 ```bash
-cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite samesuite --failure-artifact-root test/gb-emulator-shootout/.artifacts/samesuite
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-cgb-extra --case mooneye-cgb-ppu-intr-2-mode0-timing-sprites
 cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/local-private-smoke.toml

@@ -7,7 +7,7 @@ use gb_core::StartupMode;
 use crate::{
     LinkedSessionCaseFailure, LinkedSessionCaseOutcome, LinkedSessionRunner, LinkedSessionSuite,
     LinkedSessionSuiteReport, built_in_linked_session_suite_by_name,
-    built_in_linked_session_suite_catalog, load_linked_session_suite_manifest,
+    load_linked_session_suite_manifest,
 };
 
 const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
@@ -15,7 +15,6 @@ const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LinkedSessionCliAction {
     ShowHelp,
-    ListSuites,
     Run(LinkedSessionCliOptions),
 }
 
@@ -43,7 +42,6 @@ enum ConfiguredLinkedSessionStartup {
 pub fn linked_session_cli_help_text() -> &'static str {
     concat!(
         "Usage:\n",
-        "  cargo run -p gb-test-runner --bin run_linked_session -- --list\n",
         "  cargo run -p gb-test-runner --bin run_linked_session -- --suite <suite-name> [--session <session-id>] [--failure-artifact-root <dir>]\n",
         "  cargo run -p gb-test-runner --bin run_linked_session -- --manifest <path> [--session <session-id>] [--failure-artifact-root <dir>]\n",
     )
@@ -70,7 +68,6 @@ where
 {
     match parse_linked_session_arguments(arguments)? {
         LinkedSessionCliAction::ShowHelp => write_all(output, linked_session_cli_help_text()),
-        LinkedSessionCliAction::ListSuites => write_suite_catalog(output),
         LinkedSessionCliAction::Run(options) => run_selected_suite(options, runner, output),
     }
 }
@@ -112,7 +109,6 @@ where
                 };
                 failure_artifact_root = Some(PathBuf::from(value.as_ref()));
             }
-            "--list" => return Ok(LinkedSessionCliAction::ListSuites),
             "--help" | "-h" => return Ok(LinkedSessionCliAction::ShowHelp),
             other => return Err(format!("unknown argument {other:?}; run with --help")),
         }
@@ -176,10 +172,7 @@ fn select_suite_for_options(
                 built_in_linked_session_suite_by_name(runner.workspace_root(), suite_name)
                     .map_err(|error| error.to_string())?
             else {
-                return Err(format!(
-                    "unknown linked suite {:?}; run with --list for the built-in catalog",
-                    suite_name
-                ));
+                return Err(format!("unknown linked suite {suite_name:?}"));
             };
             suite
         }
@@ -275,16 +268,6 @@ fn apply_configured_startup_override_for(
         }
     }
 
-    Ok(())
-}
-
-fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
-    for (suite_name, manifest_path) in built_in_linked_session_suite_catalog() {
-        writeln_checked(
-            output,
-            &format!("suite={suite_name} manifest={}", manifest_path.display()),
-        )?;
-    }
     Ok(())
 }
 
@@ -407,14 +390,10 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn parse_help_and_list_actions() {
+    fn parse_help_action() {
         assert_eq!(
             parse_linked_session_arguments(["--help"]).expect("help should parse"),
             LinkedSessionCliAction::ShowHelp
-        );
-        assert_eq!(
-            parse_linked_session_arguments(["--list"]).expect("list should parse"),
-            LinkedSessionCliAction::ListSuites
         );
     }
 
@@ -485,22 +464,6 @@ mod tests {
                 .expect_err("unknown startup should fail")
                 .contains("unsupported GB_CYCLE_TEST_ROM_STARTUP")
         );
-    }
-
-    #[test]
-    fn list_output_mentions_the_built_in_smoke_suite() {
-        let mut output = Vec::new();
-        run_linked_session_command_with_runner(["--list"], LinkedSessionRunner::new(), &mut output)
-            .expect("list command should succeed");
-        let output = String::from_utf8(output).expect("list output should be utf-8");
-        assert!(output.contains("suite=linked-dmg04-smoke"));
-        assert!(output.contains("linked-dmg04-smoke.toml"));
-        assert!(output.contains("suite=linked-dmg04-contracts"));
-        assert!(output.contains("linked-dmg04-contracts.toml"));
-        assert!(output.contains("suite=linked-dmg07-smoke"));
-        assert!(output.contains("linked-dmg07-smoke.toml"));
-        assert!(output.contains("suite=linked-cgb-ir-smoke"));
-        assert!(output.contains("linked-cgb-ir-smoke.toml"));
     }
 
     #[test]

@@ -14,8 +14,8 @@ use crate::external_roms::{
 use crate::manifest_fixture::ManifestFixtureField;
 use crate::{
     CaptureKind, CapturePlan, ExecutionMode, ExecutionStopCondition, ExternalStimulus,
-    ExternalStimulusAction, FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec,
-    PassCondition, RomSuite, RomSuiteReport, RomTestCase, Timeout,
+    ExternalStimulusAction, FailureArtifactPolicy, InformationalCaptureKind, MemoryByteExpectation,
+    MemoryTextOutputSpec, PassCondition, RomSuite, RomSuiteReport, RomTestCase, Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = "test";
@@ -2033,13 +2033,11 @@ fn manifest_case_to_rom_test_case(
         },
         "mooneye-result" => PassCondition::MooneyeResult,
         "memory-byte-equals" => PassCondition::MemoryBytesEqual(memory),
-        "info-serial" => PassCondition::Informational(CaptureKind::Serial),
-        "info-serial-hex" => PassCondition::Informational(CaptureKind::SerialHex),
-        "info-memory-text-output" => PassCondition::Informational(CaptureKind::MemoryTextOutput),
-        "info-blargg-console-text" => PassCondition::Informational(CaptureKind::BlarggConsoleText),
-        "info-snapshot" => PassCondition::Informational(CaptureKind::Snapshot),
-        "info-framebuffer" => PassCondition::Informational(CaptureKind::Framebuffer),
-        "info-trace" => PassCondition::Informational(CaptureKind::Trace),
+        "info-serial" => PassCondition::Informational(InformationalCaptureKind::Serial),
+        "info-serial-hex" => PassCondition::Informational(InformationalCaptureKind::SerialHex),
+        "info-snapshot" => PassCondition::Informational(InformationalCaptureKind::Snapshot),
+        "info-framebuffer" => PassCondition::Informational(InformationalCaptureKind::Framebuffer),
+        "info-trace" => PassCondition::Informational(InformationalCaptureKind::Trace),
         "framebuffer-fixture" => {
             PassCondition::FramebufferFixture(required_manifest_fixture_path(fixture, &id, &oracle))
         }
@@ -2164,7 +2162,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
             .with_capture(CaptureKind::Snapshot)
             .with_capture(CaptureKind::Serial),
         PassCondition::Informational(capture) => CapturePlan::new()
-            .with_capture(*capture)
+            .with_capture(capture.capture_kind())
             .with_capture(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferFixtureUntilMatch { .. }
@@ -2203,7 +2201,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
             .with_artifact(CaptureKind::Snapshot)
             .with_artifact(CaptureKind::Serial),
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
-            .with_artifact(*capture)
+            .with_artifact(capture.capture_kind())
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferFixtureUntilMatch { .. }
@@ -2601,6 +2599,8 @@ fn report_rom_display(family: &str, rom_path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::InformationalCaptureKind;
+
     use super::{
         CURATED_TEST_ROM_REPORT_FAMILY_ORDER, CuratedSourceManifestFile, CuratedTestReportKind,
         CuratedTestRomCase, CuratedTestRomCaseDefaultsFile, CuratedTestRomCaseFile,
@@ -4423,7 +4423,7 @@ mod tests {
             .expect("acid DMG informational case should exist");
         assert!(matches!(
             acid_info_case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::Informational(InformationalCaptureKind::Framebuffer)
         ));
         assert!(
             acid_info_case
@@ -4440,7 +4440,7 @@ mod tests {
         assert_eq!(acid_cgb_info_case.console_model, ConsoleModel::GameBoyColor);
         assert!(matches!(
             acid_cgb_info_case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::Informational(InformationalCaptureKind::Framebuffer)
         ));
         assert!(
             acid_cgb_info_case

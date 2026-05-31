@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
-    FailureArtifactPolicy, MemoryByteExpectation, MemoryTextOutputSpec, PassCondition,
-    RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
-    TEST_ROM_STORE_DIR, Timeout, acid_suite, ashiepaws_suite, blargg_curated_suites,
+    FailureArtifactPolicy, InformationalCaptureKind, MemoryByteExpectation, MemoryTextOutputSpec,
+    PassCondition, RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase,
+    StimulusTime, TEST_ROM_STORE_DIR, Timeout, acid_suite, ashiepaws_suite, blargg_curated_suites,
     built_in_rom_suite_by_name, daid_suite, mealybug_tearoom_suite, mooneye_curated_suites,
     phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
     phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
@@ -642,7 +642,7 @@ fn acid_suite_tracks_framebuffer_oracle_and_informational_cases() {
     );
     assert!(matches!(
         which_dmg_case.pass_condition,
-        PassCondition::Informational(CaptureKind::Framebuffer)
+        PassCondition::Informational(InformationalCaptureKind::Framebuffer)
     ));
 
     let which_cgb_case = suite
@@ -667,7 +667,7 @@ fn acid_suite_tracks_framebuffer_oracle_and_informational_cases() {
     );
     assert!(matches!(
         which_cgb_case.pass_condition,
-        PassCondition::Informational(CaptureKind::Framebuffer)
+        PassCondition::Informational(InformationalCaptureKind::Framebuffer)
     ));
 
     let case = suite
@@ -788,7 +788,7 @@ fn daid_suite_tracks_mixed_framebuffer_oracles() {
     assert_eq!(info_case.execution_mode, ExecutionMode::Permissive);
     assert!(matches!(
         info_case.pass_condition,
-        PassCondition::Informational(CaptureKind::Framebuffer)
+        PassCondition::Informational(InformationalCaptureKind::Framebuffer)
     ));
 }
 

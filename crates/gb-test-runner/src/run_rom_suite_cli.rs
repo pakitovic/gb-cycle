@@ -4,8 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
-    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport, Timeout,
-    built_in_rom_suite_by_name, built_in_rom_suites, early_phase_9_partial_checklist,
+    CapturedArtifacts, RomRunner, RomSuite, RomSuiteReport, Timeout, built_in_rom_suite_by_name,
     load_local_rom_suite_manifest, render_memory_bytes, update_curated_test_report,
 };
 
@@ -14,9 +13,6 @@ const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RomSuiteCliAction {
     ShowHelp,
-    ListSuites,
-    ListSuitesDetailed,
-    ShowEarlyChecklist,
     Run(RomSuiteCliOptions),
 }
 
@@ -46,9 +42,6 @@ enum ConfiguredRomSuiteStartup {
 pub fn rom_suite_cli_help_text() -> &'static str {
     concat!(
         "Usage:\n",
-        "  cargo run -p gb-test-runner --bin run_rom_suite -- --list\n",
-        "  cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed\n",
-        "  cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite-name> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>] [--threads <n>]\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --manifest <path> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>] [--threads <n>]\n",
     )
@@ -75,9 +68,6 @@ where
 {
     match parse_rom_suite_arguments(arguments)? {
         RomSuiteCliAction::ShowHelp => write_all(output, rom_suite_cli_help_text()),
-        RomSuiteCliAction::ListSuites => write_suite_catalog(output),
-        RomSuiteCliAction::ListSuitesDetailed => write_detailed_suite_catalog(output),
-        RomSuiteCliAction::ShowEarlyChecklist => write_early_hardening_checklist(output),
         RomSuiteCliAction::Run(options) => run_selected_suite(options, runner, output),
     }
 }
@@ -157,9 +147,6 @@ where
                 }
                 threads = Some(parsed);
             }
-            "--list" => return Ok(RomSuiteCliAction::ListSuites),
-            "--list-detailed" => return Ok(RomSuiteCliAction::ListSuitesDetailed),
-            "--early-checklist" => return Ok(RomSuiteCliAction::ShowEarlyChecklist),
             "--help" | "-h" => return Ok(RomSuiteCliAction::ShowHelp),
             other => return Err(format!("unknown argument {other:?}; run with --help")),
         }
@@ -243,10 +230,7 @@ fn select_suite_for_options(options: &RomSuiteCliOptions) -> Result<RomSuite, St
     let suite = match &options.target {
         RomSuiteCliTarget::BuiltIn { suite_name } => {
             let Some(suite) = built_in_rom_suite_by_name(suite_name) else {
-                return Err(format!(
-                    "unknown suite {:?}; run with --list for the built-in catalog",
-                    suite_name
-                ));
+                return Err(format!("unknown suite {suite_name:?}"));
             };
             suite
         }
@@ -399,86 +383,6 @@ fn encode_manifest_framebuffer_export(
         .map_err(|error| format!("failed to convert framebuffer capture: {}", error.message))
 }
 
-fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
-    for suite in built_in_rom_suites() {
-        writeln_checked(
-            output,
-            &format!(
-                "suite={} family={}",
-                suite.name,
-                suite.family.as_deref().unwrap_or("-"),
-            ),
-        )?;
-        for case in &suite.cases {
-            writeln_checked(output, &format!("  case={}", case.id))?;
-        }
-    }
-
-    Ok(())
-}
-
-fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
-    for suite in built_in_rom_suites() {
-        let (suite_sources, suite_oracles, suite_captures, suite_artifacts) =
-            summarize_suite_contract(&suite);
-        writeln_checked(
-            output,
-            &format!(
-                "suite={} family={} cases={} sources={} oracles={} captures={} artifacts={}",
-                suite.name,
-                suite.family.as_deref().unwrap_or("-"),
-                suite.cases.len(),
-                join_csv(&suite_sources),
-                join_csv(&suite_oracles),
-                join_csv(&suite_captures),
-                join_csv(&suite_artifacts),
-            ),
-        )?;
-        for case in &suite.cases {
-            writeln_checked(
-                output,
-                &format!(
-                    "  case={} family={} source={} oracle={} console={} revision={:?} startup={} mode={} timeout={} rom={} captures={} artifacts={}",
-                    case.id,
-                    case_catalog_family(&suite, case),
-                    case_source_name(case),
-                    pass_condition_name(&case.pass_condition),
-                    case_console_name(case),
-                    case.revision,
-                    startup_mode_name(case.startup_mode),
-                    execution_mode_name(case.execution_mode),
-                    timeout_name(case.timeout),
-                    case.rom_path.display(),
-                    join_csv(&capture_names(case.capture_plan.captures().iter().copied())),
-                    join_csv(&capture_names(
-                        case.failure_artifacts.retained().iter().copied()
-                    )),
-                ),
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
-fn write_early_hardening_checklist<W: Write>(output: &mut W) -> Result<(), String> {
-    for entry in early_phase_9_partial_checklist() {
-        writeln_checked(
-            output,
-            &format!(
-                "subsystem={} status={} evidence={} oracles={} gaps={}",
-                subsystem_name(entry.subsystem),
-                early_hardening_status_name(entry.status),
-                entry.current_evidence.join(","),
-                entry.active_oracles.join(","),
-                entry.remaining_gaps.join(","),
-            ),
-        )?;
-    }
-
-    Ok(())
-}
-
 fn write_suite_report<W: Write>(output: &mut W, report: &RomSuiteReport) -> Result<(), String> {
     writeln_checked(output, &format!("suite={}", report.suite_name))?;
 
@@ -559,201 +463,6 @@ fn write_artifacts<W: Write>(output: &mut W, artifacts: &CapturedArtifacts) -> R
     Ok(())
 }
 
-fn summarize_suite_contract(
-    suite: &crate::RomSuite,
-) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
-    let mut sources = Vec::new();
-    let mut oracles = Vec::new();
-    let mut captures = Vec::new();
-    let mut artifacts = Vec::new();
-
-    for case in &suite.cases {
-        push_unique(&mut sources, case_source_name(case).to_string());
-        push_unique(
-            &mut oracles,
-            pass_condition_name(&case.pass_condition).to_string(),
-        );
-
-        for capture in case.capture_plan.captures().iter().copied() {
-            push_unique(&mut captures, capture_name(capture).to_string());
-        }
-
-        for artifact in case.failure_artifacts.retained().iter().copied() {
-            push_unique(&mut artifacts, capture_name(artifact).to_string());
-        }
-    }
-
-    (sources, oracles, captures, artifacts)
-}
-
-fn push_unique(values: &mut Vec<String>, value: String) {
-    if !values.contains(&value) {
-        values.push(value);
-    }
-}
-
-fn join_csv(values: &[String]) -> String {
-    if values.is_empty() {
-        "-".to_string()
-    } else {
-        values.join(",")
-    }
-}
-
-fn subsystem_name(subsystem: crate::TestSubsystem) -> &'static str {
-    match subsystem {
-        crate::TestSubsystem::Cpu => "cpu",
-        crate::TestSubsystem::Interrupts => "interrupts",
-        crate::TestSubsystem::Bus => "bus",
-        crate::TestSubsystem::Cartridge => "cartridge",
-        crate::TestSubsystem::Timer => "timer",
-        crate::TestSubsystem::Ppu => "ppu",
-        crate::TestSubsystem::Dma => "dma",
-        crate::TestSubsystem::Apu => "apu",
-        crate::TestSubsystem::Boot => "boot",
-        crate::TestSubsystem::Joypad => "joypad",
-        crate::TestSubsystem::Serial => "serial",
-        crate::TestSubsystem::Scheduler => "scheduler",
-        crate::TestSubsystem::CrossSubsystem => "cross-subsystem",
-    }
-}
-
-fn early_hardening_status_name(status: EarlyHardeningStatus) -> &'static str {
-    match status {
-        EarlyHardeningStatus::InternalGateOnly => "internal-gate-only",
-        EarlyHardeningStatus::RepoGatePresent => "repo-gate-present",
-    }
-}
-
-fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
-    match pass_condition {
-        crate::PassCondition::SerialExact(_) => "serial-exact",
-        crate::PassCondition::SerialContains(_) => "serial-contains",
-        crate::PassCondition::SerialHexExact(_) => "serial-hex-exact",
-        crate::PassCondition::MemoryBytesEqual(_) => "memory-byte-equals",
-        crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
-        crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
-        crate::PassCondition::MooneyeResult => "mooneye-result",
-        crate::PassCondition::Informational(capture) => match capture {
-            crate::CaptureKind::Serial => "info-serial",
-            crate::CaptureKind::SerialHex => "info-serial-hex",
-            crate::CaptureKind::MemoryBytes => "info-memory-bytes",
-            crate::CaptureKind::MemoryTextOutput => "info-memory-text-output",
-            crate::CaptureKind::BlarggConsoleText => "info-blargg-console-text",
-            crate::CaptureKind::Framebuffer => "info-framebuffer",
-            crate::CaptureKind::Trace => "info-trace",
-            crate::CaptureKind::Snapshot => "info-snapshot",
-        },
-        crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
-        crate::PassCondition::FramebufferFixtureUntilMatch { .. } => {
-            "framebuffer-fixture-until-match"
-        }
-        crate::PassCondition::FramebufferGrayscaleFixture(_) => "framebuffer-grayscale-fixture",
-        crate::PassCondition::FramebufferRgb555Fixture(_) => "framebuffer-rgb555-fixture",
-        crate::PassCondition::FramebufferRgb555FixtureUntilMatch { .. } => {
-            "framebuffer-rgb555-fixture-until-match"
-        }
-        crate::PassCondition::FramebufferRgb555GrayscaleFixture(_) => {
-            "framebuffer-rgb555-grayscale-fixture"
-        }
-        crate::PassCondition::FramebufferRgb555GrayscaleToleranceFixture(_) => {
-            "framebuffer-rgb555-grayscale-tolerance-fixture"
-        }
-        crate::PassCondition::FramebufferFixtureSet(_) => "framebuffer-fixture-set",
-        crate::PassCondition::TraceFixture(_) => "trace-fixture",
-    }
-}
-
-fn capture_name(capture: crate::CaptureKind) -> &'static str {
-    match capture {
-        crate::CaptureKind::Serial => "serial",
-        crate::CaptureKind::SerialHex => "serial-hex",
-        crate::CaptureKind::MemoryBytes => "memory-bytes",
-        crate::CaptureKind::MemoryTextOutput => "memory-text-output",
-        crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
-        crate::CaptureKind::Framebuffer => "framebuffer",
-        crate::CaptureKind::Trace => "trace",
-        crate::CaptureKind::Snapshot => "snapshot",
-    }
-}
-
-fn capture_names<I>(captures: I) -> Vec<String>
-where
-    I: IntoIterator<Item = crate::CaptureKind>,
-{
-    captures
-        .into_iter()
-        .map(|capture| capture_name(capture).to_string())
-        .collect()
-}
-
-fn case_source_name(case: &crate::RomTestCase) -> &'static str {
-    if case.rom_path.starts_with(crate::TEST_ROM_STORE_DIR) {
-        "test-rom-store"
-    } else {
-        "repo-fixture"
-    }
-}
-
-fn case_catalog_family<'a>(suite: &'a RomSuite, case: &'a crate::RomTestCase) -> &'a str {
-    if let Ok(mut store_relative_path) = case.rom_path.strip_prefix(crate::TEST_ROM_STORE_DIR) {
-        if let Some(report_id) = case.report_id.as_deref()
-            && let Ok(report_relative_path) = store_relative_path.strip_prefix(report_id)
-        {
-            store_relative_path = report_relative_path;
-        }
-        if let Some(family) = store_relative_path
-            .components()
-            .next()
-            .and_then(|component| {
-                component
-                    .as_os_str()
-                    .to_str()
-                    .filter(|value| !value.is_empty())
-            })
-        {
-            return family;
-        }
-    }
-    suite.family.as_deref().unwrap_or("-")
-}
-
-fn case_console_name(case: &crate::RomTestCase) -> &'static str {
-    match case.host_platform {
-        gb_core::HostPlatform::Sgb => "sgb",
-        gb_core::HostPlatform::Sgb2 => "sgb2",
-        gb_core::HostPlatform::Handheld => match case.console_model {
-            gb_core::ConsoleModel::GameBoy => "game-boy",
-            gb_core::ConsoleModel::GameBoyPocket => "pocket",
-            gb_core::ConsoleModel::GameBoyLight => "light",
-            gb_core::ConsoleModel::GameBoyColor => "color",
-        },
-    }
-}
-
-fn startup_mode_name(startup_mode: gb_core::StartupMode) -> &'static str {
-    match startup_mode {
-        gb_core::StartupMode::SkipBoot => "skip-boot",
-        gb_core::StartupMode::CustomBoot => "custom-boot",
-        gb_core::StartupMode::RealBoot => "real-boot",
-    }
-}
-
-fn execution_mode_name(execution_mode: gb_core::ExecutionMode) -> &'static str {
-    match execution_mode {
-        gb_core::ExecutionMode::Strict => "strict",
-        gb_core::ExecutionMode::Permissive => "permissive",
-        gb_core::ExecutionMode::Experimental => "experimental",
-    }
-}
-
-fn timeout_name(timeout: crate::Timeout) -> String {
-    match timeout {
-        crate::Timeout::TCycles(limit) => format!("tcycles:{limit}"),
-        crate::Timeout::Frames(limit) => format!("frames:{limit}"),
-    }
-}
-
 fn write_all<W: Write>(output: &mut W, text: &str) -> Result<(), String> {
     output
         .write_all(text.as_bytes())
@@ -804,22 +513,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_arguments_supports_help_list_and_timeout_overrides() {
+    fn parse_arguments_supports_help_and_timeout_overrides() {
         assert_eq!(
             parse_rom_suite_arguments(["--help"]).expect("help should parse"),
             RomSuiteCliAction::ShowHelp
-        );
-        assert_eq!(
-            parse_rom_suite_arguments(["--list"]).expect("list should parse"),
-            RomSuiteCliAction::ListSuites
-        );
-        assert_eq!(
-            parse_rom_suite_arguments(["--list-detailed"]).expect("detailed list should parse"),
-            RomSuiteCliAction::ListSuitesDetailed
-        );
-        assert_eq!(
-            parse_rom_suite_arguments(["--early-checklist"]).expect("checklist should parse"),
-            RomSuiteCliAction::ShowEarlyChecklist
         );
         assert_eq!(
             parse_rom_suite_arguments([
@@ -1099,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn list_and_help_commands_render_human_readable_output() {
+    fn help_command_renders_human_readable_output() {
         let mut help_output = Vec::new();
         run_rom_suite_command_with_runner(["--help"], RomRunner::new(), &mut help_output)
             .expect("help command should succeed");
@@ -1107,58 +804,6 @@ mod tests {
             String::from_utf8(help_output).expect("help output should be utf-8"),
             rom_suite_cli_help_text()
         );
-
-        let mut list_output = Vec::new();
-        run_rom_suite_command_with_runner(["--list"], RomRunner::new(), &mut list_output)
-            .expect("list command should succeed");
-        let list_output = String::from_utf8(list_output).expect("list output should be utf-8");
-        assert!(list_output.contains("suite=phase-2-cpu-timing"));
-        assert!(list_output.contains("case=phase2-fetch-immediate-order"));
-
-        let mut detailed_output = Vec::new();
-        run_rom_suite_command_with_runner(
-            ["--list-detailed"],
-            RomRunner::new(),
-            &mut detailed_output,
-        )
-        .expect("detailed list command should succeed");
-        let detailed_output =
-            String::from_utf8(detailed_output).expect("detailed output should be utf-8");
-        assert!(detailed_output.contains(
-            "suite=blargg-timing-memory-oam family=blargg cases=16 sources=test-rom-store"
-        ));
-        assert!(
-            detailed_output.contains(
-                "oracles=blargg-console-text,serial-contains,memory-text-output captures=blargg-console-text,snapshot,serial,memory-text-output"
-            )
-        );
-        assert!(detailed_output.contains(
-            "case=blargg-oam-bug-1-lcd-sync family=blargg source=test-rom-store oracle=memory-text-output"
-        ));
-        assert!(
-            detailed_output
-                .contains("suite=samesuite family=samesuite cases=9 sources=test-rom-store")
-        );
-        assert!(detailed_output.contains(
-            "case=mooneye-misc-boot-regs-cgb family=mooneye source=test-rom-store oracle=mooneye-result console=color"
-        ));
-        assert!(detailed_output.contains(
-            "case=acid-which-cgb family=acid source=test-rom-store oracle=info-framebuffer console=color"
-        ));
-
-        let mut checklist_output = Vec::new();
-        run_rom_suite_command_with_runner(
-            ["--early-checklist"],
-            RomRunner::new(),
-            &mut checklist_output,
-        )
-        .expect("checklist command should succeed");
-        let checklist_output =
-            String::from_utf8(checklist_output).expect("checklist output should be utf-8");
-        assert!(checklist_output.contains("subsystem=cpu status=repo-gate-present"));
-        assert!(checklist_output.contains("subsystem=ppu status=repo-gate-present"));
-        assert!(checklist_output.contains("subsystem=timer status=repo-gate-present"));
-        assert!(checklist_output.contains("subsystem=cartridge status=repo-gate-present"));
     }
 
     #[test]

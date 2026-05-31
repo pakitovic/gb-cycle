@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::manifest_fixture::ManifestFixtureField;
 use crate::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, FailureArtifactPolicy,
-    MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, Timeout,
+    InformationalCaptureKind, MemoryByteExpectation, PassCondition, RomSuite, RomTestCase, Timeout,
 };
 
 const DEFAULT_LOCAL_ORACLE: &str = "info-framebuffer";
@@ -330,11 +330,21 @@ fn parse_pass_condition(
                     .collect(),
             ))
         }
-        "info-serial" => Ok(PassCondition::Informational(CaptureKind::Serial)),
-        "info-serial-hex" => Ok(PassCondition::Informational(CaptureKind::SerialHex)),
-        "info-framebuffer" => Ok(PassCondition::Informational(CaptureKind::Framebuffer)),
-        "info-trace" => Ok(PassCondition::Informational(CaptureKind::Trace)),
-        "info-snapshot" => Ok(PassCondition::Informational(CaptureKind::Snapshot)),
+        "info-serial" => Ok(PassCondition::Informational(
+            InformationalCaptureKind::Serial,
+        )),
+        "info-serial-hex" => Ok(PassCondition::Informational(
+            InformationalCaptureKind::SerialHex,
+        )),
+        "info-framebuffer" => Ok(PassCondition::Informational(
+            InformationalCaptureKind::Framebuffer,
+        )),
+        "info-trace" => Ok(PassCondition::Informational(
+            InformationalCaptureKind::Trace,
+        )),
+        "info-snapshot" => Ok(PassCondition::Informational(
+            InformationalCaptureKind::Snapshot,
+        )),
         "framebuffer-fixture" => Ok(PassCondition::FramebufferFixture(resolve_fixture_path(
             manifest_dir,
             required_fixture_path(fixture, case_id, oracle)?,
@@ -491,7 +501,7 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
             .with_capture(CaptureKind::MemoryBytes)
             .with_capture(CaptureKind::Snapshot),
         PassCondition::Informational(capture) => CapturePlan::new()
-            .with_capture(*capture)
+            .with_capture(capture.capture_kind())
             .with_capture(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferFixtureUntilMatch { .. }
@@ -524,7 +534,7 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
             .with_artifact(CaptureKind::MemoryBytes)
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
-            .with_artifact(*capture)
+            .with_artifact(capture.capture_kind())
             .with_artifact(CaptureKind::Snapshot),
         PassCondition::FramebufferFixture(_)
         | PassCondition::FramebufferFixtureUntilMatch { .. }
@@ -570,8 +580,8 @@ mod tests {
         failure_artifacts_for_pass_condition, load_local_rom_suite_manifest,
     };
     use crate::{
-        CaptureKind, ExternalStimulusAction, MemoryByteExpectation, MemoryTextOutputSpec,
-        PassCondition, StimulusTime,
+        CaptureKind, ExternalStimulusAction, InformationalCaptureKind, MemoryByteExpectation,
+        MemoryTextOutputSpec, PassCondition, StimulusTime,
     };
     use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
     use std::fs;
@@ -643,7 +653,7 @@ pressed = false
         assert_eq!(case.timeout, crate::Timeout::Frames(450));
         assert_eq!(
             case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::Informational(InformationalCaptureKind::Framebuffer)
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(case.capture_plan.contains(CaptureKind::Snapshot));
@@ -1097,19 +1107,19 @@ oracle = "info-snapshot"
         assert_eq!(suite.cases.len(), 4);
         assert!(matches!(
             suite.cases[0].pass_condition,
-            PassCondition::Informational(CaptureKind::Serial)
+            PassCondition::Informational(InformationalCaptureKind::Serial)
         ));
         assert!(matches!(
             suite.cases[1].pass_condition,
-            PassCondition::Informational(CaptureKind::SerialHex)
+            PassCondition::Informational(InformationalCaptureKind::SerialHex)
         ));
         assert!(matches!(
             suite.cases[2].pass_condition,
-            PassCondition::Informational(CaptureKind::Trace)
+            PassCondition::Informational(InformationalCaptureKind::Trace)
         ));
         assert!(matches!(
             suite.cases[3].pass_condition,
-            PassCondition::Informational(CaptureKind::Snapshot)
+            PassCondition::Informational(InformationalCaptureKind::Snapshot)
         ));
         assert!(suite.cases.iter().all(|case| case.rom_path == absolute_rom));
     }

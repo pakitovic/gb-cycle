@@ -128,38 +128,6 @@ pub(crate) fn enforce_missing_boot_rom_root_verification(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TestSubsystem {
-    Cpu,
-    Interrupts,
-    Bus,
-    Cartridge,
-    Timer,
-    Ppu,
-    Dma,
-    Apu,
-    Boot,
-    Joypad,
-    Serial,
-    Scheduler,
-    CrossSubsystem,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum EarlyHardeningStatus {
-    InternalGateOnly,
-    RepoGatePresent,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EarlyHardeningChecklistEntry {
-    pub subsystem: TestSubsystem,
-    pub status: EarlyHardeningStatus,
-    pub current_evidence: &'static [&'static str],
-    pub active_oracles: &'static [&'static str],
-    pub remaining_gaps: &'static [&'static str],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CaptureKind {
     Serial,
     SerialHex,
@@ -169,6 +137,27 @@ pub enum CaptureKind {
     Framebuffer,
     Trace,
     Snapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InformationalCaptureKind {
+    Serial,
+    SerialHex,
+    Framebuffer,
+    Trace,
+    Snapshot,
+}
+
+impl InformationalCaptureKind {
+    pub const fn capture_kind(self) -> CaptureKind {
+        match self {
+            Self::Serial => CaptureKind::Serial,
+            Self::SerialHex => CaptureKind::SerialHex,
+            Self::Framebuffer => CaptureKind::Framebuffer,
+            Self::Trace => CaptureKind::Trace,
+            Self::Snapshot => CaptureKind::Snapshot,
+        }
+    }
 }
 
 const DMG_FAMILY_FRAME_T_CYCLES: u64 = 70_224;
@@ -357,7 +346,7 @@ pub enum PassCondition {
     },
     BlarggConsoleTextContains(String),
     MooneyeResult,
-    Informational(CaptureKind),
+    Informational(InformationalCaptureKind),
     FramebufferFixture(PathBuf),
     FramebufferFixtureUntilMatch {
         fixture_path: PathBuf,
@@ -386,7 +375,7 @@ impl PassCondition {
             Self::MemoryTextOutputContains { .. } => CaptureKind::MemoryTextOutput,
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
-            Self::Informational(capture) => *capture,
+            Self::Informational(capture) => capture.capture_kind(),
             Self::FramebufferFixture(_)
             | Self::FramebufferFixtureUntilMatch { .. }
             | Self::FramebufferGrayscaleFixture(_)
@@ -1174,109 +1163,6 @@ pub fn built_in_linked_session_suite_by_name(
 
     let manifest_path = workspace_root.join(relative_path);
     load_linked_session_suite_manifest(&manifest_path).map(Some)
-}
-
-pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
-    vec![
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Cpu,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &["phase-2-cpu-timing", "blargg-dmg-repo-gated-family"],
-            active_oracles: &["trace-fixture", "serial-contains"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Interrupts,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &["phase-2-interrupt-timing", "blargg-dmg-repo-gated-family"],
-            active_oracles: &["trace-fixture", "blargg-console-text", "serial-contains"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Timer,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "phase-2-interrupt-timing",
-                "gb-core-unit-coverage",
-                "mooneye-acceptance-manual",
-            ],
-            active_oracles: &["trace-fixture", "mooneye-result"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Bus,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "phase-3-and-phase-4-integration-coverage",
-                "blargg-dmg-repo-gated-family",
-            ],
-            active_oracles: &["serial-contains", "memory-text-output"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Dma,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "phase-3-unit-and-integration-coverage",
-                "mooneye-acceptance-manual",
-            ],
-            active_oracles: &["trace-fixture", "mooneye-result"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Apu,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "gb-core-apu-mmio-and-power-coverage",
-                "blargg-dmg-repo-gated-family",
-            ],
-            active_oracles: &["unit-contracts", "memory-text-output"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Ppu,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "phase-4-ppu-oam-corruption",
-                "blargg-dmg-repo-gated-family",
-                "acid",
-                "mealybug-tearoom-tests",
-                "ashiepaws",
-            ],
-            active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Cartridge,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "gb-core-unit-and-integration-coverage",
-                "hardware-style-persistence-tests",
-                "phase-6-cartridge-oracle",
-                "phase-6-mbc6-fixture-tests",
-            ],
-            active_oracles: &["unit-contracts", "trace-fixture", "synthetic-serial-hex"],
-            remaining_gaps: &["cartridge-save-load-determinism"],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Joypad,
-            status: EarlyHardeningStatus::InternalGateOnly,
-            current_evidence: &["phase-5-synthetic-coverage", "gb-core-subsystem-tests"],
-            active_oracles: &["trace-fixture"],
-            remaining_gaps: &[],
-        },
-        EarlyHardeningChecklistEntry {
-            subsystem: TestSubsystem::Serial,
-            status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &[
-                "phase-5-synthetic-coverage",
-                "gb-core-subsystem-tests",
-                "mooneye-acceptance-manual",
-            ],
-            active_oracles: &["trace-fixture", "mooneye-result"],
-            remaining_gaps: &[],
-        },
-    ]
 }
 
 #[derive(Debug)]
@@ -3271,17 +3157,16 @@ mod tests {
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, CaseEvaluationInputs,
         DMG_FAMILY_FRAME_T_CYCLES, DeterministicMbc3RtcClock, ExecutionStopCondition,
         FailureArtifactPolicy, GB_EMULATOR_SHOOTOUT_REPORT_ID, INITIAL_CGB_ROM_SUITE_NAMES,
-        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
-        PassCondition, RomCaseFailure, RomCaseOutcome, RomCaseValidationError, RomExecutionError,
-        RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR,
-        TestSubsystem, Timeout, artifact_file_name, ashiepaws_suite, ax6_dmg_extra_suite,
-        ax6_suite, blargg_cgb_sound_suite, blargg_console_text_complete, blargg_curated_suites,
-        budget_exhausted, built_in_rom_suite_by_name, capture_blargg_console_text,
-        capture_memory_text_output, cgb_boot_hwio_suite, daid_suite, detect_mooneye_result,
-        early_phase_9_partial_checklist, little_things_gb_cgb_extra_suite,
-        little_things_gb_dmg_extra_suite, magen_cgb_extra_suite,
-        memory_text_output_completion_reached, mooneye_cgb_extra_suite, mooneye_curated_suites,
-        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        InformationalCaptureKind, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
+        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
+        RomCaseValidationError, RomExecutionError, RomRunner, RomTestCase, RunnerMachine,
+        TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, Timeout, artifact_file_name, ashiepaws_suite,
+        ax6_dmg_extra_suite, ax6_suite, blargg_cgb_sound_suite, blargg_console_text_complete,
+        blargg_curated_suites, budget_exhausted, built_in_rom_suite_by_name,
+        capture_blargg_console_text, capture_memory_text_output, cgb_boot_hwio_suite, daid_suite,
+        detect_mooneye_result, little_things_gb_cgb_extra_suite, little_things_gb_dmg_extra_suite,
+        magen_cgb_extra_suite, memory_text_output_completion_reached, mooneye_cgb_extra_suite,
+        mooneye_curated_suites, mooneye_result_completion_candidate, mooneye_result_for_signature,
         mooneye_sgb_boot_regs_extra_suite, render_memory_text_output, samesuite_apu_suite,
         samesuite_cgb_extra_suite, samesuite_dmg_extra_suite, samesuite_suite,
     };
@@ -4317,7 +4202,7 @@ mod tests {
         assert!(which_dmg_case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(matches!(
             which_dmg_case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::Informational(InformationalCaptureKind::Framebuffer)
         ));
 
         let which_cgb_case = suite
@@ -4338,7 +4223,7 @@ mod tests {
         assert!(which_cgb_case.capture_plan.contains(CaptureKind::Snapshot));
         assert!(matches!(
             which_cgb_case.pass_condition,
-            PassCondition::Informational(CaptureKind::Framebuffer)
+            PassCondition::Informational(InformationalCaptureKind::Framebuffer)
         ));
 
         let acid2_case = suite
@@ -4861,98 +4746,6 @@ mod tests {
                 .rev()
                 .find(|line| !line.trim().is_empty())
                 .is_some_and(|line| makefile_continuation_line(line) == "exit $$status")
-        );
-    }
-
-    #[test]
-    fn early_phase_9_partial_checklist_tracks_cpu_apu_and_ppu_status() {
-        let checklist = early_phase_9_partial_checklist();
-
-        let cpu = checklist
-            .iter()
-            .find(|entry| entry.subsystem == TestSubsystem::Cpu)
-            .expect("cpu entry should exist");
-        assert_eq!(cpu.status, super::EarlyHardeningStatus::RepoGatePresent);
-        assert!(
-            cpu.current_evidence
-                .contains(&"blargg-dmg-repo-gated-family")
-        );
-        assert!(cpu.active_oracles.contains(&"serial-contains"));
-
-        let apu = checklist
-            .iter()
-            .find(|entry| entry.subsystem == TestSubsystem::Apu)
-            .expect("apu entry should exist");
-        assert_eq!(apu.status, super::EarlyHardeningStatus::RepoGatePresent);
-        assert!(
-            apu.current_evidence
-                .contains(&"blargg-dmg-repo-gated-family")
-        );
-        assert!(
-            !apu.remaining_gaps
-                .contains(&"green-promotion-of-blargg-dmg-sound")
-        );
-
-        let ppu = checklist
-            .iter()
-            .find(|entry| entry.subsystem == TestSubsystem::Ppu)
-            .expect("ppu entry should exist");
-        assert_eq!(ppu.status, super::EarlyHardeningStatus::RepoGatePresent);
-        assert!(
-            ppu.current_evidence
-                .contains(&"blargg-dmg-repo-gated-family")
-        );
-        assert!(ppu.current_evidence.contains(&"acid"));
-        assert!(ppu.current_evidence.contains(&"mealybug-tearoom-tests"));
-        assert!(ppu.current_evidence.contains(&"ashiepaws"));
-        assert!(ppu.active_oracles.contains(&"framebuffer-fixture"));
-        assert!(!ppu.remaining_gaps.contains(&"repo-gated-acid-dmg-acid2"));
-        assert!(
-            !ppu.remaining_gaps
-                .contains(&"green-repo-gated-mealybug-tearoom")
-        );
-    }
-
-    #[test]
-    fn early_phase_9_partial_checklist_promotes_mooneye_timer_dma_and_serial() {
-        let checklist = early_phase_9_partial_checklist();
-
-        for subsystem in [
-            TestSubsystem::Timer,
-            TestSubsystem::Dma,
-            TestSubsystem::Serial,
-        ] {
-            let entry = checklist
-                .iter()
-                .find(|entry| entry.subsystem == subsystem)
-                .expect("entry should exist");
-            assert_eq!(entry.status, super::EarlyHardeningStatus::RepoGatePresent);
-            assert!(
-                entry
-                    .current_evidence
-                    .contains(&"mooneye-acceptance-manual")
-            );
-            assert!(entry.active_oracles.contains(&"mooneye-result"));
-            assert!(!entry.remaining_gaps.contains(&"promoted-external-suite"));
-        }
-
-        let cartridge = checklist
-            .iter()
-            .find(|entry| entry.subsystem == TestSubsystem::Cartridge)
-            .expect("cartridge entry should exist");
-        assert_eq!(
-            cartridge.status,
-            super::EarlyHardeningStatus::RepoGatePresent
-        );
-        assert!(
-            !cartridge
-                .current_evidence
-                .contains(&"save-load-determinism-tests")
-        );
-        assert!(
-            cartridge
-                .remaining_gaps
-                .contains(&"cartridge-save-load-determinism")
         );
     }
 
@@ -5816,7 +5609,7 @@ mod tests {
             "opcode-stop",
             &rom_path,
             Timeout::TCycles(64),
-            PassCondition::Informational(CaptureKind::Snapshot),
+            PassCondition::Informational(InformationalCaptureKind::Snapshot),
         )
         .with_stop_condition(ExecutionStopCondition::CurrentOpcodeEquals { opcode: 0x40 });
 
@@ -5907,7 +5700,7 @@ mod tests {
             "cgb-real-boot",
             "unused.gb",
             Timeout::TCycles(1),
-            PassCondition::Informational(CaptureKind::Snapshot),
+            PassCondition::Informational(InformationalCaptureKind::Snapshot),
         )
         .with_console_model(ConsoleModel::GameBoyColor)
         .with_startup_mode(StartupMode::RealBoot);
@@ -5926,7 +5719,7 @@ mod tests {
             "dmg-real-boot",
             "unused.gb",
             Timeout::TCycles(1),
-            PassCondition::Informational(CaptureKind::Snapshot),
+            PassCondition::Informational(InformationalCaptureKind::Snapshot),
         )
         .with_startup_mode(StartupMode::RealBoot);
         assert!(
@@ -5951,7 +5744,7 @@ mod tests {
             "sgb-real-boot",
             "unused.gb",
             Timeout::TCycles(1),
-            PassCondition::Informational(CaptureKind::Snapshot),
+            PassCondition::Informational(InformationalCaptureKind::Snapshot),
         )
         .with_host_platform(HostPlatform::Sgb)
         .with_startup_mode(StartupMode::RealBoot);
@@ -5992,7 +5785,7 @@ mod tests {
             "helper-machine",
             "/dev/null",
             Timeout::TCycles(8),
-            PassCondition::Informational(CaptureKind::Snapshot),
+            PassCondition::Informational(InformationalCaptureKind::Snapshot),
         );
         let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
         machine

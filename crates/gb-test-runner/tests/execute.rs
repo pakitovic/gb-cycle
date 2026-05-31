@@ -6,8 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_core::ExecutionMode;
 use gb_test_runner::{
-    BootRomVerificationMode, CaptureKind, MemoryTextOutputSpec, PassCondition, RomCaseFailure,
-    RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
+    BootRomVerificationMode, InformationalCaptureKind, MemoryTextOutputSpec, PassCondition,
+    RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
     TEST_ROM_ROOT_ENV_VAR, Timeout, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
     phase_6_cartridge_oracle_suite, phase_6_mbc6_oracle_suite,
 };
@@ -517,7 +517,7 @@ fn runner_marks_informational_cases_as_non_failing_without_promoting_them_to_pas
         "info-case",
         &rom_path,
         Timeout::TCycles(128),
-        PassCondition::Informational(CaptureKind::Snapshot),
+        PassCondition::Informational(InformationalCaptureKind::Snapshot),
     );
 
     let report = RomRunner::new()
