@@ -16,35 +16,50 @@ jobs:
       matrix:
         include:
           - name: acid
-            command: make run-acid
+            family: acid
+            suite: acid
           - name: blargg-cpu-instrs
-            command: make run-blargg-cpu-instrs
+            family: blargg
+            suite: blargg-cpu-instrs
           - name: blargg-dmg-sound
-            command: make run-blargg-dmg-sound
+            family: blargg
+            suite: blargg-dmg-sound
           - name: blargg-timing-memory-oam
-            command: make run-blargg-timing-memory-oam
+            family: blargg
+            suite: blargg-timing-memory-oam
           - name: daid
-            command: make run-daid
+            family: daid
+            suite: daid
           - name: ashiepaws
-            command: make run-ashiepaws
+            family: ashiepaws
+            suite: ashiepaws
           - name: cpp
-            command: make run-cpp
+            family: cpp
+            suite: cpp
           - name: samesuite
-            command: make run-samesuite
+            family: samesuite
+            suite: samesuite
           - name: mooneye-acceptance
-            command: make run-mooneye-acceptance
+            family: mooneye
+            suite: mooneye-acceptance-manual-misc
           - name: mooneye-mbc1-mbc5
-            command: make run-mooneye-mbc1-mbc5
+            family: mooneye
+            suite: mooneye-emulator-mbc1-mbc5
           - name: mooneye-mbc2
-            command: make run-mooneye-mbc2
+            family: mooneye
+            suite: mooneye-emulator-mbc2
           - name: mealybug
-            command: make run-mealybug
+            family: mealybug-tearoom-tests
+            suite: mealybug-tearoom-tests
           - name: blargg-cgb-sound
-            command: make run-blargg-cgb-sound
+            family: blargg
+            suite: blargg-cgb-sound
           - name: samesuite-apu
-            command: make run-samesuite-apu
+            family: samesuite
+            suite: samesuite-apu
           - name: ax6
-            command: make run-ax6-cgb
+            family: ax6
+            suite: ax6
 
     steps:
       - name: Checkout
@@ -56,5 +71,8 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Fetch ${{ matrix.name }} ROMs
+        run: cargo rom-fetch gb-emulator-shootout ${{ matrix.family }}
+
       - name: Run ${{ matrix.name }} ROM suite
-        run: ${{ matrix.command }}
+        run: cargo rom-suite gb-emulator-shootout --suite ${{ matrix.suite }}

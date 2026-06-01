@@ -1,5 +1,6 @@
 family = "samesuite"
 suite_name = "samesuite"
+report = "gb-emulator-shootout"
 console = "cgb"
 timeout_frames = 180
 oracle = { type = "framebuffer", source = "cgb" }

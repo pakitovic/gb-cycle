@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use gb_core::{ConsoleModel, ExecutionMode, HostPlatform, StartupMode};
+use gb_core::{ConsoleModel, ExecutionMode, HostPlatform, JoypadButton, StartupMode};
 
 use crate::oracle::{Oracle, OracleConfig};
 
 use super::model::{
-    DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, TEST_ROM_STORE_DIR,
+    DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, SuiteStimulus,
+    SuiteStimulusTime, TEST_ROM_STORE_DIR,
 };
 use super::source::{FamilyTargetRoots, load_family_target_roots};
 
@@ -65,7 +66,20 @@ struct SuiteCaseFile {
     startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
+    #[serde(rename = "stimulus", default)]
+    stimuli: Vec<SuiteStimulusFile>,
+    #[serde(default)]
+    disabled: bool,
+    comment: Option<String>,
     oracle: Option<OracleConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SuiteStimulusFile {
+    tcycle: Option<u64>,
+    frame: Option<u32>,
+    button: String,
+    pressed: bool,
 }
 
 pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String> {
@@ -208,9 +222,14 @@ fn parse_suite_manifest(
 ) -> Result<SuiteManifest, String> {
     let parsed: SuiteManifestFile = toml::from_str(text)
         .map_err(|error| format!("failed to parse suite manifest {}: {error}", path.display()))?;
-    if let Some(declared_report) = &parsed.report
-        && declared_report != &report.id
-    {
+    let declared_report = parsed.report.as_ref().ok_or_else(|| {
+        format!(
+            "suite manifest {} must define report {:?}",
+            path.display(),
+            report.id
+        )
+    })?;
+    if declared_report != &report.id {
         return Err(format!(
             "suite manifest {} declares report {:?}, expected {:?}",
             path.display(),
@@ -224,28 +243,29 @@ fn parse_suite_manifest(
         .or_else(|| parsed.defaults.family.clone())
         .ok_or_else(|| format!("suite manifest {} must define family", path.display()))?;
     let mut seen_cases = BTreeSet::new();
-    let cases = parsed
-        .cases
-        .into_iter()
-        .map(|case| {
-            if !seen_cases.insert(case.id.clone()) {
-                return Err(format!(
-                    "duplicate case id {:?} in suite manifest {}",
-                    case.id,
-                    path.display()
-                ));
-            }
-            parse_case(
-                path,
-                workspace_root,
-                report,
-                family_target_roots,
-                &manifest_family,
-                &parsed.defaults,
-                case,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut cases = Vec::new();
+    for case in parsed.cases {
+        if !seen_cases.insert(case.id.clone()) {
+            return Err(format!(
+                "duplicate case id {:?} in suite manifest {}",
+                case.id,
+                path.display()
+            ));
+        }
+        if case.disabled {
+            validate_disabled_case_comment(path, &case)?;
+            continue;
+        }
+        cases.push(parse_case(
+            path,
+            workspace_root,
+            report,
+            family_target_roots,
+            &manifest_family,
+            &parsed.defaults,
+            case,
+        )?);
+    }
     if cases.is_empty() {
         return Err(format!(
             "suite manifest {} must define at least one case",
@@ -258,6 +278,22 @@ fn parse_suite_manifest(
         family: manifest_family,
         cases,
     })
+}
+
+fn validate_disabled_case_comment(path: &Path, case: &SuiteCaseFile) -> Result<(), String> {
+    if case
+        .comment
+        .as_deref()
+        .is_some_and(|comment| !comment.trim().is_empty())
+    {
+        return Ok(());
+    }
+
+    Err(format!(
+        "disabled case {:?} in {} must include a non-empty comment",
+        case.id,
+        path.display()
+    ))
 }
 
 fn parse_case(
@@ -324,6 +360,11 @@ fn parse_case(
     let fixture_root = fixture_root_for_case(workspace_root, report, &target_root);
     let oracle = Oracle::from_manifest_with_fixture_root(&oracle_config, &fixture_root)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let stimuli = case
+        .stimuli
+        .into_iter()
+        .map(|stimulus| parse_stimulus(&case.id, path, stimulus))
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(SuiteCase {
         id: case.id,
@@ -335,8 +376,53 @@ fn parse_case(
         execution_mode,
         startup_mode,
         timeout_frames,
+        stimuli,
         oracle,
     })
+}
+
+fn parse_stimulus(
+    case_id: &str,
+    path: &Path,
+    stimulus: SuiteStimulusFile,
+) -> Result<SuiteStimulus, String> {
+    let when = match (stimulus.tcycle, stimulus.frame) {
+        (Some(tcycle), None) => SuiteStimulusTime::TCycle(tcycle),
+        (None, Some(frame)) => SuiteStimulusTime::Frame(frame),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "case {case_id:?} in {} stimulus must define either tcycle or frame, not both",
+                path.display()
+            ));
+        }
+        (None, None) => {
+            return Err(format!(
+                "case {case_id:?} in {} stimulus must define tcycle or frame",
+                path.display()
+            ));
+        }
+    };
+    let button = parse_joypad_button(&stimulus.button)
+        .map_err(|error| format!("case {case_id:?} in {}: {error}", path.display()))?;
+    Ok(SuiteStimulus {
+        when,
+        button,
+        pressed: stimulus.pressed,
+    })
+}
+
+fn parse_joypad_button(button: &str) -> Result<JoypadButton, String> {
+    match button {
+        "right" => Ok(JoypadButton::Right),
+        "left" => Ok(JoypadButton::Left),
+        "up" => Ok(JoypadButton::Up),
+        "down" => Ok(JoypadButton::Down),
+        "a" => Ok(JoypadButton::A),
+        "b" => Ok(JoypadButton::B),
+        "select" => Ok(JoypadButton::Select),
+        "start" => Ok(JoypadButton::Start),
+        other => Err(format!("unsupported joypad button {other:?}")),
+    }
 }
 
 fn resolve_oracle_config(

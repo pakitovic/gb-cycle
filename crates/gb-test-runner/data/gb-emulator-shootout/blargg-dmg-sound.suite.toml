@@ -1,5 +1,6 @@
 family = "blargg"
 suite_name = "blargg-dmg-sound"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 1200
 oracle = { type = "framebuffer", mode = "until-match" }

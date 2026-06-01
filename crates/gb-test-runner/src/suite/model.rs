@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use gb_core::{ConsoleModel, ExecutionMode, HostPlatform, StartupMode};
+use gb_core::{
+    ConsoleModel, DMG_T_CYCLES_PER_FRAME, ExecutionMode, HostPlatform, JoypadButton, StartupMode,
+};
 use serde::Serialize;
 
 use crate::oracle::Oracle;
@@ -36,7 +38,36 @@ pub(super) struct SuiteCase {
     pub(super) execution_mode: ExecutionMode,
     pub(super) startup_mode: StartupMode,
     pub(super) timeout_frames: u32,
+    pub(super) stimuli: Vec<SuiteStimulus>,
     pub(super) oracle: Oracle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SuiteStimulus {
+    pub(super) when: SuiteStimulusTime,
+    pub(super) button: JoypadButton,
+    pub(super) pressed: bool,
+}
+
+impl SuiteStimulus {
+    pub(super) fn tcycle(&self) -> u64 {
+        self.when.tcycle()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SuiteStimulusTime {
+    TCycle(u64),
+    Frame(u32),
+}
+
+impl SuiteStimulusTime {
+    fn tcycle(self) -> u64 {
+        match self {
+            Self::TCycle(tcycle) => tcycle,
+            Self::Frame(frame) => u64::from(frame).saturating_mul(DMG_T_CYCLES_PER_FRAME),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

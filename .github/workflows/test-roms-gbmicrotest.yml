@@ -20,5 +20,8 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Fetch gbmicrotest ROMs
+        run: cargo rom-fetch gbmicrotest
+
       - name: Run gbmicrotest ROM suite
-        run: make test-roms-gbmicrotest
+        run: cargo rom-suite gbmicrotest --suite gbmicrotest

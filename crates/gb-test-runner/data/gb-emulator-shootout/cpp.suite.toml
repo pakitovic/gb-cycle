@@ -1,5 +1,6 @@
 family = "cpp"
 suite_name = "cpp"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 30
 oracle = { type = "framebuffer" }

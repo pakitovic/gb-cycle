@@ -7,9 +7,9 @@ use super::super::manifest::{load_reports, load_selected_suites};
 use super::super::run::{SuiteRunConfig, run_suite_with_config};
 use super::common::{
     basic_manifest, build_delayed_dmg_handoff_boot_rom, build_fibonacci_result_rom,
-    build_infinite_loop_rom, build_mbc3_rtc_wait_rom, build_memory_write_rom,
-    build_serial_text_rom, unique_temp_dir, write_grayscale_png, write_manifest, write_reports,
-    write_source_manifest,
+    build_infinite_loop_rom, build_joypad_a_pressed_memory_write_rom, build_mbc3_rtc_wait_rom,
+    build_memory_write_rom, build_serial_text_rom, unique_temp_dir, write_grayscale_png,
+    write_manifest, write_reports, write_source_manifest,
 };
 
 #[test]
@@ -24,6 +24,7 @@ fn command_runs_serial_suite_and_writes_status() {
         &workspace,
         "sample-report/blargg-cpu-instrs.suite.toml",
         &basic_manifest(
+            "sample-report",
             "blargg-cpu-instrs",
             "blargg",
             "blargg-cpu-instrs-01-special",
@@ -33,9 +34,15 @@ fn command_runs_serial_suite_and_writes_status() {
     write_manifest(
         &workspace,
         "sample-report/acid.toml",
-        &basic_manifest("acid", "acid", "acid-cgb-acid2", "cgb-acid2.gbc")
-            .replace("console = \"dmg\"", "console = \"cgb\"")
-            .replace("serial-contains", "framebuffer-fixture"),
+        &basic_manifest(
+            "sample-report",
+            "acid",
+            "acid",
+            "acid-cgb-acid2",
+            "cgb-acid2.gbc",
+        )
+        .replace("console = \"dmg\"", "console = \"cgb\"")
+        .replace("serial-contains", "framebuffer-fixture"),
     );
     let rom_path = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
@@ -81,6 +88,7 @@ fn command_runs_with_explicit_threads_and_preserves_status_order() {
         r#"
 family = "blargg"
 suite_name = "threaded"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "serial-contains", expected = "Passed" }
@@ -140,6 +148,7 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
         &workspace,
         "sample-report/blargg-cpu-instrs.suite.toml",
         &basic_manifest(
+            "sample-report",
             "blargg-cpu-instrs",
             "blargg",
             "blargg-cpu-instrs-01-special",
@@ -197,7 +206,14 @@ fn command_rejects_manifest_real_boot_without_boot_rom_dir() {
     write_manifest(
         &workspace,
         "sample-report/real-boot.suite.toml",
-        &basic_manifest("real-boot", "blargg", "real-boot-case", "case.gb").replace(
+        &basic_manifest(
+            "sample-report",
+            "real-boot",
+            "blargg",
+            "real-boot-case",
+            "case.gb",
+        )
+        .replace(
             "rom = \"case.gb\"",
             "rom = \"case.gb\"\nstartup = \"real-boot\"",
         ),
@@ -226,7 +242,13 @@ fn command_boot_rom_dir_forces_real_boot_asset_verification() {
     write_manifest(
         &workspace,
         "sample-report/skip-boot.suite.toml",
-        &basic_manifest("skip-boot", "blargg", "skip-boot-case", "case.gb"),
+        &basic_manifest(
+            "sample-report",
+            "skip-boot",
+            "blargg",
+            "skip-boot-case",
+            "case.gb",
+        ),
     );
 
     let mut output = Vec::new();
@@ -262,6 +284,7 @@ fn run_suite_real_boot_handoff_does_not_consume_case_timeout() {
         r#"
 family = "blargg"
 suite_name = "real-boot"
+report = "sample-report"
 console = "dmg"
 startup = "real-boot"
 timeout_frames = 1
@@ -316,6 +339,7 @@ fn command_advances_mbc3_rtc_during_suite_execution() {
         r#"
 family = "blargg"
 suite_name = "rtc"
+report = "sample-report"
 console = "cgb"
 execution_mode = "permissive"
 timeout_frames = 80
@@ -365,6 +389,7 @@ fn command_writes_framebuffer_failure_artifacts() {
         r#"
 family = "ax6"
 suite_name = "ax6"
+report = "sample-report"
 console = "cgb"
 timeout_frames = 1
 oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "rtc3test-1.png" }
@@ -427,6 +452,7 @@ fn command_writes_non_framebuffer_failure_artifacts_and_cleans_them_on_pass() {
         &workspace,
         "sample-report/blargg-cpu-instrs.suite.toml",
         &basic_manifest(
+            "sample-report",
             "blargg-cpu-instrs",
             "blargg",
             "blargg-cpu-instrs-01-special",
@@ -477,12 +503,18 @@ fn command_treats_info_framebuffer_as_pass_for_ci() {
     write_manifest(
         &workspace,
         "sample-report/acid.suite.toml",
-        &basic_manifest("acid", "acid", "acid-which-dmg", "which.gb")
-            .replace(
-                "oracle = { type = \"serial-contains\", expected = \"Passed\" }",
-                "oracle = { type = \"framebuffer\", mode = \"info\" }",
-            )
-            .replace("timeout_frames = 2", "timeout_frames = 1"),
+        &basic_manifest(
+            "sample-report",
+            "acid",
+            "acid",
+            "acid-which-dmg",
+            "which.gb",
+        )
+        .replace(
+            "oracle = { type = \"serial-contains\", expected = \"Passed\" }",
+            "oracle = { type = \"framebuffer\", mode = \"info\" }",
+        )
+        .replace("timeout_frames = 2", "timeout_frames = 1"),
     );
     let rom_path = workspace.join("test/sample-report/acid/which.gb");
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
@@ -526,6 +558,7 @@ fn command_runs_fibonacci_result_suite_as_ci_friendly_pass() {
         r#"
 family = "mooneye"
 suite_name = "mooneye"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "fibonacci-result" }
@@ -578,6 +611,7 @@ fn command_runs_sgb_suite_with_handheld_core_and_sgb_host() {
         r#"
 family = "samesuite"
 suite_name = "samesuite"
+report = "sample-report"
 console = "sgb"
 timeout_frames = 1
 oracle = { type = "framebuffer", mode = "info" }
@@ -637,6 +671,7 @@ target_root = ""
         r#"
 family = "gbmicrotest"
 suite_name = "gbmicrotest"
+report = "gbmicrotest"
 console = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65410, value = 1 }
@@ -675,6 +710,72 @@ rom = "memory/pass.gb"
 }
 
 #[test]
+fn command_applies_case_joypad_stimuli() {
+    let workspace = unique_temp_dir("joypad-stimulus-pass");
+    write_reports(&workspace, "docboy", "docboy/sources.report.toml");
+    write_source_manifest(
+        &workspace,
+        "docboy/sources.report.toml",
+        r#"
+[[source]]
+id = "docboy"
+
+[[source.family]]
+id = "docboy-dmg"
+target_root = "dmg"
+"#,
+    );
+    write_manifest(
+        &workspace,
+        "docboy/docboy-dmg.suite.toml",
+        r#"
+family = "docboy-dmg"
+suite_name = "docboy-dmg"
+report = "docboy"
+console = "dmg"
+timeout_frames = 1
+oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
+
+[[case]]
+id = "docboy-joypad-stimulus"
+rom = "interactive/a.gb"
+
+[[case.stimulus]]
+tcycle = 0
+button = "a"
+pressed = true
+"#,
+    );
+    let rom_path = workspace.join("test/docboy/dmg/interactive/a.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(
+        &rom_path,
+        build_joypad_a_pressed_memory_write_rom(0xC000, 1),
+    )
+    .expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "docboy",
+            "--suite",
+            "docboy-dmg",
+            "--case",
+            "docboy-joypad-stimulus",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("joypad stimulus suite should pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite docboy-dmg: 1/1 passed"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_reports_memory_byte_fail_value_as_failed_case() {
     let workspace = unique_temp_dir("memory-byte-fail-value");
     write_reports(
@@ -688,6 +789,7 @@ fn command_reports_memory_byte_fail_value_as_failed_case() {
         r#"
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
@@ -740,6 +842,7 @@ fn command_reports_memory_byte_timeout_as_failed_case() {
         r#"
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
@@ -791,6 +894,7 @@ fn command_reports_fibonacci_failure_signature_as_failed_case() {
         r#"
 family = "mooneye"
 suite_name = "mooneye"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "fibonacci-result" }
@@ -843,6 +947,7 @@ fn command_reports_fibonacci_timeout_without_result_as_failed_case() {
         r#"
 family = "mooneye"
 suite_name = "mooneye"
+report = "sample-report"
 console = "dmg"
 timeout_frames = 1
 oracle = { type = "fibonacci-result" }

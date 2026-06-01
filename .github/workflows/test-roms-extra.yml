@@ -17,8 +17,8 @@ jobs:
         include:
           - name: ax6-dmg
             command: make run-ax6-dmg
-          - name: samesuite
-            command: make run-samesuite
+          - name: samesuite-dmg-extra
+            command: make run-samesuite-dmg-extra
           - name: little-things-gb
             command: make run-little-things-gb
           - name: mooneye-sgb-boot-regs

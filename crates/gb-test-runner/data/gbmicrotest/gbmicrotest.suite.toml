@@ -1,5 +1,6 @@
 family = "gbmicrotest"
 suite_name = "gbmicrotest"
+report = "gbmicrotest"
 console = "dmg"
 timeout_frames = 15
 oracle = { type = "memory-byte-equals", address = 65410, value = 1 }

@@ -130,11 +130,12 @@ make coverage
 
 ```bash
 make ci
-make test-roms
 make test-roms-extra
 make test-roms-cgb-extra
-make test-roms-docboy
-make test-roms-gbmicrotest
+cargo rom-fetch gb-emulator-shootout
+cargo rom-suite gb-emulator-shootout
+cargo rom-fetch gbmicrotest
+cargo rom-suite gbmicrotest --suite gbmicrotest
 ```
 
 ### External ROM suites

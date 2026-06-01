@@ -179,6 +179,20 @@ pub(super) fn build_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
     ])
 }
 
+pub(super) fn build_joypad_a_pressed_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
+    let [low, high] = address.to_le_bytes();
+    build_test_rom(&[
+        0x3E, 0x10, // LD A,$10; select button row
+        0xE0, 0x00, // LDH ($00),A
+        0xF0, 0x00, // LDH A,($00)
+        0xE6, 0x01, // AND $01; A button is active-low bit 0
+        0x20, 0xFA, // JR NZ,-6
+        0x3E, value, // LD A,d8
+        0xEA, low, high, // LD (a16),A
+        0x18, 0xFE, // JR -2
+    ])
+}
+
 pub(super) fn build_mbc3_rtc_wait_rom(address: u16, value: u8) -> Vec<u8> {
     let [low, high] = address.to_le_bytes();
     let mut rom = build_test_rom(&[
@@ -239,11 +253,18 @@ pub(super) fn write_grayscale_png(path: &Path, pixels: &[u8]) {
         .expect("PNG data should be writable");
 }
 
-pub(super) fn basic_manifest(suite_name: &str, family: &str, case_id: &str, rom: &str) -> String {
+pub(super) fn basic_manifest(
+    report: &str,
+    suite_name: &str,
+    family: &str,
+    case_id: &str,
+    rom: &str,
+) -> String {
     format!(
         concat!(
             "family = \"{}\"\n",
             "suite_name = \"{}\"\n",
+            "report = \"{}\"\n",
             "console = \"dmg\"\n",
             "timeout_frames = 2\n",
             "oracle = {{ type = \"serial-contains\", expected = \"Passed\" }}\n",
@@ -252,6 +273,6 @@ pub(super) fn basic_manifest(suite_name: &str, family: &str, case_id: &str, rom:
             "id = \"{}\"\n",
             "rom = \"{}\"\n",
         ),
-        family, suite_name, case_id, rom
+        family, suite_name, report, case_id, rom
     )
 }

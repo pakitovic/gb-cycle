@@ -4619,7 +4619,7 @@ mod tests {
     }
 
     #[test]
-    fn makefile_rom_suite_targets_keep_external_wrapper_static_invariants() {
+    fn promoted_rom_suites_keep_external_wrapper_static_invariants() {
         struct ExpectedSuite {
             name: &'static str,
             family: &'static str,
@@ -4729,39 +4729,6 @@ mod tests {
                 expected.name
             );
         }
-    }
-
-    #[test]
-    fn makefile_test_roms_aggregate_collects_child_failures() {
-        fn makefile_target_body<'a>(makefile: &'a str, target: &str) -> Vec<&'a str> {
-            let header = format!("{target}:");
-            makefile
-                .lines()
-                .skip_while(|line| !line.starts_with(&header))
-                .skip(1)
-                .take_while(|line| line.starts_with('\t') || line.trim().is_empty())
-                .collect()
-        }
-
-        fn makefile_continuation_line(line: &str) -> &str {
-            line.trim().trim_end_matches('\\').trim_end()
-        }
-
-        let makefile = include_str!("../../../Makefile");
-        let test_roms_body = makefile_target_body(makefile, "test-roms");
-
-        assert!(
-            test_roms_body
-                .first()
-                .is_some_and(|line| makefile_continuation_line(line) == "@status=0;")
-        );
-        assert!(
-            test_roms_body
-                .iter()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .is_some_and(|line| makefile_continuation_line(line) == "exit $$status")
-        );
     }
 
     #[test]

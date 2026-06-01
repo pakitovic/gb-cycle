@@ -136,6 +136,7 @@ fn run_case(
     let mut serial_bytes = Vec::new();
     let mut oracle = case.oracle.clone();
     for executed_tcycles in 1..=timeout_tcycles {
+        apply_stimuli_for_tcycle(&mut machine, case, executed_tcycles - 1);
         machine.step_t_cycle();
         tick_mbc3_rtc(&mut machine, &mut rtc_clock);
         serial_bytes.extend(machine.take_serial_output_bytes());
@@ -189,6 +190,18 @@ fn run_case(
             executed_tcycles: timeout_tcycles,
         },
     )
+}
+
+fn apply_stimuli_for_tcycle(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    case: &SuiteCase,
+    next_tcycle: u64,
+) {
+    for stimulus in &case.stimuli {
+        if stimulus.tcycle() == next_tcycle {
+            machine.set_joypad_button_pressed(stimulus.button, stimulus.pressed);
+        }
+    }
 }
 
 fn advance_real_boot_to_handoff_if_needed(

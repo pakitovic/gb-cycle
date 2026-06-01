@@ -1,5 +1,6 @@
 family = "blargg"
 suite_name = "blargg-cgb-sound"
+report = "gb-emulator-shootout"
 console = "cgb"
 timeout_frames = 1200
 oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }

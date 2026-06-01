@@ -1,5 +1,6 @@
 family = "mooneye"
 suite_name = "mooneye-acceptance-manual-misc"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 180
 oracle = { type = "fibonacci-result" }

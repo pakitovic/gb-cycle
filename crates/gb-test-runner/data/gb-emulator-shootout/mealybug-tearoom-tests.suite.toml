@@ -1,5 +1,6 @@
 family = "mealybug-tearoom-tests"
 suite_name = "mealybug-tearoom-tests"
+report = "gb-emulator-shootout"
 console = "dmg"
 report_console_suffix = true
 timeout_frames = 30

@@ -1,5 +1,6 @@
 family = "acid"
 suite_name = "acid"
+report = "gb-emulator-shootout"
 console = "cgb"
 timeout_frames = 180
 oracle = { type = "framebuffer", mode = "info" }

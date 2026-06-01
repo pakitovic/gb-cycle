@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::oracle::Oracle;
 
 use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
+use super::super::model::SuiteStimulusTime;
 use super::common::{
     basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
 };
@@ -58,6 +59,7 @@ fn parses_manifest_defaults_for_serial_contains_cases() {
         Path::new("blargg-cpu-instrs.toml"),
         "gb-emulator-shootout",
         &basic_manifest(
+            "gb-emulator-shootout",
             "blargg-cpu-instrs",
             "blargg",
             "blargg-cpu-instrs-01-special",
@@ -78,12 +80,110 @@ fn parses_manifest_defaults_for_serial_contains_cases() {
 }
 
 #[test]
+fn report_is_required_and_must_match_selected_report() {
+    let missing_report = basic_manifest(
+        "gb-emulator-shootout",
+        "blargg-cpu-instrs",
+        "blargg",
+        "blargg-cpu-instrs-01-special",
+        "cpu_instrs/01-special.gb",
+    )
+    .replace("report = \"gb-emulator-shootout\"\n", "");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("blargg-cpu-instrs.suite.toml"),
+            "gb-emulator-shootout",
+            &missing_report,
+        )
+        .expect_err("missing report should fail")
+        .contains("must define report")
+    );
+
+    let mismatched_report = basic_manifest(
+        "docboy",
+        "blargg-cpu-instrs",
+        "blargg",
+        "blargg-cpu-instrs-01-special",
+        "cpu_instrs/01-special.gb",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("blargg-cpu-instrs.suite.toml"),
+            "gb-emulator-shootout",
+            &mismatched_report,
+        )
+        .expect_err("mismatched report should fail")
+        .contains("declares report")
+    );
+}
+
+#[test]
+fn disabled_cases_are_cataloged_with_comments_and_skipped() {
+    let manifest = r#"
+family = "docboy-dmg"
+suite_name = "docboy-dmg"
+report = "docboy"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
+
+[[case]]
+id = "docboy-disabled"
+rom = "disabled.gb"
+disabled = true
+comment = "Upstream marks this row disabled."
+oracle = { type = "unknown-disabled-oracle" }
+
+[[case]]
+id = "docboy-enabled"
+rom = "enabled.gb"
+"#;
+    let suite =
+        parse_suite_manifest_for_test(Path::new("docboy-dmg.suite.toml"), "docboy", manifest)
+            .expect("disabled row should be skipped after validating its comment");
+
+    assert_eq!(suite.cases.len(), 1);
+    assert_eq!(suite.cases[0].id, "docboy-enabled");
+
+    let missing_comment = manifest.replace("comment = \"Upstream marks this row disabled.\"\n", "");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("docboy-dmg.suite.toml"),
+            "docboy",
+            &missing_comment,
+        )
+        .expect_err("disabled row without comment should fail")
+        .contains("must include a non-empty comment")
+    );
+
+    let blank_comment = manifest.replace(
+        "comment = \"Upstream marks this row disabled.\"",
+        "comment = \"   \"",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("docboy-dmg.suite.toml"),
+            "docboy",
+            &blank_comment,
+        )
+        .expect_err("disabled row with blank comment should fail")
+        .contains("must include a non-empty comment")
+    );
+}
+
+#[test]
 fn parses_startup_modes_and_rejects_unsupported_startup() {
-    let custom_boot = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
-        .replace(
-            "rom = \"case.gb\"",
-            "rom = \"case.gb\"\nstartup = \"custom-boot\"",
-        );
+    let custom_boot = basic_manifest(
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest-case",
+        "case.gb",
+    )
+    .replace(
+        "rom = \"case.gb\"",
+        "rom = \"case.gb\"\nstartup = \"custom-boot\"",
+    );
     let manifest = parse_suite_manifest_for_test(
         Path::new("gbmicrotest.suite.toml"),
         "gbmicrotest",
@@ -95,11 +195,17 @@ fn parses_startup_modes_and_rejects_unsupported_startup() {
         gb_core::StartupMode::CustomBoot
     );
 
-    let real_boot = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
-        .replace(
-            "rom = \"case.gb\"",
-            "rom = \"case.gb\"\nstartup = \"real-boot\"",
-        );
+    let real_boot = basic_manifest(
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest-case",
+        "case.gb",
+    )
+    .replace(
+        "rom = \"case.gb\"",
+        "rom = \"case.gb\"\nstartup = \"real-boot\"",
+    );
     let manifest = parse_suite_manifest_for_test(
         Path::new("gbmicrotest.suite.toml"),
         "gbmicrotest",
@@ -111,11 +217,17 @@ fn parses_startup_modes_and_rejects_unsupported_startup() {
         gb_core::StartupMode::RealBoot
     );
 
-    let unsupported = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
-        .replace(
-            "rom = \"case.gb\"",
-            "rom = \"case.gb\"\nstartup = \"warm-boot\"",
-        );
+    let unsupported = basic_manifest(
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest",
+        "gbmicrotest-case",
+        "case.gb",
+    )
+    .replace(
+        "rom = \"case.gb\"",
+        "rom = \"case.gb\"\nstartup = \"warm-boot\"",
+    );
     assert!(
         parse_suite_manifest_for_test(
             Path::new("gbmicrotest.suite.toml"),
@@ -128,9 +240,80 @@ fn parses_startup_modes_and_rejects_unsupported_startup() {
 }
 
 #[test]
+fn parses_joypad_stimuli_and_rejects_unsupported_stimulus_shape() {
+    let manifest = r#"
+family = "docboy-dmg"
+suite_name = "docboy-dmg"
+report = "docboy"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
+
+[[case]]
+id = "docboy-interactive"
+rom = "cpu/interactive.gb"
+
+[[case.stimulus]]
+tcycle = 8192
+button = "up"
+pressed = true
+
+[[case.stimulus]]
+frame = 1
+button = "a"
+pressed = false
+"#;
+    let suite =
+        parse_suite_manifest_for_test(Path::new("docboy-dmg.suite.toml"), "docboy", manifest)
+            .expect("stimuli should parse");
+
+    assert_eq!(suite.cases[0].stimuli.len(), 2);
+    assert_eq!(
+        suite.cases[0].stimuli[0].when,
+        SuiteStimulusTime::TCycle(8192)
+    );
+    assert_eq!(suite.cases[0].stimuli[0].button, gb_core::JoypadButton::Up);
+    assert!(suite.cases[0].stimuli[0].pressed);
+    assert_eq!(suite.cases[0].stimuli[1].when, SuiteStimulusTime::Frame(1));
+    assert_eq!(suite.cases[0].stimuli[1].button, gb_core::JoypadButton::A);
+    assert!(!suite.cases[0].stimuli[1].pressed);
+
+    let both_time_fields = manifest.replace(
+        "tcycle = 8192\nbutton = \"up\"",
+        "tcycle = 8192\nframe = 1\nbutton = \"up\"",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("docboy-dmg.suite.toml"),
+            "docboy",
+            &both_time_fields,
+        )
+        .expect_err("stimulus with both time fields should fail")
+        .contains("either tcycle or frame")
+    );
+
+    let unsupported_button = manifest.replace("button = \"up\"", "button = \"turbo\"");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("docboy-dmg.suite.toml"),
+            "docboy",
+            &unsupported_button,
+        )
+        .expect_err("unsupported joypad button should fail")
+        .contains("unsupported joypad button")
+    );
+}
+
+#[test]
 fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
-    let cgb_console = basic_manifest("acid", "acid", "acid-cgb", "cgb-acid2.gbc")
-        .replace("console = \"dmg\"", "console = \"cgb\"");
+    let cgb_console = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-cgb",
+        "cgb-acid2.gbc",
+    )
+    .replace("console = \"dmg\"", "console = \"cgb\"");
     let cgb_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
@@ -146,8 +329,14 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         gb_core::HostPlatform::Handheld
     );
 
-    let sgb_console = basic_manifest("samesuite", "samesuite", "samesuite-sgb", "sgb/test.gb")
-        .replace("console = \"dmg\"", "console = \"sgb\"");
+    let sgb_console = basic_manifest(
+        "gb-emulator-shootout",
+        "samesuite",
+        "samesuite",
+        "samesuite-sgb",
+        "sgb/test.gb",
+    )
+    .replace("console = \"dmg\"", "console = \"sgb\"");
     let sgb_manifest = parse_suite_manifest_for_test(
         Path::new("samesuite.suite.toml"),
         "gb-emulator-shootout",
@@ -163,8 +352,14 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         gb_core::HostPlatform::Sgb
     );
 
-    let sgb2_console = basic_manifest("samesuite", "samesuite", "samesuite-sgb2", "sgb/test.gb")
-        .replace("console = \"dmg\"", "console = \"sgb2\"");
+    let sgb2_console = basic_manifest(
+        "gb-emulator-shootout",
+        "samesuite",
+        "samesuite",
+        "samesuite-sgb2",
+        "sgb/test.gb",
+    )
+    .replace("console = \"dmg\"", "console = \"sgb2\"");
     let sgb2_manifest = parse_suite_manifest_for_test(
         Path::new("samesuite.suite.toml"),
         "gb-emulator-shootout",
@@ -180,8 +375,14 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         gb_core::HostPlatform::Sgb2
     );
 
-    let unsupported_alias = basic_manifest("acid", "acid", "acid-gb", "which.gb")
-        .replace("console = \"dmg\"", "console = \"gb\"");
+    let unsupported_alias = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-gb",
+        "which.gb",
+    )
+    .replace("console = \"dmg\"", "console = \"gb\"");
     assert!(
         parse_suite_manifest_for_test(
             Path::new("acid.suite.toml"),
@@ -192,8 +393,14 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         .contains("unsupported console")
     );
 
-    let unsupported_oracle = basic_manifest("acid", "acid", "acid-which", "which.gb")
-        .replace("serial-contains", "info-framebuffer");
+    let unsupported_oracle = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which",
+        "which.gb",
+    )
+    .replace("serial-contains", "info-framebuffer");
     assert!(
         parse_suite_manifest_for_test(
             Path::new("acid.suite.toml"),
@@ -204,11 +411,17 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         .contains("unsupported suite oracle")
     );
 
-    let unsupported_execution_mode = basic_manifest("acid", "acid", "acid-which", "which.gb")
-        .replace(
-            "timeout_frames = 2",
-            "execution_mode = \"fast\"\ntimeout_frames = 2",
-        );
+    let unsupported_execution_mode = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which",
+        "which.gb",
+    )
+    .replace(
+        "timeout_frames = 2",
+        "execution_mode = \"fast\"\ntimeout_frames = 2",
+    );
     assert!(
         parse_suite_manifest_for_test(
             Path::new("acid.suite.toml"),
@@ -234,6 +447,7 @@ fn framebuffer_fixtures_are_resolved_from_case_family_store_root() {
         r#"
 family = "blargg"
 suite_name = "fixture-root"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", fixture = "screens/pass.png" }
@@ -288,6 +502,7 @@ target_root = "dmg"
         r#"
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
+report = "docboy"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
@@ -317,6 +532,7 @@ fn partial_case_oracle_inherits_global_type_and_parameters() {
     let manifest = r#"
 family = "blargg"
 suite_name = "oracle-inheritance"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", mode = "until-match", source = "invalid-source" }
@@ -352,6 +568,7 @@ fn partial_case_oracle_overrides_global_parameter_values() {
         r#"
 family = "blargg"
 suite_name = "oracle-overrides"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", mode = "until-match", fixture = "screens/missing.png" }
@@ -390,6 +607,7 @@ fn case_oracle_with_type_replaces_global_oracle() {
     let manifest = r#"
 family = "blargg"
 suite_name = "oracle-replacement"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", source = "invalid-source", fixture = "screens/missing.png" }
@@ -414,6 +632,7 @@ fn partial_case_oracle_requires_global_oracle_with_type() {
     let no_global = r#"
 family = "blargg"
 suite_name = "oracle-no-global"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 
@@ -435,6 +654,7 @@ oracle = { fixture = "screens/pass.png" }
     let global_without_type = r#"
 family = "blargg"
 suite_name = "oracle-global-without-type"
+report = "gb-emulator-shootout"
 console = "dmg"
 timeout_frames = 2
 oracle = { fixture = "screens/pass.png" }
@@ -889,6 +1109,126 @@ fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
+#[test]
+fn real_docboy_suite_manifests_load_memory_framebuffer_and_stimuli() {
+    let workspace = unique_temp_dir("docboy-suite-manifests");
+    write_reports(&workspace, "docboy", "docboy/sources.report.toml");
+    write_source_manifest(
+        &workspace,
+        "docboy/sources.report.toml",
+        include_str!("../../../data/docboy/sources.report.toml"),
+    );
+    let manifests = [
+        ("docboy-dmg", "docboy-dmg", "dmg", 2326, 4),
+        ("docboy-cgb", "docboy-cgb", "cgb", 6172, 643),
+        ("docboy-cgb-dmg", "docboy-cgb-dmg", "cgb-dmg", 467, 0),
+        (
+            "docboy-cgb-dmg-ext",
+            "docboy-cgb-dmg-ext",
+            "cgb-dmg-ext",
+            26,
+            0,
+        ),
+    ];
+    for (suite_name, _, target_root, _, disabled_count) in manifests {
+        let text = read_docboy_suite_manifest(suite_name);
+        assert_eq!(
+            disabled_case_count(&text),
+            disabled_count,
+            "{suite_name} disabled row count should match migrated legacy comments"
+        );
+        write_manifest(
+            &workspace,
+            &format!("docboy/{suite_name}.suite.toml"),
+            &text,
+        );
+        fs::create_dir_all(workspace.join("test").join("docboy").join(target_root))
+            .expect("docboy fixture root should be creatable");
+        write_manifest_fixture_placeholders(&workspace, "docboy", target_root, &text);
+    }
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "docboy")
+        .expect("docboy report should exist");
+
+    for (suite_name, family, target_root, case_count, _) in manifests {
+        let suites = load_selected_suites(&workspace, report, Some(suite_name), None)
+            .unwrap_or_else(|error| panic!("real {suite_name} manifest should load: {error}"));
+        assert_eq!(suites.len(), 1);
+        let suite = &suites[0];
+        assert_eq!(suite.suite_name, suite_name);
+        assert_eq!(suite.family, family);
+        assert_eq!(suite.cases.len(), case_count);
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.target_root == Path::new(target_root))
+        );
+    }
+
+    let dmg = load_selected_suites(&workspace, report, Some("docboy-dmg"), None)
+        .expect("docboy DMG suite should load");
+    let interactive = dmg[0]
+        .cases
+        .iter()
+        .find(|case| {
+            case.id == "docboy-cpu-interactive-stop-immediate-exit-joypad-interrupt-press-again"
+        })
+        .expect("interactive row should exist");
+    assert_eq!(interactive.stimuli.len(), 3);
+    assert!(matches!(&interactive.oracle, Oracle::MemoryByteEquals(_)));
+    let visual = dmg[0]
+        .cases
+        .iter()
+        .find(|case| case.id == "docboy-cpu-interactive-visual-stop-immediate-exit")
+        .expect("interactive visual row should exist");
+    assert!(matches!(&visual.oracle, Oracle::Framebuffer(_)));
+
+    let cgb = load_selected_suites(&workspace, report, Some("docboy-cgb"), None)
+        .expect("docboy CGB suite should load");
+    assert!(
+        cgb[0]
+            .cases
+            .iter()
+            .any(|case| matches!(&case.oracle, Oracle::Framebuffer(_)))
+    );
+    assert!(
+        cgb[0]
+            .cases
+            .iter()
+            .any(|case| matches!(&case.oracle, Oracle::MemoryByteEquals(_)))
+    );
+
+    let cgb_dmg = load_selected_suites(&workspace, report, Some("docboy-cgb-dmg"), None)
+        .expect("docboy CGB-DMG suite should load");
+    assert!(
+        cgb_dmg[0]
+            .cases
+            .iter()
+            .any(|case| matches!(&case.oracle, Oracle::Framebuffer(_)))
+    );
+    assert!(
+        cgb_dmg[0]
+            .cases
+            .iter()
+            .any(|case| matches!(&case.oracle, Oracle::MemoryByteEquals(_)))
+    );
+
+    let cgb_dmg_ext = load_selected_suites(&workspace, report, Some("docboy-cgb-dmg-ext"), None)
+        .expect("docboy CGB-DMG ext suite should load");
+    assert!(
+        cgb_dmg_ext[0]
+            .cases
+            .iter()
+            .all(|case| matches!(&case.oracle, Oracle::MemoryByteEquals(_)))
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
 fn write_blargg_timing_fixtures(workspace_root: &Path) {
     write_fixture_placeholders(
         workspace_root,
@@ -950,6 +1290,15 @@ fn read_gbemu_suite_manifest(suite_name: &str) -> String {
     .expect("suite manifest should be readable")
 }
 
+fn read_docboy_suite_manifest(suite_name: &str) -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/docboy")
+            .join(format!("{suite_name}.suite.toml")),
+    )
+    .expect("suite manifest should be readable")
+}
+
 fn write_manifest_fixture_placeholders(
     workspace_root: &Path,
     report_id: &str,
@@ -983,6 +1332,13 @@ fn fixture_paths_from_manifest(manifest_text: &str) -> Vec<PathBuf> {
         }
     }
     paths
+}
+
+fn disabled_case_count(manifest_text: &str) -> usize {
+    manifest_text
+        .lines()
+        .filter(|line| line.trim() == "disabled = true")
+        .count()
 }
 
 fn clean_path(path: &Path) -> PathBuf {
