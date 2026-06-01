@@ -69,6 +69,11 @@ target = "halt_bug.gb"
 sha256 = "2939d3f0cc34690d050acb5633c793ee5c593e98f1e49ad6d15639a30b69c492"
 
 [[source.family.file]]
+path = "testroms/blargg/halt_bug.png"
+target = "halt_bug.png"
+sha256 = "561273730808d1072e5ce62585d83c8d2a06de9114a4c73c411e41a5ba37257d"
+
+[[source.family.file]]
 path = "testroms/blargg/instr_timing.gb"
 target = "instr_timing.gb"
 sha256 = "2aa8d6b38ff55f44edfb438db7938fc446c0645cf47cab7b570a97d353c4bece"
@@ -77,6 +82,11 @@ sha256 = "2aa8d6b38ff55f44edfb438db7938fc446c0645cf47cab7b570a97d353c4bece"
 path = "testroms/blargg/interrupt_time.gb"
 target = "interrupt_time.gb"
 sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
+
+[[source.family.file]]
+path = "testroms/blargg/interrupt_time.png"
+target = "interrupt_time.png"
+sha256 = "722f110245a51f6b363493f9d19101aea7b7cf441508ede44ae4acb90b272131"
 
 [[source.family.file]]
 path = "testroms/blargg/mem_timing/01-read_timing.gb"
@@ -99,9 +109,19 @@ target = "mem_timing-2/01-read_timing.gb"
 sha256 = "022b824304303ab7ae298d8277f683a7927e1f2787e612ce16200581b192b1a4"
 
 [[source.family.file]]
+path = "testroms/blargg/mem_timing-2/01-read_timing.png"
+target = "mem_timing-2/01-read_timing.png"
+sha256 = "a73101c68cc0dd6f71c7947d8ce1f3fac7752ad958fb0f648d9f340930059aed"
+
+[[source.family.file]]
 path = "testroms/blargg/mem_timing-2/02-write_timing.gb"
 target = "mem_timing-2/02-write_timing.gb"
 sha256 = "31f2aa338b100258bf63ea824f3980dba752e38587405daab007c42f3986bf48"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/02-write_timing.png"
+target = "mem_timing-2/02-write_timing.png"
+sha256 = "0b24397e24e474f8cd026973a46d756b7e1e649dc26d11629b0ce02b45e46c40"
 
 [[source.family.file]]
 path = "testroms/blargg/mem_timing-2/03-modify_timing.gb"
@@ -109,9 +129,19 @@ target = "mem_timing-2/03-modify_timing.gb"
 sha256 = "cbfcf0722da3321e365d57fc26150f4c0e63fcd1b890c3213a965df26255b789"
 
 [[source.family.file]]
+path = "testroms/blargg/mem_timing-2/03-modify_timing.png"
+target = "mem_timing-2/03-modify_timing.png"
+sha256 = "cd3efa7e8d68a2e6cdb5c8934627c6c3bf31237c53c5416cad5e6dcba222da46"
+
+[[source.family.file]]
 path = "testroms/blargg/oam_bug/1-lcd_sync.gb"
 target = "oam_bug/1-lcd_sync.gb"
 sha256 = "4d1cc69ccc24c077e0ea7f43a2fe5838e1bf6c676bfdf2859e678d2cd1e2ae82"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/1-lcd_sync.png"
+target = "oam_bug/1-lcd_sync.png"
+sha256 = "314a51c6785ba7fe59f12638f3d4f352a55cd6d1dfd884f217c0f4643c803a5b"
 
 [[source.family.file]]
 path = "testroms/blargg/oam_bug/2-causes.gb"
@@ -119,9 +149,19 @@ target = "oam_bug/2-causes.gb"
 sha256 = "a9c701a5eca915b2dbd057089d04f418283e3ade150be4853c74c2561f4ee4a9"
 
 [[source.family.file]]
+path = "testroms/blargg/oam_bug/2-causes.png"
+target = "oam_bug/2-causes.png"
+sha256 = "1150bd0e83cb9f30b05677627734b98d3c6c82cdf0edf8f19d868fb091b44c82"
+
+[[source.family.file]]
 path = "testroms/blargg/oam_bug/3-non_causes.gb"
 target = "oam_bug/3-non_causes.gb"
 sha256 = "b6089073cba222785251d6b627e0bfb8d14a1cbb2a90fbf9bd4f03b3bccc5898"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/3-non_causes.png"
+target = "oam_bug/3-non_causes.png"
+sha256 = "e87e192eadaf62ef43908df7a38f7fd79920fba52a101bc350b0b3b8259ce98f"
 
 [[source.family.file]]
 path = "testroms/blargg/oam_bug/4-scanline_timing.gb"
@@ -129,9 +169,19 @@ target = "oam_bug/4-scanline_timing.gb"
 sha256 = "328383cfdd9232b8f6a8b19200a6f7df9f8f32cd424552a826399fe82e4545f6"
 
 [[source.family.file]]
+path = "testroms/blargg/oam_bug/4-scanline_timing.png"
+target = "oam_bug/4-scanline_timing.png"
+sha256 = "40de444326a31e818d5ccebaa07faddcd5677264b0d6dc601551f7df7762a0ea"
+
+[[source.family.file]]
 path = "testroms/blargg/oam_bug/5-timing_bug.gb"
 target = "oam_bug/5-timing_bug.gb"
 sha256 = "a0d129d4f451ad3f22acd1308f7134c521956c6d8c814069139817788d0ae718"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/5-timing_bug.png"
+target = "oam_bug/5-timing_bug.png"
+sha256 = "460464a9bf1cb0ea1352461fc96c5e33a2a337a61bd17fbb0ebdff14210ac31a"
 
 [[source.family.file]]
 path = "testroms/blargg/oam_bug/6-timing_no_bug.gb"
@@ -139,9 +189,19 @@ target = "oam_bug/6-timing_no_bug.gb"
 sha256 = "f979970f9e56a88c12acc8fcf017d035b1cb441a18683c71956943c0b3a7e70a"
 
 [[source.family.file]]
+path = "testroms/blargg/oam_bug/6-timing_no_bug.png"
+target = "oam_bug/6-timing_no_bug.png"
+sha256 = "b826f5dfd4df4a52676502eb6bdb91faf8b0c2715e97114c7de38ad99ed4a66a"
+
+[[source.family.file]]
 path = "testroms/blargg/oam_bug/8-instr_effect.gb"
 target = "oam_bug/8-instr_effect.gb"
 sha256 = "8ff2c98157ad7eccf484e9cd93ed0eb03dbc5ea026c2c6875bdf04dace82c290"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/8-instr_effect.png"
+target = "oam_bug/8-instr_effect.png"
+sha256 = "09d90c01146ed634ea4841bf3854f49272ed0ea2e8cbe8515495af1844a486aa"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/01-registers.gb"
@@ -149,9 +209,19 @@ target = "dmg_sound/01-registers.gb"
 sha256 = "c6b9fa4b9d9d26919b33ebe78a6ef19ad2df854186cf741ca2746179cc9fc3f1"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/01-registers.png"
+target = "dmg_sound/01-registers.png"
+sha256 = "0574a0933299759683900822f2e1b2a31e0d695d99c53d54f9e2e2c61414b71c"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/02-len_ctr.gb"
 target = "dmg_sound/02-len_ctr.gb"
 sha256 = "745544125a5065729cab22494a79f65c3836e4426f89e4cc43d330afe711b413"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/02-len_ctr.png"
+target = "dmg_sound/02-len_ctr.png"
+sha256 = "b57d22428a1a7973a4cf5ffe2e4702f7380bb2eb22400c4baa2e701ac1882b8c"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/03-trigger.gb"
@@ -159,9 +229,19 @@ target = "dmg_sound/03-trigger.gb"
 sha256 = "bb11e7266a7143bafb8aa2a73ca70957c6011f36cd4e0b6aaf0678378294e75c"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/03-trigger.png"
+target = "dmg_sound/03-trigger.png"
+sha256 = "e5f866c0d34cb35049e177b142b96bebf1678fadf20d5343398e6b5d6a5ded20"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/04-sweep.gb"
 target = "dmg_sound/04-sweep.gb"
 sha256 = "58bc14541d91bb020c7761b423825b3432cfde7ee2fa4d1116126e4cb9573c7e"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/04-sweep.png"
+target = "dmg_sound/04-sweep.png"
+sha256 = "bf28955f3a495e8463c60193333ca7fc23a02f87c4f4d665647a8b06596737b9"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/05-sweep_details.gb"
@@ -169,9 +249,19 @@ target = "dmg_sound/05-sweep_details.gb"
 sha256 = "f582ca3a0b2544b9510797d7d4dd56a17f53e000511b0ae88a6353200dcd9167"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/05-sweep_details.png"
+target = "dmg_sound/05-sweep_details.png"
+sha256 = "9240660b73cb84351d8dd16c76172d5a4ee69eacc78a52b47dd79fdb5345ff5e"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/06-overflow_on_trigger.gb"
 target = "dmg_sound/06-overflow_on_trigger.gb"
 sha256 = "1a511e95e84ed6fe6077cabf451a98b4e01fdef59cadae3efbc178113eb064b1"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/06-overflow_on_trigger.png"
+target = "dmg_sound/06-overflow_on_trigger.png"
+sha256 = "35e884c5ac2ef4669d44a3c63127a72b9f2027acb210363040fb300053d36b89"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/07-len_sweep_period_sync.gb"
@@ -179,9 +269,19 @@ target = "dmg_sound/07-len_sweep_period_sync.gb"
 sha256 = "56bf5b0c18b996929c9b052ba5a02b450cb619bb6c24cc1d34ea20951c977bf7"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/07-len_sweep_period_sync.png"
+target = "dmg_sound/07-len_sweep_period_sync.png"
+sha256 = "d317df3b5bae30d967118265aba74be271848a05a4b8f0e850db4450c4bb360c"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/08-len_ctr_during_power.gb"
 target = "dmg_sound/08-len_ctr_during_power.gb"
 sha256 = "31cb41f7be106a708ec0bc94f2a9d0b506d247cd591e9d0a2a6a960dc3bf6595"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/08-len_ctr_during_power.png"
+target = "dmg_sound/08-len_ctr_during_power.png"
+sha256 = "cb71ce68711637a7a29382a0c618f5c440dda1174692d79533939dca1de57239"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/09-wave_read_while_on.gb"
@@ -189,9 +289,19 @@ target = "dmg_sound/09-wave_read_while_on.gb"
 sha256 = "378b86f6a25daa16855260d7ef0c24e48146ba05df434a0b5413983a1447e875"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/09-wave_read_while_on.png"
+target = "dmg_sound/09-wave_read_while_on.png"
+sha256 = "99771f644d1d67bb5c244d52fdb92ed5e6726c1e66884a1f7809bd8fb4d275e2"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/10-wave_trigger_while_on.gb"
 target = "dmg_sound/10-wave_trigger_while_on.gb"
 sha256 = "fa63c8ed7473411e54285d318e33bf23ff6d637ed2caa7555ddeaf80578e3279"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/10-wave_trigger_while_on.png"
+target = "dmg_sound/10-wave_trigger_while_on.png"
+sha256 = "d2437629ac4cc52b2a964858c2cb6a6205ac9f0f16c89c38234f7dfb68af6424"
 
 [[source.family.file]]
 path = "testroms/blargg/dmg_sound/11-regs_after_power.gb"
@@ -199,9 +309,19 @@ target = "dmg_sound/11-regs_after_power.gb"
 sha256 = "d27dab46e8b881028723f1975328572d38e25d295289b974cd698916a0be5dab"
 
 [[source.family.file]]
+path = "testroms/blargg/dmg_sound/11-regs_after_power.png"
+target = "dmg_sound/11-regs_after_power.png"
+sha256 = "e2e9638156a219387eacb42ab0e0ecc2057558e8b6410ce99e18b29eb2524059"
+
+[[source.family.file]]
 path = "testroms/blargg/dmg_sound/12-wave_write_while_on.gb"
 target = "dmg_sound/12-wave_write_while_on.gb"
 sha256 = "2efbecd2c6d40928d44f45da4f634626bcd2790165b3949aedfe377c73913774"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/12-wave_write_while_on.png"
+target = "dmg_sound/12-wave_write_while_on.png"
+sha256 = "bc948c2ab39ad9a70bb1ad83ed6d69ecbdd60fb8701c7bcc0d7aebb839813c10"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/01-registers.gb"
@@ -209,9 +329,19 @@ target = "cgb_sound/01-registers.gb"
 sha256 = "8415d6c69f7954e9365a586bac235f5ce39270ece32c09cb8ebbbff043b9852c"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/01-registers.png"
+target = "cgb_sound/01-registers.png"
+sha256 = "9311987790787639a8614a4de88a37b83c9017a8dd5029b449292a97eb73e0ee"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/02-len_ctr.gb"
 target = "cgb_sound/02-len_ctr.gb"
 sha256 = "a1ccf47375a2bede3077ac85a4903cb037dd8a4c7c85fc5d0c176af52915271f"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/02-len_ctr.png"
+target = "cgb_sound/02-len_ctr.png"
+sha256 = "cd74c8eb23be026573abf57ca2214425869281b0c719a991abead3c3a7b79c9d"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/03-trigger.gb"
@@ -219,9 +349,19 @@ target = "cgb_sound/03-trigger.gb"
 sha256 = "70173be396d14ac955c47aededcee90ba994206cc403273d0bb49ba163ae23ef"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/03-trigger.png"
+target = "cgb_sound/03-trigger.png"
+sha256 = "4b25e1f22418fa22b1644ab4be6c10aa7c16fb84db369683c8609a0754982869"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/04-sweep.gb"
 target = "cgb_sound/04-sweep.gb"
 sha256 = "abfd1f6fa9e6701e46135ac9f5bb5b10a46cde22d0fc34922636aa09a5647483"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/04-sweep.png"
+target = "cgb_sound/04-sweep.png"
+sha256 = "395f86bafb229bc6aab8f8be04cc84c0c2a7b91fc6415be0835eb1d170446985"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/05-sweep_details.gb"
@@ -229,9 +369,19 @@ target = "cgb_sound/05-sweep_details.gb"
 sha256 = "f51a80c5538fe4b3afbc5c9af0e689a67869b1e2bbb73d4c60a8874826d056cb"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/05-sweep_details.png"
+target = "cgb_sound/05-sweep_details.png"
+sha256 = "42c41fb66f655ce5b67cfc0c8fe71fed5411cc09e575d329682ad58489f7ee25"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.gb"
 target = "cgb_sound/06-overflow_on_trigger.gb"
 sha256 = "5701414d13ba55d25b59d13076e2e9cb59a9da6890595b41464f957605e317c0"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.png"
+target = "cgb_sound/06-overflow_on_trigger.png"
+sha256 = "23d8dac3e8cb3a196964add166ba80b32c9fd62316eb59a400e2a27ec48251a0"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.gb"
@@ -239,9 +389,19 @@ target = "cgb_sound/07-len_sweep_period_sync.gb"
 sha256 = "47d57ba87c3a93050ee340cf49b9d276e62e9573542b92b1de5fa2f17e3716c1"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.png"
+target = "cgb_sound/07-len_sweep_period_sync.png"
+sha256 = "dfae1e999e92858b0dfd9c0426f5c0e2e43e3a561c8b391d57f751a37b76667b"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.gb"
 target = "cgb_sound/08-len_ctr_during_power.gb"
 sha256 = "be7948c70946e0b81c178b8778ef1907231e734650062f8fa8cdb1ceb5ac8c65"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.png"
+target = "cgb_sound/08-len_ctr_during_power.png"
+sha256 = "660320abe85f98321f1c20600e4397160e454967dda7db2d187eb212845c2e0d"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/09-wave_read_while_on.gb"
@@ -249,9 +409,19 @@ target = "cgb_sound/09-wave_read_while_on.gb"
 sha256 = "9b101c68b2de1930df74c19aaf22cce74d37dd5aade93855c805ecb2e1e83fd3"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/09-wave_read_while_on.png"
+target = "cgb_sound/09-wave_read_while_on.png"
+sha256 = "38fc5cf01a18171316cf893a5aaea842b1d8468a92281db42996565ed65b014d"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.gb"
 target = "cgb_sound/10-wave_trigger_while_on.gb"
 sha256 = "cbea1771a5384f4d8f8a249056224a750ad5ee4671297836e4ba87e689af2a23"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.png"
+target = "cgb_sound/10-wave_trigger_while_on.png"
+sha256 = "fa73ef5cd16cff0e3b077b33f86981c1a15777926d3cb508154fabdc5a67f207"
 
 [[source.family.file]]
 path = "testroms/blargg/cgb_sound/11-regs_after_power.gb"
@@ -259,9 +429,20 @@ target = "cgb_sound/11-regs_after_power.gb"
 sha256 = "d347dd195a78c2d0f665b94da493a857218f032b014654b84ddb01f7b8e9befc"
 
 [[source.family.file]]
+path = "testroms/blargg/cgb_sound/11-regs_after_power.png"
+target = "cgb_sound/11-regs_after_power.png"
+sha256 = "b905224e5fe59db86a85e05972222ab7e618b6fe81936e705963a68b09bb3c28"
+
+[[source.family.file]]
 path = "testroms/blargg/cgb_sound/12-wave.gb"
 target = "cgb_sound/12-wave.gb"
 sha256 = "7bbd2e78e159de4297f567fec7851f9b90c3076d18d1043af5f30e14bd66cd0a"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/12-wave.png"
+target = "cgb_sound/12-wave.png"
+sha256 = "eb9df05369029ce0f6e167f08a1001bdcde9a676e873f5be7dfcf9f118fd7937"
+
 
 [[source.family]]
 id = "acid"

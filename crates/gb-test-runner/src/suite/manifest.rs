@@ -4,9 +4,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use gb_core::{ConsoleModel, ExecutionMode};
+
 use crate::oracle::{Oracle, OracleConfig};
 
-use super::model::{DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest};
+use super::model::{
+    DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, TEST_ROM_STORE_DIR,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ReportManifestFile {
@@ -27,6 +31,7 @@ struct ReportFile {
 struct SuiteCaseDefaultsFile {
     family: Option<String>,
     console: Option<String>,
+    execution_mode: Option<String>,
     timeout_frames: Option<u32>,
     oracle: Option<OracleConfig>,
 }
@@ -53,6 +58,7 @@ struct SuiteCaseFile {
     id: String,
     rom: PathBuf,
     console: Option<String>,
+    execution_mode: Option<String>,
     timeout_frames: Option<u32>,
     oracle: Option<OracleConfig>,
 }
@@ -100,7 +106,7 @@ pub(super) fn load_selected_suites(
                 continue;
             }
         }
-        suites.push(parse_suite_manifest(&path, &report.id, &text)?);
+        suites.push(parse_suite_manifest(&path, report, workspace_root, &text)?);
     }
 
     if let Some(suite_name) = suite_name
@@ -175,17 +181,22 @@ fn parse_suite_manifest_header(path: &Path, text: &str) -> Result<SuiteManifestH
     })
 }
 
-fn parse_suite_manifest(path: &Path, report_id: &str, text: &str) -> Result<SuiteManifest, String> {
+fn parse_suite_manifest(
+    path: &Path,
+    report: &Report,
+    workspace_root: &Path,
+    text: &str,
+) -> Result<SuiteManifest, String> {
     let parsed: SuiteManifestFile = toml::from_str(text)
         .map_err(|error| format!("failed to parse suite manifest {}: {error}", path.display()))?;
     if let Some(declared_report) = &parsed.report
-        && declared_report != report_id
+        && declared_report != &report.id
     {
         return Err(format!(
             "suite manifest {} declares report {:?}, expected {:?}",
             path.display(),
             declared_report,
-            report_id
+            report.id
         ));
     }
     let manifest_family = parsed
@@ -205,7 +216,14 @@ fn parse_suite_manifest(path: &Path, report_id: &str, text: &str) -> Result<Suit
                     path.display()
                 ));
             }
-            parse_case(path, &manifest_family, &parsed.defaults, case)
+            parse_case(
+                path,
+                workspace_root,
+                report,
+                &manifest_family,
+                &parsed.defaults,
+                case,
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
     if cases.is_empty() {
@@ -224,6 +242,8 @@ fn parse_suite_manifest(path: &Path, report_id: &str, text: &str) -> Result<Suit
 
 fn parse_case(
     path: &Path,
+    workspace_root: &Path,
+    report: &Report,
     manifest_family: &str,
     defaults: &SuiteCaseDefaultsFile,
     case: SuiteCaseFile,
@@ -242,14 +262,17 @@ fn parse_case(
                 path.display()
             )
         })?;
-    if console != "dmg" {
-        return Err(format!(
-            "case {:?} in {} uses unsupported console {:?}; suite runner only supports \"dmg\"",
-            case.id,
-            path.display(),
-            console
-        ));
-    }
+    let console_model = parse_console_model(&console)
+        .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let execution_mode = match case
+        .execution_mode
+        .or_else(|| defaults.execution_mode.clone())
+        .as_deref()
+    {
+        Some(execution_mode) => parse_execution_mode(execution_mode)
+            .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?,
+        None => ExecutionMode::Strict,
+    };
     let timeout_frames = case
         .timeout_frames
         .or(defaults.timeout_frames)
@@ -267,26 +290,69 @@ fn parse_case(
             path.display()
         ));
     }
-    let oracle_config = case
-        .oracle
-        .or_else(|| defaults.oracle.clone())
-        .ok_or_else(|| {
-            format!(
-                "case {:?} in {} must define oracle",
-                case.id,
-                path.display()
-            )
-        })?;
-    let oracle = Oracle::from_manifest(&oracle_config)
+    let oracle_config = resolve_oracle_config(defaults.oracle.as_ref(), case.oracle)
+        .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let fixture_root = fixture_root_for_case(workspace_root, report, &family);
+    let oracle = Oracle::from_manifest_with_fixture_root(&oracle_config, &fixture_root)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
 
     Ok(SuiteCase {
         id: case.id,
         family,
         rom: case.rom,
+        console_model,
+        execution_mode,
         timeout_frames,
         oracle,
     })
+}
+
+fn resolve_oracle_config(
+    default: Option<&OracleConfig>,
+    case: Option<OracleConfig>,
+) -> Result<OracleConfig, String> {
+    match case {
+        Some(case) if case.has_kind() => Ok(case),
+        Some(case) => {
+            let default = default
+                .ok_or_else(|| "oracle override requires a global oracle with type".to_string())?;
+            case.with_defaults(default)
+        }
+        None => {
+            let default = default
+                .cloned()
+                .ok_or_else(|| "must define oracle".to_string())?;
+            if default.has_kind() {
+                Ok(default)
+            } else {
+                Err("global oracle must define type".to_string())
+            }
+        }
+    }
+}
+
+fn fixture_root_for_case(workspace_root: &Path, report: &Report, family: &str) -> PathBuf {
+    workspace_root
+        .join(TEST_ROM_STORE_DIR)
+        .join(&report.store_dir)
+        .join(family)
+}
+
+fn parse_console_model(console: &str) -> Result<ConsoleModel, String> {
+    match console {
+        "dmg" => Ok(ConsoleModel::GameBoy),
+        "cgb" => Ok(ConsoleModel::GameBoyColor),
+        other => Err(format!("unsupported console {other:?}")),
+    }
+}
+
+fn parse_execution_mode(execution_mode: &str) -> Result<ExecutionMode, String> {
+    match execution_mode {
+        "strict" => Ok(ExecutionMode::Strict),
+        "permissive" => Ok(ExecutionMode::Permissive),
+        "experimental" => Ok(ExecutionMode::Experimental),
+        other => Err(format!("unsupported execution_mode {other:?}")),
+    }
 }
 
 #[cfg(test)]
@@ -295,5 +361,11 @@ pub(super) fn parse_suite_manifest_for_test(
     report_id: &str,
     text: &str,
 ) -> Result<SuiteManifest, String> {
-    parse_suite_manifest(path, report_id, text)
+    let report = Report {
+        id: report_id.to_string(),
+        store_dir: PathBuf::from(report_id),
+        sources: PathBuf::from(format!("{report_id}/sources.report.toml")),
+        status_dir: PathBuf::from(".status"),
+    };
+    parse_suite_manifest(path, &report, Path::new(""), text)
 }

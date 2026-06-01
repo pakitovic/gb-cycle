@@ -920,7 +920,7 @@ fn curated_ashiepaws_suite_tracks_the_active_framebuffer_cases() {
 }
 
 #[test]
-fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specific_oracles() {
+fn curated_mooneye_suite_matches_the_active_gbemu_list_and_keeps_case_specific_oracles() {
     let split_suites = mooneye_curated_suites();
     let cases = split_suites
         .iter()
@@ -933,7 +933,7 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
             .map(|suite| suite.name.as_str())
             .collect::<Vec<_>>(),
         vec![
-            "mooneye-acceptance-manual",
+            "mooneye-acceptance-manual-misc",
             "mooneye-emulator-mbc1-mbc5",
             "mooneye-emulator-mbc2"
         ]
@@ -943,7 +943,7 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
             suite.validate() == Ok(()) && suite.family.as_deref() == Some("mooneye")
         })
     );
-    assert_eq!(cases.len(), 95);
+    assert_eq!(cases.len(), 97);
     let expected_rom_paths = [
         "mooneye/acceptance/add_sp_e_timing.gb",
         "mooneye/acceptance/bits/mem_oam.gb",
@@ -1040,6 +1040,8 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
         "mooneye/emulator-only/mbc5/rom_64Mb.gb",
         "mooneye/emulator-only/mbc5/rom_8Mb.gb",
         "mooneye/manual-only/sprite_priority.gb",
+        "mooneye/misc/boot_div-cgbABCDE.gb",
+        "mooneye/misc/boot_regs-cgb.gb",
     ];
     let mut expected_rom_paths = expected_rom_paths
         .into_iter()
@@ -1057,16 +1059,20 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
     actual_rom_paths.sort();
     assert_eq!(actual_rom_paths, expected_rom_paths);
     assert!(cases.iter().all(|case| {
-        case.console_model == ConsoleModel::GameBoy
-            && case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
+        case.rom_path.starts_with(Path::new(TEST_ROM_STORE_DIR))
             && rom_path_without_store_prefix(&case.rom_path).starts_with(Path::new("mooneye"))
     }));
     assert!(!cases.iter().any(|case| {
         let path = rom_path_without_store_prefix(&case.rom_path).to_string_lossy();
-        path.contains("sgb")
-            || path.contains("cgb")
-            || path.contains("apu")
-            || path.contains("sound")
+        path.contains("sgb") || path.contains("apu") || path.contains("sound")
+    }));
+    assert!(cases.iter().all(|case| {
+        let path = rom_path_without_store_prefix(&case.rom_path).to_string_lossy();
+        if path.starts_with("mooneye/misc/boot_") {
+            case.console_model == ConsoleModel::GameBoyColor
+        } else {
+            case.console_model == ConsoleModel::GameBoy
+        }
     }));
     assert!(
         cases

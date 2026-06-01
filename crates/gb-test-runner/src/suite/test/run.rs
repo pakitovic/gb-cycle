@@ -117,3 +117,49 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
+
+#[test]
+fn command_treats_info_framebuffer_as_pass_for_ci() {
+    let workspace = unique_temp_dir("framebuffer-info-pass");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/acid.suite.toml",
+        &basic_manifest("acid", "acid", "acid-which-dmg", "which.gb")
+            .replace(
+                "oracle = { type = \"serial-contains\", expected = \"Passed\" }",
+                "oracle = { type = \"framebuffer\", mode = \"info\" }",
+            )
+            .replace("timeout_frames = 2", "timeout_frames = 1"),
+    );
+    let rom_path = workspace.join("test/sample-report/acid/which.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_serial_text_rom("")).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "acid",
+            "--case",
+            "acid-which-dmg",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("info framebuffer should pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite acid: 1/1 passed"));
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/acid.toml"))
+        .expect("status should be written");
+    assert!(status.contains("status = \"PASS\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}

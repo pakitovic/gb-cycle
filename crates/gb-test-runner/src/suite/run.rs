@@ -2,10 +2,11 @@ use std::fs;
 use std::path::Path;
 
 use gb_core::{
-    CompatibilityPolicy, ConsoleModel, DMG_T_CYCLES_PER_FRAME, Machine, MachineConfig, StartupMode,
+    CompatibilityPolicy, DMG_T_CYCLES_PER_FRAME, ExecutionMode, Machine, MachineConfig,
+    StartupMode, TraceSummaryBuffer,
 };
 
-use crate::oracle::OracleObservations;
+use crate::oracle::{FramebufferObservation, OracleObservations, OracleOutcome, OracleStep};
 
 use super::model::{CaseRunReport, Report, SuiteCase, SuiteManifest, SuiteRunReport};
 use super::status::store_root_for_report;
@@ -47,9 +48,9 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
         }
     };
 
-    let config = MachineConfig::new(ConsoleModel::GameBoy)
+    let config = MachineConfig::new(case.console_model)
         .with_startup_mode(StartupMode::SkipBoot)
-        .with_compatibility(CompatibilityPolicy::strict());
+        .with_compatibility(compatibility_for_execution_mode(case.execution_mode));
     let mut machine = Machine::new_summary(config);
     if let Err(error) = machine.load_cartridge(rom_bytes) {
         return CaseRunReport {
@@ -66,29 +67,84 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
 
     let timeout_tcycles = u64::from(case.timeout_frames).saturating_mul(DMG_T_CYCLES_PER_FRAME);
     let mut serial_bytes = Vec::new();
+    let mut oracle = case.oracle.clone();
     for executed_tcycles in 1..=timeout_tcycles {
         machine.step_t_cycle();
         serial_bytes.extend(machine.take_serial_output_bytes());
-        if case.oracle.matched(OracleObservations {
+        match oracle.observe(OracleObservations {
             serial: &serial_bytes,
+            executed_tcycles,
+            framebuffer: framebuffer_observation(&machine),
+            participants: &[],
         }) {
-            return CaseRunReport {
-                id: case.id.clone(),
-                rom: case.rom.clone(),
-                passed: true,
-                failure: None,
-                executed_tcycles,
-            };
+            Ok(OracleStep::Continue) => {}
+            Ok(OracleStep::Stop) => {
+                return finish_case(case, oracle, &machine, &serial_bytes, executed_tcycles);
+            }
+            Err(error) => {
+                return CaseRunReport {
+                    id: case.id.clone(),
+                    rom: case.rom.clone(),
+                    passed: false,
+                    failure: Some(error),
+                    executed_tcycles,
+                };
+            }
         }
     }
 
-    CaseRunReport {
-        id: case.id.clone(),
-        rom: case.rom.clone(),
-        passed: false,
-        failure: Some(case.oracle.failure_message(OracleObservations {
-            serial: &serial_bytes,
-        })),
-        executed_tcycles: timeout_tcycles,
+    finish_case(case, oracle, &machine, &serial_bytes, timeout_tcycles)
+}
+
+fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> CompatibilityPolicy {
+    match execution_mode {
+        ExecutionMode::Strict => CompatibilityPolicy::strict(),
+        ExecutionMode::Permissive => CompatibilityPolicy::permissive(),
+        ExecutionMode::Experimental => CompatibilityPolicy::experimental(),
+    }
+}
+
+fn finish_case(
+    case: &SuiteCase,
+    mut oracle: crate::oracle::Oracle,
+    machine: &Machine<TraceSummaryBuffer>,
+    serial_bytes: &[u8],
+    executed_tcycles: u64,
+) -> CaseRunReport {
+    match oracle.finish(OracleObservations {
+        serial: serial_bytes,
+        executed_tcycles,
+        framebuffer: framebuffer_observation(machine),
+        participants: &[],
+    }) {
+        Ok(OracleOutcome::Passed) => CaseRunReport {
+            id: case.id.clone(),
+            rom: case.rom.clone(),
+            passed: true,
+            failure: None,
+            executed_tcycles,
+        },
+        Ok(OracleOutcome::Failed(failure)) => CaseRunReport {
+            id: case.id.clone(),
+            rom: case.rom.clone(),
+            passed: false,
+            failure: Some(failure),
+            executed_tcycles,
+        },
+        Err(error) => CaseRunReport {
+            id: case.id.clone(),
+            rom: case.rom.clone(),
+            passed: false,
+            failure: Some(error),
+            executed_tcycles,
+        },
+    }
+}
+
+fn framebuffer_observation(machine: &Machine<TraceSummaryBuffer>) -> FramebufferObservation<'_> {
+    FramebufferObservation {
+        dmg: Some(machine.ppu().framebuffer()),
+        cgb_rgb555: machine.ppu().cgb_framebuffer_rgb555(),
+        in_vblank: machine.ppu().ly() >= 144,
     }
 }

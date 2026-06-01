@@ -1,0 +1,65 @@
+family = "blargg"
+suite_name = "blargg-cgb-sound"
+console = "cgb"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }
+
+[[case]]
+id = "blargg-cgb-sound-01-registers"
+rom = "cgb_sound/01-registers.gb"
+oracle = { fixture = "cgb_sound/01-registers.png" }
+
+[[case]]
+id = "blargg-cgb-sound-02-len-ctr"
+rom = "cgb_sound/02-len_ctr.gb"
+oracle = { fixture = "cgb_sound/02-len_ctr.png" }
+
+[[case]]
+id = "blargg-cgb-sound-03-trigger"
+rom = "cgb_sound/03-trigger.gb"
+oracle = { fixture = "cgb_sound/03-trigger.png" }
+
+[[case]]
+id = "blargg-cgb-sound-04-sweep"
+rom = "cgb_sound/04-sweep.gb"
+oracle = { fixture = "cgb_sound/04-sweep.png" }
+
+[[case]]
+id = "blargg-cgb-sound-05-sweep-details"
+rom = "cgb_sound/05-sweep_details.gb"
+oracle = { fixture = "cgb_sound/05-sweep_details.png" }
+
+[[case]]
+id = "blargg-cgb-sound-06-overflow-on-trigger"
+rom = "cgb_sound/06-overflow_on_trigger.gb"
+oracle = { fixture = "cgb_sound/06-overflow_on_trigger.png" }
+
+[[case]]
+id = "blargg-cgb-sound-07-len-sweep-period-sync"
+rom = "cgb_sound/07-len_sweep_period_sync.gb"
+oracle = { fixture = "cgb_sound/07-len_sweep_period_sync.png" }
+
+[[case]]
+id = "blargg-cgb-sound-08-len-ctr-during-power"
+rom = "cgb_sound/08-len_ctr_during_power.gb"
+oracle = { fixture = "cgb_sound/08-len_ctr_during_power.png" }
+
+[[case]]
+id = "blargg-cgb-sound-09-wave-read-while-on"
+rom = "cgb_sound/09-wave_read_while_on.gb"
+oracle = { fixture = "cgb_sound/09-wave_read_while_on.png" }
+
+[[case]]
+id = "blargg-cgb-sound-10-wave-trigger-while-on"
+rom = "cgb_sound/10-wave_trigger_while_on.gb"
+oracle = { fixture = "cgb_sound/10-wave_trigger_while_on.png" }
+
+[[case]]
+id = "blargg-cgb-sound-11-regs-after-power"
+rom = "cgb_sound/11-regs_after_power.gb"
+oracle = { fixture = "cgb_sound/11-regs_after_power.png" }
+
+[[case]]
+id = "blargg-cgb-sound-12-wave"
+rom = "cgb_sound/12-wave.gb"
+oracle = { fixture = "cgb_sound/12-wave.png" }

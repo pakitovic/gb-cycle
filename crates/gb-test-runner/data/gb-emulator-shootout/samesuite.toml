@@ -25,18 +25,6 @@ rom = "ppu/blocking_bgpi_increase.gb"
 fixture = "test/gb-emulator-shootout/samesuite/ppu/blocking_bgpi_increase.png"
 
 [[case]]
-family = "mooneye"
-id = "mooneye-misc-boot-div-cgbabcde"
-rom = "misc/boot_div-cgbABCDE.gb"
-oracle = "mooneye-result"
-
-[[case]]
-family = "mooneye"
-id = "mooneye-misc-boot-regs-cgb"
-rom = "misc/boot_regs-cgb.gb"
-oracle = "mooneye-result"
-
-[[case]]
 id = "samesuite-dma-gbc-dma-cont"
 rom = "dma/gbc_dma_cont.gb"
 fixture = "test/gb-emulator-shootout/samesuite/dma/gbc_dma_cont.png"

@@ -1,7 +1,7 @@
 family = "blargg"
 suite_name = "blargg-cpu-instrs"
 console = "dmg"
-timeout_frames = 1800
+timeout_frames = 1200
 oracle = { type = "serial-contains", expected = "Passed" }
 
 [[case]]

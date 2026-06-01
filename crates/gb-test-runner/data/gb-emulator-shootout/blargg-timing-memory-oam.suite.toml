@@ -1,0 +1,85 @@
+family = "blargg"
+suite_name = "blargg-timing-memory-oam"
+console = "dmg"
+timeout_frames = 1200
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "blargg-halt-bug"
+rom = "halt_bug.gb"
+execution_mode = "permissive"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "halt_bug.png" }
+
+[[case]]
+id = "blargg-instr-timing"
+rom = "instr_timing.gb"
+
+[[case]]
+id = "blargg-interrupt-time"
+rom = "interrupt_time.gb"
+console = "cgb"
+execution_mode = "permissive"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "interrupt_time.png" }
+
+[[case]]
+id = "blargg-mem-timing-01-read-timing"
+rom = "mem_timing/01-read_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-02-write-timing"
+rom = "mem_timing/02-write_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-03-modify-timing"
+rom = "mem_timing/03-modify_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-2-01-read-timing"
+rom = "mem_timing-2/01-read_timing.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "mem_timing-2/01-read_timing.png" }
+
+[[case]]
+id = "blargg-mem-timing-2-02-write-timing"
+rom = "mem_timing-2/02-write_timing.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "mem_timing-2/02-write_timing.png" }
+
+[[case]]
+id = "blargg-mem-timing-2-03-modify-timing"
+rom = "mem_timing-2/03-modify_timing.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "mem_timing-2/03-modify_timing.png" }
+
+[[case]]
+id = "blargg-oam-bug-1-lcd-sync"
+rom = "oam_bug/1-lcd_sync.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/1-lcd_sync.png" }
+
+[[case]]
+id = "blargg-oam-bug-2-causes"
+rom = "oam_bug/2-causes.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/2-causes.png" }
+
+[[case]]
+id = "blargg-oam-bug-3-non-causes"
+rom = "oam_bug/3-non_causes.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/3-non_causes.png" }
+
+[[case]]
+id = "blargg-oam-bug-4-scanline-timing"
+rom = "oam_bug/4-scanline_timing.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/4-scanline_timing.png" }
+
+[[case]]
+id = "blargg-oam-bug-5-timing-bug"
+rom = "oam_bug/5-timing_bug.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/5-timing_bug.png" }
+
+[[case]]
+id = "blargg-oam-bug-6-timing-no-bug"
+rom = "oam_bug/6-timing_no_bug.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/6-timing_no_bug.png" }
+
+[[case]]
+id = "blargg-oam-bug-8-instr-effect"
+rom = "oam_bug/8-instr_effect.gb"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "oam_bug/8-instr_effect.png" }

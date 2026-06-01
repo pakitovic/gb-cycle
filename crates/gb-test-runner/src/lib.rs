@@ -3339,12 +3339,12 @@ mod tests {
     }
 
     #[test]
-    fn samesuite_suite_promotes_sgb_mooneye_ppu_and_dma_rows() {
+    fn samesuite_suite_promotes_sgb_cgb_ppu_and_dma_rows() {
         let suite = samesuite_suite();
 
         assert_eq!(suite.name, "samesuite");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.cases.len(), 9);
+        assert_eq!(suite.cases.len(), 7);
 
         let expected = [
             (
@@ -3362,18 +3362,6 @@ mod tests {
             (
                 "samesuite-ppu-blocking-bgpi-increase",
                 "samesuite/ppu/blocking_bgpi_increase.gb",
-                ConsoleModel::GameBoyColor,
-                Timeout::Frames(180),
-            ),
-            (
-                "mooneye-misc-boot-div-cgbabcde",
-                "mooneye/misc/boot_div-cgbABCDE.gb",
-                ConsoleModel::GameBoyColor,
-                Timeout::Frames(180),
-            ),
-            (
-                "mooneye-misc-boot-regs-cgb",
-                "mooneye/misc/boot_regs-cgb.gb",
                 ConsoleModel::GameBoyColor,
                 Timeout::Frames(180),
             ),
@@ -4507,11 +4495,11 @@ mod tests {
 
     #[test]
     fn built_in_rom_suite_lookup_returns_curated_mooneye_suite_with_case_specific_oracles() {
-        let suite = built_in_rom_suite_by_name("mooneye-acceptance-manual")
+        let suite = built_in_rom_suite_by_name("mooneye-acceptance-manual-misc")
             .expect("known suite should exist");
 
         assert_eq!(suite.family.as_deref(), Some("mooneye"));
-        assert_eq!(suite.cases.len(), 67);
+        assert_eq!(suite.cases.len(), 69);
         assert!(
             suite
                 .cases
@@ -4530,6 +4518,26 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mooneye-emulator-only-mbc1-bits-bank1")
         );
+        let boot_div_cgb = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "mooneye-misc-boot-div-cgbabcde")
+            .expect("known suite should include the CGB boot DIV misc case");
+        assert_eq!(boot_div_cgb.console_model, ConsoleModel::GameBoyColor);
+        assert!(matches!(
+            boot_div_cgb.pass_condition,
+            PassCondition::MooneyeResult
+        ));
+        let boot_regs_cgb = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "mooneye-misc-boot-regs-cgb")
+            .expect("known suite should include the CGB boot regs misc case");
+        assert_eq!(boot_regs_cgb.console_model, ConsoleModel::GameBoyColor);
+        assert!(matches!(
+            boot_regs_cgb.pass_condition,
+            PassCondition::MooneyeResult
+        ));
         let sprite_priority = suite
             .cases
             .iter()
@@ -4578,17 +4586,19 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(split_suites.len(), 3);
-        assert_eq!(split_ids.len(), 95);
+        assert_eq!(split_ids.len(), 97);
         assert!(split_ids.contains("mooneye-acceptance-ppu-intr-2-mode0-timing-sprites"));
         assert!(split_ids.contains("mooneye-acceptance-serial-boot-sclk-align-dmgabcmgb"));
+        assert!(split_ids.contains("mooneye-misc-boot-div-cgbabcde"));
+        assert!(split_ids.contains("mooneye-misc-boot-regs-cgb"));
         assert!(split_ids.contains("mooneye-emulator-only-mbc1-bits-bank1"));
         assert!(split_ids.contains("mooneye-emulator-only-mbc1-multicart-rom-8mb"));
         assert_eq!(
-            built_in_rom_suite_by_name("mooneye-acceptance-manual")
+            built_in_rom_suite_by_name("mooneye-acceptance-manual-misc")
                 .expect("acceptance split should exist")
                 .cases
                 .len(),
-            67
+            69
         );
         assert_eq!(
             built_in_rom_suite_by_name("mooneye-emulator-mbc1-mbc5")
@@ -4647,9 +4657,9 @@ mod tests {
                 informational_cases: &["daid-rom-and-ram"],
             },
             ExpectedSuite {
-                name: "mooneye-acceptance-manual",
+                name: "mooneye-acceptance-manual-misc",
                 family: "mooneye",
-                case_count: 67,
+                case_count: 69,
                 informational_cases: &[],
             },
             ExpectedSuite {

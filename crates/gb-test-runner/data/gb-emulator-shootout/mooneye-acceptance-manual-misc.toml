@@ -1,5 +1,5 @@
 family = "mooneye"
-suite_name = "mooneye-acceptance-manual"
+suite_name = "mooneye-acceptance-manual-misc"
 console = "dmg"
 timeout_frames = 180
 oracle = "mooneye-result"
@@ -275,3 +275,13 @@ id = "mooneye-manual-only-sprite-priority"
 rom = "manual-only/sprite_priority.gb"
 oracle = "framebuffer-fixture"
 fixture = "test/gb-emulator-shootout/mooneye/manual-only/sprite_priority.png"
+
+[[case]]
+id = "mooneye-misc-boot-div-cgbabcde"
+rom = "misc/boot_div-cgbABCDE.gb"
+console = "cgb"
+
+[[case]]
+id = "mooneye-misc-boot-regs-cgb"
+rom = "misc/boot_regs-cgb.gb"
+console = "cgb"

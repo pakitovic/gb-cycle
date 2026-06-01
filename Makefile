@@ -202,7 +202,7 @@ run-ax6-dmg:
 	$(RUN_ROM_SUITE) --suite ax6-dmg-extra --failure-artifact-root $(LEGACY_TEST_ARTIFACT_ROOT)/ax6
 
 run-samesuite:
-	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES="samesuite mooneye"
+	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=samesuite
 	$(RUN_ROM_SUITE) --suite samesuite --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/samesuite
 
 run-samesuite-dmg-extra:
@@ -267,7 +267,7 @@ run-daid:
 
 run-mooneye-acceptance:
 	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye
-	$(RUN_ROM_SUITE) --suite mooneye-acceptance-manual --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-acceptance-manual
+	$(RUN_ROM_SUITE) --suite mooneye-acceptance-manual-misc --failure-artifact-root $(GB_EMULATOR_SHOOTOUT_ARTIFACT_ROOT)/mooneye-acceptance-manual-misc
 
 run-mooneye-mbc1-mbc5:
 	$(MAKE) fetch-test-roms REPORT=$(GB_EMULATOR_SHOOTOUT_REPORT) FAMILIES=mooneye

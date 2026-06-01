@@ -401,8 +401,8 @@ pub fn mealybug_tearoom_cgb_extra_suite() -> RomSuite {
     manifest_suite_by_name("mealybug-tearoom-cgb-extra")
 }
 
-pub fn mooneye_acceptance_manual_suite() -> RomSuite {
-    manifest_suite_by_name("mooneye-acceptance-manual")
+pub fn mooneye_acceptance_manual_misc_suite() -> RomSuite {
+    manifest_suite_by_name("mooneye-acceptance-manual-misc")
 }
 
 pub fn mooneye_emulator_mbc1_mbc5_suite() -> RomSuite {
@@ -415,7 +415,7 @@ pub fn mooneye_emulator_mbc2_suite() -> RomSuite {
 
 pub fn mooneye_curated_suites() -> Vec<RomSuite> {
     [
-        mooneye_acceptance_manual_suite(),
+        mooneye_acceptance_manual_misc_suite(),
         mooneye_emulator_mbc1_mbc5_suite(),
         mooneye_emulator_mbc2_suite(),
     ]
@@ -1585,8 +1585,8 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 30] {
             include_str!("../data/mealybug-tearoom-tests-cgb.toml"),
         ),
         (
-            "crates/gb-test-runner/data/gb-emulator-shootout/mooneye-acceptance-manual.toml",
-            include_str!("../data/gb-emulator-shootout/mooneye-acceptance-manual.toml"),
+            "crates/gb-test-runner/data/gb-emulator-shootout/mooneye-acceptance-manual-misc.toml",
+            include_str!("../data/gb-emulator-shootout/mooneye-acceptance-manual-misc.toml"),
         ),
         (
             "crates/gb-test-runner/data/gb-emulator-shootout/mooneye-emulator-mbc1-mbc5.toml",
@@ -3116,12 +3116,12 @@ mod tests {
     }
 
     #[test]
-    fn samesuite_suite_collects_promoted_sgb_cgb_dma_and_mooneye_rows() {
+    fn samesuite_suite_collects_promoted_sgb_cgb_ppu_and_dma_rows() {
         let suite = samesuite_suite();
 
         assert_eq!(suite.name, "samesuite");
         assert_eq!(suite.family.as_deref(), Some("samesuite"));
-        assert_eq!(suite.cases.len(), 9);
+        assert_eq!(suite.cases.len(), 7);
         assert!(crate::built_in_rom_suite_by_name("samesuite").is_some());
         assert!(!suite_uses_extra_test_report("samesuite"));
         assert!(!suite_uses_docboy_test_report("samesuite"));
@@ -3156,22 +3156,6 @@ mod tests {
                 PassCondition::FramebufferRgb555Fixture(PathBuf::from(
                     "test/gb-emulator-shootout/samesuite/ppu/blocking_bgpi_increase.png",
                 )),
-            ),
-            (
-                "mooneye-misc-boot-div-cgbabcde",
-                "mooneye/misc/boot_div-cgbABCDE.gb",
-                ConsoleModel::GameBoyColor,
-                HostPlatform::Handheld,
-                Timeout::Frames(180),
-                PassCondition::MooneyeResult,
-            ),
-            (
-                "mooneye-misc-boot-regs-cgb",
-                "mooneye/misc/boot_regs-cgb.gb",
-                ConsoleModel::GameBoyColor,
-                HostPlatform::Handheld,
-                Timeout::Frames(180),
-                PassCondition::MooneyeResult,
             ),
             (
                 "samesuite-dma-gbc-dma-cont",
@@ -4406,7 +4390,7 @@ mod tests {
         assert!(
             suites
                 .iter()
-                .any(|suite| suite.name == "mooneye-acceptance-manual")
+                .any(|suite| suite.name == "mooneye-acceptance-manual-misc")
         );
         assert!(
             suites
@@ -5313,17 +5297,17 @@ mod tests {
         let report_path = update_curated_test_report(&workspace_root, &acid_report)
             .expect("acid report should write")
             .expect("curated suite should emit a report path");
-        let samesuite_report = RomSuiteReport {
-            suite_name: "samesuite".to_string(),
-            family: Some("samesuite".to_string()),
+        let mooneye_report = RomSuiteReport {
+            suite_name: "mooneye-acceptance-manual-misc".to_string(),
+            family: Some("mooneye".to_string()),
             cases: vec![report_case(
                 "mooneye-misc-boot-regs-cgb",
                 "mooneye/misc/boot_regs-cgb.gb",
                 RomCaseOutcome::Passed,
             )],
         };
-        update_curated_test_report(&workspace_root, &samesuite_report)
-            .expect("SameSuite report should write");
+        update_curated_test_report(&workspace_root, &mooneye_report)
+            .expect("Mooneye report should write");
 
         let acid_status_path = gbemu_report_root(&workspace_root)
             .join(TEST_ROM_STATUS_DIR_NAME)
@@ -5333,7 +5317,7 @@ mod tests {
         assert!(acid_status.contains("rom = \"which.gb (GBC)\""));
         let mooneye_status_path = gbemu_report_root(&workspace_root)
             .join(TEST_ROM_STATUS_DIR_NAME)
-            .join("samesuite.toml");
+            .join("mooneye-acceptance-manual-misc.toml");
         let mooneye_status =
             fs::read_to_string(&mooneye_status_path).expect("mooneye status should be readable");
         assert!(mooneye_status.contains("rom = \"misc/boot_regs-cgb.gb\""));
@@ -5418,17 +5402,17 @@ status = "FAIL"
         fs::create_dir_all(test_rom_store_root(&workspace_root))
             .expect("test rom store root should be creatable");
 
-        let samesuite_report = RomSuiteReport {
-            suite_name: "samesuite".to_string(),
-            family: Some("samesuite".to_string()),
+        let mooneye_report = RomSuiteReport {
+            suite_name: "mooneye-acceptance-manual-misc".to_string(),
+            family: Some("mooneye".to_string()),
             cases: vec![report_case(
                 "mooneye-misc-boot-regs-cgb",
                 "mooneye/misc/boot_regs-cgb.gb",
                 RomCaseOutcome::Passed,
             )],
         };
-        update_curated_test_report(&workspace_root, &samesuite_report)
-            .expect("SameSuite report should write");
+        update_curated_test_report(&workspace_root, &mooneye_report)
+            .expect("Mooneye report should write");
 
         let promoted_ax6_report = RomSuiteReport {
             suite_name: "ax6".to_string(),
@@ -5728,17 +5712,17 @@ status = "FAIL"
         fs::create_dir_all(test_rom_store_root(&workspace_root))
             .expect("test rom store root should be creatable");
 
-        let samesuite_report = RomSuiteReport {
-            suite_name: "samesuite".to_string(),
-            family: Some("samesuite".to_string()),
+        let mooneye_report = RomSuiteReport {
+            suite_name: "mooneye-acceptance-manual-misc".to_string(),
+            family: Some("mooneye".to_string()),
             cases: vec![report_case(
                 "mooneye-misc-boot-regs-cgb",
                 "mooneye/misc/boot_regs-cgb.gb",
                 RomCaseOutcome::Passed,
             )],
         };
-        update_curated_test_report(&workspace_root, &samesuite_report)
-            .expect("SameSuite report should write");
+        update_curated_test_report(&workspace_root, &mooneye_report)
+            .expect("Mooneye report should write");
 
         let extra_report = RomSuiteReport {
             suite_name: "little-things-gb-dmg-extra".to_string(),
@@ -5956,22 +5940,20 @@ status = "PASS"
                 ],
             },
             PersistedSuiteStatus {
-                suite_name: "mooneye-acceptance-manual".to_string(),
+                suite_name: "mooneye-acceptance-manual-misc".to_string(),
                 family: "mooneye".to_string(),
-                cases: vec![PersistedCaseStatus {
-                    family: None,
-                    rom: "manual-only/sprite_priority.gb".to_string(),
-                    status: "PASS".to_string(),
-                }],
-            },
-            PersistedSuiteStatus {
-                suite_name: "samesuite".to_string(),
-                family: "samesuite".to_string(),
-                cases: vec![PersistedCaseStatus {
-                    family: Some("mooneye".to_string()),
-                    rom: "misc/boot_regs-cgb.gb".to_string(),
-                    status: "PASS".to_string(),
-                }],
+                cases: vec![
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "manual-only/sprite_priority.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "misc/boot_regs-cgb.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                ],
             },
         ]);
 
@@ -6008,32 +5990,38 @@ status = "PASS"
 
     #[test]
     fn render_markdown_report_orders_samesuite_rows_after_mooneye_rows() {
-        let rendered = render_markdown_report(&[PersistedSuiteStatus {
-            suite_name: "samesuite".to_string(),
-            family: "samesuite".to_string(),
-            cases: vec![
-                PersistedCaseStatus {
+        let rendered = render_markdown_report(&[
+            PersistedSuiteStatus {
+                suite_name: "mooneye-acceptance-manual-misc".to_string(),
+                family: "mooneye".to_string(),
+                cases: vec![PersistedCaseStatus {
                     family: None,
-                    rom: "sgb/command_mlt_req.gb".to_string(),
-                    status: "PASS".to_string(),
-                },
-                PersistedCaseStatus {
-                    family: None,
-                    rom: "sgb/command_mlt_req_1_incrementing.gb".to_string(),
-                    status: "PASS".to_string(),
-                },
-                PersistedCaseStatus {
-                    family: None,
-                    rom: "ppu/blocking_bgpi_increase.gb".to_string(),
-                    status: "PASS".to_string(),
-                },
-                PersistedCaseStatus {
-                    family: Some("mooneye".to_string()),
                     rom: "misc/boot_regs-cgb.gb".to_string(),
                     status: "PASS".to_string(),
-                },
-            ],
-        }]);
+                }],
+            },
+            PersistedSuiteStatus {
+                suite_name: "samesuite".to_string(),
+                family: "samesuite".to_string(),
+                cases: vec![
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "sgb/command_mlt_req.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "sgb/command_mlt_req_1_incrementing.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                    PersistedCaseStatus {
+                        family: None,
+                        rom: "ppu/blocking_bgpi_increase.gb".to_string(),
+                        status: "PASS".to_string(),
+                    },
+                ],
+            },
+        ]);
 
         let mooneye_boot_regs = rendered
             .find(&format!(
@@ -6128,7 +6116,7 @@ status = "PASS"
     fn render_markdown_report_orders_present_families_without_placeholders() {
         let rendered = render_markdown_report(&[
             PersistedSuiteStatus {
-                suite_name: "mooneye-acceptance-manual".to_string(),
+                suite_name: "mooneye-acceptance-manual-misc".to_string(),
                 family: "mooneye".to_string(),
                 cases: vec![
                     PersistedCaseStatus {
