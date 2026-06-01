@@ -113,6 +113,25 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn finalize_header_checksums(rom: &mut [u8]) {
+    let mut header_checksum = 0_u8;
+    for byte in &rom[0x0134..=0x014C] {
+        header_checksum = header_checksum.wrapping_sub(*byte).wrapping_sub(1);
+    }
+    rom[0x014D] = header_checksum;
+
+    let global_checksum = rom
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != 0x014E && *index != 0x014F)
+        .fold(0_u16, |checksum, (_, byte)| {
+            checksum.wrapping_add(u16::from(*byte))
+        });
+    let [high, low] = global_checksum.to_be_bytes();
+    rom[0x014E] = high;
+    rom[0x014F] = low;
+}
+
 pub(super) fn build_serial_text_rom(text: &str) -> Vec<u8> {
     let mut program = Vec::new();
     for byte in text.bytes() {
@@ -158,6 +177,29 @@ pub(super) fn build_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
         0xEA, low, high, // LD (a16),A
         0x18, 0xFE, // JR -2
     ])
+}
+
+pub(super) fn build_mbc3_rtc_wait_rom(address: u16, value: u8) -> Vec<u8> {
+    let [low, high] = address.to_le_bytes();
+    let mut rom = build_test_rom(&[
+        0x3E, 0x0A, // LD A,$0A
+        0xEA, 0x00, 0x00, // LD ($0000),A; enable RTC
+        0x3E, 0x08, // LD A,$08
+        0xEA, 0x00, 0x40, // LD ($4000),A; select seconds register
+        0x3E, 0x00, // LD A,$00
+        0xEA, 0x00, 0x60, // LD ($6000),A; arm latch
+        0x3E, 0x01, // LD A,$01
+        0xEA, 0x00, 0x60, // LD ($6000),A; latch current RTC state
+        0xFA, 0x00, 0xA0, // LD A,($A000)
+        0xFE, 0x01, // CP $01
+        0x38, 0xEF, // JR C,-17
+        0x3E, value, // LD A,d8
+        0xEA, low, high, // LD (a16),A
+        0x18, 0xFE, // JR -2
+    ]);
+    rom[0x0147] = 0x0F;
+    finalize_header_checksums(&mut rom);
+    rom
 }
 
 pub(super) fn build_delayed_dmg_handoff_boot_rom() -> Vec<u8> {

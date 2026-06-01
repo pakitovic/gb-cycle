@@ -7,8 +7,9 @@ use super::super::manifest::{load_reports, load_selected_suites};
 use super::super::run::{SuiteRunConfig, run_suite_with_config};
 use super::common::{
     basic_manifest, build_delayed_dmg_handoff_boot_rom, build_fibonacci_result_rom,
-    build_infinite_loop_rom, build_memory_write_rom, build_serial_text_rom, unique_temp_dir,
-    write_grayscale_png, write_manifest, write_reports, write_source_manifest,
+    build_infinite_loop_rom, build_mbc3_rtc_wait_rom, build_memory_write_rom,
+    build_serial_text_rom, unique_temp_dir, write_grayscale_png, write_manifest, write_reports,
+    write_source_manifest,
 };
 
 #[test]
@@ -297,6 +298,55 @@ rom = "case.gb"
 
     assert!(suite_report.all_passed());
     assert!(suite_report.cases[0].executed_tcycles < gb_core::DMG_T_CYCLES_PER_FRAME);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_advances_mbc3_rtc_during_suite_execution() {
+    let workspace = unique_temp_dir("mbc3-rtc-suite");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/rtc.suite.toml",
+        r#"
+family = "blargg"
+suite_name = "rtc"
+console = "cgb"
+execution_mode = "permissive"
+timeout_frames = 80
+oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
+
+[[case]]
+id = "rtc-waits-for-seconds-register"
+rom = "rtc/wait.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/rtc/wait.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_mbc3_rtc_wait_rom(0xC000, 1)).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "rtc",
+            "--case",
+            "rtc-waits-for-seconds-register",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("RTC-backed suite should pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite rtc: 1/1 passed"));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

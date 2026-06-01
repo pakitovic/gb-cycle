@@ -11,6 +11,7 @@ use crate::oracle::{
     CPU_OBSERVATION_WINDOW_BACKTRACK, CPU_OBSERVATION_WINDOW_BYTES, CpuObservation,
     FramebufferObservation, MemoryObservation, OracleObservations, OracleOutcome, OracleStep,
 };
+use crate::rtc::DeterministicMbc3RtcClock;
 
 use super::artifact::{FailureArtifactRequest, clean_case_artifacts, persist_failure_artifacts};
 use super::model::{CaseRunReport, Report, SuiteCase, SuiteManifest, SuiteRunReport};
@@ -116,7 +117,10 @@ fn run_case(
             0,
         );
     }
-    if let Err(error) = advance_real_boot_to_handoff_if_needed(&mut machine, case.startup_mode) {
+    let mut rtc_clock = DeterministicMbc3RtcClock::default();
+    if let Err(error) =
+        advance_real_boot_to_handoff_if_needed(&mut machine, case.startup_mode, &mut rtc_clock)
+    {
         return failed_case_report(
             FailureReportContext {
                 case: context,
@@ -133,6 +137,7 @@ fn run_case(
     let mut oracle = case.oracle.clone();
     for executed_tcycles in 1..=timeout_tcycles {
         machine.step_t_cycle();
+        tick_mbc3_rtc(&mut machine, &mut rtc_clock);
         serial_bytes.extend(machine.take_serial_output_bytes());
         let memory_observations = memory_observations(&mut machine, &memory_addresses);
         match oracle.observe(OracleObservations {
@@ -189,6 +194,7 @@ fn run_case(
 fn advance_real_boot_to_handoff_if_needed(
     machine: &mut Machine<TraceSummaryBuffer>,
     startup_mode: StartupMode,
+    rtc_clock: &mut DeterministicMbc3RtcClock,
 ) -> Result<(), String> {
     if startup_mode != StartupMode::RealBoot || !machine.boot().is_boot_rom_mapped() {
         return Ok(());
@@ -196,6 +202,7 @@ fn advance_real_boot_to_handoff_if_needed(
 
     for _ in 0..REAL_BOOT_HANDOFF_T_CYCLE_LIMIT {
         machine.step_t_cycle();
+        tick_mbc3_rtc(machine, rtc_clock);
         if !machine.boot().is_boot_rom_mapped() {
             let _ = machine.take_serial_output_bytes();
             return Ok(());
@@ -205,6 +212,16 @@ fn advance_real_boot_to_handoff_if_needed(
     Err(format!(
         "real-boot handoff did not unmap boot ROM within {REAL_BOOT_HANDOFF_T_CYCLE_LIMIT} T-cycles"
     ))
+}
+
+fn tick_mbc3_rtc(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    rtc_clock: &mut DeterministicMbc3RtcClock,
+) {
+    let ticks = rtc_clock.tick_t_cycle_for_speed(machine.speed().current_speed());
+    if ticks != 0 {
+        machine.advance_mbc3_cartridge_rtc_clock_ticks(ticks);
+    }
 }
 
 fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> CompatibilityPolicy {

@@ -12,6 +12,7 @@ mod linked_session_runner;
 mod local_rom_suite_manifest;
 mod manifest_fixture;
 mod oracle;
+mod rtc;
 mod run_linked_session_cli;
 mod run_rom_suite_cli;
 mod suite;
