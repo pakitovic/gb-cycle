@@ -16,50 +16,20 @@ jobs:
       matrix:
         include:
           - name: acid
-            family: acid
-            suite: acid
           - name: blargg-cpu-instrs
-            family: blargg
-            suite: blargg-cpu-instrs
           - name: blargg-dmg-sound
-            family: blargg
-            suite: blargg-dmg-sound
           - name: blargg-timing-memory-oam
-            family: blargg
-            suite: blargg-timing-memory-oam
           - name: daid
-            family: daid
-            suite: daid
           - name: ashiepaws
-            family: ashiepaws
-            suite: ashiepaws
           - name: cpp
-            family: cpp
-            suite: cpp
           - name: samesuite
-            family: samesuite
-            suite: samesuite
-          - name: mooneye-acceptance
-            family: mooneye
-            suite: mooneye-acceptance-manual-misc
-          - name: mooneye-mbc1-mbc5
-            family: mooneye
-            suite: mooneye-emulator-mbc1-mbc5
-          - name: mooneye-mbc2
-            family: mooneye
-            suite: mooneye-emulator-mbc2
-          - name: mealybug
-            family: mealybug-tearoom-tests
-            suite: mealybug-tearoom-tests
+          - name: mooneye-acceptance-manual-misc
+          - name: mooneye-emulator-mbc1-mbc5
+          - name: mooneye-emulator-mbc2
+          - name: mealybug-tearoom-tests
           - name: blargg-cgb-sound
-            family: blargg
-            suite: blargg-cgb-sound
           - name: samesuite-apu
-            family: samesuite
-            suite: samesuite-apu
           - name: ax6
-            family: ax6
-            suite: ax6
 
     steps:
       - name: Checkout
@@ -71,8 +41,5 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Fetch ${{ matrix.name }} ROMs
-        run: cargo rom-fetch gb-emulator-shootout ${{ matrix.family }}
-
       - name: Run ${{ matrix.name }} ROM suite
-        run: cargo rom-suite gb-emulator-shootout --suite ${{ matrix.suite }}
+        run: cargo rom-suite gb-emulator-shootout --suite ${{ matrix.name }}

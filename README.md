@@ -132,10 +132,8 @@ make coverage
 make ci
 make test-roms-extra
 make test-roms-cgb-extra
-cargo rom-fetch gb-emulator-shootout
 cargo rom-suite gb-emulator-shootout
-cargo rom-fetch gbmicrotest
-cargo rom-suite gbmicrotest --suite gbmicrotest
+cargo rom-suite gbmicrotest
 ```
 
 ### External ROM suites
