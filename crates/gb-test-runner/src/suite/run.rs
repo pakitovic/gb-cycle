@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use gb_core::{
-    CartridgeMappedRomSource, CompatibilityPolicy, DMG_T_CYCLES_PER_FRAME, ExecutionMode, Machine,
-    MachineConfig, TraceSummaryBuffer,
+    BootRomAssets, CartridgeMappedRomSource, CompatibilityPolicy, DMG_T_CYCLES_PER_FRAME,
+    ExecutionMode, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
@@ -16,15 +16,23 @@ use super::artifact::{FailureArtifactRequest, clean_case_artifacts, persist_fail
 use super::model::{CaseRunReport, Report, SuiteCase, SuiteManifest, SuiteRunReport};
 use super::status::store_root_for_report;
 
-pub(super) fn run_suite(
+const REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: u64 = 25_000_000;
+
+#[derive(Clone, Default)]
+pub(super) struct SuiteRunConfig {
+    pub(super) boot_rom_assets: Option<BootRomAssets>,
+}
+
+pub(super) fn run_suite_with_config(
     workspace_root: &Path,
     report: &Report,
     suite: &SuiteManifest,
+    config: &SuiteRunConfig,
 ) -> SuiteRunReport {
     let cases = suite
         .cases
         .par_iter()
-        .map(|case| run_case(workspace_root, report, &suite.suite_name, case))
+        .map(|case| run_case(workspace_root, report, &suite.suite_name, case, config))
         .collect();
     SuiteRunReport {
         suite_name: suite.suite_name.clone(),
@@ -38,6 +46,7 @@ fn run_case(
     report: &Report,
     suite_name: &str,
     case: &SuiteCase,
+    run_config: &SuiteRunConfig,
 ) -> CaseRunReport {
     let context = CaseContext {
         workspace_root,
@@ -77,10 +86,24 @@ fn run_case(
     };
     let observation_rom_bytes = needs_cpu_observation.then(|| rom_bytes.clone());
 
-    let config = MachineConfig::new(case.console_model)
+    let mut config = MachineConfig::new(case.console_model)
         .with_host_platform(case.host_platform)
         .with_startup_mode(case.startup_mode)
         .with_compatibility(compatibility_for_execution_mode(case.execution_mode));
+    if let Some(boot_rom_assets) = &run_config.boot_rom_assets {
+        config = config.with_boot_rom_assets(boot_rom_assets.clone());
+    } else if case.startup_mode == StartupMode::RealBoot {
+        return failed_case_report(
+            FailureReportContext {
+                case: context,
+                machine: None,
+                serial_bytes: &[],
+            },
+            "real-boot startup requires verified boot ROM assets; pass --boot-rom-dir <dir>"
+                .to_string(),
+            0,
+        );
+    }
     let mut machine = Machine::new_summary(config);
     if let Err(error) = machine.load_cartridge(rom_bytes) {
         return failed_case_report(
@@ -91,6 +114,17 @@ fn run_case(
             },
             format!("failed to load cartridge {}: {error:?}", rom_path.display()),
             0,
+        );
+    }
+    if let Err(error) = advance_real_boot_to_handoff_if_needed(&mut machine, case.startup_mode) {
+        return failed_case_report(
+            FailureReportContext {
+                case: context,
+                machine: Some(&machine),
+                serial_bytes: &[],
+            },
+            error,
+            REAL_BOOT_HANDOFF_T_CYCLE_LIMIT,
         );
     }
 
@@ -150,6 +184,27 @@ fn run_case(
             executed_tcycles: timeout_tcycles,
         },
     )
+}
+
+fn advance_real_boot_to_handoff_if_needed(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    startup_mode: StartupMode,
+) -> Result<(), String> {
+    if startup_mode != StartupMode::RealBoot || !machine.boot().is_boot_rom_mapped() {
+        return Ok(());
+    }
+
+    for _ in 0..REAL_BOOT_HANDOFF_T_CYCLE_LIMIT {
+        machine.step_t_cycle();
+        if !machine.boot().is_boot_rom_mapped() {
+            let _ = machine.take_serial_output_bytes();
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "real-boot handoff did not unmap boot ROM within {REAL_BOOT_HANDOFF_T_CYCLE_LIMIT} T-cycles"
+    ))
 }
 
 fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> CompatibilityPolicy {

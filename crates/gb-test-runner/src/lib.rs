@@ -1,3 +1,4 @@
+mod boot_rom;
 mod boot_rom_verification;
 mod curated_test_roms;
 #[cfg(test)]

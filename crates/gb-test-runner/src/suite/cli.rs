@@ -1,9 +1,13 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use gb_core::StartupMode;
 
 use super::manifest::{load_reports, load_selected_suites};
-use super::run::run_suite;
+use super::model::SuiteManifest;
+use super::run::{SuiteRunConfig, run_suite_with_config};
 use super::status::write_suite_status;
+use crate::boot_rom::{BootRomProfile, load_verified_boot_rom_assets};
 use crate::default_workspace_root;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,11 +22,12 @@ pub(super) struct SuiteOptions {
     suite_name: Option<String>,
     case_id: Option<String>,
     threads: Option<usize>,
+    boot_rom_dir: Option<PathBuf>,
 }
 
 pub fn suite_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>]\n",
+        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>]\n",
         "\n",
         "Runs report-local *.suite.toml test ROM manifests through the new minimal suite runner.\n",
     )
@@ -62,6 +67,7 @@ where
     let mut suite_name = None;
     let mut case_id = None;
     let mut threads = None;
+    let mut boot_rom_dir = None;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -90,6 +96,12 @@ where
                 }
                 threads = Some(parsed);
             }
+            "--boot-rom-dir" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--boot-rom-dir requires a value".to_string());
+                };
+                boot_rom_dir = Some(PathBuf::from(value.as_ref()));
+            }
             value if value.starts_with('-') => {
                 return Err(format!("unknown argument {value:?}; run with --help"));
             }
@@ -113,6 +125,7 @@ where
         suite_name,
         case_id,
         threads,
+        boot_rom_dir,
     }))
 }
 
@@ -126,7 +139,7 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
-    let suites = load_selected_suites(
+    let mut suites = load_selected_suites(
         workspace_root,
         report,
         options.suite_name.as_deref(),
@@ -137,6 +150,21 @@ fn run_options<W: Write>(
             "report {report_id:?} does not contain suite manifests"
         ));
     }
+    let boot_rom_assets = match options.boot_rom_dir.as_deref() {
+        Some(root) => {
+            force_real_boot(&mut suites);
+            let profiles = boot_rom_profiles(&suites);
+            Some(
+                load_verified_boot_rom_assets(root, &profiles)
+                    .map_err(|error| format!("failed to load boot ROM assets: {error}"))?,
+            )
+        }
+        None => {
+            reject_manifest_real_boot_without_assets(&suites)?;
+            None
+        }
+    };
+    let run_config = SuiteRunConfig { boot_rom_assets };
 
     let pool = if let Some(threads) = options.threads {
         let pool = rayon::ThreadPoolBuilder::new()
@@ -159,9 +187,9 @@ fn run_options<W: Write>(
             ),
         )?;
         let suite_report = if let Some(pool) = &pool {
-            pool.install(|| run_suite(workspace_root, report, suite))
+            pool.install(|| run_suite_with_config(workspace_root, report, suite, &run_config))
         } else {
-            run_suite(workspace_root, report, suite)
+            run_suite_with_config(workspace_root, report, suite, &run_config)
         };
         write_suite_status(workspace_root, report, &suite_report)?;
         writeln_checked(
@@ -230,6 +258,37 @@ fn available_reports(reports: &[super::model::Report]) -> String {
         .map(|report| report.id.as_str())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn force_real_boot(suites: &mut [SuiteManifest]) {
+    for case in suites.iter_mut().flat_map(|suite| suite.cases.iter_mut()) {
+        case.startup_mode = StartupMode::RealBoot;
+    }
+}
+
+fn boot_rom_profiles(suites: &[SuiteManifest]) -> Vec<BootRomProfile> {
+    let mut profiles = Vec::new();
+    for case in suites.iter().flat_map(|suite| suite.cases.iter()) {
+        let profile = BootRomProfile::new(case.console_model, case.host_platform);
+        if !profiles.contains(&profile) {
+            profiles.push(profile);
+        }
+    }
+    profiles
+}
+
+fn reject_manifest_real_boot_without_assets(suites: &[SuiteManifest]) -> Result<(), String> {
+    let Some(case) = suites
+        .iter()
+        .flat_map(|suite| suite.cases.iter())
+        .find(|case| case.startup_mode == StartupMode::RealBoot)
+    else {
+        return Ok(());
+    };
+    Err(format!(
+        "case {:?} uses startup = \"real-boot\"; pass --boot-rom-dir <dir> to load verified boot ROM assets",
+        case.id
+    ))
 }
 
 fn write_all<W: Write>(output: &mut W, text: &str) -> Result<(), String> {

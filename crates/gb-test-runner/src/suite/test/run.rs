@@ -1,10 +1,14 @@
 use std::fs;
 
+use gb_core::{BootRomAssetKind, BootRomAssets};
+
 use super::super::cli::run_suite_command_with_workspace_for_test;
+use super::super::manifest::{load_reports, load_selected_suites};
+use super::super::run::{SuiteRunConfig, run_suite_with_config};
 use super::common::{
-    basic_manifest, build_fibonacci_result_rom, build_infinite_loop_rom, build_memory_write_rom,
-    build_serial_text_rom, unique_temp_dir, write_grayscale_png, write_manifest, write_reports,
-    write_source_manifest,
+    basic_manifest, build_delayed_dmg_handoff_boot_rom, build_fibonacci_result_rom,
+    build_infinite_loop_rom, build_memory_write_rom, build_serial_text_rom, unique_temp_dir,
+    write_grayscale_png, write_manifest, write_reports, write_source_manifest,
 };
 
 #[test]
@@ -177,6 +181,122 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
         .expect_err("unknown case should fail")
         .contains("unknown case")
     );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_rejects_manifest_real_boot_without_boot_rom_dir() {
+    let workspace = unique_temp_dir("real-boot-without-assets");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/real-boot.suite.toml",
+        &basic_manifest("real-boot", "blargg", "real-boot-case", "case.gb").replace(
+            "rom = \"case.gb\"",
+            "rom = \"case.gb\"\nstartup = \"real-boot\"",
+        ),
+    );
+
+    let mut output = Vec::new();
+    let error =
+        run_suite_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
+            .expect_err("manifest real-boot should require boot ROM dir");
+    assert!(error.contains("startup = \"real-boot\""));
+    assert!(error.contains("--boot-rom-dir <dir>"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_boot_rom_dir_forces_real_boot_asset_verification() {
+    let workspace = unique_temp_dir("boot-rom-dir-forces-real-boot");
+    let boot_rom_dir = workspace.join("bootroms");
+    fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/skip-boot.suite.toml",
+        &basic_manifest("skip-boot", "blargg", "skip-boot-case", "case.gb"),
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "skip-boot",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("forced real-boot should require verified assets");
+    assert!(error.contains("failed to load boot ROM assets"));
+    assert!(error.contains("dmg_boot.bin"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn run_suite_real_boot_handoff_does_not_consume_case_timeout() {
+    let workspace = unique_temp_dir("real-boot-handoff-budget");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/real-boot.suite.toml",
+        r#"
+family = "blargg"
+suite_name = "real-boot"
+console = "dmg"
+startup = "real-boot"
+timeout_frames = 1
+oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
+
+[[case]]
+id = "real-boot-memory-pass"
+rom = "case.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_memory_write_rom(0xC000, 1)).expect("rom should be writable");
+    let boot_rom_assets = BootRomAssets::none()
+        .with_asset_bytes(BootRomAssetKind::Dmg, build_delayed_dmg_handoff_boot_rom())
+        .expect("synthetic boot ROM should load");
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "sample-report")
+        .expect("sample report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("real-boot"), None)
+        .expect("suite should load");
+
+    let suite_report = run_suite_with_config(
+        &workspace,
+        report,
+        &suites[0],
+        &SuiteRunConfig {
+            boot_rom_assets: Some(boot_rom_assets),
+        },
+    );
+
+    assert!(suite_report.all_passed());
+    assert!(suite_report.cases[0].executed_tcycles < gb_core::DMG_T_CYCLES_PER_FRAME);
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

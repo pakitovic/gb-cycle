@@ -7,6 +7,7 @@ fn help_mentions_suite_contract() {
     assert!(help.contains("--suite <suite-name>"));
     assert!(help.contains("--case <case-id>"));
     assert!(help.contains("--threads <n>"));
+    assert!(help.contains("--boot-rom-dir <dir>"));
 }
 
 #[test]
@@ -36,6 +37,20 @@ fn parse_accepts_explicit_threads_count() {
 }
 
 #[test]
+fn parse_accepts_boot_rom_dir() {
+    let action = parse_suite_arguments_for_test([
+        "gbmicrotest",
+        "--suite",
+        "gbmicrotest",
+        "--boot-rom-dir",
+        "/tmp/bootroms",
+    ])
+    .expect("boot ROM dir should parse");
+    assert!(format!("{action:?}").contains("boot_rom_dir: Some"));
+    assert!(format!("{action:?}").contains("/tmp/bootroms"));
+}
+
+#[test]
 fn parse_rejects_missing_and_invalid_threads_values() {
     assert!(
         parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads"])
@@ -51,6 +66,15 @@ fn parse_rejects_missing_and_invalid_threads_values() {
         parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads", "0"])
             .expect_err("zero threads should fail")
             .contains("--threads value must be greater than zero")
+    );
+}
+
+#[test]
+fn parse_rejects_missing_boot_rom_dir_value() {
+    assert!(
+        parse_suite_arguments_for_test(["gbmicrotest", "--boot-rom-dir"])
+            .expect_err("missing boot ROM dir should fail")
+            .contains("--boot-rom-dir requires a value")
     );
 }
 

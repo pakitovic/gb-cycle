@@ -160,6 +160,24 @@ pub(super) fn build_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
     ])
 }
 
+pub(super) fn build_delayed_dmg_handoff_boot_rom() -> Vec<u8> {
+    let mut rom = vec![0x00; 0x0100];
+    rom[0x0000..0x000D].copy_from_slice(&[
+        0x06, 0xFF, // LD B,$FF
+        0x0E, 0xFF, // LD C,$FF
+        0x0D, // DEC C
+        0x20, 0xFD, // JR NZ,$0004
+        0x05, // DEC B
+        0x20, 0xF8, // JR NZ,$0002
+        0xC3, 0xFC, 0x00, // JP $00FC
+    ]);
+    rom[0x00FC..0x0100].copy_from_slice(&[
+        0x3E, 0x01, // LD A,$01
+        0xE0, 0x50, // LDH ($FF50),A
+    ]);
+    rom
+}
+
 pub(super) fn build_infinite_loop_rom() -> Vec<u8> {
     build_test_rom(&[0x18, 0xFE])
 }
