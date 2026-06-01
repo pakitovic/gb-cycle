@@ -24,6 +24,7 @@
 ## Current repo conventions
 
 - Keep top-level subsystem files as facades for module declarations, re-exports, and narrow orchestration; move growing hardware logic into focused child modules such as `bus/*`, `ppu/*`, `apu/*`, `cartridge/*`, `machine/*`, `external_port/*`, or `link/*`.
+- When a module is split as `foo.rs` plus `foo/*.rs`, keep `foo.rs` as a facade; when tests are split as `foo/test.rs` plus `foo/test/*.rs`, keep `foo/test.rs` as a facade too, and put shared test fixtures/helpers in `foo/test/common.rs` or another focused child module instead of the facade; if `foo/test/common.rs` grows too much, split it as `foo/test/common.rs` plus `foo/test/common/*.rs` with the same facade rule.
 - Prefer typed boundary objects over loosely related parameters or booleans: `Policy`, `Config`, `Snapshot`, `Status`, `StartupState`, `Payload`, and `Report` types should make ownership and intent explicit.
 - Use `pub(crate)` / `pub(super)` for cross-child collaboration inside a subsystem; reserve public exports for APIs intentionally re-exported from the crate facade or consumed by another crate.
 - Keep constructors and reset/startup helpers explicit when hardware state is not a generic Rust default; only derive or implement `Default` when that value is an intentional repo policy, not just convenient zeroing.

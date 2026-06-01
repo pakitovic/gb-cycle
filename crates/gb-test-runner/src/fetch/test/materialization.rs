@@ -5,7 +5,7 @@ use super::super::git::sha256_hex;
 use super::super::manifest::{Source, SourceFamily, SourceFile};
 use super::super::run_fetch_command;
 use super::super::validate::validate_materialization_targets;
-use super::{
+use super::common::{
     basic_report, commit_upstream_repo, unique_temp_dir, write_basic_reports, write_reports,
     write_source_manifest,
 };

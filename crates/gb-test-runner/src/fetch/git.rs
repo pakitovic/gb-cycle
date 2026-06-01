@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
+use super::cli::writeln_checked;
 use super::manifest::{Source, SourceFamily, SourceFile};
-use super::writeln_checked;
 
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 

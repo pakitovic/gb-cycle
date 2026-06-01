@@ -112,6 +112,15 @@ fn run_linked_session_binary_handles_help_and_parse_errors() {
 }
 
 #[test]
+fn suite_binary_handles_help_and_parse_errors() {
+    assert_help_and_parse_error(
+        "suite",
+        &["gb-emulator-shootout", "--case", "case"],
+        "--case requires --suite",
+    );
+}
+
+#[test]
 fn run_linked_session_binary_executes_manifest_backed_suites() {
     let binary = binary_path("run_linked_session");
     let manifest_path = workspace_root().join("crates/gb-test-runner/data/linked-dmg04-smoke.toml");

@@ -10,8 +10,10 @@ mod linked_session_manifest;
 mod linked_session_runner;
 mod local_rom_suite_manifest;
 mod manifest_fixture;
+mod oracle;
 mod run_linked_session_cli;
 mod run_rom_suite_cli;
+mod suite;
 #[cfg(test)]
 mod test_support;
 mod workspace_paths;
@@ -83,6 +85,7 @@ pub use linked_session_runner::{
 pub use local_rom_suite_manifest::{LocalRomSuiteManifestError, load_local_rom_suite_manifest};
 pub use run_linked_session_cli::{linked_session_cli_help_text, run_linked_session_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
+pub use suite::{run_suite_command, suite_help_text};
 pub use workspace_paths::{
     BOOT_ROM_ROOT_ENV_VAR, boot_rom_asset_for_console_profile, boot_rom_image_path,
     boot_rom_revision_for_console_model, discover_boot_rom_root,

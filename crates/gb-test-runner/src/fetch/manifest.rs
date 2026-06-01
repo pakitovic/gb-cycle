@@ -8,7 +8,8 @@ use super::validate::{
     validate_family_list, validate_id, validate_relative_path, validate_source_files,
     validate_sparse_paths,
 };
-use super::{DATA_DIR, REPORTS_MANIFEST_PATH};
+pub(super) const DATA_DIR: &str = "crates/gb-test-runner/data";
+pub(super) const REPORTS_MANIFEST_PATH: &str = "crates/gb-test-runner/data/reports.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(super) struct ReportManifestFile {

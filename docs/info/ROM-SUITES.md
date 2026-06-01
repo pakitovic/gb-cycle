@@ -126,9 +126,12 @@ Promoted family chunks and promoted CGB rows share the `gb-emulator-shootout` re
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite samesuite --failure-artifact-root test/gb-emulator-shootout/.artifacts/samesuite
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-cgb-extra --case mooneye-cgb-ppu-intr-2-mode0-timing-sprites
 cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/local-private-smoke.toml
+cargo rom-suite gb-emulator-shootout --suite blargg-cpu-instrs --case blargg-cpu-instrs-01-special
 ```
 
 Use `--failure-artifact-root` whenever a failing row may need screenshots, memory text, snapshots, traces, or linked-session participant artifacts for diagnosis. Makefile ROM-suite targets go through the shared `RUN_ROM_SUITE` wrapper, default to `ROM_PROFILE=release-max`, and write promoted GB Emulator Shootout artifacts below `test/gb-emulator-shootout/.artifacts/`, DocBoy single-machine artifacts below `test/docboy/.artifacts/`, gbmicrotest artifacts below `test/gbmicrotest/.artifacts/`, or legacy artifacts below `test/.artifacts/`; override locally with `ROM_PROFILE=release make <target>` only when iterating on compile time rather than final timing evidence.
+
+`cargo rom-suite <report-id> [--suite <suite-name>] [--case <case-id>]` is the local Cargo alias for `cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>]` and is the new minimal report-local runner path. It executes report-local `*.suite.toml` manifests directly through `gb_core::Machine`, requires materialized ROMs under `/test/<report-store>/`, writes only the selected suite status under that report's `.status/`, does not write Markdown reports or failure artifacts, and currently supports only DMG `serial-contains` suites such as `gb-emulator-shootout --suite blargg-cpu-instrs`; `--case` is valid only with `--suite`.
 
 ## RealBoot policy
 

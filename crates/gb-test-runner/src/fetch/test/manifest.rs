@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::super::manifest::{
     SourceManifestFile, load_report_manifest, load_source_manifest, report_families,
 };
-use super::{unique_temp_dir, write_basic_reports, write_reports, write_source_manifest};
+use super::common::{unique_temp_dir, write_basic_reports, write_reports, write_source_manifest};
 
 #[test]
 fn built_in_reports_manifest_loads_all_reports() {

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::super::cli::{FetchAction, FetchRequest, parse_fetch_arguments, resolve_fetch_options};
 use super::super::{fetch_help_text, run_fetch_command};
-use super::basic_report;
+use super::common::basic_report;
 
 #[test]
 fn help_mentions_reports_registry() {

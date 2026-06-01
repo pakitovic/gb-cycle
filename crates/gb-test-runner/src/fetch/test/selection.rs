@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use super::super::manifest::{
     Report, Source, SourceFamily, SourceFile, SourceManifestFile, report_families, select_families,
 };
-use super::basic_report;
+use super::common::basic_report;
 
 #[test]
 fn empty_selection_selects_all_report_families() {
