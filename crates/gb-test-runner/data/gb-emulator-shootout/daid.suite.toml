@@ -1,0 +1,58 @@
+family = "daid"
+suite_name = "daid"
+console = "cgb"
+timeout_frames = 180
+oracle = { type = "framebuffer", source = "cgb" }
+
+[[case]]
+id = "daid-ppu-scanline-bgp-dmg"
+rom = "ppu_scanline_bgp.gb"
+console = "dmg"
+report_console_suffix = true
+oracle = { type = "framebuffer", fixture = ["ppu_scanline_bgp_0.dmg.png", "ppu_scanline_bgp_1.dmg.png", "ppu_scanline_bgp_2.dmg.png"] }
+
+[[case]]
+id = "daid-ppu-scanline-bgp-gbc"
+rom = "ppu_scanline_bgp.gb"
+report_console_suffix = true
+oracle = { fixture = "ppu_scanline_bgp.gbc.png" }
+
+[[case]]
+id = "daid-stop-instr-dmg"
+rom = "stop_instr.gb"
+console = "dmg"
+report_console_suffix = true
+oracle = { type = "framebuffer", projection = "grayscale", fixture = "stop_instr.dmg.png" }
+
+[[case]]
+id = "daid-stop-instr-gbc"
+rom = "stop_instr.gb"
+report_console_suffix = true
+oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "stop_instr.gbc.png" }
+
+[[case]]
+id = "daid-speed-switch-timing-div"
+rom = "speed_switch_timing_div.gbc"
+oracle = { fixture = "speed_switch_timing_div.png" }
+
+[[case]]
+id = "daid-stop-instr-gbc-mode3"
+rom = "stop_instr_gbc_mode3.gb"
+oracle = { fixture = "stop_instr_gbc_mode3.png" }
+
+[[case]]
+id = "daid-speed-switch-timing-ly"
+rom = "speed_switch_timing_ly.gbc"
+oracle = { fixture = "speed_switch_timing_ly.png" }
+
+[[case]]
+id = "daid-speed-switch-timing-stat"
+rom = "speed_switch_timing_stat.gbc"
+oracle = { fixture = "speed_switch_timing_stat.png" }
+
+[[case]]
+id = "daid-rom-and-ram"
+rom = "rom_and_ram.gb"
+console = "dmg"
+execution_mode = "permissive"
+oracle = { type = "framebuffer", mode = "info" }

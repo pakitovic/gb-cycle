@@ -1,0 +1,32 @@
+family = "acid"
+suite_name = "acid"
+console = "cgb"
+timeout_frames = 180
+oracle = { type = "framebuffer", mode = "info" }
+
+[[case]]
+id = "acid-which-dmg"
+rom = "which.gb"
+console = "dmg"
+report_console_suffix = true
+
+[[case]]
+id = "acid-which-cgb"
+rom = "which.gb"
+report_console_suffix = true
+
+[[case]]
+id = "acid-dmg-acid2"
+rom = "dmg-acid2.gb"
+console = "dmg"
+oracle = { type = "framebuffer", fixture = "dmg-acid2.png" }
+
+[[case]]
+id = "acid-cgb-acid2"
+rom = "cgb-acid2.gbc"
+oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", compare = "grayscale-tolerance", fixture = "cgb-acid2.png" }
+
+[[case]]
+id = "acid-cgb-acid-hell"
+rom = "cgb-acid-hell.gbc"
+oracle = { type = "framebuffer", source = "cgb", fixture = "cgb-acid-hell.png" }

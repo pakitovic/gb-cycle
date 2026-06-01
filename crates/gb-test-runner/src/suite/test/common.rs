@@ -44,6 +44,14 @@ id = "acid"
 target_root = "acid"
 
 [[source.family]]
+id = "ashiepaws"
+target_root = "ashiepaws"
+
+[[source.family]]
+id = "ax6"
+target_root = "ax6"
+
+[[source.family]]
 id = "blargg"
 target_root = "blargg"
 
@@ -52,12 +60,20 @@ id = "cpp"
 target_root = "cpp"
 
 [[source.family]]
+id = "daid"
+target_root = "daid"
+
+[[source.family]]
 id = "docboy-dmg"
 target_root = "docboy-dmg"
 
 [[source.family]]
 id = "gbmicrotest"
 target_root = "gbmicrotest"
+
+[[source.family]]
+id = "mealybug-tearoom-tests"
+target_root = "mealybug-tearoom-tests"
 
 [[source.family]]
 id = "mooneye"

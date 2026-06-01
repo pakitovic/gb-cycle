@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::oracle::Oracle;
 
@@ -713,6 +713,85 @@ fn real_mooneye_suite_manifests_load_fibonacci_result_oracles() {
 }
 
 #[test]
+fn real_remaining_gb_emulator_shootout_suite_manifests_load_framebuffer_oracles() {
+    let workspace = unique_temp_dir("gbemu-suite-manifests");
+    write_reports(
+        &workspace,
+        "gb-emulator-shootout",
+        "gb-emulator-shootout/sources.report.toml",
+    );
+    let manifests = [
+        ("acid", "acid", 5),
+        ("ashiepaws", "ashiepaws", 3),
+        ("ax6", "ax6", 3),
+        ("daid", "daid", 9),
+        ("mealybug-tearoom-tests", "mealybug-tearoom-tests", 24),
+        ("samesuite-apu", "samesuite", 61),
+        ("samesuite", "samesuite", 7),
+    ];
+    for (suite_name, family, _) in manifests {
+        let text = read_gbemu_suite_manifest(suite_name);
+        write_manifest(
+            &workspace,
+            &format!("gb-emulator-shootout/{suite_name}.suite.toml"),
+            &text,
+        );
+        write_manifest_fixture_placeholders(&workspace, "gb-emulator-shootout", family, &text);
+    }
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gb-emulator-shootout")
+        .expect("report should exist");
+
+    for (suite_name, family, case_count) in manifests {
+        let suites = load_selected_suites(&workspace, report, Some(suite_name), None)
+            .unwrap_or_else(|error| panic!("real {suite_name} manifest should load: {error}"));
+        assert_eq!(suites.len(), 1);
+        let suite = &suites[0];
+        assert_eq!(suite.suite_name, suite_name);
+        assert_eq!(suite.family, family);
+        assert_eq!(suite.cases.len(), case_count);
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| matches!(&case.oracle, Oracle::Framebuffer(_)))
+        );
+    }
+
+    let acid = load_selected_suites(&workspace, report, Some("acid"), None)
+        .expect("acid manifest should load");
+    let acid_which_dmg = acid[0]
+        .cases
+        .iter()
+        .find(|case| case.id == "acid-which-dmg")
+        .expect("acid DMG info row should exist");
+    assert_eq!(acid_which_dmg.console_model, gb_core::ConsoleModel::GameBoy);
+
+    let samesuite = load_selected_suites(&workspace, report, Some("samesuite"), None)
+        .expect("samesuite manifest should load");
+    let sgb_case = samesuite[0]
+        .cases
+        .iter()
+        .find(|case| case.id == "samesuite-sgb-command-mlt-req")
+        .expect("SGB row should exist");
+    assert_eq!(sgb_case.host_platform, gb_core::HostPlatform::Sgb);
+
+    let ashiepaws = load_selected_suites(&workspace, report, Some("ashiepaws"), None)
+        .expect("ashiepaws manifest should load");
+    let bully_cgb = ashiepaws[0]
+        .cases
+        .iter()
+        .find(|case| case.id == "ashiepaws-bully-cgb")
+        .expect("CGB bully row should exist");
+    assert_eq!(bully_cgb.startup_mode, gb_core::StartupMode::CustomBoot);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
     let workspace = unique_temp_dir("gbmicrotest-suite-manifest");
     write_reports(&workspace, "gbmicrotest", "gbmicrotest/sources.report.toml");
@@ -816,6 +895,65 @@ fn write_blargg_sound_fixtures(workspace_root: &Path) {
             "test/gb-emulator-shootout/blargg/cgb_sound/12-wave.png",
         ],
     );
+}
+
+fn read_gbemu_suite_manifest(suite_name: &str) -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/gb-emulator-shootout")
+            .join(format!("{suite_name}.suite.toml")),
+    )
+    .expect("suite manifest should be readable")
+}
+
+fn write_manifest_fixture_placeholders(
+    workspace_root: &Path,
+    report_id: &str,
+    target_root: &str,
+    manifest_text: &str,
+) {
+    for fixture in fixture_paths_from_manifest(manifest_text) {
+        let path = clean_path(
+            &workspace_root
+                .join("test")
+                .join(report_id)
+                .join(target_root)
+                .join(fixture),
+        );
+        write_png_fixture(&path);
+    }
+}
+
+fn fixture_paths_from_manifest(manifest_text: &str) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for line in manifest_text.lines() {
+        let Some((_, value)) = line.split_once("fixture =") else {
+            continue;
+        };
+        for path in value
+            .split('"')
+            .enumerate()
+            .filter_map(|(index, value)| (index % 2 == 1).then_some(value))
+        {
+            paths.push(PathBuf::from(path));
+        }
+    }
+    paths
+}
+
+fn clean_path(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                clean.pop();
+            }
+            Component::Normal(component) => clean.push(component),
+            Component::RootDir | Component::Prefix(_) => clean.push(component.as_os_str()),
+        }
+    }
+    clean
 }
 
 fn write_fixture_placeholders(workspace_root: &Path, fixtures: &[&str]) {

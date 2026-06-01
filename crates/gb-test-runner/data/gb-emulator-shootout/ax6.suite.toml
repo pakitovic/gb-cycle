@@ -1,0 +1,22 @@
+family = "ax6"
+suite_name = "ax6"
+console = "cgb"
+oracle = { type = "framebuffer", source = "cgb" }
+
+[[case]]
+id = "ax6-rtc3test-1"
+rom = "rtc3test-1.gb"
+timeout_frames = 1140
+oracle = { fixture = "rtc3test-1.png" }
+
+[[case]]
+id = "ax6-rtc3test-2"
+rom = "rtc3test-2.gb"
+timeout_frames = 900
+oracle = { fixture = "rtc3test-2.png" }
+
+[[case]]
+id = "ax6-rtc3test-3"
+rom = "rtc3test-3.gb"
+timeout_frames = 2400
+oracle = { fixture = "rtc3test-3.png" }
