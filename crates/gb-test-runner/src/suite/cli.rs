@@ -17,11 +17,12 @@ pub(super) struct SuiteOptions {
     report_id: Option<String>,
     suite_name: Option<String>,
     case_id: Option<String>,
+    threads: Option<usize>,
 }
 
 pub fn suite_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>]\n",
+        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>]\n",
         "\n",
         "Runs report-local *.suite.toml test ROM manifests through the new minimal suite runner.\n",
     )
@@ -60,6 +61,7 @@ where
     let mut report_id = None;
     let mut suite_name = None;
     let mut case_id = None;
+    let mut threads = None;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -75,6 +77,18 @@ where
                     return Err("--case requires a value".to_string());
                 };
                 case_id = Some(value.as_ref().to_string());
+            }
+            "--threads" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--threads requires a value".to_string());
+                };
+                let parsed = value.as_ref().parse::<usize>().map_err(|error| {
+                    format!("invalid --threads value {:?}: {error}", value.as_ref())
+                })?;
+                if parsed == 0 {
+                    return Err("--threads value must be greater than zero".to_string());
+                }
+                threads = Some(parsed);
             }
             value if value.starts_with('-') => {
                 return Err(format!("unknown argument {value:?}; run with --help"));
@@ -98,6 +112,7 @@ where
         report_id,
         suite_name,
         case_id,
+        threads,
     }))
 }
 
@@ -123,9 +138,18 @@ fn run_options<W: Write>(
         ));
     }
 
+    let suite_reports = if let Some(threads) = options.threads {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .map_err(|error| format!("failed to configure rayon thread pool: {error}"))?;
+        pool.install(|| run_suites(workspace_root, report, &suites))
+    } else {
+        run_suites(workspace_root, report, &suites)
+    };
+
     let mut all_passed = true;
-    for suite in suites {
-        let suite_report = run_suite(workspace_root, report, &suite);
+    for suite_report in suite_reports {
         write_suite_status(workspace_root, report, &suite_report)?;
         writeln_checked(
             output,
@@ -155,6 +179,17 @@ fn run_options<W: Write>(
     } else {
         Err("one or more suite cases failed".to_string())
     }
+}
+
+fn run_suites(
+    workspace_root: &Path,
+    report: &super::model::Report,
+    suites: &[super::model::SuiteManifest],
+) -> Vec<super::model::SuiteRunReport> {
+    suites
+        .iter()
+        .map(|suite| run_suite(workspace_root, report, suite))
+        .collect()
 }
 
 fn report_for_id<'a>(

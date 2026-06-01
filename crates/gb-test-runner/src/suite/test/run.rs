@@ -61,6 +61,67 @@ fn command_runs_serial_suite_and_writes_status() {
 }
 
 #[test]
+fn command_runs_with_explicit_threads_and_preserves_status_order() {
+    let workspace = unique_temp_dir("serial-threads");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/threaded.suite.toml",
+        r#"
+family = "blargg"
+suite_name = "threaded"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "threaded-first"
+rom = "threaded/first.gb"
+
+[[case]]
+id = "threaded-second"
+rom = "threaded/second.gb"
+"#,
+    );
+    for rom in ["first.gb", "second.gb"] {
+        let rom_path = workspace
+            .join("test/sample-report/blargg/threaded")
+            .join(rom);
+        fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+            .expect("rom parent should be creatable");
+        fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    }
+
+    for threads in ["2", "1"] {
+        let mut output = Vec::new();
+        run_suite_command_with_workspace_for_test(
+            ["sample-report", "--suite", "threaded", "--threads", threads],
+            &workspace,
+            &mut output,
+        )
+        .expect("threaded suite should pass");
+        let output = String::from_utf8(output).expect("output should be utf-8");
+        assert!(output.contains("suite threaded: 2/2 passed"));
+    }
+
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/threaded.toml"))
+        .expect("status should be written");
+    let first = status
+        .find("rom = \"threaded/first.gb\"")
+        .expect("first row should exist");
+    let second = status
+        .find("rom = \"threaded/second.gb\"")
+        .expect("second row should exist");
+    assert!(first < second);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_reports_failed_cases_and_rejects_unknown_case() {
     let workspace = unique_temp_dir("serial-fail");
     write_reports(

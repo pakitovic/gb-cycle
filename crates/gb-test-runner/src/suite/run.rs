@@ -5,6 +5,7 @@ use gb_core::{
     CompatibilityPolicy, DMG_T_CYCLES_PER_FRAME, ExecutionMode, Machine, MachineConfig,
     StartupMode, TraceSummaryBuffer,
 };
+use rayon::prelude::*;
 
 use crate::oracle::{FramebufferObservation, OracleObservations, OracleOutcome, OracleStep};
 
@@ -18,7 +19,7 @@ pub(super) fn run_suite(
 ) -> SuiteRunReport {
     let cases = suite
         .cases
-        .iter()
+        .par_iter()
         .map(|case| run_case(workspace_root, report, case))
         .collect();
     SuiteRunReport {

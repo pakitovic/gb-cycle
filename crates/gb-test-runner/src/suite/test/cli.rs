@@ -6,6 +6,7 @@ fn help_mentions_suite_contract() {
     assert!(help.contains("<report-id>"));
     assert!(help.contains("--suite <suite-name>"));
     assert!(help.contains("--case <case-id>"));
+    assert!(help.contains("--threads <n>"));
 }
 
 #[test]
@@ -19,6 +20,38 @@ fn parse_accepts_report_and_suite_case_selection() {
     ])
     .expect("arguments should parse");
     assert!(format!("{action:?}").contains("blargg-cpu-instrs-01-special"));
+}
+
+#[test]
+fn parse_accepts_explicit_threads_count() {
+    let action = parse_suite_arguments_for_test([
+        "gb-emulator-shootout",
+        "--suite",
+        "blargg-cpu-instrs",
+        "--threads",
+        "4",
+    ])
+    .expect("threads should parse");
+    assert!(format!("{action:?}").contains("threads: Some(4)"));
+}
+
+#[test]
+fn parse_rejects_missing_and_invalid_threads_values() {
+    assert!(
+        parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads"])
+            .expect_err("missing threads value should fail")
+            .contains("--threads requires a value")
+    );
+    assert!(
+        parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads", "NaN"])
+            .expect_err("invalid threads value should fail")
+            .contains("invalid --threads value")
+    );
+    assert!(
+        parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads", "0"])
+            .expect_err("zero threads should fail")
+            .contains("--threads value must be greater than zero")
+    );
 }
 
 #[test]
