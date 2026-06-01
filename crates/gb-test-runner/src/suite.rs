@@ -1,3 +1,4 @@
+mod artifact;
 mod cli;
 mod manifest;
 mod model;

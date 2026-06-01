@@ -299,6 +299,42 @@ impl FramebufferOracle {
             }
         }
     }
+
+    pub(crate) fn artifact_descriptor(&self) -> Option<FramebufferArtifactDescriptor> {
+        let (projection, compare, tolerance, fixtures) = match &self.comparison {
+            FramebufferComparison::Info => return None,
+            FramebufferComparison::PaletteRank { fixtures } => (
+                "palette-rank",
+                "exact",
+                None,
+                fixtures
+                    .iter()
+                    .map(|fixture| fixture.path.clone())
+                    .collect::<Vec<_>>(),
+            ),
+            FramebufferComparison::Grayscale {
+                compare,
+                tolerance,
+                fixtures,
+            } => (
+                "grayscale",
+                compare.as_str(),
+                Some(*tolerance),
+                fixtures
+                    .iter()
+                    .map(|fixture| fixture.path.clone())
+                    .collect::<Vec<_>>(),
+            ),
+        };
+        Some(FramebufferArtifactDescriptor {
+            source: self.source.artifact_source(),
+            mode: self.mode.as_str(),
+            projection,
+            compare,
+            tolerance,
+            fixtures,
+        })
+    }
 }
 
 fn fixture_list<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> String {
@@ -324,6 +360,14 @@ impl FramebufferMode {
             other => Err(format!("unsupported framebuffer mode {other:?}")),
         }
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Final => "final",
+            Self::UntilMatch => "until-match",
+            Self::Info => "info",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,6 +382,13 @@ impl FramebufferSource {
             "dmg" => Ok(Self::Dmg),
             "cgb" => Ok(Self::Cgb),
             other => Err(format!("unsupported framebuffer source {other:?}")),
+        }
+    }
+
+    fn artifact_source(self) -> FramebufferArtifactSource {
+        match self {
+            Self::Dmg => FramebufferArtifactSource::Dmg,
+            Self::Cgb => FramebufferArtifactSource::Cgb,
         }
     }
 }
@@ -372,6 +423,38 @@ impl FramebufferCompare {
             other => Err(format!("unsupported framebuffer compare {other:?}")),
         }
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::GrayscaleTolerance => "grayscale-tolerance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FramebufferArtifactSource {
+    Dmg,
+    Cgb,
+}
+
+impl FramebufferArtifactSource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Dmg => "dmg",
+            Self::Cgb => "cgb",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FramebufferArtifactDescriptor {
+    pub(crate) source: FramebufferArtifactSource,
+    pub(crate) mode: &'static str,
+    pub(crate) projection: &'static str,
+    pub(crate) compare: &'static str,
+    pub(crate) tolerance: Option<u8>,
+    pub(crate) fixtures: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -15,6 +15,7 @@ pub(super) struct Report {
     pub(super) store_dir: PathBuf,
     pub(super) sources: PathBuf,
     pub(super) status_dir: PathBuf,
+    pub(super) artifact_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +67,7 @@ pub(super) struct CaseRunReport {
     pub(super) passed: bool,
     pub(super) failure: Option<String>,
     pub(super) executed_tcycles: u64,
+    pub(super) failure_artifact_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

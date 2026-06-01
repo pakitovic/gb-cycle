@@ -9,6 +9,50 @@ use super::common::{
 };
 
 #[test]
+fn reports_manifest_inherits_and_overrides_artifact_dir() {
+    let workspace = unique_temp_dir("suite-report-artifacts");
+    let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "default-artifacts"
+store_dir = "default-artifacts"
+sources = "default-artifacts/sources.report.toml"
+
+[[report]]
+id = "custom-artifacts"
+store_dir = "custom-artifacts"
+sources = "custom-artifacts/sources.report.toml"
+artifact_dir = ".custom-artifacts"
+"#,
+    )
+    .expect("reports should be writable");
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let default_report = reports
+        .iter()
+        .find(|report| report.id == "default-artifacts")
+        .expect("default report should exist");
+    assert_eq!(default_report.artifact_dir, PathBuf::from(".artifacts"));
+    let custom_report = reports
+        .iter()
+        .find(|report| report.id == "custom-artifacts")
+        .expect("custom report should exist");
+    assert_eq!(
+        custom_report.artifact_dir,
+        PathBuf::from(".custom-artifacts")
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn parses_manifest_defaults_for_serial_contains_cases() {
     let manifest = parse_suite_manifest_for_test(
         Path::new("blargg-cpu-instrs.toml"),

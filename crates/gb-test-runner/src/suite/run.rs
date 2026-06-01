@@ -12,6 +12,7 @@ use crate::oracle::{
     FramebufferObservation, MemoryObservation, OracleObservations, OracleOutcome, OracleStep,
 };
 
+use super::artifact::{FailureArtifactRequest, clean_case_artifacts, persist_failure_artifacts};
 use super::model::{CaseRunReport, Report, SuiteCase, SuiteManifest, SuiteRunReport};
 use super::status::store_root_for_report;
 
@@ -23,7 +24,7 @@ pub(super) fn run_suite(
     let cases = suite
         .cases
         .par_iter()
-        .map(|case| run_case(workspace_root, report, case))
+        .map(|case| run_case(workspace_root, report, &suite.suite_name, case))
         .collect();
     SuiteRunReport {
         suite_name: suite.suite_name.clone(),
@@ -32,7 +33,29 @@ pub(super) fn run_suite(
     }
 }
 
-fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRunReport {
+fn run_case(
+    workspace_root: &Path,
+    report: &Report,
+    suite_name: &str,
+    case: &SuiteCase,
+) -> CaseRunReport {
+    let context = CaseContext {
+        workspace_root,
+        report,
+        suite_name,
+        suite_case: case,
+    };
+    if let Err(error) = clean_case_artifacts(workspace_root, report, suite_name, &case.id) {
+        return CaseRunReport {
+            id: case.id.clone(),
+            rom: case.rom.clone(),
+            passed: false,
+            failure: Some(error),
+            executed_tcycles: 0,
+            failure_artifact_dir: None,
+        };
+    }
+
     let rom_path = store_root_for_report(workspace_root, report)
         .join(&case.target_root)
         .join(&case.rom);
@@ -41,16 +64,15 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
     let rom_bytes = match fs::read(&rom_path) {
         Ok(bytes) => bytes,
         Err(error) => {
-            return CaseRunReport {
-                id: case.id.clone(),
-                rom: case.rom.clone(),
-                passed: false,
-                failure: Some(format!(
-                    "failed to read ROM {}: {error}",
-                    rom_path.display()
-                )),
-                executed_tcycles: 0,
-            };
+            return failed_case_report(
+                FailureReportContext {
+                    case: context,
+                    machine: None,
+                    serial_bytes: &[],
+                },
+                format!("failed to read ROM {}: {error}", rom_path.display()),
+                0,
+            );
         }
     };
     let observation_rom_bytes = needs_cpu_observation.then(|| rom_bytes.clone());
@@ -61,16 +83,15 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
         .with_compatibility(compatibility_for_execution_mode(case.execution_mode));
     let mut machine = Machine::new_summary(config);
     if let Err(error) = machine.load_cartridge(rom_bytes) {
-        return CaseRunReport {
-            id: case.id.clone(),
-            rom: case.rom.clone(),
-            passed: false,
-            failure: Some(format!(
-                "failed to load cartridge {}: {error:?}",
-                rom_path.display()
-            )),
-            executed_tcycles: 0,
-        };
+        return failed_case_report(
+            FailureReportContext {
+                case: context,
+                machine: Some(&machine),
+                serial_bytes: &[],
+            },
+            format!("failed to load cartridge {}: {error:?}", rom_path.display()),
+            0,
+        );
     }
 
     let timeout_tcycles = u64::from(case.timeout_frames).saturating_mul(DMG_T_CYCLES_PER_FRAME);
@@ -93,35 +114,41 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
             Ok(OracleStep::Continue) => {}
             Ok(OracleStep::Stop) => {
                 return finish_case(
-                    case,
+                    context,
                     oracle,
                     &mut machine,
-                    observation_rom_bytes.as_deref(),
-                    &memory_addresses,
-                    &serial_bytes,
-                    executed_tcycles,
+                    FinishCaseContext {
+                        observation_rom_bytes: observation_rom_bytes.as_deref(),
+                        memory_addresses: &memory_addresses,
+                        serial_bytes: &serial_bytes,
+                        executed_tcycles,
+                    },
                 );
             }
             Err(error) => {
-                return CaseRunReport {
-                    id: case.id.clone(),
-                    rom: case.rom.clone(),
-                    passed: false,
-                    failure: Some(error),
+                return failed_case_report(
+                    FailureReportContext {
+                        case: context,
+                        machine: Some(&machine),
+                        serial_bytes: &serial_bytes,
+                    },
+                    error,
                     executed_tcycles,
-                };
+                );
             }
         }
     }
 
     finish_case(
-        case,
+        context,
         oracle,
         &mut machine,
-        observation_rom_bytes.as_deref(),
-        &memory_addresses,
-        &serial_bytes,
-        timeout_tcycles,
+        FinishCaseContext {
+            observation_rom_bytes: observation_rom_bytes.as_deref(),
+            memory_addresses: &memory_addresses,
+            serial_bytes: &serial_bytes,
+            executed_tcycles: timeout_tcycles,
+        },
     )
 }
 
@@ -134,44 +161,102 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
 }
 
 fn finish_case(
-    case: &SuiteCase,
+    context: CaseContext<'_>,
     mut oracle: crate::oracle::Oracle,
     machine: &mut Machine<TraceSummaryBuffer>,
-    observation_rom_bytes: Option<&[u8]>,
-    memory_addresses: &[u16],
-    serial_bytes: &[u8],
-    executed_tcycles: u64,
+    finish: FinishCaseContext<'_>,
 ) -> CaseRunReport {
-    let memory_observations = memory_observations(machine, memory_addresses);
+    let memory_observations = memory_observations(machine, finish.memory_addresses);
     match oracle.finish(OracleObservations {
-        serial: serial_bytes,
-        cpu: observation_rom_bytes.map(|rom_bytes| cpu_observation(machine, rom_bytes)),
+        serial: finish.serial_bytes,
+        cpu: finish
+            .observation_rom_bytes
+            .map(|rom_bytes| cpu_observation(machine, rom_bytes)),
         memory: &memory_observations,
-        executed_tcycles,
+        executed_tcycles: finish.executed_tcycles,
         framebuffer: framebuffer_observation(machine),
         participants: &[],
     }) {
         Ok(OracleOutcome::Passed) => CaseRunReport {
-            id: case.id.clone(),
-            rom: case.rom.clone(),
+            id: context.suite_case.id.clone(),
+            rom: context.suite_case.rom.clone(),
             passed: true,
             failure: None,
-            executed_tcycles,
+            executed_tcycles: finish.executed_tcycles,
+            failure_artifact_dir: None,
         },
-        Ok(OracleOutcome::Failed(failure)) => CaseRunReport {
-            id: case.id.clone(),
-            rom: case.rom.clone(),
-            passed: false,
-            failure: Some(failure),
-            executed_tcycles,
-        },
-        Err(error) => CaseRunReport {
-            id: case.id.clone(),
-            rom: case.rom.clone(),
-            passed: false,
-            failure: Some(error),
-            executed_tcycles,
-        },
+        Ok(OracleOutcome::Failed(failure)) => failed_case_report(
+            FailureReportContext {
+                case: context,
+                machine: Some(machine),
+                serial_bytes: finish.serial_bytes,
+            },
+            failure,
+            finish.executed_tcycles,
+        ),
+        Err(error) => failed_case_report(
+            FailureReportContext {
+                case: context,
+                machine: Some(machine),
+                serial_bytes: finish.serial_bytes,
+            },
+            error,
+            finish.executed_tcycles,
+        ),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CaseContext<'a> {
+    workspace_root: &'a Path,
+    report: &'a Report,
+    suite_name: &'a str,
+    suite_case: &'a SuiteCase,
+}
+
+struct FinishCaseContext<'a> {
+    observation_rom_bytes: Option<&'a [u8]>,
+    memory_addresses: &'a [u16],
+    serial_bytes: &'a [u8],
+    executed_tcycles: u64,
+}
+
+struct FailureReportContext<'a> {
+    case: CaseContext<'a>,
+    machine: Option<&'a Machine<TraceSummaryBuffer>>,
+    serial_bytes: &'a [u8],
+}
+
+fn failed_case_report(
+    context: FailureReportContext<'_>,
+    failure: String,
+    executed_tcycles: u64,
+) -> CaseRunReport {
+    let artifact_result = persist_failure_artifacts(FailureArtifactRequest {
+        workspace_root: context.case.workspace_root,
+        report: context.case.report,
+        suite_name: context.case.suite_name,
+        case: context.case.suite_case,
+        failure: &failure,
+        executed_tcycles,
+        serial_bytes: context.serial_bytes,
+        machine: context.machine,
+    });
+    let (failure, failure_artifact_dir) = match artifact_result {
+        Ok(path) => (failure, Some(path)),
+        Err(error) => (
+            format!("{failure}; failed to write failure artifacts: {error}"),
+            None,
+        ),
+    };
+
+    CaseRunReport {
+        id: context.case.suite_case.id.clone(),
+        rom: context.case.suite_case.rom.clone(),
+        passed: false,
+        failure: Some(failure),
+        executed_tcycles,
+        failure_artifact_dir,
     }
 }
 

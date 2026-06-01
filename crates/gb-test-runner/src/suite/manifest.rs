@@ -16,6 +16,7 @@ use super::source::{FamilyTargetRoots, load_family_target_roots};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ReportManifestFile {
     status_dir: Option<PathBuf>,
+    artifact_dir: Option<PathBuf>,
     #[serde(rename = "report")]
     reports: Vec<ReportFile>,
 }
@@ -26,6 +27,7 @@ struct ReportFile {
     store_dir: PathBuf,
     sources: PathBuf,
     status_dir: Option<PathBuf>,
+    artifact_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -79,6 +81,9 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
     let default_status_dir = manifest
         .status_dir
         .unwrap_or_else(|| PathBuf::from(".status"));
+    let default_artifact_dir = manifest
+        .artifact_dir
+        .unwrap_or_else(|| PathBuf::from(".artifacts"));
     Ok(manifest
         .reports
         .into_iter()
@@ -89,6 +94,9 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
             status_dir: report
                 .status_dir
                 .unwrap_or_else(|| default_status_dir.clone()),
+            artifact_dir: report
+                .artifact_dir
+                .unwrap_or_else(|| default_artifact_dir.clone()),
         })
         .collect())
 }
@@ -419,6 +427,7 @@ pub(super) fn parse_suite_manifest_for_test(
         store_dir: PathBuf::from(report_id),
         sources: PathBuf::from(format!("{report_id}/sources.report.toml")),
         status_dir: PathBuf::from(".status"),
+        artifact_dir: PathBuf::from(".artifacts"),
     };
     parse_suite_manifest(
         path,

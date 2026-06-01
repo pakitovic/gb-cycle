@@ -12,3 +12,4 @@ pub(crate) use catalog::{
     FramebufferObservation, MemoryObservation, Oracle, OracleConfig, OracleObservations,
     OracleOutcome, OracleStep,
 };
+pub(crate) use framebuffer::{FramebufferArtifactDescriptor, FramebufferArtifactSource};

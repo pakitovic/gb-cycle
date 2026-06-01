@@ -311,4 +311,13 @@ impl Oracle {
             _ => Vec::new(),
         }
     }
+
+    pub(crate) fn framebuffer_artifact_descriptor(
+        &self,
+    ) -> Option<super::framebuffer::FramebufferArtifactDescriptor> {
+        match self {
+            Self::Framebuffer(oracle) => oracle.artifact_descriptor(),
+            _ => None,
+        }
+    }
 }

@@ -22,6 +22,7 @@ pub(super) fn write_reports(workspace_root: &Path, report_id: &str, source_path:
         format!(
             concat!(
                 "status_dir = \".status\"\n",
+                "artifact_dir = \".artifacts\"\n",
                 "\n",
                 "[[report]]\n",
                 "id = \"{}\"\n",
@@ -161,6 +162,21 @@ pub(super) fn build_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
 
 pub(super) fn build_infinite_loop_rom() -> Vec<u8> {
     build_test_rom(&[0x18, 0xFE])
+}
+
+pub(super) fn write_grayscale_png(path: &Path, pixels: &[u8]) {
+    fs::create_dir_all(path.parent().expect("PNG path should have parent"))
+        .expect("PNG parent should be creatable");
+    let file = fs::File::create(path).expect("PNG should be writable");
+    let mut encoder = png::Encoder::new(file, 160, 144);
+    encoder.set_color(png::ColorType::Grayscale);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder
+        .write_header()
+        .expect("PNG header should be writable");
+    writer
+        .write_image_data(pixels)
+        .expect("PNG data should be writable");
 }
 
 pub(super) fn basic_manifest(suite_name: &str, family: &str, case_id: &str, rom: &str) -> String {

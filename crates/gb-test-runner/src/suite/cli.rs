@@ -138,18 +138,31 @@ fn run_options<W: Write>(
         ));
     }
 
-    let suite_reports = if let Some(threads) = options.threads {
+    let pool = if let Some(threads) = options.threads {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
             .map_err(|error| format!("failed to configure rayon thread pool: {error}"))?;
-        pool.install(|| run_suites(workspace_root, report, &suites))
+        Some(pool)
     } else {
-        run_suites(workspace_root, report, &suites)
+        None
     };
 
     let mut all_passed = true;
-    for suite_report in suite_reports {
+    for suite in &suites {
+        writeln_checked(
+            output,
+            &format!(
+                "suite {}: running {} cases",
+                suite.suite_name,
+                suite.cases.len()
+            ),
+        )?;
+        let suite_report = if let Some(pool) = &pool {
+            pool.install(|| run_suite(workspace_root, report, suite))
+        } else {
+            run_suite(workspace_root, report, suite)
+        };
         write_suite_status(workspace_root, report, &suite_report)?;
         writeln_checked(
             output,
@@ -170,6 +183,12 @@ fn run_options<W: Write>(
                     case.failure.as_deref().unwrap_or("unknown failure")
                 ),
             )?;
+            if let Some(artifact_dir) = &case.failure_artifact_dir {
+                writeln_checked(
+                    output,
+                    &format!("case {}: artifact_dir={}", case.id, artifact_dir.display()),
+                )?;
+            }
         }
         all_passed &= suite_report.all_passed();
     }
@@ -179,17 +198,6 @@ fn run_options<W: Write>(
     } else {
         Err("one or more suite cases failed".to_string())
     }
-}
-
-fn run_suites(
-    workspace_root: &Path,
-    report: &super::model::Report,
-    suites: &[super::model::SuiteManifest],
-) -> Vec<super::model::SuiteRunReport> {
-    suites
-        .iter()
-        .map(|suite| run_suite(workspace_root, report, suite))
-        .collect()
 }
 
 fn report_for_id<'a>(
@@ -231,7 +239,10 @@ fn write_all<W: Write>(output: &mut W, text: &str) -> Result<(), String> {
 }
 
 fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
-    writeln!(output, "{line}").map_err(|error| format!("failed to write suite output: {error}"))
+    writeln!(output, "{line}").map_err(|error| format!("failed to write suite output: {error}"))?;
+    output
+        .flush()
+        .map_err(|error| format!("failed to flush suite output: {error}"))
 }
 
 #[cfg(test)]

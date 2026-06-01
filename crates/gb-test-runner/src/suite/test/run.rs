@@ -3,7 +3,8 @@ use std::fs;
 use super::super::cli::run_suite_command_with_workspace_for_test;
 use super::common::{
     basic_manifest, build_fibonacci_result_rom, build_infinite_loop_rom, build_memory_write_rom,
-    build_serial_text_rom, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
+    build_serial_text_rom, unique_temp_dir, write_grayscale_png, write_manifest, write_reports,
+    write_source_manifest,
 };
 
 #[test]
@@ -176,6 +177,121 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
         .expect_err("unknown case should fail")
         .contains("unknown case")
     );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_writes_framebuffer_failure_artifacts() {
+    let workspace = unique_temp_dir("framebuffer-failure-artifacts");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/ax6.suite.toml",
+        r#"
+family = "ax6"
+suite_name = "ax6"
+console = "cgb"
+timeout_frames = 1
+oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "rtc3test-1.png" }
+
+[[case]]
+id = "ax6-rtc3test-1"
+rom = "rtc3test-1.gb"
+"#,
+    );
+    let fixture_path = workspace.join("test/sample-report/ax6/rtc3test-1.png");
+    let mut fixture_pixels = vec![0; 160 * 144];
+    for (index, pixel) in fixture_pixels.iter_mut().enumerate() {
+        *pixel = if index.is_multiple_of(2) { 0 } else { 255 };
+    }
+    write_grayscale_png(&fixture_path, &fixture_pixels);
+    let rom_path = workspace.join("test/sample-report/ax6/rtc3test-1.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "ax6",
+            "--case",
+            "ax6-rtc3test-1",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("framebuffer mismatch should fail");
+
+    let artifact_dir = workspace.join("test/sample-report/.artifacts/ax6/ax6-rtc3test-1");
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains(&format!("artifact_dir={}", artifact_dir.display())));
+    assert!(artifact_dir.join("actual.png").exists());
+    assert!(artifact_dir.join("expected-0.png").exists());
+    assert!(artifact_dir.join("snapshot.txt").exists());
+    let metadata =
+        fs::read_to_string(artifact_dir.join("failure.toml")).expect("metadata should exist");
+    assert!(metadata.contains("source = \"cgb\""));
+    assert!(metadata.contains("actual.png"));
+    assert!(metadata.contains("expected-0.png"));
+    assert!(metadata.contains("rtc3test-1.png"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_writes_non_framebuffer_failure_artifacts_and_cleans_them_on_pass() {
+    let workspace = unique_temp_dir("serial-failure-artifacts");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_serial_text_rom("Failed")).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "blargg-cpu-instrs"],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("serial mismatch should fail");
+
+    let artifact_dir = workspace
+        .join("test/sample-report/.artifacts/blargg-cpu-instrs/blargg-cpu-instrs-01-special");
+    assert!(artifact_dir.join("failure.toml").exists());
+    assert!(artifact_dir.join("snapshot.txt").exists());
+    assert!(artifact_dir.join("serial.txt").exists());
+    assert!(!artifact_dir.join("actual.png").exists());
+
+    fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "blargg-cpu-instrs"],
+        &workspace,
+        &mut output,
+    )
+    .expect("serial match should pass");
+    assert!(!artifact_dir.exists());
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
