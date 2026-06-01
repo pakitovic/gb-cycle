@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use super::fibonacci_result::FibonacciResultOracle;
 use super::framebuffer::FramebufferOracle;
 use super::serial_contains::SerialContainsOracle;
 
@@ -135,6 +136,22 @@ impl OracleConfig {
     }
 }
 
+pub(crate) const CPU_OBSERVATION_WINDOW_BACKTRACK: usize = 4;
+pub(crate) const CPU_OBSERVATION_WINDOW_BYTES: usize = 7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CpuObservation {
+    pub(crate) b: u8,
+    pub(crate) c: u8,
+    pub(crate) d: u8,
+    pub(crate) e: u8,
+    pub(crate) h: u8,
+    pub(crate) l: u8,
+    pub(crate) pc: u16,
+    pub(crate) current_opcode: Option<u8>,
+    pub(crate) pc_window: [u8; CPU_OBSERVATION_WINDOW_BYTES],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FramebufferObservation<'a> {
     pub(crate) dmg: Option<&'a [u8]>,
@@ -162,6 +179,7 @@ pub(crate) struct ParticipantFramebufferObservation<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OracleObservations<'a> {
     pub(crate) serial: &'a [u8],
+    pub(crate) cpu: Option<CpuObservation>,
     pub(crate) executed_tcycles: u64,
     pub(crate) framebuffer: FramebufferObservation<'a>,
     pub(crate) participants: &'a [ParticipantFramebufferObservation<'a>],
@@ -172,6 +190,7 @@ impl<'a> OracleObservations<'a> {
     pub(crate) fn serial(serial: &'a [u8]) -> Self {
         Self {
             serial,
+            cpu: None,
             executed_tcycles: 0,
             framebuffer: FramebufferObservation::empty(),
             participants: &[],
@@ -193,6 +212,7 @@ pub(crate) enum OracleOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Oracle {
+    FibonacciResult(FibonacciResultOracle),
     Framebuffer(FramebufferOracle),
     SerialContains(SerialContainsOracle),
 }
@@ -208,6 +228,9 @@ impl Oracle {
         fixture_root: &Path,
     ) -> Result<Self, String> {
         match config.kind()? {
+            "fibonacci-result" => Ok(Self::FibonacciResult(FibonacciResultOracle::from_manifest(
+                config,
+            )?)),
             "framebuffer" => Ok(Self::Framebuffer(FramebufferOracle::from_manifest(
                 config,
                 fixture_root,
@@ -224,6 +247,7 @@ impl Oracle {
         observations: OracleObservations<'_>,
     ) -> Result<OracleStep, String> {
         match self {
+            Self::FibonacciResult(oracle) => oracle.observe(observations),
             Self::Framebuffer(oracle) => oracle.observe(observations),
             Self::SerialContains(oracle) => Ok(oracle.observe(observations)),
         }
@@ -234,8 +258,13 @@ impl Oracle {
         observations: OracleObservations<'_>,
     ) -> Result<OracleOutcome, String> {
         match self {
+            Self::FibonacciResult(oracle) => oracle.finish(observations),
             Self::Framebuffer(oracle) => oracle.finish(observations),
             Self::SerialContains(oracle) => Ok(oracle.finish(observations)),
         }
+    }
+
+    pub(crate) fn needs_cpu_observation(&self) -> bool {
+        matches!(self, Self::FibonacciResult(_))
     }
 }

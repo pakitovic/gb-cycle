@@ -73,6 +73,31 @@ pub(super) fn build_serial_text_rom(text: &str) -> Vec<u8> {
     build_test_rom(&program)
 }
 
+pub(super) fn build_fibonacci_result_rom(signature: [u8; 6]) -> Vec<u8> {
+    build_test_rom(&[
+        0x06,
+        signature[0], // LD B,d8
+        0x0E,
+        signature[1], // LD C,d8
+        0x16,
+        signature[2], // LD D,d8
+        0x1E,
+        signature[3], // LD E,d8
+        0x26,
+        signature[4], // LD H,d8
+        0x2E,
+        signature[5], // LD L,d8
+        0x40,         // LD B,B, Mooneye-style magic breakpoint
+        0x00,         // NOP
+        0x18,
+        0xFD, // JR -3, keep the post-breakpoint loop visible near PC
+    ])
+}
+
+pub(super) fn build_infinite_loop_rom() -> Vec<u8> {
+    build_test_rom(&[0x18, 0xFE])
+}
+
 pub(super) fn basic_manifest(suite_name: &str, family: &str, case_id: &str, rom: &str) -> String {
     format!(
         concat!(

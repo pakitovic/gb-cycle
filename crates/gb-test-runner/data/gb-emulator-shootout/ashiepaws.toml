@@ -7,14 +7,14 @@ oracle = "framebuffer-fixture"
 [[case]]
 id = "ashiepaws-bully-dmg"
 rom = "bully.gb"
-report_model_suffix = true
+report_console_suffix = true
 fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
 
 [[case]]
 id = "ashiepaws-bully-cgb"
 rom = "bully.gb"
 console = "cgb"
-report_model_suffix = true
+report_console_suffix = true
 oracle = "framebuffer-rgb555-fixture"
 fixture = "test/gb-emulator-shootout/ashiepaws/bully.png"
 startup = "custom-boot"

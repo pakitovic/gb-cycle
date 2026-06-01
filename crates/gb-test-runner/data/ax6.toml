@@ -1,7 +1,7 @@
 family = "ax6"
 suite_name = "ax6-dmg-extra"
 console = "dmg"
-report_model_suffix = true
+report_console_suffix = true
 oracle = "framebuffer-fixture"
 
 [[case]]

@@ -8,7 +8,7 @@ oracle = "framebuffer-rgb555-fixture"
 id = "daid-ppu-scanline-bgp-dmg"
 rom = "ppu_scanline_bgp.gb"
 console = "dmg"
-report_model_suffix = true
+report_console_suffix = true
 oracle = "framebuffer-fixture"
 fixture = [
   "test/gb-emulator-shootout/daid/ppu_scanline_bgp_0.dmg.png",
@@ -19,21 +19,21 @@ fixture = [
 [[case]]
 id = "daid-ppu-scanline-bgp-gbc"
 rom = "ppu_scanline_bgp.gb"
-report_model_suffix = true
+report_console_suffix = true
 fixture = "test/gb-emulator-shootout/daid/ppu_scanline_bgp.gbc.png"
 
 [[case]]
 id = "daid-stop-instr-dmg"
 rom = "stop_instr.gb"
 console = "dmg"
-report_model_suffix = true
+report_console_suffix = true
 oracle = "framebuffer-grayscale-fixture"
 fixture = "test/gb-emulator-shootout/daid/stop_instr.dmg.png"
 
 [[case]]
 id = "daid-stop-instr-gbc"
 rom = "stop_instr.gb"
-report_model_suffix = true
+report_console_suffix = true
 oracle = "framebuffer-rgb555-grayscale-fixture"
 fixture = "test/gb-emulator-shootout/daid/stop_instr.gbc.png"
 

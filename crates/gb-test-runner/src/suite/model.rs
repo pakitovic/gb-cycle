@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gb_core::{ConsoleModel, ExecutionMode};
+use gb_core::{ConsoleModel, ExecutionMode, HostPlatform};
 use serde::Serialize;
 
 use crate::oracle::Oracle;
@@ -30,6 +30,7 @@ pub(super) struct SuiteCase {
     pub(super) family: String,
     pub(super) rom: PathBuf,
     pub(super) console_model: ConsoleModel,
+    pub(super) host_platform: HostPlatform,
     pub(super) execution_mode: ExecutionMode,
     pub(super) timeout_frames: u32,
     pub(super) oracle: Oracle,

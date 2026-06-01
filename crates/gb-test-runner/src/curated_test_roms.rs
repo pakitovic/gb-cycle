@@ -98,7 +98,7 @@ struct CuratedTestRomManifestFile {
 struct CuratedTestRomCaseDefaultsFile {
     source_id: Option<String>,
     source_path: Option<PathBuf>,
-    report_model_suffix: Option<bool>,
+    report_console_suffix: Option<bool>,
     report_label: Option<String>,
     timeout_frames: Option<u32>,
     timeout_tcycles: Option<u64>,
@@ -126,7 +126,7 @@ struct CuratedTestRomCaseFile {
     rom: PathBuf,
     source_id: Option<String>,
     source_path: Option<PathBuf>,
-    report_model_suffix: Option<bool>,
+    report_console_suffix: Option<bool>,
     report_label: Option<String>,
     timeout_frames: Option<u32>,
     timeout_tcycles: Option<u64>,
@@ -175,7 +175,7 @@ struct CuratedTestRomCase {
     rom: PathBuf,
     source_id: String,
     source_path: PathBuf,
-    report_model_suffix: bool,
+    report_console_suffix: bool,
     report_label: Option<String>,
     timeout: Timeout,
     oracle: String,
@@ -1721,9 +1721,9 @@ fn parse_manifest_case(
         rom: case.rom,
         source_id,
         source_path: source_path.clone(),
-        report_model_suffix: case
-            .report_model_suffix
-            .or(defaults.report_model_suffix)
+        report_console_suffix: case
+            .report_console_suffix
+            .or(defaults.report_console_suffix)
             .unwrap_or(false),
         report_label: case.report_label.or_else(|| defaults.report_label.clone()),
         timeout,
@@ -2008,7 +2008,7 @@ fn manifest_case_to_rom_test_case(
         rom,
         source_id: _,
         source_path: _,
-        report_model_suffix: _,
+        report_console_suffix: _,
         report_label: _,
         timeout,
         oracle,
@@ -2458,7 +2458,7 @@ fn manifest_case_report_rom_display(case: &CuratedTestRomCase) -> String {
         &case.family,
         &curated_case_store_relative_path(&case.family, &case.rom),
     );
-    if case.report_model_suffix {
+    if case.report_console_suffix {
         format!(
             "{rom} ({})",
             console_report_suffix(case.console_model, case.host_platform)
@@ -3392,7 +3392,7 @@ mod tests {
             manifest.cases[0].source_path,
             Path::new("tests/roms/dmg/little-things-gb/whichboot.gb")
         );
-        assert!(manifest.cases[0].report_model_suffix);
+        assert!(manifest.cases[0].report_console_suffix);
         assert_eq!(
             manifest_case_report_rom_display(&manifest.cases[0]),
             "whichboot.gb (GBC)"
@@ -3884,7 +3884,7 @@ mod tests {
                 && case
                     .source_path
                     .starts_with("testroms/mealybug-tearoom-tests/ppu")
-                && case.report_model_suffix
+                && case.report_console_suffix
                 && case.console_model == ConsoleModel::GameBoyColor
                 && !case.disabled
                 && case.startup_mode
@@ -4114,7 +4114,7 @@ mod tests {
         assert!(manifest.cases.iter().all(|case| {
             case.source_id == "docboy"
                 && case.source_path.starts_with("tests/roms/cgb/samesuite")
-                && case.report_model_suffix
+                && case.report_console_suffix
         }));
         let disabled_sweep_restart_2 = manifest
             .cases
@@ -4174,7 +4174,7 @@ mod tests {
         assert!(manifest.cases.iter().all(|case| {
             case.source_id == "docboy"
                 && case.source_path.starts_with("tests/roms/cgb/magen")
-                && !case.report_model_suffix
+                && !case.report_console_suffix
         }));
 
         let suite = magen_cgb_extra_suite();
@@ -4204,7 +4204,7 @@ mod tests {
     }
 
     #[test]
-    fn manifests_mark_current_gbemu_shootout_model_suffixed_rows() {
+    fn manifests_mark_current_gbemu_shootout_console_suffixed_rows() {
         let dmg_rows = [
             ("acid", "which.gb"),
             ("daid", "ppu_scanline_bgp.gb"),
@@ -4264,7 +4264,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing GBEmulatorShootout DMG row {family}/{rom}"));
 
             assert_eq!(case.console_model, ConsoleModel::GameBoy, "{family}/{rom}");
-            assert!(case.report_model_suffix, "{family}/{rom}");
+            assert!(case.report_console_suffix, "{family}/{rom}");
             assert_eq!(
                 manifest_case_report_rom_display(case),
                 format!("{rom} (DMG)")
@@ -4280,7 +4280,7 @@ mod tests {
                     && case.console_model == ConsoleModel::GameBoyColor
             })
             .expect("CGB Acid which row should exist");
-        assert!(cgb_which.report_model_suffix);
+        assert!(cgb_which.report_console_suffix);
         assert_eq!(
             manifest_case_report_rom_display(cgb_which),
             "which.gb (GBC)"
@@ -4295,7 +4295,7 @@ mod tests {
                     && case.console_model == ConsoleModel::GameBoyColor
             })
             .expect("CGB Daid ppu_scanline_bgp row should exist");
-        assert!(cgb_scanline_bgp.report_model_suffix);
+        assert!(cgb_scanline_bgp.report_console_suffix);
         assert_eq!(
             manifest_case_report_rom_display(cgb_scanline_bgp),
             "ppu_scanline_bgp.gb (GBC)"
@@ -4310,7 +4310,7 @@ mod tests {
                     && case.console_model == ConsoleModel::GameBoyColor
             })
             .expect("CGB Ashiepaws bully row should exist");
-        assert!(cgb_bully.report_model_suffix);
+        assert!(cgb_bully.report_console_suffix);
         assert_eq!(
             manifest_case_report_rom_display(cgb_bully),
             "bully.gb (GBC)"
@@ -4321,7 +4321,7 @@ mod tests {
             .flat_map(|manifest| &manifest.cases)
             .find(|case| case.family == "mooneye" && case.rom == Path::new("misc/boot_regs-cgb.gb"))
             .expect("CGB Mooneye boot_regs row should exist");
-        assert!(!cgb_boot_regs.report_model_suffix);
+        assert!(!cgb_boot_regs.report_console_suffix);
         assert_eq!(
             manifest_case_report_rom_display(cgb_boot_regs),
             "misc/boot_regs-cgb.gb"
@@ -6365,7 +6365,7 @@ source_id = "custom-source"
 console = "cgb"
 startup = "custom-boot"
 execution_mode = "permissive"
-report_model_suffix = true
+report_console_suffix = true
 timeout_frames = 180
 oracle = "info-framebuffer"
 memory = [{ address = 65410, value = 1 }]
@@ -6403,7 +6403,7 @@ stimulus = []
             manifest.cases[0].execution_mode.as_deref(),
             Some("permissive")
         );
-        assert!(manifest.cases[0].report_model_suffix);
+        assert!(manifest.cases[0].report_console_suffix);
         assert_eq!(manifest.cases[0].timeout, Timeout::Frames(180));
         assert_eq!(manifest.cases[0].oracle, "info-framebuffer");
         assert_eq!(manifest.cases[0].memory.len(), 1);
@@ -6413,7 +6413,7 @@ stimulus = []
         assert_eq!(manifest.cases[1].timeout, Timeout::Frames(30));
         assert_eq!(manifest.cases[1].oracle, "serial-contains");
         assert_eq!(manifest.cases[1].expected.as_deref(), Some("Passed"));
-        assert!(manifest.cases[1].report_model_suffix);
+        assert!(manifest.cases[1].report_console_suffix);
         assert!(manifest.cases[1].memory.is_empty());
         assert!(manifest.cases[1].stimuli.is_empty());
     }
@@ -6432,7 +6432,7 @@ stimulus = []
                 rom: PathBuf::from("familyless.gb"),
                 source_id: None,
                 source_path: None,
-                report_model_suffix: None,
+                report_console_suffix: None,
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
@@ -6467,7 +6467,7 @@ stimulus = []
                 rom: PathBuf::from("disabled.gb"),
                 source_id: None,
                 source_path: None,
-                report_model_suffix: None,
+                report_console_suffix: None,
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
@@ -6509,7 +6509,7 @@ stimulus = []
                 rom: PathBuf::from("disabled.gb"),
                 source_id: None,
                 source_path: None,
-                report_model_suffix: None,
+                report_console_suffix: None,
                 report_label: None,
                 timeout_frames: Some(1),
                 timeout_tcycles: None,
@@ -6541,7 +6541,7 @@ stimulus = []
                 rom: PathBuf::from("bad.gb"),
                 source_id: GBEMU_SHOOTOUT_SOURCE_ID.to_string(),
                 source_path: PathBuf::from("testroms/blargg/bad.gb"),
-                report_model_suffix: false,
+                report_console_suffix: false,
                 report_label: None,
                 timeout: Timeout::Frames(1),
                 oracle: "unknown".to_string(),

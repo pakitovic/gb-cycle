@@ -7,13 +7,13 @@ oracle = "framebuffer-fixture"
 [[case]]
 id = "samesuite-dmg-div-write-trigger"
 rom = "apu/div_write_trigger.gb"
-report_model_suffix = true
+report_console_suffix = true
 fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png"
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger-10"
 rom = "apu/div_write_trigger_10.gb"
-report_model_suffix = true
+report_console_suffix = true
 fixture = "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png"
 
 [[case]]

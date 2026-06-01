@@ -32,7 +32,7 @@ fn parses_manifest_defaults_for_serial_contains_cases() {
 }
 
 #[test]
-fn parses_cgb_console_and_rejects_unsupported_console_and_oracle() {
+fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
     let cgb_console = basic_manifest("acid", "acid", "acid-cgb", "cgb-acid2.gbc")
         .replace("console = \"dmg\"", "console = \"cgb\"");
     let cgb_manifest = parse_suite_manifest_for_test(
@@ -45,18 +45,45 @@ fn parses_cgb_console_and_rejects_unsupported_console_and_oracle() {
         cgb_manifest.cases[0].console_model,
         gb_core::ConsoleModel::GameBoyColor
     );
-
-    let unsupported_console = basic_manifest("acid", "acid", "acid-sgb", "sgb-test.gb")
-        .replace("console = \"dmg\"", "console = \"sgb\"");
-    assert!(
-        parse_suite_manifest_for_test(
-            Path::new("acid.suite.toml"),
-            "gb-emulator-shootout",
-            &unsupported_console
-        )
-        .expect_err("sgb should fail")
-        .contains("unsupported console")
+    assert_eq!(
+        cgb_manifest.cases[0].host_platform,
+        gb_core::HostPlatform::Handheld
     );
+
+    let sgb_console = basic_manifest("samesuite", "samesuite", "samesuite-sgb", "sgb/test.gb")
+        .replace("console = \"dmg\"", "console = \"sgb\"");
+    let sgb_manifest = parse_suite_manifest_for_test(
+        Path::new("samesuite.suite.toml"),
+        "gb-emulator-shootout",
+        &sgb_console,
+    )
+    .expect("sgb should parse");
+    assert_eq!(
+        sgb_manifest.cases[0].console_model,
+        gb_core::ConsoleModel::GameBoy
+    );
+    assert_eq!(
+        sgb_manifest.cases[0].host_platform,
+        gb_core::HostPlatform::Sgb
+    );
+
+    let sgb2_console = basic_manifest("samesuite", "samesuite", "samesuite-sgb2", "sgb/test.gb")
+        .replace("console = \"dmg\"", "console = \"sgb2\"");
+    let sgb2_manifest = parse_suite_manifest_for_test(
+        Path::new("samesuite.suite.toml"),
+        "gb-emulator-shootout",
+        &sgb2_console,
+    )
+    .expect("sgb2 should parse");
+    assert_eq!(
+        sgb2_manifest.cases[0].console_model,
+        gb_core::ConsoleModel::GameBoy
+    );
+    assert_eq!(
+        sgb2_manifest.cases[0].host_platform,
+        gb_core::HostPlatform::Sgb2
+    );
+
     let unsupported_alias = basic_manifest("acid", "acid", "acid-gb", "which.gb")
         .replace("console = \"dmg\"", "console = \"gb\"");
     assert!(
@@ -286,6 +313,70 @@ rom = "screens/pass.gb"
 }
 
 #[test]
+fn real_cpp_suite_manifest_loads_sgb_case() {
+    let workspace = unique_temp_dir("cpp-suite-manifest");
+    write_reports(
+        &workspace,
+        "gb-emulator-shootout",
+        "gb-emulator-shootout/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/cpp.suite.toml",
+        include_str!("../../../data/gb-emulator-shootout/cpp.suite.toml"),
+    );
+    write_fixture_placeholders(
+        &workspace,
+        &[
+            "test/gb-emulator-shootout/cpp/rtc-invalid-banks-test.png",
+            "test/gb-emulator-shootout/cpp/latch-rtc-test.png",
+            "test/gb-emulator-shootout/cpp/ramg-mbc3-test.png",
+            "crates/gb-test-runner/data/gb-emulator-shootout/fixtures/cpp/sgb-ext-test.sgb.png",
+        ],
+    );
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gb-emulator-shootout")
+        .expect("report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("cpp"), None)
+        .expect("real cpp manifest should load");
+
+    assert_eq!(suites.len(), 1);
+    let suite = &suites[0];
+    assert_eq!(suite.suite_name, "cpp");
+    assert_eq!(suite.family, "cpp");
+    assert_eq!(suite.cases.len(), 4);
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| matches!(&case.oracle, Oracle::Framebuffer(_)))
+    );
+
+    let dmg_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "cpp-rtc-invalid-banks-test")
+        .expect("DMG CPP case should exist");
+    assert_eq!(dmg_case.console_model, gb_core::ConsoleModel::GameBoy);
+    assert_eq!(dmg_case.host_platform, gb_core::HostPlatform::Handheld);
+    assert_eq!(dmg_case.timeout_frames, 30);
+
+    let sgb_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "cpp-sgb-ext-test")
+        .expect("SGB CPP case should exist");
+    assert_eq!(sgb_case.console_model, gb_core::ConsoleModel::GameBoy);
+    assert_eq!(sgb_case.host_platform, gb_core::HostPlatform::Sgb);
+    assert_eq!(sgb_case.timeout_frames, 240);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn real_blargg_cpu_instrs_manifest_loads() {
     let manifest = parse_suite_manifest_for_test(
         Path::new("crates/gb-test-runner/data/gb-emulator-shootout/blargg-cpu-instrs.suite.toml"),
@@ -425,6 +516,100 @@ fn real_blargg_sound_manifests_load_framebuffer_oracles() {
             && case.timeout_frames == 1200
             && matches!(&case.oracle, Oracle::Framebuffer(_))
     }));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn real_mooneye_suite_manifests_load_fibonacci_result_oracles() {
+    let workspace = unique_temp_dir("mooneye-suite-manifests");
+    write_reports(
+        &workspace,
+        "gb-emulator-shootout",
+        "gb-emulator-shootout/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/mooneye-acceptance-manual-misc.suite.toml",
+        include_str!(
+            "../../../data/gb-emulator-shootout/mooneye-acceptance-manual-misc.suite.toml"
+        ),
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/mooneye-emulator-mbc1-mbc5.suite.toml",
+        include_str!("../../../data/gb-emulator-shootout/mooneye-emulator-mbc1-mbc5.suite.toml"),
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/mooneye-emulator-mbc2.suite.toml",
+        include_str!("../../../data/gb-emulator-shootout/mooneye-emulator-mbc2.suite.toml"),
+    );
+    write_fixture_placeholders(
+        &workspace,
+        &["test/gb-emulator-shootout/mooneye/manual-only/sprite_priority.png"],
+    );
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gb-emulator-shootout")
+        .expect("report should exist");
+
+    let acceptance_suites = load_selected_suites(
+        &workspace,
+        report,
+        Some("mooneye-acceptance-manual-misc"),
+        None,
+    )
+    .expect("real mooneye acceptance manifest should load");
+    assert_eq!(acceptance_suites.len(), 1);
+    let acceptance = &acceptance_suites[0];
+    assert_eq!(acceptance.suite_name, "mooneye-acceptance-manual-misc");
+    assert_eq!(acceptance.family, "mooneye");
+    assert_eq!(acceptance.cases.len(), 69);
+    let sprite_priority = acceptance
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-manual-only-sprite-priority")
+        .expect("manual sprite priority should exist");
+    assert!(matches!(&sprite_priority.oracle, Oracle::Framebuffer(_)));
+    let boot_regs_cgb = acceptance
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-misc-boot-regs-cgb")
+        .expect("CGB boot_regs row should exist");
+    assert_eq!(
+        boot_regs_cgb.console_model,
+        gb_core::ConsoleModel::GameBoyColor
+    );
+    assert!(matches!(&boot_regs_cgb.oracle, Oracle::FibonacciResult(_)));
+
+    let mbc1_mbc5_suites =
+        load_selected_suites(&workspace, report, Some("mooneye-emulator-mbc1-mbc5"), None)
+            .expect("real mooneye MBC1/MBC5 manifest should load");
+    assert_eq!(mbc1_mbc5_suites.len(), 1);
+    let mbc1_mbc5 = &mbc1_mbc5_suites[0];
+    assert_eq!(mbc1_mbc5.family, "mooneye");
+    assert_eq!(mbc1_mbc5.cases.len(), 21);
+    assert!(
+        mbc1_mbc5
+            .cases
+            .iter()
+            .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+    );
+
+    let mbc2_suites = load_selected_suites(&workspace, report, Some("mooneye-emulator-mbc2"), None)
+        .expect("real mooneye MBC2 manifest should load");
+    assert_eq!(mbc2_suites.len(), 1);
+    let mbc2 = &mbc2_suites[0];
+    assert_eq!(mbc2.family, "mooneye");
+    assert_eq!(mbc2.cases.len(), 7);
+    assert!(
+        mbc2.cases
+            .iter()
+            .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+    );
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

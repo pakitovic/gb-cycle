@@ -2,7 +2,8 @@ use std::fs;
 
 use super::super::cli::run_suite_command_with_workspace_for_test;
 use super::common::{
-    basic_manifest, build_serial_text_rom, unique_temp_dir, write_manifest, write_reports,
+    basic_manifest, build_fibonacci_result_rom, build_infinite_loop_rom, build_serial_text_rom,
+    unique_temp_dir, write_manifest, write_reports,
 };
 
 #[test]
@@ -221,6 +222,209 @@ fn command_treats_info_framebuffer_as_pass_for_ci() {
     let status = fs::read_to_string(workspace.join("test/sample-report/.status/acid.toml"))
         .expect("status should be written");
     assert!(status.contains("status = \"PASS\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_runs_fibonacci_result_suite_as_ci_friendly_pass() {
+    let workspace = unique_temp_dir("fibonacci-pass");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/mooneye.suite.toml",
+        r#"
+family = "mooneye"
+suite_name = "mooneye"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mooneye-pass"
+rom = "acceptance/pass.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/mooneye/acceptance/pass.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_fibonacci_result_rom([3, 5, 8, 13, 21, 34]))
+        .expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "mooneye",
+            "--case",
+            "mooneye-pass",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("fibonacci result suite should pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite mooneye: 1/1 passed"));
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.toml"))
+        .expect("status should be written");
+    assert!(status.contains("status = \"PASS\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_runs_sgb_suite_with_handheld_core_and_sgb_host() {
+    let workspace = unique_temp_dir("sgb-pass");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/samesuite.suite.toml",
+        r#"
+family = "samesuite"
+suite_name = "samesuite"
+console = "sgb"
+timeout_frames = 1
+oracle = { type = "framebuffer", mode = "info" }
+
+[[case]]
+id = "samesuite-sgb-smoke"
+rom = "sgb/smoke.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/samesuite/sgb/smoke.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "samesuite",
+            "--case",
+            "samesuite-sgb-smoke",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("sgb suite should pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite samesuite: 1/1 passed"));
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/samesuite.toml"))
+        .expect("status should be written");
+    assert!(status.contains("status = \"PASS\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_reports_fibonacci_failure_signature_as_failed_case() {
+    let workspace = unique_temp_dir("fibonacci-fail");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/mooneye.suite.toml",
+        r#"
+family = "mooneye"
+suite_name = "mooneye"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mooneye-fail"
+rom = "acceptance/fail.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/mooneye/acceptance/fail.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_fibonacci_result_rom([0x42; 6])).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "mooneye",
+            "--case",
+            "mooneye-fail",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("fibonacci failure signature should fail");
+    assert!(error.contains("one or more suite cases failed"));
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("case mooneye-fail: FAIL"));
+    assert!(output.contains("failure signature"));
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.toml"))
+        .expect("status should be written");
+    assert!(status.contains("status = \"FAIL\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_reports_fibonacci_timeout_without_result_as_failed_case() {
+    let workspace = unique_temp_dir("fibonacci-timeout");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/mooneye.suite.toml",
+        r#"
+family = "mooneye"
+suite_name = "mooneye"
+console = "dmg"
+timeout_frames = 1
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mooneye-timeout"
+rom = "acceptance/timeout.gb"
+"#,
+    );
+    let rom_path = workspace.join("test/sample-report/mooneye/acceptance/timeout.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "mooneye",
+            "--case",
+            "mooneye-timeout",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("missing fibonacci result should fail");
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("case mooneye-timeout: FAIL"));
+    assert!(output.contains("fibonacci result was not reached"));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

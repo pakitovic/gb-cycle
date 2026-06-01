@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use gb_core::{ConsoleModel, ExecutionMode};
+use gb_core::{ConsoleModel, ExecutionMode, HostPlatform};
 
 use crate::oracle::{Oracle, OracleConfig};
 
@@ -262,7 +262,7 @@ fn parse_case(
                 path.display()
             )
         })?;
-    let console_model = parse_console_model(&console)
+    let console_profile = parse_console_profile(&console)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
     let execution_mode = match case
         .execution_mode
@@ -300,7 +300,8 @@ fn parse_case(
         id: case.id,
         family,
         rom: case.rom,
-        console_model,
+        console_model: console_profile.console_model,
+        host_platform: console_profile.host_platform,
         execution_mode,
         timeout_frames,
         oracle,
@@ -338,10 +339,30 @@ fn fixture_root_for_case(workspace_root: &Path, report: &Report, family: &str) -
         .join(family)
 }
 
-fn parse_console_model(console: &str) -> Result<ConsoleModel, String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConsoleProfile {
+    console_model: ConsoleModel,
+    host_platform: HostPlatform,
+}
+
+fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
     match console {
-        "dmg" => Ok(ConsoleModel::GameBoy),
-        "cgb" => Ok(ConsoleModel::GameBoyColor),
+        "dmg" => Ok(ConsoleProfile {
+            console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Handheld,
+        }),
+        "cgb" => Ok(ConsoleProfile {
+            console_model: ConsoleModel::GameBoyColor,
+            host_platform: HostPlatform::Handheld,
+        }),
+        "sgb" => Ok(ConsoleProfile {
+            console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Sgb,
+        }),
+        "sgb2" => Ok(ConsoleProfile {
+            console_model: ConsoleModel::GameBoy,
+            host_platform: HostPlatform::Sgb2,
+        }),
         other => Err(format!("unsupported console {other:?}")),
     }
 }

@@ -8,12 +8,12 @@ oracle = "info-framebuffer"
 id = "acid-which-dmg"
 rom = "which.gb"
 console = "dmg"
-report_model_suffix = true
+report_console_suffix = true
 
 [[case]]
 id = "acid-which-cgb"
 rom = "which.gb"
-report_model_suffix = true
+report_console_suffix = true
 
 [[case]]
 id = "acid-dmg-acid2"

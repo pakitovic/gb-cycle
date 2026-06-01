@@ -2,7 +2,7 @@ family = "samesuite"
 suite_name = "samesuite-cgb-extra"
 source_id = "docboy"
 console = "cgb"
-report_model_suffix = true
+report_console_suffix = true
 timeout_frames = 180
 oracle = "framebuffer-rgb555-fixture"
 
