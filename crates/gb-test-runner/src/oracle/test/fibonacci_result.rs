@@ -37,6 +37,7 @@ fn observations(
             current_opcode,
             pc_window,
         }),
+        memory: &[],
         executed_tcycles: 0,
         framebuffer: FramebufferObservation::empty(),
         participants: &[],

@@ -3,13 +3,13 @@ use std::path::Path;
 
 use gb_core::{
     CartridgeMappedRomSource, CompatibilityPolicy, DMG_T_CYCLES_PER_FRAME, ExecutionMode, Machine,
-    MachineConfig, StartupMode, TraceSummaryBuffer,
+    MachineConfig, TraceSummaryBuffer,
 };
 use rayon::prelude::*;
 
 use crate::oracle::{
     CPU_OBSERVATION_WINDOW_BACKTRACK, CPU_OBSERVATION_WINDOW_BYTES, CpuObservation,
-    FramebufferObservation, OracleObservations, OracleOutcome, OracleStep,
+    FramebufferObservation, MemoryObservation, OracleObservations, OracleOutcome, OracleStep,
 };
 
 use super::model::{CaseRunReport, Report, SuiteCase, SuiteManifest, SuiteRunReport};
@@ -34,9 +34,10 @@ pub(super) fn run_suite(
 
 fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRunReport {
     let rom_path = store_root_for_report(workspace_root, report)
-        .join(&case.family)
+        .join(&case.target_root)
         .join(&case.rom);
     let needs_cpu_observation = case.oracle.needs_cpu_observation();
+    let memory_addresses = case.oracle.memory_addresses();
     let rom_bytes = match fs::read(&rom_path) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -56,7 +57,7 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
 
     let config = MachineConfig::new(case.console_model)
         .with_host_platform(case.host_platform)
-        .with_startup_mode(StartupMode::SkipBoot)
+        .with_startup_mode(case.startup_mode)
         .with_compatibility(compatibility_for_execution_mode(case.execution_mode));
     let mut machine = Machine::new_summary(config);
     if let Err(error) = machine.load_cartridge(rom_bytes) {
@@ -78,11 +79,13 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
     for executed_tcycles in 1..=timeout_tcycles {
         machine.step_t_cycle();
         serial_bytes.extend(machine.take_serial_output_bytes());
+        let memory_observations = memory_observations(&mut machine, &memory_addresses);
         match oracle.observe(OracleObservations {
             serial: &serial_bytes,
             cpu: observation_rom_bytes
                 .as_deref()
                 .map(|rom_bytes| cpu_observation(&machine, rom_bytes)),
+            memory: &memory_observations,
             executed_tcycles,
             framebuffer: framebuffer_observation(&machine),
             participants: &[],
@@ -92,8 +95,9 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
                 return finish_case(
                     case,
                     oracle,
-                    &machine,
+                    &mut machine,
                     observation_rom_bytes.as_deref(),
+                    &memory_addresses,
                     &serial_bytes,
                     executed_tcycles,
                 );
@@ -113,8 +117,9 @@ fn run_case(workspace_root: &Path, report: &Report, case: &SuiteCase) -> CaseRun
     finish_case(
         case,
         oracle,
-        &machine,
+        &mut machine,
         observation_rom_bytes.as_deref(),
+        &memory_addresses,
         &serial_bytes,
         timeout_tcycles,
     )
@@ -131,14 +136,17 @@ fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> Compatibil
 fn finish_case(
     case: &SuiteCase,
     mut oracle: crate::oracle::Oracle,
-    machine: &Machine<TraceSummaryBuffer>,
+    machine: &mut Machine<TraceSummaryBuffer>,
     observation_rom_bytes: Option<&[u8]>,
+    memory_addresses: &[u16],
     serial_bytes: &[u8],
     executed_tcycles: u64,
 ) -> CaseRunReport {
+    let memory_observations = memory_observations(machine, memory_addresses);
     match oracle.finish(OracleObservations {
         serial: serial_bytes,
         cpu: observation_rom_bytes.map(|rom_bytes| cpu_observation(machine, rom_bytes)),
+        memory: &memory_observations,
         executed_tcycles,
         framebuffer: framebuffer_observation(machine),
         participants: &[],
@@ -165,6 +173,20 @@ fn finish_case(
             executed_tcycles,
         },
     }
+}
+
+fn memory_observations(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    addresses: &[u16],
+) -> Vec<MemoryObservation> {
+    addresses
+        .iter()
+        .copied()
+        .map(|address| MemoryObservation {
+            address,
+            value: machine.read_bus(address),
+        })
+        .collect()
 }
 
 fn framebuffer_observation(machine: &Machine<TraceSummaryBuffer>) -> FramebufferObservation<'_> {

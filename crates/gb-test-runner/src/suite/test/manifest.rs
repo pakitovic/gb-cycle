@@ -1,10 +1,12 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::oracle::Oracle;
 
 use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
-use super::common::{basic_manifest, unique_temp_dir, write_manifest, write_reports};
+use super::common::{
+    basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
+};
 
 #[test]
 fn parses_manifest_defaults_for_serial_contains_cases() {
@@ -29,6 +31,56 @@ fn parses_manifest_defaults_for_serial_contains_cases() {
         gb_core::ExecutionMode::Strict
     );
     assert_eq!(manifest.cases[0].timeout_frames, 2);
+}
+
+#[test]
+fn parses_startup_modes_and_rejects_unsupported_startup() {
+    let custom_boot = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
+        .replace(
+            "rom = \"case.gb\"",
+            "rom = \"case.gb\"\nstartup = \"custom-boot\"",
+        );
+    let manifest = parse_suite_manifest_for_test(
+        Path::new("gbmicrotest.suite.toml"),
+        "gbmicrotest",
+        &custom_boot,
+    )
+    .expect("custom boot should parse");
+    assert_eq!(
+        manifest.cases[0].startup_mode,
+        gb_core::StartupMode::CustomBoot
+    );
+
+    let real_boot = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
+        .replace(
+            "rom = \"case.gb\"",
+            "rom = \"case.gb\"\nstartup = \"real-boot\"",
+        );
+    let manifest = parse_suite_manifest_for_test(
+        Path::new("gbmicrotest.suite.toml"),
+        "gbmicrotest",
+        &real_boot,
+    )
+    .expect("real boot should parse");
+    assert_eq!(
+        manifest.cases[0].startup_mode,
+        gb_core::StartupMode::RealBoot
+    );
+
+    let unsupported = basic_manifest("gbmicrotest", "gbmicrotest", "gbmicrotest-case", "case.gb")
+        .replace(
+            "rom = \"case.gb\"",
+            "rom = \"case.gb\"\nstartup = \"warm-boot\"",
+        );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("gbmicrotest.suite.toml"),
+            "gbmicrotest",
+            &unsupported
+        )
+        .expect_err("unknown startup should fail")
+        .contains("unsupported startup")
+    );
 }
 
 #[test]
@@ -166,6 +218,52 @@ rom = "screens/pass.gb"
 
     assert_eq!(suites.len(), 1);
     assert!(matches!(&suites[0].cases[0].oracle, Oracle::Framebuffer(_)));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn source_target_root_defines_report_local_rom_root() {
+    let workspace = unique_temp_dir("suite-target-root");
+    write_reports(&workspace, "docboy", "docboy/sources.report.toml");
+    write_source_manifest(
+        &workspace,
+        "docboy/sources.report.toml",
+        r#"
+[[source]]
+id = "docboy"
+
+[[source.family]]
+id = "docboy-dmg"
+target_root = "dmg"
+"#,
+    );
+    write_manifest(
+        &workspace,
+        "docboy/docboy-dmg.suite.toml",
+        r#"
+family = "docboy-dmg"
+suite_name = "docboy-dmg"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
+
+[[case]]
+id = "docboy-memory"
+rom = "memory/pass.gb"
+"#,
+    );
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "docboy")
+        .expect("report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("docboy-dmg"), None)
+        .expect("suite should load target roots from report sources");
+
+    assert_eq!(suites.len(), 1);
+    assert_eq!(suites[0].cases[0].target_root, PathBuf::from("dmg"));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -610,6 +708,60 @@ fn real_mooneye_suite_manifests_load_fibonacci_result_oracles() {
             .iter()
             .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
     );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
+    let workspace = unique_temp_dir("gbmicrotest-suite-manifest");
+    write_reports(&workspace, "gbmicrotest", "gbmicrotest/sources.report.toml");
+    write_source_manifest(
+        &workspace,
+        "gbmicrotest/sources.report.toml",
+        include_str!("../../../data/gbmicrotest/sources.report.toml"),
+    );
+    write_manifest(
+        &workspace,
+        "gbmicrotest/gbmicrotest.suite.toml",
+        include_str!("../../../data/gbmicrotest/gbmicrotest.suite.toml"),
+    );
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gbmicrotest")
+        .expect("report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("gbmicrotest"), None)
+        .expect("real gbmicrotest manifest should load");
+
+    assert_eq!(suites.len(), 1);
+    let suite = &suites[0];
+    assert_eq!(suite.suite_name, "gbmicrotest");
+    assert_eq!(suite.family, "gbmicrotest");
+    assert_eq!(suite.cases.len(), 438);
+    assert!(suite.cases.iter().all(|case| {
+        case.target_root.as_os_str().is_empty()
+            && case.console_model == gb_core::ConsoleModel::GameBoy
+            && matches!(&case.oracle, Oracle::MemoryByteEquals(_))
+    }));
+
+    let custom_boot_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "gbmicrotest-ppu-hblank-int-scx0-if-a")
+        .expect("custom boot case should exist");
+    assert_eq!(
+        custom_boot_case.startup_mode,
+        gb_core::StartupMode::CustomBoot
+    );
+
+    let long_timeout_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "gbmicrotest-interrupts-is-if-set-during-ime0")
+        .expect("long timeout case should exist");
+    assert_eq!(long_timeout_case.timeout_frames, 30);
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

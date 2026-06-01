@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use super::fibonacci_result::FibonacciResultOracle;
 use super::framebuffer::FramebufferOracle;
+use super::memory_byte_equals::MemoryByteEqualsOracle;
 use super::serial_contains::SerialContainsOracle;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -76,6 +77,28 @@ impl OracleConfig {
                 "oracle {:?} field {field} must be an integer",
                 self.kind_label()
             )),
+            None => Ok(None),
+        }
+    }
+
+    pub(super) fn required_u16(&self, field: &str) -> Result<u16, String> {
+        self.optional_u16(field)?
+            .ok_or_else(|| format!("oracle {:?} requires {field}", self.kind_label()))
+    }
+
+    pub(super) fn required_u8(&self, field: &str) -> Result<u8, String> {
+        self.optional_u8(field)?
+            .ok_or_else(|| format!("oracle {:?} requires {field}", self.kind_label()))
+    }
+
+    pub(super) fn optional_u16(&self, field: &str) -> Result<Option<u16>, String> {
+        match self.optional_u64(field)? {
+            Some(value) => u16::try_from(value).map(Some).map_err(|_| {
+                format!(
+                    "oracle {:?} field {field} must be between 0 and 65535",
+                    self.kind_label()
+                )
+            }),
             None => Ok(None),
         }
     }
@@ -153,6 +176,12 @@ pub(crate) struct CpuObservation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MemoryObservation {
+    pub(crate) address: u16,
+    pub(crate) value: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FramebufferObservation<'a> {
     pub(crate) dmg: Option<&'a [u8]>,
     pub(crate) cgb_rgb555: Option<&'a [u16]>,
@@ -180,6 +209,7 @@ pub(crate) struct ParticipantFramebufferObservation<'a> {
 pub(crate) struct OracleObservations<'a> {
     pub(crate) serial: &'a [u8],
     pub(crate) cpu: Option<CpuObservation>,
+    pub(crate) memory: &'a [MemoryObservation],
     pub(crate) executed_tcycles: u64,
     pub(crate) framebuffer: FramebufferObservation<'a>,
     pub(crate) participants: &'a [ParticipantFramebufferObservation<'a>],
@@ -191,6 +221,7 @@ impl<'a> OracleObservations<'a> {
         Self {
             serial,
             cpu: None,
+            memory: &[],
             executed_tcycles: 0,
             framebuffer: FramebufferObservation::empty(),
             participants: &[],
@@ -214,6 +245,7 @@ pub(crate) enum OracleOutcome {
 pub(crate) enum Oracle {
     FibonacciResult(FibonacciResultOracle),
     Framebuffer(FramebufferOracle),
+    MemoryByteEquals(MemoryByteEqualsOracle),
     SerialContains(SerialContainsOracle),
 }
 
@@ -235,6 +267,9 @@ impl Oracle {
                 config,
                 fixture_root,
             )?)),
+            "memory-byte-equals" => Ok(Self::MemoryByteEquals(
+                MemoryByteEqualsOracle::from_manifest(config)?,
+            )),
             "serial-contains" => Ok(Self::SerialContains(SerialContainsOracle::from_manifest(
                 config,
             )?)),
@@ -249,6 +284,7 @@ impl Oracle {
         match self {
             Self::FibonacciResult(oracle) => oracle.observe(observations),
             Self::Framebuffer(oracle) => oracle.observe(observations),
+            Self::MemoryByteEquals(oracle) => oracle.observe(observations),
             Self::SerialContains(oracle) => Ok(oracle.observe(observations)),
         }
     }
@@ -260,11 +296,19 @@ impl Oracle {
         match self {
             Self::FibonacciResult(oracle) => oracle.finish(observations),
             Self::Framebuffer(oracle) => oracle.finish(observations),
+            Self::MemoryByteEquals(oracle) => oracle.finish(observations),
             Self::SerialContains(oracle) => Ok(oracle.finish(observations)),
         }
     }
 
     pub(crate) fn needs_cpu_observation(&self) -> bool {
         matches!(self, Self::FibonacciResult(_))
+    }
+
+    pub(crate) fn memory_addresses(&self) -> Vec<u16> {
+        match self {
+            Self::MemoryByteEquals(oracle) => vec![oracle.address()],
+            _ => Vec::new(),
+        }
     }
 }

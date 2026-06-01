@@ -4,13 +4,14 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use gb_core::{ConsoleModel, ExecutionMode, HostPlatform};
+use gb_core::{ConsoleModel, ExecutionMode, HostPlatform, StartupMode};
 
 use crate::oracle::{Oracle, OracleConfig};
 
 use super::model::{
     DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, TEST_ROM_STORE_DIR,
 };
+use super::source::{FamilyTargetRoots, load_family_target_roots};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ReportManifestFile {
@@ -31,6 +32,7 @@ struct ReportFile {
 struct SuiteCaseDefaultsFile {
     family: Option<String>,
     console: Option<String>,
+    startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
     oracle: Option<OracleConfig>,
@@ -58,6 +60,7 @@ struct SuiteCaseFile {
     id: String,
     rom: PathBuf,
     console: Option<String>,
+    startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
     oracle: Option<OracleConfig>,
@@ -97,6 +100,7 @@ pub(super) fn load_selected_suites(
     case_id: Option<&str>,
 ) -> Result<Vec<SuiteManifest>, String> {
     let manifest_paths = suite_manifest_paths(workspace_root, report)?;
+    let family_target_roots = load_family_target_roots(workspace_root, report)?;
     let mut suites = Vec::new();
     for path in manifest_paths {
         let text = read_suite_manifest_text(&path)?;
@@ -106,7 +110,13 @@ pub(super) fn load_selected_suites(
                 continue;
             }
         }
-        suites.push(parse_suite_manifest(&path, report, workspace_root, &text)?);
+        suites.push(parse_suite_manifest(
+            &path,
+            report,
+            workspace_root,
+            &family_target_roots,
+            &text,
+        )?);
     }
 
     if let Some(suite_name) = suite_name
@@ -185,6 +195,7 @@ fn parse_suite_manifest(
     path: &Path,
     report: &Report,
     workspace_root: &Path,
+    family_target_roots: &FamilyTargetRoots,
     text: &str,
 ) -> Result<SuiteManifest, String> {
     let parsed: SuiteManifestFile = toml::from_str(text)
@@ -220,6 +231,7 @@ fn parse_suite_manifest(
                 path,
                 workspace_root,
                 report,
+                family_target_roots,
                 &manifest_family,
                 &parsed.defaults,
                 case,
@@ -244,6 +256,7 @@ fn parse_case(
     path: &Path,
     workspace_root: &Path,
     report: &Report,
+    family_target_roots: &FamilyTargetRoots,
     manifest_family: &str,
     defaults: &SuiteCaseDefaultsFile,
     case: SuiteCaseFile,
@@ -264,6 +277,11 @@ fn parse_case(
         })?;
     let console_profile = parse_console_profile(&console)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let startup_mode = match case.startup.or_else(|| defaults.startup.clone()).as_deref() {
+        Some(startup) => parse_startup_mode(startup)
+            .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?,
+        None => StartupMode::SkipBoot,
+    };
     let execution_mode = match case
         .execution_mode
         .or_else(|| defaults.execution_mode.clone())
@@ -292,7 +310,10 @@ fn parse_case(
     }
     let oracle_config = resolve_oracle_config(defaults.oracle.as_ref(), case.oracle)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
-    let fixture_root = fixture_root_for_case(workspace_root, report, &family);
+    let target_root = family_target_roots
+        .target_root_for_family(&family)
+        .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let fixture_root = fixture_root_for_case(workspace_root, report, &target_root);
     let oracle = Oracle::from_manifest_with_fixture_root(&oracle_config, &fixture_root)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
 
@@ -300,9 +321,11 @@ fn parse_case(
         id: case.id,
         family,
         rom: case.rom,
+        target_root,
         console_model: console_profile.console_model,
         host_platform: console_profile.host_platform,
         execution_mode,
+        startup_mode,
         timeout_frames,
         oracle,
     })
@@ -332,11 +355,11 @@ fn resolve_oracle_config(
     }
 }
 
-fn fixture_root_for_case(workspace_root: &Path, report: &Report, family: &str) -> PathBuf {
+fn fixture_root_for_case(workspace_root: &Path, report: &Report, target_root: &Path) -> PathBuf {
     workspace_root
         .join(TEST_ROM_STORE_DIR)
         .join(&report.store_dir)
-        .join(family)
+        .join(target_root)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,6 +399,15 @@ fn parse_execution_mode(execution_mode: &str) -> Result<ExecutionMode, String> {
     }
 }
 
+fn parse_startup_mode(startup: &str) -> Result<StartupMode, String> {
+    match startup {
+        "skip-boot" => Ok(StartupMode::SkipBoot),
+        "custom-boot" => Ok(StartupMode::CustomBoot),
+        "real-boot" => Ok(StartupMode::RealBoot),
+        other => Err(format!("unsupported startup {other:?}")),
+    }
+}
+
 #[cfg(test)]
 pub(super) fn parse_suite_manifest_for_test(
     path: &Path,
@@ -388,5 +420,11 @@ pub(super) fn parse_suite_manifest_for_test(
         sources: PathBuf::from(format!("{report_id}/sources.report.toml")),
         status_dir: PathBuf::from(".status"),
     };
-    parse_suite_manifest(path, &report, Path::new(""), text)
+    parse_suite_manifest(
+        path,
+        &report,
+        Path::new(""),
+        &super::source::fallback_family_target_roots_for_test(),
+        text,
+    )
 }

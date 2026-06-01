@@ -47,6 +47,7 @@ fn observations<'a>(
     OracleObservations {
         serial: b"",
         cpu: None,
+        memory: &[],
         executed_tcycles,
         framebuffer: FramebufferObservation {
             dmg,

@@ -32,6 +32,42 @@ pub(super) fn write_reports(workspace_root: &Path, report_id: &str, source_path:
         ),
     )
     .expect("reports manifest should be writable");
+    write_source_manifest(
+        workspace_root,
+        source_path,
+        r#"
+[[source]]
+id = "test-source"
+
+[[source.family]]
+id = "acid"
+target_root = "acid"
+
+[[source.family]]
+id = "blargg"
+target_root = "blargg"
+
+[[source.family]]
+id = "cpp"
+target_root = "cpp"
+
+[[source.family]]
+id = "docboy-dmg"
+target_root = "docboy-dmg"
+
+[[source.family]]
+id = "gbmicrotest"
+target_root = "gbmicrotest"
+
+[[source.family]]
+id = "mooneye"
+target_root = "mooneye"
+
+[[source.family]]
+id = "samesuite"
+target_root = "samesuite"
+"#,
+    );
 }
 
 pub(super) fn write_manifest(workspace_root: &Path, relative_path: &str, text: &str) {
@@ -41,6 +77,10 @@ pub(super) fn write_manifest(workspace_root: &Path, relative_path: &str, text: &
     fs::create_dir_all(path.parent().expect("manifest path should have parent"))
         .expect("manifest parent should be creatable");
     fs::write(path, text).expect("suite manifest should be writable");
+}
+
+pub(super) fn write_source_manifest(workspace_root: &Path, relative_path: &str, text: &str) {
+    write_manifest(workspace_root, relative_path, text);
 }
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
@@ -91,6 +131,15 @@ pub(super) fn build_fibonacci_result_rom(signature: [u8; 6]) -> Vec<u8> {
         0x00,         // NOP
         0x18,
         0xFD, // JR -3, keep the post-breakpoint loop visible near PC
+    ])
+}
+
+pub(super) fn build_memory_write_rom(address: u16, value: u8) -> Vec<u8> {
+    let [low, high] = address.to_le_bytes();
+    build_test_rom(&[
+        0x3E, value, // LD A,d8
+        0xEA, low, high, // LD (a16),A
+        0x18, 0xFE, // JR -2
     ])
 }
 
