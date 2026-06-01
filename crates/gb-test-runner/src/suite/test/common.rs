@@ -1,6 +1,10 @@
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use sha2::{Digest, Sha256};
 
 pub(super) fn unique_temp_dir(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
@@ -23,6 +27,7 @@ pub(super) fn write_reports(workspace_root: &Path, report_id: &str, source_path:
             concat!(
                 "status_dir = \".status\"\n",
                 "artifact_dir = \".artifacts\"\n",
+                "report_file = \"test-report.md\"\n",
                 "\n",
                 "[[report]]\n",
                 "id = \"{}\"\n",
@@ -98,6 +103,135 @@ pub(super) fn write_manifest(workspace_root: &Path, relative_path: &str, text: &
 
 pub(super) fn write_source_manifest(workspace_root: &Path, relative_path: &str, text: &str) {
     write_manifest(workspace_root, relative_path, text);
+}
+
+pub(super) fn write_materialized_source_manifest(
+    workspace_root: &Path,
+    report_id: &str,
+    source_path: &str,
+    families: &[(&str, &str)],
+) {
+    let mut text = String::from(
+        "[[source]]\n\
+         id = \"local-source\"\n\
+         git_url = \"file:///unused\"\n\
+         git_rev = \"unused\"\n",
+    );
+    let store_root = workspace_root.join("test").join(report_id);
+    for (family_id, target_root) in families {
+        let _ = write!(
+            &mut text,
+            "\n[[source.family]]\n\
+             id = {family_id:?}\n\
+             target_root = {target_root:?}\n\
+             sparse_paths = [{:?}]\n",
+            format!("upstream/{family_id}")
+        );
+        let family_root = store_root.join(target_root);
+        for file in materialized_files(&family_root) {
+            let target = file
+                .strip_prefix(&family_root)
+                .expect("materialized file should be below family root");
+            let hash = sha256_hex(&fs::read(&file).expect("materialized file should be readable"));
+            let source_file = Path::new("upstream").join(family_id).join(target);
+            let _ = write!(
+                &mut text,
+                "\n[[source.family.file]]\n\
+                 path = {:?}\n\
+                 target = {:?}\n\
+                 sha256 = {hash:?}\n",
+                source_file.to_string_lossy(),
+                target.to_string_lossy()
+            );
+        }
+    }
+    write_source_manifest(workspace_root, source_path, &text);
+}
+
+fn materialized_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_materialized_files(root, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_materialized_files(root: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries {
+        let entry = entry.expect("materialized entry should be readable");
+        let path = entry.path();
+        let file_name = path.file_name().and_then(|file_name| file_name.to_str());
+        if file_name.is_some_and(|file_name| file_name.starts_with('.')) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_materialized_files(&path, files);
+        } else {
+            files.push(path);
+        }
+    }
+}
+
+pub(super) fn commit_upstream_repo(root: &Path) -> String {
+    git(&["init", "--no-bare"], root);
+    git(&["add", "."], root);
+    let mut command = Command::new("git");
+    command.current_dir(root);
+    command.env("GIT_AUTHOR_EMAIL", "gb-cycle@example.invalid");
+    command.env("GIT_AUTHOR_NAME", "gb-cycle tests");
+    command.env("GIT_COMMITTER_EMAIL", "gb-cycle@example.invalid");
+    command.env("GIT_COMMITTER_NAME", "gb-cycle tests");
+    command.args(["commit", "-m", "fixture"]);
+    run_git(command, root, "git commit");
+
+    let mut command = Command::new("git");
+    command.current_dir(root);
+    command.args(["rev-parse", "HEAD"]);
+    let output = command.output().expect("git rev-parse should spawn");
+    assert!(output.status.success(), "git rev-parse should succeed");
+    String::from_utf8(output.stdout)
+        .expect("git hash should be utf-8")
+        .trim()
+        .to_string()
+}
+
+fn git(args: &[&str], current_dir: &Path) {
+    let mut command = Command::new("git");
+    command.current_dir(current_dir);
+    command.args(args);
+    run_git(command, current_dir, "git command");
+}
+
+fn run_git(mut command: Command, current_dir: &Path, label: &str) {
+    for key in [
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_WORK_TREE",
+    ] {
+        command.env_remove(key);
+    }
+    let output = command.output().expect("git command should spawn");
+    assert!(
+        output.status.success(),
+        "{label} failed in {}: {}",
+        current_dir.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+pub(super) fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+    hex
 }
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {

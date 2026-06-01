@@ -82,7 +82,7 @@ where
     }))
 }
 
-fn run_fetch_request<W: Write>(
+pub(super) fn run_fetch_request<W: Write>(
     request: FetchRequest,
     workspace_root: &Path,
     output: &mut W,

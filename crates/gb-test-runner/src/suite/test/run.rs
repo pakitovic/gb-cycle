@@ -8,8 +8,9 @@ use super::super::run::{SuiteRunConfig, run_suite_with_config};
 use super::common::{
     basic_manifest, build_delayed_dmg_handoff_boot_rom, build_fibonacci_result_rom,
     build_infinite_loop_rom, build_joypad_a_pressed_memory_write_rom, build_mbc3_rtc_wait_rom,
-    build_memory_write_rom, build_serial_text_rom, unique_temp_dir, write_grayscale_png,
-    write_manifest, write_reports, write_source_manifest,
+    build_memory_write_rom, build_serial_text_rom, commit_upstream_repo, sha256_hex,
+    unique_temp_dir, write_grayscale_png, write_manifest, write_materialized_source_manifest,
+    write_reports, write_source_manifest,
 };
 
 #[test]
@@ -48,6 +49,12 @@ fn command_runs_serial_suite_and_writes_status() {
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -70,6 +77,396 @@ fn command_runs_serial_suite_and_writes_status() {
             .expect("status should be written");
     assert!(status.contains("suite_name = \"blargg-cpu-instrs\""));
     assert!(status.contains("status = \"PASS\""));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_auto_fetches_missing_suite_family_before_running() {
+    let workspace = unique_temp_dir("auto-fetch-rom-workspace");
+    let upstream = unique_temp_dir("auto-fetch-rom-upstream");
+    let rom_bytes = build_serial_text_rom("Passed");
+    let upstream_rom = upstream.join("roms/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(
+        upstream_rom
+            .parent()
+            .expect("upstream ROM should have parent"),
+    )
+    .expect("upstream ROM parent should be creatable");
+    fs::write(&upstream_rom, &rom_bytes).expect("upstream ROM should be writable");
+    let commit = commit_upstream_repo(&upstream);
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_source_manifest(
+        &workspace,
+        "sample-report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"local-source\"\n",
+                "git_url = {:?}\n",
+                "git_rev = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"blargg\"\n",
+                "target_root = \"blargg\"\n",
+                "sparse_paths = [\"roms/blargg\"]\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/blargg/cpu_instrs/01-special.gb\"\n",
+                "target = \"cpu_instrs/01-special.gb\"\n",
+                "sha256 = {:?}\n",
+            ),
+            upstream.display().to_string(),
+            commit,
+            sha256_hex(&rom_bytes)
+        ),
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "blargg-cpu-instrs"],
+        &workspace,
+        &mut output,
+    )
+    .expect("suite should fetch and pass");
+
+    assert!(
+        workspace
+            .join("test/sample-report/blargg/cpu_instrs/01-special.gb")
+            .exists()
+    );
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("test ROM family blargg requires materialization"));
+    assert!(output.contains("materialized test ROM families blargg"));
+    assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+    fs::remove_dir_all(upstream).expect("upstream should be removable");
+}
+
+#[test]
+fn command_auto_fetches_stale_suite_family_when_materialized_hash_changes() {
+    let workspace = unique_temp_dir("auto-fetch-stale-workspace");
+    let upstream = unique_temp_dir("auto-fetch-stale-upstream");
+    let rom_bytes = build_serial_text_rom("Passed");
+    let upstream_rom = upstream.join("roms/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(
+        upstream_rom
+            .parent()
+            .expect("upstream ROM should have parent"),
+    )
+    .expect("upstream ROM parent should be creatable");
+    fs::write(&upstream_rom, &rom_bytes).expect("upstream ROM should be writable");
+    let commit = commit_upstream_repo(&upstream);
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_source_manifest(
+        &workspace,
+        "sample-report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"local-source\"\n",
+                "git_url = {:?}\n",
+                "git_rev = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"blargg\"\n",
+                "target_root = \"blargg\"\n",
+                "sparse_paths = [\"roms/blargg\"]\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/blargg/cpu_instrs/01-special.gb\"\n",
+                "target = \"cpu_instrs/01-special.gb\"\n",
+                "sha256 = {:?}\n",
+            ),
+            upstream.display().to_string(),
+            commit,
+            sha256_hex(&rom_bytes)
+        ),
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+    let stale_rom = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(stale_rom.parent().expect("stale ROM should have parent"))
+        .expect("stale ROM parent should be creatable");
+    fs::write(&stale_rom, build_serial_text_rom("Failed")).expect("stale ROM should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "blargg-cpu-instrs"],
+        &workspace,
+        &mut output,
+    )
+    .expect("suite should refetch stale ROM and pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("hash mismatch"));
+    assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+    fs::remove_dir_all(upstream).expect("upstream should be removable");
+}
+
+#[test]
+fn command_auto_fetches_missing_framebuffer_fixture_before_manifest_oracle_load() {
+    let workspace = unique_temp_dir("auto-fetch-fixture-workspace");
+    let upstream = unique_temp_dir("auto-fetch-fixture-upstream");
+    let upstream_root = upstream.join("roms/ax6");
+    fs::create_dir_all(&upstream_root).expect("upstream root should be creatable");
+    let rom_bytes = build_infinite_loop_rom();
+    fs::write(upstream_root.join("rtc3test-1.gb"), &rom_bytes)
+        .expect("upstream ROM should be writable");
+    let mut fixture_pixels = vec![0; 160 * 144];
+    for (index, pixel) in fixture_pixels.iter_mut().enumerate() {
+        *pixel = if index.is_multiple_of(2) { 0 } else { 255 };
+    }
+    write_grayscale_png(&upstream_root.join("rtc3test-1.png"), &fixture_pixels);
+    let fixture_bytes =
+        fs::read(upstream_root.join("rtc3test-1.png")).expect("fixture should be readable");
+    let commit = commit_upstream_repo(&upstream);
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_source_manifest(
+        &workspace,
+        "sample-report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"local-source\"\n",
+                "git_url = {:?}\n",
+                "git_rev = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"ax6\"\n",
+                "target_root = \"ax6\"\n",
+                "sparse_paths = [\"roms/ax6\"]\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/ax6/rtc3test-1.gb\"\n",
+                "target = \"rtc3test-1.gb\"\n",
+                "sha256 = {:?}\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/ax6/rtc3test-1.png\"\n",
+                "target = \"rtc3test-1.png\"\n",
+                "sha256 = {:?}\n",
+            ),
+            upstream.display().to_string(),
+            commit,
+            sha256_hex(&rom_bytes),
+            sha256_hex(&fixture_bytes)
+        ),
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/ax6.suite.toml",
+        r#"
+family = "ax6"
+suite_name = "ax6"
+report = "sample-report"
+console = "cgb"
+timeout_frames = 1
+oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "rtc3test-1.png" }
+
+[[case]]
+id = "ax6-rtc3test-1"
+rom = "rtc3test-1.gb"
+"#,
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "ax6"],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("framebuffer mismatch should fail after fixture materialization");
+
+    assert!(error.contains("one or more suite cases failed"));
+    assert!(
+        workspace
+            .join("test/sample-report/ax6/rtc3test-1.png")
+            .exists()
+    );
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("test ROM family ax6 requires materialization"));
+    assert!(!output.contains("failed to read framebuffer fixture"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+    fs::remove_dir_all(upstream).expect("upstream should be removable");
+}
+
+#[test]
+fn command_case_selection_auto_fetches_only_selected_case_family() {
+    let workspace = unique_temp_dir("auto-fetch-case-workspace");
+    let upstream = unique_temp_dir("auto-fetch-case-upstream");
+    let rom_bytes = build_serial_text_rom("Passed");
+    let upstream_rom = upstream.join("roms/blargg/pass.gb");
+    fs::create_dir_all(
+        upstream_rom
+            .parent()
+            .expect("upstream ROM should have parent"),
+    )
+    .expect("upstream ROM parent should be creatable");
+    fs::write(&upstream_rom, &rom_bytes).expect("upstream ROM should be writable");
+    let commit = commit_upstream_repo(&upstream);
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_source_manifest(
+        &workspace,
+        "sample-report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"local-source\"\n",
+                "git_url = {:?}\n",
+                "git_rev = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"blargg\"\n",
+                "target_root = \"blargg\"\n",
+                "sparse_paths = [\"roms/blargg\"]\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/blargg/pass.gb\"\n",
+                "target = \"pass.gb\"\n",
+                "sha256 = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"acid\"\n",
+                "target_root = \"acid\"\n",
+                "sparse_paths = [\"roms/acid\"]\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/acid/missing.gb\"\n",
+                "target = \"missing.gb\"\n",
+                "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+            ),
+            upstream.display().to_string(),
+            commit,
+            sha256_hex(&rom_bytes)
+        ),
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/mixed.suite.toml",
+        r#"
+family = "blargg"
+suite_name = "mixed"
+report = "sample-report"
+console = "dmg"
+timeout_frames = 2
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "selected-blargg"
+rom = "pass.gb"
+
+[[case]]
+family = "acid"
+id = "unselected-acid"
+rom = "missing.gb"
+"#,
+    );
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "mixed",
+            "--case",
+            "selected-blargg",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("selected case should fetch only its family and pass");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("test ROM family blargg requires materialization"));
+    assert!(!output.contains("test ROM family acid requires materialization"));
+    assert!(workspace.join("test/sample-report/blargg/pass.gb").exists());
+    assert!(
+        !workspace
+            .join("test/sample-report/acid/missing.gb")
+            .exists()
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+    fs::remove_dir_all(upstream).expect("upstream should be removable");
+}
+
+#[test]
+fn command_unknown_suite_fails_before_auto_fetch() {
+    let workspace = unique_temp_dir("auto-fetch-unknown-suite");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_source_manifest(
+        &workspace,
+        "sample-report/sources.report.toml",
+        "not a valid fetch source manifest",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "missing-suite"],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("unknown suite should fail before source validation");
+
+    assert!(error.contains("unknown suite"));
+    assert!(!error.contains("source manifest"));
+    assert!(output.is_empty());
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -110,6 +507,12 @@ rom = "threaded/second.gb"
             .expect("rom parent should be creatable");
         fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
     }
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     for threads in ["2", "1"] {
         let mut output = Vec::new();
@@ -159,6 +562,12 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_serial_text_rom("Failed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     let mut output = Vec::new();
     let error = run_suite_command_with_workspace_for_test(
@@ -218,6 +627,16 @@ fn command_rejects_manifest_real_boot_without_boot_rom_dir() {
             "rom = \"case.gb\"\nstartup = \"real-boot\"",
         ),
     );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     let mut output = Vec::new();
     let error =
@@ -249,6 +668,16 @@ fn command_boot_rom_dir_forces_real_boot_asset_verification() {
             "skip-boot-case",
             "case.gb",
         ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
     );
 
     let mut output = Vec::new();
@@ -354,6 +783,12 @@ rom = "rtc/wait.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_mbc3_rtc_wait_rom(0xC000, 1)).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -409,6 +844,12 @@ rom = "rtc3test-1.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("ax6", "ax6")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -463,6 +904,12 @@ fn command_writes_non_framebuffer_failure_artifacts_and_cleans_them_on_pass() {
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_serial_text_rom("Failed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -480,6 +927,12 @@ fn command_writes_non_framebuffer_failure_artifacts_and_cleans_them_on_pass() {
     assert!(!artifact_dir.join("actual.png").exists());
 
     fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
         ["sample-report", "--suite", "blargg-cpu-instrs"],
@@ -520,6 +973,12 @@ fn command_treats_info_framebuffer_as_pass_for_ci() {
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_serial_text_rom("")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("acid", "acid")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -573,6 +1032,12 @@ rom = "acceptance/pass.gb"
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_fibonacci_result_rom([3, 5, 8, 13, 21, 34]))
         .expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("mooneye", "mooneye")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -625,6 +1090,12 @@ rom = "sgb/smoke.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("samesuite", "samesuite")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -685,6 +1156,12 @@ rom = "memory/pass.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_memory_write_rom(0xFF82, 1)).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "gbmicrotest",
+        "gbmicrotest/sources.report.toml",
+        &[("gbmicrotest", "")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -754,6 +1231,12 @@ pressed = true
         build_joypad_a_pressed_memory_write_rom(0xC000, 1),
     )
     .expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "docboy",
+        "docboy/sources.report.toml",
+        &[("docboy-dmg", "dmg")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -803,6 +1286,12 @@ rom = "memory/fail.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_memory_write_rom(0xFFF0, 2)).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("docboy-dmg", "docboy-dmg")],
+    );
 
     let mut output = Vec::new();
     let error = run_suite_command_with_workspace_for_test(
@@ -856,6 +1345,12 @@ rom = "memory/timeout.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("docboy-dmg", "docboy-dmg")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(
@@ -908,6 +1403,12 @@ rom = "acceptance/fail.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_fibonacci_result_rom([0x42; 6])).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("mooneye", "mooneye")],
+    );
 
     let mut output = Vec::new();
     let error = run_suite_command_with_workspace_for_test(
@@ -961,6 +1462,12 @@ rom = "acceptance/timeout.gb"
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
     fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("mooneye", "mooneye")],
+    );
 
     let mut output = Vec::new();
     run_suite_command_with_workspace_for_test(

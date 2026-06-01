@@ -165,6 +165,72 @@ pub(super) fn load_selected_suites(
     Ok(suites)
 }
 
+pub(super) fn load_selected_suite_families(
+    workspace_root: &Path,
+    report: &Report,
+    suite_name: Option<&str>,
+    case_id: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let manifest_paths = suite_manifest_paths(workspace_root, report)?;
+    let mut suites_seen = 0;
+    let mut selected_families = Vec::new();
+    let mut selected_family_set = BTreeSet::new();
+    for path in manifest_paths {
+        let text = read_suite_manifest_text(&path)?;
+        let parsed: SuiteManifestFile = toml::from_str(&text).map_err(|error| {
+            format!("failed to parse suite manifest {}: {error}", path.display())
+        })?;
+        if let Some(selected_suite_name) = suite_name
+            && parsed.suite_name != selected_suite_name
+        {
+            continue;
+        }
+        validate_suite_report(&path, report, parsed.report.as_ref())?;
+        suites_seen += 1;
+        let manifest_family = parsed
+            .family
+            .clone()
+            .or_else(|| parsed.defaults.family.clone())
+            .ok_or_else(|| format!("suite manifest {} must define family", path.display()))?;
+        for case in parsed.cases {
+            if case.disabled {
+                validate_disabled_case_comment(&path, &case)?;
+                continue;
+            }
+            if let Some(selected_case_id) = case_id
+                && case.id != selected_case_id
+            {
+                continue;
+            }
+            let family = case
+                .family
+                .or_else(|| parsed.defaults.family.clone())
+                .unwrap_or_else(|| manifest_family.clone());
+            if selected_family_set.insert(family.clone()) {
+                selected_families.push(family);
+            }
+        }
+    }
+
+    if let Some(suite_name) = suite_name
+        && suites_seen == 0
+    {
+        return Err(format!(
+            "unknown suite {suite_name:?} for report {:?}",
+            report.id
+        ));
+    }
+    if let Some(case_id) = case_id
+        && selected_families.is_empty()
+    {
+        return Err(format!(
+            "unknown case {case_id:?} for suite {:?}",
+            suite_name.expect("case selection requires suite selection")
+        ));
+    }
+    Ok(selected_families)
+}
+
 fn suite_manifest_paths(workspace_root: &Path, report: &Report) -> Result<Vec<PathBuf>, String> {
     let report_data_dir = report_data_dir(workspace_root, report);
     let entries = fs::read_dir(&report_data_dir).map_err(|error| {
@@ -222,21 +288,7 @@ fn parse_suite_manifest(
 ) -> Result<SuiteManifest, String> {
     let parsed: SuiteManifestFile = toml::from_str(text)
         .map_err(|error| format!("failed to parse suite manifest {}: {error}", path.display()))?;
-    let declared_report = parsed.report.as_ref().ok_or_else(|| {
-        format!(
-            "suite manifest {} must define report {:?}",
-            path.display(),
-            report.id
-        )
-    })?;
-    if declared_report != &report.id {
-        return Err(format!(
-            "suite manifest {} declares report {:?}, expected {:?}",
-            path.display(),
-            declared_report,
-            report.id
-        ));
-    }
+    validate_suite_report(path, report, parsed.report.as_ref())?;
     let manifest_family = parsed
         .family
         .clone()
@@ -278,6 +330,29 @@ fn parse_suite_manifest(
         family: manifest_family,
         cases,
     })
+}
+
+fn validate_suite_report(
+    path: &Path,
+    report: &Report,
+    declared_report: Option<&String>,
+) -> Result<(), String> {
+    let declared_report = declared_report.ok_or_else(|| {
+        format!(
+            "suite manifest {} must define report {:?}",
+            path.display(),
+            report.id
+        )
+    })?;
+    if declared_report != &report.id {
+        return Err(format!(
+            "suite manifest {} declares report {:?}, expected {:?}",
+            path.display(),
+            declared_report,
+            report.id
+        ));
+    }
+    Ok(())
 }
 
 fn validate_disabled_case_comment(path: &Path, case: &SuiteCaseFile) -> Result<(), String> {

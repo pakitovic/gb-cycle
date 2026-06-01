@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 
 use gb_core::StartupMode;
 
-use super::manifest::{load_reports, load_selected_suites};
+use super::manifest::{load_reports, load_selected_suite_families, load_selected_suites};
 use super::model::SuiteManifest;
 use super::run::{SuiteRunConfig, run_suite_with_config};
 use super::status::write_suite_status;
 use crate::boot_rom::{BootRomProfile, load_verified_boot_rom_assets};
 use crate::default_workspace_root;
+use crate::fetch::ensure_report_families_materialized;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum SuiteAction {
@@ -139,6 +140,13 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
+    let selected_families = load_selected_suite_families(
+        workspace_root,
+        report,
+        options.suite_name.as_deref(),
+        options.case_id.as_deref(),
+    )?;
+    ensure_report_families_materialized(workspace_root, &report_id, &selected_families, output)?;
     let mut suites = load_selected_suites(
         workspace_root,
         report,
