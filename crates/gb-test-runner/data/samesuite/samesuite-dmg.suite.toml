@@ -1,0 +1,21 @@
+family = "samesuite"
+suite_name = "samesuite-dmg"
+report = "samesuite"
+console = "dmg"
+timeout_frames = 180
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "samesuite-dmg-div-write-trigger"
+rom = "apu/div_write_trigger.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png" }
+
+[[case]]
+id = "samesuite-dmg-div-write-trigger-10"
+rom = "apu/div_write_trigger_10.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png" }
+
+[[case]]
+id = "samesuite-dmg-ei-delay-halt"
+rom = "interrupt/ei_delay_halt.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/samesuite/interrupt/ei_delay_halt.png" }

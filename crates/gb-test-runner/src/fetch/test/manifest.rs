@@ -16,7 +16,20 @@ fn built_in_reports_manifest_loads_all_reports() {
         .iter()
         .map(|report| report.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(ids, vec!["gb-emulator-shootout", "docboy", "gbmicrotest"]);
+    assert_eq!(
+        ids,
+        vec![
+            "gb-emulator-shootout",
+            "docboy",
+            "gbmicrotest",
+            "mooneye",
+            "ax6",
+            "little-things-gb",
+            "magen",
+            "mealybug-tearoom-tests",
+            "samesuite"
+        ]
+    );
     let gbmicrotest = manifest
         .reports
         .iter()

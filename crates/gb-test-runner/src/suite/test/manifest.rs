@@ -494,6 +494,13 @@ id = "docboy"
 [[source.family]]
 id = "docboy-dmg"
 target_root = "dmg"
+
+[[source]]
+id = "extra-docboy"
+
+[[source.family]]
+id = "docboy-dmg"
+target_root = "dmg"
 "#,
     );
     write_manifest(
@@ -1056,6 +1063,127 @@ fn real_remaining_gb_emulator_shootout_suite_manifests_load_framebuffer_oracles(
 }
 
 #[test]
+fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
+    let report_specs = [
+        (
+            "mooneye",
+            &[
+                ("cgb-boot-hwio", 1, "mooneye"),
+                ("mooneye-cgb", 10, "mooneye"),
+                ("mooneye-sgb-boot-regs", 2, "mooneye"),
+            ][..],
+        ),
+        ("ax6", &[("ax6-dmg", 3, "ax6")][..]),
+        (
+            "little-things-gb",
+            &[
+                ("little-things-gb-dmg", 2, "little-things-gb"),
+                ("little-things-gb-cgb", 1, "little-things-gb"),
+            ][..],
+        ),
+        ("magen", &[("magen-cgb", 8, "magen")][..]),
+        (
+            "mealybug-tearoom-tests",
+            &[("mealybug-tearoom-tests-cgb", 24, "mealybug-tearoom-tests")][..],
+        ),
+        (
+            "samesuite",
+            &[
+                ("samesuite-dmg", 3, "samesuite"),
+                ("samesuite-cgb", 9, "samesuite"),
+            ][..],
+        ),
+    ];
+
+    for (report_id, suites) in report_specs {
+        let workspace = unique_temp_dir(&format!("{report_id}-suite-manifests"));
+        let source_path = format!("{report_id}/sources.report.toml");
+        write_reports(&workspace, report_id, &source_path);
+        write_source_manifest(
+            &workspace,
+            &source_path,
+            &read_report_source_manifest(report_id),
+        );
+        for (suite_name, _, target_root) in suites {
+            let text = read_report_suite_manifest(report_id, suite_name);
+            write_manifest(
+                &workspace,
+                &format!("{report_id}/{suite_name}.suite.toml"),
+                &text,
+            );
+            write_manifest_fixture_placeholders(&workspace, report_id, target_root, &text);
+        }
+
+        let reports = load_reports(&workspace).expect("reports should load");
+        let report = reports
+            .iter()
+            .find(|report| report.id == report_id)
+            .expect("report should exist");
+        for (suite_name, case_count, family) in suites {
+            let loaded = load_selected_suites(&workspace, report, Some(suite_name), None)
+                .unwrap_or_else(|error| panic!("{report_id}/{suite_name} should load: {error}"));
+            assert_eq!(loaded.len(), 1);
+            let suite = &loaded[0];
+            assert_eq!(suite.suite_name, *suite_name);
+            assert_eq!(suite.family, *family);
+            assert_eq!(suite.cases.len(), *case_count);
+        }
+
+        if report_id == "mooneye" {
+            let suites =
+                load_selected_suites(&workspace, report, Some("mooneye-sgb-boot-regs"), None)
+                    .expect("mooneye SGB suite should load");
+            assert!(
+                suites[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.host_platform == gb_core::HostPlatform::Sgb2)
+            );
+            assert!(
+                suites[0]
+                    .cases
+                    .iter()
+                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+            );
+        }
+        if report_id == "samesuite" {
+            let suites = load_selected_suites(&workspace, report, Some("samesuite-cgb"), None)
+                .expect("samesuite CGB suite should load");
+            let cgb_d = suites[0]
+                .cases
+                .iter()
+                .find(|case| {
+                    case.id == "samesuite-cgb-apu-channel-1-channel-1-freq-change-timing-cgbde"
+                })
+                .expect("CGB-D row should exist");
+            assert_eq!(cgb_d.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
+            assert!(
+                suites[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbE)
+            );
+        }
+        if report_id == "little-things-gb" {
+            let suites =
+                load_selected_suites(&workspace, report, Some("little-things-gb-cgb"), None)
+                    .expect("little-things CGB suite should load");
+            assert_eq!(
+                suites[0].cases[0].startup_mode,
+                gb_core::StartupMode::CustomBoot
+            );
+        }
+        if report_id == "magen" {
+            let suites = load_selected_suites(&workspace, report, Some("magen-cgb"), None)
+                .expect("magen suite should load");
+            assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
+        }
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+}
+
+#[test]
 fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
     let workspace = unique_temp_dir("gbmicrotest-suite-manifest");
     write_reports(&workspace, "gbmicrotest", "gbmicrotest/sources.report.toml");
@@ -1299,12 +1427,39 @@ fn read_docboy_suite_manifest(suite_name: &str) -> String {
     .expect("suite manifest should be readable")
 }
 
+fn read_report_suite_manifest(report_id: &str, suite_name: &str) -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data")
+            .join(report_id)
+            .join(format!("{suite_name}.suite.toml")),
+    )
+    .expect("suite manifest should be readable")
+}
+
+fn read_report_source_manifest(report_id: &str) -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data")
+            .join(report_id)
+            .join("sources.report.toml"),
+    )
+    .expect("source manifest should be readable")
+}
+
 fn write_manifest_fixture_placeholders(
     workspace_root: &Path,
     report_id: &str,
     target_root: &str,
     manifest_text: &str,
 ) {
+    fs::create_dir_all(
+        workspace_root
+            .join("test")
+            .join(report_id)
+            .join(target_root),
+    )
+    .expect("fixture root should be creatable");
     for fixture in fixture_paths_from_manifest(manifest_text) {
         let path = clean_path(
             &workspace_root

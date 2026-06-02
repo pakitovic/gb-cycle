@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -69,15 +70,21 @@ pub(super) fn load_family_target_roots(
     for source in manifest.sources {
         for family in source.families {
             validate_family_target_root(&family.target_root, &family.id, &path)?;
-            if roots
-                .insert(family.id.clone(), family.target_root)
-                .is_some()
-            {
-                return Err(format!(
-                    "duplicate source family {:?} in source manifest {}",
-                    family.id,
-                    path.display()
-                ));
+            match roots.entry(family.id.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(family.target_root);
+                }
+                Entry::Occupied(entry) => {
+                    if entry.get() != &family.target_root {
+                        return Err(format!(
+                            "duplicate source family {:?} in source manifest {} uses target_root {} and {}",
+                            family.id,
+                            path.display(),
+                            entry.get().display(),
+                            family.target_root.display()
+                        ));
+                    }
+                }
             }
         }
     }

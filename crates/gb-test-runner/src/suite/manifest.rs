@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use gb_core::{ConsoleModel, ExecutionMode, HostPlatform, JoypadButton, StartupMode};
+use gb_core::{
+    ConsoleModel, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton, StartupMode,
+};
 
 use crate::oracle::{Oracle, OracleConfig};
 
@@ -35,6 +37,7 @@ struct ReportFile {
 struct SuiteCaseDefaultsFile {
     family: Option<String>,
     console: Option<String>,
+    revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
@@ -63,6 +66,7 @@ struct SuiteCaseFile {
     id: String,
     rom: PathBuf,
     console: Option<String>,
+    revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
@@ -396,6 +400,27 @@ fn parse_case(
         })?;
     let console_profile = parse_console_profile(&console)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let hardware_revision = match case
+        .revision
+        .or_else(|| defaults.revision.clone())
+        .as_deref()
+    {
+        Some(revision) => parse_hardware_revision(revision)
+            .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?,
+        None => console_profile.console_model.default_revision(),
+    };
+    if !console_profile
+        .console_model
+        .supports_revision(hardware_revision)
+    {
+        return Err(format!(
+            "case {:?} in {}: console {:?} does not support revision {:?}",
+            case.id,
+            path.display(),
+            console,
+            hardware_revision
+        ));
+    }
     let startup_mode = match case.startup.or_else(|| defaults.startup.clone()).as_deref() {
         Some(startup) => parse_startup_mode(startup)
             .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?,
@@ -447,6 +472,7 @@ fn parse_case(
         rom: case.rom,
         target_root,
         console_model: console_profile.console_model,
+        hardware_revision,
         host_platform: console_profile.host_platform,
         execution_mode,
         startup_mode,
@@ -556,6 +582,23 @@ fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
             host_platform: HostPlatform::Sgb2,
         }),
         other => Err(format!("unsupported console {other:?}")),
+    }
+}
+
+fn parse_hardware_revision(revision: &str) -> Result<HardwareRevision, String> {
+    match revision {
+        "dmg-cpu" => Ok(HardwareRevision::DmgCpu),
+        "dmg-cpu-a" => Ok(HardwareRevision::DmgCpuA),
+        "dmg-cpu-b" => Ok(HardwareRevision::DmgCpuB),
+        "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
+        "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
+        "cpu-cgb" => Ok(HardwareRevision::CpuCgb),
+        "cpu-cgb-a" => Ok(HardwareRevision::CpuCgbA),
+        "cpu-cgb-b" => Ok(HardwareRevision::CpuCgbB),
+        "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
+        "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
+        "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        other => Err(format!("unsupported revision {other:?}")),
     }
 }
 

@@ -1,0 +1,129 @@
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+
+[[source.family]]
+id = "mealybug-tearoom-tests"
+target_root = "mealybug-tearoom-tests"
+sparse_paths = ["testroms/mealybug-tearoom-tests"]
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb"
+target = "ppu/m2_win_en_toggle.gb"
+sha256 = "5ab52823dc9e25184e884d73a19bfe0b048a9d2526ca779a0925ca891a9ba7f5"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change.gb"
+target = "ppu/m3_bgp_change.gb"
+sha256 = "52151476d16b04654123e64bd2c22702571c529761d9c9bc2f485ca2538fc035"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb"
+target = "ppu/m3_bgp_change_sprites.gb"
+sha256 = "41de816a11690c86c6d1b03c1fb9f2ec367dcd288f1cf8f2b52560a3e2b9a917"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb"
+target = "ppu/m3_lcdc_bg_en_change.gb"
+sha256 = "4bb4ea8076950c1ecaeb8c704ca0568e05bc09d35e114f0cbe77b3b173e3d13b"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb"
+target = "ppu/m3_lcdc_bg_map_change.gb"
+sha256 = "dcb8d7e2c750453d76f47bae25092c9eb79ace1f8c0c3e8e1959ebb8d177d716"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change.gb"
+target = "ppu/m3_lcdc_obj_en_change.gb"
+sha256 = "943be0ef4a104bc71139f21de2321ad4510e32dc756739be0d97fc56ff59e18c"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant.gb"
+target = "ppu/m3_lcdc_obj_en_change_variant.gb"
+sha256 = "5beb278323b75201150aadc5abc00d6f12817759f2a4e7206cdd2cd2504a77f3"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb"
+target = "ppu/m3_lcdc_obj_size_change.gb"
+sha256 = "1060fbf592ccf28b19c5e8af310f4441c74ca2310faf7f6b024a62a1888d6d2e"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx.gb"
+target = "ppu/m3_lcdc_obj_size_change_scx.gb"
+sha256 = "f0ae9a6c51d1ae490a3b492e732ba4080ad92def08a806b4e3953277aaa7291a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change.gb"
+target = "ppu/m3_lcdc_tile_sel_change.gb"
+sha256 = "aef34202485974960b01b80bd5c57686d09e436fb90efb9b7e19686b910998b4"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change.gb"
+target = "ppu/m3_lcdc_tile_sel_win_change.gb"
+sha256 = "5d442f4cfcd8f9415697ce748b2f2daf587db3f205831ed2849ad3f80f925f21"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb"
+target = "ppu/m3_lcdc_win_en_change_multiple.gb"
+sha256 = "6d759374790c6a4b98682e438d2f25e0481533828e2c2a50fda88fdde3256870"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+target = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+sha256 = "0fed492b76695157a794b05cda1217be6cbe81ef4769102c4c5508d89a6fbb23"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change.gb"
+target = "ppu/m3_lcdc_win_map_change.gb"
+sha256 = "a4d4a28cb665b55faa256163110ea3f6729d33112aa0a05dfd876eae8f446c05"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb"
+target = "ppu/m3_obp0_change.gb"
+sha256 = "2160b69123091f9b997debef8b314b4277f4a9027eb25a1b8418ea06f87ba6af"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits.gb"
+target = "ppu/m3_scx_high_5_bits.gb"
+sha256 = "423db91af0f87547ae46690044ef760481f7005033ffc61bd69875b7df96139b"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb"
+target = "ppu/m3_scx_low_3_bits.gb"
+sha256 = "433e59a9eb9a27c962cd613c24c2f8d728ac9e498233667959eb07995f0fef5f"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scy_change.gb"
+target = "ppu/m3_scy_change.gb"
+sha256 = "0fedb0c33fd400d5f88a35704177e437b7d88f18c81bd5b30c3165b633734c8a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing.gb"
+target = "ppu/m3_window_timing.gb"
+sha256 = "c8c8b26d5c9659f30e037a1a9f8d8f9d8f57db0a97730bbab536fb95e11da9df"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb"
+target = "ppu/m3_window_timing_wx_0.gb"
+sha256 = "984496c486032606aede6428e1087c6038403b27d7bcfed844188742123b91a4"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change.gb"
+target = "ppu/m3_wx_4_change.gb"
+sha256 = "eadfe4369b85994b4401e7e5119272626c6339ecec282848013decf0cb5ea81c"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb"
+target = "ppu/m3_wx_4_change_sprites.gb"
+sha256 = "da10819cb8af5fb8fb31f6f50729e9afe221161a7b5743351a54ca05e9c94fec"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_5_change.gb"
+target = "ppu/m3_wx_5_change.gb"
+sha256 = "53a0c14c896cdef68b92ea90e952fe053dcf1d2155251e2e4ed8b48ef22a6d62"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_6_change.gb"
+target = "ppu/m3_wx_6_change.gb"
+sha256 = "efa65cf7a570add7cfcb6d25d7c314359f2a0e6eadcde2e44d53f81d6ba44b0d"

@@ -1,0 +1,16 @@
+family = "little-things-gb"
+suite_name = "little-things-gb-dmg"
+report = "little-things-gb"
+console = "dmg"
+timeout_frames = 180
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "little-things-gb-dmg-double-halt-cancel"
+rom = "double-halt-cancel.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png" }
+
+[[case]]
+id = "little-things-gb-dmg-whichboot"
+rom = "whichboot.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png" }

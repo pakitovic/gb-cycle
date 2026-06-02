@@ -1,0 +1,10 @@
+family = "mooneye"
+suite_name = "cgb-boot-hwio"
+report = "mooneye"
+console = "cgb"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "cgb-boot-hwio-boot-hwio-c"
+rom = "misc/boot_hwio-C.gb"

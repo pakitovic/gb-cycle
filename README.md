@@ -130,10 +130,14 @@ make coverage
 
 ```bash
 make ci
-make test-roms-extra
-make test-roms-cgb-extra
 cargo rom-suite gb-emulator-shootout
 cargo rom-suite gbmicrotest
+cargo rom-suite mooneye
+cargo rom-suite ax6
+cargo rom-suite little-things-gb
+cargo rom-suite magen
+cargo rom-suite mealybug-tearoom-tests
+cargo rom-suite samesuite
 ```
 
 ### External ROM suites

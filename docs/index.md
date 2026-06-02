@@ -4,7 +4,7 @@ Read the matching file directly; this index is a routing guide plus a summary of
 
 ## Mandatory external-ROM regression workflow
 
-When working on already-known external ROM failures or rerunning curated ROM suites to evaluate a timing-sensitive change, always capture a baseline copy of the matching persisted report before the work, capture the final report again after the run, and compare the two before deciding whether the change is worth keeping. Use `/test/gb-emulator-shootout/test-report.md` for promoted GB Emulator Shootout suites, `/test/test-report-extra.md` for non-DocBoy extra/exploratory suites such as `ax6-dmg-extra`, `samesuite-dmg-extra`, `little-things-gb-dmg-extra`, and `cgb-boot-hwio`, `/test/docboy/test-report.md` for the large experimental DocBoy single-machine suites, and `/test/gbmicrotest/test-report.md` for the gbmicrotest report suite; see [`TESTING.md`](TESTING.md) for the authoritative workflow details.
+When working on already-known external ROM failures or rerunning curated ROM suites to evaluate a timing-sensitive change, always capture a baseline copy of the matching persisted report before the work, capture the final report again after the run, and compare the two before deciding whether the change is worth keeping. Use `/test/gb-emulator-shootout/` for promoted GB Emulator Shootout suites, `/test/docboy/` for the large experimental DocBoy single-machine suites, `/test/gbmicrotest/` for the gbmicrotest report suite, and the standalone exploratory report directories such as `/test/mooneye/`, `/test/ax6/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, or `/test/samesuite/`; see [`TESTING.md`](TESTING.md) for the authoritative workflow details.
 
 ## Global docs
 

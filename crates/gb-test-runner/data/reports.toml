@@ -33,3 +33,33 @@ family_order = [
 id = "gbmicrotest"
 store_dir = "gbmicrotest"
 sources = "gbmicrotest/sources.report.toml"
+
+[[report]]
+id = "mooneye"
+store_dir = "mooneye"
+sources = "mooneye/sources.report.toml"
+
+[[report]]
+id = "ax6"
+store_dir = "ax6"
+sources = "ax6/sources.report.toml"
+
+[[report]]
+id = "little-things-gb"
+store_dir = "little-things-gb"
+sources = "little-things-gb/sources.report.toml"
+
+[[report]]
+id = "magen"
+store_dir = "magen"
+sources = "magen/sources.report.toml"
+
+[[report]]
+id = "mealybug-tearoom-tests"
+store_dir = "mealybug-tearoom-tests"
+sources = "mealybug-tearoom-tests/sources.report.toml"
+
+[[report]]
+id = "samesuite"
+store_dir = "samesuite"
+sources = "samesuite/sources.report.toml"

@@ -88,6 +88,7 @@ fn run_case(
     let observation_rom_bytes = needs_cpu_observation.then(|| rom_bytes.clone());
 
     let mut config = MachineConfig::new(case.console_model)
+        .with_revision(case.hardware_revision)
         .with_host_platform(case.host_platform)
         .with_startup_mode(case.startup_mode)
         .with_compatibility(compatibility_for_execution_mode(case.execution_mode));

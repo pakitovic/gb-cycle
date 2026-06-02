@@ -1,0 +1,12 @@
+family = "little-things-gb"
+suite_name = "little-things-gb-cgb"
+report = "little-things-gb"
+console = "cgb"
+startup = "custom-boot"
+timeout_frames = 180
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "little-things-gb-cgb-whichboot"
+rom = "whichboot.gb"
+oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/little-things-gb-cgb/whichboot.png" }

@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use gb_core::{
-    ConsoleModel, DMG_T_CYCLES_PER_FRAME, ExecutionMode, HostPlatform, JoypadButton, StartupMode,
+    ConsoleModel, DMG_T_CYCLES_PER_FRAME, ExecutionMode, HardwareRevision, HostPlatform,
+    JoypadButton, StartupMode,
 };
 use serde::Serialize;
 
@@ -34,6 +35,7 @@ pub(super) struct SuiteCase {
     pub(super) rom: PathBuf,
     pub(super) target_root: PathBuf,
     pub(super) console_model: ConsoleModel,
+    pub(super) hardware_revision: HardwareRevision,
     pub(super) host_platform: HostPlatform,
     pub(super) execution_mode: ExecutionMode,
     pub(super) startup_mode: StartupMode,
