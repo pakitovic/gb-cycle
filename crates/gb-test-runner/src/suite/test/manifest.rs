@@ -1171,9 +1171,8 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "mooneye",
             &[
-                ("cgb-boot-hwio", 1, "mooneye"),
-                ("mooneye-cgb", 10, "mooneye"),
-                ("mooneye-sgb-boot-regs", 2, "mooneye"),
+                ("mooneye-cgb", 11, "mooneye"),
+                ("mooneye-sgb", 2, "mooneye"),
             ][..],
         ),
         ("ax6", &[("ax6-dmg", 3, "ax6")][..]),
@@ -1233,9 +1232,8 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         }
 
         if report_id == "mooneye" {
-            let suites =
-                load_selected_suites(&workspace, report, Some("mooneye-sgb-boot-regs"), None)
-                    .expect("mooneye SGB suite should load");
+            let suites = load_selected_suites(&workspace, report, Some("mooneye-sgb"), None)
+                .expect("mooneye SGB suite should load");
             assert!(
                 suites[0]
                     .cases

@@ -21,9 +21,7 @@ jobs:
             report: samesuite
           - name: little-things-gb-dmg
             report: little-things-gb
-          - name: mooneye-sgb-boot-regs
-            report: mooneye
-          - name: cgb-boot-hwio
+          - name: mooneye-sgb
             report: mooneye
           - name: mooneye-cgb
             report: mooneye

@@ -58,3 +58,7 @@ id = "mooneye-cgb-ppu-vblank-stat-intr-gs"
 rom = "acceptance/ppu/vblank_stat_intr-GS.gb"
 disabled = true
 comment = "Expected CGB red: upstream declares fail on CGB/AGB/AGS; local capture reports D=$12 where the DMG-family expectation is D=$01."
+
+[[case]]
+id = "cgb-boot-hwio-boot-hwio-c"
+rom = "misc/boot_hwio-C.gb"

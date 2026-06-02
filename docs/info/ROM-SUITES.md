@@ -75,10 +75,9 @@ Makefile ROM-suite aggregate and member targets have been removed. Fetch report 
 | --- | --- | --- | --- |
 | `cargo rom-suite ax6 --suite ax6-dmg` | `ax6-dmg` | `/test/ax6/` | Extra/internal DMG MBC3 RTC AX6 rows with committed DMG fixtures. |
 | `cargo rom-suite samesuite --suite samesuite-dmg` | `samesuite-dmg` | `/test/samesuite/` | Extra/internal DMG SameSuite APU/interrupt rows from GBEmulatorShootout and DocBoy. |
-| `cargo rom-suite mooneye --suite mooneye-sgb-boot-regs` | `mooneye-sgb-boot-regs` | `/test/mooneye/` | SGB/SGB2 direct-start boot-register fingerprints using the structured `fibonacci-result` oracle. |
+| `cargo rom-suite mooneye --suite mooneye-sgb` | `mooneye-sgb` | `/test/mooneye/` | SGB/SGB2 direct-start boot-register fingerprints using the structured `fibonacci-result` oracle. |
 | `cargo rom-suite little-things-gb --suite little-things-gb-dmg` | `little-things-gb-dmg` | `/test/little-things-gb/` | DocBoy-sourced DMG `little-things-gb` rows. |
-| `cargo rom-suite mooneye --suite cgb-boot-hwio` | `cgb-boot-hwio` | `/test/mooneye/` | Extra/internal CGB boot HWIO fingerprint row. |
-| `cargo rom-suite mooneye --suite mooneye-cgb` | `mooneye-cgb` | `/test/mooneye/` | Extra/internal Mooneye CGB PPU acceptance subset; disabled rows stay cataloged with comments. |
+| `cargo rom-suite mooneye --suite mooneye-cgb` | `mooneye-cgb` | `/test/mooneye/` | Extra/internal Mooneye CGB PPU acceptance subset plus the CGB boot HWIO fingerprint row; disabled rows stay cataloged with comments. |
 | `cargo rom-suite samesuite --suite samesuite-cgb` | `samesuite-cgb` | `/test/samesuite/` | Extra/internal DocBoy-sourced SameSuite CGB variant rows with CGB-D/CGB-E revision metadata. |
 | `cargo rom-suite magen --suite magen-cgb` | `magen-cgb` | `/test/magen/` | Extra/internal DocBoy-sourced Magen CGB rows. |
 | `cargo rom-suite mealybug-tearoom-tests --suite mealybug-tearoom-tests-cgb` | `mealybug-tearoom-tests-cgb` | `/test/mealybug-tearoom-tests/` | CGB companion of the Mealybug PPU rows. |
@@ -122,7 +121,7 @@ Same-ROM console variants are ordered DMG before GBC before SGB before SGB2 when
 - `make ci` remains the fast local pre-push gate and does not fetch or run external ROM suites; it covers formatting, linting, typos, dependency policy, workspace tests, and coverage gates.
 - GitHub `ci` mirrors the Rust checks and coverage gate.
 - GitHub `test-roms` fans out promoted `gb-emulator-shootout` suites as matrix children; each child runs `cargo rom-suite gb-emulator-shootout --suite <suite>` and relies on on-demand report fetch.
-- GitHub `test-roms-extra` fans out standalone exploratory report suites: `ax6-dmg`, `samesuite-dmg`, `little-things-gb-dmg`, `mooneye-sgb-boot-regs`, `cgb-boot-hwio`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-tearoom-tests-cgb`, and `little-things-gb-cgb`; each child runs `cargo rom-suite <report> --suite <suite>` and relies on on-demand report fetch.
+- GitHub `test-roms-extra` fans out standalone exploratory report suites: `ax6-dmg`, `samesuite-dmg`, `little-things-gb-dmg`, `mooneye-sgb`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-tearoom-tests-cgb`, and `little-things-gb-cgb`; each child runs `cargo rom-suite <report> --suite <suite>` and relies on on-demand report fetch.
 - GitHub `test-roms-gbmicrotest` runs `cargo rom-suite gbmicrotest` as the standalone gbmicrotest report lane and relies on on-demand report fetch.
 - RealBoot targets, private commercial manifests, linked sessions, and red/experimental local investigations stay outside GitHub ROM workflows unless promoted intentionally.
 

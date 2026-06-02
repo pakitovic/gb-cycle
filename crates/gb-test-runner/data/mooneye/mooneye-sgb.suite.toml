@@ -1,5 +1,5 @@
 family = "mooneye"
-suite_name = "mooneye-sgb-boot-regs"
+suite_name = "mooneye-sgb"
 report = "mooneye"
 timeout_frames = 180
 oracle = { type = "fibonacci-result" }
