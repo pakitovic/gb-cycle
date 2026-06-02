@@ -101,7 +101,7 @@ New `*.suite.toml` oracles use structured inline tables. `serial-contains` remai
 
 ## RealBoot policy
 
-Legacy RealBoot ROM-suite runs require `GB_CYCLE_BOOT_ROM_ROOT` to point at private firmware assets with canonical filenames derived from the manifest revision, such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`. The new `cargo rom-suite` and `cargo rom-suite-link` paths do not read `GB_CYCLE_BOOT_ROM_ROOT` or any startup override environment variable; pass `--boot-rom-dir <dir>` explicitly when you want to force selected single-machine cases or linked participants through RealBoot. Default skip/custom-boot lanes do not read firmware bytes and must derive revision-specific behavior from manifest `revision` and the core `MachineConfig::revision` axis.
+`cargo rom-suite` and `cargo rom-suite-link` do not read a boot-ROM root or startup override environment variable; pass `--boot-rom-dir <dir>` explicitly when you want to force selected single-machine cases or linked participants through RealBoot. The directory must contain private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`, and the runner verifies only the assets needed by the selected cases. Default skip/custom-boot lanes do not read firmware bytes and must derive revision-specific behavior from manifest `revision` and the core `MachineConfig::revision` axis.
 
 Use RealBoot runs as local comparison/closure evidence, not as a replacement for the default manifest startup lane. After a RealBoot run, rerun the matching non-RealBoot command if you want status/artifacts to represent the default skip/custom-boot baseline again.
 
@@ -148,10 +148,8 @@ Manifest-driven framebuffer exports land beside the resolved private ROM path us
 
 ## Determinism and save/load continuation
 
-Deterministic replay plus in-memory save/load continuation coverage is automated through cargo tests in `crates/gb-test-runner/src/determinism.rs`; it is intentionally not exposed through a manual `run_determinism` CLI. These tests compare independent replays, final `MachineSaveState` payloads, serial output, mid-run save/restore continuation, and incompatible restore rejection. Non-`Strict` cases fail fast so this path remains closure evidence rather than permissive compatibility evidence.
+Deterministic replay plus in-memory save/load continuation coverage is automated through cargo tests close to the core and runner code; there is intentionally no standalone determinism runner. These tests compare independent replays, final `MachineSaveState` payloads, serial output, mid-run save/restore continuation, and incompatible restore rejection. Non-`Strict` cases fail fast so this path remains closure evidence rather than permissive compatibility evidence.
 
 ## Environment variables
 
-- `GB_CYCLE_BOOT_ROM_ROOT` — private boot-ROM search path for RealBoot suite runs.
-- `GB_CYCLE_TEST_ROM_ROOT` — retained only by older in-crate test helpers; the report runners materialize under the repository `test/` directory and do not read this variable.
-- `GB_CYCLE_TEST_ROM_STARTUP` — retained only by older in-crate startup tests; `cargo rom-suite` and `cargo rom-suite-link` never read it and use explicit `startup` manifest fields plus `--boot-rom-dir <dir>` instead.
+`gb-test-runner` report execution does not require environment variables. Use explicit command arguments such as `--boot-rom-dir <dir>` for private RealBoot assets.
