@@ -481,6 +481,109 @@ rom = "screens/pass.gb"
 }
 
 #[test]
+fn framebuffer_local_fixtures_are_resolved_from_report_data_dir() {
+    let workspace = unique_temp_dir("suite-local-fixture-root");
+    write_reports(
+        &workspace,
+        "gb-emulator-shootout",
+        "gb-emulator-shootout/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/local-fixture-root.suite.toml",
+        r#"
+family = "cpp"
+suite_name = "local-fixture-root"
+report = "gb-emulator-shootout"
+console = "sgb"
+timeout_frames = 2
+oracle = { type = "framebuffer", local = true, fixture = "fixtures/cpp/pass.png" }
+
+[[case]]
+id = "local-fixture-root-case"
+rom = "sgb/pass.gb"
+"#,
+    );
+    let local_fixture = workspace
+        .join("crates")
+        .join("gb-test-runner")
+        .join("data")
+        .join("gb-emulator-shootout")
+        .join("fixtures")
+        .join("cpp")
+        .join("pass.png");
+    write_png_fixture(&local_fixture);
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gb-emulator-shootout")
+        .expect("report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("local-fixture-root"), None)
+        .expect("suite should load fixture relative to report data dir");
+
+    let descriptor = suites[0].cases[0]
+        .oracle
+        .framebuffer_artifact_descriptor()
+        .expect("framebuffer descriptor should exist");
+    assert_eq!(descriptor.fixtures, vec![local_fixture]);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn framebuffer_local_fixture_flag_is_inherited_by_partial_case_oracle() {
+    let workspace = unique_temp_dir("suite-local-fixture-inheritance");
+    write_reports(
+        &workspace,
+        "gb-emulator-shootout",
+        "gb-emulator-shootout/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "gb-emulator-shootout/local-fixture-inheritance.suite.toml",
+        r#"
+family = "samesuite"
+suite_name = "local-fixture-inheritance"
+report = "gb-emulator-shootout"
+console = "sgb"
+timeout_frames = 2
+oracle = { type = "framebuffer", local = true }
+
+[[case]]
+id = "local-fixture-inheritance-case"
+rom = "sgb/pass.gb"
+oracle = { fixture = "fixtures/samesuite/pass.png" }
+"#,
+    );
+    let local_fixture = workspace
+        .join("crates")
+        .join("gb-test-runner")
+        .join("data")
+        .join("gb-emulator-shootout")
+        .join("fixtures")
+        .join("samesuite")
+        .join("pass.png");
+    write_png_fixture(&local_fixture);
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "gb-emulator-shootout")
+        .expect("report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("local-fixture-inheritance"), None)
+        .expect("partial case oracle should inherit local fixture flag");
+
+    let descriptor = suites[0].cases[0]
+        .oracle
+        .framebuffer_artifact_descriptor()
+        .expect("framebuffer descriptor should exist");
+    assert_eq!(descriptor.fixtures, vec![local_fixture]);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn source_target_root_defines_report_local_rom_root() {
     let workspace = unique_temp_dir("suite-target-root");
     write_reports(&workspace, "docboy", "docboy/sources.report.toml");
@@ -1460,30 +1563,37 @@ fn write_manifest_fixture_placeholders(
             .join(target_root),
     )
     .expect("fixture root should be creatable");
-    for fixture in fixture_paths_from_manifest(manifest_text) {
-        let path = clean_path(
-            &workspace_root
+    for (local, fixture) in fixture_specs_from_manifest(manifest_text) {
+        let root = if local {
+            workspace_root
+                .join("crates")
+                .join("gb-test-runner")
+                .join("data")
+                .join(report_id)
+        } else {
+            workspace_root
                 .join("test")
                 .join(report_id)
                 .join(target_root)
-                .join(fixture),
-        );
+        };
+        let path = clean_path(&root.join(fixture));
         write_png_fixture(&path);
     }
 }
 
-fn fixture_paths_from_manifest(manifest_text: &str) -> Vec<PathBuf> {
+fn fixture_specs_from_manifest(manifest_text: &str) -> Vec<(bool, PathBuf)> {
     let mut paths = Vec::new();
     for line in manifest_text.lines() {
         let Some((_, value)) = line.split_once("fixture =") else {
             continue;
         };
+        let local = line.contains("local = true");
         for path in value
             .split('"')
             .enumerate()
             .filter_map(|(index, value)| (index % 2 == 1).then_some(value))
         {
-            paths.push(PathBuf::from(path));
+            paths.push((local, PathBuf::from(path)));
         }
     }
     paths

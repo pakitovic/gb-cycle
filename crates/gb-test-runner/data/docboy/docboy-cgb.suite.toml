@@ -280,7 +280,7 @@ rom = "boot/boot_write_vram.gbc"
 [[case]]
 id = "docboy-cgb-docboy-boot-visual-boot-halt"
 rom = "boot/visual/boot_halt.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/boot/boot_halt.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/boot/boot_halt.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-banks-vram-bank-switch"
@@ -3438,7 +3438,7 @@ rom = "undocumented/ff75_write_read.gbc"
 [[case]]
 id = "docboy-cgb-mattcurrie-cgb-acid-hell"
 rom = "mattcurrie/cgb-acid-hell.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/mattcurrie/cgb-acid-hell.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/mattcurrie/cgb-acid-hell.png" }
 disabled = true
 comment = "This does not pass even on real CGB-E!"
 
@@ -4705,337 +4705,337 @@ rom = "ppu/vram_write_block_timing.gbc"
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-bank"
 rom = "ppu/visual/bg_attr_bank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_bank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_bank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-horizontal-flip"
 rom = "ppu/visual/bg_attr_horizontal_flip.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_horizontal_flip.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_horizontal_flip.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-palette"
 rom = "ppu/visual/bg_attr_palette.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_palette.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_palette.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority"
 rom = "ppu/visual/bg_attr_priority.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_priority.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-color-0"
 rom = "ppu/visual/bg_attr_priority_color_0.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_color_0.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_priority_color_0.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-color-0-lcdc-bit-0"
 rom = "ppu/visual/bg_attr_priority_color_0_lcdc_bit_0.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_color_0_lcdc_bit_0.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_priority_color_0_lcdc_bit_0.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-priority-lcdc-bit-0"
 rom = "ppu/visual/bg_attr_priority_lcdc_bit_0.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_priority_lcdc_bit_0.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_priority_lcdc_bit_0.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-vertical-flip"
 rom = "ppu/visual/bg_attr_vertical_flip.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_vertical_flip.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_vertical_flip.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attr-vertical-flip-scy"
 rom = "ppu/visual/bg_attr_vertical_flip_scy.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attr_vertical_flip_scy.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attr_vertical_flip_scy.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-attrs-lcdc-bit-3"
 rom = "ppu/visual/bg_attrs_lcdc_bit_3.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_attrs_lcdc_bit_3.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_attrs_lcdc_bit_3.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-obj-overlap-bg-win-off"
 rom = "ppu/visual/bg_obj_overlap_bg_win_off.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_obj_overlap_bg_win_off.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_obj_overlap_bg_win_off.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-bg-obj-overlap-bg-win-on"
 rom = "ppu/visual/bg_obj_overlap_bg_win_on.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/bg_obj_overlap_bg_win_on.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/bg_obj_overlap_bg_win_on.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops26"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops26.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops26.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops26.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops27"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops27.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops27.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops27.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops28"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops28.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops28.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops28.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops29"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops29.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops29.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-bg-tile-data-glitch-sprites-nops30"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops30.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops30.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_bg_tile_data_glitch_sprites_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops26"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops26.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops26.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops26.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops27"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops27.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops27.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops27.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops28"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops28.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops28.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops28.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops29"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops29.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops29.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops29.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-win-tile-data-glitch-window-nops30"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops30.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops30.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_win_tile_data_glitch_window_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx6-nops16"
 rom = "ppu/visual/change_wx_glitch_wx6_nops16.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx6_nops16.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx6_nops16.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx6-nops17"
 rom = "ppu/visual/change_wx_glitch_wx6_nops17.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx6_nops17.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx6_nops17.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx7-nops17"
 rom = "ppu/visual/change_wx_glitch_wx7_nops17.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx7_nops17.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx7_nops17.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx7-nops18"
 rom = "ppu/visual/change_wx_glitch_wx7_nops18.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx7_nops18.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx7_nops18.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops17"
 rom = "ppu/visual/change_wx_glitch_wx8_nops17.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops17.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx8_nops17.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops18"
 rom = "ppu/visual/change_wx_glitch_wx8_nops18.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops18.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx8_nops18.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-wx8-nops18-alt"
 rom = "ppu/visual/change_wx_glitch_wx8_nops18_alt.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_wx8_nops18_alt.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_wx8_nops18_alt.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch"
 rom = "ppu/visual/change_wx_glitch.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-change-wx-glitch-alt"
 rom = "ppu/visual/change_wx_glitch_alt.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/change_wx_glitch_alt.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/change_wx_glitch_alt.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-halt-ppu-off"
 rom = "ppu/visual/halt_ppu_off.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/halt_ppu_off.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/halt_ppu_off.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-lcdc-bit-0"
 rom = "ppu/visual/lcdc_bit_0.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/lcdc_bit_0.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/lcdc_bit_0.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-attr-bank"
 rom = "ppu/visual/obj_attr_bank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_attr_bank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/obj_attr_bank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-attr-palette"
 rom = "ppu/visual/obj_attr_palette.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_attr_palette.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/obj_attr_palette.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority"
 rom = "ppu/visual/obj_priority.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/obj_priority.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority-alt"
 rom = "ppu/visual/obj_priority_alt.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority_alt.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/obj_priority_alt.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-obj-priority-change-opri"
 rom = "ppu/visual/obj_priority_change_opri.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/obj_priority_change_opri.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/obj_priority_change_opri.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-hblank"
 rom = "ppu/visual/stop_during_hblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_hblank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_during_hblank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-oam-scan"
 rom = "ppu/visual/stop_during_oam_scan.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_oam_scan.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_during_oam_scan.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-pixel-transfer"
 rom = "ppu/visual/stop_during_pixel_transfer.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_pixel_transfer.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_during_pixel_transfer.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-pixel-transfer-alt"
 rom = "ppu/visual/stop_during_pixel_transfer_alt.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_pixel_transfer.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_during_pixel_transfer.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-during-vblank"
 rom = "ppu/visual/stop_during_vblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_during_vblank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_during_vblank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-ly42-during-hblank-01-stop-ly42-during-hblank-a"
 rom = "ppu/visual/stop_ly42_during_hblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ly42_during_hblank_a.png", check_at_tcycles = 4739304 }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_ly42_during_hblank_a.png", check_at_tcycles = 4739304 }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-ly42-during-hblank-02-stop-ly42-during-hblank-b"
 rom = "ppu/visual/stop_ly42_during_hblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ly42_during_hblank_b.png", check_at_tcycles = 4809528 }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_ly42_during_hblank_b.png", check_at_tcycles = 4809528 }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-stop-ppu-off"
 rom = "ppu/visual/stop_ppu_off.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/stop_ppu_off.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/stop_ppu_off.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y148-round1-01-turn-off-y42-turn-on-y148-round1-a"
 rom = "ppu/visual/turn_off_y42_turn_on_y148_round1.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_a.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_a.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y148-round1-02-turn-off-y42-turn-on-y148-round1-b"
 rom = "ppu/visual/turn_off_y42_turn_on_y148_round1.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_b.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round1_b.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y148-round2-01-turn-off-y42-turn-on-y148-round2-a"
 rom = "ppu/visual/turn_off_y42_turn_on_y148_round2.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_a.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_a.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y148-round2-02-turn-off-y42-turn-on-y148-round2-b"
 rom = "ppu/visual/turn_off_y42_turn_on_y148_round2.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_b.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y148_round2_b.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y52-wait144-01-turn-off-y42-turn-on-y52-wait144-a"
 rom = "ppu/visual/turn_off_y42_turn_on_y52_wait144.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_a.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_a.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y52-wait144-02-turn-off-y42-turn-on-y52-wait144-b"
 rom = "ppu/visual/turn_off_y42_turn_on_y52_wait144.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_b.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait144_b.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y52-wait150-01-turn-off-y42-turn-on-y52-wait150-a"
 rom = "ppu/visual/turn_off_y42_turn_on_y52_wait150.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_a.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_a.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-y52-wait150-02-turn-off-y42-turn-on-y52-wait150-b"
 rom = "ppu/visual/turn_off_y42_turn_on_y52_wait150.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_b.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_y52_wait150_b.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y42-turn-on-off-y52-wait150"
 rom = "ppu/visual/turn_off_y42_turn_on_off_y52_wait150.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y42_turn_on_off_y52_wait150_b.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y42_turn_on_off_y52_wait150_b.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-skip-y16-stall-nops50"
 rom = "ppu/visual/turn_off_y50_skip_y16_stall_nops50.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops50.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops50.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-skip-y16-stall-nops51"
 rom = "ppu/visual/turn_off_y50_skip_y16_stall_nops51.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops51.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops51.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-skip-y16-stall-nops99"
 rom = "ppu/visual/turn_off_y50_skip_y16_stall_nops99.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops99.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops99.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-skip-y16-stall-nops100"
 rom = "ppu/visual/turn_off_y50_skip_y16_stall_nops100.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops100.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_skip_y16_stall_nops100.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y48-skip-y16-stall-nops50"
 rom = "ppu/visual/turn_off_y48_skip_y16_stall_nops50.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops50.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops50.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y48-skip-y16-stall-nops51"
 rom = "ppu/visual/turn_off_y48_skip_y16_stall_nops51.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops51.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y48_skip_y16_stall_nops51.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-stall-nops50"
 rom = "ppu/visual/turn_off_y50_stall_nops50.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_stall_nops50.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_stall_nops50.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-turn-off-y50-stall-nops51"
 rom = "ppu/visual/turn_off_y50_stall_nops51.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/turn_off_y50_stall_nops51.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/turn_off_y50_stall_nops51.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-activation-ly-bug"
 rom = "ppu/visual/win_activation_ly_bug.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_activation_ly_bug.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/win_activation_ly_bug.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attr-bank"
 rom = "ppu/visual/win_attr_bank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attr_bank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/win_attr_bank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attr-palette"
 rom = "ppu/visual/win_attr_palette.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attr_palette.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/win_attr_palette.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-ppu-visual-win-attrs-lcdc-bit-6"
 rom = "ppu/visual/win_attrs_lcdc_bit_6.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/ppu/win_attrs_lcdc_bit_6.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/ppu/win_attrs_lcdc_bit_6.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-apu-ch1-ch1-change-duty-cycle-75-50-delay3-0"
@@ -28693,24 +28693,24 @@ rom = "double_speed/timers/speed_switch_to_single_timers_tima_65khz_round2.gbc"
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-hblank"
 rom = "double_speed/visual/speed_switch_to_double_stop_during_hblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_hblank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/double_speed/speed_switch_to_double_stop_during_hblank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-oam-scan"
 rom = "double_speed/visual/speed_switch_to_double_stop_during_oam_scan.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_oam_scan.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/double_speed/speed_switch_to_double_stop_during_oam_scan.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-pixel-transfer"
 rom = "double_speed/visual/speed_switch_to_double_stop_during_pixel_transfer.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_pixel_transfer.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/double_speed/speed_switch_to_double_stop_during_pixel_transfer.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-during-vblank"
 rom = "double_speed/visual/speed_switch_to_double_stop_during_vblank.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_during_vblank.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/double_speed/speed_switch_to_double_stop_during_vblank.png" }
 
 [[case]]
 id = "docboy-cgb-docboy-double-speed-visual-speed-switch-to-double-stop-ppu-off"
 rom = "double_speed/visual/speed_switch_to_double_stop_ppu_off.gbc"
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb/double_speed/speed_switch_to_double_stop_ppu_off.png" }
+oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/double_speed/speed_switch_to_double_stop_ppu_off.png" }

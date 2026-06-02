@@ -1,9 +1,0 @@
-suite_name = "cgb-boot-hwio"
-
-[[case]]
-family = "mooneye"
-id = "cgb-boot-hwio-boot-hwio-c"
-rom = "misc/boot_hwio-C.gb"
-console = "cgb"
-timeout_frames = 180
-oracle = "mooneye-result"

@@ -8,14 +8,14 @@ oracle = { type = "framebuffer" }
 [[case]]
 id = "samesuite-dmg-div-write-trigger"
 rom = "apu/div_write_trigger.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/samesuite/fixtures/dmg/apu/div_write_trigger.png" }
+oracle = { local = true, fixture = "fixtures/dmg/apu/div_write_trigger.png" }
 
 [[case]]
 id = "samesuite-dmg-div-write-trigger-10"
 rom = "apu/div_write_trigger_10.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/samesuite/fixtures/dmg/apu/div_write_trigger_10.png" }
+oracle = { local = true, fixture = "fixtures/dmg/apu/div_write_trigger_10.png" }
 
 [[case]]
 id = "samesuite-dmg-ei-delay-halt"
 rom = "interrupt/ei_delay_halt.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/samesuite/fixtures/dmg/interrupt/ei_delay_halt.png" }
+oracle = { local = true, fixture = "fixtures/dmg/interrupt/ei_delay_halt.png" }

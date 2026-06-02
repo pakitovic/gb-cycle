@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use super::catalog::{
-    FramebufferObservation, OracleConfig, OracleObservations, OracleOutcome, OracleStep,
+    FramebufferObservation, OracleConfig, OracleFixtureRoots, OracleObservations, OracleOutcome,
+    OracleStep,
 };
 
 const FRAMEBUFFER_WIDTH: usize = 160;
@@ -27,7 +28,7 @@ pub(crate) struct FramebufferOracle {
 impl FramebufferOracle {
     pub(super) fn from_manifest(
         config: &OracleConfig,
-        fixture_root: &Path,
+        fixture_roots: OracleFixtureRoots<'_>,
     ) -> Result<Self, String> {
         config.reject_unknown_parameters(&[
             "mode",
@@ -35,6 +36,7 @@ impl FramebufferOracle {
             "projection",
             "compare",
             "fixture",
+            "local",
             "tolerance",
             "check_interval_tcycles",
             "check_at_tcycles",
@@ -52,6 +54,7 @@ impl FramebufferOracle {
             .unwrap_or(DEFAULT_CHECK_INTERVAL_T_CYCLES);
         let check_at_tcycles = config.optional_u64("check_at_tcycles")?;
         let target_participant = config.optional_string("target_participant")?;
+        let local_fixtures = config.optional_bool("local")?.unwrap_or(false);
 
         if mode != FramebufferMode::UntilMatch {
             if config.has_parameter("check_interval_tcycles") || check_at_tcycles.is_some() {
@@ -81,6 +84,9 @@ impl FramebufferOracle {
             if config.has_parameter("fixture") {
                 return Err("framebuffer mode \"info\" does not use fixture".to_string());
             }
+            if local_fixtures {
+                return Err("framebuffer mode \"info\" does not use local fixtures".to_string());
+            }
             if config.has_parameter("tolerance") {
                 return Err("framebuffer mode \"info\" does not use tolerance".to_string());
             }
@@ -94,8 +100,8 @@ impl FramebufferOracle {
             }
             let fixture_paths = fixtures
                 .into_iter()
-                .map(|path| resolve_fixture_path(fixture_root, PathBuf::from(path)))
-                .collect::<Vec<_>>();
+                .map(|path| resolve_fixture_path(fixture_roots, local_fixtures, &path))
+                .collect::<Result<Vec<_>, String>>()?;
             match projection {
                 FramebufferProjection::PaletteRank => FramebufferComparison::PaletteRank {
                     fixtures: fixture_paths
@@ -496,12 +502,47 @@ struct GrayscaleFramebuffer {
     pixels: Vec<u8>,
 }
 
-fn resolve_fixture_path(fixture_root: &Path, path: PathBuf) -> PathBuf {
-    if path.is_absolute() {
-        path
+fn resolve_fixture_path(
+    fixture_roots: OracleFixtureRoots<'_>,
+    local_fixtures: bool,
+    path: &str,
+) -> Result<PathBuf, String> {
+    let path = Path::new(path);
+    if local_fixtures {
+        validate_local_fixture_path(path)?;
+        Ok(fixture_roots.local.join(path))
+    } else if path.is_absolute() {
+        Ok(path.to_path_buf())
     } else {
-        fixture_root.join(path)
+        Ok(fixture_roots.store.join(path))
     }
+}
+
+fn validate_local_fixture_path(path: &Path) -> Result<(), String> {
+    if path.is_absolute() {
+        return Err(format!(
+            "framebuffer local fixture path must be relative and confined to the report data directory: {}",
+            path.display()
+        ));
+    }
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {}
+            Component::ParentDir => {
+                return Err(format!(
+                    "framebuffer local fixture path must not contain '..': {}",
+                    path.display()
+                ));
+            }
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "framebuffer local fixture path must be normalized and confined to the report data directory: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read_palette_fixture(path: &Path) -> Result<PaletteRankFramebuffer, String> {

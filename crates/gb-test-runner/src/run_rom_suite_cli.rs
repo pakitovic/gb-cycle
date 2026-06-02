@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::{
     CapturedArtifacts, RomRunner, RomSuite, RomSuiteReport, Timeout, built_in_rom_suite_by_name,
-    load_local_rom_suite_manifest, render_memory_bytes, update_curated_test_report,
+    load_local_rom_suite_manifest, render_memory_bytes,
 };
 
 const TEST_ROM_STARTUP_ENV_VAR: &str = "GB_CYCLE_TEST_ROM_STARTUP";
@@ -207,16 +207,8 @@ fn run_selected_suite<W: Write>(
     }
     .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
     write_suite_report(output, &report)?;
-    match &options.target {
-        RomSuiteCliTarget::BuiltIn { .. } => {
-            if let Some(report_path) = update_curated_test_report(runner.workspace_root(), &report)?
-            {
-                writeln_checked(output, &format!("test_report={}", report_path.display()))?;
-            }
-        }
-        RomSuiteCliTarget::Manifest { .. } => {
-            write_manifest_framebuffer_exports(output, &runner, &suite, &report)?;
-        }
+    if matches!(options.target, RomSuiteCliTarget::Manifest { .. }) {
+        write_manifest_framebuffer_exports(output, &runner, &suite, &report)?;
     }
 
     if report.all_non_failing() {
@@ -639,22 +631,22 @@ mod tests {
     }
 
     #[test]
-    fn select_suite_can_filter_a_family_backed_built_in_suite_to_one_case() {
+    fn select_suite_can_filter_a_built_in_suite_to_one_case() {
         let suite = select_suite_for_options(&RomSuiteCliOptions {
             target: RomSuiteCliTarget::BuiltIn {
-                suite_name: "acid".to_string(),
+                suite_name: "phase-2-cpu-timing".to_string(),
             },
-            case_id: Some("acid-dmg-acid2".to_string()),
+            case_id: Some("phase2-fetch-immediate-order".to_string()),
             failure_artifact_root: None,
             timeout_override: None,
             threads: None,
         })
-        .expect("known curated case should be selectable");
+        .expect("known built-in case should be selectable");
 
-        assert_eq!(suite.name, "acid");
-        assert_eq!(suite.family.as_deref(), Some("acid"));
+        assert_eq!(suite.name, "phase-2-cpu-timing");
+        assert!(suite.family.is_none());
         assert_eq!(suite.cases.len(), 1);
-        assert_eq!(suite.cases[0].id, "acid-dmg-acid2");
+        assert_eq!(suite.cases[0].id, "phase2-fetch-immediate-order");
     }
 
     #[test]
@@ -669,7 +661,25 @@ mod tests {
 
     #[test]
     fn startup_env_default_preserves_manifest_startup_modes_and_synthetic_state() {
-        let original_suite = crate::samesuite_suite();
+        let original_suite = RomSuite::new("startup-mode-fixture")
+            .with_case(
+                RomTestCase::new(
+                    "skip-boot-case",
+                    "fixture.gb",
+                    Timeout::Frames(1),
+                    PassCondition::MooneyeResult,
+                )
+                .with_startup_mode(gb_core::StartupMode::SkipBoot),
+            )
+            .with_case(
+                RomTestCase::new(
+                    "custom-boot-case",
+                    "fixture.gb",
+                    Timeout::Frames(1),
+                    PassCondition::MooneyeResult,
+                )
+                .with_startup_mode(gb_core::StartupMode::CustomBoot),
+            );
         let mut configured_suite = original_suite.clone();
 
         apply_configured_startup_override_for(
@@ -716,7 +726,12 @@ mod tests {
 
     #[test]
     fn startup_env_custom_boot_overrides_suite_without_requiring_assets() {
-        let mut suite = crate::samesuite_suite();
+        let mut suite = RomSuite::new("startup-mode-fixture").with_case(RomTestCase::new(
+            "skip-boot-case",
+            "fixture.gb",
+            Timeout::Frames(1),
+            PassCondition::MooneyeResult,
+        ));
 
         apply_configured_startup_override_for(&mut suite, ConfiguredRomSuiteStartup::CustomBoot)
             .expect("custom-boot startup override should parse");

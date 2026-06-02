@@ -39,12 +39,4 @@ impl ManifestFixtureField {
         }
         Ok(paths)
     }
-
-    #[cfg(test)]
-    pub(crate) fn into_paths(self) -> Vec<PathBuf> {
-        match self {
-            Self::Single(path) => vec![path],
-            Self::Multiple(paths) => paths,
-        }
-    }
 }

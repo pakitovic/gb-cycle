@@ -8,7 +8,7 @@ use gb_core::{
     ConsoleModel, ExecutionMode, HardwareRevision, HostPlatform, JoypadButton, StartupMode,
 };
 
-use crate::oracle::{Oracle, OracleConfig};
+use crate::oracle::{Oracle, OracleConfig, OracleFixtureRoots};
 
 use super::model::{
     DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, SuiteStimulus,
@@ -457,9 +457,16 @@ fn parse_case(
     let target_root = family_target_roots
         .target_root_for_family(&family)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
-    let fixture_root = fixture_root_for_case(workspace_root, report, &target_root);
-    let oracle = Oracle::from_manifest_with_fixture_root(&oracle_config, &fixture_root)
-        .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
+    let store_fixture_root = fixture_root_for_case(workspace_root, report, &target_root);
+    let local_fixture_root = report_data_dir(workspace_root, report);
+    let oracle = Oracle::from_manifest_with_fixture_roots(
+        &oracle_config,
+        OracleFixtureRoots {
+            store: &store_fixture_root,
+            local: &local_fixture_root,
+        },
+    )
+    .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
     let stimuli = case
         .stimuli
         .into_iter()

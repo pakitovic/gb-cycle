@@ -9,7 +9,7 @@ mod test;
 
 pub(crate) use catalog::{
     CPU_OBSERVATION_WINDOW_BACKTRACK, CPU_OBSERVATION_WINDOW_BYTES, CpuObservation,
-    FramebufferObservation, MemoryObservation, Oracle, OracleConfig, OracleObservations,
-    OracleOutcome, OracleStep,
+    FramebufferObservation, MemoryObservation, Oracle, OracleConfig, OracleFixtureRoots,
+    OracleObservations, OracleOutcome, OracleStep,
 };
 pub(crate) use framebuffer::{FramebufferArtifactDescriptor, FramebufferArtifactSource};

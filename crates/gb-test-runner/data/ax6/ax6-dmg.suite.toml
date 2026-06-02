@@ -8,16 +8,16 @@ oracle = { type = "framebuffer" }
 id = "ax6-dmg-rtc3test-1"
 rom = "rtc3test-1.gb"
 timeout_frames = 1140
-oracle = { fixture = "../../../crates/gb-test-runner/data/ax6/fixtures/rtc3test-1.dmg.png" }
+oracle = { local = true, fixture = "fixtures/rtc3test-1.dmg.png" }
 
 [[case]]
 id = "ax6-dmg-rtc3test-2"
 rom = "rtc3test-2.gb"
 timeout_frames = 900
-oracle = { fixture = "../../../crates/gb-test-runner/data/ax6/fixtures/rtc3test-2.dmg.png" }
+oracle = { local = true, fixture = "fixtures/rtc3test-2.dmg.png" }
 
 [[case]]
 id = "ax6-dmg-rtc3test-3"
 rom = "rtc3test-3.gb"
 timeout_frames = 2400
-oracle = { fixture = "../../../crates/gb-test-runner/data/ax6/fixtures/rtc3test-3.dmg.png" }
+oracle = { local = true, fixture = "fixtures/rtc3test-3.dmg.png" }

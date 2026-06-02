@@ -8,9 +8,9 @@ oracle = { type = "framebuffer" }
 [[case]]
 id = "little-things-gb-dmg-double-halt-cancel"
 rom = "double-halt-cancel.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/little-things-gb/fixtures/dmg/double-halt-cancel.png" }
+oracle = { local = true, fixture = "fixtures/dmg/double-halt-cancel.png" }
 
 [[case]]
 id = "little-things-gb-dmg-whichboot"
 rom = "whichboot.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/little-things-gb/fixtures/dmg/whichboot.png" }
+oracle = { local = true, fixture = "fixtures/dmg/whichboot.png" }

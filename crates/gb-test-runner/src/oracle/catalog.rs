@@ -65,6 +65,17 @@ impl OracleConfig {
         }
     }
 
+    pub(super) fn optional_bool(&self, field: &str) -> Result<Option<bool>, String> {
+        match self.parameters.get(field) {
+            Some(toml::Value::Boolean(value)) => Ok(Some(*value)),
+            Some(_) => Err(format!(
+                "oracle {:?} field {field} must be a boolean",
+                self.kind_label()
+            )),
+            None => Ok(None),
+        }
+    }
+
     pub(super) fn optional_u64(&self, field: &str) -> Result<Option<u64>, String> {
         match self.parameters.get(field) {
             Some(toml::Value::Integer(value)) => u64::try_from(*value).map(Some).map_err(|_| {
@@ -156,6 +167,22 @@ impl OracleConfig {
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OracleFixtureRoots<'a> {
+    pub(crate) store: &'a Path,
+    pub(crate) local: &'a Path,
+}
+
+impl<'a> OracleFixtureRoots<'a> {
+    #[cfg(test)]
+    fn same(root: &'a Path) -> Self {
+        Self {
+            store: root,
+            local: root,
+        }
     }
 }
 
@@ -255,9 +282,17 @@ impl Oracle {
         Self::from_manifest_with_fixture_root(config, Path::new(""))
     }
 
+    #[cfg(test)]
     pub(crate) fn from_manifest_with_fixture_root(
         config: &OracleConfig,
         fixture_root: &Path,
+    ) -> Result<Self, String> {
+        Self::from_manifest_with_fixture_roots(config, OracleFixtureRoots::same(fixture_root))
+    }
+
+    pub(crate) fn from_manifest_with_fixture_roots(
+        config: &OracleConfig,
+        fixture_roots: OracleFixtureRoots<'_>,
     ) -> Result<Self, String> {
         match config.kind()? {
             "fibonacci-result" => Ok(Self::FibonacciResult(FibonacciResultOracle::from_manifest(
@@ -265,7 +300,7 @@ impl Oracle {
             )?)),
             "framebuffer" => Ok(Self::Framebuffer(FramebufferOracle::from_manifest(
                 config,
-                fixture_root,
+                fixture_roots,
             )?)),
             "memory-byte-equals" => Ok(Self::MemoryByteEquals(
                 MemoryByteEqualsOracle::from_manifest(config)?,

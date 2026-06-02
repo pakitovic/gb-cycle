@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use super::super::{
-    FramebufferObservation, Oracle, OracleConfig, OracleObservations, OracleOutcome, OracleStep,
+    FramebufferObservation, Oracle, OracleConfig, OracleFixtureRoots, OracleObservations,
+    OracleOutcome, OracleStep,
 };
 
 const PIXELS: usize = 160 * 144;
@@ -66,6 +67,20 @@ fn pass_oracle(path: &Path) -> Oracle {
     .expect("framebuffer oracle should parse")
 }
 
+fn local_oracle(
+    config: &OracleConfig,
+    store_root: &Path,
+    local_root: &Path,
+) -> Result<Oracle, String> {
+    Oracle::from_manifest_with_fixture_roots(
+        config,
+        OracleFixtureRoots {
+            store: store_root,
+            local: local_root,
+        },
+    )
+}
+
 #[test]
 fn framebuffer_defaults_compare_dmg_palette_rank_fixture() {
     let temp_dir = temp_dir("dmg-default");
@@ -117,6 +132,124 @@ fn framebuffer_fixture_array_accepts_any_matching_fixture() {
     );
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_local_fixture_resolves_against_report_data_root() {
+    let temp_dir = temp_dir("local-fixture");
+    let store_root = temp_dir.join("store");
+    let local_root = temp_dir.join("data");
+    let fixture_path = local_root.join("fixtures/pass.pgm");
+    fs::create_dir_all(fixture_path.parent().expect("fixture should have parent"))
+        .expect("fixture parent should be creatable");
+    write_pgm(&fixture_path, &vec![255; PIXELS]);
+
+    let mut oracle = local_oracle(
+        &parse_oracle_config(
+            "oracle = { type = \"framebuffer\", local = true, fixture = \"fixtures/pass.pgm\" }",
+        ),
+        &store_root,
+        &local_root,
+    )
+    .expect("local framebuffer oracle should parse");
+    let actual = vec![0; PIXELS];
+
+    assert_eq!(
+        oracle
+            .finish(observations(1, Some(&actual), None, true))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_local_fixture_array_accepts_any_matching_fixture() {
+    let temp_dir = temp_dir("local-fixture-array");
+    let store_root = temp_dir.join("store");
+    let local_root = temp_dir.join("data");
+    let mismatch_path = local_root.join("fixtures/mismatch.pgm");
+    let match_path = local_root.join("fixtures/match.pgm");
+    fs::create_dir_all(mismatch_path.parent().expect("fixture should have parent"))
+        .expect("fixture parent should be creatable");
+    let mut mismatch_pixels = vec![255; PIXELS];
+    mismatch_pixels[0] = 0;
+    write_pgm(&mismatch_path, &mismatch_pixels);
+    write_pgm(&match_path, &vec![255; PIXELS]);
+
+    let mut oracle = local_oracle(
+        &parse_oracle_config(
+            "oracle = { type = \"framebuffer\", local = true, fixture = [\"fixtures/mismatch.pgm\", \"fixtures/match.pgm\"] }",
+        ),
+        &store_root,
+        &local_root,
+    )
+    .expect("local framebuffer oracle should parse");
+    let actual = vec![0; PIXELS];
+
+    assert_eq!(
+        oracle
+            .finish(observations(1, Some(&actual), None, true))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_local_fixture_rejects_paths_outside_report_data_root() {
+    let temp_dir = temp_dir("local-fixture-confined");
+    let store_root = temp_dir.join("store");
+    let local_root = temp_dir.join("data");
+    fs::create_dir_all(&local_root).expect("local root should be creatable");
+
+    assert!(
+        local_oracle(
+            &parse_oracle_config(
+                "oracle = { type = \"framebuffer\", local = true, fixture = \"../escape.pgm\" }",
+            ),
+            &store_root,
+            &local_root,
+        )
+        .expect_err("local fixture with parent component should fail")
+        .contains("must not contain '..'")
+    );
+
+    let absolute_fixture = temp_dir.join("absolute.pgm");
+    assert!(
+        local_oracle(
+            &parse_oracle_config(&format!(
+                "oracle = {{ type = \"framebuffer\", local = true, fixture = {:?} }}",
+                absolute_fixture.to_string_lossy()
+            )),
+            &store_root,
+            &local_root,
+        )
+        .expect_err("absolute local fixture should fail")
+        .contains("must be relative")
+    );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_local_parameter_must_be_boolean_and_is_unused_by_info_mode() {
+    assert!(
+        Oracle::from_manifest(&parse_oracle_config(
+            "oracle = { type = \"framebuffer\", local = \"true\", fixture = \"fixtures/pass.pgm\" }",
+        ))
+        .expect_err("string local parameter should fail")
+        .contains("field local must be a boolean")
+    );
+    assert!(
+        Oracle::from_manifest(&parse_oracle_config(
+            "oracle = { type = \"framebuffer\", mode = \"info\", local = true }",
+        ))
+        .expect_err("info mode with local fixture flag should fail")
+        .contains("does not use local fixtures")
+    );
 }
 
 #[test]

@@ -25,4 +25,4 @@ id = "cpp-sgb-ext-test"
 rom = "sgb-ext-test.gb"
 console = "sgb"
 timeout_frames = 240
-oracle = { fixture = "../../../crates/gb-test-runner/data/gb-emulator-shootout/fixtures/cpp/sgb-ext-test.sgb.png" }
+oracle = { local = true, fixture = "fixtures/cpp/sgb-ext-test.sgb.png" }

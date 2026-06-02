@@ -6,8 +6,8 @@ use gb_core::{
     CpuRegisters, Machine, MachineConfig, OperatingMode, StartupMode, TraceSummaryBuffer,
 };
 use gb_test_runner::{
-    RomSuite, boot_rom_image_path, boot_rom_revision_for_console_model, discover_boot_rom_root,
-    mealybug_tearoom_suite, verify_boot_rom_file,
+    PassCondition, RomSuite, RomTestCase, Timeout, boot_rom_image_path,
+    boot_rom_revision_for_console_model, discover_boot_rom_root, verify_boot_rom_file,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -136,13 +136,32 @@ fn suite_for_configured_startup(suite: &RomSuite) -> Result<RomSuite, String> {
     Ok(suite)
 }
 
+fn startup_fixture_suite() -> RomSuite {
+    RomSuite::new("startup-fixture")
+        .with_case(RomTestCase::new(
+            "skip-boot-case",
+            "fixture.gb",
+            Timeout::Frames(1),
+            PassCondition::MooneyeResult,
+        ))
+        .with_case(
+            RomTestCase::new(
+                "custom-boot-case",
+                "fixture.gb",
+                Timeout::Frames(1),
+                PassCondition::MooneyeResult,
+            )
+            .with_startup_mode(StartupMode::CustomBoot),
+        )
+}
+
 #[test]
 fn test_rom_startup_defaults_to_manifest_startup_modes() {
     let _guard = lock_env();
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     remove_env_var(TEST_ROM_STARTUP_ENV_VAR);
 
-    let suite = mealybug_tearoom_suite();
+    let suite = startup_fixture_suite();
     assert!(
         suite
             .cases
@@ -168,7 +187,7 @@ fn test_rom_startup_real_boot_overrides_custom_boot_cases() {
     let previous_startup = env::var_os(TEST_ROM_STARTUP_ENV_VAR);
     set_env_var(TEST_ROM_STARTUP_ENV_VAR, "real-boot");
 
-    let suite = mealybug_tearoom_suite();
+    let suite = startup_fixture_suite();
     assert!(
         suite
             .cases

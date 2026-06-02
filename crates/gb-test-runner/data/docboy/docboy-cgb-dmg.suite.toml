@@ -322,1997 +322,1997 @@ oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value =
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-bg-obj-overlap-bg-win-off"
 rom = "ppu/visual/bg_obj_overlap_bg_win_off.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_off.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_off.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-bg-obj-overlap-bg-win-on"
 rom = "ppu/visual/bg_obj_overlap_bg_win_on.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_on.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/bg_obj_overlap_bg_win_on.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-bgp"
 rom = "ppu/visual/bgp.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/bgp.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/bgp.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift0-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift0_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift1-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift1_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift2_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay0-alt-sprite-data"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift2_delay0_alt_sprite_data.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0_alt_sprite_data.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay0_alt_sprite_data.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift3-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift3_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift4-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift4_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift5-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift5_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift6-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift6_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift7-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift7_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift0-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift0_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift0_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift1-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift1_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift1_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift2-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift2_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift2_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift3-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift3_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift3_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift4-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift4_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift4_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift5-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift5_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift5_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift6-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift6_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift6_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift7-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift7_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift7_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var2"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var3"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay0-alt-sprite-data-var4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay0_alt_sprite_data_var4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay1"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay2"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay3"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-shift8-delay5"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_shift8_delay5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_shift8_delay5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var1"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var2"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var3"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var5"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var6"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var7"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var8"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var9"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var10"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var10.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var10.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var10.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var11"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var11.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var11.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var11.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var12"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var12.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var12.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var12.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var13"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var13.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var13.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var13.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var14"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var14.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var14.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var14.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var15"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var15.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var15.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var15.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var16"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var16.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var16.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var16.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var17"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var17.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var17.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var17.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var18"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var18.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var18.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var18.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var19"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var19.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var19.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var19.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var20"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var20.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var20.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var20.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var21"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var21.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var21.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var21.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var22"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var22.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var22.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var22.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var23"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var23.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var23.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var23.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var24"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var24.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var24.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var24.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var25"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var25.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var25.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var25.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var26"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var26.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var26.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var26.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var27"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var27.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var27.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var27.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var28"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var28.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var28.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var28.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var29"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var29.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var29.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var29.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var30"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var31"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var31.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var31.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var31.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var32"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var32.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var32.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var32.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var33"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var33.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var33.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var33.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var34"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var34.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var34.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var34.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var35"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var35.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var35.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var35.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var36"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var36.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var36.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var36.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var37"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var37.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var37.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var37.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var38"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var38.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var38.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var38.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var39"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var39.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var39.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var39.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var40"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var40.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var40.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var40.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var41"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var41.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var41.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var41.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var42"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var42.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var42.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var42.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var43.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var43_alt.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt2"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var43_alt2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt3"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var43_alt3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var43-alt4"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var43_alt4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var43_alt4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var44"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var44.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-mealybug-var44-alt"
 rom = "ppu/visual/change_bg_tile_data_glitch_mealybug_var44_alt.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44_alt.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_mealybug_var44_alt.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops26"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops26.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops26.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops26.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops27"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops27.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops27.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops27.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops28"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops28.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops28.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops28.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-a"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-b"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-c"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-d"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var1"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var2"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var3"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops28"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops28.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops28.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops28.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops29"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops29.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops29.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops29.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops30"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops31"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops31.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops31.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops31.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops32"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops32.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops32.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops32.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops85"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops85.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops85.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops85.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops98"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops98.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops98.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops98.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops99"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops99.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops99.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops99.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops100"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops100.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops100.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops100.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops101"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops101.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops101.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops101.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var4-nops102"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var4_nops102.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops102.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var4_nops102.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var5-nops30"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var5_nops30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var5-nops30-alt"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var5_nops30_alt.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30_alt.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var5_nops30_alt.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var6-nops30"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var6_nops30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var6_nops30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var6_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-noop"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_noop.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_noop.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_noop.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-12"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_12.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_12.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_12.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-17"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_17.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_17.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_17.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var7-vblank-nops-100"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_100.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_100.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var7_vblank_nops_100.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var9-vblank-nops-55"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_55.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_55.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_55.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var9-vblank-nops-56"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_56.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_56.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var9_vblank_nops_56.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops29-var10"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops29_var10.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var10.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops29_var10.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops30"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops34"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops34.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops34.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops34.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops35"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops35.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops35.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops35.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops36"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops36.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops36.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops36.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops37"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops37.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops37.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops37.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-tile-data-glitch-sprites-nops38"
 rom = "ppu/visual/change_bg_tile_data_glitch_sprites_nops38.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops38.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_tile_data_glitch_sprites_nops38.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bg-win-enable-during-pixel-transfer"
 rom = "ppu/visual/change_bg_win_enable_during_pixel_transfer.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bg_win_enable_during_pixel_transfer.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bg_win_enable_during_pixel_transfer.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bgp-or-bug-checksum-d1"
 rom = "ppu/visual/change_bgp_or_bug_checksum_d1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-bgp-or-bug-checksum-d1-first-dot"
 rom = "ppu/visual/change_bgp_or_bug_checksum_d1_first_dot.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1_first_dot.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_bgp_or_bug_checksum_d1_first_dot.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops26"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops26.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops26.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops26.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops27"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops27.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops27.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops27.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops28"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops28.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops28.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops28.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops29"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops29.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops29.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops29.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-change-win-tile-data-glitch-window-nops30"
 rom = "ppu/visual/change_win_tile_data_glitch_window_nops30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/change_win_tile_data_glitch_window_nops30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-enable-win-during-pixel-transfer-round1"
 rom = "ppu/visual/enable_win_during_pixel_transfer_round1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-enable-win-during-pixel-transfer-round2"
 rom = "ppu/visual/enable_win_during_pixel_transfer_round2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/enable_win_during_pixel_transfer_round2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-oam-attributes-bank"
 rom = "ppu/visual/oam_attributes_bank.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/oam_attributes_bank.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/oam_attributes_bank.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority"
 rom = "ppu/visual/obj_priority.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/obj_priority.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority-alt"
 rom = "ppu/visual/obj_priority_alt.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority_alt.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/obj_priority_alt.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obj-priority-change-opri"
 rom = "ppu/visual/obj_priority_change_opri.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obj_priority_change_opri.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/obj_priority_change_opri.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-obp"
 rom = "ppu/visual/obp.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/obp.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/obp.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-01-checksum-01"
 rom = "ppu/visual/palettes_cgb_flag_01_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_01_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_cgb_flag_01_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-80-checksum-01"
 rom = "ppu/visual/palettes_cgb_flag_80_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_80_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_cgb_flag_80_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-81-checksum-01"
 rom = "ppu/visual/palettes_cgb_flag_81_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_81_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_cgb_flag_81_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-cgb-flag-c0-checksum-01"
 rom = "ppu/visual/palettes_cgb_flag_c0_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_cgb_flag_c0_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_cgb_flag_c0_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-00"
 rom = "ppu/visual/palettes_checksum_00.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_00.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_00.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-01"
 rom = "ppu/visual/palettes_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-02"
 rom = "ppu/visual/palettes_checksum_02.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_02.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_02.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-03"
 rom = "ppu/visual/palettes_checksum_03.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_03.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_03.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-04"
 rom = "ppu/visual/palettes_checksum_04.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_04.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_04.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-05"
 rom = "ppu/visual/palettes_checksum_05.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_05.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_05.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-06"
 rom = "ppu/visual/palettes_checksum_06.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_06.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_06.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-07"
 rom = "ppu/visual/palettes_checksum_07.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_07.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_07.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-08"
 rom = "ppu/visual/palettes_checksum_08.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_08.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_08.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-09"
 rom = "ppu/visual/palettes_checksum_09.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_09.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_09.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0a"
 rom = "ppu/visual/palettes_checksum_0a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0b"
 rom = "ppu/visual/palettes_checksum_0b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0c"
 rom = "ppu/visual/palettes_checksum_0c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0d"
 rom = "ppu/visual/palettes_checksum_0d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0e"
 rom = "ppu/visual/palettes_checksum_0e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0f"
 rom = "ppu/visual/palettes_checksum_0f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_0f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_0f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-10"
 rom = "ppu/visual/palettes_checksum_10.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_10.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_10.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-11"
 rom = "ppu/visual/palettes_checksum_11.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_11.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_11.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-12"
 rom = "ppu/visual/palettes_checksum_12.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_12.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_12.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-13"
 rom = "ppu/visual/palettes_checksum_13.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_13.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_13.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-14"
 rom = "ppu/visual/palettes_checksum_14.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_14.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_14.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-15"
 rom = "ppu/visual/palettes_checksum_15.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_15.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_15.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-16"
 rom = "ppu/visual/palettes_checksum_16.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_16.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_16.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-17"
 rom = "ppu/visual/palettes_checksum_17.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_17.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_17.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-18"
 rom = "ppu/visual/palettes_checksum_18.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_18.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_18.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-19"
 rom = "ppu/visual/palettes_checksum_19.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_19.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_19.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1a"
 rom = "ppu/visual/palettes_checksum_1a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1b"
 rom = "ppu/visual/palettes_checksum_1b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1c"
 rom = "ppu/visual/palettes_checksum_1c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1d"
 rom = "ppu/visual/palettes_checksum_1d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1e"
 rom = "ppu/visual/palettes_checksum_1e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-1f"
 rom = "ppu/visual/palettes_checksum_1f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_1f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_1f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-20"
 rom = "ppu/visual/palettes_checksum_20.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_20.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_20.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-21"
 rom = "ppu/visual/palettes_checksum_21.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_21.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_21.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-22"
 rom = "ppu/visual/palettes_checksum_22.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_22.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_22.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-23"
 rom = "ppu/visual/palettes_checksum_23.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_23.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_23.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-24"
 rom = "ppu/visual/palettes_checksum_24.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_24.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_24.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-25"
 rom = "ppu/visual/palettes_checksum_25.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_25.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_25.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-26"
 rom = "ppu/visual/palettes_checksum_26.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_26.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_26.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-27"
 rom = "ppu/visual/palettes_checksum_27.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_27.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_27.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-28"
 rom = "ppu/visual/palettes_checksum_28.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_28.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_28.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-29"
 rom = "ppu/visual/palettes_checksum_29.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_29.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_29.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2a"
 rom = "ppu/visual/palettes_checksum_2a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2b"
 rom = "ppu/visual/palettes_checksum_2b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2c"
 rom = "ppu/visual/palettes_checksum_2c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2d"
 rom = "ppu/visual/palettes_checksum_2d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2e"
 rom = "ppu/visual/palettes_checksum_2e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-2f"
 rom = "ppu/visual/palettes_checksum_2f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_2f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_2f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-30"
 rom = "ppu/visual/palettes_checksum_30.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_30.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_30.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-31"
 rom = "ppu/visual/palettes_checksum_31.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_31.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_31.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-32"
 rom = "ppu/visual/palettes_checksum_32.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_32.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_32.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-33"
 rom = "ppu/visual/palettes_checksum_33.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_33.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_33.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-34"
 rom = "ppu/visual/palettes_checksum_34.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_34.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_34.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-35"
 rom = "ppu/visual/palettes_checksum_35.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_35.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_35.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-36"
 rom = "ppu/visual/palettes_checksum_36.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_36.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_36.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-37"
 rom = "ppu/visual/palettes_checksum_37.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_37.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_37.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-38"
 rom = "ppu/visual/palettes_checksum_38.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_38.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_38.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-39"
 rom = "ppu/visual/palettes_checksum_39.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_39.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_39.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3a"
 rom = "ppu/visual/palettes_checksum_3a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3b"
 rom = "ppu/visual/palettes_checksum_3b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3c"
 rom = "ppu/visual/palettes_checksum_3c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3d"
 rom = "ppu/visual/palettes_checksum_3d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3e"
 rom = "ppu/visual/palettes_checksum_3e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-3f"
 rom = "ppu/visual/palettes_checksum_3f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_3f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_3f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-40"
 rom = "ppu/visual/palettes_checksum_40.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_40.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_40.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-41"
 rom = "ppu/visual/palettes_checksum_41.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_41.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_41.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-42"
 rom = "ppu/visual/palettes_checksum_42.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_42.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_42.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-43"
 rom = "ppu/visual/palettes_checksum_43.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_43.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_43.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-44"
 rom = "ppu/visual/palettes_checksum_44.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_44.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_44.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-45"
 rom = "ppu/visual/palettes_checksum_45.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_45.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_45.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-46"
 rom = "ppu/visual/palettes_checksum_46.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_46.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_46.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-47"
 rom = "ppu/visual/palettes_checksum_47.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_47.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_47.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-48"
 rom = "ppu/visual/palettes_checksum_48.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_48.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_48.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-49"
 rom = "ppu/visual/palettes_checksum_49.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_49.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_49.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4a"
 rom = "ppu/visual/palettes_checksum_4a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4b"
 rom = "ppu/visual/palettes_checksum_4b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4c"
 rom = "ppu/visual/palettes_checksum_4c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4d"
 rom = "ppu/visual/palettes_checksum_4d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4e"
 rom = "ppu/visual/palettes_checksum_4e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-4f"
 rom = "ppu/visual/palettes_checksum_4f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_4f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_4f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-50"
 rom = "ppu/visual/palettes_checksum_50.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_50.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_50.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-51"
 rom = "ppu/visual/palettes_checksum_51.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_51.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_51.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-52"
 rom = "ppu/visual/palettes_checksum_52.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_52.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_52.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-53"
 rom = "ppu/visual/palettes_checksum_53.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_53.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_53.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-54"
 rom = "ppu/visual/palettes_checksum_54.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_54.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_54.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-55"
 rom = "ppu/visual/palettes_checksum_55.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_55.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_55.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-56"
 rom = "ppu/visual/palettes_checksum_56.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_56.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_56.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-57"
 rom = "ppu/visual/palettes_checksum_57.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_57.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_57.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-58"
 rom = "ppu/visual/palettes_checksum_58.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_58.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_58.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-59"
 rom = "ppu/visual/palettes_checksum_59.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_59.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_59.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5a"
 rom = "ppu/visual/palettes_checksum_5a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5b"
 rom = "ppu/visual/palettes_checksum_5b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5c"
 rom = "ppu/visual/palettes_checksum_5c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5d"
 rom = "ppu/visual/palettes_checksum_5d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5e"
 rom = "ppu/visual/palettes_checksum_5e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-5f"
 rom = "ppu/visual/palettes_checksum_5f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_5f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_5f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-60"
 rom = "ppu/visual/palettes_checksum_60.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_60.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_60.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-61"
 rom = "ppu/visual/palettes_checksum_61.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_61.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_61.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-62"
 rom = "ppu/visual/palettes_checksum_62.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_62.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_62.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-63"
 rom = "ppu/visual/palettes_checksum_63.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_63.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_63.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-64"
 rom = "ppu/visual/palettes_checksum_64.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_64.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_64.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-65"
 rom = "ppu/visual/palettes_checksum_65.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_65.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_65.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-66"
 rom = "ppu/visual/palettes_checksum_66.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_66.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_66.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-67"
 rom = "ppu/visual/palettes_checksum_67.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_67.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_67.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-68"
 rom = "ppu/visual/palettes_checksum_68.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_68.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_68.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-69"
 rom = "ppu/visual/palettes_checksum_69.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_69.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_69.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6a"
 rom = "ppu/visual/palettes_checksum_6a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6b"
 rom = "ppu/visual/palettes_checksum_6b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6c"
 rom = "ppu/visual/palettes_checksum_6c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6d"
 rom = "ppu/visual/palettes_checksum_6d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6e"
 rom = "ppu/visual/palettes_checksum_6e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-6f"
 rom = "ppu/visual/palettes_checksum_6f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_6f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_6f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-70"
 rom = "ppu/visual/palettes_checksum_70.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_70.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_70.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-71"
 rom = "ppu/visual/palettes_checksum_71.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_71.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_71.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-72"
 rom = "ppu/visual/palettes_checksum_72.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_72.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_72.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-73"
 rom = "ppu/visual/palettes_checksum_73.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_73.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_73.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-74"
 rom = "ppu/visual/palettes_checksum_74.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_74.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_74.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-75"
 rom = "ppu/visual/palettes_checksum_75.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_75.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_75.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-76"
 rom = "ppu/visual/palettes_checksum_76.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_76.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_76.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-77"
 rom = "ppu/visual/palettes_checksum_77.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_77.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_77.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-78"
 rom = "ppu/visual/palettes_checksum_78.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_78.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_78.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-79"
 rom = "ppu/visual/palettes_checksum_79.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_79.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_79.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7a"
 rom = "ppu/visual/palettes_checksum_7a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7b"
 rom = "ppu/visual/palettes_checksum_7b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7c"
 rom = "ppu/visual/palettes_checksum_7c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7d"
 rom = "ppu/visual/palettes_checksum_7d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7e"
 rom = "ppu/visual/palettes_checksum_7e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-7f"
 rom = "ppu/visual/palettes_checksum_7f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_7f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_7f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-80"
 rom = "ppu/visual/palettes_checksum_80.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_80.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_80.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-81"
 rom = "ppu/visual/palettes_checksum_81.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_81.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_81.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-82"
 rom = "ppu/visual/palettes_checksum_82.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_82.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_82.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-83"
 rom = "ppu/visual/palettes_checksum_83.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_83.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_83.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-84"
 rom = "ppu/visual/palettes_checksum_84.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_84.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_84.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-85"
 rom = "ppu/visual/palettes_checksum_85.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_85.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_85.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-86"
 rom = "ppu/visual/palettes_checksum_86.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_86.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_86.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-87"
 rom = "ppu/visual/palettes_checksum_87.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_87.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_87.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-88"
 rom = "ppu/visual/palettes_checksum_88.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_88.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_88.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-89"
 rom = "ppu/visual/palettes_checksum_89.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_89.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_89.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8a"
 rom = "ppu/visual/palettes_checksum_8a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8b"
 rom = "ppu/visual/palettes_checksum_8b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8c"
 rom = "ppu/visual/palettes_checksum_8c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8d"
 rom = "ppu/visual/palettes_checksum_8d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8e"
 rom = "ppu/visual/palettes_checksum_8e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-8f"
 rom = "ppu/visual/palettes_checksum_8f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_8f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_8f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-90"
 rom = "ppu/visual/palettes_checksum_90.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_90.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_90.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-91"
 rom = "ppu/visual/palettes_checksum_91.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_91.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_91.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-92"
 rom = "ppu/visual/palettes_checksum_92.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_92.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_92.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-93"
 rom = "ppu/visual/palettes_checksum_93.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_93.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_93.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-94"
 rom = "ppu/visual/palettes_checksum_94.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_94.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_94.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-95"
 rom = "ppu/visual/palettes_checksum_95.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_95.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_95.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-96"
 rom = "ppu/visual/palettes_checksum_96.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_96.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_96.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-97"
 rom = "ppu/visual/palettes_checksum_97.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_97.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_97.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-98"
 rom = "ppu/visual/palettes_checksum_98.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_98.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_98.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-99"
 rom = "ppu/visual/palettes_checksum_99.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_99.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_99.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9a"
 rom = "ppu/visual/palettes_checksum_9a.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9a.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9a.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9b"
 rom = "ppu/visual/palettes_checksum_9b.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9b.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9b.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9c"
 rom = "ppu/visual/palettes_checksum_9c.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9c.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9c.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9d"
 rom = "ppu/visual/palettes_checksum_9d.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9d.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9d.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9e"
 rom = "ppu/visual/palettes_checksum_9e.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9e.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9e.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-9f"
 rom = "ppu/visual/palettes_checksum_9f.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_9f.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_9f.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a0"
 rom = "ppu/visual/palettes_checksum_a0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a1"
 rom = "ppu/visual/palettes_checksum_a1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a2"
 rom = "ppu/visual/palettes_checksum_a2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a3"
 rom = "ppu/visual/palettes_checksum_a3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a4"
 rom = "ppu/visual/palettes_checksum_a4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a5"
 rom = "ppu/visual/palettes_checksum_a5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a6"
 rom = "ppu/visual/palettes_checksum_a6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a7"
 rom = "ppu/visual/palettes_checksum_a7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a8"
 rom = "ppu/visual/palettes_checksum_a8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-a9"
 rom = "ppu/visual/palettes_checksum_a9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_a9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_a9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-aa"
 rom = "ppu/visual/palettes_checksum_aa.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_aa.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_aa.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ab"
 rom = "ppu/visual/palettes_checksum_ab.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ab.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ab.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ac"
 rom = "ppu/visual/palettes_checksum_ac.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ac.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ac.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ad"
 rom = "ppu/visual/palettes_checksum_ad.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ad.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ad.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ae"
 rom = "ppu/visual/palettes_checksum_ae.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ae.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ae.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-af"
 rom = "ppu/visual/palettes_checksum_af.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_af.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_af.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b0"
 rom = "ppu/visual/palettes_checksum_b0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b1"
 rom = "ppu/visual/palettes_checksum_b1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b2"
 rom = "ppu/visual/palettes_checksum_b2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b3"
 rom = "ppu/visual/palettes_checksum_b3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b4"
 rom = "ppu/visual/palettes_checksum_b4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b5"
 rom = "ppu/visual/palettes_checksum_b5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b6"
 rom = "ppu/visual/palettes_checksum_b6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b7"
 rom = "ppu/visual/palettes_checksum_b7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b8"
 rom = "ppu/visual/palettes_checksum_b8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-b9"
 rom = "ppu/visual/palettes_checksum_b9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_b9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_b9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-0xba"
 rom = "ppu/visual/palettes_checksum_ba.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ba.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ba.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bb"
 rom = "ppu/visual/palettes_checksum_bb.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bb.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_bb.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bc"
 rom = "ppu/visual/palettes_checksum_bc.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bc.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_bc.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bd"
 rom = "ppu/visual/palettes_checksum_bd.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bd.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_bd.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-be"
 rom = "ppu/visual/palettes_checksum_be.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_be.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_be.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-bf"
 rom = "ppu/visual/palettes_checksum_bf.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_bf.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_bf.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c0"
 rom = "ppu/visual/palettes_checksum_c0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c1"
 rom = "ppu/visual/palettes_checksum_c1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c2"
 rom = "ppu/visual/palettes_checksum_c2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c3"
 rom = "ppu/visual/palettes_checksum_c3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c4"
 rom = "ppu/visual/palettes_checksum_c4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c5"
 rom = "ppu/visual/palettes_checksum_c5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c6"
 rom = "ppu/visual/palettes_checksum_c6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c7"
 rom = "ppu/visual/palettes_checksum_c7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c8"
 rom = "ppu/visual/palettes_checksum_c8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-c9"
 rom = "ppu/visual/palettes_checksum_c9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_c9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_c9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ca"
 rom = "ppu/visual/palettes_checksum_ca.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ca.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ca.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cb"
 rom = "ppu/visual/palettes_checksum_cb.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cb.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_cb.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cc"
 rom = "ppu/visual/palettes_checksum_cc.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cc.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_cc.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cd"
 rom = "ppu/visual/palettes_checksum_cd.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cd.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_cd.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ce"
 rom = "ppu/visual/palettes_checksum_ce.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ce.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ce.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-cf"
 rom = "ppu/visual/palettes_checksum_cf.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_cf.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_cf.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d0"
 rom = "ppu/visual/palettes_checksum_d0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d1"
 rom = "ppu/visual/palettes_checksum_d1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d2"
 rom = "ppu/visual/palettes_checksum_d2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d3"
 rom = "ppu/visual/palettes_checksum_d3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d4"
 rom = "ppu/visual/palettes_checksum_d4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d5"
 rom = "ppu/visual/palettes_checksum_d5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d6"
 rom = "ppu/visual/palettes_checksum_d6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d7"
 rom = "ppu/visual/palettes_checksum_d7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d8"
 rom = "ppu/visual/palettes_checksum_d8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-d9"
 rom = "ppu/visual/palettes_checksum_d9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_d9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_d9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-da"
 rom = "ppu/visual/palettes_checksum_da.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_da.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_da.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-db"
 rom = "ppu/visual/palettes_checksum_db.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_db.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_db.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-dc"
 rom = "ppu/visual/palettes_checksum_dc.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_dc.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_dc.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-dd"
 rom = "ppu/visual/palettes_checksum_dd.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_dd.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_dd.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-de"
 rom = "ppu/visual/palettes_checksum_de.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_de.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_de.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-df"
 rom = "ppu/visual/palettes_checksum_df.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_df.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_df.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e0"
 rom = "ppu/visual/palettes_checksum_e0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e1"
 rom = "ppu/visual/palettes_checksum_e1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e2"
 rom = "ppu/visual/palettes_checksum_e2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e3"
 rom = "ppu/visual/palettes_checksum_e3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e4"
 rom = "ppu/visual/palettes_checksum_e4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e5"
 rom = "ppu/visual/palettes_checksum_e5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e6"
 rom = "ppu/visual/palettes_checksum_e6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e7"
 rom = "ppu/visual/palettes_checksum_e7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e8"
 rom = "ppu/visual/palettes_checksum_e8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-e9"
 rom = "ppu/visual/palettes_checksum_e9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_e9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_e9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ea"
 rom = "ppu/visual/palettes_checksum_ea.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ea.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ea.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-eb"
 rom = "ppu/visual/palettes_checksum_eb.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_eb.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_eb.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ec"
 rom = "ppu/visual/palettes_checksum_ec.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ec.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ec.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ed"
 rom = "ppu/visual/palettes_checksum_ed.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ed.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ed.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ee"
 rom = "ppu/visual/palettes_checksum_ee.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ee.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ee.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-ef"
 rom = "ppu/visual/palettes_checksum_ef.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_ef.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_ef.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f0"
 rom = "ppu/visual/palettes_checksum_f0.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f0.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f0.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f1"
 rom = "ppu/visual/palettes_checksum_f1.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f1.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f1.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f2"
 rom = "ppu/visual/palettes_checksum_f2.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f2.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f2.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f3"
 rom = "ppu/visual/palettes_checksum_f3.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f3.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f3.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f4"
 rom = "ppu/visual/palettes_checksum_f4.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f4.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f4.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f5"
 rom = "ppu/visual/palettes_checksum_f5.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f5.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f5.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f6"
 rom = "ppu/visual/palettes_checksum_f6.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f6.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f6.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f7"
 rom = "ppu/visual/palettes_checksum_f7.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f7.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f7.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f8"
 rom = "ppu/visual/palettes_checksum_f8.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f8.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f8.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-f9"
 rom = "ppu/visual/palettes_checksum_f9.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_f9.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_f9.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fa"
 rom = "ppu/visual/palettes_checksum_fa.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fa.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_fa.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fb"
 rom = "ppu/visual/palettes_checksum_fb.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fb.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_fb.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fc"
 rom = "ppu/visual/palettes_checksum_fc.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fc.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_fc.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fd"
 rom = "ppu/visual/palettes_checksum_fd.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fd.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_fd.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-checksum-fe"
 rom = "ppu/visual/palettes_checksum_fe.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_checksum_fe.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_checksum_fe.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-00-checksum-00"
 rom = "ppu/visual/palettes_old_license_00_new_license_00_checksum_00.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_00.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_00.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-00-checksum-01"
 rom = "ppu/visual/palettes_old_license_00_new_license_00_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_00_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-01-checksum-00"
 rom = "ppu/visual/palettes_old_license_00_new_license_01_checksum_00.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_00.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_00.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-00-new-license-01-checksum-01"
 rom = "ppu/visual/palettes_old_license_00_new_license_01_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_00_new_license_01_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-00-checksum-00"
 rom = "ppu/visual/palettes_old_license_33_new_license_00_checksum_00.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_00.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_00.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-00-checksum-01"
 rom = "ppu/visual/palettes_old_license_33_new_license_00_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_00_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-01-checksum-00"
 rom = "ppu/visual/palettes_old_license_33_new_license_01_checksum_00.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_00.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_00.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-ppu-visual-palettes-old-license-33-new-license-01-checksum-01"
 rom = "ppu/visual/palettes_old_license_33_new_license_01_checksum_01.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/docboy/fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_01.png" }
+oracle = { local = true, fixture = "fixtures/cgb-dmg/ppu/palettes_old_license_33_new_license_01_checksum_01.png" }
 
 [[case]]
 id = "docboy-cgb-dmg-serial-sc-write-read"
