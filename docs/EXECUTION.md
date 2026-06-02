@@ -60,7 +60,7 @@ This file owns the day-to-day implementation workflow: how to choose authority d
 ## Validation selection
 
 - Start with formatting, typos, unit tests, or targeted cargo tests when they directly cover the change.
-- Use `make ci` as the local pre-push gate when the change affects code paths covered by the default repository gate.
+- Use the local pre-commit checks plus `make coverage` when the change affects code paths covered by the default repository gate.
 - Use `cargo rom-suite` report commands from [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) when behavior depends on external ROM evidence, and keep the generated report channel aligned with the suite being rerun.
 - For already-known external ROM failures or timing-sensitive reruns, follow the before/after report workflow from [`docs/index.md`](index.md) and [`docs/TESTING.md`](TESTING.md) before deciding whether to keep the change.
 - Use external emulator source or differential cross-checks only as corroborating evidence after primary documentation, hardware research, and executable tests have been considered.

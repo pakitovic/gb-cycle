@@ -126,7 +126,7 @@ Every Phase `5` subphase should end with:
 - focused unit tests for the local register contract, edge detector, transfer state machine, or peer boundary that was introduced
 - integration tests when the behavior only becomes meaningful across `joypad`, `serial`, `cpu`, `interrupts`, `bus`, or `machine`
 - retained trace or snapshot coverage when timing visibility, `STOP` wake ordering, or serial progress would otherwise be hard to audit after a refactor
-- `cargo test -q` passing locally at minimum, and `make ci` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- `cargo test -q` passing locally at minimum, plus pre-commit checks and `make coverage` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
 - at least one explicit note about remaining risk when oracle comparison or external-ROM validation is still intentionally deferred
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 

@@ -32,7 +32,7 @@ crates/
 
 .cargo/           Cargo aliases for local runners and verification commands
 docs/              Project handbook and subsystem notes
-Makefile           Local setup, hooks, CI, and coverage entry points
+Makefile           Local setup, hooks, and coverage entry points
 scripts/           Developer helper scripts
 ```
 
@@ -114,24 +114,30 @@ Run the [`release`](.github/workflows/release.yml) GitHub Actions workflow to pu
 
 ## Tooling
 
-### Install local tooling
+### Setup local tooling and hooks
 
 ```bash
 make setup
 ```
 
+### Pre-commit checks
+
+```bash
+cargo fmt-check
+cargo lint
+typos
+cargo deny-check
+```
+
+The configured pre-commit hook runs the same checks.
+
 ### Coverage
 
 ```bash
-make coverage-check
 make coverage
 ```
 
-### Full local pipeline
-
-```bash
-make ci
-```
+`make coverage` runs the workspace coverage sweep, enforces per-crate gates, and emits the HTML report.
 
 ### ROM-suite validation
 

@@ -190,7 +190,7 @@ Every Phase `1` subphase should end with:
 
 - targeted unit and integration coverage for the newly closed contract
 - updated golden traces or snapshots when observable ordering changes
-- `make ci` passing locally
+- pre-commit checks and `make coverage` passing locally
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
 #### MMIO contract sequencing

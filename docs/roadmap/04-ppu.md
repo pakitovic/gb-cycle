@@ -98,7 +98,7 @@ Every Phase `4` subphase should end with:
 - focused unit tests for the local state machine, pipeline step, or register contract that was introduced
 - integration tests when the behavior only becomes meaningful across `ppu`, `bus`, `dma`, `interrupts`, or `machine`
 - synthetic VRAM/OAM fixtures or retained trace/snapshot coverage when visible pixel order or timing changes
-- `cargo test -q` passing locally at minimum, and `make ci` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- `cargo test -q` passing locally at minimum, plus pre-commit checks and `make coverage` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
 - at least one explicit note about remaining risk when external ROM or oracle validation is still intentionally deferred
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 

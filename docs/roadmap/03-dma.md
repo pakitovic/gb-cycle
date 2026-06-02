@@ -65,7 +65,7 @@ Every Phase `3` subphase should end with:
 
 - targeted unit and integration coverage for the newly closed DMA contract
 - updated traces or snapshots when observable DMA ordering changes
-- `cargo test -q` passing locally at minimum, and `make ci` when the subphase changes repo tooling or shared workflow-critical infrastructure
+- `cargo test -q` passing locally at minimum, plus pre-commit checks and `make coverage` when the subphase changes repo tooling or shared workflow-critical infrastructure
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
 #### Risks if delayed too much
