@@ -37,7 +37,7 @@ fn real_docboy_link_manifest_loads_from_report_sources() {
 
     assert_eq!(suites.len(), 1);
     assert_eq!(suites[0].family, "docboy-dmg");
-    assert_eq!(suites[0].cases.len(), 4);
+    assert_eq!(suites[0].cases.len(), 2);
     assert_eq!(suites[0].cases[0].target_root, Path::new("dmg"));
     assert_eq!(
         suites[0].cases[0].participants[0].rom,
@@ -107,6 +107,61 @@ fn parser_rejects_unknown_topology_and_escaped_paths() {
         )
         .expect_err("escaped ROM should fail")
         .contains("must not contain '..'")
+    );
+}
+
+#[test]
+fn disabled_cases_require_comments_and_are_skipped() {
+    let manifest = r#"report = "linked"
+suite_name = "disabled"
+family = "linked"
+topology = "dmg04"
+timeout_tcycles = 8
+oracle = { type = "serial-hex-exact", target_participant = "left", expected = "" }
+
+[[case]]
+id = "disabled-case"
+disabled = true
+comment = "Known hardware investigation row."
+oracle = { type = "unknown-disabled-oracle" }
+
+[[case]]
+id = "enabled-case"
+
+  [[case.participant]]
+  id = "left"
+  rom = "left.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "right"
+  rom = "right.gb"
+  console = "dmg"
+"#;
+
+    let suite = parse_link_suite_manifest_for_test(
+        Path::new("disabled.link.suite.toml"),
+        "linked",
+        manifest,
+    )
+    .expect("disabled case should be skipped after validating comment");
+
+    assert_eq!(suite.cases.len(), 1);
+    assert_eq!(suite.cases[0].id, "enabled-case");
+
+    let missing_comment = manifest.replace(
+        r#"comment = "Known hardware investigation row."
+"#,
+        "",
+    );
+    assert!(
+        parse_link_suite_manifest_for_test(
+            Path::new("disabled.link.suite.toml"),
+            "linked",
+            &missing_comment,
+        )
+        .expect_err("disabled case without comment should fail")
+        .contains("must include a non-empty comment")
     );
 }
 

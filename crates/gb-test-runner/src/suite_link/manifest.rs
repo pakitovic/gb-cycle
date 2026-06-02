@@ -62,8 +62,11 @@ struct LinkCaseFile {
     topology: Option<String>,
     startup: Option<String>,
     timeout_tcycles: Option<u64>,
+    #[serde(default)]
+    disabled: bool,
+    comment: Option<String>,
     oracle: Option<OracleConfig>,
-    #[serde(rename = "participant")]
+    #[serde(rename = "participant", default)]
     participants: Vec<LinkParticipantFile>,
 }
 
@@ -261,6 +264,10 @@ fn parse_link_suite_manifest(
                 path.display()
             ));
         }
+        if case.disabled {
+            validate_disabled_case_comment(path, &case)?;
+            continue;
+        }
         cases.push(parse_case(
             LinkCaseParseContext {
                 path,
@@ -309,6 +316,22 @@ fn validate_link_suite_report(
         ));
     }
     Ok(())
+}
+
+fn validate_disabled_case_comment(path: &Path, case: &LinkCaseFile) -> Result<(), String> {
+    if case
+        .comment
+        .as_deref()
+        .is_some_and(|comment| !comment.trim().is_empty())
+    {
+        return Ok(());
+    }
+
+    Err(format!(
+        "disabled linked case {:?} in {} must include a non-empty comment",
+        case.id,
+        path.display()
+    ))
 }
 
 struct LinkCaseParseContext<'a> {

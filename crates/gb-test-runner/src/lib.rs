@@ -4,11 +4,8 @@ mod boot_rom_verification;
 mod determinism;
 mod fetch;
 mod framebuffer_oracle;
-mod linked_session_manifest;
-mod linked_session_runner;
 mod oracle;
 mod rtc;
-mod run_linked_session_cli;
 mod suite;
 mod suite_link;
 #[cfg(test)]
@@ -46,19 +43,6 @@ pub use boot_rom_verification::{
     verify_boot_rom_file,
 };
 pub use fetch::{fetch_help_text, run_fetch_command};
-pub use linked_session_manifest::{
-    LinkedSessionCaptureKind, LinkedSessionCapturePlan, LinkedSessionCase,
-    LinkedSessionCaseValidationError, LinkedSessionFailureArtifactPolicy, LinkedSessionParticipant,
-    LinkedSessionParticipantValidationError, LinkedSessionPassCondition, LinkedSessionSuite,
-    LinkedSessionSuiteManifestError, LinkedSessionSuiteValidationError, LinkedSessionTopology,
-    load_linked_session_suite_manifest,
-};
-pub use linked_session_runner::{
-    LinkedSessionCapturedArtifacts, LinkedSessionCaseFailure, LinkedSessionCaseOutcome,
-    LinkedSessionCaseReport, LinkedSessionExecutionError, LinkedSessionParticipantArtifacts,
-    LinkedSessionParticipantReport, LinkedSessionRunner, LinkedSessionSuiteReport,
-};
-pub use run_linked_session_cli::{linked_session_cli_help_text, run_linked_session_command};
 pub use suite::{run_suite_command, suite_help_text};
 pub use suite_link::{run_suite_link_command, suite_link_help_text};
 pub use workspace_paths::{
@@ -95,10 +79,6 @@ pub(crate) fn boot_rom_asset_is_required_for_runner_gate(asset: BootRomAssetKind
             | BootRomAssetKind::Cgb
             | BootRomAssetKind::CgbE
     )
-}
-
-pub(crate) fn boot_rom_revision_is_required_for_runner_gate(revision: HardwareRevision) -> bool {
-    boot_rom_asset_is_required_for_runner_gate(BootRomAssetKind::from_revision(revision))
 }
 
 pub(crate) fn enforce_missing_boot_rom_root_verification(
@@ -1016,30 +996,6 @@ pub fn built_in_rom_suite_by_name(name: &str) -> Option<RomSuite> {
     built_in_rom_suites()
         .into_iter()
         .find(|suite| suite.name == name)
-}
-
-const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[];
-
-pub fn built_in_linked_session_suite_catalog() -> Vec<(&'static str, PathBuf)> {
-    BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS
-        .iter()
-        .map(|(name, relative_path)| (*name, PathBuf::from(relative_path)))
-        .collect()
-}
-
-pub fn built_in_linked_session_suite_by_name(
-    workspace_root: &Path,
-    name: &str,
-) -> Result<Option<LinkedSessionSuite>, LinkedSessionSuiteManifestError> {
-    let Some((_, relative_path)) = BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS
-        .iter()
-        .find(|(suite_name, _)| *suite_name == name)
-    else {
-        return Ok(None);
-    };
-
-    let manifest_path = workspace_root.join(relative_path);
-    load_linked_session_suite_manifest(&manifest_path).map(Some)
 }
 
 #[derive(Debug)]

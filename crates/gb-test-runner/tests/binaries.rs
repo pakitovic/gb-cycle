@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -72,27 +71,6 @@ fn assert_help_and_parse_error(binary_name: &str, error_args: &[&str], error_fra
     );
 }
 
-fn unique_temp_dir(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "gb-cycle-binaries-{}-{}-{}",
-        label,
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ))
-}
-
-#[test]
-fn run_linked_session_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_linked_session",
-        &["--session"],
-        "--session requires a value",
-    );
-}
-
 #[test]
 fn suite_binary_handles_help_and_parse_errors() {
     assert_help_and_parse_error(
@@ -109,129 +87,4 @@ fn suite_link_binary_handles_help_and_parse_errors() {
         &["linked", "--case", "case"],
         "--case requires --suite",
     );
-}
-
-#[test]
-fn run_linked_session_binary_executes_manifest_backed_suites() {
-    let binary = binary_path("run_linked_session");
-    let temp_dir = unique_temp_dir("linked-session-pass");
-    let manifest_path = temp_dir.join("dmg04-smoke.toml");
-    std::fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-    let fixture_root = workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04");
-    let manifest = format!(
-        concat!(
-            "suite_name = \"dmg04\"\n",
-            "family = \"serial-ext\"\n",
-            "[[session]]\n",
-            "id = \"dmg04-basic-exchange\"\n",
-            "topology = \"dmg04\"\n",
-            "timeout_tcycles = 5000\n",
-            "oracle = \"linked-snapshot-fixture\"\n",
-            "fixture = \"{}\"\n\n",
-            "  [[session.participant]]\n",
-            "  id = \"left\"\n",
-            "  rom = \"{}\"\n",
-            "  console = \"dmg\"\n\n",
-            "  [[session.participant]]\n",
-            "  id = \"right\"\n",
-            "  rom = \"{}\"\n",
-            "  console = \"dmg\"\n",
-        ),
-        fixture_root.join("basic-exchange.snapshot").display(),
-        fixture_root.join("basic-left.gb").display(),
-        fixture_root.join("basic-right.gb").display(),
-    );
-    std::fs::write(&manifest_path, manifest).expect("linked manifest should be writable");
-
-    let output = Command::new(&binary)
-        .current_dir(workspace_root())
-        .args([
-            "--manifest",
-            manifest_path
-                .to_str()
-                .expect("manifest path should be utf-8"),
-        ])
-        .output()
-        .unwrap_or_else(|error| {
-            panic!("failed to spawn run_linked_session manifest case: {error}")
-        });
-
-    assert!(
-        output.status.success(),
-        "manifest-backed linked session should succeed: stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
-    assert!(stdout.contains("suite=dmg04"));
-    assert!(stdout.contains("session=dmg04-basic-exchange outcome=PASS"));
-
-    std::fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
-}
-
-#[test]
-fn run_linked_session_binary_returns_non_zero_and_writes_failure_artifacts() {
-    let binary = binary_path("run_linked_session");
-    let temp_dir = unique_temp_dir("linked-session-failure");
-    let artifact_root = temp_dir.join("artifacts");
-    let manifest_path = temp_dir.join("fixture-mismatch.toml");
-    let wrong_fixture_path = temp_dir.join("wrong.snapshot");
-    std::fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-    std::fs::write(&wrong_fixture_path, "definitely wrong\n")
-        .expect("wrong fixture should be writable");
-
-    let left_rom =
-        workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04/basic-left.gb");
-    let right_rom =
-        workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04/basic-right.gb");
-    let manifest = format!(
-        concat!(
-            "suite_name = \"linked-fixture-mismatch\"\n",
-            "family = \"serial-ext\"\n",
-            "[[session]]\n",
-            "id = \"dmg04-basic-exchange\"\n",
-            "topology = \"dmg04\"\n",
-            "timeout_tcycles = 5000\n",
-            "oracle = \"linked-snapshot-fixture\"\n",
-            "fixture = \"{}\"\n\n",
-            "  [[session.participant]]\n",
-            "  id = \"left\"\n",
-            "  rom = \"{}\"\n\n",
-            "  [[session.participant]]\n",
-            "  id = \"right\"\n",
-            "  rom = \"{}\"\n"
-        ),
-        wrong_fixture_path.display(),
-        left_rom.display(),
-        right_rom.display(),
-    );
-    std::fs::write(&manifest_path, manifest).expect("manifest should be writable");
-
-    let output = Command::new(&binary)
-        .current_dir(workspace_root())
-        .args([
-            "--manifest",
-            manifest_path
-                .to_str()
-                .expect("manifest path should be utf-8"),
-            "--failure-artifact-root",
-            artifact_root
-                .to_str()
-                .expect("artifact root should be utf-8"),
-        ])
-        .output()
-        .unwrap_or_else(|error| panic!("failed to spawn run_linked_session failure case: {error}"));
-
-    assert!(
-        !output.status.success(),
-        "fixture mismatch should fail with non-zero exit status"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
-    assert!(stderr.contains("one or more linked sessions failed"));
-
-    let session_dir = artifact_root.join("dmg04-basic-exchange");
-    assert!(session_dir.join("linked_snapshot.txt").is_file());
-    assert!(session_dir.join("left_snapshot.txt").is_file());
-    assert!(session_dir.join("right_snapshot.txt").is_file());
-
-    std::fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
