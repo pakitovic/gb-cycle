@@ -135,25 +135,14 @@ make ci
 
 ### ROM-suite validation
 
-`gb-test-runner` now uses report-local manifests under `crates/gb-test-runner/data/<report>/`. `cargo rom-suite` auto-fetches missing or stale fetchable ROM assets into `/test/<report>/`; use `cargo rom-fetch` only when you want an explicit materialization step.
-
 ```bash
 cargo rom-fetch gb-emulator-shootout
 cargo rom-suite gb-emulator-shootout
 cargo rom-suite gbmicrotest
-cargo rom-suite mooneye
-cargo rom-suite ax6
-cargo rom-suite little-things-gb
-cargo rom-suite magen
-cargo rom-suite mealybug-tearoom-tests
-cargo rom-suite samesuite
 cargo rom-suite-link linked
-cargo rom-suite-link docboy --suite docboy-dmg-link
 ```
 
-### External ROM suites
-
-Makefile ROM-suite aggregate/member targets and the legacy `run_rom_suite` / `run_linked_session` binaries have been retired. See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for `cargo rom-fetch`, `cargo rom-suite`, `cargo rom-suite-link`, promoted gates, RealBoot reruns with `--boot-rom-dir`, oracle comparisons, determinism lanes, and private smoke workflows.
+See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for `cargo rom-fetch`, `cargo rom-suite`, `cargo rom-suite-link`, promoted gates, RealBoot reruns with `--boot-rom-dir`, oracle comparisons, determinism lanes, and private smoke workflows.
 
 ## Documentation
 
