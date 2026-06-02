@@ -11,12 +11,12 @@ expected = "A5"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/basic-left.gb"
+  rom = "linked/fixtures/dmg04/basic-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/basic-right.gb"
+  rom = "linked/fixtures/dmg04/basic-right.gb"
   console = "dmg"
 
 [[session]]
@@ -29,12 +29,12 @@ expected = "3C"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/basic-left.gb"
+  rom = "linked/fixtures/dmg04/basic-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/basic-right.gb"
+  rom = "linked/fixtures/dmg04/basic-right.gb"
   console = "dmg"
 
 [[session]]
@@ -43,16 +43,16 @@ topology = "dmg04"
 timeout_tcycles = 5000
 oracle = "linked-participant-snapshot-fixture"
 target_participant = "left"
-fixture = "fixtures/linked/dmg04/basic-left.snapshot"
+fixture = "linked/fixtures/dmg04/basic-left.snapshot"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/basic-left.gb"
+  rom = "linked/fixtures/dmg04/basic-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/basic-right.gb"
+  rom = "linked/fixtures/dmg04/basic-right.gb"
   console = "dmg"
 
 [[session]]
@@ -65,12 +65,12 @@ expected = "A5A5"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/stale-left.gb"
+  rom = "linked/fixtures/dmg04/stale-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/stale-right.gb"
+  rom = "linked/fixtures/dmg04/stale-right.gb"
   console = "dmg"
 
 [[session]]
@@ -83,12 +83,12 @@ expected = "3CF0"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/stale-left.gb"
+  rom = "linked/fixtures/dmg04/stale-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/stale-right.gb"
+  rom = "linked/fixtures/dmg04/stale-right.gb"
   console = "dmg"
 
 [[session]]
@@ -97,16 +97,16 @@ topology = "dmg04"
 timeout_tcycles = 5000
 oracle = "linked-participant-snapshot-fixture"
 target_participant = "left"
-fixture = "fixtures/linked/dmg04/double-master-left.snapshot"
+fixture = "linked/fixtures/dmg04/double-master-left.snapshot"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/double-master-left.gb"
+  rom = "linked/fixtures/dmg04/double-master-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/double-master-right.gb"
+  rom = "linked/fixtures/dmg04/double-master-right.gb"
   console = "dmg"
 
 [[session]]
@@ -115,16 +115,16 @@ topology = "dmg04"
 timeout_tcycles = 5000
 oracle = "linked-participant-snapshot-fixture"
 target_participant = "right"
-fixture = "fixtures/linked/dmg04/double-master-right.snapshot"
+fixture = "linked/fixtures/dmg04/double-master-right.snapshot"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/double-master-left.gb"
+  rom = "linked/fixtures/dmg04/double-master-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/double-master-right.gb"
+  rom = "linked/fixtures/dmg04/double-master-right.gb"
   console = "dmg"
 
 [[session]]
@@ -133,14 +133,14 @@ topology = "dmg04"
 timeout_tcycles = 5000
 oracle = "linked-participant-snapshot-fixture"
 target_participant = "left"
-fixture = "fixtures/linked/dmg04/open-line-left.snapshot"
+fixture = "linked/fixtures/dmg04/open-line-left.snapshot"
 
   [[session.participant]]
   id = "left"
-  rom = "fixtures/linked/dmg04/basic-left.gb"
+  rom = "linked/fixtures/dmg04/basic-left.gb"
   console = "dmg"
 
   [[session.participant]]
   id = "right"
-  rom = "fixtures/linked/dmg04/open-line-right.gb"
+  rom = "linked/fixtures/dmg04/open-line-right.gb"
   console = "dmg"

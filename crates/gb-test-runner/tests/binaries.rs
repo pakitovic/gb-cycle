@@ -160,9 +160,9 @@ fn run_linked_session_binary_returns_non_zero_and_writes_failure_artifacts() {
         .expect("wrong fixture should be writable");
 
     let left_rom =
-        workspace_root().join("crates/gb-test-runner/data/fixtures/linked/dmg04/basic-left.gb");
+        workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04/basic-left.gb");
     let right_rom =
-        workspace_root().join("crates/gb-test-runner/data/fixtures/linked/dmg04/basic-right.gb");
+        workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04/basic-right.gb");
     let manifest = format!(
         concat!(
             "suite_name = \"linked-fixture-mismatch\"\n",

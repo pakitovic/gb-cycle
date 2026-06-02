@@ -9,12 +9,12 @@ oracle = "info-linked-trace"
 
   [[session.participant]]
   id = "p1"
-  rom = "fixtures/linked/dmg07/p1-basic.gb"
+  rom = "linked/fixtures/dmg07/p1-basic.gb"
   console = "dmg"
   adapter_port = "p1"
 
   [[session.participant]]
   id = "p4"
-  rom = "fixtures/linked/dmg07/p4-basic.gb"
+  rom = "linked/fixtures/dmg07/p4-basic.gb"
   console = "dmg"
   adapter_port = "p4"

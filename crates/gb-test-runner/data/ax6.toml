@@ -8,16 +8,16 @@ oracle = "framebuffer-fixture"
 id = "ax6-dmg-rtc3test-1"
 rom = "rtc3test-1.gb"
 timeout_frames = 1140
-fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.dmg.png"
+fixture = "crates/gb-test-runner/data/ax6/fixtures/rtc3test-1.dmg.png"
 
 [[case]]
 id = "ax6-dmg-rtc3test-2"
 rom = "rtc3test-2.gb"
 timeout_frames = 900
-fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.dmg.png"
+fixture = "crates/gb-test-runner/data/ax6/fixtures/rtc3test-2.dmg.png"
 
 [[case]]
 id = "ax6-dmg-rtc3test-3"
 rom = "rtc3test-3.gb"
 timeout_frames = 2400
-fixture = "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.dmg.png"
+fixture = "crates/gb-test-runner/data/ax6/fixtures/rtc3test-3.dmg.png"

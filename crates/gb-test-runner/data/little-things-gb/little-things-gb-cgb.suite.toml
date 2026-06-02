@@ -9,4 +9,4 @@ oracle = { type = "framebuffer" }
 [[case]]
 id = "little-things-gb-cgb-whichboot"
 rom = "whichboot.gb"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/little-things-gb-cgb/whichboot.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/little-things-gb/fixtures/cgb/whichboot.png" }

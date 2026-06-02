@@ -51,7 +51,7 @@ The generated `/test/` store is gitignored. Each `cargo rom-suite` report owns `
 - Use `report_console_suffix = true` only when the same upstream report label needs console-disambiguated rows such as `(DMG)` or `(GBC)`.
 - Prefer typed oracles (`serial-contains`, `fibonacci-result`, `memory-byte-equals`, framebuffer fixtures, RGB555 framebuffer fixtures, explicitly named tolerance fixtures, trace fixtures, linked participant oracles) over manual visual inspection; `mooneye-result` remains a legacy manifest spelling and new `*.suite.toml` manifests use `fibonacci-result`.
 - Use `fixture = "..."` for single-fixture oracles and `fixture = ["...", "..."]` for multi-reference framebuffer fixtures; do not add a separate `fixtures` field.
-- Keep synthetic linked-session fixtures under `crates/gb-test-runner/data/fixtures/linked/**`; linked-session outputs currently retain artifacts and stdout summaries rather than Markdown report rows.
+- Keep synthetic linked-session fixtures under `crates/gb-test-runner/data/linked/fixtures/**`; linked-session outputs currently retain artifacts and stdout summaries rather than Markdown report rows.
 
 ## Cargo report targets
 

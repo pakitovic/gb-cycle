@@ -8,39 +8,39 @@ oracle = { type = "framebuffer", source = "cgb" }
 [[case]]
 id = "magen-cgb-bg-oam-priority"
 rom = "bg_oam_priority.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/bg_oam_priority.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/bg_oam_priority.png" }
 
 [[case]]
 id = "magen-cgb-hblank-vram-dma"
 rom = "hblank_vram_dma.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }
 
 [[case]]
 id = "magen-cgb-key0-lock-after-boot"
 rom = "key0_lock_after_boot.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }
 
 [[case]]
 id = "magen-cgb-mbc-oob-sram-mbc1"
 rom = "mbc_oob_sram_mbc1.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }
 
 [[case]]
 id = "magen-cgb-mbc-oob-sram-mbc3"
 rom = "mbc_oob_sram_mbc3.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }
 
 [[case]]
 id = "magen-cgb-mbc-oob-sram-mbc5"
 rom = "mbc_oob_sram_mbc5.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }
 
 [[case]]
 id = "magen-cgb-oam-internal-priority"
 rom = "oam_internal_priority.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/oam_internal_priority.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/oam_internal_priority.png" }
 
 [[case]]
 id = "magen-cgb-ppu-disabled-state"
 rom = "ppu_disabled_state.gbc"
-oracle = { fixture = "../../../crates/gb-test-runner/data/fixtures/magen/green.png" }
+oracle = { fixture = "../../../crates/gb-test-runner/data/magen/fixtures/green.png" }

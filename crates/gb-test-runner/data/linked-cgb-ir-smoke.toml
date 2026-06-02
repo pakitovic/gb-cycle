@@ -11,10 +11,10 @@ expected = "B2"
 
   [[session.participant]]
   id = "emitter"
-  rom = "fixtures/linked/cgb-ir/emitter.gb"
+  rom = "linked/fixtures/cgb-ir/emitter.gb"
   console = "cgb"
 
   [[session.participant]]
   id = "receiver"
-  rom = "fixtures/linked/cgb-ir/receiver.gb"
+  rom = "linked/fixtures/cgb-ir/receiver.gb"
   console = "cgb"

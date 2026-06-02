@@ -140,11 +140,11 @@ fn linked_session_runner_executes_a_sparse_dmg07_session_and_captures_adapter_tr
         LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
     )
     .with_participant(
-        LinkedSessionParticipant::new("p1", data_path("data/fixtures/linked/dmg07/p1-basic.gb"))
+        LinkedSessionParticipant::new("p1", data_path("data/linked/fixtures/dmg07/p1-basic.gb"))
             .with_adapter_port(Dmg07Port::P1),
     )
     .with_participant(
-        LinkedSessionParticipant::new("p4", data_path("data/fixtures/linked/dmg07/p4-basic.gb"))
+        LinkedSessionParticipant::new("p4", data_path("data/linked/fixtures/dmg07/p4-basic.gb"))
             .with_adapter_port(Dmg07Port::P4),
     );
 
@@ -206,7 +206,7 @@ fn linked_session_runner_does_not_treat_dmg07_internal_clock_as_valid_adapter_in
     )
     .with_participant(LinkedSessionParticipant::new("p1", &p1_rom).with_adapter_port(Dmg07Port::P1))
     .with_participant(
-        LinkedSessionParticipant::new("p4", data_path("data/fixtures/linked/dmg07/p4-basic.gb"))
+        LinkedSessionParticipant::new("p4", data_path("data/linked/fixtures/dmg07/p4-basic.gb"))
             .with_adapter_port(Dmg07Port::P4),
     );
 
@@ -234,7 +234,7 @@ fn dmg07_session(id: &str, ports: &[(&str, &str, Dmg07Port)]) -> LinkedSessionCa
         session = session.with_participant(
             LinkedSessionParticipant::new(
                 *participant_id,
-                data_path(&format!("data/fixtures/linked/dmg07/{fixture}")),
+                data_path(&format!("data/linked/fixtures/dmg07/{fixture}")),
             )
             .with_adapter_port(*port),
         );

@@ -9,10 +9,10 @@ oracle = "framebuffer-fixture"
 id = "little-things-gb-dmg-double-halt-cancel"
 rom = "double-halt-cancel.gb"
 source_path = "tests/roms/dmg/little-things-gb/double-halt-cancel.gb"
-fixture = "crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png"
+fixture = "crates/gb-test-runner/data/little-things-gb/fixtures/dmg/double-halt-cancel.png"
 
 [[case]]
 id = "little-things-gb-dmg-whichboot"
 rom = "whichboot.gb"
 source_path = "tests/roms/dmg/little-things-gb/whichboot.gb"
-fixture = "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png"
+fixture = "crates/gb-test-runner/data/little-things-gb/fixtures/dmg/whichboot.png"

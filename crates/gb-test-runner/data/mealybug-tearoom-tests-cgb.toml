@@ -8,126 +8,126 @@ oracle = "framebuffer-rgb555-fixture"
 [[case]]
 id = "mealybug-cgb-m2-win-en-toggle"
 rom = "ppu/m2_win_en_toggle.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m2_win_en_toggle.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m2_win_en_toggle.png"
 
 [[case]]
 id = "mealybug-cgb-m3-bgp-change"
 rom = "ppu/m3_bgp_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_bgp_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_bgp_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-bgp-change-sprites"
 rom = "ppu/m3_bgp_change_sprites.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_bgp_change_sprites.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_bgp_change_sprites.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-bg-en-change"
 rom = "ppu/m3_lcdc_bg_en_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_bg_en_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_bg_en_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-bg-map-change"
 rom = "ppu/m3_lcdc_bg_map_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_bg_map_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_bg_map_change.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-obj-en-change"
 rom = "ppu/m3_lcdc_obj_en_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_en_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_obj_en_change.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-obj-en-change-variant"
 rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_en_change_variant.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_obj_en_change_variant.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-obj-size-change"
 rom = "ppu/m3_lcdc_obj_size_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_size_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_obj_size_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-obj-size-change-scx"
 rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_obj_size_change_scx.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_obj_size_change_scx.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-tile-sel-change"
 rom = "ppu/m3_lcdc_tile_sel_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_tile_sel_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_tile_sel_change.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-tile-sel-win-change"
 rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_tile_sel_win_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_tile_sel_win_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-win-en-change-multiple"
 rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_win_en_change_multiple.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-win-en-change-multiple-wx"
 rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_win_en_change_multiple_wx.png"
 
 [[case]]
 id = "mealybug-cgb-m3-lcdc-win-map-change"
 rom = "ppu/m3_lcdc_win_map_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_map_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_win_map_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-obp0-change"
 rom = "ppu/m3_obp0_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_obp0_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_obp0_change.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-scx-high-5-bits"
 rom = "ppu/m3_scx_high_5_bits.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scx_high_5_bits.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_scx_high_5_bits.png"
 
 [[case]]
 id = "mealybug-cgb-m3-scx-low-3-bits"
 rom = "ppu/m3_scx_low_3_bits.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scx_low_3_bits.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_scx_low_3_bits.png"
 startup = "custom-boot"
 
 [[case]]
 id = "mealybug-cgb-m3-scy-change"
 rom = "ppu/m3_scy_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_scy_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_scy_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-window-timing"
 rom = "ppu/m3_window_timing.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_window_timing.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_window_timing.png"
 
 [[case]]
 id = "mealybug-cgb-m3-window-timing-wx-0"
 rom = "ppu/m3_window_timing_wx_0.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_window_timing_wx_0.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_window_timing_wx_0.png"
 
 [[case]]
 id = "mealybug-cgb-m3-wx-4-change"
 rom = "ppu/m3_wx_4_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_4_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_wx_4_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-wx-4-change-sprites"
 rom = "ppu/m3_wx_4_change_sprites.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_4_change_sprites.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_wx_4_change_sprites.png"
 
 [[case]]
 id = "mealybug-cgb-m3-wx-5-change"
 rom = "ppu/m3_wx_5_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_5_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_wx_5_change.png"
 
 [[case]]
 id = "mealybug-cgb-m3-wx-6-change"
 rom = "ppu/m3_wx_6_change.gb"
-fixture = "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_wx_6_change.png"
+fixture = "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_wx_6_change.png"

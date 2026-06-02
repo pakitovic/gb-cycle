@@ -6,8 +6,6 @@ const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 pub(crate) const GBEMU_SHOOTOUT_GRAYSCALE_TOLERANCE: u8 = 50;
-const EXPERIMENTAL_MEALYBUG_CGB_LCDC5_WX_FIXTURE: &str =
-    "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedFramebuffer {
@@ -298,19 +296,17 @@ fn decode_png_framebuffer(
     match info.color_type {
         png::ColorType::Grayscale => Ok(normalize_indexed_pixels(width, height, pixels)),
         png::ColorType::Rgb => {
-            let mut colors = pixels
+            let colors = pixels
                 .chunks_exact(3)
                 .map(|chunk| [chunk[0], chunk[1], chunk[2]])
                 .collect::<Vec<_>>();
-            quantize_experimental_mealybug_cgb_hardware_capture(path, &mut colors);
             Ok(normalize_rgb_pixels(width, height, &colors))
         }
         png::ColorType::Rgba => {
-            let mut colors = pixels
+            let colors = pixels
                 .chunks_exact(4)
                 .map(|chunk| [chunk[0], chunk[1], chunk[2]])
                 .collect::<Vec<_>>();
-            quantize_experimental_mealybug_cgb_hardware_capture(path, &mut colors);
             Ok(normalize_rgb_pixels(width, height, &colors))
         }
         png::ColorType::GrayscaleAlpha => {
@@ -324,26 +320,6 @@ fn decode_png_framebuffer(
             path: path.to_path_buf(),
             message: "indexed PNG framebuffer fixtures are not supported".to_string(),
         }),
-    }
-}
-
-fn quantize_experimental_mealybug_cgb_hardware_capture(path: &Path, colors: &mut [[u8; 3]]) {
-    if !path.ends_with(Path::new(EXPERIMENTAL_MEALYBUG_CGB_LCDC5_WX_FIXTURE)) {
-        return;
-    }
-
-    // The `m3_lcdc_win_en_change_multiple_wx` oracle is a direct CGB-C/D hardware capture. Its sparse near-black and near-green samples are capture noise around the three hardware categories that the RGB555 framebuffer can represent for this ROM: black, the CGB compatibility green, and forced white.
-    for color in colors {
-        *color = if color.iter().all(|component| *component <= 8) {
-            [0, 0, 0]
-        } else if color.iter().all(|component| *component >= 240) {
-            [255, 255, 255]
-        } else if color[1] >= 240 && (96..=160).contains(&color[0]) && (32..=96).contains(&color[2])
-        {
-            [123, 255, 49]
-        } else {
-            *color
-        };
     }
 }
 
@@ -741,29 +717,6 @@ mod tests {
                 .message
                 .contains("CGB RGB555 framebuffer length 1")
         );
-    }
-
-    #[test]
-    fn experimental_mealybug_cgb_hardware_capture_quantizes_capture_noise() {
-        let png = encode_png(
-            6,
-            1,
-            png::ColorType::Rgb,
-            &[
-                255, 255, 255, 123, 255, 49, 124, 255, 50, 131, 255, 63, 1, 1, 1, 0, 0, 0,
-            ],
-            None,
-        );
-
-        let decoded = decode_fixture_framebuffer_bytes(
-            Path::new(super::EXPERIMENTAL_MEALYBUG_CGB_LCDC5_WX_FIXTURE),
-            &png,
-        )
-        .expect("experimental hardware fixture should decode");
-
-        assert_eq!(decoded.width, 6);
-        assert_eq!(decoded.height, 1);
-        assert_eq!(decoded.palette_ranks, vec![0, 1, 1, 1, 2, 2]);
     }
 
     #[test]

@@ -48,7 +48,7 @@ fn ensure_text_fixture(path: &Path, actual: &str) {
 
 fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
     let manifest_path = data_path("data/linked-dmg04-smoke.toml");
-    let fixture_path = data_path("data/fixtures/linked/dmg04/basic-exchange.snapshot");
+    let fixture_path = data_path("data/linked/fixtures/dmg04/basic-exchange.snapshot");
 
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo linked-session manifest should load");
@@ -73,13 +73,13 @@ fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
 
 fn load_contract_suite_with_accepted_participant_fixtures() -> gb_test_runner::LinkedSessionSuite {
     let manifest_path = data_path("data/linked-dmg04-contracts.toml");
-    let left_snapshot_fixture = data_path("data/fixtures/linked/dmg04/basic-left.snapshot");
+    let left_snapshot_fixture = data_path("data/linked/fixtures/dmg04/basic-left.snapshot");
     let double_master_left_snapshot_fixture =
-        data_path("data/fixtures/linked/dmg04/double-master-left.snapshot");
+        data_path("data/linked/fixtures/dmg04/double-master-left.snapshot");
     let double_master_right_snapshot_fixture =
-        data_path("data/fixtures/linked/dmg04/double-master-right.snapshot");
+        data_path("data/linked/fixtures/dmg04/double-master-right.snapshot");
     let open_line_left_snapshot_fixture =
-        data_path("data/fixtures/linked/dmg04/open-line-left.snapshot");
+        data_path("data/linked/fixtures/dmg04/open-line-left.snapshot");
 
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo linked contract manifest should load");

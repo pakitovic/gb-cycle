@@ -3015,21 +3015,21 @@ mod tests {
                 "ax6-dmg-rtc3test-1",
                 "ax6/rtc3test-1.gb",
                 Timeout::Frames(1140),
-                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-1.dmg.png",
+                "crates/gb-test-runner/data/ax6/fixtures/rtc3test-1.dmg.png",
                 "rtc3test-1.gb (DMG)",
             ),
             (
                 "ax6-dmg-rtc3test-2",
                 "ax6/rtc3test-2.gb",
                 Timeout::Frames(900),
-                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-2.dmg.png",
+                "crates/gb-test-runner/data/ax6/fixtures/rtc3test-2.dmg.png",
                 "rtc3test-2.gb (DMG)",
             ),
             (
                 "ax6-dmg-rtc3test-3",
                 "ax6/rtc3test-3.gb",
                 Timeout::Frames(2400),
-                "crates/gb-test-runner/data/fixtures/ax6/rtc3test-3.dmg.png",
+                "crates/gb-test-runner/data/ax6/fixtures/rtc3test-3.dmg.png",
                 "rtc3test-3.gb (DMG)",
             ),
         ];
@@ -3072,19 +3072,19 @@ mod tests {
             (
                 "samesuite-dmg-div-write-trigger",
                 "samesuite/apu/div_write_trigger.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger.png",
+                "crates/gb-test-runner/data/samesuite/fixtures/dmg/apu/div_write_trigger.png",
                 "apu/div_write_trigger.gb (DMG)",
             ),
             (
                 "samesuite-dmg-div-write-trigger-10",
                 "samesuite/apu/div_write_trigger_10.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/apu/div_write_trigger_10.png",
+                "crates/gb-test-runner/data/samesuite/fixtures/dmg/apu/div_write_trigger_10.png",
                 "apu/div_write_trigger_10.gb (DMG)",
             ),
             (
                 "samesuite-dmg-ei-delay-halt",
                 "samesuite/interrupt/ei_delay_halt.gb",
-                "crates/gb-test-runner/data/fixtures/samesuite/interrupt/ei_delay_halt.png",
+                "crates/gb-test-runner/data/samesuite/fixtures/dmg/interrupt/ei_delay_halt.png",
                 "interrupt/ei_delay_halt.gb",
             ),
         ];
@@ -3312,14 +3312,14 @@ mod tests {
             (
                 "little-things-gb-dmg-double-halt-cancel",
                 "little-things-gb/double-halt-cancel.gb",
-                "crates/gb-test-runner/data/fixtures/little-things-gb/double-halt-cancel.png",
+                "crates/gb-test-runner/data/little-things-gb/fixtures/dmg/double-halt-cancel.png",
                 "double-halt-cancel.gb",
                 StartupMode::SkipBoot,
             ),
             (
                 "little-things-gb-dmg-whichboot",
                 "little-things-gb/whichboot.gb",
-                "crates/gb-test-runner/data/fixtures/little-things-gb/whichboot.png",
+                "crates/gb-test-runner/data/little-things-gb/fixtures/dmg/whichboot.png",
                 "whichboot.gb",
                 StartupMode::SkipBoot,
             ),
@@ -3372,7 +3372,7 @@ mod tests {
         assert_eq!(
             case.pass_condition,
             PassCondition::FramebufferFixture(PathBuf::from(
-                "crates/gb-test-runner/data/fixtures/little-things-gb-cgb/whichboot.png"
+                "crates/gb-test-runner/data/little-things-gb/fixtures/cgb/whichboot.png"
             ))
         );
         assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
@@ -3927,7 +3927,7 @@ mod tests {
                     PassCondition::FramebufferRgb555Fixture(fixture_path)
                         if fixture_path
                             == Path::new(
-                                "crates/gb-test-runner/data/fixtures/mealybug-cgb/m3_lcdc_win_en_change_multiple_wx.png"
+                                "crates/gb-test-runner/data/mealybug-tearoom-tests/fixtures/cgb/m3_lcdc_win_en_change_multiple_wx.png"
                             )
                 )
         }));
@@ -4745,7 +4745,6 @@ mod tests {
         }));
 
         let fixture_prefix = Path::new("crates/gb-test-runner/data/docboy/fixtures");
-        let legacy_fixture_prefix = Path::new("crates/gb-test-runner/data/fixtures/docboy");
         let fixture_paths = curated_test_rom_manifests()
             .into_iter()
             .filter(|manifest| suite_report_id(&manifest.suite_name) == Some(DOCBOY_REPORT_ID))
@@ -4763,11 +4762,6 @@ mod tests {
             fixture_paths
                 .iter()
                 .all(|path| path.starts_with(fixture_prefix))
-        );
-        assert!(
-            fixture_paths
-                .iter()
-                .all(|path| !path.starts_with(legacy_fixture_prefix))
         );
     }
 
