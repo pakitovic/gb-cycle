@@ -18,6 +18,8 @@ Every `.gb` file in this directory is generated from the same minimal template:
 
 This matches the helper shape used by the linked-session runner tests.
 
+The `.snapshot` files in this directory are retained session-level and participant-level expected outputs for deterministic two-console `DMG-04` cable exchanges; keep them next to the ROM programs because they validate the linked-session harness and participant-scoped oracles alongside the synthetic binaries.
+
 ## Fixture programs
 
 ### `basic-left.gb`

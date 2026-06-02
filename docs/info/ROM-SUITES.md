@@ -121,8 +121,7 @@ Same-ROM console variants are ordered DMG before GBC before SGB before SGB2 when
 - `make ci` remains the fast local pre-push gate and does not fetch or run external ROM suites; it covers formatting, linting, typos, dependency policy, workspace tests, and coverage gates.
 - GitHub `ci` mirrors the Rust checks and coverage gate.
 - GitHub `test-roms` fans out promoted `gb-emulator-shootout` suites as matrix children; each child runs `cargo rom-suite gb-emulator-shootout --suite <suite>` and relies on on-demand report fetch.
-- GitHub `test-roms-extra` fans out standalone exploratory report suites: `ax6-dmg`, `samesuite-dmg`, `little-things-gb-dmg`, `mooneye-sgb`, `mooneye-cgb`, `samesuite-cgb`, `magen-cgb`, `mealybug-tearoom-tests-cgb`, and `little-things-gb-cgb`; each child runs `cargo rom-suite <report> --suite <suite>` and relies on on-demand report fetch.
-- GitHub `test-roms-gbmicrotest` runs `cargo rom-suite gbmicrotest` as the standalone gbmicrotest report lane and relies on on-demand report fetch.
+- GitHub `test-roms-extra` fans out standalone exploratory report lanes: `ax6`, `samesuite`, `little-things-gb`, `mooneye`, `magen`, `mealybug-tearoom-tests`, and `gbmicrotest`; each child runs `cargo rom-suite <report>` and relies on on-demand report fetch.
 - RealBoot targets, private commercial manifests, linked sessions, and red/experimental local investigations stay outside GitHub ROM workflows unless promoted intentionally.
 
 ## Private and commercial ROM manifests

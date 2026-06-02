@@ -78,7 +78,7 @@ Do not declare a closure area healthy while its accepted strict-mode gate is fai
 
 Coverage thresholds are enforced per repo-gated crate, not as one aggregate workspace percentage. The concrete `cargo llvm-cov --fail-under-*` values in `.cargo/config.toml` are authoritative and must not be lowered. New workspace crates should join the per-crate coverage gate in the same change that introduces them.
 
-GitHub workflows are stratified: `ci` runs Rust checks plus coverage; `test-roms` runs the promoted strict ROM subset; `test-roms-extra` runs standalone exploratory report lanes; `test-roms-gbmicrotest` runs gbmicrotest in its own report channel. RealBoot, commercial, red, linked, or local-only lanes must publish separately and must not dilute the strict closure signal.
+GitHub workflows are stratified: `ci` runs Rust checks plus coverage; `test-roms` runs the promoted strict ROM subset; `test-roms-extra` runs standalone exploratory report lanes, including gbmicrotest as its own report channel. RealBoot, commercial, red, linked, or local-only lanes must publish separately and must not dilute the strict closure signal.
 
 Failure artifacts should make reruns unnecessary for first diagnosis: include logs, status rows, serial/text output, framebuffer output when relevant, snapshots, trace windows, and diffs against reference outputs when available.
 

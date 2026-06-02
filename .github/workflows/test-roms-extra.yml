@@ -15,24 +15,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ax6-dmg
-            report: ax6
-          - name: samesuite-dmg
-            report: samesuite
-          - name: little-things-gb-dmg
-            report: little-things-gb
-          - name: mooneye-sgb
-            report: mooneye
-          - name: mooneye-cgb
-            report: mooneye
-          - name: samesuite-cgb
-            report: samesuite
-          - name: magen-cgb
-            report: magen
-          - name: mealybug-tearoom-tests-cgb
-            report: mealybug-tearoom-tests
-          - name: little-things-gb-cgb
-            report: little-things-gb
+          - name: ax6
+          - name: samesuite
+          - name: little-things-gb
+          - name: mooneye
+          - name: magen
+          - name: mealybug-tearoom-tests
+          - name: gbmicrotest
 
     steps:
       - name: Checkout
@@ -45,4 +34,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run ${{ matrix.name }} ROM suite
-        run: cargo rom-suite ${{ matrix.report }} --suite ${{ matrix.name }}
+        run: cargo rom-suite ${{ matrix.name }}
