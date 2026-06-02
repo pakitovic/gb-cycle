@@ -1,0 +1,37 @@
+family = "mooneye"
+suite_name = "mooneye-emulator-mbc2"
+report = "gb-emulator-shootout"
+console = "dmg"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-bits-ramg"
+rom = "emulator-only/mbc2/bits_ramg.gb"
+timeout_frames = 900
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-bits-romb"
+rom = "emulator-only/mbc2/bits_romb.gb"
+timeout_frames = 480
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-bits-unused"
+rom = "emulator-only/mbc2/bits_unused.gb"
+timeout_frames = 420
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-ram"
+rom = "emulator-only/mbc2/ram.gb"
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-rom-1mb"
+rom = "emulator-only/mbc2/rom_1Mb.gb"
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-rom-2mb"
+rom = "emulator-only/mbc2/rom_2Mb.gb"
+
+[[case]]
+id = "mooneye-emulator-only-mbc2-rom-512kb"
+rom = "emulator-only/mbc2/rom_512kb.gb"

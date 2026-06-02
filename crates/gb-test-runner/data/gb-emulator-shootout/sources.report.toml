@@ -1,0 +1,2090 @@
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+
+[[source.family]]
+id = "blargg"
+target_root = "blargg"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/01-special.gb"
+target = "cpu_instrs/01-special.gb"
+sha256 = "f1ecc006d7d495a11c50425e80f75c5ea3f410abf863be9729082484afebe37b"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/02-interrupts.gb"
+target = "cpu_instrs/02-interrupts.gb"
+sha256 = "84a6883de392db9ed16c05b11e37bb2374bd6b03f336f66d6afcfb5929858d9a"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/03-op_sp,hl.gb"
+target = "cpu_instrs/03-op_sp,hl.gb"
+sha256 = "413c3f2abe49e01f26ce75c06de8fe72ae3b4312dba75bcd73ab84edbc19d9d7"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/04-op_r,imm.gb"
+target = "cpu_instrs/04-op_r,imm.gb"
+sha256 = "f43ae5eef199cc1506325f4fd838d9f9b73b276bf2c750814a756fc8092cea24"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/05-op_rp.gb"
+target = "cpu_instrs/05-op_rp.gb"
+sha256 = "3c7f75b7139c30acf8fae34d2f4ed721defdea950beff6b005a6c774bf49b646"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/06-ld_r,r.gb"
+target = "cpu_instrs/06-ld_r,r.gb"
+sha256 = "f4f71d6e27008454151f1f8494efd09dfb8d8c462c75d8e8172f11a6f4e6da3d"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/07-jr,jp,call,ret,rst.gb"
+target = "cpu_instrs/07-jr,jp,call,ret,rst.gb"
+sha256 = "67e4d414f54482ac613dbf65c836c9b5abbdfc18644e915da7a166edd9a8f6c5"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/08-misc_instrs.gb"
+target = "cpu_instrs/08-misc_instrs.gb"
+sha256 = "5fb081fa9694dd2f8d894e92d52c9c7b2b92b1e7f72ed266e798cc5e4c7cf748"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/09-op_r,r.gb"
+target = "cpu_instrs/09-op_r,r.gb"
+sha256 = "b94e88d47812e531d6b0d56fd127967b6fccb9c41be06cb0fa2fe4088b0e8f72"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/10-bit_ops.gb"
+target = "cpu_instrs/10-bit_ops.gb"
+sha256 = "4069ab4248bf42c06781b7279f6f1993eca3bd028f1afb47a08d73ef5d6f0f7d"
+
+[[source.family.file]]
+path = "testroms/blargg/cpu_instrs/11-op_a,(hl).gb"
+target = "cpu_instrs/11-op_a,(hl).gb"
+sha256 = "63a333835a118fb41671ef48292dd6204358962e991c886f69bee45b7bbd45cd"
+
+[[source.family.file]]
+path = "testroms/blargg/halt_bug.gb"
+target = "halt_bug.gb"
+sha256 = "2939d3f0cc34690d050acb5633c793ee5c593e98f1e49ad6d15639a30b69c492"
+
+[[source.family.file]]
+path = "testroms/blargg/halt_bug.png"
+target = "halt_bug.png"
+sha256 = "561273730808d1072e5ce62585d83c8d2a06de9114a4c73c411e41a5ba37257d"
+
+[[source.family.file]]
+path = "testroms/blargg/instr_timing.gb"
+target = "instr_timing.gb"
+sha256 = "2aa8d6b38ff55f44edfb438db7938fc446c0645cf47cab7b570a97d353c4bece"
+
+[[source.family.file]]
+path = "testroms/blargg/interrupt_time.gb"
+target = "interrupt_time.gb"
+sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
+
+[[source.family.file]]
+path = "testroms/blargg/interrupt_time.png"
+target = "interrupt_time.png"
+sha256 = "722f110245a51f6b363493f9d19101aea7b7cf441508ede44ae4acb90b272131"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing/01-read_timing.gb"
+target = "mem_timing/01-read_timing.gb"
+sha256 = "1dae5349e184f47b966fe1bf6dffab567b04e401dc02d2ff2cdb64188ad865d0"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing/02-write_timing.gb"
+target = "mem_timing/02-write_timing.gb"
+sha256 = "0b0458c74cbf84010fbefb035d623d0b751be976072ec089a941fa6797cf25ca"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing/03-modify_timing.gb"
+target = "mem_timing/03-modify_timing.gb"
+sha256 = "e57ac75d384da7df26a155e0e03a63b5ad2613f16bf72e9cf83e61a7acbf710f"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/01-read_timing.gb"
+target = "mem_timing-2/01-read_timing.gb"
+sha256 = "022b824304303ab7ae298d8277f683a7927e1f2787e612ce16200581b192b1a4"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/01-read_timing.png"
+target = "mem_timing-2/01-read_timing.png"
+sha256 = "a73101c68cc0dd6f71c7947d8ce1f3fac7752ad958fb0f648d9f340930059aed"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/02-write_timing.gb"
+target = "mem_timing-2/02-write_timing.gb"
+sha256 = "31f2aa338b100258bf63ea824f3980dba752e38587405daab007c42f3986bf48"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/02-write_timing.png"
+target = "mem_timing-2/02-write_timing.png"
+sha256 = "0b24397e24e474f8cd026973a46d756b7e1e649dc26d11629b0ce02b45e46c40"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/03-modify_timing.gb"
+target = "mem_timing-2/03-modify_timing.gb"
+sha256 = "cbfcf0722da3321e365d57fc26150f4c0e63fcd1b890c3213a965df26255b789"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/03-modify_timing.png"
+target = "mem_timing-2/03-modify_timing.png"
+sha256 = "cd3efa7e8d68a2e6cdb5c8934627c6c3bf31237c53c5416cad5e6dcba222da46"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/1-lcd_sync.gb"
+target = "oam_bug/1-lcd_sync.gb"
+sha256 = "4d1cc69ccc24c077e0ea7f43a2fe5838e1bf6c676bfdf2859e678d2cd1e2ae82"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/1-lcd_sync.png"
+target = "oam_bug/1-lcd_sync.png"
+sha256 = "314a51c6785ba7fe59f12638f3d4f352a55cd6d1dfd884f217c0f4643c803a5b"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/2-causes.gb"
+target = "oam_bug/2-causes.gb"
+sha256 = "a9c701a5eca915b2dbd057089d04f418283e3ade150be4853c74c2561f4ee4a9"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/2-causes.png"
+target = "oam_bug/2-causes.png"
+sha256 = "1150bd0e83cb9f30b05677627734b98d3c6c82cdf0edf8f19d868fb091b44c82"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/3-non_causes.gb"
+target = "oam_bug/3-non_causes.gb"
+sha256 = "b6089073cba222785251d6b627e0bfb8d14a1cbb2a90fbf9bd4f03b3bccc5898"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/3-non_causes.png"
+target = "oam_bug/3-non_causes.png"
+sha256 = "e87e192eadaf62ef43908df7a38f7fd79920fba52a101bc350b0b3b8259ce98f"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/4-scanline_timing.gb"
+target = "oam_bug/4-scanline_timing.gb"
+sha256 = "328383cfdd9232b8f6a8b19200a6f7df9f8f32cd424552a826399fe82e4545f6"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/4-scanline_timing.png"
+target = "oam_bug/4-scanline_timing.png"
+sha256 = "40de444326a31e818d5ccebaa07faddcd5677264b0d6dc601551f7df7762a0ea"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/5-timing_bug.gb"
+target = "oam_bug/5-timing_bug.gb"
+sha256 = "a0d129d4f451ad3f22acd1308f7134c521956c6d8c814069139817788d0ae718"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/5-timing_bug.png"
+target = "oam_bug/5-timing_bug.png"
+sha256 = "460464a9bf1cb0ea1352461fc96c5e33a2a337a61bd17fbb0ebdff14210ac31a"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/6-timing_no_bug.gb"
+target = "oam_bug/6-timing_no_bug.gb"
+sha256 = "f979970f9e56a88c12acc8fcf017d035b1cb441a18683c71956943c0b3a7e70a"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/6-timing_no_bug.png"
+target = "oam_bug/6-timing_no_bug.png"
+sha256 = "b826f5dfd4df4a52676502eb6bdb91faf8b0c2715e97114c7de38ad99ed4a66a"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/8-instr_effect.gb"
+target = "oam_bug/8-instr_effect.gb"
+sha256 = "8ff2c98157ad7eccf484e9cd93ed0eb03dbc5ea026c2c6875bdf04dace82c290"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/8-instr_effect.png"
+target = "oam_bug/8-instr_effect.png"
+sha256 = "09d90c01146ed634ea4841bf3854f49272ed0ea2e8cbe8515495af1844a486aa"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/01-registers.gb"
+target = "dmg_sound/01-registers.gb"
+sha256 = "c6b9fa4b9d9d26919b33ebe78a6ef19ad2df854186cf741ca2746179cc9fc3f1"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/01-registers.png"
+target = "dmg_sound/01-registers.png"
+sha256 = "0574a0933299759683900822f2e1b2a31e0d695d99c53d54f9e2e2c61414b71c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/02-len_ctr.gb"
+target = "dmg_sound/02-len_ctr.gb"
+sha256 = "745544125a5065729cab22494a79f65c3836e4426f89e4cc43d330afe711b413"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/02-len_ctr.png"
+target = "dmg_sound/02-len_ctr.png"
+sha256 = "b57d22428a1a7973a4cf5ffe2e4702f7380bb2eb22400c4baa2e701ac1882b8c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/03-trigger.gb"
+target = "dmg_sound/03-trigger.gb"
+sha256 = "bb11e7266a7143bafb8aa2a73ca70957c6011f36cd4e0b6aaf0678378294e75c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/03-trigger.png"
+target = "dmg_sound/03-trigger.png"
+sha256 = "e5f866c0d34cb35049e177b142b96bebf1678fadf20d5343398e6b5d6a5ded20"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/04-sweep.gb"
+target = "dmg_sound/04-sweep.gb"
+sha256 = "58bc14541d91bb020c7761b423825b3432cfde7ee2fa4d1116126e4cb9573c7e"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/04-sweep.png"
+target = "dmg_sound/04-sweep.png"
+sha256 = "bf28955f3a495e8463c60193333ca7fc23a02f87c4f4d665647a8b06596737b9"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/05-sweep_details.gb"
+target = "dmg_sound/05-sweep_details.gb"
+sha256 = "f582ca3a0b2544b9510797d7d4dd56a17f53e000511b0ae88a6353200dcd9167"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/05-sweep_details.png"
+target = "dmg_sound/05-sweep_details.png"
+sha256 = "9240660b73cb84351d8dd16c76172d5a4ee69eacc78a52b47dd79fdb5345ff5e"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/06-overflow_on_trigger.gb"
+target = "dmg_sound/06-overflow_on_trigger.gb"
+sha256 = "1a511e95e84ed6fe6077cabf451a98b4e01fdef59cadae3efbc178113eb064b1"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/06-overflow_on_trigger.png"
+target = "dmg_sound/06-overflow_on_trigger.png"
+sha256 = "35e884c5ac2ef4669d44a3c63127a72b9f2027acb210363040fb300053d36b89"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/07-len_sweep_period_sync.gb"
+target = "dmg_sound/07-len_sweep_period_sync.gb"
+sha256 = "56bf5b0c18b996929c9b052ba5a02b450cb619bb6c24cc1d34ea20951c977bf7"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/07-len_sweep_period_sync.png"
+target = "dmg_sound/07-len_sweep_period_sync.png"
+sha256 = "d317df3b5bae30d967118265aba74be271848a05a4b8f0e850db4450c4bb360c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/08-len_ctr_during_power.gb"
+target = "dmg_sound/08-len_ctr_during_power.gb"
+sha256 = "31cb41f7be106a708ec0bc94f2a9d0b506d247cd591e9d0a2a6a960dc3bf6595"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/08-len_ctr_during_power.png"
+target = "dmg_sound/08-len_ctr_during_power.png"
+sha256 = "cb71ce68711637a7a29382a0c618f5c440dda1174692d79533939dca1de57239"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/09-wave_read_while_on.gb"
+target = "dmg_sound/09-wave_read_while_on.gb"
+sha256 = "378b86f6a25daa16855260d7ef0c24e48146ba05df434a0b5413983a1447e875"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/09-wave_read_while_on.png"
+target = "dmg_sound/09-wave_read_while_on.png"
+sha256 = "99771f644d1d67bb5c244d52fdb92ed5e6726c1e66884a1f7809bd8fb4d275e2"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/10-wave_trigger_while_on.gb"
+target = "dmg_sound/10-wave_trigger_while_on.gb"
+sha256 = "fa63c8ed7473411e54285d318e33bf23ff6d637ed2caa7555ddeaf80578e3279"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/10-wave_trigger_while_on.png"
+target = "dmg_sound/10-wave_trigger_while_on.png"
+sha256 = "d2437629ac4cc52b2a964858c2cb6a6205ac9f0f16c89c38234f7dfb68af6424"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/11-regs_after_power.gb"
+target = "dmg_sound/11-regs_after_power.gb"
+sha256 = "d27dab46e8b881028723f1975328572d38e25d295289b974cd698916a0be5dab"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/11-regs_after_power.png"
+target = "dmg_sound/11-regs_after_power.png"
+sha256 = "e2e9638156a219387eacb42ab0e0ecc2057558e8b6410ce99e18b29eb2524059"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/12-wave_write_while_on.gb"
+target = "dmg_sound/12-wave_write_while_on.gb"
+sha256 = "2efbecd2c6d40928d44f45da4f634626bcd2790165b3949aedfe377c73913774"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/12-wave_write_while_on.png"
+target = "dmg_sound/12-wave_write_while_on.png"
+sha256 = "bc948c2ab39ad9a70bb1ad83ed6d69ecbdd60fb8701c7bcc0d7aebb839813c10"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/01-registers.gb"
+target = "cgb_sound/01-registers.gb"
+sha256 = "8415d6c69f7954e9365a586bac235f5ce39270ece32c09cb8ebbbff043b9852c"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/01-registers.png"
+target = "cgb_sound/01-registers.png"
+sha256 = "9311987790787639a8614a4de88a37b83c9017a8dd5029b449292a97eb73e0ee"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/02-len_ctr.gb"
+target = "cgb_sound/02-len_ctr.gb"
+sha256 = "a1ccf47375a2bede3077ac85a4903cb037dd8a4c7c85fc5d0c176af52915271f"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/02-len_ctr.png"
+target = "cgb_sound/02-len_ctr.png"
+sha256 = "cd74c8eb23be026573abf57ca2214425869281b0c719a991abead3c3a7b79c9d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/03-trigger.gb"
+target = "cgb_sound/03-trigger.gb"
+sha256 = "70173be396d14ac955c47aededcee90ba994206cc403273d0bb49ba163ae23ef"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/03-trigger.png"
+target = "cgb_sound/03-trigger.png"
+sha256 = "4b25e1f22418fa22b1644ab4be6c10aa7c16fb84db369683c8609a0754982869"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/04-sweep.gb"
+target = "cgb_sound/04-sweep.gb"
+sha256 = "abfd1f6fa9e6701e46135ac9f5bb5b10a46cde22d0fc34922636aa09a5647483"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/04-sweep.png"
+target = "cgb_sound/04-sweep.png"
+sha256 = "395f86bafb229bc6aab8f8be04cc84c0c2a7b91fc6415be0835eb1d170446985"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/05-sweep_details.gb"
+target = "cgb_sound/05-sweep_details.gb"
+sha256 = "f51a80c5538fe4b3afbc5c9af0e689a67869b1e2bbb73d4c60a8874826d056cb"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/05-sweep_details.png"
+target = "cgb_sound/05-sweep_details.png"
+sha256 = "42c41fb66f655ce5b67cfc0c8fe71fed5411cc09e575d329682ad58489f7ee25"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.gb"
+target = "cgb_sound/06-overflow_on_trigger.gb"
+sha256 = "5701414d13ba55d25b59d13076e2e9cb59a9da6890595b41464f957605e317c0"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.png"
+target = "cgb_sound/06-overflow_on_trigger.png"
+sha256 = "23d8dac3e8cb3a196964add166ba80b32c9fd62316eb59a400e2a27ec48251a0"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.gb"
+target = "cgb_sound/07-len_sweep_period_sync.gb"
+sha256 = "47d57ba87c3a93050ee340cf49b9d276e62e9573542b92b1de5fa2f17e3716c1"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.png"
+target = "cgb_sound/07-len_sweep_period_sync.png"
+sha256 = "dfae1e999e92858b0dfd9c0426f5c0e2e43e3a561c8b391d57f751a37b76667b"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.gb"
+target = "cgb_sound/08-len_ctr_during_power.gb"
+sha256 = "be7948c70946e0b81c178b8778ef1907231e734650062f8fa8cdb1ceb5ac8c65"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.png"
+target = "cgb_sound/08-len_ctr_during_power.png"
+sha256 = "660320abe85f98321f1c20600e4397160e454967dda7db2d187eb212845c2e0d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/09-wave_read_while_on.gb"
+target = "cgb_sound/09-wave_read_while_on.gb"
+sha256 = "9b101c68b2de1930df74c19aaf22cce74d37dd5aade93855c805ecb2e1e83fd3"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/09-wave_read_while_on.png"
+target = "cgb_sound/09-wave_read_while_on.png"
+sha256 = "38fc5cf01a18171316cf893a5aaea842b1d8468a92281db42996565ed65b014d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.gb"
+target = "cgb_sound/10-wave_trigger_while_on.gb"
+sha256 = "cbea1771a5384f4d8f8a249056224a750ad5ee4671297836e4ba87e689af2a23"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.png"
+target = "cgb_sound/10-wave_trigger_while_on.png"
+sha256 = "fa73ef5cd16cff0e3b077b33f86981c1a15777926d3cb508154fabdc5a67f207"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/11-regs_after_power.gb"
+target = "cgb_sound/11-regs_after_power.gb"
+sha256 = "d347dd195a78c2d0f665b94da493a857218f032b014654b84ddb01f7b8e9befc"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/11-regs_after_power.png"
+target = "cgb_sound/11-regs_after_power.png"
+sha256 = "b905224e5fe59db86a85e05972222ab7e618b6fe81936e705963a68b09bb3c28"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/12-wave.gb"
+target = "cgb_sound/12-wave.gb"
+sha256 = "7bbd2e78e159de4297f567fec7851f9b90c3076d18d1043af5f30e14bd66cd0a"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/12-wave.png"
+target = "cgb_sound/12-wave.png"
+sha256 = "eb9df05369029ce0f6e167f08a1001bdcde9a676e873f5be7dfcf9f118fd7937"
+
+
+[[source.family]]
+id = "acid"
+target_root = "acid"
+sparse_paths = ["testroms/acid"]
+
+[[source.family.file]]
+path = "testroms/acid/which.gb"
+target = "which.gb"
+sha256 = "28db9aa9a4afe6d119cca38f9d5d4d9621451412a5ba514119b4a50b859e1061"
+
+[[source.family.file]]
+path = "testroms/acid/dmg-acid2.gb"
+target = "dmg-acid2.gb"
+sha256 = "464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
+
+[[source.family.file]]
+path = "testroms/acid/dmg-acid2.png"
+target = "dmg-acid2.png"
+sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"
+
+[[source.family.file]]
+path = "testroms/acid/cgb-acid2.gbc"
+target = "cgb-acid2.gbc"
+sha256 = "197fb0bcec544f0400527fc707e0a94f55435974986e6986b424ace5de81720e"
+
+[[source.family.file]]
+path = "testroms/acid/cgb-acid2.png"
+target = "cgb-acid2.png"
+sha256 = "38cd6e43c30c0e6d0bd078ffaa57015e03bee185c0ee588f042745ab0fcdcca8"
+
+[[source.family.file]]
+path = "testroms/acid/cgb-acid-hell.gbc"
+target = "cgb-acid-hell.gbc"
+sha256 = "3dc6d301ec74ccafa972e4e111d78f7b1004791a5bfbede0ee763f364fded21e"
+
+[[source.family.file]]
+path = "testroms/acid/cgb-acid-hell.png"
+target = "cgb-acid-hell.png"
+sha256 = "fb8bba0a68f6242ef553f975681ad6482badab01cabe0719115d0ff6fd861a3e"
+
+[[source.family]]
+id = "daid"
+target_root = "daid"
+sparse_paths = ["testroms/daid"]
+
+[[source.family.file]]
+path = "testroms/daid/ppu_scanline_bgp.gb"
+target = "ppu_scanline_bgp.gb"
+sha256 = "3a32e875d4cdc1defd28a601a64a9a3f1f7965a6679a8f16af45781520b57379"
+
+[[source.family.file]]
+path = "testroms/daid/ppu_scanline_bgp.gbc.png"
+target = "ppu_scanline_bgp.gbc.png"
+sha256 = "49e0438aca7c762b8392db65ee77a59e55155925624461a161e9530a982fb25b"
+
+[[source.family.file]]
+path = "testroms/daid/ppu_scanline_bgp_0.dmg.png"
+target = "ppu_scanline_bgp_0.dmg.png"
+sha256 = "146595658062ef1e2fc19b46b665a997d0e6d44cab9bdade31232f5c997918e8"
+
+[[source.family.file]]
+path = "testroms/daid/ppu_scanline_bgp_1.dmg.png"
+target = "ppu_scanline_bgp_1.dmg.png"
+sha256 = "a07067f06285f94180a246b04208223a01040014b750996de1bbed3eaf56b572"
+
+[[source.family.file]]
+path = "testroms/daid/ppu_scanline_bgp_2.dmg.png"
+target = "ppu_scanline_bgp_2.dmg.png"
+sha256 = "2400f19f5a82d1c28726cdbb9793f86f01cadb1bbc5ef624e37e69de272241cc"
+
+[[source.family.file]]
+path = "testroms/daid/stop_instr.gb"
+target = "stop_instr.gb"
+sha256 = "7807e380ce4531f4f9425427b47d7216a92ef2283ab706ea4a33eb84f589ac42"
+
+[[source.family.file]]
+path = "testroms/daid/stop_instr.dmg.png"
+target = "stop_instr.dmg.png"
+sha256 = "4a17cdbaa7d108eab02da64e95bb08b350f32b290819319af9d6c611b66bb1b0"
+
+[[source.family.file]]
+path = "testroms/daid/stop_instr.gbc.png"
+target = "stop_instr.gbc.png"
+sha256 = "dde322b8d635522880d31e8a336c3f6d2308e0b943456bf13279faab89502614"
+
+[[source.family.file]]
+path = "testroms/daid/stop_instr_gbc_mode3.gb"
+target = "stop_instr_gbc_mode3.gb"
+sha256 = "a16550bc85a2f5f8462694094e49cfd087780d731a4148e9056adfa3fbda7cff"
+
+[[source.family.file]]
+path = "testroms/daid/stop_instr_gbc_mode3.png"
+target = "stop_instr_gbc_mode3.png"
+sha256 = "63bab5e13e22dadaa1257de56a02e5dc0a51f5cb7239cb83133d3daa5aeea37d"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_div.gbc"
+target = "speed_switch_timing_div.gbc"
+sha256 = "7569d79d9bf2918f8f5a930f01643358a87f58a5fb0dfd33ee82d5b4badc5e94"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_div.png"
+target = "speed_switch_timing_div.png"
+sha256 = "acb8bd2ccb3e0c720946d6c2365eb58116e627cceea74dd02c06408859253184"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_ly.gbc"
+target = "speed_switch_timing_ly.gbc"
+sha256 = "acbe324c11b5e168d34c546cb9f3e641f3e85faffac3108fa0a933f6e6b95fb2"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_ly.png"
+target = "speed_switch_timing_ly.png"
+sha256 = "a64252ec9e245773ffc8dc1dab3712fe3be11fd5a5081cc722dab61461165dc0"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_stat.gbc"
+target = "speed_switch_timing_stat.gbc"
+sha256 = "21e088c4d4c110ef76912a2c4fd05293ac8cbf22740b35f2e362ee7b5450c1be"
+
+[[source.family.file]]
+path = "testroms/daid/speed_switch_timing_stat.png"
+target = "speed_switch_timing_stat.png"
+sha256 = "9bc6fd0feef711611423f047ce8d3d0bceb9894ec96de6ac5b96938ad6691b3c"
+
+[[source.family.file]]
+path = "testroms/daid/rom_and_ram.gb"
+target = "rom_and_ram.gb"
+sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
+
+[[source.family]]
+id = "ax6"
+target_root = "ax6"
+sparse_paths = ["testroms/ax6"]
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-1.gb"
+target = "rtc3test-1.gb"
+sha256 = "5862a567c4799ce87e64d699420daa59d216744781a517965e074ed399dd56d0"
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-1.png"
+target = "rtc3test-1.png"
+sha256 = "f5e52ef8311d7ac9bcd9504298b1da543d9ecfca25baad705b1e3f9903db8fd8"
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-2.gb"
+target = "rtc3test-2.gb"
+sha256 = "a50f2da808feff4de8f05067af34e4e444e35a4303e7fc636656e58a4ccea90c"
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-2.png"
+target = "rtc3test-2.png"
+sha256 = "00ec298838ba2daabe41c75fd717bd650d64c264ccc48e465894ca827c59f7b9"
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-3.gb"
+target = "rtc3test-3.gb"
+sha256 = "38a004276ad0d90670dc7cd00ebbd85b7eac04f54a8f244360ae5092e5aefa76"
+
+[[source.family.file]]
+path = "testroms/ax6/rtc3test-3.png"
+target = "rtc3test-3.png"
+sha256 = "726c312b9134255ed04fecedd86828637221ae32452f0fa3088a159fb5a283be"
+
+[[source.family]]
+id = "samesuite"
+target_root = "samesuite"
+sparse_paths = ["testroms/samesuite"]
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_align.gb"
+target = "apu/channel_1/channel_1_align.gb"
+sha256 = "a896d01bb7eeb1fa810ad581a6600f3b4364cdf4cfae444c07372b6e7cbcbf86"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_align.png"
+target = "apu/channel_1/channel_1_align.png"
+sha256 = "8f0172869d518c6e7f0486e1350846dd6dd16345b1c5175f4f32717cbb98898b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_align_cpu.gb"
+target = "apu/channel_1/channel_1_align_cpu.gb"
+sha256 = "aeed3a7fc0070a71b662740da2d0d28980cc147568fd422bc73f89b6d79ecd5c"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_align_cpu.png"
+target = "apu/channel_1/channel_1_align_cpu.png"
+sha256 = "25b37e2c8dcd64f78c41614a706e7fa193c2b7e5a7f298fcc6e3b296b6c3a652"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_delay.gb"
+target = "apu/channel_1/channel_1_delay.gb"
+sha256 = "a21ce64c3b62fffadf4610b4d08d3ec59a5a95f087c86472940743e022b6a01a"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_delay.png"
+target = "apu/channel_1/channel_1_delay.png"
+sha256 = "ddcd461db6992622270e57a0e7953f78eca17ab5221c450b0b3df399501989d7"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_duty.gb"
+target = "apu/channel_1/channel_1_duty.gb"
+sha256 = "839329d92ef14fcfcf53cf10fa13c516e3080f7a16a3a15ddfcdc3cc68e08808"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_duty.png"
+target = "apu/channel_1/channel_1_duty.png"
+sha256 = "70694a19081ec3578a6f86d01f1bd36ced4b92098b36c1bb277a563b420bc35f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_duty_delay.gb"
+target = "apu/channel_1/channel_1_duty_delay.gb"
+sha256 = "bcec7e29fb3f2293867724bdd55a8d5a1486c53738719e1f6b6f95423495e6ca"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_duty_delay.png"
+target = "apu/channel_1/channel_1_duty_delay.png"
+sha256 = "d57480153d90180a67f6a9282bf8134184d78fb1c2664e8f51c7bada8092fabd"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_freq_change.gb"
+target = "apu/channel_1/channel_1_freq_change.gb"
+sha256 = "6ed81ce18096d5a307ef2ca46e86ac091047319648656c23cacb883d4c45d653"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_freq_change.png"
+target = "apu/channel_1/channel_1_freq_change.png"
+sha256 = "cdb133979aa3380cc2e676f3593ab1303b7c3104f5a4632234e6b62e12aa3a62"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.gb"
+target = "apu/channel_1/channel_1_nrx2_glitch.gb"
+sha256 = "4f8b79de61fc054d7d830f60f3ac04e3c30399943aa973bced1c3fab3e79df96"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_glitch.png"
+target = "apu/channel_1/channel_1_nrx2_glitch.png"
+sha256 = "d47cb86c24c0a3ed9a0d3e3bd246f54aabad3ad05444139086eccce311476d36"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.gb"
+target = "apu/channel_1/channel_1_nrx2_speed_change.gb"
+sha256 = "c137cf527632f6494ae2663f987e74b8d719819f2e264e0896bf1ae54f3dcf64"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_nrx2_speed_change.png"
+target = "apu/channel_1/channel_1_nrx2_speed_change.png"
+sha256 = "84558e038f801cd756ce9852ad463c9a2561a3c0411ce8ecc684b683fe934d4f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_restart.gb"
+target = "apu/channel_1/channel_1_restart.gb"
+sha256 = "453fc5feb5e770cfcac9fe16c28b53fa5c0beacf57dd4575cc7537efe7955e02"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_restart.png"
+target = "apu/channel_1/channel_1_restart.png"
+sha256 = "e191d89a94bbf8fa3e23fd25c8aaf3fdd71d91d7ac63527b886b835f082fb1b7"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+target = "apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+sha256 = "548360b850f2cc9b11358325868a646218a719c81a6b5b392a0d2f1675d3b617"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_restart_nrx2_glitch.png"
+target = "apu/channel_1/channel_1_restart_nrx2_glitch.png"
+sha256 = "59598b8dc4c4d1ce0873330e5d3470697b1174c4b47f9a07c821d5040919713e"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.gb"
+target = "apu/channel_1/channel_1_stop_div.gb"
+sha256 = "3309d7a3bba3558b3d5c161cc08de2dea30444f236ea105fff1d3d35225d2de5"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_div.png"
+target = "apu/channel_1/channel_1_stop_div.png"
+sha256 = "6532710bd92bcb81b269d870d0419f67b262aebe0164f433ad9300170bf9ce0b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_restart.gb"
+target = "apu/channel_1/channel_1_stop_restart.gb"
+sha256 = "3cfd452b32e85430162e923f946ceab4a7cb0b3b36dab951b45c2072df60b8d0"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_stop_restart.png"
+target = "apu/channel_1/channel_1_stop_restart.png"
+sha256 = "86ce0a714f4059ad6cc01b5677c0b940058997d1e22bad16b2912d52b10ff37e"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep.gb"
+target = "apu/channel_1/channel_1_sweep.gb"
+sha256 = "29acde857f938a9d188e73d6a314dca5b470c36e6414bf4897795520097bc006"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep.png"
+target = "apu/channel_1/channel_1_sweep.png"
+sha256 = "8be9899ac196cb1756f7e19d107502bd1ff69f681acbc430e75d7463a7cc9a5f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep_restart.gb"
+target = "apu/channel_1/channel_1_sweep_restart.gb"
+sha256 = "b9d700c15cc94734add97163c4299d69678adbcde823a0b3ba46e6814d3643f4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep_restart.png"
+target = "apu/channel_1/channel_1_sweep_restart.png"
+sha256 = "bb9f186cf583b7df24a4012b34f39854a7cc3a1408ba42cd1055611bb325e9ca"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep_restart_2.gb"
+target = "apu/channel_1/channel_1_sweep_restart_2.gb"
+sha256 = "60e2fe402837f83fea041c09c45a0a87157a14888f77220fb3b6091a815692c4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_sweep_restart_2.png"
+target = "apu/channel_1/channel_1_sweep_restart_2.png"
+sha256 = "3e17a09df22e06769f64e37ca24016c10e9292e2cb35013a704141635a941155"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_volume.gb"
+target = "apu/channel_1/channel_1_volume.gb"
+sha256 = "7df75d5b56d318077f3b3c3d7663297a067b1e4c5aaae0049645278417b93570"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_volume.png"
+target = "apu/channel_1/channel_1_volume.png"
+sha256 = "03be2fcb6595ed9a6bd055625ef6f08c77cf99738a9ecfd7555e8d1adf49003d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_volume_div.gb"
+target = "apu/channel_1/channel_1_volume_div.gb"
+sha256 = "cc3097b9787ef0eddd27f7a5acd3f3b4f27a9f2a2493c62b21335799443a4bb4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_1/channel_1_volume_div.png"
+target = "apu/channel_1/channel_1_volume_div.png"
+sha256 = "f111b621d39952baa1571439f6fa075e6f786ffd8ff8c1c22ada484ce724fe65"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align.gb"
+target = "apu/channel_2/channel_2_align.gb"
+sha256 = "32f63b60bb6423e67a252a2e9a89b06efd8b1396a42c1c5a942724f10d02f635"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align.png"
+target = "apu/channel_2/channel_2_align.png"
+sha256 = "f5f13a3eb57a480fb607428f51dd772ce6efa177ab3f78567913021ca86a27b6"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.gb"
+target = "apu/channel_2/channel_2_align_cpu.gb"
+sha256 = "4df5b4482da833374110e216eaceafe7df363d1ffab50c2f2f2798dea9a4959c"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_align_cpu.png"
+target = "apu/channel_2/channel_2_align_cpu.png"
+sha256 = "3a16c7f1bcf534cad594abc4c663b154874e8e6f15b3957ff2cd9b794e412494"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_delay.gb"
+target = "apu/channel_2/channel_2_delay.gb"
+sha256 = "8ef36a5d047e45075bfb6e52b2b3fc0bb2e29c9891aeb9f6692a72f1444134e7"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_delay.png"
+target = "apu/channel_2/channel_2_delay.png"
+sha256 = "8a9559a968a138b02370c34ab8a7a20a967b3fe70eb7642132d9aab12d33127d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty.gb"
+target = "apu/channel_2/channel_2_duty.gb"
+sha256 = "7a6da0d8fb7c2beb667994f66d83e7063e4f239606738f5007b5e87c1da84b08"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty.png"
+target = "apu/channel_2/channel_2_duty.png"
+sha256 = "56c8f765d59e63cbcb5ebba203168819f5dae9b7c73a27cbd11a69c0ab58c695"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.gb"
+target = "apu/channel_2/channel_2_duty_delay.gb"
+sha256 = "358ae3dbd59211b01be37d1ad5de2c3db655251a593a78fecbe882a54a37c80f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_duty_delay.png"
+target = "apu/channel_2/channel_2_duty_delay.png"
+sha256 = "513678baedfc3c662b764fb0993dc00fd43858c433a0b88b384d610b32cdb4b0"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.gb"
+target = "apu/channel_2/channel_2_freq_change.gb"
+sha256 = "9166471a0006e94d3e7b929994eb1c961f4339369de35c1ead72096c5ad1e12f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_freq_change.png"
+target = "apu/channel_2/channel_2_freq_change.png"
+sha256 = "3b35f74b9c03a50a9f7f6dde41a9235f7206e23ac9b9d438f3c0bec15ab3759f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.gb"
+target = "apu/channel_2/channel_2_nrx2_glitch.gb"
+sha256 = "1a743ea48df7630b47597db0d21f395724d840a94a3ff399eec4f88ef1baa6ae"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_glitch.png"
+target = "apu/channel_2/channel_2_nrx2_glitch.png"
+sha256 = "260d0f62ea89765317ece89d14b4264babcd1d744a55cc5a3dbfb169bc72c748"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.gb"
+target = "apu/channel_2/channel_2_nrx2_speed_change.gb"
+sha256 = "eed549e9d61d55f8f26066c7938270ed7e067d1a0abc69789d30197dc6222d02"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_nrx2_speed_change.png"
+target = "apu/channel_2/channel_2_nrx2_speed_change.png"
+sha256 = "a1a1994106740b78d632fa41c9fb115b9e29a8e09141169a6274ef4f69bff9d1"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart.gb"
+target = "apu/channel_2/channel_2_restart.gb"
+sha256 = "7678fd78454f0a54015c5575b9e09c964df844fa799d6ece9167cedb913e7865"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart.png"
+target = "apu/channel_2/channel_2_restart.png"
+sha256 = "471a0ad00de0dfea9829f8f9f287e3f81eb54f3681aca39030e137ea76e15c85"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+target = "apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+sha256 = "3911bc68c827ede086d667ca35d22e121e25d9d9b1e0ac9239d506aa82ac2ef6"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_restart_nrx2_glitch.png"
+target = "apu/channel_2/channel_2_restart_nrx2_glitch.png"
+sha256 = "4fc27e1caa5529bca8921b7e79d2b15487695b859b2d4a3a14304a3995f0ed19"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.gb"
+target = "apu/channel_2/channel_2_stop_div.gb"
+sha256 = "1e9fc4fb8a114b89119c7893ece0192df6871255e39e971b350dd7dc009ad4eb"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_div.png"
+target = "apu/channel_2/channel_2_stop_div.png"
+sha256 = "f0fbd7a3a754a49b1359fe338e5ead578747ad282dae2fe8e64ff7db16c506c2"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.gb"
+target = "apu/channel_2/channel_2_stop_restart.gb"
+sha256 = "0819ffff78b368970e9d6bb74fae086c7350c3e6d20c4bbda49e15fce4e85788"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_stop_restart.png"
+target = "apu/channel_2/channel_2_stop_restart.png"
+sha256 = "17c91b585723a10c82b6de2b33b49d27f61d796d3a3558deaa9228918fc1fbde"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume.gb"
+target = "apu/channel_2/channel_2_volume.gb"
+sha256 = "bb8d724f2609176d9418c5863f738570468148be7eafe3f01ba0c39206f3badc"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume.png"
+target = "apu/channel_2/channel_2_volume.png"
+sha256 = "30f793f6e7598713d948695e5c639c7402768d93aaaa9820414000af4dc5047d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume_div.gb"
+target = "apu/channel_2/channel_2_volume_div.gb"
+sha256 = "73c058d2022db9a5fabb8dcc669ed9b16c1685b29adfc31eb7cd72c4e34b2811"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_2/channel_2_volume_div.png"
+target = "apu/channel_2/channel_2_volume_div.png"
+sha256 = "d3f9fa184587d78036a6aa117be15c9a58af692cbba85295ac45f1e3f9cd2c66"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.gb"
+target = "apu/channel_3/channel_3_and_glitch.gb"
+sha256 = "2635687bff2bfbdf78580fea72da89433575f086303c828624d8ec46e90e76b7"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_and_glitch.png"
+target = "apu/channel_3/channel_3_and_glitch.png"
+sha256 = "c6d8b5517b4d9b8a33d35a0ef32bdc5255046fe041a1f665564ec4d696e5e274"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_delay.gb"
+target = "apu/channel_3/channel_3_delay.gb"
+sha256 = "3d603935f92e16565239e062a19baeae9de71357f585c7292bc7e2137cbeb1ad"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_delay.png"
+target = "apu/channel_3/channel_3_delay.png"
+sha256 = "c1cd212f358dec411f3aca5351e39c39f0871b890bb41e11fd60d3e3f11f8fbc"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.gb"
+target = "apu/channel_3/channel_3_first_sample.gb"
+sha256 = "023ebfe482b40b881736ed34717940d0bca56916687aacba44556de90dced3a8"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_first_sample.png"
+target = "apu/channel_3/channel_3_first_sample.png"
+sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.gb"
+target = "apu/channel_3/channel_3_freq_change_delay.gb"
+sha256 = "3828402ccb37428ca71fa68a3be6cb6c27f1b09cf7b0191010cef0966416b704"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_freq_change_delay.png"
+target = "apu/channel_3/channel_3_freq_change_delay.png"
+sha256 = "114ef6c02bd51d6e6a3c22684e6aec477327618b20e3f5ba72876b9cb92093ee"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.gb"
+target = "apu/channel_3/channel_3_restart_delay.gb"
+sha256 = "fdd96f787768705e72906bdeb2f145e69c064423e19854ce1855f9d64391fcc2"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_delay.png"
+target = "apu/channel_3/channel_3_restart_delay.png"
+sha256 = "9e9563deb487b50198294bdc64b385e2b474df4923f070853832dd5d8a0b4ab2"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.gb"
+target = "apu/channel_3/channel_3_restart_during_delay.gb"
+sha256 = "ef1434b416fdf58f2c353f02f4b26d770e17f71164085ed954df143a326bb328"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_during_delay.png"
+target = "apu/channel_3/channel_3_restart_during_delay.png"
+sha256 = "4634d3a14fbae2070f6e6a8c41203f1e52e23f09693c3807ff7cb4308fa13e0e"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.gb"
+target = "apu/channel_3/channel_3_restart_stop_delay.gb"
+sha256 = "c12a51c693f8428049df0ec57d7a13f05af382c228de0fb4c31657ab4d6dea25"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_restart_stop_delay.png"
+target = "apu/channel_3/channel_3_restart_stop_delay.png"
+sha256 = "cb1e62995d1795839ebedf251e8716bd801fd3bb94eb0a97bd3a616d9b029fd0"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.gb"
+target = "apu/channel_3/channel_3_shift_delay.gb"
+sha256 = "811ee98b7241b721b0de9cacfa4de986aa7db51c9294f5f7bf7a07f489bedbb1"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_delay.png"
+target = "apu/channel_3/channel_3_shift_delay.png"
+sha256 = "8a4b668a6d960d705be65ea3e528bf290a44e621d0357edd50e3681ed07c8176"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.gb"
+target = "apu/channel_3/channel_3_shift_skip_delay.gb"
+sha256 = "ac9d8abff89134d510060538cf15897dd577e71a36ced6eb4420cb4325e07037"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_shift_skip_delay.png"
+target = "apu/channel_3/channel_3_shift_skip_delay.png"
+sha256 = "8c6f90a4ceaf8362fc2c7dd9abb49d05e175e2307826b5eba0653e54eec12b9b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.gb"
+target = "apu/channel_3/channel_3_stop_delay.gb"
+sha256 = "60cd8a1f581446754ce294edda22f3b3b7eafce22b3957775d28e980d5ebac5f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_delay.png"
+target = "apu/channel_3/channel_3_stop_delay.png"
+sha256 = "12c4cc2815ada81dad4fbb17730418026b4c9c56121d2b62670ba57c143f8da4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.gb"
+target = "apu/channel_3/channel_3_stop_div.gb"
+sha256 = "14a70b8c9b1efa0e795dc9b2f3a6946fc3beb9dcc90db3fbb6fa6d0b78c3b36a"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_stop_div.png"
+target = "apu/channel_3/channel_3_stop_div.png"
+sha256 = "78ab941e66153fb610d3a99fea766834056b065e15f97edb0996254e03589f26"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.gb"
+target = "apu/channel_3/channel_3_wave_ram_locked_write.gb"
+sha256 = "814c3e28d7a4269c3b89544c476ffd783d879ceb255a7d85b71ba0de15cde11d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_locked_write.png"
+target = "apu/channel_3/channel_3_wave_ram_locked_write.png"
+sha256 = "d81f5f8daf30d0c6656fd5a340ae1e4298639739ce77161f362d2919a937f7f9"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.gb"
+target = "apu/channel_3/channel_3_wave_ram_sync.gb"
+sha256 = "e15b9443be93f0404c80c2c0047d6fdb1c71e67d0ef92ae8a8caf876bae7ba2b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_3/channel_3_wave_ram_sync.png"
+target = "apu/channel_3/channel_3_wave_ram_sync.png"
+sha256 = "ef993d93cb51de5b02cccd9dc388213b6d8f6072b09ce02378e197ee3719ad79"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_align.gb"
+target = "apu/channel_4/channel_4_align.gb"
+sha256 = "62295e50ec87bf0a3a98063c0cf8069977b8941bee16bacaddfc76db610bcc51"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_align.png"
+target = "apu/channel_4/channel_4_align.png"
+sha256 = "31ada8443cd342d708b7ae1f540ed0af5409800a56d5f07149204aa63905c78b"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_delay.gb"
+target = "apu/channel_4/channel_4_delay.gb"
+sha256 = "9749afa9743b544509754f147791ca626da2472dc3e05404f43be1b52f1fad00"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_delay.png"
+target = "apu/channel_4/channel_4_delay.png"
+sha256 = "5213a9d1fcb6432d0bbb5b08d99ba67f7ac5ba4efed06bec449e98693fe94f18"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.gb"
+target = "apu/channel_4/channel_4_equivalent_frequencies.gb"
+sha256 = "078921fa4c32cbc94638c17550d06a34f91eedd32dd6357bddea8b95d968fe7d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_equivalent_frequencies.png"
+target = "apu/channel_4/channel_4_equivalent_frequencies.png"
+sha256 = "ac123f761fdbeb93603d1289b7296005ec372847997e2e84ae162cce8de69e03"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.gb"
+target = "apu/channel_4/channel_4_frequency_alignment.gb"
+sha256 = "783c48510680e6439608501794a3a2ffd0aae6623db30cce7300c279ff4dd1bd"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_frequency_alignment.png"
+target = "apu/channel_4/channel_4_frequency_alignment.png"
+sha256 = "b35c1023baae633e751fc56f1d4ac11f86229564b174be5b73ff902f7cb8eb07"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.gb"
+target = "apu/channel_4/channel_4_freq_change.gb"
+sha256 = "1aa98a943443872019f7fb24b32d365c792f4a5c9d8dd6f020a316399d3b4669"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_freq_change.png"
+target = "apu/channel_4/channel_4_freq_change.png"
+sha256 = "93bb7ac91d22a444581b71694220034ab0dae054059dc12c2386aa7aba6d3cec"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.gb"
+target = "apu/channel_4/channel_4_lfsr.gb"
+sha256 = "7666efd14372b640b8d7865cba181a48c709b8b3b390f70afb9521e9fdb8aad1"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr.png"
+target = "apu/channel_4/channel_4_lfsr.png"
+sha256 = "05917365de5f0e38e7e6c8aec188804691e23eca679bfccaea0eb306fc868035"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.gb"
+target = "apu/channel_4/channel_4_lfsr15.gb"
+sha256 = "56b6dd72a20a79e2bd83ca2c0383eb979b94b27ec803a175924ff44ec5e45dd4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr15.png"
+target = "apu/channel_4/channel_4_lfsr15.png"
+sha256 = "c59231190b367a93039acda8414148c19fee360c0904caceb299455e9a6144b6"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.gb"
+target = "apu/channel_4/channel_4_lfsr_15_7.gb"
+sha256 = "90c725f6a801df11cb91d086b53152464f6c1b83c95ec96ab1ebcdde9202fdaf"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_15_7.png"
+target = "apu/channel_4/channel_4_lfsr_15_7.png"
+sha256 = "f93570afd7613c407fe49f36d271cf1623fb5183e386eb65cb4d1c3e4cb67548"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.gb"
+target = "apu/channel_4/channel_4_lfsr_7_15.gb"
+sha256 = "9349717633056520f8a27f57c0205b811c41091a6297a8757946ae8e5e87986a"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_7_15.png"
+target = "apu/channel_4/channel_4_lfsr_7_15.png"
+sha256 = "049d708ce1cdf157a578cc5c5ee23668dd386f14f5fdf4ea05b3f7234e16c5b3"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.gb"
+target = "apu/channel_4/channel_4_lfsr_restart.gb"
+sha256 = "7bd077b10cf40548572c5effc67f0d3d805ff7583f5010d0e271f976c382c410"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart.png"
+target = "apu/channel_4/channel_4_lfsr_restart.png"
+sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.gb"
+target = "apu/channel_4/channel_4_lfsr_restart_fast.gb"
+sha256 = "77d1bfe86820f0ca212bfc686a9459126d0eff002391f7f20c211a383ce31c27"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_lfsr_restart_fast.png"
+target = "apu/channel_4/channel_4_lfsr_restart_fast.png"
+sha256 = "55d66aebac9666831f070450dabbd31995448c3fc6b8d8f8cecedde332c8c8d4"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_volume_div.gb"
+target = "apu/channel_4/channel_4_volume_div.gb"
+sha256 = "9c3109352be8a9d2dd1febfb0741c97305a4a317abdf84487c26976dce0eab8a"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/channel_4/channel_4_volume_div.png"
+target = "apu/channel_4/channel_4_volume_div.png"
+sha256 = "a510732688068f1d08d00ca4f2b40b0b1d6a84b57e49959b467484f73b366b82"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_trigger_volume_10.gb"
+target = "apu/div_trigger_volume_10.gb"
+sha256 = "2a53608ac6eb76e41173628aca4a6ba1f473b5ff49ea8d4a2052ba8bde013d6d"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_trigger_volume_10.png"
+target = "apu/div_trigger_volume_10.png"
+sha256 = "348dd95e0d28c9c264ccca83eceb3857d5d24f070d2b4c95f9ffca32b6c3c1ce"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger.gb"
+target = "apu/div_write_trigger.gb"
+sha256 = "cc57fed1b1fffe6d16c1c5f405e2c7766ac305fafc6c924149929e4888906c5f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger.png"
+target = "apu/div_write_trigger.png"
+sha256 = "4634578bdd1284ea8d9645ad956d69ce750959368792d5502d17356afe7744da"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_10.gb"
+target = "apu/div_write_trigger_10.gb"
+sha256 = "7d8d1739fc7367fa79822ee7652b22bd05a362f85419032c2338bc25cbdee8d1"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_10.png"
+target = "apu/div_write_trigger_10.png"
+sha256 = "df304df034c34b14e377142327b62ebfe8b74905ceb5ba71523cdf836d189127"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_volume.gb"
+target = "apu/div_write_trigger_volume.gb"
+sha256 = "f8919d6028c2d2cb291c537d4e1a53e60f90e4c75a0819bd327f5cc3b227edd1"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_volume.png"
+target = "apu/div_write_trigger_volume.png"
+sha256 = "7eabcbf628f3f3f585cf74e87cc3b667745f9fff355cb4051ea288e116f7e4ad"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_volume_10.gb"
+target = "apu/div_write_trigger_volume_10.gb"
+sha256 = "bcfa4200be6a77a0743875fca7de677330b3a80dbc4dff83499b4308e54717dc"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_volume_10.png"
+target = "apu/div_write_trigger_volume_10.png"
+sha256 = "348dd95e0d28c9c264ccca83eceb3857d5d24f070d2b4c95f9ffca32b6c3c1ce"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/gbc_dma_cont.gb"
+target = "dma/gbc_dma_cont.gb"
+sha256 = "c6c2188d84044fb35e811953a247024e8dd61045e3789a8991b334547a2480ac"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/gbc_dma_cont.png"
+target = "dma/gbc_dma_cont.png"
+sha256 = "28d57a3e16a904dbd5c4772ec1b9749ba06516a9d6ee3a8f1d621e3e114dc7e1"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/gdma_addr_mask.gb"
+target = "dma/gdma_addr_mask.gb"
+sha256 = "44919ce25c2d049d1abbbcec84c89c3acecb82d7c68b4d5551ef4868a4d9655a"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/gdma_addr_mask.png"
+target = "dma/gdma_addr_mask.png"
+sha256 = "a6df85e956d2194c7cc729fa07f73b343eba5c82d8980977064476b77309f8b2"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/hdma_lcd_off.gb"
+target = "dma/hdma_lcd_off.gb"
+sha256 = "d49e67a7e176832909790e9bd6356490d2937dd1d907ac319b66cacb420605a2"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/hdma_lcd_off.png"
+target = "dma/hdma_lcd_off.png"
+sha256 = "1305a0a7fb752e550e89bdfa332b2cda8805dbe83d748aea1a4fb99b8f02678c"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/hdma_mode0.gb"
+target = "dma/hdma_mode0.gb"
+sha256 = "2c5e448d091b2c774ebbb1dac74936abf16f6b4e39a011aff087d9cbc4b28d58"
+
+[[source.family.file]]
+path = "testroms/samesuite/dma/hdma_mode0.png"
+target = "dma/hdma_mode0.png"
+sha256 = "7a4739b29b958552bd6e90876bdf6e61c458700884f6a1363f153b21bc3fe406"
+
+[[source.family.file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.gb"
+target = "ppu/blocking_bgpi_increase.gb"
+sha256 = "4cf0a945c1bf33f243085697045189f8f2e33f15a4beab6c32cd71b974a3ab04"
+
+[[source.family.file]]
+path = "testroms/samesuite/ppu/blocking_bgpi_increase.png"
+target = "ppu/blocking_bgpi_increase.png"
+sha256 = "a9281c6e1a69c18664154cf7a85c6ff8bfef25973f1291cee53aea4a542bc1b5"
+
+[[source.family.file]]
+path = "testroms/samesuite/sgb/command_mlt_req.gb"
+target = "sgb/command_mlt_req.gb"
+sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
+
+[[source.family.file]]
+path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
+target = "sgb/command_mlt_req_1_incrementing.gb"
+sha256 = "7c95c4b134c200dd3fcef71d0a61c110990c0b953a70988f2b4a54eda47992ca"
+
+[[source.family]]
+id = "ashiepaws"
+target_root = "ashiepaws"
+sparse_paths = ["testroms/ashiepaws"]
+
+[[source.family.file]]
+path = "testroms/ashiepaws/bully.gb"
+target = "bully.gb"
+sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
+
+[[source.family.file]]
+path = "testroms/ashiepaws/bully.png"
+target = "bully.png"
+sha256 = "340be52fc2d231868153a14d3f252fd387483e68c2868f1ad17fea362b2918ff"
+
+[[source.family.file]]
+path = "testroms/ashiepaws/strikethrough.gb"
+target = "strikethrough.gb"
+sha256 = "353d50d745e2539d93f0baf7d670ec93b520f97e41443cb39ba6f32be1f5fa31"
+
+[[source.family.file]]
+path = "testroms/ashiepaws/strikethrough.png"
+target = "strikethrough.png"
+sha256 = "52187909e73d03ea11659149935c57bfce8395c3091d3f7809bbadc3c5feb745"
+
+[[source.family]]
+id = "cpp"
+target_root = "cpp"
+sparse_paths = ["testroms/cpp"]
+
+[[source.family.file]]
+path = "testroms/cpp/rtc-invalid-banks-test.gb"
+target = "rtc-invalid-banks-test.gb"
+sha256 = "353c72be3227f6dcd85939b54efcf31b745c20beb821a1d370eb8a7797f47bd1"
+
+[[source.family.file]]
+path = "testroms/cpp/rtc-invalid-banks-test.png"
+target = "rtc-invalid-banks-test.png"
+sha256 = "e7a4df7816a7eb7c1c7328e4f58a88f0a6611104d2ac2590c03826021a558e60"
+
+[[source.family.file]]
+path = "testroms/cpp/latch-rtc-test.gb"
+target = "latch-rtc-test.gb"
+sha256 = "2df0db7b8cc5719a208bd59a2a0e3096cc278fe8614c0ee986b587e7803bffa5"
+
+[[source.family.file]]
+path = "testroms/cpp/latch-rtc-test.png"
+target = "latch-rtc-test.png"
+sha256 = "268f295d7f530e4f3c725e0d6d8fac53dbafd696659faffe40b8694658e96193"
+
+[[source.family.file]]
+path = "testroms/cpp/ramg-mbc3-test.gb"
+target = "ramg-mbc3-test.gb"
+sha256 = "40117ff683b2bae07a0623ae86a7c8275f9aa23d75c008816030e8ccbf4b6405"
+
+[[source.family.file]]
+path = "testroms/cpp/ramg-mbc3-test.png"
+target = "ramg-mbc3-test.png"
+sha256 = "0108c6759326505814b3f9555231e25ff6c636c54025c27837845028c1d5c290"
+
+[[source.family.file]]
+path = "testroms/cpp/sgb-ext-test.gb"
+target = "sgb-ext-test.gb"
+sha256 = "ae4084d4888cab6bb452f93b3c27964073e7c3dabea201cfab3ce9a8a985510e"
+
+[[source.family]]
+id = "mealybug-tearoom-tests"
+target_root = "mealybug-tearoom-tests"
+sparse_paths = ["testroms/mealybug-tearoom-tests"]
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb"
+target = "ppu/m2_win_en_toggle.gb"
+sha256 = "5ab52823dc9e25184e884d73a19bfe0b048a9d2526ca779a0925ca891a9ba7f5"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png"
+target = "ppu/m2_win_en_toggle_dmg_blob.png"
+sha256 = "b3125f1cfedaa0dd0ff8f02b9b44acf2343af9154d05dfd8788b98a0fc153935"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change.gb"
+target = "ppu/m3_bgp_change.gb"
+sha256 = "52151476d16b04654123e64bd2c22702571c529761d9c9bc2f485ca2538fc035"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_dmg_blob.png"
+target = "ppu/m3_bgp_change_dmg_blob.png"
+sha256 = "c46133683a51f6eed3c79deb99cb0aa516f147918276c73f335c2b7d5d821f98"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb"
+target = "ppu/m3_bgp_change_sprites.gb"
+sha256 = "41de816a11690c86c6d1b03c1fb9f2ec367dcd288f1cf8f2b52560a3e2b9a917"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites_dmg_blob.png"
+target = "ppu/m3_bgp_change_sprites_dmg_blob.png"
+sha256 = "7ad05d59b3d03a27ee4efa6a3ad614f00d2a2652f7dd188a6ecde2cfcbd0b4e0"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb"
+target = "ppu/m3_lcdc_bg_en_change.gb"
+sha256 = "4bb4ea8076950c1ecaeb8c704ca0568e05bc09d35e114f0cbe77b3b173e3d13b"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change_dmg_blob.png"
+target = "ppu/m3_lcdc_bg_en_change_dmg_blob.png"
+sha256 = "576d75d0b2af8c8e5d86411433a908386ad09cceed62aa59e17e3eac8a687f0a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb"
+target = "ppu/m3_lcdc_bg_map_change.gb"
+sha256 = "dcb8d7e2c750453d76f47bae25092c9eb79ace1f8c0c3e8e1959ebb8d177d716"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change_dmg_blob.png"
+target = "ppu/m3_lcdc_bg_map_change_dmg_blob.png"
+sha256 = "50f379acec62f7f9cb77a8c9501804405066b51cba8a1fb3b0c716c35d0eab61"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change.gb"
+target = "ppu/m3_lcdc_obj_en_change.gb"
+sha256 = "943be0ef4a104bc71139f21de2321ad4510e32dc756739be0d97fc56ff59e18c"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_dmg_blob.png"
+target = "ppu/m3_lcdc_obj_en_change_dmg_blob.png"
+sha256 = "fe1ef8c9d8f88fa5c1e0a259a356fb457931ded8a89743a25947f866bb88e405"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant.gb"
+target = "ppu/m3_lcdc_obj_en_change_variant.gb"
+sha256 = "5beb278323b75201150aadc5abc00d6f12817759f2a4e7206cdd2cd2504a77f3"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png"
+target = "ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png"
+sha256 = "2ebd7776d32f331057e97676cd9e660541c436a1dfdfc12e01eadd9c43e0259f"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb"
+target = "ppu/m3_lcdc_obj_size_change.gb"
+sha256 = "1060fbf592ccf28b19c5e8af310f4441c74ca2310faf7f6b024a62a1888d6d2e"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_dmg_blob.png"
+target = "ppu/m3_lcdc_obj_size_change_dmg_blob.png"
+sha256 = "3baa299b931912bd5b7869d83eba02de8d1c996e6fa76793c66fa787748384f9"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx.gb"
+target = "ppu/m3_lcdc_obj_size_change_scx.gb"
+sha256 = "f0ae9a6c51d1ae490a3b492e732ba4080ad92def08a806b4e3953277aaa7291a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png"
+target = "ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png"
+sha256 = "a32dcd889e89623fc6225f1044043bddec22be533626517ad0d2cb2f3447f11a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change.gb"
+target = "ppu/m3_lcdc_tile_sel_change.gb"
+sha256 = "aef34202485974960b01b80bd5c57686d09e436fb90efb9b7e19686b910998b4"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change_dmg_blob.png"
+target = "ppu/m3_lcdc_tile_sel_change_dmg_blob.png"
+sha256 = "89a93cff7409b0b884a4549c4eceb2b246a68e10e0f70a3429842001b9577dd9"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change.gb"
+target = "ppu/m3_lcdc_tile_sel_win_change.gb"
+sha256 = "5d442f4cfcd8f9415697ce748b2f2daf587db3f205831ed2849ad3f80f925f21"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png"
+target = "ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png"
+sha256 = "4a153db0fbec785a92f0f96a8773e6b55e19ece839e2e45ce0bba081cf0d8a81"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb"
+target = "ppu/m3_lcdc_win_en_change_multiple.gb"
+sha256 = "6d759374790c6a4b98682e438d2f25e0481533828e2c2a50fda88fdde3256870"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_dmg_blob.png"
+target = "ppu/m3_lcdc_win_en_change_multiple_dmg_blob.png"
+sha256 = "319c45421dd1264933a48e43bc4181994683a81d4d8a5013af9890e2e8d08428"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+target = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+sha256 = "0fed492b76695157a794b05cda1217be6cbe81ef4769102c4c5508d89a6fbb23"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png"
+target = "ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png"
+sha256 = "93f32c3f5b0ee75d602b3df78fc1c4f172548f2ed36b22d566aa6f5ac870b1c3"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change.gb"
+target = "ppu/m3_lcdc_win_map_change.gb"
+sha256 = "a4d4a28cb665b55faa256163110ea3f6729d33112aa0a05dfd876eae8f446c05"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change_dmg_blob.png"
+target = "ppu/m3_lcdc_win_map_change_dmg_blob.png"
+sha256 = "ce22248c5d9e7b519cd8493564a7cbdf874385f8711072029e05e927659821cd"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb"
+target = "ppu/m3_obp0_change.gb"
+sha256 = "2160b69123091f9b997debef8b314b4277f4a9027eb25a1b8418ea06f87ba6af"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change_dmg_blob.png"
+target = "ppu/m3_obp0_change_dmg_blob.png"
+sha256 = "5f548ccd0a0e1e979911f00184575f64742e66a601a5f2f9fd814757c62b738a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits.gb"
+target = "ppu/m3_scx_high_5_bits.gb"
+sha256 = "423db91af0f87547ae46690044ef760481f7005033ffc61bd69875b7df96139b"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits_dmg_blob.png"
+target = "ppu/m3_scx_high_5_bits_dmg_blob.png"
+sha256 = "21750dfddb16dbbc084032f5361a82782685441eaca93bf67249049bb14b3a1b"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb"
+target = "ppu/m3_scx_low_3_bits.gb"
+sha256 = "433e59a9eb9a27c962cd613c24c2f8d728ac9e498233667959eb07995f0fef5f"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits_dmg_blob.png"
+target = "ppu/m3_scx_low_3_bits_dmg_blob.png"
+sha256 = "a05cd516b63ee547f6a8fa373bdecf46308baa5806be7f55f3eba207c3c03d21"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scy_change.gb"
+target = "ppu/m3_scy_change.gb"
+sha256 = "0fedb0c33fd400d5f88a35704177e437b7d88f18c81bd5b30c3165b633734c8a"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scy_change_dmg_blob.png"
+target = "ppu/m3_scy_change_dmg_blob.png"
+sha256 = "ee06038412da1d8a28dc0913d98c6b7185b13fcebdaabeca7d7f1ff67224aacb"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing.gb"
+target = "ppu/m3_window_timing.gb"
+sha256 = "c8c8b26d5c9659f30e037a1a9f8d8f9d8f57db0a97730bbab536fb95e11da9df"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_dmg_blob.png"
+target = "ppu/m3_window_timing_dmg_blob.png"
+sha256 = "1a6a63d4978492258bcaaadba2820a4805980ae785a59b1888f088caa163b171"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb"
+target = "ppu/m3_window_timing_wx_0.gb"
+sha256 = "984496c486032606aede6428e1087c6038403b27d7bcfed844188742123b91a4"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png"
+target = "ppu/m3_window_timing_wx_0_dmg_blob.png"
+sha256 = "12d9d8d6124ec45524b8d0e5b5745c5f5481feea9080d557c9a182132538c869"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change.gb"
+target = "ppu/m3_wx_4_change.gb"
+sha256 = "eadfe4369b85994b4401e7e5119272626c6339ecec282848013decf0cb5ea81c"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_dmg_blob.png"
+target = "ppu/m3_wx_4_change_dmg_blob.png"
+sha256 = "dc777d9d941414cdf572c4bf765e055b55602a2968969fdd9cc28e706bb67ad5"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb"
+target = "ppu/m3_wx_4_change_sprites.gb"
+sha256 = "da10819cb8af5fb8fb31f6f50729e9afe221161a7b5743351a54ca05e9c94fec"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites_dmg_blob.png"
+target = "ppu/m3_wx_4_change_sprites_dmg_blob.png"
+sha256 = "3f1e14d890041162df8b8f30c74f6a9423fc3f8d01aec3d5bb7527a9082f910c"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_5_change.gb"
+target = "ppu/m3_wx_5_change.gb"
+sha256 = "53a0c14c896cdef68b92ea90e952fe053dcf1d2155251e2e4ed8b48ef22a6d62"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png"
+target = "ppu/m3_wx_5_change_dmg_blob.png"
+sha256 = "52e0cc029618912c1f6bb6eb11ea18283c5877d4a4f3adc0b11f926fd34fe4f6"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_6_change.gb"
+target = "ppu/m3_wx_6_change.gb"
+sha256 = "efa65cf7a570add7cfcb6d25d7c314359f2a0e6eadcde2e44d53f81d6ba44b0d"
+
+[[source.family.file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_6_change_dmg_blob.png"
+target = "ppu/m3_wx_6_change_dmg_blob.png"
+sha256 = "fb81b02805dd00dbc3bcdc8f568680d1785d38472a6156336b050103adecf19a"
+
+[[source.family]]
+id = "mooneye"
+target_root = "mooneye"
+sparse_paths = ["testroms/mooneye"]
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/add_sp_e_timing.gb"
+target = "acceptance/add_sp_e_timing.gb"
+sha256 = "2dff0d2a543f5e2acb8b52aea4ed98775479d1a322d2e6de9b612ed2249f0921"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/bits/mem_oam.gb"
+target = "acceptance/bits/mem_oam.gb"
+sha256 = "7d1c87bb9dd10b173ef965e7cd7d745d79444f230bebee453d3ba16c530f66b5"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/bits/reg_f.gb"
+target = "acceptance/bits/reg_f.gb"
+sha256 = "c7b8f792670cffa52385536e06a45b4b55fcbb7a4109f171c56b9fc66c74f9e5"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/bits/unused_hwio-GS.gb"
+target = "acceptance/bits/unused_hwio-GS.gb"
+sha256 = "655539092ade9b32a119cd5dce23e6da14a9614a2e340124141cc36b54f1e334"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/boot_div-dmgABCmgb.gb"
+target = "acceptance/boot_div-dmgABCmgb.gb"
+sha256 = "ec9a72807f1d57947130093859abbd4d2fcae81ea42179fde70a3c1d5e10d514"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/boot_hwio-dmgABCmgb.gb"
+target = "acceptance/boot_hwio-dmgABCmgb.gb"
+sha256 = "6f1ec3e4106438c8588653287e1e81824591f0e4b2cf5946d8b67c983e67895a"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/boot_regs-dmgABC.gb"
+target = "acceptance/boot_regs-dmgABC.gb"
+sha256 = "39bcdaa3787c3a36bc1b36c04be7b2f8cd91f2e0361732e0d4f5523f0e1ee112"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/call_cc_timing.gb"
+target = "acceptance/call_cc_timing.gb"
+sha256 = "fdc87a9276a5b2430f05ad071134df8501a808d3463cf2e5a1f0891daffa27e3"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/call_cc_timing2.gb"
+target = "acceptance/call_cc_timing2.gb"
+sha256 = "ba0c8616b5665b791c376b50ff22e70070897249992e7f205f27eb96281af28f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/call_timing.gb"
+target = "acceptance/call_timing.gb"
+sha256 = "da9dba03706ad3bbb8b0a5e7c3073f344f4bae65999a71be09b6e6de424bb31e"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/call_timing2.gb"
+target = "acceptance/call_timing2.gb"
+sha256 = "8831e3c3e5f03d57fdb724475982e87fc8f7adeaf4bf733daf01075d67d659c8"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/div_timing.gb"
+target = "acceptance/div_timing.gb"
+sha256 = "ea7e923b22033afba4ae6d7bed3427a6f686ddab39f7e25dc3252bf801a75eea"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/di_timing-GS.gb"
+target = "acceptance/di_timing-GS.gb"
+sha256 = "6a2276088cc1b76bd9d019b5a904b7f043fe0623b71edccb84e33aacc6513726"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ei_sequence.gb"
+target = "acceptance/ei_sequence.gb"
+sha256 = "c77cb107cdb01068e008672dea03d14f20bd1b0777769b94ee64e7952f90120f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ei_timing.gb"
+target = "acceptance/ei_timing.gb"
+sha256 = "0299388a8f7b1efde7c26a6b974c67745f7dc35d0aea92ef5a7eb330d664d28a"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/halt_ime0_ei.gb"
+target = "acceptance/halt_ime0_ei.gb"
+sha256 = "2f196358165a3006fda3365e7b69e7010a326bfb05f5c3f60421d6498285c395"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/halt_ime0_nointr_timing.gb"
+target = "acceptance/halt_ime0_nointr_timing.gb"
+sha256 = "1f00b92d9f255c89f8271f52d1242a3a56c2c62fa1d1e5e82346227407d1f3f9"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/halt_ime1_timing.gb"
+target = "acceptance/halt_ime1_timing.gb"
+sha256 = "9e294418966e32554e0f9c69e814ebd4f3be45b2fe2ffa119c360bb96a89f75f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/halt_ime1_timing2-GS.gb"
+target = "acceptance/halt_ime1_timing2-GS.gb"
+sha256 = "a2502cbc708e92e97b3dd6c491c32f6226b04996ceac56fc969d5e6d2f796c44"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/if_ie_registers.gb"
+target = "acceptance/if_ie_registers.gb"
+sha256 = "7151fda0601da929fe131460bfb9d374b579975b40fe22bc950868dd29298933"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/instr/daa.gb"
+target = "acceptance/instr/daa.gb"
+sha256 = "db5b5d6438a687857e169af1936b6ee24ba5154d2483ea9ed7c97c6a1907b41f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/interrupts/ie_push.gb"
+target = "acceptance/interrupts/ie_push.gb"
+sha256 = "2e309951cd29e54bb98d409507dce34fc6f68ee512b2bb83f267179534e0a1c3"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/intr_timing.gb"
+target = "acceptance/intr_timing.gb"
+sha256 = "5fd312a86bf7fef48327e92e8d707c18b098c1e495464d0a8a00a070d1ab03e1"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/jp_cc_timing.gb"
+target = "acceptance/jp_cc_timing.gb"
+sha256 = "b6d858af2e02bb58c7db8cd074fa7561c6e390ec293682c1881f4d1437fffb23"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/jp_timing.gb"
+target = "acceptance/jp_timing.gb"
+sha256 = "bb911defee9a66ea573387078259e07b4b5e11c36ee35a199523dbad3991307d"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ld_hl_sp_e_timing.gb"
+target = "acceptance/ld_hl_sp_e_timing.gb"
+sha256 = "732b8f456c79494b2c5284c51c2760512b759ee279c627ff12880266b487e51e"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma/basic.gb"
+target = "acceptance/oam_dma/basic.gb"
+sha256 = "a476b5c0482ec9e35e79e112f2cd3f1608d662e101b276b5e39b008287cce18b"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma/reg_read.gb"
+target = "acceptance/oam_dma/reg_read.gb"
+sha256 = "7da25be338ede337b217d978118f06062efb8d8a247ca47a7251b48282dcbdfa"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma/sources-GS.gb"
+target = "acceptance/oam_dma/sources-GS.gb"
+sha256 = "ee1f05a623767383a34d86f566cc44a79c4d74c34be70528daad7f141aa10d45"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma_restart.gb"
+target = "acceptance/oam_dma_restart.gb"
+sha256 = "0136fc9351cbbd6213e108b72e7b20f1795cda385f5a663fbfa79927e5dcbabb"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma_start.gb"
+target = "acceptance/oam_dma_start.gb"
+sha256 = "314db12ff865ce2c6e6b0a854b26584b3de0940f5d173ecab61f5a0f1dadb59e"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/oam_dma_timing.gb"
+target = "acceptance/oam_dma_timing.gb"
+sha256 = "d65a1b5bf9be5393da3de103ad2cb8a4fec39066d12d2f95c661644cacf4fafe"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/pop_timing.gb"
+target = "acceptance/pop_timing.gb"
+sha256 = "540f4e4b28a587a7f608a205431d22f847a45e0747149fd5c9a893bef212f91b"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/hblank_ly_scx_timing-GS.gb"
+target = "acceptance/ppu/hblank_ly_scx_timing-GS.gb"
+sha256 = "5dc408f856f59b12ce63e4433355bfb48c2b2eba5a0db78644212f4081d8958a"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_1_2_timing-GS.gb"
+target = "acceptance/ppu/intr_1_2_timing-GS.gb"
+sha256 = "5a9afb64c8cd972a3b4fa63122e09d24f14cc8d6ad98d85acbf38fea876b54d5"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_0_timing.gb"
+target = "acceptance/ppu/intr_2_0_timing.gb"
+sha256 = "dcd7d144be6879368777412993d94c303fcb21fe1e052485f88e658ba8bc02fb"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode0_timing.gb"
+target = "acceptance/ppu/intr_2_mode0_timing.gb"
+sha256 = "6314f9b6eeef467d88f0039a3705d44f998c2887aceb3f649cb8f6e35740703f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb"
+target = "acceptance/ppu/intr_2_mode0_timing_sprites.gb"
+sha256 = "f8a1b92942389ed4afecaadc32a3620931f829c2ba503f96022357fd59881028"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode3_timing.gb"
+target = "acceptance/ppu/intr_2_mode3_timing.gb"
+sha256 = "17ccc6ca0036ffaa75ed47bc20a59ea8f68dd1e383c1719827055483f14ae0b8"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb"
+target = "acceptance/ppu/intr_2_oam_ok_timing.gb"
+sha256 = "d1138307a25d8eff8566e670ee39330f7a863cac792d47de269f3f0c34c85167"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/lcdon_timing-GS.gb"
+target = "acceptance/ppu/lcdon_timing-GS.gb"
+sha256 = "dc3644c90c1d598b64a86d00abbf219794f96dc79a188e50c9fbe53e18df1ee4"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/lcdon_write_timing-GS.gb"
+target = "acceptance/ppu/lcdon_write_timing-GS.gb"
+sha256 = "a4aafb523d4beb8e6a1f37a76b29b54a38355bc1b683be1a36c0ad24ddbd3eb7"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/stat_irq_blocking.gb"
+target = "acceptance/ppu/stat_irq_blocking.gb"
+sha256 = "4e061537ea80148b99bf70fdb9a22b44aec921cbbe4477b6249b2bccee97e0ec"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/stat_lyc_onoff.gb"
+target = "acceptance/ppu/stat_lyc_onoff.gb"
+sha256 = "32af6a9df7fe833c6115e25f0008a8b826035d9177fe73057fd9026df944a6ef"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/vblank_stat_intr-GS.gb"
+target = "acceptance/ppu/vblank_stat_intr-GS.gb"
+sha256 = "db7ee2865689f53290e3a1a653d72d1fa8f2226766bad9005f3ad6ff17ce8342"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/push_timing.gb"
+target = "acceptance/push_timing.gb"
+sha256 = "cc45809dc5e74f4bc7753abd56a5e197ad4f60facc480a9585246ffe427a4e8b"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/rapid_di_ei.gb"
+target = "acceptance/rapid_di_ei.gb"
+sha256 = "8c8812205b668c9b4c83484f68421778f6cabc833218569e5cef76e17b0af75c"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/reti_intr_timing.gb"
+target = "acceptance/reti_intr_timing.gb"
+sha256 = "c6fa77664a418da7d0608c375018faadcc62df6478314a89022ac6465b595645"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/reti_timing.gb"
+target = "acceptance/reti_timing.gb"
+sha256 = "0d89016e5db4265998bdd1466d4099412a2478265f0a0ce81793b5bf1e62c938"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ret_cc_timing.gb"
+target = "acceptance/ret_cc_timing.gb"
+sha256 = "fb64e4b9de5386acd40506a82e5ea89d5f17144316795b93fb510a2f9e7bee7c"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ret_timing.gb"
+target = "acceptance/ret_timing.gb"
+sha256 = "b4665f6a585b4d9bd7a3e6ec14ddc2afd9b5408465d19ed19c4604232f4096d3"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/rst_timing.gb"
+target = "acceptance/rst_timing.gb"
+sha256 = "bd6e12c286f8bcdd76a02e6e76521563fdf4e74b037d77034bd27f44b0b7d4d0"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/serial/boot_sclk_align-dmgABCmgb.gb"
+target = "acceptance/serial/boot_sclk_align-dmgABCmgb.gb"
+sha256 = "6ec152a8a08d5421a6b481a739f6a20480017e05b901c6bfeaf57deddb61dc45"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/div_write.gb"
+target = "acceptance/timer/div_write.gb"
+sha256 = "0c57baaf83d88aab0f5dd9980abafb81c708a7a5221c684324c01fec145d080c"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/rapid_toggle.gb"
+target = "acceptance/timer/rapid_toggle.gb"
+sha256 = "59b0a60d7d7278282ad33f41c79aafb5ee550782e0ca9357ae68cd43ac33e4da"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim00.gb"
+target = "acceptance/timer/tim00.gb"
+sha256 = "4c9d9d70c636ec25ee9f22ec2770de9ed69bc054457cb67ea5fac9e5f2b07503"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim00_div_trigger.gb"
+target = "acceptance/timer/tim00_div_trigger.gb"
+sha256 = "06b3aba3d1bfef00912f9bc2376a9858460c369089cf17bcfff19230baa5453a"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim01.gb"
+target = "acceptance/timer/tim01.gb"
+sha256 = "074014170ba914f3636282a8a21bd69b286aff336242c4e026070299e29c88c3"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim01_div_trigger.gb"
+target = "acceptance/timer/tim01_div_trigger.gb"
+sha256 = "7a54287c13d61f872745bff9f357c743f5620472726423d6cabeed74ea3ccaed"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim10.gb"
+target = "acceptance/timer/tim10.gb"
+sha256 = "3b3ec10b73c1a15bd19fdf4dec54034cf8a4f002ad9386212f8a08af8a42f2ef"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim10_div_trigger.gb"
+target = "acceptance/timer/tim10_div_trigger.gb"
+sha256 = "aca572e1045099b5a85f95e8890cf5157d0033cd89d451cebdaf787b4e351816"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim11.gb"
+target = "acceptance/timer/tim11.gb"
+sha256 = "3831ce0ef748d0b40cb4aee1e3217a70ad7e07245e83c530971a6d833534882f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tim11_div_trigger.gb"
+target = "acceptance/timer/tim11_div_trigger.gb"
+sha256 = "da9f9899fc372215485bee52a8d12525cf7291fed2b47e99e9b30c1a60893e1c"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tima_reload.gb"
+target = "acceptance/timer/tima_reload.gb"
+sha256 = "014982175633eda8a6e742e6cb46228d524f7b6d3ba448cf9e1fd3d82c808d50"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tima_write_reloading.gb"
+target = "acceptance/timer/tima_write_reloading.gb"
+sha256 = "6926443024e672651e02a7596680a346d51993b533ba78a3824190199caf8ee8"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/timer/tma_write_reloading.gb"
+target = "acceptance/timer/tma_write_reloading.gb"
+sha256 = "54d350d594b9545f4a27d3c326879c8938e75cda9d5b1716bebe7554a4c6a4c9"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_bank1.gb"
+target = "emulator-only/mbc1/bits_bank1.gb"
+sha256 = "1c56f52170f7c1e3719e1a2a631def4ff5b259b37a16cb97d135e92e6e2637c0"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_bank2.gb"
+target = "emulator-only/mbc1/bits_bank2.gb"
+sha256 = "a3afb560678baba5ff1ce3fdd2c61a8cd238cfb5f5e498a31eee4160af3645c3"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_mode.gb"
+target = "emulator-only/mbc1/bits_mode.gb"
+sha256 = "5d36d817c1a956f9aa8fdc6257881de89d8b6abbb617c707c6a4ffbd8c417f32"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_ramg.gb"
+target = "emulator-only/mbc1/bits_ramg.gb"
+sha256 = "ea777dadc7045811e0e88232b121216c54d1402be20b80ceba6b2cb5cd865622"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/multicart_rom_8Mb.gb"
+target = "emulator-only/mbc1/multicart_rom_8Mb.gb"
+sha256 = "6050a29df05d39d9f303f4223cf8128e3eb59246ac96a9c671374b51f6241174"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/ram_256kb.gb"
+target = "emulator-only/mbc1/ram_256kb.gb"
+sha256 = "02e523264de9d218ebc632290d7c84f7ff660e246e6c754353c9da834bd4693c"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/ram_64kb.gb"
+target = "emulator-only/mbc1/ram_64kb.gb"
+sha256 = "3afc730e90b68be3728a5a4fc0e7642075cd35d7367cfed11ce8a4916df46e84"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_16Mb.gb"
+target = "emulator-only/mbc1/rom_16Mb.gb"
+sha256 = "9a664e6a48ae1d49232cdd87de91b2f26f8410b1a6661a03cac0b5987cd87844"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_1Mb.gb"
+target = "emulator-only/mbc1/rom_1Mb.gb"
+sha256 = "d0472027ba2788718aabd5e1a6080bc620c082796dc9c0264d620baca585e155"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_2Mb.gb"
+target = "emulator-only/mbc1/rom_2Mb.gb"
+sha256 = "9037359df31ec5df7186f599c1f874f4543ef9453f75138af0b52b8bf3dade20"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_4Mb.gb"
+target = "emulator-only/mbc1/rom_4Mb.gb"
+sha256 = "d90f05a7347ee68d8bc28b6e61935a30a59856778fefd58c53c6f89181d0b667"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_512kb.gb"
+target = "emulator-only/mbc1/rom_512kb.gb"
+sha256 = "f88b564f3683f77338688dd3e5ebe1cc1ce639c1dd369372c6fc2d154cab52af"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_8Mb.gb"
+target = "emulator-only/mbc1/rom_8Mb.gb"
+sha256 = "5a9f966587c8611cc7e6f32008323b9fbe833ce21415aea4320368ce623c1237"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_ramg.gb"
+target = "emulator-only/mbc2/bits_ramg.gb"
+sha256 = "8c93ecff69765b00b1a8a8b179ced4a7cc358cc3000764a33c603e0236259f68"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_romb.gb"
+target = "emulator-only/mbc2/bits_romb.gb"
+sha256 = "36f57b37bfec131866a22192d34a061bef3e0aeef211b566425ffcb1a89efd1e"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_unused.gb"
+target = "emulator-only/mbc2/bits_unused.gb"
+sha256 = "807ca2feb6df47b67207c531addbe9a6461e61c976bd3fb93645690db3df3c17"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/ram.gb"
+target = "emulator-only/mbc2/ram.gb"
+sha256 = "dfeda458eb071604361ba910e5fc853075b8d995f2036fd0c388956736366347"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_1Mb.gb"
+target = "emulator-only/mbc2/rom_1Mb.gb"
+sha256 = "4c410bea1c51ac9ee4b6703ccfe1841de5380e7e91ee16778683d1632bc647e5"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_2Mb.gb"
+target = "emulator-only/mbc2/rom_2Mb.gb"
+sha256 = "18bbff553536b154e3d2e39b3d50b56c7d37d3ea052b36d77fb8fc6f8cb21030"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_512kb.gb"
+target = "emulator-only/mbc2/rom_512kb.gb"
+sha256 = "9cf901a73c14b4712d55c9f5e5ddd427635e402037a8f475b4927407a38ca70a"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_16Mb.gb"
+target = "emulator-only/mbc5/rom_16Mb.gb"
+sha256 = "e8a8985d5fe0678736801bda1212b1f8315c2576a222986c126c925adda1639e"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_1Mb.gb"
+target = "emulator-only/mbc5/rom_1Mb.gb"
+sha256 = "5953ad08d4f373d86594a03d7e464832b490d4101e262e25830de2945f3e532b"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_2Mb.gb"
+target = "emulator-only/mbc5/rom_2Mb.gb"
+sha256 = "7fa4b09f39a81df011e5a811573a5b15ec18ef090e845ad924e8fbaed4d92e00"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_32Mb.gb"
+target = "emulator-only/mbc5/rom_32Mb.gb"
+sha256 = "ecae4cef9c140c66be661ee5acda31d6041a1f909ad4875ea8a1c8ce66507ca3"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_4Mb.gb"
+target = "emulator-only/mbc5/rom_4Mb.gb"
+sha256 = "7ac643d2619847c5bc302f32ad516cd6a8af501d11197b2d40b40d00c8c3c8c2"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_512kb.gb"
+target = "emulator-only/mbc5/rom_512kb.gb"
+sha256 = "024304ba4f060a63aec4f24bd622be08fe69f25a2e669a06710afe86eeede774"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_64Mb.gb"
+target = "emulator-only/mbc5/rom_64Mb.gb"
+sha256 = "0f7cf67e33e68777e95d5dd4ea4b3f8a74ad761e9d0825e87a48ccf1afeb1f0f"
+
+[[source.family.file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_8Mb.gb"
+target = "emulator-only/mbc5/rom_8Mb.gb"
+sha256 = "cba4b8b3a18f3a40c4b094119a88bb12ecb7c3bfc60d95f6c8db3d1eaa1f14cc"
+
+[[source.family.file]]
+path = "testroms/mooneye/manual-only/sprite_priority.gb"
+target = "manual-only/sprite_priority.gb"
+sha256 = "789024c8e81e252a289edf6c80bd0bc9cccfa54bc23f7dfe388dfe88f990f94e"
+
+[[source.family.file]]
+path = "testroms/mooneye/manual-only/sprite_priority.png"
+target = "manual-only/sprite_priority.png"
+sha256 = "6868e668d293f2a08175861c096554b5fe58ccf739499f4ae77ca9c35f228aef"
+
+[[source.family.file]]
+path = "testroms/mooneye/misc/boot_div-cgbABCDE.gb"
+target = "misc/boot_div-cgbABCDE.gb"
+sha256 = "bc7bf65fdf9a09899e1f6d63f463ebb585777069903c48408e0ce8ed9d73bb6c"
+
+[[source.family.file]]
+path = "testroms/mooneye/misc/boot_regs-cgb.gb"
+target = "misc/boot_regs-cgb.gb"
+sha256 = "82938fa70b85a3197c4aea906000347770f0ee3773c84072b49d962e6d479062"

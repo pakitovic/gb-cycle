@@ -1,0 +1,66 @@
+report = "docboy"
+suite_name = "docboy-dmg-link"
+family = "docboy-dmg"
+topology = "dmg04"
+timeout_tcycles = 600000
+oracle = { type = "framebuffer", mode = "until-match", local = true, fixture = "fixtures/dmg/ok.png" }
+
+[[case]]
+id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-master-framebuffer"
+oracle = { target_participant = "master" }
+
+  [[case.participant]]
+  id = "master"
+  rom = "serial/serial_two_players_basic_transfer_master.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "slave"
+  rom = "serial/serial_two_players_basic_transfer_slave.gb"
+  console = "dmg"
+
+[[case]]
+id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-slave-framebuffer"
+oracle = { target_participant = "slave" }
+
+  [[case.participant]]
+  id = "master"
+  rom = "serial/serial_two_players_basic_transfer_master.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "slave"
+  rom = "serial/serial_two_players_basic_transfer_slave.gb"
+  console = "dmg"
+
+[[case]]
+id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-master-framebuffer"
+disabled = true
+comment = "Known failing investigation row: the legacy linked runner also timed out with the same state. The slave_sc_00 ROM leaves the slave in external-clock mode but not transfer-armed (SC.7 = 0), so the current documented DMG-04 model does not deliver master clocks to it. Re-enable only after hardware evidence clarifies whether an unarmed external-clock slave should shift passively."
+oracle = { target_participant = "master" }
+
+  [[case.participant]]
+  id = "master"
+  rom = "serial/serial_two_players_basic_transfer_master.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "slave"
+  rom = "serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+  console = "dmg"
+
+[[case]]
+id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-slave-framebuffer"
+disabled = true
+comment = "Known failing investigation row: the legacy linked runner also timed out with the same state. The slave_sc_00 ROM leaves the slave in external-clock mode but not transfer-armed (SC.7 = 0), so the current documented DMG-04 model does not deliver master clocks to it. Re-enable only after hardware evidence clarifies whether an unarmed external-clock slave should shift passively."
+oracle = { target_participant = "slave" }
+
+  [[case.participant]]
+  id = "master"
+  rom = "serial/serial_two_players_basic_transfer_master.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "slave"
+  rom = "serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+  console = "dmg"

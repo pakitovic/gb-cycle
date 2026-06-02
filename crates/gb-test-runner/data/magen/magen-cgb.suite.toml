@@ -1,0 +1,46 @@
+family = "magen"
+suite_name = "magen-cgb"
+report = "magen"
+console = "cgb"
+timeout_frames = 72
+oracle = { type = "framebuffer", source = "cgb" }
+
+[[case]]
+id = "magen-cgb-bg-oam-priority"
+rom = "bg_oam_priority.gbc"
+oracle = { local = true, fixture = "fixtures/bg_oam_priority.png" }
+
+[[case]]
+id = "magen-cgb-hblank-vram-dma"
+rom = "hblank_vram_dma.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }
+
+[[case]]
+id = "magen-cgb-key0-lock-after-boot"
+rom = "key0_lock_after_boot.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc1"
+rom = "mbc_oob_sram_mbc1.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc3"
+rom = "mbc_oob_sram_mbc3.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }
+
+[[case]]
+id = "magen-cgb-mbc-oob-sram-mbc5"
+rom = "mbc_oob_sram_mbc5.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }
+
+[[case]]
+id = "magen-cgb-oam-internal-priority"
+rom = "oam_internal_priority.gbc"
+oracle = { local = true, fixture = "fixtures/oam_internal_priority.png" }
+
+[[case]]
+id = "magen-cgb-ppu-disabled-state"
+rom = "ppu_disabled_state.gbc"
+oracle = { local = true, fixture = "fixtures/green.png" }

@@ -1,0 +1,25 @@
+family = "ashiepaws"
+suite_name = "ashiepaws"
+report = "gb-emulator-shootout"
+console = "dmg"
+timeout_frames = 30
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "ashiepaws-bully-dmg"
+rom = "bully.gb"
+report_console_suffix = true
+oracle = { fixture = "bully.png" }
+
+[[case]]
+id = "ashiepaws-bully-cgb"
+rom = "bully.gb"
+console = "cgb"
+report_console_suffix = true
+startup = "custom-boot"
+oracle = { type = "framebuffer", source = "cgb", fixture = "bully.png" }
+
+[[case]]
+id = "ashiepaws-strikethrough"
+rom = "strikethrough.gb"
+oracle = { fixture = "strikethrough.png" }

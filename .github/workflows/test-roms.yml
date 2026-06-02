@@ -16,49 +16,20 @@ jobs:
       matrix:
         include:
           - name: acid
-            command: make run-acid
           - name: blargg-cpu-instrs
-            command: make run-blargg-cpu-instrs
           - name: blargg-dmg-sound
-            command: make run-blargg-dmg-sound
           - name: blargg-timing-memory-oam
-            command: make run-blargg-timing-memory-oam
           - name: daid
-            command: make run-daid
           - name: ashiepaws
-            command: make run-ashiepaws
           - name: cpp
-            command: make run-cpp
-          - name: cpp-sgb
-            command: make run-cpp-sgb
-          - name: samesuite-sgb
-            command: make run-samesuite-sgb
-          - name: mooneye-acceptance
-            command: make run-mooneye-acceptance
-          - name: mooneye-mbc1-mbc5
-            command: make run-mooneye-mbc1-mbc5
-          - name: mooneye-mbc2
-            command: make run-mooneye-mbc2
-          - name: mealybug
-            command: make run-mealybug
-          - name: cgb-smoke
-            command: make run-cgb-smoke
-          - name: cgb-boot-div
-            command: make run-cgb-boot-div
-          - name: cgb-speed
-            command: make run-cgb-speed
-          - name: cgb-ppu-basic
-            command: make run-cgb-ppu-basic
-          - name: cgb-ppu-hard
-            command: make run-cgb-ppu-hard
-          - name: cgb-dma
-            command: make run-cgb-dma
-          - name: cgb-audio-blargg
-            command: make run-cgb-audio-blargg
-          - name: cgb-audio-samesuite
-            command: make run-cgb-audio-samesuite
-          - name: cgb-rtc
-            command: make run-cgb-rtc
+          - name: samesuite
+          - name: mooneye-acceptance-manual-misc
+          - name: mooneye-emulator-mbc1-mbc5
+          - name: mooneye-emulator-mbc2
+          - name: mealybug-tearoom-tests
+          - name: blargg-cgb-sound
+          - name: samesuite-apu
+          - name: ax6
 
     steps:
       - name: Checkout
@@ -71,4 +42,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run ${{ matrix.name }} ROM suite
-        run: ${{ matrix.command }}
+        run: cargo rom-suite gb-emulator-shootout --suite ${{ matrix.name }}

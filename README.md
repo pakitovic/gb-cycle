@@ -24,14 +24,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the canonical structure and
 ```text
 crates/
   gb-core/         Portable emulator core API and state model
-  gb-test-runner/  ROM-suite harness and validation tooling
+  gb-test-runner/  Report-local ROM-suite fetchers, runners, oracles, and validation tooling
   gb-benchmark/    Benchmark case format and reporting helpers
   gb-cli/          Headless command-line frontend
   gb-desktop/      SDL3 desktop frontend
   gb-persistence/  Host persistence formats and conversion helpers
 
+.cargo/           Cargo aliases for local runners and verification commands
 docs/              Project handbook and subsystem notes
-Makefile           Local verification entry points
+Makefile           Local setup, hooks, and coverage entry points
 scripts/           Developer helper scripts
 ```
 
@@ -113,32 +114,41 @@ Run the [`release`](.github/workflows/release.yml) GitHub Actions workflow to pu
 
 ## Tooling
 
-### Install local tooling
+### Setup local tooling and hooks
 
 ```bash
 make setup
 ```
 
+### Pre-commit checks
+
+```bash
+cargo fmt-check
+cargo lint
+typos
+cargo deny-check
+```
+
+The configured pre-commit hook runs the same checks.
+
 ### Coverage
 
 ```bash
-make coverage-check
 make coverage
 ```
 
-### Full local pipeline
+`make coverage` runs the workspace coverage sweep, enforces per-crate gates, and emits the HTML report.
+
+### ROM-suite validation
 
 ```bash
-make ci
-make test-roms
-make test-roms-extra
-make test-roms-cgb
-make test-roms-cgb-extra
+cargo rom-fetch gb-emulator-shootout
+cargo rom-suite gb-emulator-shootout
+cargo rom-suite gbmicrotest
+cargo rom-suite-link linked
 ```
 
-### External ROM suites
-
-See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for fetching, running, promoted gates, RealBoot reruns, oracle comparisons, determinism lanes, and private smoke workflows.
+See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for `cargo rom-fetch`, `cargo rom-suite`, `cargo rom-suite-link`, promoted gates, RealBoot reruns with `--boot-rom-dir`, oracle comparisons, determinism lanes, and private smoke workflows.
 
 ## Documentation
 

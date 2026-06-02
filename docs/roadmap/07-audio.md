@@ -25,7 +25,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - base APU architecture
 - separate implementation of each channel
 - functional frame sequencer
-- a repo-managed full `blargg-dmg-curated` family that includes Blargg `dmg_sound 01..12` as the Phase `7` external bring-up lane
+- repo-managed Blargg DMG chunks that include Blargg `dmg_sound 01..12` as the Phase `7` external bring-up lane
 - an explicitly temporary repo-gated non-APU Blargg subset during early audio bring-up, followed by promotion of the full Blargg DMG family once the APU lane is green
 - direct-boot APU startup synthesis documented coherently with the visible post-boot audio snapshot, with any remaining hidden-state gaps tracked explicitly
 - final mixing
@@ -38,7 +38,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 
 1. `Phase 7.0` — Validation lane and harness
    Scope: land the full curated DMG Blargg sound slice in the repo-managed Blargg family, keep a temporary repo-gated non-APU subset callable from CI and local automation until later promotion, and define the unit/integration plus external-ROM targets that every later audio subphase must satisfy.
-   Done criteria: the built-in full `blargg-dmg-curated` family includes the upstream individual `dmg_sound 01..12` ROMs from `GBEmulatorShootout`, the temporary repo-gated non-APU Blargg subset remains green during bring-up, and the early hardening checklist plus docs name APU explicitly as an active bring-up lane.
+   Done criteria: the built-in Blargg DMG chunk suites include the upstream individual `dmg_sound 01..12` ROMs from `GBEmulatorShootout`, the temporary repo-gated non-APU Blargg subset remains green during bring-up, and the early hardening checklist plus docs name APU explicitly as an active bring-up lane.
 2. `Phase 7.1` — Master APU MMIO, power, and ownership
    Scope: `NR50` / `NR51` / `NR52`, powered state, wave-RAM persistence across power-off, explicit `dac_enabled` versus `channel_active`, and one coherent APU-owned state shape.
    Done criteria: unit tests cover MMIO readback policy, power-off behavior, wave-RAM persistence, and trigger-versus-DAC semantics before channel timing work starts depending on them.

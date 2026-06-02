@@ -1,0 +1,84 @@
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+
+[[source.family]]
+id = "mooneye"
+target_root = "mooneye"
+sparse_paths = ["testroms/mooneye"]
+
+[[source.family.file]]
+path = "testroms/mooneye/misc/boot_hwio-C.gb"
+target = "misc/boot_hwio-C.gb"
+sha256 = "62840a75f224d4470442e1875c899a133b2f4d8ebd294339fc0f2df3fc8b28d4"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/hblank_ly_scx_timing-GS.gb"
+target = "acceptance/ppu/hblank_ly_scx_timing-GS.gb"
+sha256 = "5dc408f856f59b12ce63e4433355bfb48c2b2eba5a0db78644212f4081d8958a"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_1_2_timing-GS.gb"
+target = "acceptance/ppu/intr_1_2_timing-GS.gb"
+sha256 = "5a9afb64c8cd972a3b4fa63122e09d24f14cc8d6ad98d85acbf38fea876b54d5"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_0_timing.gb"
+target = "acceptance/ppu/intr_2_0_timing.gb"
+sha256 = "dcd7d144be6879368777412993d94c303fcb21fe1e052485f88e658ba8bc02fb"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode0_timing.gb"
+target = "acceptance/ppu/intr_2_mode0_timing.gb"
+sha256 = "6314f9b6eeef467d88f0039a3705d44f998c2887aceb3f649cb8f6e35740703f"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb"
+target = "acceptance/ppu/intr_2_mode0_timing_sprites.gb"
+sha256 = "f8a1b92942389ed4afecaadc32a3620931f829c2ba503f96022357fd59881028"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_mode3_timing.gb"
+target = "acceptance/ppu/intr_2_mode3_timing.gb"
+sha256 = "17ccc6ca0036ffaa75ed47bc20a59ea8f68dd1e383c1719827055483f14ae0b8"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb"
+target = "acceptance/ppu/intr_2_oam_ok_timing.gb"
+sha256 = "d1138307a25d8eff8566e670ee39330f7a863cac792d47de269f3f0c34c85167"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/lcdon_timing-GS.gb"
+target = "acceptance/ppu/lcdon_timing-GS.gb"
+sha256 = "dc3644c90c1d598b64a86d00abbf219794f96dc79a188e50c9fbe53e18df1ee4"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/lcdon_write_timing-GS.gb"
+target = "acceptance/ppu/lcdon_write_timing-GS.gb"
+sha256 = "a4aafb523d4beb8e6a1f37a76b29b54a38355bc1b683be1a36c0ad24ddbd3eb7"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/stat_irq_blocking.gb"
+target = "acceptance/ppu/stat_irq_blocking.gb"
+sha256 = "4e061537ea80148b99bf70fdb9a22b44aec921cbbe4477b6249b2bccee97e0ec"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/stat_lyc_onoff.gb"
+target = "acceptance/ppu/stat_lyc_onoff.gb"
+sha256 = "32af6a9df7fe833c6115e25f0008a8b826035d9177fe73057fd9026df944a6ef"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/ppu/vblank_stat_intr-GS.gb"
+target = "acceptance/ppu/vblank_stat_intr-GS.gb"
+sha256 = "db7ee2865689f53290e3a1a653d72d1fa8f2226766bad9005f3ad6ff17ce8342"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/boot_regs-sgb.gb"
+target = "acceptance/boot_regs-sgb.gb"
+sha256 = "741b3c52d32ced88afd3a143f1321cf408837ccb9b39999bfb3dc4224a978200"
+
+[[source.family.file]]
+path = "testroms/mooneye/acceptance/boot_regs-sgb2.gb"
+target = "acceptance/boot_regs-sgb2.gb"
+sha256 = "55d55796452c3386afe53f24117e5d2cdfd4ca1bef6325fc9e3b3e5fa2ec7e43"

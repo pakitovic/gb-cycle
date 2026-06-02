@@ -1,0 +1,44 @@
+family = "samesuite"
+suite_name = "samesuite"
+report = "gb-emulator-shootout"
+console = "cgb"
+timeout_frames = 180
+oracle = { type = "framebuffer", source = "cgb" }
+
+[[case]]
+id = "samesuite-sgb-command-mlt-req"
+rom = "sgb/command_mlt_req.gb"
+console = "sgb"
+timeout_frames = 300
+oracle = { type = "framebuffer", local = true, fixture = "fixtures/samesuite/sgb/command_mlt_req.png" }
+
+[[case]]
+id = "samesuite-sgb-command-mlt-req-1-incrementing"
+rom = "sgb/command_mlt_req_1_incrementing.gb"
+console = "sgb"
+oracle = { type = "framebuffer", local = true, fixture = "fixtures/samesuite/sgb/command_mlt_req_1_incrementing.png" }
+
+[[case]]
+id = "samesuite-ppu-blocking-bgpi-increase"
+rom = "ppu/blocking_bgpi_increase.gb"
+oracle = { fixture = "ppu/blocking_bgpi_increase.png" }
+
+[[case]]
+id = "samesuite-dma-gbc-dma-cont"
+rom = "dma/gbc_dma_cont.gb"
+oracle = { fixture = "dma/gbc_dma_cont.png" }
+
+[[case]]
+id = "samesuite-dma-gdma-addr-mask"
+rom = "dma/gdma_addr_mask.gb"
+oracle = { fixture = "dma/gdma_addr_mask.png" }
+
+[[case]]
+id = "samesuite-dma-hdma-lcd-off"
+rom = "dma/hdma_lcd_off.gb"
+oracle = { fixture = "dma/hdma_lcd_off.png" }
+
+[[case]]
+id = "samesuite-dma-hdma-mode0"
+rom = "dma/hdma_mode0.gb"
+oracle = { fixture = "dma/hdma_mode0.png" }

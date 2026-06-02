@@ -4,3 +4,4 @@ set -eu
 cargo fmt-check
 cargo lint
 typos
+cargo deny-check

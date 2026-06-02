@@ -1,0 +1,28 @@
+family = "cpp"
+suite_name = "cpp"
+report = "gb-emulator-shootout"
+console = "dmg"
+timeout_frames = 30
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "cpp-rtc-invalid-banks-test"
+rom = "rtc-invalid-banks-test.gb"
+oracle = { fixture = "rtc-invalid-banks-test.png" }
+
+[[case]]
+id = "cpp-latch-rtc-test"
+rom = "latch-rtc-test.gb"
+oracle = { fixture = "latch-rtc-test.png" }
+
+[[case]]
+id = "cpp-ramg-mbc3-test"
+rom = "ramg-mbc3-test.gb"
+oracle = { fixture = "ramg-mbc3-test.png" }
+
+[[case]]
+id = "cpp-sgb-ext-test"
+rom = "sgb-ext-test.gb"
+console = "sgb"
+timeout_frames = 240
+oracle = { local = true, fixture = "fixtures/cpp/sgb-ext-test.sgb.png" }

@@ -1,0 +1,21 @@
+report = "linked"
+suite_name = "dmg07"
+family = "linked"
+topology = "dmg07"
+timeout_tcycles = 330000
+oracle = { type = "trace" }
+
+[[case]]
+id = "dmg07-sparse-p1-p4"
+
+  [[case.participant]]
+  id = "p1"
+  rom = "fixtures/dmg07/p1-basic.gb"
+  console = "dmg"
+  adapter_port = "p1"
+
+  [[case.participant]]
+  id = "p4"
+  rom = "fixtures/dmg07/p4-basic.gb"
+  console = "dmg"
+  adapter_port = "p4"

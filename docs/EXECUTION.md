@@ -17,10 +17,10 @@ This file owns the day-to-day implementation workflow: how to choose authority d
 
 - [`docs/index.md`](index.md) is the map of authority boundaries; start there when ownership is unclear.
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md), [`docs/CODING-RULES.md`](CODING-RULES.md), and subsystem handbooks under `docs/hardware/` are the local source of design and hardware-model constraints.
-- [`docs/TESTING.md`](TESTING.md) owns validation policy; [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) owns external ROM materialization, Make targets, reports, and runner commands.
+- [`docs/TESTING.md`](TESTING.md) owns validation policy; [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) owns external ROM materialization, report channels, and runner commands.
 - [`docs/REFERENCES.md`](REFERENCES.md) owns the current consultation order for Pan Docs, AntonioND, Gekkio, GBEmulatorShootout, DocBoy, and other active references.
-- `crates/gb-test-runner/data/sources.toml` owns pinned external ROM sources and hashes; update it rather than documenting ad hoc source lists elsewhere.
-- `/test/test-report.md`, `/test/test-report-extra.md`, and `/test/test-report-docboy.md` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
+- `crates/gb-test-runner/data/reports.toml` and each report-local `sources.report.toml` own report fetch metadata for `cargo rom-fetch`, `cargo rom-suite`, and `cargo rom-suite-link`; update those files rather than documenting ad hoc source lists elsewhere. Local reports such as `linked` deliberately omit `sources.report.toml` because their assets are committed under `crates/gb-test-runner/data/<report>/`.
+- `/test/gb-emulator-shootout/`, `/test/docboy/`, `/test/gbmicrotest/`, and standalone exploratory report roots such as `/test/mooneye/`, `/test/ax6/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, or `/test/samesuite/` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
 
 ## Change policy
 
@@ -60,8 +60,8 @@ This file owns the day-to-day implementation workflow: how to choose authority d
 ## Validation selection
 
 - Start with formatting, typos, unit tests, or targeted cargo tests when they directly cover the change.
-- Use `make ci` as the local pre-push gate when the change affects code paths covered by the default repository gate.
-- Use ROM-suite Make targets from [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) when behavior depends on external ROM evidence, and keep the generated report channel aligned with the suite being rerun.
+- Use the local pre-commit checks plus `make coverage` when the change affects code paths covered by the default repository gate.
+- Use `cargo rom-suite` report commands from [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) when behavior depends on external ROM evidence, and keep the generated report channel aligned with the suite being rerun.
 - For already-known external ROM failures or timing-sensitive reruns, follow the before/after report workflow from [`docs/index.md`](index.md) and [`docs/TESTING.md`](TESTING.md) before deciding whether to keep the change.
 - Use external emulator source or differential cross-checks only as corroborating evidence after primary documentation, hardware research, and executable tests have been considered.
 

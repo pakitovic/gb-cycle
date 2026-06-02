@@ -66,7 +66,7 @@ fn assert_dmg07_fixture_rom_matches_response_table(relative_path: &str, response
 #[test]
 fn basic_left_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/basic-left.gb",
+        "data/linked/fixtures/dmg04/basic-left.gb",
         &[
             0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
         ],
@@ -76,7 +76,7 @@ fn basic_left_fixture_matches_its_documented_program() {
 #[test]
 fn basic_right_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/basic-right.gb",
+        "data/linked/fixtures/dmg04/basic-right.gb",
         &[
             0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x08, 0x01,
         ],
@@ -86,7 +86,7 @@ fn basic_right_fixture_matches_its_documented_program() {
 #[test]
 fn stale_left_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/stale-left.gb",
+        "data/linked/fixtures/dmg04/stale-left.gb",
         &[
             0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0x06, 0xFF, 0x05, 0x20, 0xFD, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x16, 0x01,
@@ -97,7 +97,7 @@ fn stale_left_fixture_matches_its_documented_program() {
 #[test]
 fn stale_right_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/stale-right.gb",
+        "data/linked/fixtures/dmg04/stale-right.gb",
         &[
             0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0x06, 0xFF, 0x05, 0x20, 0xFD, 0x3E,
             0xF0, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x15, 0x01,
@@ -108,7 +108,7 @@ fn stale_right_fixture_matches_its_documented_program() {
 #[test]
 fn double_master_left_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/double-master-left.gb",
+        "data/linked/fixtures/dmg04/double-master-left.gb",
         &[
             0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
         ],
@@ -118,7 +118,7 @@ fn double_master_left_fixture_matches_its_documented_program() {
 #[test]
 fn double_master_right_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/double-master-right.gb",
+        "data/linked/fixtures/dmg04/double-master-right.gb",
         &[
             0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
         ],
@@ -128,14 +128,14 @@ fn double_master_right_fixture_matches_its_documented_program() {
 #[test]
 fn open_line_right_fixture_matches_its_documented_program() {
     assert_fixture_rom_matches_program(
-        "data/fixtures/linked/dmg04/open-line-right.gb",
+        "data/linked/fixtures/dmg04/open-line-right.gb",
         &[0xC3, 0x00, 0x01],
     );
 }
 
 #[test]
 fn dmg04_fixture_readme_exists_next_to_the_binary_fixtures() {
-    let readme_path = data_path("data/fixtures/linked/dmg04/README.md");
+    let readme_path = data_path("data/linked/fixtures/dmg04/README.md");
     assert!(
         Path::new(&readme_path).is_file(),
         "expected {} to document the synthetic linked-session ROM fixtures",
@@ -146,7 +146,7 @@ fn dmg04_fixture_readme_exists_next_to_the_binary_fixtures() {
 #[test]
 fn dmg07_p1_fixture_matches_its_documented_program() {
     assert_dmg07_fixture_rom_matches_response_table(
-        "data/fixtures/linked/dmg07/p1-basic.gb",
+        "data/linked/fixtures/dmg07/p1-basic.gb",
         &[
             0x88, 0x88, 0x00, 0x01, 0xAA, 0xAA, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA1, 0x00,
             0x00, 0x00, 0xA2, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x88, 0x88, 0x00, 0x01,
@@ -157,7 +157,7 @@ fn dmg07_p1_fixture_matches_its_documented_program() {
 #[test]
 fn dmg07_p2_fixture_matches_its_documented_program() {
     assert_dmg07_fixture_rom_matches_response_table(
-        "data/fixtures/linked/dmg07/p2-basic.gb",
+        "data/linked/fixtures/dmg07/p2-basic.gb",
         &[
             0x88, 0x88, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xB1, 0x00,
             0x00, 0x00, 0xB2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88, 0x88, 0x00, 0x01,
@@ -168,7 +168,7 @@ fn dmg07_p2_fixture_matches_its_documented_program() {
 #[test]
 fn dmg07_p3_fixture_matches_its_documented_program() {
     assert_dmg07_fixture_rom_matches_response_table(
-        "data/fixtures/linked/dmg07/p3-basic.gb",
+        "data/linked/fixtures/dmg07/p3-basic.gb",
         &[
             0x88, 0x88, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC1, 0x00,
             0x00, 0x00, 0xC2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88, 0x88, 0x00, 0x01,
@@ -179,7 +179,7 @@ fn dmg07_p3_fixture_matches_its_documented_program() {
 #[test]
 fn dmg07_p4_fixture_matches_its_documented_program() {
     assert_dmg07_fixture_rom_matches_response_table(
-        "data/fixtures/linked/dmg07/p4-basic.gb",
+        "data/linked/fixtures/dmg07/p4-basic.gb",
         &[
             0x88, 0x88, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD1, 0x00,
             0x00, 0x00, 0xD2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88, 0x88, 0x00, 0x01,
@@ -189,7 +189,7 @@ fn dmg07_p4_fixture_matches_its_documented_program() {
 
 #[test]
 fn dmg07_fixture_readme_exists_next_to_the_binary_fixtures() {
-    let readme_path = data_path("data/fixtures/linked/dmg07/README.md");
+    let readme_path = data_path("data/linked/fixtures/dmg07/README.md");
     assert!(
         Path::new(&readme_path).is_file(),
         "expected {} to document the synthetic linked-session ROM fixtures",
@@ -200,7 +200,7 @@ fn dmg07_fixture_readme_exists_next_to_the_binary_fixtures() {
 #[test]
 fn cgb_ir_emitter_fixture_matches_its_documented_program() {
     assert_cgb_fixture_rom_matches_program(
-        "data/fixtures/linked/cgb-ir/emitter.gb",
+        "data/linked/fixtures/cgb-ir/emitter.gb",
         &[0x3E, 0xC1, 0xE0, 0x56, 0xC3, 0x04, 0x01],
     );
 }
@@ -208,7 +208,7 @@ fn cgb_ir_emitter_fixture_matches_its_documented_program() {
 #[test]
 fn cgb_ir_receiver_fixture_matches_its_documented_program() {
     assert_cgb_fixture_rom_matches_program(
-        "data/fixtures/linked/cgb-ir/receiver.gb",
+        "data/linked/fixtures/cgb-ir/receiver.gb",
         &[
             0x3E, 0xC0, 0xE0, 0x56, 0xF0, 0x56, 0xCB, 0x4F, 0x20, 0xFA, 0x3E, 0xB2, 0xE0, 0x01,
             0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x12, 0x01,
@@ -218,7 +218,7 @@ fn cgb_ir_receiver_fixture_matches_its_documented_program() {
 
 #[test]
 fn cgb_ir_fixture_readme_exists_next_to_the_binary_fixtures() {
-    let readme_path = data_path("data/fixtures/linked/cgb-ir/README.md");
+    let readme_path = data_path("data/linked/fixtures/cgb-ir/README.md");
     assert!(
         Path::new(&readme_path).is_file(),
         "expected {} to document the synthetic linked-session ROM fixtures",

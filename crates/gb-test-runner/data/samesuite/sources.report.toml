@@ -1,0 +1,87 @@
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+
+[[source.family]]
+id = "samesuite"
+target_root = "samesuite"
+sparse_paths = ["testroms/samesuite"]
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger.gb"
+target = "apu/div_write_trigger.gb"
+sha256 = "cc57fed1b1fffe6d16c1c5f405e2c7766ac305fafc6c924149929e4888906c5f"
+
+[[source.family.file]]
+path = "testroms/samesuite/apu/div_write_trigger_10.gb"
+target = "apu/div_write_trigger_10.gb"
+sha256 = "7d8d1739fc7367fa79822ee7652b22bd05a362f85419032c2338bc25cbdee8d1"
+
+[[source]]
+id = "docboy"
+git_url = "https://github.com/Docheinstein/docboy.git"
+git_rev = "214905562590c35ba2bc41f36da3a5d636d99378"
+
+[[source.family]]
+id = "samesuite"
+target_root = "samesuite"
+sparse_paths = [
+  "tests/roms/dmg/samesuite",
+  "tests/roms/cgb/samesuite",
+]
+
+[[source.family.file]]
+path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"
+target = "interrupt/ei_delay_halt.gb"
+sha256 = "001d6572c192a630447afd2fffd1194d3105adaf7dd5ffdff7baf615930b8624"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_12-cgbE.gb"
+target = "apu/channel_1/channel_1_align_12-cgbE.gb"
+sha256 = "6ac6e14276b6beb2add0c6f2d14bf3d3f6e8899ac3ea1dc89cac3f642dcef7d2"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_25-cgbE.gb"
+target = "apu/channel_1/channel_1_align_25-cgbE.gb"
+sha256 = "c261515b9ee0aa831ba11f82ff0be09da8eb7b34a3e968df7a35755866da21a4"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_75-cgbE.gb"
+target = "apu/channel_1/channel_1_align_75-cgbE.gb"
+sha256 = "62d284ee8addf05692e4b316baf1a8645bceb4e6e526903adf96a34d6b9584c5"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
+target = "apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
+sha256 = "4b530bc25a9fbf1053b5594980a53ec65e558f5ed8f214d65ce927df02928794"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_stop_div-cgbE.gb"
+target = "apu/channel_1/channel_1_stop_div-cgbE.gb"
+sha256 = "daec7e6c4054293e28ee30b0bffd3aa914106772941b5f67ad8b2fb1952ae37f"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep-cgbE.gb"
+target = "apu/channel_1/channel_1_sweep-cgbE.gb"
+sha256 = "c167a77b4471c589c11419e01c1fd7c2d500d3299fc0ea3ec999c4ea3c31702f"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart-cgbE.gb"
+target = "apu/channel_1/channel_1_sweep_restart-cgbE.gb"
+sha256 = "723cbfafe504bb8f016a303a3e93dcb5a500bc5455c8c7373ab429671c5705e9"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
+target = "apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
+sha256 = "bc925b2445ad9d1c15318d066b086e4e58043b0627a235deb9539711c37ec077"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_volume_div-cgbE.gb"
+target = "apu/channel_1/channel_1_volume_div-cgbE.gb"
+sha256 = "27216e5c3b5ca3de26199fd241bfbf563b866f43a8cf58c8686ad50fc4dde07d"
+
+[[source.family.file]]
+path = "tests/roms/cgb/samesuite/apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
+target = "apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
+sha256 = "9e12f7b4683c845019473d70ae582766084f864de2bcc8766714e5a3f7bb4182"

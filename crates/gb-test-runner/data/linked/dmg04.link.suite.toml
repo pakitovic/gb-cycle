@@ -1,0 +1,19 @@
+report = "linked"
+suite_name = "dmg04"
+family = "linked"
+topology = "dmg04"
+timeout_tcycles = 5000
+
+[[case]]
+id = "dmg04-basic-exchange"
+oracle = { type = "snapshot", fixture = "fixtures/dmg04/basic-exchange.snapshot" }
+
+  [[case.participant]]
+  id = "left"
+  rom = "fixtures/dmg04/basic-left.gb"
+  console = "dmg"
+
+  [[case.participant]]
+  id = "right"
+  rom = "fixtures/dmg04/basic-right.gb"
+  console = "dmg"

@@ -16,27 +16,12 @@ jobs:
       matrix:
         include:
           - name: ax6
-            command: make run-ax6
           - name: samesuite
-            command: make run-samesuite
           - name: little-things-gb
-            command: make run-little-things-gb
+          - name: mooneye
+          - name: magen
+          - name: mealybug-tearoom-tests
           - name: gbmicrotest
-            command: make run-gbmicrotest
-          - name: mooneye-sgb-boot-regs
-            command: make run-mooneye-sgb-boot-regs
-          - name: cgb-boot-hwio
-            command: make run-cgb-boot-hwio
-          - name: mooneye-cgb
-            command: make run-mooneye-cgb
-          - name: samesuite-cgb
-            command: make run-samesuite-cgb
-          - name: magen-cgb
-            command: make run-magen-cgb
-          - name: mealybug-cgb
-            command: make run-mealybug-cgb
-          - name: little-things-gb-cgb
-            command: make run-little-things-gb-cgb
 
     steps:
       - name: Checkout
@@ -49,4 +34,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run ${{ matrix.name }} ROM suite
-        run: ${{ matrix.command }}
+        run: cargo rom-suite ${{ matrix.name }}

@@ -1,0 +1,70 @@
+status_dir = ".status"
+artifact_dir = ".artifacts"
+report_file = "test-report.md"
+
+[[report]]
+id = "gb-emulator-shootout"
+store_dir = "gb-emulator-shootout"
+sources = "gb-emulator-shootout/sources.report.toml"
+family_order = [
+  "acid",
+  "blargg",
+  "daid",
+  "ax6",
+  "mooneye",
+  "samesuite",
+  "ashiepaws",
+  "cpp",
+  "mealybug-tearoom-tests",
+]
+
+[[report]]
+id = "docboy"
+store_dir = "docboy"
+sources = "docboy/sources.report.toml"
+family_order = [
+  "docboy-dmg",
+  "docboy-cgb",
+  "docboy-cgb-dmg",
+  "docboy-cgb-dmg-ext",
+]
+
+[[report]]
+id = "gbmicrotest"
+store_dir = "gbmicrotest"
+sources = "gbmicrotest/sources.report.toml"
+
+[[report]]
+id = "mooneye"
+store_dir = "mooneye"
+sources = "mooneye/sources.report.toml"
+
+[[report]]
+id = "ax6"
+store_dir = "ax6"
+sources = "ax6/sources.report.toml"
+
+[[report]]
+id = "little-things-gb"
+store_dir = "little-things-gb"
+sources = "little-things-gb/sources.report.toml"
+
+[[report]]
+id = "magen"
+store_dir = "magen"
+sources = "magen/sources.report.toml"
+
+[[report]]
+id = "mealybug-tearoom-tests"
+store_dir = "mealybug-tearoom-tests"
+sources = "mealybug-tearoom-tests/sources.report.toml"
+
+[[report]]
+id = "samesuite"
+store_dir = "samesuite"
+sources = "samesuite/sources.report.toml"
+
+[[report]]
+id = "linked"
+local = true
+store_dir = "linked"

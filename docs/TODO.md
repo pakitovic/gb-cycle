@@ -45,7 +45,7 @@ Each non-trivial TODO should make these clear in one compact bullet:
 
 ## Phase 9 — Final DMG hardening, differential validation, and closure
 
-- [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `run-docboy-dmg` executes DocBoy serial-link rows through `run_linked_session` and retains participant failure artifacts, but linked-session outcomes are CLI-output-only and do not update `test/test-report-docboy.md`; if aggregate persistence is needed, design participant-aware markdown rows instead of flattening linked sessions into single-machine ROM rows.
+- [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `docboy-dmg-link` now runs through the `docboy` report with `cargo rom-suite-link`; if linked aggregate Markdown persistence is needed, design participant-aware report rows instead of flattening linked sessions into single-machine ROM rows.
 
 ## Phase 10 — CGB implementation roadmap
 
