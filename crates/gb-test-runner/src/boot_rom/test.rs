@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gb_core::{BootRomAssetKind, ConsoleModel, HostPlatform};
+use gb_core::{BootRomAssetKind, ConsoleModel, HardwareRevision, HostPlatform};
 
 use super::assets::required_assets_for_test;
 use super::{BootRomLoadError, BootRomProfile, asset_for_profile, load_verified_boot_rom_assets};
@@ -26,19 +26,43 @@ fn write_asset(root: &Path, asset: BootRomAssetKind, size: usize, byte: u8) {
 #[test]
 fn resolves_required_assets_for_console_and_host_profiles() {
     assert_eq!(
-        asset_for_profile(ConsoleModel::GameBoy, HostPlatform::Handheld),
+        asset_for_profile(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            HostPlatform::Handheld
+        ),
         BootRomAssetKind::Dmg
     );
     assert_eq!(
-        asset_for_profile(ConsoleModel::GameBoyColor, HostPlatform::Handheld),
+        asset_for_profile(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            HostPlatform::Handheld
+        ),
         BootRomAssetKind::CgbE
     );
     assert_eq!(
-        asset_for_profile(ConsoleModel::GameBoy, HostPlatform::Sgb),
+        asset_for_profile(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbD,
+            HostPlatform::Handheld
+        ),
+        BootRomAssetKind::Cgb
+    );
+    assert_eq!(
+        asset_for_profile(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            HostPlatform::Sgb
+        ),
         BootRomAssetKind::Sgb
     );
     assert_eq!(
-        asset_for_profile(ConsoleModel::GameBoy, HostPlatform::Sgb2),
+        asset_for_profile(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            HostPlatform::Sgb2
+        ),
         BootRomAssetKind::Sgb2
     );
 }
@@ -46,14 +70,35 @@ fn resolves_required_assets_for_console_and_host_profiles() {
 #[test]
 fn deduplicates_required_assets_and_does_not_require_unselected_profiles() {
     let profiles = [
-        BootRomProfile::new(ConsoleModel::GameBoy, HostPlatform::Handheld),
-        BootRomProfile::new(ConsoleModel::GameBoy, HostPlatform::Handheld),
-        BootRomProfile::new(ConsoleModel::GameBoyColor, HostPlatform::Handheld),
+        BootRomProfile::new(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            HostPlatform::Handheld,
+        ),
+        BootRomProfile::new(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            HostPlatform::Handheld,
+        ),
+        BootRomProfile::new(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbD,
+            HostPlatform::Handheld,
+        ),
+        BootRomProfile::new(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            HostPlatform::Handheld,
+        ),
     ];
 
     assert_eq!(
         required_assets_for_test(&profiles),
-        vec![BootRomAssetKind::Dmg, BootRomAssetKind::CgbE]
+        vec![
+            BootRomAssetKind::Dmg,
+            BootRomAssetKind::Cgb,
+            BootRomAssetKind::CgbE
+        ]
     );
 }
 
@@ -76,6 +121,7 @@ fn load_verified_boot_rom_assets_rejects_missing_directory_and_non_directory() {
             &missing,
             &[BootRomProfile::new(
                 ConsoleModel::GameBoy,
+                HardwareRevision::DmgCpuC,
                 HostPlatform::Handheld
             )],
         )
@@ -90,6 +136,7 @@ fn load_verified_boot_rom_assets_rejects_missing_directory_and_non_directory() {
             &file_path,
             &[BootRomProfile::new(
                 ConsoleModel::GameBoy,
+                HardwareRevision::DmgCpuC,
                 HostPlatform::Handheld
             )],
         )
@@ -109,6 +156,7 @@ fn load_verified_boot_rom_assets_rejects_missing_required_file() {
         &root,
         &[BootRomProfile::new(
             ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
             HostPlatform::Sgb2,
         )],
     )
@@ -135,6 +183,7 @@ fn load_verified_boot_rom_assets_rejects_invalid_size() {
             &root,
             &[BootRomProfile::new(
                 ConsoleModel::GameBoy,
+                HardwareRevision::DmgCpuC,
                 HostPlatform::Handheld
             )],
         )
@@ -164,6 +213,7 @@ fn load_verified_boot_rom_assets_rejects_invalid_hash_after_size_matches() {
         &root,
         &[BootRomProfile::new(
             ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
             HostPlatform::Handheld,
         )],
     )
@@ -198,6 +248,7 @@ fn load_verified_boot_rom_assets_verifies_only_selected_assets() {
         &root,
         &[BootRomProfile::new(
             ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
             HostPlatform::Handheld,
         )],
     )

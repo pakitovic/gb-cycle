@@ -725,6 +725,62 @@ fn command_boot_rom_dir_forces_real_boot_asset_verification() {
 }
 
 #[test]
+fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
+    let workspace = unique_temp_dir("boot-rom-dir-cgb-d-revision");
+    let boot_rom_dir = workspace.join("bootroms");
+    fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/cgb-d.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "cgb-d",
+            "samesuite",
+            "cgb-d-case",
+            "case.gbc",
+        )
+        .replace(
+            "console = \"dmg\"",
+            "console = \"cgb\"\nrevision = \"cpu-cgb-d\"",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/samesuite/case.gbc");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("samesuite", "samesuite")],
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "cgb-d",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("forced real-boot should require the CGB-D boot ROM asset");
+    assert!(error.contains("failed to load boot ROM assets"));
+    assert!(error.contains("cgb_boot.bin"));
+    assert!(!error.contains("cgbE_boot.bin"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn run_suite_real_boot_handoff_does_not_consume_case_timeout() {
     let workspace = unique_temp_dir("real-boot-handoff-budget");
     write_reports(

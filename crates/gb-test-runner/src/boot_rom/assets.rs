@@ -2,19 +2,27 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gb_core::{BootRomAssetKind, BootRomAssets, ConsoleModel, HostPlatform, MachineConfig};
+use gb_core::{
+    BootRomAssetKind, BootRomAssets, ConsoleModel, HardwareRevision, HostPlatform, MachineConfig,
+};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BootRomProfile {
     console_model: ConsoleModel,
+    hardware_revision: HardwareRevision,
     host_platform: HostPlatform,
 }
 
 impl BootRomProfile {
-    pub(crate) const fn new(console_model: ConsoleModel, host_platform: HostPlatform) -> Self {
+    pub(crate) const fn new(
+        console_model: ConsoleModel,
+        hardware_revision: HardwareRevision,
+        host_platform: HostPlatform,
+    ) -> Self {
         Self {
             console_model,
+            hardware_revision,
             host_platform,
         }
     }
@@ -132,9 +140,11 @@ impl std::error::Error for BootRomLoadError {
 
 pub(crate) fn asset_for_profile(
     console_model: ConsoleModel,
+    hardware_revision: HardwareRevision,
     host_platform: HostPlatform,
 ) -> BootRomAssetKind {
     MachineConfig::new(console_model)
+        .with_revision(hardware_revision)
         .with_host_platform(host_platform)
         .boot_rom_asset_kind()
 }
@@ -168,7 +178,11 @@ pub(crate) fn load_verified_boot_rom_assets(
 fn required_assets(profiles: &[BootRomProfile]) -> Vec<BootRomAssetKind> {
     let mut assets = Vec::new();
     for profile in profiles {
-        let asset = asset_for_profile(profile.console_model, profile.host_platform);
+        let asset = asset_for_profile(
+            profile.console_model,
+            profile.hardware_revision,
+            profile.host_platform,
+        );
         if !assets.contains(&asset) {
             assets.push(asset);
         }

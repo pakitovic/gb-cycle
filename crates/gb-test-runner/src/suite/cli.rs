@@ -286,7 +286,11 @@ fn force_real_boot(suites: &mut [SuiteManifest]) {
 fn boot_rom_profiles(suites: &[SuiteManifest]) -> Vec<BootRomProfile> {
     let mut profiles = Vec::new();
     for case in suites.iter().flat_map(|suite| suite.cases.iter()) {
-        let profile = BootRomProfile::new(case.console_model, case.host_platform);
+        let profile = BootRomProfile::new(
+            case.console_model,
+            case.hardware_revision,
+            case.host_platform,
+        );
         if !profiles.contains(&profile) {
             profiles.push(profile);
         }

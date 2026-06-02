@@ -317,7 +317,11 @@ fn boot_rom_profiles(suites: &[LinkSuiteManifest]) -> Vec<BootRomProfile> {
         .flat_map(|suite| suite.cases.iter())
         .flat_map(|case| case.participants.iter())
     {
-        let profile = BootRomProfile::new(participant.console_model, participant.host_platform);
+        let profile = BootRomProfile::new(
+            participant.console_model,
+            participant.hardware_revision,
+            participant.host_platform,
+        );
         if !profiles.contains(&profile) {
             profiles.push(profile);
         }
