@@ -283,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "gb-benchmark"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "gb-core",
  "serde",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "gb-cli"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "gb-benchmark",
  "gb-core",
@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "gb-core"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "serde",
@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "gb-desktop"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "gb-benchmark",
  "gb-core",
@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "gb-persistence"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "ciborium",
  "gb-core",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "gb-test-runner"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "gb-core",
  "png",
