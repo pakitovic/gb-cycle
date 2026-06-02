@@ -3,10 +3,26 @@ suite_name = "dmg07"
 family = "linked"
 topology = "dmg07"
 timeout_tcycles = 330000
-oracle = { type = "trace" }
 
 [[case]]
 id = "dmg07-sparse-p1-p4"
+oracle = { type = "serial-hex-exact", target_participant = "p4", expected = "888800010000000000000000D1000000D200000000000000" }
+
+  [[case.participant]]
+  id = "p1"
+  rom = "fixtures/dmg07/p1-basic.gb"
+  console = "dmg"
+  adapter_port = "p1"
+
+  [[case.participant]]
+  id = "p4"
+  rom = "fixtures/dmg07/p4-basic.gb"
+  console = "dmg"
+  adapter_port = "p4"
+
+[[case]]
+id = "dmg07-sparse-p1-p4-p1-serial-hex"
+oracle = { type = "serial-hex-exact", target_participant = "p1", expected = "88880001AAAAAA0000000000A1000000A2000000FFFFFF00" }
 
   [[case.participant]]
   id = "p1"
