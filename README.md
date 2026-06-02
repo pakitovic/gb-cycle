@@ -24,14 +24,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the canonical structure and
 ```text
 crates/
   gb-core/         Portable emulator core API and state model
-  gb-test-runner/  ROM-suite harness and validation tooling
+  gb-test-runner/  Report-local ROM-suite fetchers, runners, oracles, and validation tooling
   gb-benchmark/    Benchmark case format and reporting helpers
   gb-cli/          Headless command-line frontend
   gb-desktop/      SDL3 desktop frontend
   gb-persistence/  Host persistence formats and conversion helpers
 
+.cargo/           Cargo aliases for local runners and verification commands
 docs/              Project handbook and subsystem notes
-Makefile           Local verification entry points
+Makefile           Local setup, hooks, CI, and coverage entry points
 scripts/           Developer helper scripts
 ```
 
@@ -130,6 +131,14 @@ make coverage
 
 ```bash
 make ci
+```
+
+### ROM-suite validation
+
+`gb-test-runner` now uses report-local manifests under `crates/gb-test-runner/data/<report>/`. `cargo rom-suite` auto-fetches missing or stale fetchable ROM assets into `/test/<report>/`; use `cargo rom-fetch` only when you want an explicit materialization step.
+
+```bash
+cargo rom-fetch gb-emulator-shootout
 cargo rom-suite gb-emulator-shootout
 cargo rom-suite gbmicrotest
 cargo rom-suite mooneye
@@ -138,11 +147,13 @@ cargo rom-suite little-things-gb
 cargo rom-suite magen
 cargo rom-suite mealybug-tearoom-tests
 cargo rom-suite samesuite
+cargo rom-suite-link linked
+cargo rom-suite-link docboy --suite docboy-dmg-link
 ```
 
 ### External ROM suites
 
-See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for fetching, running, promoted gates, RealBoot reruns, oracle comparisons, determinism lanes, and private smoke workflows.
+Makefile ROM-suite aggregate/member targets and the legacy `run_rom_suite` / `run_linked_session` binaries have been retired. See [docs/info/ROM-SUITES.md](docs/info/ROM-SUITES.md) for `cargo rom-fetch`, `cargo rom-suite`, `cargo rom-suite-link`, promoted gates, RealBoot reruns with `--boot-rom-dir`, oracle comparisons, determinism lanes, and private smoke workflows.
 
 ## Documentation
 
