@@ -15,6 +15,5 @@ pub(crate) use catalog::{
     FramebufferObservation, MemoryObservation, Oracle, OracleConfig, OracleFixtureRoots,
     OracleObservations, OracleOutcome, OracleStep,
 };
-#[cfg(test)]
 pub(crate) use catalog::{LinkedParticipantObservation, LinkedSessionObservation};
 pub(crate) use framebuffer::{FramebufferArtifactDescriptor, FramebufferArtifactSource};

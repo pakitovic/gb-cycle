@@ -12,6 +12,21 @@ sparse_paths = [
 ]
 
 [[source.family.file]]
+path = "tests/roms/dmg/docboy/serial/serial_two_players_basic_transfer_master.gb"
+target = "serial/serial_two_players_basic_transfer_master.gb"
+sha256 = "b498906c516a41b0922658e7c675af52397cef7a7e86d2c66ecc1693edde69ef"
+
+[[source.family.file]]
+path = "tests/roms/dmg/docboy/serial/serial_two_players_basic_transfer_slave.gb"
+target = "serial/serial_two_players_basic_transfer_slave.gb"
+sha256 = "b44331ebb0698d82490606535f4d75386e92943fe4368095c515d9b06cee8354"
+
+[[source.family.file]]
+path = "tests/roms/dmg/docboy/serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+target = "serial/serial_two_players_basic_transfer_slave_sc_00.gb"
+sha256 = "5a6e0949d2a71772eebec181a7f5282cde4ca1b8b259c224910467a6279fdc20"
+
+[[source.family.file]]
 path = "tests/roms/dmg/docboy/apu/ch1_change_length_timer_apu_off_round1.gb"
 target = "apu/ch1_change_length_timer_apu_off_round1.gb"
 sha256 = "fcef80d4a621d28d5665770ce33a2d89c49a7273da3c8eb8c42ca383353eaec5"

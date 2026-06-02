@@ -346,6 +346,7 @@ impl FramebufferOracle {
             mode: self.mode.as_str(),
             projection,
             compare,
+            target_participant: self.target_participant.clone(),
             tolerance,
             fixtures,
         })
@@ -468,6 +469,7 @@ pub(crate) struct FramebufferArtifactDescriptor {
     pub(crate) mode: &'static str,
     pub(crate) projection: &'static str,
     pub(crate) compare: &'static str,
+    pub(crate) target_participant: Option<String>,
     pub(crate) tolerance: Option<u8>,
     pub(crate) fixtures: Vec<PathBuf>,
 }

@@ -171,6 +171,49 @@ impl OracleConfig {
         }
         Ok(())
     }
+
+    pub(crate) fn validate_relative_path_parameter(&self, field: &str) -> Result<(), String> {
+        let Some(paths) = self.string_or_string_array(field)? else {
+            return Ok(());
+        };
+        for path in paths {
+            validate_relative_manifest_path(self.kind_label(), field, Path::new(&path))?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_relative_manifest_path(
+    oracle_kind: &str,
+    field: &str,
+    path: &Path,
+) -> Result<(), String> {
+    if path.is_absolute() {
+        return Err(format!(
+            "oracle {oracle_kind:?} field {field} path must be relative and confined to the report data directory: {}",
+            path.display()
+        ));
+    }
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            std::path::Component::ParentDir => {
+                return Err(format!(
+                    "oracle {oracle_kind:?} field {field} path must not contain '..': {}",
+                    path.display()
+                ));
+            }
+            std::path::Component::CurDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "oracle {oracle_kind:?} field {field} path must be normalized and confined to the report data directory: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -394,5 +437,9 @@ impl Oracle {
             Self::Framebuffer(oracle) => oracle.artifact_descriptor(),
             _ => None,
         }
+    }
+
+    pub(crate) const fn is_informational(&self) -> bool {
+        matches!(self, Self::Trace(_))
     }
 }

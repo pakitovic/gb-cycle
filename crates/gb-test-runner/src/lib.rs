@@ -10,6 +10,7 @@ mod oracle;
 mod rtc;
 mod run_linked_session_cli;
 mod suite;
+mod suite_link;
 #[cfg(test)]
 mod test_support;
 mod workspace_paths;
@@ -59,6 +60,7 @@ pub use linked_session_runner::{
 };
 pub use run_linked_session_cli::{linked_session_cli_help_text, run_linked_session_command};
 pub use suite::{run_suite_command, suite_help_text};
+pub use suite_link::{run_suite_link_command, suite_link_help_text};
 pub use workspace_paths::{
     BOOT_ROM_ROOT_ENV_VAR, boot_rom_asset_for_console_profile, boot_rom_image_path,
     boot_rom_revision_for_console_model, discover_boot_rom_root,
@@ -1016,10 +1018,7 @@ pub fn built_in_rom_suite_by_name(name: &str) -> Option<RomSuite> {
         .find(|suite| suite.name == name)
 }
 
-const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[(
-    "docboy-dmg-linked-extra",
-    "crates/gb-test-runner/data/docboy-dmg-linked.toml",
-)];
+const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[];
 
 pub fn built_in_linked_session_suite_catalog() -> Vec<(&'static str, PathBuf)> {
     BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS

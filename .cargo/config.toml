@@ -1,6 +1,7 @@
 [alias]
 rom-fetch = "run --release -q -p gb-test-runner --bin fetch --"
 rom-suite = "run --release -q -p gb-test-runner --bin suite --"
+rom-suite-link = "run --release -q -p gb-test-runner --bin suite_link --"
 run-desktop = "run --release -p gb-desktop --"
 fmt-check = "fmt --all --check"
 lint = "clippy --workspace --all-targets -- -D warnings"

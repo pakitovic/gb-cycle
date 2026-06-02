@@ -103,6 +103,15 @@ fn suite_binary_handles_help_and_parse_errors() {
 }
 
 #[test]
+fn suite_link_binary_handles_help_and_parse_errors() {
+    assert_help_and_parse_error(
+        "suite_link",
+        &["linked", "--case", "case"],
+        "--case requires --suite",
+    );
+}
+
+#[test]
 fn run_linked_session_binary_executes_manifest_backed_suites() {
     let binary = binary_path("run_linked_session");
     let temp_dir = unique_temp_dir("linked-session-pass");

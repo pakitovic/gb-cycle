@@ -72,6 +72,7 @@ fn command_runs_serial_suite_and_writes_status() {
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
+    assert!(output.contains("case blargg-cpu-instrs-01-special: PASS after"));
     let status =
         fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml"))
             .expect("status should be written");

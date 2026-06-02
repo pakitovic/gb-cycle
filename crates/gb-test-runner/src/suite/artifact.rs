@@ -340,6 +340,8 @@ struct FramebufferFailureMetadata {
     projection: &'static str,
     compare: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    target_participant: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tolerance: Option<u8>,
     fixtures: Vec<String>,
 }
@@ -351,6 +353,7 @@ impl From<FramebufferArtifactDescriptor> for FramebufferFailureMetadata {
             mode: descriptor.mode,
             projection: descriptor.projection,
             compare: descriptor.compare,
+            target_participant: descriptor.target_participant,
             tolerance: descriptor.tolerance,
             fixtures: descriptor
                 .fixtures
