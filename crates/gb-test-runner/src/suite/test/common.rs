@@ -189,6 +189,7 @@ pub(super) fn commit_upstream_repo(root: &Path) -> String {
     let mut command = Command::new("git");
     command.current_dir(root);
     command.args(["rev-parse", "HEAD"]);
+    scrub_inherited_git_repository_context(&mut command);
     let output = command.output().expect("git rev-parse should spawn");
     assert!(output.status.success(), "git rev-parse should succeed");
     String::from_utf8(output.stdout)
@@ -205,6 +206,17 @@ fn git(args: &[&str], current_dir: &Path) {
 }
 
 fn run_git(mut command: Command, current_dir: &Path, label: &str) {
+    scrub_inherited_git_repository_context(&mut command);
+    let output = command.output().expect("git command should spawn");
+    assert!(
+        output.status.success(),
+        "{label} failed in {}: {}",
+        current_dir.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn scrub_inherited_git_repository_context(command: &mut Command) {
     for key in [
         "GIT_COMMON_DIR",
         "GIT_DIR",
@@ -216,13 +228,6 @@ fn run_git(mut command: Command, current_dir: &Path, label: &str) {
     ] {
         command.env_remove(key);
     }
-    let output = command.output().expect("git command should spawn");
-    assert!(
-        output.status.success(),
-        "{label} failed in {}: {}",
-        current_dir.display(),
-        String::from_utf8_lossy(&output.stderr)
-    );
 }
 
 pub(super) fn sha256_hex(bytes: &[u8]) -> String {
