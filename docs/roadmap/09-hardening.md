@@ -6,7 +6,7 @@ Closure status (`2026-04-28`): Phase `9.5` is closed for the practical DMG harde
 
 - one explicit subsystem closure checklist in [`docs/TESTING.md`](../TESTING.md) that records the accepted repo-gated and internal evidence for the landed DMG subsystems
 - one repo-gated PPU framebuffer-oracle suite, now run as `cargo rom-suite gb-emulator-shootout --suite acid`, sourced from `GBEmulatorShootout` and part of the supported external DMG block used by the GitHub `test-roms` workflow
-- one workflow-managed PPU framebuffer-oracle suite, `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-tests [--failure-artifact-root <dir>]`, which uses a curated DMG subset from `GBEmulatorShootout` and the same committed-PNG oracle contract as `dmg-acid2`
+- one workflow-managed PPU framebuffer-oracle suite, now run as `cargo rom-suite mealybug-tearoom-tests`, which uses a curated subset from `GBEmulatorShootout` and the same committed-PNG oracle contract as `dmg-acid2`
 - one workflow-managed Mooneye acceptance lane, with the chunk suites `mooneye-acceptance-manual-misc`, `mooneye-emulator-mbc1-mbc5`, and `mooneye-emulator-mbc2`, which follow the active `GBEmulatorShootout` `testroms/mooneye.py` acceptance list, use the upstream `mooneye` breakpoint/register result protocol instead of framebuffer fixtures, and provide broad hardening evidence for the accepted Phase `9` closure matrix
 - one accepted automated determinism test lane in `gb-test-runner`, which performs deterministic replay, in-memory save/load continuation, and mismatched-metadata restore rejection checks for strict built-in ROM cases
 

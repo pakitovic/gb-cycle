@@ -85,15 +85,6 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 #[test]
-fn run_rom_suite_binary_handles_help_and_parse_errors() {
-    assert_help_and_parse_error(
-        "run_rom_suite",
-        &["--timeout-frames", "nope"],
-        "invalid --timeout-frames value",
-    );
-}
-
-#[test]
 fn run_linked_session_binary_handles_help_and_parse_errors() {
     assert_help_and_parse_error(
         "run_linked_session",

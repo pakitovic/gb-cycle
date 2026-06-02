@@ -612,7 +612,7 @@ fn phase_6_mbc6_oracle_suite_tracks_the_dedicated_flash_fixture() {
 fn phase_6_mbc6_oracle_suite_stays_out_of_manual_rom_runner_catalog() {
     assert!(
         built_in_rom_suite_by_name("phase-6-mbc6-oracle").is_none(),
-        "MBC6 synthetic oracle should remain cargo-test-only instead of a manual run_rom_suite target"
+        "MBC6 synthetic oracle should remain cargo-test-only instead of a manual ROM-suite target"
     );
 }
 
