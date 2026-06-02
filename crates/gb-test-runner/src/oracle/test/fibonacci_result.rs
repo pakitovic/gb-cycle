@@ -41,6 +41,7 @@ fn observations(
         executed_tcycles: 0,
         framebuffer: FramebufferObservation::empty(),
         participants: &[],
+        linked: None,
     }
 }
 

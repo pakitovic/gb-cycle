@@ -14,7 +14,6 @@ pub(super) struct FamilyTargetRoots {
 }
 
 impl FamilyTargetRoots {
-    #[cfg(test)]
     fn fallback() -> Self {
         Self {
             loaded: false,
@@ -57,7 +56,16 @@ pub(super) fn load_family_target_roots(
     workspace_root: &Path,
     report: &Report,
 ) -> Result<FamilyTargetRoots, String> {
-    let path = workspace_root.join(DATA_DIR).join(&report.sources);
+    if report.local {
+        return Ok(FamilyTargetRoots::fallback());
+    }
+    let sources = report.sources.as_ref().ok_or_else(|| {
+        format!(
+            "report {:?} must define sources unless local = true",
+            report.id
+        )
+    })?;
+    let path = workspace_root.join(DATA_DIR).join(sources);
     let text = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read source manifest {}: {error}", path.display()))?;
     let manifest: SourceManifestFile = toml::from_str(&text).map_err(|error| {

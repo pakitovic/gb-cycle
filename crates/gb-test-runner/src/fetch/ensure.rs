@@ -26,6 +26,9 @@ pub(crate) fn ensure_report_families_materialized<W: Write>(
 ) -> Result<(), String> {
     let reports = load_report_manifest(workspace_root)?;
     let report = report_for_id(report_id, &reports.reports)?;
+    if report.local {
+        return Ok(());
+    }
     let source_manifest = load_source_manifest(workspace_root, report)?;
     let available_families = report_families(report, &source_manifest)?;
     let selected_families = select_families(report, &available_families, requested_families)?;

@@ -27,7 +27,8 @@ fn built_in_reports_manifest_loads_all_reports() {
             "little-things-gb",
             "magen",
             "mealybug-tearoom-tests",
-            "samesuite"
+            "samesuite",
+            "linked"
         ]
     );
     let gbmicrotest = manifest
@@ -40,6 +41,16 @@ fn built_in_reports_manifest_loads_all_reports() {
     assert_eq!(gbmicrotest.artifact_dir, PathBuf::from(".artifacts"));
     assert_eq!(gbmicrotest.report_file, PathBuf::from("test-report.md"));
     assert_eq!(gbmicrotest.family_order, None);
+    let linked = manifest
+        .reports
+        .iter()
+        .find(|report| report.id == "linked")
+        .expect("linked report should exist");
+    assert!(linked.local);
+    assert_eq!(linked.store_dir, PathBuf::from("linked"));
+    assert_eq!(linked.sources, None);
+    assert_eq!(linked.status_dir, PathBuf::from(".status"));
+    assert_eq!(linked.artifact_dir, PathBuf::from(".artifacts"));
 }
 
 #[test]
@@ -88,11 +99,95 @@ fn report_manifest_applies_global_defaults_and_report_overrides() {
 }
 
 #[test]
+fn report_manifest_loads_local_report_without_sources() {
+    let workspace_root = unique_temp_dir("local-report");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"linked\"\n",
+            "local = true\n",
+            "store_dir = \"linked\"\n",
+        ),
+    );
+
+    let manifest = load_report_manifest(&workspace_root).expect("local report should load");
+    let linked = manifest
+        .reports
+        .first()
+        .expect("linked report should exist");
+    assert_eq!(linked.id, "linked");
+    assert!(linked.local);
+    assert_eq!(linked.sources, None);
+
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
+fn report_manifest_rejects_non_local_report_without_sources() {
+    let workspace_root = unique_temp_dir("missing-sources-report");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"missing-sources\"\n",
+            "store_dir = \"missing-sources\"\n",
+        ),
+    );
+
+    assert!(
+        load_report_manifest(&workspace_root)
+            .expect_err("non-local report without sources should fail")
+            .contains("must define sources unless local = true")
+    );
+
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
+fn report_manifest_rejects_local_report_with_sources() {
+    let workspace_root = unique_temp_dir("local-report-with-sources");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"linked\"\n",
+            "local = true\n",
+            "store_dir = \"linked\"\n",
+            "sources = \"linked/sources.report.toml\"\n",
+        ),
+    );
+
+    assert!(
+        load_report_manifest(&workspace_root)
+            .expect_err("local report with sources should fail")
+            .contains("must not define sources")
+    );
+
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
 fn built_in_source_manifests_load_for_each_report() {
     let workspace_root = crate::default_workspace_root();
     let manifest =
         load_report_manifest(&workspace_root).expect("built-in reports manifest should load");
     for report in &manifest.reports {
+        if report.local {
+            continue;
+        }
         let source_manifest = load_source_manifest(&workspace_root, report)
             .unwrap_or_else(|error| panic!("{} should load: {error}", report.id));
         report_families(report, &source_manifest)

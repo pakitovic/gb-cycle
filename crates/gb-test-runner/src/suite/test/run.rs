@@ -82,6 +82,30 @@ fn command_runs_serial_suite_and_writes_status() {
 }
 
 #[test]
+fn command_local_report_ignores_link_suite_manifests_without_fetching() {
+    let workspace = unique_temp_dir("local-report-link-manifests");
+    write_local_report(&workspace, "linked");
+    write_manifest(
+        &workspace,
+        "linked/dmg04.link.suite.toml",
+        "this is intentionally invalid as a single-machine manifest",
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(["linked"], &workspace, &mut output)
+        .expect_err("link suite manifests should be ignored by rom-suite");
+
+    assert!(output.is_empty());
+    assert!(error.contains("does not contain suite manifests"));
+    assert!(
+        !workspace.join("test/linked").exists(),
+        "local report without single-machine manifests should not materialize or run anything"
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_auto_fetches_missing_suite_family_before_running() {
     let workspace = unique_temp_dir("auto-fetch-rom-workspace");
     let upstream = unique_temp_dir("auto-fetch-rom-upstream");
@@ -1487,4 +1511,27 @@ rom = "acceptance/timeout.gb"
     assert!(output.contains("fibonacci result was not reached"));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+fn write_local_report(workspace: &std::path::Path, report_id: &str) {
+    let path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        path,
+        format!(
+            concat!(
+                "status_dir = \".status\"\n",
+                "artifact_dir = \".artifacts\"\n",
+                "report_file = \"test-report.md\"\n",
+                "\n",
+                "[[report]]\n",
+                "id = {:?}\n",
+                "local = true\n",
+                "store_dir = {:?}\n",
+            ),
+            report_id, report_id
+        ),
+    )
+    .expect("reports manifest should be writable");
 }

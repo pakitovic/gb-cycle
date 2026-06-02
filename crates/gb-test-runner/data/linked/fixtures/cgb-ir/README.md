@@ -1,6 +1,6 @@
 # CGB IR linked-session fixtures
 
-This directory stores repo-owned synthetic native-CGB ROMs for the internal `linked-cgb-ir-smoke` suite.
+This directory stores repo-owned synthetic native-CGB ROMs for the internal `cgb-ir` linked suite.
 
 Both ROMs are direct-start `NoMBC` CGB-capable fixtures with `0x0143 = 0x80`, cartridge type `0x00`, ROM size `0x00`, RAM size `0x00`, and a deterministic program beginning at `0x0100`.
 

@@ -1016,28 +1016,10 @@ pub fn built_in_rom_suite_by_name(name: &str) -> Option<RomSuite> {
         .find(|suite| suite.name == name)
 }
 
-const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[
-    (
-        "linked-dmg04-smoke",
-        "crates/gb-test-runner/data/linked-dmg04-smoke.toml",
-    ),
-    (
-        "linked-dmg04-contracts",
-        "crates/gb-test-runner/data/linked-dmg04-contracts.toml",
-    ),
-    (
-        "linked-dmg07-smoke",
-        "crates/gb-test-runner/data/linked-dmg07-smoke.toml",
-    ),
-    (
-        "linked-cgb-ir-smoke",
-        "crates/gb-test-runner/data/linked-cgb-ir-smoke.toml",
-    ),
-    (
-        "docboy-dmg-linked-extra",
-        "crates/gb-test-runner/data/docboy-dmg-linked.toml",
-    ),
-];
+const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[(
+    "docboy-dmg-linked-extra",
+    "crates/gb-test-runner/data/docboy-dmg-linked.toml",
+)];
 
 pub fn built_in_linked_session_suite_catalog() -> Vec<(&'static str, PathBuf)> {
     BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS

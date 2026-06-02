@@ -91,8 +91,9 @@ pub(super) fn commit_upstream_repo(root: &Path) -> String {
 pub(super) fn basic_report() -> Report {
     Report {
         id: "sample-report".to_string(),
+        local: false,
         store_dir: PathBuf::from("sample-report"),
-        sources: PathBuf::from("sources.report.toml"),
+        sources: Some(PathBuf::from("sources.report.toml")),
         status_dir: PathBuf::from(".status"),
         artifact_dir: PathBuf::from(".artifacts"),
         report_file: PathBuf::from("test-report.md"),

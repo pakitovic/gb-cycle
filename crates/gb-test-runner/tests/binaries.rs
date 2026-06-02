@@ -105,7 +105,34 @@ fn suite_binary_handles_help_and_parse_errors() {
 #[test]
 fn run_linked_session_binary_executes_manifest_backed_suites() {
     let binary = binary_path("run_linked_session");
-    let manifest_path = workspace_root().join("crates/gb-test-runner/data/linked-dmg04-smoke.toml");
+    let temp_dir = unique_temp_dir("linked-session-pass");
+    let manifest_path = temp_dir.join("dmg04-smoke.toml");
+    std::fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let fixture_root = workspace_root().join("crates/gb-test-runner/data/linked/fixtures/dmg04");
+    let manifest = format!(
+        concat!(
+            "suite_name = \"dmg04\"\n",
+            "family = \"serial-ext\"\n",
+            "[[session]]\n",
+            "id = \"dmg04-basic-exchange\"\n",
+            "topology = \"dmg04\"\n",
+            "timeout_tcycles = 5000\n",
+            "oracle = \"linked-snapshot-fixture\"\n",
+            "fixture = \"{}\"\n\n",
+            "  [[session.participant]]\n",
+            "  id = \"left\"\n",
+            "  rom = \"{}\"\n",
+            "  console = \"dmg\"\n\n",
+            "  [[session.participant]]\n",
+            "  id = \"right\"\n",
+            "  rom = \"{}\"\n",
+            "  console = \"dmg\"\n",
+        ),
+        fixture_root.join("basic-exchange.snapshot").display(),
+        fixture_root.join("basic-left.gb").display(),
+        fixture_root.join("basic-right.gb").display(),
+    );
+    std::fs::write(&manifest_path, manifest).expect("linked manifest should be writable");
 
     let output = Command::new(&binary)
         .current_dir(workspace_root())
@@ -126,8 +153,10 @@ fn run_linked_session_binary_executes_manifest_backed_suites() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
-    assert!(stdout.contains("suite=linked-dmg04-smoke"));
+    assert!(stdout.contains("suite=dmg04"));
     assert!(stdout.contains("session=dmg04-basic-exchange outcome=PASS"));
+
+    std::fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
 
 #[test]

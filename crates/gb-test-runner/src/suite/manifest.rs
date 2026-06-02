@@ -27,8 +27,10 @@ struct ReportManifestFile {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ReportFile {
     id: String,
+    #[serde(default)]
+    local: bool,
     store_dir: PathBuf,
-    sources: PathBuf,
+    sources: Option<PathBuf>,
     status_dir: Option<PathBuf>,
     artifact_dir: Option<PathBuf>,
 }
@@ -102,11 +104,27 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
     let default_artifact_dir = manifest
         .artifact_dir
         .unwrap_or_else(|| PathBuf::from(".artifacts"));
-    Ok(manifest
-        .reports
-        .into_iter()
-        .map(|report| Report {
+    let mut reports = Vec::with_capacity(manifest.reports.len());
+    for report in manifest.reports {
+        match (report.local, &report.sources) {
+            (true, Some(_)) => {
+                return Err(format!(
+                    "local report {:?} must not define sources",
+                    report.id
+                ));
+            }
+            (true, None) => {}
+            (false, Some(_)) => {}
+            (false, None) => {
+                return Err(format!(
+                    "report {:?} must define sources unless local = true",
+                    report.id
+                ));
+            }
+        }
+        reports.push(Report {
             id: report.id,
+            local: report.local,
             store_dir: report.store_dir,
             sources: report.sources,
             status_dir: report
@@ -115,8 +133,9 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
             artifact_dir: report
                 .artifact_dir
                 .unwrap_or_else(|| default_artifact_dir.clone()),
-        })
-        .collect())
+        });
+    }
+    Ok(reports)
 }
 
 pub(super) fn load_selected_suites(
@@ -255,7 +274,7 @@ fn suite_manifest_paths(workspace_root: &Path, report: &Report) -> Result<Vec<Pa
         let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
             continue;
         };
-        if !file_name.ends_with(".suite.toml") {
+        if !is_single_machine_suite_manifest(file_name) {
             continue;
         }
         paths.push(path);
@@ -264,8 +283,19 @@ fn suite_manifest_paths(workspace_root: &Path, report: &Report) -> Result<Vec<Pa
     Ok(paths)
 }
 
+fn is_single_machine_suite_manifest(file_name: &str) -> bool {
+    file_name.ends_with(".suite.toml") && !file_name.ends_with(".link.suite.toml")
+}
+
 fn report_data_dir(workspace_root: &Path, report: &Report) -> PathBuf {
-    let source_parent = report.sources.parent().unwrap_or_else(|| Path::new(""));
+    if report.local {
+        return workspace_root.join(DATA_DIR).join(&report.store_dir);
+    }
+    let source_parent = report
+        .sources
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| Path::new(""));
     workspace_root.join(DATA_DIR).join(source_parent)
 }
 
@@ -558,6 +588,9 @@ fn resolve_oracle_config(
 }
 
 fn fixture_root_for_case(workspace_root: &Path, report: &Report, target_root: &Path) -> PathBuf {
+    if report.local {
+        return report_data_dir(workspace_root, report);
+    }
     workspace_root
         .join(TEST_ROM_STORE_DIR)
         .join(&report.store_dir)
@@ -635,8 +668,9 @@ pub(super) fn parse_suite_manifest_for_test(
 ) -> Result<SuiteManifest, String> {
     let report = Report {
         id: report_id.to_string(),
+        local: false,
         store_dir: PathBuf::from(report_id),
-        sources: PathBuf::from(format!("{report_id}/sources.report.toml")),
+        sources: Some(PathBuf::from(format!("{report_id}/sources.report.toml"))),
         status_dir: PathBuf::from(".status"),
         artifact_dir: PathBuf::from(".artifacts"),
     };

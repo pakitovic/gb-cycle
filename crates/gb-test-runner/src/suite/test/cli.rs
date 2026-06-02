@@ -93,8 +93,17 @@ fn run_requires_report_and_lists_available_reports() {
     assert!(output.is_empty());
     assert_eq!(
         error,
-        "test ROM report must be provided; available reports: gb-emulator-shootout, docboy, gbmicrotest, mooneye, ax6, little-things-gb, magen, mealybug-tearoom-tests, samesuite"
+        "test ROM report must be provided; available reports: gb-emulator-shootout, docboy, gbmicrotest, mooneye, ax6, little-things-gb, magen, mealybug-tearoom-tests, samesuite, linked"
     );
+}
+
+#[test]
+fn run_linked_report_ignores_link_manifests() {
+    let mut output = Vec::new();
+    let error = run_suite_command(["linked"], &mut output)
+        .expect_err("linked report has only linked-session manifests");
+    assert!(output.is_empty());
+    assert!(error.contains("does not contain suite manifests"));
 }
 
 #[test]

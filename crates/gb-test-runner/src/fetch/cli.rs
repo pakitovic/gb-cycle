@@ -35,6 +35,7 @@ pub fn fetch_help_text() -> &'static str {
         "\n",
         "Fetches pinned upstream ROM source(s) through the report registry, verifies SHA-256 hashes, materializes selected families under test/<report-store>, and removes temporary checkout(s).\n",
         "Report ids are read from crates/gb-test-runner/data/reports.toml.\n",
+        "Reports marked local = true are registry entries for repo-local assets and cannot be fetched.\n",
     )
 }
 
@@ -90,6 +91,12 @@ pub(super) fn run_fetch_request<W: Write>(
     let reports = load_report_manifest(workspace_root)?;
     let options = resolve_fetch_options(request, &reports.reports)?;
     let report = options.report;
+    if report.local {
+        return Err(format!(
+            "test ROM report {:?} is local and cannot be fetched",
+            report.id
+        ));
+    }
     let source_manifest = load_source_manifest(workspace_root, report)?;
     let available_families = report_families(report, &source_manifest)?;
     let selected_families =

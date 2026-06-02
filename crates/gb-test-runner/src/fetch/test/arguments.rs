@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::super::cli::{FetchAction, FetchRequest, parse_fetch_arguments, resolve_fetch_options};
 use super::super::{fetch_help_text, run_fetch_command};
-use super::common::basic_report;
+use super::common::{basic_report, unique_temp_dir, write_reports};
 
 #[test]
 fn help_mentions_reports_registry() {
@@ -19,6 +19,32 @@ fn parses_help_without_manifests() {
     let output = String::from_utf8(output).expect("help should be utf-8");
     assert!(output.contains("Usage:"));
     assert!(output.contains("fetch"));
+}
+
+#[test]
+fn fetch_rejects_local_report() {
+    let workspace_root = unique_temp_dir("local-report-fetch");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"linked\"\n",
+            "local = true\n",
+            "store_dir = \"linked\"\n",
+        ),
+    );
+
+    let mut output = Vec::new();
+    let error = run_fetch_command(["linked"], &workspace_root, &mut output)
+        .expect_err("local reports should not be fetchable");
+    assert!(error.contains("is local and cannot be fetched"));
+    assert!(output.is_empty());
+
+    let _ = std::fs::remove_dir_all(workspace_root);
 }
 
 #[test]

@@ -23,8 +23,10 @@ pub(super) struct ReportManifestFile {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(super) struct ReportFile {
     pub(super) id: String,
+    #[serde(default)]
+    pub(super) local: bool,
     pub(super) store_dir: PathBuf,
-    pub(super) sources: PathBuf,
+    pub(super) sources: Option<PathBuf>,
     pub(super) status_dir: Option<PathBuf>,
     pub(super) artifact_dir: Option<PathBuf>,
     pub(super) report_file: Option<PathBuf>,
@@ -39,8 +41,9 @@ pub(super) struct ReportManifest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Report {
     pub(super) id: String,
+    pub(super) local: bool,
     pub(super) store_dir: PathBuf,
-    pub(super) sources: PathBuf,
+    pub(super) sources: Option<PathBuf>,
     pub(super) status_dir: PathBuf,
     pub(super) artifact_dir: PathBuf,
     pub(super) report_file: PathBuf,
@@ -95,7 +98,13 @@ pub(super) fn load_source_manifest(
     workspace_root: &Path,
     report: &Report,
 ) -> Result<SourceManifestFile, String> {
-    let path = workspace_root.join(DATA_DIR).join(&report.sources);
+    let sources = report.sources.as_ref().ok_or_else(|| {
+        format!(
+            "report {:?} is local and does not define fetch sources",
+            report.id
+        )
+    })?;
+    let path = workspace_root.join(DATA_DIR).join(sources);
     let text = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read source manifest {}: {error}", path.display()))?;
     let manifest: SourceManifestFile = toml::from_str(&text).map_err(|error| {
@@ -129,7 +138,22 @@ fn resolve_report_manifest(manifest: ReportManifestFile) -> Result<ReportManifes
             return Err(format!("duplicate report id {:?}", report.id));
         }
         validate_relative_path(&report.store_dir, "report store_dir", true)?;
-        validate_relative_path(&report.sources, "report sources", false)?;
+        match (report.local, &report.sources) {
+            (true, Some(_)) => {
+                return Err(format!(
+                    "local report {:?} must not define sources",
+                    report.id
+                ));
+            }
+            (true, None) => {}
+            (false, Some(sources)) => validate_relative_path(sources, "report sources", false)?,
+            (false, None) => {
+                return Err(format!(
+                    "report {:?} must define sources unless local = true",
+                    report.id
+                ));
+            }
+        }
 
         let status_dir = report
             .status_dir
@@ -167,6 +191,7 @@ fn resolve_report_manifest(manifest: ReportManifestFile) -> Result<ReportManifes
 
         reports.push(Report {
             id: report.id,
+            local: report.local,
             store_dir: report.store_dir,
             sources: report.sources,
             status_dir,

@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use serde::Deserialize;
+
 use crate::oracle::Oracle;
 
 use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
@@ -49,6 +51,132 @@ artifact_dir = ".custom-artifacts"
         custom_report.artifact_dir,
         PathBuf::from(".custom-artifacts")
     );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn reports_manifest_loads_local_report_without_sources() {
+    let workspace = unique_temp_dir("suite-local-report");
+    let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "linked"
+local = true
+store_dir = "linked"
+"#,
+    )
+    .expect("reports should be writable");
+
+    let reports = load_reports(&workspace).expect("local report should load");
+    let linked = reports.first().expect("linked report should exist");
+    assert_eq!(linked.id, "linked");
+    assert!(linked.local);
+    assert_eq!(linked.store_dir, PathBuf::from("linked"));
+    assert_eq!(linked.sources, None);
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn reports_manifest_rejects_local_report_with_sources() {
+    let workspace = unique_temp_dir("suite-local-report-sources");
+    let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "linked"
+local = true
+store_dir = "linked"
+sources = "linked/sources.report.toml"
+"#,
+    )
+    .expect("reports should be writable");
+
+    assert!(
+        load_reports(&workspace)
+            .expect_err("local report with sources should fail")
+            .contains("must not define sources")
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn reports_manifest_rejects_non_local_report_without_sources() {
+    let workspace = unique_temp_dir("suite-report-missing-sources");
+    let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+"#,
+    )
+    .expect("reports should be writable");
+
+    assert!(
+        load_reports(&workspace)
+            .expect_err("non-local report without sources should fail")
+            .contains("must define sources unless local = true")
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn local_report_can_load_regular_suite_manifest_without_sources() {
+    let workspace = unique_temp_dir("suite-local-report-regular-suite");
+    let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "linked"
+local = true
+store_dir = "linked"
+"#,
+    )
+    .expect("reports should be writable");
+    write_manifest(
+        &workspace,
+        "linked/local.suite.toml",
+        &basic_manifest("linked", "local", "linked", "linked-local-case", "local.gb"),
+    );
+
+    let reports = load_reports(&workspace).expect("local report should load");
+    let report = reports.first().expect("local report should exist");
+    let suites = load_selected_suites(&workspace, report, Some("local"), None)
+        .expect("regular suite manifest should load for local report");
+
+    assert_eq!(suites.len(), 1);
+    assert_eq!(suites[0].suite_name, "local");
+    assert_eq!(suites[0].family, "linked");
+    assert_eq!(suites[0].cases[0].target_root, PathBuf::from("linked"));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1458,6 +1586,32 @@ fn real_docboy_suite_manifests_load_memory_framebuffer_and_stimuli() {
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
+#[test]
+fn real_linked_draft_manifests_use_case_schema_and_repo_local_paths() {
+    for suite_name in ["cgb-ir", "dmg04-contracts", "dmg04", "dmg07"] {
+        let text = read_linked_suite_manifest(suite_name);
+        assert!(
+            !text.contains("[[session"),
+            "{suite_name} should not use legacy session tables"
+        );
+        let manifest: LinkedDraftManifestFile = toml::from_str(&text)
+            .unwrap_or_else(|error| panic!("{suite_name} should parse as linked draft: {error}"));
+        assert_eq!(manifest.report, "linked");
+        assert_eq!(manifest.suite_name, suite_name);
+        assert!(!manifest.cases.is_empty());
+        for case in manifest.cases {
+            assert!(!case.id.is_empty());
+            validate_linked_fixture_paths(&case.oracle);
+            assert!(!case.participants.is_empty());
+            for participant in case.participants {
+                assert!(!participant.id.is_empty());
+                validate_relative_repo_local_path(&participant.rom);
+                assert!(matches!(participant.console.as_str(), "dmg" | "cgb"));
+            }
+        }
+    }
+}
+
 fn write_blargg_timing_fixtures(workspace_root: &Path) {
     write_fixture_placeholders(
         workspace_root,
@@ -1536,6 +1690,75 @@ fn read_report_suite_manifest(report_id: &str, suite_name: &str) -> String {
             .join(format!("{suite_name}.suite.toml")),
     )
     .expect("suite manifest should be readable")
+}
+
+fn read_linked_suite_manifest(suite_name: &str) -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/linked")
+            .join(format!("{suite_name}.link.suite.toml")),
+    )
+    .expect("linked suite manifest should be readable")
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkedDraftManifestFile {
+    report: String,
+    suite_name: String,
+    #[serde(rename = "case")]
+    cases: Vec<LinkedDraftCaseFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkedDraftCaseFile {
+    id: String,
+    oracle: Option<toml::Value>,
+    #[serde(default, rename = "participant")]
+    participants: Vec<LinkedDraftParticipantFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkedDraftParticipantFile {
+    id: String,
+    rom: PathBuf,
+    console: String,
+}
+
+fn validate_linked_fixture_paths(oracle: &Option<toml::Value>) {
+    let Some(toml::Value::Table(oracle)) = oracle else {
+        return;
+    };
+    let Some(fixture) = oracle.get("fixture") else {
+        return;
+    };
+    match fixture {
+        toml::Value::String(path) => validate_relative_repo_local_path(Path::new(path)),
+        toml::Value::Array(paths) => {
+            for path in paths {
+                let toml::Value::String(path) = path else {
+                    panic!("fixture arrays should contain string paths");
+                };
+                validate_relative_repo_local_path(Path::new(path));
+            }
+        }
+        _ => panic!("fixture should be a string or an array of strings"),
+    }
+}
+
+fn validate_relative_repo_local_path(path: &Path) {
+    assert!(
+        !path.is_absolute(),
+        "linked local paths must be relative: {}",
+        path.display()
+    );
+    assert!(
+        path.components().all(|component| !matches!(
+            component,
+            Component::ParentDir | Component::CurDir | Component::RootDir | Component::Prefix(_)
+        )),
+        "linked local paths must be confined below data/linked: {}",
+        path.display()
+    );
 }
 
 fn read_report_source_manifest(report_id: &str) -> String {

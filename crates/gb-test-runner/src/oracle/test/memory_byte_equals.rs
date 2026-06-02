@@ -24,6 +24,7 @@ fn observations(memory: &[MemoryObservation]) -> OracleObservations<'_> {
         executed_tcycles: 0,
         framebuffer: FramebufferObservation::empty(),
         participants: &[],
+        linked: None,
     }
 }
 
@@ -39,6 +40,7 @@ fn empty_observations() -> OracleObservations<'static> {
         executed_tcycles: 0,
         framebuffer: FramebufferObservation::empty(),
         participants: &[],
+        linked: None,
     }
 }
 

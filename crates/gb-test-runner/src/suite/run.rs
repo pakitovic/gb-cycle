@@ -151,6 +151,7 @@ fn run_case(
             executed_tcycles,
             framebuffer: framebuffer_observation(&machine),
             participants: &[],
+            linked: None,
         }) {
             Ok(OracleStep::Continue) => {}
             Ok(OracleStep::Stop) => {
@@ -262,6 +263,7 @@ fn finish_case(
         executed_tcycles: finish.executed_tcycles,
         framebuffer: framebuffer_observation(machine),
         participants: &[],
+        linked: None,
     }) {
         Ok(OracleOutcome::Passed) => CaseRunReport {
             id: context.suite_case.id.clone(),

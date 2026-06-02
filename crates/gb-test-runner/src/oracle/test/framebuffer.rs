@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use super::super::{
-    FramebufferObservation, Oracle, OracleConfig, OracleFixtureRoots, OracleObservations,
-    OracleOutcome, OracleStep,
+    FramebufferObservation, LinkedParticipantObservation, LinkedSessionObservation, Oracle,
+    OracleConfig, OracleFixtureRoots, OracleObservations, OracleOutcome, OracleStep,
 };
 
 const PIXELS: usize = 160 * 144;
@@ -56,6 +56,7 @@ fn observations<'a>(
             in_vblank,
         },
         participants: &[],
+        linked: None,
     }
 }
 
@@ -65,6 +66,25 @@ fn pass_oracle(path: &Path) -> Oracle {
         path.to_string_lossy()
     )))
     .expect("framebuffer oracle should parse")
+}
+
+fn linked_observations<'a>(
+    participants: &'a [LinkedParticipantObservation<'a>],
+) -> OracleObservations<'a> {
+    OracleObservations {
+        serial: b"",
+        cpu: None,
+        memory: &[],
+        executed_tcycles: 1,
+        framebuffer: FramebufferObservation::empty(),
+        participants: &[],
+        linked: Some(LinkedSessionObservation {
+            snapshot: None,
+            trace: None,
+            topology_trace: None,
+            participants,
+        }),
+    }
 }
 
 fn local_oracle(
@@ -128,6 +148,42 @@ fn framebuffer_fixture_array_accepts_any_matching_fixture() {
         oracle
             .finish(observations(1, Some(&actual), None, true))
             .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_target_participant_can_read_linked_participant_framebuffer() {
+    let temp_dir = temp_dir("linked-participant");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let fixture_path = temp_dir.join("fixture.pgm");
+    write_pgm(&fixture_path, &vec![255; PIXELS]);
+    let mut actual = vec![0; PIXELS];
+    actual.fill(0);
+    let participant = LinkedParticipantObservation {
+        id: "master",
+        serial: b"",
+        serial_hex: "",
+        snapshot: None,
+        trace: None,
+        framebuffer: FramebufferObservation {
+            dmg: Some(&actual),
+            cgb_rgb555: None,
+            in_vblank: true,
+        },
+    };
+    let mut oracle = Oracle::from_manifest(&parse_oracle_config(&format!(
+        "oracle = {{ type = \"framebuffer\", target_participant = \"master\", fixture = {:?} }}",
+        fixture_path.to_string_lossy()
+    )))
+    .expect("linked participant framebuffer oracle should parse");
+
+    assert_eq!(
+        oracle
+            .finish(linked_observations(std::slice::from_ref(&participant)))
+            .expect("linked participant framebuffer oracle should finish"),
         OracleOutcome::Passed
     );
 

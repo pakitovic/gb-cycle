@@ -275,6 +275,15 @@ impl FramebufferOracle {
             .iter()
             .find(|participant| participant.id == target_participant)
             .map(|participant| participant.framebuffer)
+            .or_else(|| {
+                observations.linked.and_then(|linked| {
+                    linked
+                        .participants
+                        .iter()
+                        .find(|participant| participant.id == target_participant)
+                        .map(|participant| participant.framebuffer)
+                })
+            })
             .ok_or_else(|| {
                 format!(
                     "framebuffer observations for participant {target_participant:?} are not available"

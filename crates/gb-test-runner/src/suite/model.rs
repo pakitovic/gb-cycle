@@ -15,8 +15,9 @@ pub(super) const TEST_ROM_STORE_DIR: &str = "test";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Report {
     pub(super) id: String,
+    pub(super) local: bool,
     pub(super) store_dir: PathBuf,
-    pub(super) sources: PathBuf,
+    pub(super) sources: Option<PathBuf>,
     pub(super) status_dir: PathBuf,
     pub(super) artifact_dir: PathBuf,
 }

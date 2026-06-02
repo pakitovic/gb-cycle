@@ -1,0 +1,19 @@
+report = "linked"
+suite_name = "cgb-ir"
+family = "linked"
+topology = "cgb-ir"
+timeout_tcycles = 80000
+
+[[case]]
+id = "cgb-ir-emitter-to-receiver"
+oracle = { type = "serial-hex-exact", target_participant = "receiver", expected = "B2" }
+
+  [[case.participant]]
+  id = "emitter"
+  rom = "fixtures/cgb-ir/emitter.gb"
+  console = "cgb"
+
+  [[case.participant]]
+  id = "receiver"
+  rom = "fixtures/cgb-ir/receiver.gb"
+  console = "cgb"

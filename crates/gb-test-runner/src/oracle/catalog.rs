@@ -7,6 +7,9 @@ use super::fibonacci_result::FibonacciResultOracle;
 use super::framebuffer::FramebufferOracle;
 use super::memory_byte_equals::MemoryByteEqualsOracle;
 use super::serial_contains::SerialContainsOracle;
+use super::serial_hex_exact::SerialHexExactOracle;
+use super::snapshot::SnapshotOracle;
+use super::trace::TraceOracle;
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct OracleConfig {
@@ -233,6 +236,24 @@ pub(crate) struct ParticipantFramebufferObservation<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LinkedSessionObservation<'a> {
+    pub(crate) snapshot: Option<&'a str>,
+    pub(crate) trace: Option<&'a str>,
+    pub(crate) topology_trace: Option<&'a str>,
+    pub(crate) participants: &'a [LinkedParticipantObservation<'a>],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LinkedParticipantObservation<'a> {
+    pub(crate) id: &'a str,
+    pub(crate) serial: &'a [u8],
+    pub(crate) serial_hex: &'a str,
+    pub(crate) snapshot: Option<&'a str>,
+    pub(crate) trace: Option<&'a str>,
+    pub(crate) framebuffer: FramebufferObservation<'a>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OracleObservations<'a> {
     pub(crate) serial: &'a [u8],
     pub(crate) cpu: Option<CpuObservation>,
@@ -240,6 +261,7 @@ pub(crate) struct OracleObservations<'a> {
     pub(crate) executed_tcycles: u64,
     pub(crate) framebuffer: FramebufferObservation<'a>,
     pub(crate) participants: &'a [ParticipantFramebufferObservation<'a>],
+    pub(crate) linked: Option<LinkedSessionObservation<'a>>,
 }
 
 impl<'a> OracleObservations<'a> {
@@ -252,6 +274,7 @@ impl<'a> OracleObservations<'a> {
             executed_tcycles: 0,
             framebuffer: FramebufferObservation::empty(),
             participants: &[],
+            linked: None,
         }
     }
 }
@@ -273,7 +296,10 @@ pub(crate) enum Oracle {
     FibonacciResult(FibonacciResultOracle),
     Framebuffer(FramebufferOracle),
     MemoryByteEquals(MemoryByteEqualsOracle),
+    SerialHexExact(SerialHexExactOracle),
     SerialContains(SerialContainsOracle),
+    Snapshot(SnapshotOracle),
+    Trace(TraceOracle),
 }
 
 impl Oracle {
@@ -305,9 +331,17 @@ impl Oracle {
             "memory-byte-equals" => Ok(Self::MemoryByteEquals(
                 MemoryByteEqualsOracle::from_manifest(config)?,
             )),
+            "serial-hex-exact" => Ok(Self::SerialHexExact(SerialHexExactOracle::from_manifest(
+                config,
+            )?)),
             "serial-contains" => Ok(Self::SerialContains(SerialContainsOracle::from_manifest(
                 config,
             )?)),
+            "snapshot" => Ok(Self::Snapshot(SnapshotOracle::from_manifest(
+                config,
+                fixture_roots,
+            )?)),
+            "trace" => Ok(Self::Trace(TraceOracle::from_manifest(config)?)),
             other => Err(format!("unsupported suite oracle {other:?}")),
         }
     }
@@ -320,7 +354,10 @@ impl Oracle {
             Self::FibonacciResult(oracle) => oracle.observe(observations),
             Self::Framebuffer(oracle) => oracle.observe(observations),
             Self::MemoryByteEquals(oracle) => oracle.observe(observations),
+            Self::SerialHexExact(oracle) => Ok(oracle.observe(observations)),
             Self::SerialContains(oracle) => Ok(oracle.observe(observations)),
+            Self::Snapshot(oracle) => Ok(oracle.observe(observations)),
+            Self::Trace(oracle) => Ok(oracle.observe(observations)),
         }
     }
 
@@ -332,7 +369,10 @@ impl Oracle {
             Self::FibonacciResult(oracle) => oracle.finish(observations),
             Self::Framebuffer(oracle) => oracle.finish(observations),
             Self::MemoryByteEquals(oracle) => oracle.finish(observations),
+            Self::SerialHexExact(oracle) => oracle.finish(observations),
             Self::SerialContains(oracle) => Ok(oracle.finish(observations)),
+            Self::Snapshot(oracle) => oracle.finish(observations),
+            Self::Trace(oracle) => Ok(oracle.finish(observations)),
         }
     }
 

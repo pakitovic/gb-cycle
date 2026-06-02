@@ -13,6 +13,14 @@ fn data_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
 
+fn linked_fixture_path(relative: &str) -> PathBuf {
+    data_path("data/linked/fixtures").join(relative)
+}
+
+fn toml_path(path: &Path) -> String {
+    format!("{:?}", path.to_string_lossy())
+}
+
 fn unique_temp_dir(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "gb-cycle-linked-session-contracts-{}-{}-{}",
@@ -23,6 +31,14 @@ fn unique_temp_dir(label: &str) -> PathBuf {
             .expect("system clock should be after unix epoch")
             .as_nanos()
     ))
+}
+
+fn write_temp_manifest(label: &str, body: &str) -> PathBuf {
+    let dir = unique_temp_dir(label);
+    fs::create_dir_all(&dir).expect("temporary manifest dir should be creatable");
+    let path = dir.join("linked-session.toml");
+    fs::write(&path, body).expect("temporary manifest should be writable");
+    path
 }
 
 fn ensure_text_fixture(path: &Path, actual: &str) {
@@ -47,8 +63,38 @@ fn ensure_text_fixture(path: &Path, actual: &str) {
 }
 
 fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
-    let manifest_path = data_path("data/linked-dmg04-smoke.toml");
-    let fixture_path = data_path("data/linked/fixtures/dmg04/basic-exchange.snapshot");
+    let fixture_path = linked_fixture_path("dmg04/basic-exchange.snapshot");
+    let left_rom = linked_fixture_path("dmg04/basic-left.gb");
+    let right_rom = linked_fixture_path("dmg04/basic-right.gb");
+    let manifest_path = write_temp_manifest(
+        "dmg04-smoke",
+        &format!(
+            concat!(
+                "suite_name = \"dmg04\"\n",
+                "family = \"serial-ext\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-basic-exchange\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-snapshot-fixture\"\n",
+                "fixture = {}\n",
+                "\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+            ),
+            toml_path(&fixture_path),
+            toml_path(&left_rom),
+            toml_path(&right_rom)
+        ),
+    );
 
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo linked-session manifest should load");
@@ -72,14 +118,176 @@ fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
 }
 
 fn load_contract_suite_with_accepted_participant_fixtures() -> gb_test_runner::LinkedSessionSuite {
-    let manifest_path = data_path("data/linked-dmg04-contracts.toml");
-    let left_snapshot_fixture = data_path("data/linked/fixtures/dmg04/basic-left.snapshot");
+    let basic_left = linked_fixture_path("dmg04/basic-left.gb");
+    let basic_right = linked_fixture_path("dmg04/basic-right.gb");
+    let stale_left = linked_fixture_path("dmg04/stale-left.gb");
+    let stale_right = linked_fixture_path("dmg04/stale-right.gb");
+    let double_master_left = linked_fixture_path("dmg04/double-master-left.gb");
+    let double_master_right = linked_fixture_path("dmg04/double-master-right.gb");
+    let open_line_right = linked_fixture_path("dmg04/open-line-right.gb");
+    let left_snapshot_fixture = linked_fixture_path("dmg04/basic-left.snapshot");
     let double_master_left_snapshot_fixture =
-        data_path("data/linked/fixtures/dmg04/double-master-left.snapshot");
+        linked_fixture_path("dmg04/double-master-left.snapshot");
     let double_master_right_snapshot_fixture =
-        data_path("data/linked/fixtures/dmg04/double-master-right.snapshot");
-    let open_line_left_snapshot_fixture =
-        data_path("data/linked/fixtures/dmg04/open-line-left.snapshot");
+        linked_fixture_path("dmg04/double-master-right.snapshot");
+    let open_line_left_snapshot_fixture = linked_fixture_path("dmg04/open-line-left.snapshot");
+    let manifest_path = write_temp_manifest(
+        "dmg04-contracts",
+        &format!(
+            concat!(
+                "suite_name = \"dmg04-contracts\"\n",
+                "family = \"serial-ext\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-left-serial-hex\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-serial-hex-exact\"\n",
+                "target_participant = \"left\"\n",
+                "expected = \"A5\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-right-serial-hex\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-serial-hex-exact\"\n",
+                "target_participant = \"right\"\n",
+                "expected = \"3C\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-left-snapshot\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-snapshot-fixture\"\n",
+                "target_participant = \"left\"\n",
+                "fixture = {}\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-stale-left-serial-hex\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 10000\n",
+                "oracle = \"linked-participant-serial-hex-exact\"\n",
+                "target_participant = \"left\"\n",
+                "expected = \"A5A5\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-stale-right-serial-hex\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 10000\n",
+                "oracle = \"linked-participant-serial-hex-exact\"\n",
+                "target_participant = \"right\"\n",
+                "expected = \"3CF0\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-double-master-left-snapshot\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-snapshot-fixture\"\n",
+                "target_participant = \"left\"\n",
+                "fixture = {}\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-double-master-right-snapshot\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-snapshot-fixture\"\n",
+                "target_participant = \"right\"\n",
+                "fixture = {}\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"dmg04-open-line-left-snapshot\"\n",
+                "topology = \"dmg04\"\n",
+                "timeout_tcycles = 5000\n",
+                "oracle = \"linked-participant-snapshot-fixture\"\n",
+                "target_participant = \"left\"\n",
+                "fixture = {}\n",
+                "  [[session.participant]]\n",
+                "  id = \"left\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+                "  [[session.participant]]\n",
+                "  id = \"right\"\n",
+                "  rom = {}\n",
+                "  console = \"dmg\"\n",
+            ),
+            toml_path(&basic_left),
+            toml_path(&basic_right),
+            toml_path(&basic_left),
+            toml_path(&basic_right),
+            toml_path(&left_snapshot_fixture),
+            toml_path(&basic_left),
+            toml_path(&basic_right),
+            toml_path(&stale_left),
+            toml_path(&stale_right),
+            toml_path(&stale_left),
+            toml_path(&stale_right),
+            toml_path(&double_master_left_snapshot_fixture),
+            toml_path(&double_master_left),
+            toml_path(&double_master_right),
+            toml_path(&double_master_right_snapshot_fixture),
+            toml_path(&double_master_left),
+            toml_path(&double_master_right),
+            toml_path(&open_line_left_snapshot_fixture),
+            toml_path(&basic_left),
+            toml_path(&open_line_right),
+        ),
+    );
 
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo linked contract manifest should load");
@@ -215,7 +423,37 @@ fn linked_session_contract_manifest_is_deterministic_across_reruns() {
 
 #[test]
 fn linked_session_cgb_ir_smoke_manifest_passes() {
-    let manifest_path = data_path("data/linked-cgb-ir-smoke.toml");
+    let emitter_rom = linked_fixture_path("cgb-ir/emitter.gb");
+    let receiver_rom = linked_fixture_path("cgb-ir/receiver.gb");
+    let manifest_path = write_temp_manifest(
+        "cgb-ir",
+        &format!(
+            concat!(
+                "suite_name = \"cgb-ir\"\n",
+                "family = \"internal\"\n",
+                "\n",
+                "[[session]]\n",
+                "id = \"cgb-ir-emitter-to-receiver\"\n",
+                "topology = \"cgb-ir\"\n",
+                "timeout_tcycles = 80000\n",
+                "oracle = \"linked-participant-serial-hex-exact\"\n",
+                "target_participant = \"receiver\"\n",
+                "expected = \"B2\"\n",
+                "\n",
+                "  [[session.participant]]\n",
+                "  id = \"emitter\"\n",
+                "  rom = {}\n",
+                "  console = \"cgb\"\n",
+                "\n",
+                "  [[session.participant]]\n",
+                "  id = \"receiver\"\n",
+                "  rom = {}\n",
+                "  console = \"cgb\"\n",
+            ),
+            toml_path(&emitter_rom),
+            toml_path(&receiver_rom)
+        ),
+    );
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo CGB IR linked-session manifest should load");
 
