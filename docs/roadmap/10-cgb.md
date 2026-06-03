@@ -286,7 +286,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 
 ## Slice 6 — CGB-family boot ROMs
 
-- Activate local validation for canonical CGB boot ROM assets through `GB_CYCLE_BOOT_ROM_ROOT`, using the canonical filename plus pinned hash as the strict contract for internal tests.
+- Activate local validation for canonical CGB boot ROM assets through explicit `--boot-rom-dir <dir>` inputs, using the canonical filename plus pinned hash as the strict contract for internal tests.
 - Treat `cgbE_boot.bin` as the current Phase 10 default CGB-E boot ROM and reject mismatched assets in strict `RealBoot` validation by size and SHA-256 before execution.
 - Keep `cgb0_boot.bin` out of the standard CGB default; explicit `CpuCgbC` / `CpuCgbD` validation still selects `cgb_boot.bin`, while ordinary default CGB behavior follows the CGB-E / `cgbE_boot.bin` profile.
 - The `2304`-byte stored asset size is the repo-local padded CGB boot image layout that includes the unmapped cartridge-header gap at `0100-01FF`; the hardware-visible boot ROM bytes remain the Pan Docs `256 + 1792 = 2048` split across `0000-00FF` and `0200-08FF`, and the bus must not expose the padded gap as boot ROM data.

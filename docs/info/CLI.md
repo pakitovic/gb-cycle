@@ -41,7 +41,7 @@ Completed serial bytes can stream to stdout with `--serial-stdout`, be captured 
 
 `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
 
-`--startup <skip-boot|custom-boot|real-boot>` selects the startup path. `skip-boot` is the fast direct-start tooling path; `custom-boot` adds reset/boot-facing direct-start behavior used by selected fixtures; `real-boot` executes a private firmware image and requires `GB_CYCLE_BOOT_ROM_ROOT` or `--boot-rom-dir <dir>` unless verification is explicitly relaxed.
+`--startup <skip-boot|custom-boot|real-boot>` selects the startup path. `skip-boot` is the fast direct-start tooling path; `custom-boot` adds reset/boot-facing direct-start behavior used by selected fixtures; `real-boot` executes a private firmware image and requires `--boot-rom-dir <dir>` unless verification is explicitly relaxed.
 
 `RealBoot` derives the firmware filename from the effective model/revision/profile. Examples include `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `sgb_boot.bin`, and `sgb2_boot.bin`. `--boot-rom` no longer exists; use `--boot-rom-dir <private-dir>` plus `--boot-rom-verify <off|warn|strict>` when overriding firmware lookup or verification.
 
@@ -52,6 +52,8 @@ Completed serial bytes can stream to stdout with `--serial-stdout`, be captured 
 `--test-runner` applies host-light runner defaults after parsing: `--mode permissive`, DMG `--palette grey`, and `--border-off`. It does not change model, startup, T-cycle stepping, stop limits, RTC behavior, save persistence, or explicit artifact requests.
 
 `--benchmark <case.toml>` loads one portable benchmark TOML through `gb-benchmark`; the TOML owns the ROM path, model, startup, mode, palette, screenshot/stat toggles, duration, and run inputs. It cannot be combined with a positional ROM path or normal run options; `--test-runner` is the supported CLI-side override.
+
+Because `--benchmark` cannot be combined with normal run options and the benchmark TOML has no boot-ROM directory field, CLI benchmark cases should not use `startup = "real-boot"` until an explicit benchmark boot-ROM input is added.
 
 Benchmark cases use `[[run]]` plus `[[run.input]]` entries. `button` or `buttons` choose inputs, exactly one of `frame`, `second`, or `tcycle` chooses timing, and `hold_frames` / `repeat_every_frames` expand deterministic pulses. Relative `rom` paths resolve against the TOML file directory, and `id` / `run.id` may contain only ASCII letters, digits, `-`, and `_` because they form artifact filenames.
 

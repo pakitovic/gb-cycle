@@ -33,7 +33,6 @@ use std::time::Instant;
 const DEFAULT_SKIP_BOOT_FRAME_LIMIT: u32 = 120;
 const DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT: u32 = 120;
 const DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT: u32 = 480;
-const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const SGB_HOST_FRAMEBUFFER_WIDTH: usize = SGB_FRAME_WIDTH;
@@ -1757,15 +1756,11 @@ fn load_boot_rom_assets(
             BootRomVerificationMode::Warn => {
                 writeln_checked(
                     stderr,
-                    &format!(
-                        "warning: boot ROM root is not configured; use --boot-rom-dir or set {DEFAULT_BOOT_ROM_ROOT_ENV_VAR}"
-                    ),
+                    "warning: boot ROM root is not configured; use --boot-rom-dir <dir>",
                 )?;
             }
             BootRomVerificationMode::Strict => {
-                return Err(format!(
-                    "boot ROM root is not configured; use --boot-rom-dir or set {DEFAULT_BOOT_ROM_ROOT_ENV_VAR}"
-                ));
+                return Err("boot ROM root is not configured; use --boot-rom-dir <dir>".to_string());
             }
         }
         return Ok(BootRomAssets::none());
@@ -1803,9 +1798,6 @@ fn load_boot_rom_assets(
 fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> Option<PathBuf> {
     if let Some(explicit_root) = explicit_root {
         return Some(resolve_path(current_dir, explicit_root));
-    }
-    if let Some(root) = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR) {
-        return Some(PathBuf::from(root));
     }
     None
 }
