@@ -33,7 +33,7 @@ Run `gb-desktop --help` for the exhaustive flag list. The stable desktop-specifi
 
 `--benchmark <case.toml>` loads one portable benchmark case through `gb-benchmark`. The TOML owns the ROM path, model, startup, mode, artifact toggles, and one or more `[[run]]` entries with deterministic `[[run.input]]` pulses; each run starts a fresh desktop session and writes `gb-desktop/<artifact-id>.png` plus `gb-desktop/<artifact-id>-stats.toml` when enabled. Relative `rom` paths resolve against the TOML directory, `id` / `run.id` must be filename-safe ASCII, and the old top-level `duration_seconds` plus `[[stimulus]]` format is rejected.
 
-`scripts/run-benchmark.sh` is the local benchmark helper. By default it builds/runs `gb-desktop` cases under `scripts/benchmark/gb-desktop/` and writes `scripts/benchmark/index.html`; add `--gb-cli` to also run `gb-cli` and include CLI columns. Useful maintenance modes are `--sample`, `--test <case.toml>`, `--rom-dir <dir>`, `--normalize-case`, and `--generate-cases [--template <case.toml>]`.
+`cargo rom-bench` is the local benchmark helper. By default it builds/runs `gb-desktop` cases under `test/bench/gb-desktop/` and writes `test/bench/index.html`; add `--gb-cli` to also run `gb-cli` and include CLI columns. Useful maintenance modes are `--sample`, `--test <case.toml>`, `--rom-dir <dir>`, `--normalize-case`, and `--generate-cases [--template <case.toml>]`.
 
 Local `DMG-07` 4-Player Adapter sessions and CGB IR/accessory sessions are overlay-only. Desktop intentionally has no CLI shortcut for 3P/4P startup, `IR: SAME GAME`, `IR: SELECT GAME`, `IR: PIKACHU 2`, or `IR: MYSTERY GIFT`.
 

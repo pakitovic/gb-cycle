@@ -12,7 +12,6 @@
 # Logs
 *.log
 /.artifacts/
-/scripts/benchmark/
 
 # Local test ROMs
 /test/
