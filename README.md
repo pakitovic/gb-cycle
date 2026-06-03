@@ -114,6 +114,8 @@ Run the [`release`](.github/workflows/release.yml) GitHub Actions workflow to pu
 
 ## Tooling
 
+This repository uses [`rust-toolchain.toml`](rust-toolchain.toml) to pin the local Rust toolchain; the current minimum supported Rust version is 1.96.
+
 ### Setup local tooling and hooks
 
 ```bash
