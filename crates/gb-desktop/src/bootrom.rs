@@ -1,12 +1,9 @@
 use gb_core::{BootRomAssetKind, BootRomAssets, StartupMode};
 use gb_desktop::BootRomVerificationMode;
 use sha2::{Digest, Sha256};
-use std::env;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-pub const BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MissingBootRomAsset {
@@ -19,7 +16,7 @@ impl fmt::Display for MissingBootRomAsset {
         match self {
             Self::SourceUnconfigured => write!(
                 f,
-                "boot ROM root is not configured; set {BOOT_ROM_ROOT_ENV_VAR} or choose a boot ROM directory"
+                "boot ROM root is not configured; choose a boot ROM directory"
             ),
             Self::Path(path) => write!(f, "boot ROM asset missing at {}", path.display()),
         }
@@ -107,9 +104,6 @@ pub fn missing_boot_rom_asset(
 fn resolve_boot_rom_source(explicit_source: Option<&Path>, current_dir: &Path) -> Option<PathBuf> {
     if let Some(explicit_source) = explicit_source {
         return Some(resolve_path(current_dir, explicit_source));
-    }
-    if let Some(root) = env::var_os(BOOT_ROM_ROOT_ENV_VAR) {
-        return Some(PathBuf::from(root));
     }
     None
 }
@@ -207,20 +201,18 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_ROOT_ENV_VAR, MissingBootRomAsset, boot_rom_image_path, load_boot_rom_assets,
-        load_exact_boot_rom_file, missing_boot_rom_asset, path_exists, resolve_boot_rom_source,
-        resolve_path, sha256_hex, verify_boot_rom_file,
+        MissingBootRomAsset, boot_rom_image_path, load_boot_rom_assets, load_exact_boot_rom_file,
+        missing_boot_rom_asset, path_exists, resolve_boot_rom_source, resolve_path, sha256_hex,
+        verify_boot_rom_file,
     };
     use gb_core::{BootRomAssetKind, BootRomAssets, HardwareRevision, StartupMode};
     use gb_desktop::BootRomVerificationMode;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn resolve_path_joins_relative_paths_and_preserves_absolute_paths() {
@@ -237,35 +229,14 @@ mod tests {
     }
 
     #[test]
-    fn resolve_boot_rom_source_prefers_explicit_paths_then_env() {
-        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
-        let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
+    fn resolve_boot_rom_source_uses_only_explicit_paths() {
         let current_dir = Path::new("/tmp/gb-cycle");
 
         assert_eq!(
             resolve_boot_rom_source(Some(Path::new("firmware")), current_dir),
             Some(PathBuf::from("/tmp/gb-cycle/firmware"))
         );
-
-        unsafe {
-            env::set_var(BOOT_ROM_ROOT_ENV_VAR, "/tmp/env-bootrom");
-        }
-        assert_eq!(
-            resolve_boot_rom_source(None, current_dir),
-            Some(PathBuf::from("/tmp/env-bootrom"))
-        );
-        unsafe {
-            env::remove_var(BOOT_ROM_ROOT_ENV_VAR);
-        }
-
         assert_eq!(resolve_boot_rom_source(None, current_dir), None);
-
-        unsafe {
-            match previous_boot_rom_root {
-                Some(value) => env::set_var(BOOT_ROM_ROOT_ENV_VAR, value),
-                None => env::remove_var(BOOT_ROM_ROOT_ENV_VAR),
-            }
-        }
     }
 
     #[test]
@@ -702,24 +673,11 @@ mod tests {
 
     #[test]
     fn missing_boot_rom_asset_reports_unconfigured_sources() {
-        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
-        let previous_boot_rom_root = env::var_os(BOOT_ROM_ROOT_ENV_VAR);
-        unsafe {
-            env::remove_var(BOOT_ROM_ROOT_ENV_VAR);
-        }
-
         assert_eq!(
             missing_boot_rom_asset(None, HardwareRevision::DmgCpuC, Path::new("/unused"))
                 .expect("unconfigured sources should resolve cleanly"),
             Some(MissingBootRomAsset::SourceUnconfigured)
         );
-
-        unsafe {
-            match previous_boot_rom_root {
-                Some(value) => env::set_var(BOOT_ROM_ROOT_ENV_VAR, value),
-                None => env::remove_var(BOOT_ROM_ROOT_ENV_VAR),
-            }
-        }
     }
 
     fn temp_root(label: &str) -> PathBuf {

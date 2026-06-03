@@ -1396,6 +1396,64 @@ hold_frames = 3
 }
 
 #[test]
+fn run_benchmark_command_rejects_real_boot_without_explicit_boot_rom_dir() {
+    let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+    let temp_dir = unique_temp_dir("benchmark-real-boot-without-assets");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let _cwd = CurrentDirGuard::enter(&temp_dir);
+
+    let rom_path = temp_dir.join("bench.gb");
+    fs::write(&rom_path, build_nop_loop_rom()).expect("test ROM should be writable");
+    let case_path = temp_dir.join("test/bench.toml");
+    fs::create_dir_all(case_path.parent().expect("case path should have a parent"))
+        .expect("case directory should be creatable");
+    fs::write(
+        &case_path,
+        format!(
+            r#"
+version = 1
+id = "bench"
+rom = "{}"
+model = "DMG"
+startup = "real-boot"
+mode = "strict"
+screenshot = false
+stats = false
+
+[[run]]
+id = "idle"
+duration_seconds = 1
+"#,
+            rom_path.display()
+        ),
+    )
+    .expect("benchmark case should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let error = run_cli_command(
+        vec![
+            "run".to_string(),
+            "--benchmark".to_string(),
+            case_path.display().to_string(),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect_err("real-boot benchmark runs should require explicit boot ROM assets");
+
+    assert_eq!(
+        error,
+        "boot ROM root is not configured; use --boot-rom-dir <dir>"
+    );
+    assert!(stdout.is_empty());
+    assert!(stderr.is_empty());
+
+    drop(_cwd);
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn run_benchmark_command_stops_at_tcycle_budget_when_frames_freeze() {
     let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
     let temp_dir = unique_temp_dir("benchmark-lcd-off");
@@ -2255,42 +2313,21 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
         resolve_boot_rom_root(Some(Path::new("custom-assets")), &current_dir),
         Some(current_dir.join("custom-assets"))
     );
-    {
-        let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
-        let previous_boot_rom_root = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR);
-        // SAFETY: tests guard process-wide environment mutations with a mutex.
-        unsafe {
-            env::set_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR, &explicit_dir);
-        }
-        assert_eq!(
-            resolve_boot_rom_root(None, &current_dir),
-            Some(explicit_dir.clone())
-        );
-        // SAFETY: tests guard process-wide environment mutations with a mutex.
-        unsafe {
-            env::remove_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR);
-        }
-        assert_eq!(resolve_boot_rom_root(None, &current_dir), None);
+    assert_eq!(resolve_boot_rom_root(None, &current_dir), None);
 
-        options.boot_rom_dir = None;
-        options.boot_rom_verify = BootRomVerificationMode::Strict;
-        let unconfigured_error = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
-            .expect_err("strict real-boot should reject missing boot ROM configuration");
-        assert!(unconfigured_error.contains("boot ROM root is not configured"));
+    options.boot_rom_dir = None;
+    options.boot_rom_verify = BootRomVerificationMode::Strict;
+    let unconfigured_error = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
+        .expect_err("strict real-boot should reject missing boot ROM configuration");
+    assert_eq!(
+        unconfigured_error,
+        "boot ROM root is not configured; use --boot-rom-dir <dir>"
+    );
 
-        options.boot_rom_verify = BootRomVerificationMode::Off;
-        let unconfigured_assets = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
-            .expect("verification-off should allow unconfigured boot ROM roots");
-        assert!(unconfigured_assets.is_empty());
-
-        // SAFETY: tests guard process-wide environment mutations with a mutex.
-        unsafe {
-            match previous_boot_rom_root {
-                Some(value) => env::set_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR, value),
-                None => env::remove_var(DEFAULT_BOOT_ROM_ROOT_ENV_VAR),
-            }
-        }
-    }
+    options.boot_rom_verify = BootRomVerificationMode::Off;
+    let unconfigured_assets = load_boot_rom_assets(&options, &current_dir, &mut Vec::new())
+        .expect("verification-off should allow unconfigured boot ROM roots");
+    assert!(unconfigured_assets.is_empty());
 
     assert_eq!(
         resolve_path(&current_dir, Path::new("relative/demo.gb")),

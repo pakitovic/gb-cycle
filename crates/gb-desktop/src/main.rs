@@ -17,7 +17,7 @@ use audio_recording::{
     DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder, DesktopAudioRecordingOptions,
     resolve_next_audio_recording_output_path,
 };
-use bootrom::{BOOT_ROM_ROOT_ENV_VAR, load_boot_rom_assets, missing_boot_rom_asset, resolve_path};
+use bootrom::{load_boot_rom_assets, missing_boot_rom_asset, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_benchmark::{
     BenchmarkCase, BenchmarkMode, BenchmarkModel, BenchmarkPalette, BenchmarkStartup,
@@ -9300,18 +9300,7 @@ fn boot_rom_dialog_default_location(session: &DesktopSession) -> PathBuf {
             .parent()
             .unwrap_or(session.current_dir.as_path())
             .to_path_buf(),
-        None => env::var_os(BOOT_ROM_ROOT_ENV_VAR)
-            .map(PathBuf::from)
-            .map(|path| {
-                if path.is_dir() {
-                    path
-                } else {
-                    path.parent()
-                        .unwrap_or(session.current_dir.as_path())
-                        .to_path_buf()
-                }
-            })
-            .unwrap_or_else(|| session.current_dir.clone()),
+        None => session.current_dir.clone(),
     }
 }
 
@@ -23392,6 +23381,30 @@ mod tests {
                 .boot_rom_fallback_warning
                 .as_deref()
                 .is_some_and(|warning| warning.contains("falling back to skip-boot"))
+        );
+    }
+
+    #[test]
+    fn prepare_machine_config_falls_back_to_skip_boot_when_boot_rom_path_is_unconfigured() {
+        let root = temp_test_root("unconfigured-bootrom-fallback");
+        let mut config = DesktopConfig::default();
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+
+        let prepared = super::prepare_machine_config(&config, &root)
+            .expect("unconfigured boot ROM paths should degrade to skip-boot");
+
+        assert_eq!(
+            prepared.effective_config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
+        assert_eq!(prepared.machine_config.startup_mode, StartupMode::SkipBoot);
+        assert!(prepared.machine_config.boot_rom_assets.is_empty());
+        assert_eq!(
+            prepared.boot_rom_fallback_warning.as_deref(),
+            Some(
+                "boot ROM root is not configured; choose a boot ROM directory; falling back to skip-boot"
+            )
         );
     }
 
