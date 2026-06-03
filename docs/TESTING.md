@@ -63,9 +63,9 @@ Do not declare a closure area healthy while its strict gate is failing, while a 
 
 ## CI and coverage policy
 
-`cargo fmt-check`, `cargo lint`, `typos`, and `cargo deny-check` are the local pre-commit checks. `make coverage` runs isolated per-crate coverage lanes, enforces each crate's gate, and emits per-crate HTML reports; run ROM suites separately when a change affects ROM-suite behavior, timing-sensitive hardware, workflow-managed suites, or release confidence.
+`cargo fmt-check`, `cargo lint`, `typos`, and `cargo deny-check` are the local pre-commit checks. `make coverage` preserves the local workspace coverage run and HTML report; the GitHub `ci` coverage matrix owns the isolated per-crate gates, including `gb-benchmark`; run ROM suites separately when a change affects ROM-suite behavior, timing-sensitive hardware, workflow-managed suites, or release confidence.
 
-Coverage thresholds are enforced per repo-gated crate against that crate's isolated coverage lane. The concrete `.cargo/config.toml` coverage aliases are authoritative and must not be lowered without an explicit rationale.
+Coverage thresholds are enforced per repo-gated crate by the isolated CI lanes. The concrete `.cargo/config.toml` coverage aliases are authoritative and must not be lowered without an explicit rationale.
 
 GitHub workflows are stratified: `ci` runs Rust checks plus an isolated per-crate coverage matrix; `test-roms` runs promoted strict ROM reports; `test-roms-extra` runs standalone exploratory report lanes. RealBoot, commercial, red, linked, and local-only lanes must publish separately and must not dilute the strict closure signal.
 
