@@ -358,16 +358,23 @@ fn replace_top_level_string_value(
     let mut output = String::new();
     let mut changed = false;
     let mut found = false;
+    let mut in_top_level = true;
     let mut inserted = false;
     for line in text.split_inclusive('\n') {
         let (body, newline) = split_line_newline(line);
         let trimmed = body.trim_start();
-        if !inserted && trimmed.starts_with('[') && insert_missing == InsertMissing::Yes {
-            output.push_str(&format!("{key} = {}\n", toml_string(value)));
-            inserted = true;
-            changed = true;
+        if trimmed.starts_with('[') {
+            if in_top_level && !found && insert_missing == InsertMissing::Yes {
+                output.push_str(&format!("{key} = {}\n", toml_string(value)));
+                inserted = true;
+                found = true;
+                changed = true;
+            }
+            in_top_level = false;
+            output.push_str(line);
+            continue;
         }
-        if !found && !trimmed.starts_with('[') && top_level_assignment_key(body) == Some(key) {
+        if in_top_level && !found && top_level_assignment_key(body) == Some(key) {
             let comment = line_comment(body).unwrap_or_default();
             output.push_str(&format!("{key} = {}{comment}{newline}", toml_string(value)));
             found = true;

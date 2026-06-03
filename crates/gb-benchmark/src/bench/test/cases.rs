@@ -36,6 +36,31 @@ fn generate_cases_uses_rom_suffix_for_model_and_safe_id() {
 }
 
 #[test]
+fn generate_cases_inserts_missing_top_level_id_without_rewriting_run_id() {
+    let root = temp_root("generate-template");
+    let case_dir = root.join("cases");
+    let rom_dir = root.join("roms");
+    fs::create_dir_all(&case_dir).expect("case dir should create");
+    fs::create_dir_all(&rom_dir).expect("rom dir should create");
+    fs::write(rom_dir.join("Dr Mario.gb"), [0_u8]).expect("rom should write");
+    let template = root.join("template.toml");
+    fs::write(
+        &template,
+        "version = 1\nrom = \"/roms/game.gb\"\nmodel = \"DMG\"\nstartup = \"custom-boot\"\nmode = \"permissive\"\n\n[[run]]\nid = \"idle\"\nduration_seconds = 1\n",
+    )
+    .expect("template should write");
+
+    let mut output = Vec::new();
+    generate_benchmark_cases(&case_dir, &rom_dir, Some(&template), &mut output)
+        .expect("cases should generate");
+
+    let text =
+        fs::read_to_string(case_dir.join("Dr Mario.toml")).expect("generated case should exist");
+    assert_eq!(text.matches("id = \"dr-mario\"").count(), 1);
+    assert!(text.contains("[[run]]\nid = \"idle\""));
+}
+
+#[test]
 fn normalize_and_rewrite_cases_use_top_level_rom() {
     let root = temp_root("normalize");
     let case_dir = root.join("cases");
