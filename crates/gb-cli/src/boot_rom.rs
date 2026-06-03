@@ -3,6 +3,7 @@ use crate::options::{BootRomVerificationMode, RunOptions};
 use crate::report::format_boot_rom_asset_load_error;
 use gb_core::{BootRomAssetKind, BootRomAssets, StartupMode};
 use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -110,5 +111,10 @@ pub(crate) fn verify_boot_rom_file(
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+    hex
 }

@@ -374,13 +374,13 @@ impl GamepadManager {
             Event::ControllerDeviceRemoved { which, .. } => {
                 self.remove_gamepad(joystick_id_from_event(which), input_state, machine)?;
             }
-            Event::ControllerDeviceRemapped { which, .. } => {
-                if self.active == Some(joystick_id_from_event(which)) {
-                    eprintln!("info: active SDL gamepad remapped");
-                    self.gyro.baseline = None;
-                    self.sync_accelerometer_sensor_enabled()?;
-                    self.sync_active_gamepad_state(input_state, machine);
-                }
+            Event::ControllerDeviceRemapped { which, .. }
+                if self.active == Some(joystick_id_from_event(which)) =>
+            {
+                eprintln!("info: active SDL gamepad remapped");
+                self.gyro.baseline = None;
+                self.sync_accelerometer_sensor_enabled()?;
+                self.sync_active_gamepad_state(input_state, machine);
             }
             _ => {}
         }
