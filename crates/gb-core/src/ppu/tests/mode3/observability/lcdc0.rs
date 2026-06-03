@@ -103,29 +103,6 @@ fn advance_traced_visible_dots(ppu: &mut PpuTestRig, count: usize) {
     }
 }
 
-fn resolve_test_rom_path(relative: &str) -> std::path::PathBuf {
-    if let Some(root) = std::env::var_os("GB_CYCLE_TEST_ROM_ROOT") {
-        return std::path::PathBuf::from(root).join(relative);
-    }
-
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test")
-        .join(relative)
-}
-
-fn load_mealybug_m3_lcdc_bg_en_change_machine() -> Machine<TraceSummaryBuffer> {
-    let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb");
-    let rom =
-        std::fs::read(&rom_path).expect("mealybug m3_lcdc_bg_en_change ROM should be present");
-    let mut machine = Machine::new_summary(
-        MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
-    );
-    machine
-        .load_cartridge(rom)
-        .expect("diagnostic ROM should load");
-    machine
-}
-
 #[test]
 fn traced_lcdc0_low_mismatch_signature_progresses_from_fill3_to_tile2_7_tile3_7_and_ordinary_7() {
     let mut ppu = seed_lcdc0_trace_signature(3, 11, 3, 3);
@@ -203,62 +180,4 @@ fn traced_lcdc0_worst_band_signature_progresses_from_fill6_to_tile3_2_and_ordina
     advance_traced_visible_dots(&mut ppu, 8);
 
     assert_front_signature(&ppu, 132, 34, 42, BgCachedSliceOrigin::Ordinary, 2);
-}
-
-fn log_mealybug_m3_lcdc_bg_en_change_internal_row(target_ly: u8) {
-    let mut machine = load_mealybug_m3_lcdc_bg_en_change_machine();
-    let mut saw_progress = false;
-    let mut wraps = 0usize;
-
-    for _ in 0..5_000_000 {
-        machine.step_t_cycle();
-
-        let ppu = machine.ppu();
-        if ppu.ly != 0 || ppu.line_dot != 0 {
-            saw_progress = true;
-        } else if saw_progress {
-            wraps += 1;
-        }
-
-        if wraps < 9 || ppu.ly != target_ly || ppu.current_access_mode() != PpuAccessMode::HBlank {
-            continue;
-        }
-
-        let selected = ppu.mode2_scan_state.selected_sprites_snapshot();
-        let mixed_colors = ppu.current_scanline_mixed_pixels[..40]
-            .iter()
-            .map(|pixel| pixel.color)
-            .collect::<Vec<_>>();
-        let mixed_sources = ppu.current_scanline_mixed_pixels[..40]
-            .iter()
-            .map(|pixel| match pixel.source {
-                MixedPixelSource::Background => 'B',
-                MixedPixelSource::Object { .. } => 'O',
-            })
-            .collect::<String>();
-        println!(
-            "ly={} sprite_xs={:?} scanline={:?} forced_white={:?} mixed_colors={:?} mixed_sources={}",
-            ppu.ly,
-            selected.iter().map(|sprite| sprite.x).collect::<Vec<_>>(),
-            &ppu.current_scanline_pixels[..40],
-            &ppu.current_scanline_dmg_bg_forced_white[..40],
-            mixed_colors,
-            mixed_sources,
-        );
-        return;
-    }
-
-    panic!("timed out before sampling the target HBlank row");
-}
-
-#[test]
-#[ignore = "diag: internal mealybug m3_lcdc_bg_en_change ly0"]
-fn real_mealybug_m3_lcdc_bg_en_change_logs_internal_ly0() {
-    log_mealybug_m3_lcdc_bg_en_change_internal_row(0);
-}
-
-#[test]
-#[ignore = "diag: internal mealybug m3_lcdc_bg_en_change ly16"]
-fn real_mealybug_m3_lcdc_bg_en_change_logs_internal_ly16() {
-    log_mealybug_m3_lcdc_bg_en_change_internal_row(16);
 }
