@@ -1,4 +1,5 @@
 use std::fmt;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -211,7 +212,10 @@ fn read_verified_asset(path: &Path, asset: BootRomAssetKind) -> Result<Vec<u8>, 
         });
     }
     let digest = Sha256::digest(&bytes);
-    let actual = format!("{digest:x}");
+    let mut actual = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut actual, "{byte:02x}");
+    }
     let expected = asset.expected_sha256();
     if actual != expected {
         return Err(BootRomLoadError::HashMismatch {

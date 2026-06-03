@@ -10,4 +10,4 @@ gb-benchmark = { version = "0.2.0", path = "../gb-benchmark" }
 gb-core = { version = "0.2.0", path = "../gb-core" }
 gb-persistence = { version = "0.2.0", path = "../gb-persistence" }
 png = "0.18"
-sha2 = "0.10"
+sha2 = "0.11.0"
