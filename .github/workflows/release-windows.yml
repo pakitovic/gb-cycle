@@ -59,6 +59,6 @@ jobs:
 
       - name: Upload Windows package release asset
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/gb-cycle-windows-x86_64.zip
