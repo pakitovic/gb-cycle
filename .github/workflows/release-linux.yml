@@ -117,6 +117,6 @@ jobs:
 
       - name: Upload Linux package release asset
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/gb-cycle-linux-x86_64.tar.gz
