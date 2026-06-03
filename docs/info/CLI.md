@@ -57,7 +57,7 @@ Because `--benchmark` cannot be combined with normal run options and the benchma
 
 Benchmark cases use `[[run]]` plus `[[run.input]]` entries. `button` or `buttons` choose inputs, exactly one of `frame`, `second`, or `tcycle` chooses timing, and `hold_frames` / `repeat_every_frames` expand deterministic pulses. Relative `rom` paths resolve against the TOML file directory, and `id` / `run.id` may contain only ASCII letters, digits, `-`, and `_` because they form artifact filenames.
 
-`scripts/run-benchmark.sh <case-dir> --gb-cli` compares CLI artifacts with desktop benchmark artifacts, writes outputs under `scripts/benchmark/`, and includes `gb-cli` columns in `scripts/benchmark/index.html` only when `--gb-cli` is present. Use `--test <case.toml>` for one case, `--normalize-case` to rename case files to ROM filename stems, and `--rom-dir <dir> --generate-cases [--template <case.toml>]` to generate normalized cases for `.gb` / `.gbc` ROMs.
+`cargo rom-bench <case-dir> --gb-cli` compares CLI artifacts with desktop benchmark artifacts, writes outputs under `test/bench/`, and includes `gb-cli` columns in `test/bench/index.html` only when `--gb-cli` is present. Use `--test <case.toml>` for one case, `--normalize-case` to rename case files to ROM filename stems, and `--rom-dir <dir> --generate-cases [--template <case.toml>]` to generate normalized cases for `.gb` / `.gbc` ROMs.
 
 ## Output artifacts
 

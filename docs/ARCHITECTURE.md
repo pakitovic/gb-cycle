@@ -40,7 +40,7 @@ Future frontends should adapt these contracts instead of introducing platform-sp
 | `gb-core` | Emulated hardware state, T-cycle stepping, subsystem contracts, machine composition, typed cartridge persistence payloads, whole-machine save-state DTOs, rewind buffer primitives, debug snapshots | Disk paths, UI state, audio/video backends, host input APIs, frontend settings, release packaging |
 | `gb-persistence` | Durable cartridge-save policy, `.gbsav` fallback envelopes, external `.sav/.saN` conversion when lossless, `.gbstate` envelopes, safe replacement, timestamps, host paths | Live hardware semantics, mapper behavior, scheduler state mutation |
 | `gb-test-runner` | Automated ROM-suite catalogues, manifest parsing, fixture materialization, runner contracts, deterministic report generation, CI-facing validation helpers | Frontend UX |
-| `gb-benchmark` | Shared benchmark cases, deterministic input stimulus, one-file-per-game benchmark contract, stats serialization, artifact path conventions | Frontend-specific rendering/audio/input implementations |
+| `gb-benchmark` | Shared benchmark cases, deterministic input stimulus, one-file-per-game benchmark contract, stats serialization, artifact path conventions, and the `cargo rom-bench` batch orchestrator | Frontend-specific rendering/audio/input implementations |
 | `gb-cli` | Headless user/tooling commands, run budgets, state import/export orchestration, report presentation | Hardware shortcuts, duplicated loader policy, host UI state |
 | `gb-desktop` | SDL3 windows, presentation, audio backend configuration, menus, dialogs, settings persistence, controller selection, host hotkeys, desktop rewind integration | Core hardware state, cartridge semantics, independent timing model |
 
@@ -130,7 +130,7 @@ Frontends and tools submit abstract hardware-facing events, not precomposed hard
 
 Frontend-owned state includes windows, audio devices, video presentation, frame pacing, `vsync`, file dialogs, ROM filters, recent files, settings persistence, controller discovery/selection, menu navigation, hotkeys, user-facing warnings, performance HUDs, and lifecycle flush policy. These concerns must not leak into `gb-core` as alternate hardware modes.
 
-`gb-benchmark` centralizes benchmark case parsing, deterministic stimulus, artifact names, and result metadata so `gb-cli` and `gb-desktop` do not diverge in benchmark behavior. `gb-test-runner` centralizes automated validation workflows; manual external oracles and one-off emulator comparisons remain operator workflows rather than core architecture.
+`gb-benchmark` centralizes benchmark case parsing, deterministic stimulus, artifact names, result metadata, and the `cargo rom-bench` batch orchestrator so `gb-cli` and `gb-desktop` do not diverge in benchmark behavior. `gb-test-runner` centralizes automated validation workflows; manual external oracles and one-off emulator comparisons remain operator workflows rather than core architecture.
 
 ## Evolution guardrails
 

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gb-cycle benchmark</title>
+<style>
+body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ccc; padding: .5rem; vertical-align: top; }
+td[rowspan] { vertical-align: middle; }
+th { background: #f4f4f4; position: sticky; top: 0; }
+img { width: 160px; height: 144px; image-rendering: pixelated; background: #ddd; }
+code { background: #f4f4f4; padding: .1rem .25rem; }
+.meta { color: #555; }
+</style>
+</head>
+<body>
+<h1>gb-cycle benchmark</h1>
+<p class="meta">Generated {{ generated_at }}. Case directory: <code>{{ case_dir }}</code>. Command: {% if include_cli %}<code>gb-cli run --test-runner --benchmark &lt;case&gt;</code> and {% endif %}<code>gb-desktop --test-runner --benchmark &lt;case&gt;</code>.</p>
+<table>
+<thead>
+<tr>
+<th>rom</th>
+<th>case</th>
+<th>model</th>
+<th>seconds</th>
+{% if include_cli %}
+<th>gb-cli</th>
+<th>gb-cli screenshot</th>
+{% endif %}
+<th>gb-desktop</th>
+<th>gb-desktop screenshot</th>
+</tr>
+</thead>
+<tbody>
+{% if rows.is_empty() %}
+<tr><td colspan="{{ column_count }}">No executed benchmark artifacts found. Run <code>cargo rom-bench &lt;case-dir&gt;</code> first.</td></tr>
+{% else %}
+{% for row in rows %}
+<tr>
+{% if row.include_case_cells %}
+<td{% if row.case_rowspan > 1 %} rowspan="{{ row.case_rowspan }}"{% endif %}>{{ row.rom }}</td>
+<td{% if row.case_rowspan > 1 %} rowspan="{{ row.case_rowspan }}"{% endif %}>{{ row.case_path }}</td>
+<td{% if row.case_rowspan > 1 %} rowspan="{{ row.case_rowspan }}"{% endif %}>{{ row.model }}</td>
+{% endif %}
+<td>{{ row.seconds }}</td>
+{% for artifact in row.artifacts %}
+<td>{% if artifact.has_stats %}{{ artifact.fps }} FPS<br>{{ artifact.speed_percent }}%{% else %}—{% endif %}</td>
+<td>{% if artifact.has_image %}<a href="{{ artifact.image_href }}"><img src="{{ artifact.image_href }}" alt="{{ artifact.image_alt }}" loading="lazy"></a>{% else %}—{% endif %}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+{% endif %}
+</tbody>
+</table>
+</body>
+</html>

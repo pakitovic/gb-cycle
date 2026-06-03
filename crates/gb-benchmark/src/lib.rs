@@ -1,3 +1,4 @@
+pub mod bench;
 use gb_core::{DMG_T_CYCLES_PER_FRAME, DMG_T_CYCLES_PER_SECOND, JoypadButton};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;

@@ -85,17 +85,17 @@ cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
 
 ### `gb-benchmark`
 
-Use the shared `gb-benchmark` TOML contract through `scripts/run-benchmark.sh` for desktop-first benchmark batches, optional matching CLI artifacts, and direct frontend benchmark runs.
+Use the shared `gb-benchmark` TOML contract through `cargo rom-bench` for desktop-first benchmark batches, optional matching CLI artifacts, and direct frontend benchmark runs.
 
 ```bash
 # Create a sample portable benchmark case
-scripts/run-benchmark.sh --sample
+cargo rom-bench --sample
 
-# Run every case in a directory through gb-desktop and generate scripts/benchmark/index.html
-scripts/run-benchmark.sh path/to/benchmark-cases
+# Run every case in a directory through gb-desktop and generate test/bench/index.html
+cargo rom-bench path/to/benchmark-cases
 
 # Add matching gb-cli artifacts and columns to the same benchmark report
-scripts/run-benchmark.sh path/to/benchmark-cases --gb-cli
+cargo rom-bench path/to/benchmark-cases --gb-cli
 
 # Run one benchmark TOML directly through either frontend
 cargo run -p gb-cli -- run --benchmark path/to/game.toml

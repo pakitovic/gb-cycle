@@ -16,7 +16,7 @@ gb-persistence = { version = "0.2.0", path = "../gb-persistence" }
 sdl3 = { version = "0.17.3", features = ["use-pkg-config", "hidapi"] }
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
-toml = "0.8"
+toml = "1.1.2"
 png = "0.18"
 
 [dev-dependencies]
