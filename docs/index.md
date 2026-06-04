@@ -20,12 +20,13 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 
 - [`info/MODEL-AXES.md`](info/MODEL-AXES.md): usage and migration guidance for `ConsoleModel`, `OperatingMode`, `HostPlatform`, and `CapabilitySet`.
 - [`info/TIMING-AND-ACCURACY.md`](info/TIMING-AND-ACCURACY.md): accuracy terminology, confidence levels, and timing expectations.
-- [`info/CGB-INFRARED.md`](info/CGB-INFRARED.md): CGB infrared topologies, Pokémon Pikachu 2 accessory behavior, and western GSC Mystery Gift sender behavior.
+- [`info/INFRARED.md`](info/INFRARED.md): CGB infrared topologies, Pokémon Pikachu 2 accessory behavior, and western GSC Mystery Gift sender behavior.
 
 ## Frontend and tooling docs
 
 - [`info/CLI.md`](info/CLI.md): full usage guide for the headless `gb-cli` runner.
 - [`info/DESKTOP.md`](info/DESKTOP.md): full usage guide for the SDL3 `gb-desktop` frontend.
+- [`info/BENCHMARK.md`](info/BENCHMARK.md): full usage guide for the shared `gb-benchmark` case format, `cargo rom-bench`, and benchmark artifacts.
 - [`info/ROM-SUITES.md`](info/ROM-SUITES.md): external ROM suite workflow — fetching, running, differential oracles, and commercial ROM testing.
 
 ## Authority map
