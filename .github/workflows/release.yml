@@ -58,6 +58,7 @@ jobs:
           ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 0
           token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -105,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git fetch --force --tags origin
           git fetch --force origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
 
