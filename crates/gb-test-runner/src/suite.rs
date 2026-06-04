@@ -9,4 +9,5 @@ mod status;
 #[cfg(test)]
 mod test;
 
+pub(crate) use cli::run_suite_command_with_workspace;
 pub use cli::{run_suite_command, suite_help_text};

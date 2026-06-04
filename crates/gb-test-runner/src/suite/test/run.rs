@@ -30,6 +30,10 @@ fn command_runs_serial_suite_and_writes_status() {
             "blargg",
             "blargg-cpu-instrs-01-special",
             "cpu_instrs/01-special.gb",
+        )
+        .replace(
+            "console = \"dmg\"",
+            "console = \"dmg\"\nreport_console_suffix = true",
         ),
     );
     write_manifest(
@@ -77,6 +81,7 @@ fn command_runs_serial_suite_and_writes_status() {
         fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml"))
             .expect("status should be written");
     assert!(status.contains("suite_name = \"blargg-cpu-instrs\""));
+    assert!(status.contains("rom = \"cpu_instrs/01-special.gb (DMG)\""));
     assert!(status.contains("status = \"PASS\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
@@ -1077,9 +1082,10 @@ fn command_treats_info_framebuffer_as_pass_for_ci() {
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite acid: 1/1 passed"));
+    assert!(output.contains("case acid-which-dmg: Informational after"));
     let status = fs::read_to_string(workspace.join("test/sample-report/.status/acid.toml"))
         .expect("status should be written");
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("status = \"INFO\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1194,9 +1200,10 @@ rom = "sgb/smoke.gb"
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite samesuite: 1/1 passed"));
+    assert!(output.contains("case samesuite-sgb-smoke: Informational after"));
     let status = fs::read_to_string(workspace.join("test/sample-report/.status/samesuite.toml"))
         .expect("status should be written");
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("status = \"INFO\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

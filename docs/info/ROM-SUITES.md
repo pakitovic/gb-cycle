@@ -42,9 +42,10 @@ Runtime files are scoped by report:
 - Single-machine status: `/test/<report-store>/.status/<suite>.toml`.
 - Linked-session status: `/test/<report-store>/.status/<suite>.toml`.
 - Failure artifacts: `/test/<report-store>/.artifacts/<suite>/<case>/`.
+- Rendered single-machine report views: `/test/<report-store>/test-report.md` and optionally `/test/<report-store>/test-report.html`.
 - Local `linked` assets: `crates/gb-test-runner/data/linked/**`, with runtime status/artifacts still under `/test/linked/`.
 
-Markdown report rendering is not part of the current `cargo rom-suite` or `cargo rom-suite-link` path.
+Rendered report files are derived from `.status`; regenerate them with `cargo rom-report <report>` after running or updating a suite.
 
 ## Manifest rules
 
@@ -54,7 +55,7 @@ Markdown report rendering is not part of the current `cargo rom-suite` or `cargo
 - Every suite should declare common metadata once in the header and override only rows that differ.
 - `execution_mode` is omitted for default `Strict`; set it only for intentional `permissive` or `experimental` cases.
 - `disabled = true` requires a non-empty `comment = "..."`.
-- Use `report_console_suffix = true` only when the same upstream report label needs console-disambiguated rows.
+- Use `report_console_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs console-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(SGB)`, or `(SGB2)`.
 - Do not add root-level legacy manifests, ad hoc suite copies, or direct upstream checkout paths.
 
 Linked manifests use `[[case]]` plus `[[case.participant]]`, explicit participant IDs, and `topology = "dmg04"`, `topology = "dmg07"`, or `topology = "cgb-ir"`.
@@ -94,6 +95,19 @@ cargo rom-suite-link docboy --suite docboy-dmg-link
 Cases run in parallel by default through Rayon. Use `--threads <n>` to cap local parallelism; CI matrix jobs normally omit it.
 
 Supported `console` values are `dmg`, `cgb`, `sgb`, and `sgb2`. Supported `startup` values are `skip-boot`, `custom-boot`, and `real-boot`; omitted startup defaults to `skip-boot`.
+
+## Rendering reports
+
+```bash
+cargo rom-report gb-emulator-shootout
+cargo rom-report gb-emulator-shootout --html
+```
+
+`cargo rom-report <report>` renders the report-local single-machine `.status` files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
+
+If `test/<report-store>/.status` is missing or contains no `*.toml` status files, `cargo rom-report <report>` first runs `cargo rom-suite <report>` and then renders any status written by that run. Suite failures still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
+
+Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local and passive; publishing the HTML requires a separate operator or GitHub Actions workflow.
 
 ## RealBoot
 

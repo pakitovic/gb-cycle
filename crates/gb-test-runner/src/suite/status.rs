@@ -32,8 +32,8 @@ pub(super) fn write_suite_status(
             .iter()
             .map(|case| PersistedCaseStatus {
                 family: None,
-                rom: case.rom.to_string_lossy().into_owned(),
-                status: if case.passed { "PASS" } else { "FAIL" }.to_string(),
+                rom: case.rom.clone(),
+                status: persisted_case_status(case).to_string(),
             })
             .collect(),
     };
@@ -46,4 +46,14 @@ pub(super) fn write_suite_status(
     fs::write(&path, text)
         .map_err(|error| format!("failed to write suite status {}: {error}", path.display()))?;
     Ok(path)
+}
+
+fn persisted_case_status(case: &super::model::CaseRunReport) -> &'static str {
+    if !case.passed {
+        "FAIL"
+    } else if case.informational {
+        "INFO"
+    } else {
+        "PASS"
+    }
 }

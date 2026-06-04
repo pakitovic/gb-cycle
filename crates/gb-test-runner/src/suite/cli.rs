@@ -43,7 +43,7 @@ where
     run_suite_command_with_workspace(arguments, &default_workspace_root(), output)
 }
 
-fn run_suite_command_with_workspace<I, S, W>(
+pub(crate) fn run_suite_command_with_workspace<I, S, W>(
     arguments: I,
     workspace_root: &Path,
     output: &mut W,
@@ -209,11 +209,24 @@ fn run_options<W: Write>(
                 suite_report.cases.len()
             ),
         )?;
-        for case in suite_report.cases.iter().filter(|case| case.passed) {
+        for case in suite_report
+            .cases
+            .iter()
+            .filter(|case| case.passed && !case.informational)
+        {
             writeln_checked(
                 output,
                 &format!(
                     "case {}: PASS after {} T-cycles",
+                    case.id, case.executed_tcycles
+                ),
+            )?;
+        }
+        for case in suite_report.cases.iter().filter(|case| case.informational) {
+            writeln_checked(
+                output,
+                &format!(
+                    "case {}: Informational after {} T-cycles",
                     case.id, case.executed_tcycles
                 ),
             )?;

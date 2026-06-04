@@ -35,6 +35,8 @@ pub(super) struct SuiteCase {
     pub(super) family: String,
     pub(super) rom: PathBuf,
     pub(super) target_root: PathBuf,
+    pub(super) report_console: ReportConsole,
+    pub(super) report_console_suffix: bool,
     pub(super) console_model: ConsoleModel,
     pub(super) hardware_revision: HardwareRevision,
     pub(super) host_platform: HostPlatform,
@@ -43,6 +45,36 @@ pub(super) struct SuiteCase {
     pub(super) timeout_frames: u32,
     pub(super) stimuli: Vec<SuiteStimulus>,
     pub(super) oracle: Oracle,
+}
+
+impl SuiteCase {
+    pub(super) fn report_rom(&self) -> String {
+        let rom = self.rom.to_string_lossy();
+        if self.report_console_suffix {
+            format!("{rom} {}", self.report_console.report_suffix())
+        } else {
+            rom.into_owned()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReportConsole {
+    Dmg,
+    Cgb,
+    Sgb,
+    Sgb2,
+}
+
+impl ReportConsole {
+    pub(super) const fn report_suffix(self) -> &'static str {
+        match self {
+            Self::Dmg => "(DMG)",
+            Self::Cgb => "(GBC)",
+            Self::Sgb => "(SGB)",
+            Self::Sgb2 => "(SGB2)",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,8 +129,9 @@ impl SuiteRunReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CaseRunReport {
     pub(super) id: String,
-    pub(super) rom: PathBuf,
+    pub(super) rom: String,
     pub(super) passed: bool,
+    pub(super) informational: bool,
     pub(super) failure: Option<String>,
     pub(super) executed_tcycles: u64,
     pub(super) failure_artifact_dir: Option<PathBuf>,

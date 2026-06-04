@@ -11,8 +11,8 @@ use gb_core::{
 use crate::oracle::{Oracle, OracleConfig, OracleFixtureRoots};
 
 use super::model::{
-    DATA_DIR, REPORTS_MANIFEST_PATH, Report, SuiteCase, SuiteManifest, SuiteStimulus,
-    SuiteStimulusTime, TEST_ROM_STORE_DIR,
+    DATA_DIR, REPORTS_MANIFEST_PATH, Report, ReportConsole, SuiteCase, SuiteManifest,
+    SuiteStimulus, SuiteStimulusTime, TEST_ROM_STORE_DIR,
 };
 use super::source::{FamilyTargetRoots, load_family_target_roots};
 
@@ -43,6 +43,7 @@ struct SuiteCaseDefaultsFile {
     startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
+    report_console_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -77,6 +78,7 @@ struct SuiteCaseFile {
     #[serde(default)]
     disabled: bool,
     comment: Option<String>,
+    report_console_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -508,6 +510,11 @@ fn parse_case(
         family,
         rom: case.rom,
         target_root,
+        report_console: console_profile.report_console,
+        report_console_suffix: case
+            .report_console_suffix
+            .or(defaults.report_console_suffix)
+            .unwrap_or(false),
         console_model: console_profile.console_model,
         hardware_revision,
         host_platform: console_profile.host_platform,
@@ -599,6 +606,7 @@ fn fixture_root_for_case(workspace_root: &Path, report: &Report, target_root: &P
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ConsoleProfile {
+    report_console: ReportConsole,
     console_model: ConsoleModel,
     host_platform: HostPlatform,
 }
@@ -606,18 +614,22 @@ struct ConsoleProfile {
 fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
     match console {
         "dmg" => Ok(ConsoleProfile {
+            report_console: ReportConsole::Dmg,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Handheld,
         }),
         "cgb" => Ok(ConsoleProfile {
+            report_console: ReportConsole::Cgb,
             console_model: ConsoleModel::GameBoyColor,
             host_platform: HostPlatform::Handheld,
         }),
         "sgb" => Ok(ConsoleProfile {
+            report_console: ReportConsole::Sgb,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb,
         }),
         "sgb2" => Ok(ConsoleProfile {
+            report_console: ReportConsole::Sgb2,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb2,
         }),
