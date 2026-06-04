@@ -143,6 +143,8 @@ make coverage
 
 ### ROM-suite validation
 
+Browsable ROM-test report snapshots are published at [pakitovic.github.io/gb-cycle](https://pakitovic.github.io/gb-cycle/).
+
 ```bash
 cargo rom-fetch gb-emulator-shootout
 cargo rom-suite gb-emulator-shootout
