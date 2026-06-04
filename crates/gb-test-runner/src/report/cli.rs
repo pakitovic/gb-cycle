@@ -94,7 +94,7 @@ fn run_options<W: Write>(
     };
     let report = report_for_id(&report_id, &reports)?;
     let statuses = load_or_create_statuses(workspace_root, report, output)?;
-    let document = build_report_document(report, statuses)?;
+    let document = build_report_document(workspace_root, report, statuses)?;
     write_report_files(workspace_root, report, &document, options.html, output)
 }
 

@@ -105,6 +105,8 @@ cargo rom-report gb-emulator-shootout --html
 
 `cargo rom-report <report>` renders the report-local single-machine `.status` files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
 
+Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM console variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
+
 If `test/<report-store>/.status` is missing or contains no `*.toml` status files, `cargo rom-report <report>` first runs `cargo rom-suite <report>` and then renders any status written by that run. Suite failures still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
 
 Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local and passive; publishing the HTML requires a separate operator or GitHub Actions workflow.

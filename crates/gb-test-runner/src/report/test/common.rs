@@ -36,6 +36,22 @@ family_order = ["acid", "blargg", "mooneye"]
     );
 }
 
+pub(super) fn write_basic_reports_with_sources(workspace_root: &Path) {
+    write_reports(
+        workspace_root,
+        r#"status_dir = ".status"
+artifact_dir = ".artifacts"
+report_file = "test-report.md"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+family_order = ["acid", "blargg", "mooneye"]
+"#,
+    );
+}
+
 pub(super) fn write_status(workspace_root: &Path, report_id: &str, suite_name: &str, text: &str) {
     let status_root = workspace_root.join("test").join(report_id).join(".status");
     fs::create_dir_all(&status_root).expect("status dir should be created");

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+pub(super) const DATA_DIR: &str = "crates/gb-test-runner/data";
 pub(super) const REPORTS_MANIFEST_PATH: &str = "crates/gb-test-runner/data/reports.toml";
 pub(super) const TEST_ROM_STORE_DIR: &str = "test";
 pub(super) const REPORT_STATUS_PASS_EMOJI: &str = "✅";
@@ -12,6 +13,7 @@ pub(super) const REPORT_STATUS_INFO_EMOJI: &str = "ℹ️";
 pub(super) struct Report {
     pub(super) id: String,
     pub(super) store_dir: PathBuf,
+    pub(super) sources: Option<PathBuf>,
     pub(super) status_dir: PathBuf,
     pub(super) report_file: PathBuf,
     pub(super) family_order: Option<Vec<String>>,

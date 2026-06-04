@@ -17,6 +17,7 @@ struct ReportManifestFile {
 struct ReportFile {
     id: String,
     store_dir: PathBuf,
+    sources: Option<PathBuf>,
     status_dir: Option<PathBuf>,
     report_file: Option<PathBuf>,
     family_order: Option<Vec<String>>,
@@ -45,6 +46,9 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
     for report in manifest.reports {
         validate_id(&report.id, "report id")?;
         validate_relative_path(&report.store_dir, "report store_dir", true)?;
+        if let Some(sources) = &report.sources {
+            validate_relative_path(sources, "report sources", false)?;
+        }
         let status_dir = report
             .status_dir
             .unwrap_or_else(|| default_status_dir.clone());
@@ -61,6 +65,7 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
         reports.push(Report {
             id: report.id,
             store_dir: report.store_dir,
+            sources: report.sources,
             status_dir,
             report_file,
             family_order: report.family_order,

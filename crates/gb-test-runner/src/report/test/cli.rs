@@ -7,7 +7,8 @@ use super::super::model::{
     REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
 };
 use super::common::{
-    unique_temp_dir, write_basic_reports, write_local_report_with_missing_rom_suite, write_status,
+    unique_temp_dir, write_basic_reports, write_basic_reports_with_sources,
+    write_local_report_with_missing_rom_suite, write_status,
 };
 
 #[test]
@@ -114,6 +115,94 @@ status = "PASS"
             .expect("output should be utf-8")
             .contains("running cargo rom-suite")
     );
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn existing_status_uses_source_order_before_suite_order() {
+    let workspace = unique_temp_dir("source-order");
+    write_basic_reports_with_sources(&workspace);
+    fs::create_dir_all(workspace.join("crates/gb-test-runner/data/sample-report"))
+        .expect("source manifest dir should be created");
+    fs::write(
+        workspace.join("crates/gb-test-runner/data/sample-report/sources.report.toml"),
+        r#"[[source]]
+id = "sample-source"
+git_url = "https://example.test/sample.git"
+git_rev = "0123456789abcdef"
+
+[[source.family]]
+id = "acid"
+target_root = "acid"
+sparse_paths = ["acid"]
+
+[[source.family.file]]
+path = "acid/which.gb"
+target = "which.gb"
+sha256 = "sha"
+
+[[source.family.file]]
+path = "acid/which.png"
+target = "which.png"
+sha256 = "sha"
+
+[[source.family.file]]
+path = "acid/later.gb"
+target = "later.gb"
+sha256 = "sha"
+"#,
+    )
+    .expect("source manifest should be writable");
+    write_status(
+        &workspace,
+        "sample-report",
+        "a-suite",
+        r#"suite_name = "a-suite"
+family = "acid"
+
+[[cases]]
+rom = "later.gb"
+status = "FAIL"
+"#,
+    );
+    write_status(
+        &workspace,
+        "sample-report",
+        "z-suite",
+        r#"suite_name = "z-suite"
+family = "acid"
+
+[[cases]]
+rom = "which.gb (GBC)"
+status = "INFO"
+
+[[cases]]
+rom = "which.gb (DMG)"
+status = "PASS"
+"#,
+    );
+    let mut output = Vec::new();
+
+    run_report_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
+        .expect("report should render");
+
+    let report = fs::read_to_string(workspace.join("test/sample-report/test-report.md"))
+        .expect("markdown report should be written");
+    let which_dmg = report
+        .find(&format!(
+            "| acid | which.gb (DMG) | {REPORT_STATUS_PASS_EMOJI} |"
+        ))
+        .expect("DMG variant row should be rendered");
+    let which_gbc = report
+        .find(&format!(
+            "| acid | which.gb (GBC) | {REPORT_STATUS_INFO_EMOJI} |"
+        ))
+        .expect("GBC variant row should be rendered");
+    let later = report
+        .find(&format!("| acid | later.gb | {REPORT_STATUS_FAIL_EMOJI} |"))
+        .expect("later ROM row should be rendered");
+    assert!(which_dmg < which_gbc);
+    assert!(which_gbc < later);
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
