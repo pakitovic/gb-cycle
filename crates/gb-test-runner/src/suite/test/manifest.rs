@@ -931,7 +931,7 @@ fn real_cpp_suite_manifest_loads_sgb_case() {
             "test/gb-emulator-shootout/cpp/rtc-invalid-banks-test.png",
             "test/gb-emulator-shootout/cpp/latch-rtc-test.png",
             "test/gb-emulator-shootout/cpp/ramg-mbc3-test.png",
-            "crates/gb-test-runner/data/gb-emulator-shootout/fixtures/cpp/sgb-ext-test.sgb.png",
+            "test/gb-emulator-shootout/cpp/sgb-ext-test.png",
         ],
     );
 
