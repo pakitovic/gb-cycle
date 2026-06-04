@@ -1,12 +1,12 @@
 [package]
 name = "gb-benchmark"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 askama = "0.16.0"
-gb-core = { version = "0.2.0", path = "../gb-core" }
+gb-core = { version = "0.2.1", path = "../gb-core" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1.2"
