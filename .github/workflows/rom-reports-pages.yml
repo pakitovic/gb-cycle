@@ -1,0 +1,172 @@
+name: rom-reports-pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: rom-reports-pages
+  cancel-in-progress: false
+
+jobs:
+  build-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      reports_json: ${{ steps.reports.outputs.reports_json }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Define ROM reports
+        id: reports
+        run: |
+          set -euo pipefail
+          reports_json='["gb-emulator-shootout","ax6","gbmicrotest","little-things-gb","magen","mealybug-tearoom-tests","mooneye","samesuite"]'
+          echo "reports_json=${reports_json}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build ROM report runner
+        run: cargo build --release -p gb-test-runner --bin report
+
+      - name: Upload ROM report runner
+        uses: actions/upload-artifact@v7
+        with:
+          name: rom-report-runner
+          path: target/release/report
+          if-no-files-found: error
+          retention-days: 1
+
+  render-report:
+    needs: build-runner
+    name: render ${{ matrix.report }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        report: ${{ fromJson(needs.build-runner.outputs.reports_json) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download ROM report runner
+        uses: actions/download-artifact@v8
+        with:
+          name: rom-report-runner
+          path: .bin
+
+      - name: Generate ${{ matrix.report }} HTML report
+        run: |
+          set -euo pipefail
+
+          report_runner="$(find .bin -type f -name report -print -quit)"
+          if [[ -z "${report_runner}" ]]; then
+            echo "missing downloaded ROM report runner" >&2
+            exit 1
+          fi
+          chmod +x "${report_runner}"
+          "${report_runner}" "${{ matrix.report }}" --html
+
+          report_html="test/${{ matrix.report }}/test-report.html"
+          if [[ ! -f "${report_html}" ]]; then
+            echo "missing generated report HTML: ${report_html}" >&2
+            exit 1
+          fi
+
+          report_site_dir="page/reports/${{ matrix.report }}"
+          mkdir -p "${report_site_dir}"
+          cp "${report_html}" "${report_site_dir}/index.html"
+
+      - name: Upload ${{ matrix.report }} page
+        uses: actions/upload-artifact@v7
+        with:
+          name: rom-report-page-${{ matrix.report }}
+          path: page
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble-site:
+    needs:
+      - build-runner
+      - render-report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download report pages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rom-report-page-*
+          path: _site
+          merge-multiple: true
+
+      - name: Generate site index
+        env:
+          REPORTS_JSON: ${{ needs.build-runner.outputs.reports_json }}
+        run: |
+          set -euo pipefail
+
+          generated_at="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          short_sha="${GITHUB_SHA::12}"
+
+          cat > _site/index.html <<HTML
+          <!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>gb-cycle ROM reports</title>
+          <style>body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; } a { color: #0645ad; } .meta { color: #555; }</style>
+          </head>
+          <body>
+          <h1>gb-cycle ROM reports</h1>
+          <p class="meta">Generated at ${generated_at} from commit <code>${short_sha}</code>.</p>
+          <ul>
+          HTML
+
+          while IFS= read -r report; do
+            report_html="_site/reports/${report}/index.html"
+            if [[ ! -f "${report_html}" ]]; then
+              echo "missing downloaded report page: ${report_html}" >&2
+              exit 1
+            fi
+            cat >> _site/index.html <<HTML
+          <li><a href="reports/${report}/">${report}</a></li>
+          HTML
+          done < <(jq -r '.[]' <<<"${REPORTS_JSON}")
+
+          cat >> _site/index.html <<HTML
+          </ul>
+          </body>
+          </html>
+          HTML
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: assemble-site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

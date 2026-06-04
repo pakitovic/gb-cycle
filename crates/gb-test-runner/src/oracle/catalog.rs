@@ -440,6 +440,10 @@ impl Oracle {
     }
 
     pub(crate) const fn is_informational(&self) -> bool {
-        matches!(self, Self::Trace(_))
+        match self {
+            Self::Framebuffer(oracle) => oracle.is_informational(),
+            Self::Trace(_) => true,
+            _ => false,
+        }
     }
 }

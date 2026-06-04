@@ -351,6 +351,10 @@ impl FramebufferOracle {
             fixtures,
         })
     }
+
+    pub(crate) const fn is_informational(&self) -> bool {
+        matches!(self.mode, FramebufferMode::Info)
+    }
 }
 
 fn fixture_list<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> String {

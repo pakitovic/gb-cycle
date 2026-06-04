@@ -58,8 +58,9 @@ fn run_case(
     if let Err(error) = clean_case_artifacts(workspace_root, report, suite_name, &case.id) {
         return CaseRunReport {
             id: case.id.clone(),
-            rom: case.rom.clone(),
+            rom: case.report_rom(),
             passed: false,
+            informational: false,
             failure: Some(error),
             executed_tcycles: 0,
             failure_artifact_dir: None,
@@ -136,6 +137,7 @@ fn run_case(
     let timeout_tcycles = u64::from(case.timeout_frames).saturating_mul(DMG_T_CYCLES_PER_FRAME);
     let mut serial_bytes = Vec::new();
     let mut oracle = case.oracle.clone();
+    let informational = oracle.is_informational();
     for executed_tcycles in 1..=timeout_tcycles {
         apply_stimuli_for_tcycle(&mut machine, case, executed_tcycles - 1);
         machine.step_t_cycle();
@@ -164,6 +166,7 @@ fn run_case(
                         memory_addresses: &memory_addresses,
                         serial_bytes: &serial_bytes,
                         executed_tcycles,
+                        informational,
                     },
                 );
             }
@@ -190,6 +193,7 @@ fn run_case(
             memory_addresses: &memory_addresses,
             serial_bytes: &serial_bytes,
             executed_tcycles: timeout_tcycles,
+            informational,
         },
     )
 }
@@ -267,8 +271,9 @@ fn finish_case(
     }) {
         Ok(OracleOutcome::Passed) => CaseRunReport {
             id: context.suite_case.id.clone(),
-            rom: context.suite_case.rom.clone(),
+            rom: context.suite_case.report_rom(),
             passed: true,
+            informational: finish.informational,
             failure: None,
             executed_tcycles: finish.executed_tcycles,
             failure_artifact_dir: None,
@@ -307,6 +312,7 @@ struct FinishCaseContext<'a> {
     memory_addresses: &'a [u16],
     serial_bytes: &'a [u8],
     executed_tcycles: u64,
+    informational: bool,
 }
 
 struct FailureReportContext<'a> {
@@ -340,8 +346,9 @@ fn failed_case_report(
 
     CaseRunReport {
         id: context.case.suite_case.id.clone(),
-        rom: context.case.suite_case.rom.clone(),
+        rom: context.case.suite_case.report_rom(),
         passed: false,
+        informational: false,
         failure: Some(failure),
         executed_tcycles,
         failure_artifact_dir,

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::oracle::Oracle;
 
 use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
-use super::super::model::SuiteStimulusTime;
+use super::super::model::{ReportConsole, SuiteStimulusTime};
 use super::common::{
     basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
 };
@@ -456,6 +456,7 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         cgb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Handheld
     );
+    assert_eq!(cgb_manifest.cases[0].report_console, ReportConsole::Cgb);
 
     let sgb_console = basic_manifest(
         "gb-emulator-shootout",
@@ -479,6 +480,7 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         sgb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Sgb
     );
+    assert_eq!(sgb_manifest.cases[0].report_console, ReportConsole::Sgb);
 
     let sgb2_console = basic_manifest(
         "gb-emulator-shootout",
@@ -502,6 +504,61 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         sgb2_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Sgb2
     );
+    assert_eq!(sgb2_manifest.cases[0].report_console, ReportConsole::Sgb2);
+
+    let report_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_console_suffix = true",
+    );
+    let report_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &report_suffix,
+    )
+    .expect("case-level report console suffix should parse");
+    assert_eq!(
+        report_suffix_manifest.cases[0].report_console,
+        ReportConsole::Dmg
+    );
+    assert!(report_suffix_manifest.cases[0].report_console_suffix);
+
+    let inherited_report_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "console = \"dmg\"",
+        "console = \"dmg\"\nreport_console_suffix = true",
+    );
+    let inherited_report_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &inherited_report_suffix,
+    )
+    .expect("header report console suffix should parse");
+    assert!(inherited_report_suffix_manifest.cases[0].report_console_suffix);
+
+    let overridden_report_suffix = inherited_report_suffix.replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_console_suffix = false",
+    );
+    let overridden_report_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &overridden_report_suffix,
+    )
+    .expect("case-level report console suffix override should parse");
+    assert!(!overridden_report_suffix_manifest.cases[0].report_console_suffix);
 
     let unsupported_alias = basic_manifest(
         "gb-emulator-shootout",

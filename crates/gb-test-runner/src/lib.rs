@@ -1,12 +1,14 @@
 mod boot_rom;
 mod fetch;
 mod oracle;
+mod report;
 mod rtc;
 mod suite;
 mod suite_link;
 use std::path::{Path, PathBuf};
 
 pub use fetch::{fetch_help_text, run_fetch_command};
+pub use report::{report_help_text, run_report_command};
 pub use suite::{run_suite_command, suite_help_text};
 pub use suite_link::{run_suite_link_command, suite_link_help_text};
 pub fn default_workspace_root() -> PathBuf {

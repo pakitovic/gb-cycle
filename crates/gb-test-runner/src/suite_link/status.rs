@@ -36,7 +36,7 @@ pub(super) fn write_link_suite_status(
             .iter()
             .map(|case| PersistedLinkCaseStatus {
                 id: case.id.clone(),
-                status: if case.passed { "PASS" } else { "FAIL" }.to_string(),
+                status: persisted_link_case_status(case).to_string(),
                 participants: case
                     .participants
                     .iter()
@@ -61,4 +61,14 @@ pub(super) fn write_link_suite_status(
         )
     })?;
     Ok(path)
+}
+
+fn persisted_link_case_status(case: &super::model::LinkCaseRunReport) -> &'static str {
+    if !case.passed {
+        "FAIL"
+    } else if case.informational {
+        "INFO"
+    } else {
+        "PASS"
+    }
 }
