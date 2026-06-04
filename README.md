@@ -14,7 +14,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator 
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF. |
 | Joypad / serial / external I/O | `JOYP`, `SB`, `SC` and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, `DMG-04` game link, `DMG-07` 2/3/4-player adapter, SGB `MLT_REQ`, CGB-to-CGB infrared sessions. |
 | Cartridges | `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, `RTC`, flash / EEPROM / accelerometer paths, rumble-capable metadata. |
-| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, [Pokémon Pikachu Color](docs/info/CGB-INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/info/CGB-INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
+| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, [Pokémon Pikachu Color](docs/info/INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/info/INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
 | Validation | [GBEmulatorShootout fork](https://pakitovic.github.io/GBEmulatorShootout/) currently reports `gb-cycle` green on every counted ROM-test row in the fork (`264/264` in the latest generated dashboard). |
 
 ## Current structure
@@ -102,7 +102,7 @@ cargo run -p gb-cli -- run --benchmark path/to/game.toml
 cargo run --release -p gb-desktop -- --benchmark path/to/game.toml
 ```
 
-See [docs/info/CLI.md](docs/info/CLI.md) and [docs/info/DESKTOP.md](docs/info/DESKTOP.md) for full usage details.
+See [docs/info/CLI.md](docs/info/CLI.md), [docs/info/DESKTOP.md](docs/info/DESKTOP.md), and [docs/info/BENCHMARK.md](docs/info/BENCHMARK.md) for full usage details.
 
 ## Release packages
 

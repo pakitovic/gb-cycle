@@ -76,7 +76,7 @@ CGB-only MMIO must be routed through typed owners, not through generic `FFxx` st
 
 - CGB APU differences extend the same APU pipeline described in [`APU.md`](APU.md): speed-domain frame-sequencer gating, model/revision gates, CGB audio register behavior, and read-only `PCM12`/`PCM34` taps must not bypass channel state or host audio boundaries.
 - CGB serial high-speed mode belongs to [`SERIAL.md`](SERIAL.md). `SC.1` is functional only in native CGB and the narrow experimental profile, affects internally clocked master transfers only, and consumes shared speed-domain edge bits.
-- CGB infrared `RP` state is bus-owned, while two-console optical routing and single-accessory sessions are link-owned. The detailed topology and accessory contracts live in [`LINK.md`](LINK.md) and [`../info/CGB-INFRARED.md`](../info/CGB-INFRARED.md).
+- CGB infrared `RP` state is bus-owned, while two-console optical routing and single-accessory sessions are link-owned. The detailed topology and accessory contracts live in [`LINK.md`](LINK.md) and [`../info/INFRARED.md`](../info/INFRARED.md).
 - Frontends may expose CGB IR sessions, audio recording, palettes, or diagnostics, but those controls must observe or configure explicit core seams rather than changing hardware timing or MMIO semantics.
 
 ## Save-state and determinism contract
