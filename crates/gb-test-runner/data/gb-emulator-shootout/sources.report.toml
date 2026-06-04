@@ -1,7 +1,7 @@
 [[source]]
 id = "gbemu-shootout"
 git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
-git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+git_rev = "7c6ee9ba380fab277f30784c5de7d35b21a4b679"
 
 [[source.family]]
 id = "blargg"
@@ -1280,9 +1280,19 @@ target = "sgb/command_mlt_req.gb"
 sha256 = "e655a3c2732b81ea8a70f1689d5a53f6fc24cfad0015d9d7c2ce63524bd67c51"
 
 [[source.family.file]]
+path = "testroms/samesuite/sgb/command_mlt_req.png"
+target = "sgb/command_mlt_req.png"
+sha256 = "27b02328c4df71b02784f9b3d9aaf84d97c4cfc98cc30555c82380dd59f18f8d"
+
+[[source.family.file]]
 path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.gb"
 target = "sgb/command_mlt_req_1_incrementing.gb"
 sha256 = "7c95c4b134c200dd3fcef71d0a61c110990c0b953a70988f2b4a54eda47992ca"
+
+[[source.family.file]]
+path = "testroms/samesuite/sgb/command_mlt_req_1_incrementing.png"
+target = "sgb/command_mlt_req_1_incrementing.png"
+sha256 = "010a83b3d26e294fb95116530c7e180ea3ab1920aec7c94cad6ffc502445eb5a"
 
 [[source.family]]
 id = "ashiepaws"
@@ -1337,7 +1347,7 @@ sha256 = "268f295d7f530e4f3c725e0d6d8fac53dbafd696659faffe40b8694658e96193"
 [[source.family.file]]
 path = "testroms/cpp/ramg-mbc3-test.gb"
 target = "ramg-mbc3-test.gb"
-sha256 = "40117ff683b2bae07a0623ae86a7c8275f9aa23d75c008816030e8ccbf4b6405"
+sha256 = "638dc9e3bcfdcae6dbed6481b37b066f911494c0937835b79403dd2d0d349ced"
 
 [[source.family.file]]
 path = "testroms/cpp/ramg-mbc3-test.png"
@@ -1348,6 +1358,11 @@ sha256 = "0108c6759326505814b3f9555231e25ff6c636c54025c27837845028c1d5c290"
 path = "testroms/cpp/sgb-ext-test.gb"
 target = "sgb-ext-test.gb"
 sha256 = "ae4084d4888cab6bb452f93b3c27964073e7c3dabea201cfab3ce9a8a985510e"
+
+[[source.family.file]]
+path = "testroms/cpp/sgb-ext-test.png"
+target = "sgb-ext-test.png"
+sha256 = "25eed4bc01dd787924147a5fbb409b1f74ece488465ba9a0326c075a65f57575"
 
 [[source.family]]
 id = "mealybug-tearoom-tests"

@@ -10,13 +10,13 @@ id = "samesuite-sgb-command-mlt-req"
 rom = "sgb/command_mlt_req.gb"
 console = "sgb"
 timeout_frames = 300
-oracle = { type = "framebuffer", local = true, fixture = "fixtures/samesuite/sgb/command_mlt_req.png" }
+oracle = { type = "framebuffer", fixture = "sgb/command_mlt_req.png" }
 
 [[case]]
 id = "samesuite-sgb-command-mlt-req-1-incrementing"
 rom = "sgb/command_mlt_req_1_incrementing.gb"
 console = "sgb"
-oracle = { type = "framebuffer", local = true, fixture = "fixtures/samesuite/sgb/command_mlt_req_1_incrementing.png" }
+oracle = { type = "framebuffer", fixture = "sgb/command_mlt_req_1_incrementing.png" }
 
 [[case]]
 id = "samesuite-ppu-blocking-bgpi-increase"
