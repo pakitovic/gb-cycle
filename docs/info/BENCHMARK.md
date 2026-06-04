@@ -107,7 +107,7 @@ Each `[[run.input]]` creates a press/release pulse. Define exactly one timing fi
 | `hold_frames` | Optional hold length in frames; defaults to `8` and must be greater than zero. |
 | `repeat_every_frames` | Optional frame-domain repeat interval; must be greater than `hold_frames`. |
 
-Frame and second inputs are repeated until the run's target frame count is reached. T-cycle inputs are one-shot pulses whose release time is `hold_frames * DMG_T_CYCLES_PER_FRAME` after the press.
+Frame and second inputs are one-shot pulses by default. When `repeat_every_frames` is set, the same frame-domain pulse repeats until the run's target frame count is reached. T-cycle inputs are always one-shot pulses whose release time is `hold_frames * DMG_T_CYCLES_PER_FRAME` after the press.
 
 ## Direct frontend runs
 
