@@ -2,7 +2,7 @@
 
 A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling.
 
-## Current implementation highlights
+## Implementation highlights
 
 | Domain | Highlight |
 | --- | --- |
@@ -15,7 +15,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator 
 | Joypad / serial / external I/O | `JOYP`, `SB`, `SC` and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, `DMG-04` game link, `DMG-07` 2/3/4-player adapter, SGB `MLT_REQ`, CGB-to-CGB infrared sessions. |
 | Cartridges | `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, `RTC`, flash / EEPROM / accelerometer paths, rumble-capable metadata. |
 | Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, [Pokémon Pikachu Color](docs/info/INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/info/INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
-| Validation | [GBEmulatorShootout fork](https://pakitovic.github.io/GBEmulatorShootout/) currently reports `gb-cycle` green on every counted ROM-test row in the fork (`264/264` in the latest generated dashboard). |
+| Validation | [ROM-test reports](https://pakitovic.github.io/gb-cycle/) publish browsable snapshots for the maintained report lanes; the [GBEmulatorShootout fork](https://pakitovic.github.io/GBEmulatorShootout/) currently reports `gb-cycle` green on every counted row (`264/264` in the latest generated dashboard). |
 
 ## Current structure
 
