@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${RELEASE_PAT}" ]]; then
-            echo "Missing RELEASE_PAT secret. Create a fine-grained PAT named 'gb-cycle release automation' scoped only to this repository with Contents: read/write and Pull requests: read/write." >&2
+            echo "Missing RELEASE_PAT secret. Create a fine-grained PAT named 'gb-cycle release automation' scoped only to this repository with Contents: read/write, Pull requests: read/write, and Actions: read/write." >&2
             exit 1
           fi
 
@@ -57,7 +57,7 @@ jobs:
         with:
           ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT || github.token }}
+          token: ${{ github.token }}
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -99,7 +99,7 @@ jobs:
 
       - name: Check target tag and release do not exist
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
           BASE_BRANCH: ${{ steps.release.outputs.base_branch }}
         run: |
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Release dry run passed for ${{ steps.release.outputs.tag }}"
-          echo "No branch, pull request, merge, tag, GitHub Release, or package workflow was created."
+          echo "No branch, pull request, merge, tag, GitHub Release, package workflow, or ROM reports Pages workflow was created."
           git diff --stat
 
       - name: Commit release bump
@@ -199,7 +199,7 @@ jobs:
           - Generated branch: \`${BRANCH}\`
           - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
-          This PR was created by the PAT-backed release workflow. Pull request checks should run from normal \`pull_request\` events; when they pass, the same workflow will squash-merge this PR, create \`${TAG}\`, create the GitHub Release, and let the tag-push package workflows attach assets.
+          This PR was created by the PAT-backed release workflow. Pull request checks should run from normal \`pull_request\` events; when they pass, the same workflow will squash-merge this PR, create \`${TAG}\`, create the GitHub Release, let the tag-push package workflows attach assets, and dispatch \`rom-reports-pages.yml\` from \`${TAG}\`.
           BODY
 
           pr_number="$(gh pr list --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
@@ -336,6 +336,15 @@ jobs:
             gh release view "${TAG}" >/dev/null
           fi
 
+      - name: Dispatch ROM reports Pages workflow
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run rom-reports-pages.yml --ref "${TAG}"
+
       - name: Write release summary
         if: ${{ !inputs.dry_run }}
         run: |
@@ -349,4 +358,5 @@ jobs:
             echo "Tag: \`${{ steps.release.outputs.tag }}\`"
             echo
             echo "The tag push should trigger \`release-linux.yml\`, \`release-macos.yml\`, and \`release-windows.yml\` so package assets attach to the GitHub Release."
+            echo "The release workflow also dispatched \`rom-reports-pages.yml\` from \`${{ steps.release.outputs.tag }}\` so GitHub Pages can publish ROM reports for this release."
           } >> "${GITHUB_STEP_SUMMARY}"
