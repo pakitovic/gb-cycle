@@ -109,7 +109,7 @@ Fetchable report rows are sorted by `family_order`, then by each family's pinned
 
 If `test/<report-store>/.status` is missing or contains no `*.toml` status files, `cargo rom-report <report>` first runs `cargo rom-suite <report>` and then renders any status written by that run. Suite failures still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
 
-Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local and passive; publishing the HTML requires a separate operator or GitHub Actions workflow.
+Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local and passive; publishing the HTML requires a separate operator or GitHub Actions workflow. The manual `rom-reports-pages.yml` workflow publishes the curated HTML report set to GitHub Pages, and a successful non-dry-run `release.yml` dispatches that workflow from the new release tag.
 
 ## RealBoot
 

@@ -139,7 +139,7 @@ Desktop release workflows package only the SDL3 frontend. Each platform workflow
 | `release-linux.yml` | `gb-cycle-linux-x86_64.tar.gz` | `gb-desktop`, [`../../README.md`](../../README.md), both license files, bundled `libSDL3*.so*` when emitted, and `$ORIGIN` rpath handling for dynamic SDL3. |
 | `release-macos.yml` | `gb-cycle-macos-aarch64.zip` | `GB Cycle.app`, [`../../README.md`](../../README.md), both license files, bundled `libSDL3*.dylib` under `Contents/MacOS` when emitted, ad-hoc signing, and the same camera usage string as the local macOS launcher. |
 
-Manual platform workflow runs validate/upload artifacts with `actions/upload-artifact`. Tag pushes matching `v*` attach those artifacts to the GitHub Release. The repository-level `release.yml` workflow owns the PAT-backed SemVer release flow: create/update `codex/release-<version>`, open the release PR, wait for required PR checks, squash-merge, create the annotated `v<version>` tag, and create the GitHub Release.
+Manual platform workflow runs validate/upload artifacts with `actions/upload-artifact`. Tag pushes matching `v*` attach those artifacts to the GitHub Release. The repository-level `release.yml` workflow owns the PAT-backed SemVer release flow: create/update `codex/release-<version>`, open the release PR, wait for required PR checks, squash-merge, create the annotated `v<version>` tag, create the GitHub Release, and dispatch `rom-reports-pages.yml` from the release tag so GitHub Pages can publish ROM reports for the same revision.
 
 ## Error handling boundaries
 
