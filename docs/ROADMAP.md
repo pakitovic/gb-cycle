@@ -17,13 +17,13 @@ Authority routing:
 
 ## Scope summary
 
-Phases 0-9 close the DMG-family core on the shared T-cycle scheduler. Phase 10 extends that same core for CGB features such as double speed, VRAM/WRAM banking, palettes, HDMA/GDMA, CGB audio lanes, RTC behavior, and CGB ROM-suite gates while preserving the accepted DMG baseline. Phase 11 adds SGB/SGB2 as host-shell profiles around the shared GB core, with SNES/SFC-side execution and host-audio details intentionally isolated behind explicit SGB host seams.
+Phases 0-9 close the DMG-family core on the shared T-cycle scheduler. Phase 10 extends that same core for CGB features such as double speed, VRAM/WRAM banking, palettes, HDMA/GDMA, CGB audio lanes, RTC behavior, and CGB ROM-suite gates while preserving the accepted DMG baseline. Phase 11 adds SGB/SGB2 as host-shell profiles around the shared GB core, with deep host audio, uploaded SNES/SFC execution, and the real host startup shell explicitly out of scope for the current architecture beyond deterministic diagnostic request seams.
 
 Current status:
 
 - Practical DMG Phase 9 closure is accepted; CGB and SGB/SGB2 work build on that baseline instead of redefining it.
 - CGB work is tracked under Phase 10 and must not redefine the DMG closure signal.
-- SGB/SGB2 work is tracked under Phase 11; current public scope covers host-shell behavior already documented there, while deeper host audio and SNES/SFC execution remain deferred slices.
+- SGB/SGB2 work is tracked under Phase 11; current public scope covers host-shell behavior already documented there, while deeper host audio, SNES/SFC execution, and the real startup shell are not planned without a complete SNES/SFC emulator.
 
 ## Cross-cutting workstreams
 
