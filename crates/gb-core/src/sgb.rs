@@ -51,6 +51,7 @@ const SGB_GB_BG_MAP_9800_OFFSET: usize = 0x1800;
 const SGB_GB_BG_MAP_9C00_OFFSET: usize = 0x1C00;
 const SGB_GB_SIGNED_TILE_DATA_BASE_OFFSET: i32 = 0x1000;
 const SGB_TRANSFER_REQUIRED_BGP: u8 = 0xE4;
+#[cfg(test)]
 const SGB_LCDC_ENABLE_BIT: u8 = 0x80;
 const SGB_LCDC_BG_TILE_MAP_BIT: u8 = 0x08;
 const SGB_LCDC_BG_WINDOW_TILE_DATA_BIT: u8 = 0x10;
@@ -580,8 +581,10 @@ impl SgbVramTransferDisplayState {
     }
 
     const fn can_extract_display_order(self) -> bool {
-        self.lcdc & SGB_LCDC_ENABLE_BIT != 0
-            && self.lcdc & SGB_LCDC_BG_ENABLE_BIT != 0
+        // The transfer source is the prepared BG layout, not the current LCD enable bit alone. Some
+        // software disables LCDC at the tail of the SGB transfer window after leaving VRAM and the
+        // layout registers intact; falling back to raw VRAM for that final chunk corrupts the payload.
+        self.lcdc & SGB_LCDC_BG_ENABLE_BIT != 0
             && self.scy == 0
             && self.scx == 0
             && self.bgp == SGB_TRANSFER_REQUIRED_BGP
@@ -3980,6 +3983,22 @@ mod tests {
         vram
     }
 
+    fn signed_display_vram_from_payload(
+        payload: &[u8; SGB_VRAM_TRANSFER_BYTES],
+    ) -> [u8; SGB_GB_VRAM_BYTES] {
+        let mut vram = [0xE7; SGB_GB_VRAM_BYTES];
+        let lcdc = SGB_LCDC_ENABLE_BIT | SGB_LCDC_BG_ENABLE_BIT;
+        for transfer_tile_index in 0..SGB_TRANSFER_DISPLAY_TILE_COUNT {
+            let tile_index = 0x80u8.wrapping_add(transfer_tile_index as u8);
+            write_transfer_screen_tile(&mut vram, transfer_tile_index, tile_index);
+            let tile_offset = gb_tile_data_offset(lcdc, tile_index);
+            let payload_offset = transfer_tile_index * SGB_GB_TILE_BYTES;
+            vram[tile_offset..tile_offset + SGB_GB_TILE_BYTES]
+                .copy_from_slice(&payload[payload_offset..payload_offset + SGB_GB_TILE_BYTES]);
+        }
+        vram
+    }
+
     fn frame_payload(frame_index: u8) -> [u8; SGB_VRAM_TRANSFER_BYTES] {
         let mut payload = [0; SGB_VRAM_TRANSFER_BYTES];
         for (byte_index, byte) in payload.iter_mut().enumerate() {
@@ -4375,6 +4394,23 @@ mod tests {
     }
 
     #[test]
+    fn vram_transfer_display_extraction_uses_prepared_layout_when_lcd_is_disabled() {
+        let payload = frame_payload(3);
+        let vram = signed_display_vram_from_payload(&payload);
+        let display = SgbVramTransferDisplayState::new(
+            SGB_LCDC_BG_ENABLE_BIT,
+            0,
+            0,
+            SGB_TRANSFER_REQUIRED_BGP,
+        );
+
+        let extracted = SgbVramTransferBuffer::from_display_memory(&vram, display)
+            .expect("LCD-disabled transfer tail should still use the prepared BG layout");
+
+        assert_eq!(extracted.bytes, payload.to_vec());
+    }
+
+    #[test]
     fn vram_transfer_display_extraction_falls_back_to_raw_when_display_is_not_prepared() {
         let mut vram = vec![0; SGB_GB_VRAM_BYTES];
         vram[0] = 0x5A;
@@ -4727,6 +4763,60 @@ mod tests {
         assert_eq!(
             snapshot.video.system_palettes.palette_wrapping(0).colors[0].raw(),
             u16::from_le_bytes([expected[0], expected[1]]) & SGB_RGB555_MASK
+        );
+    }
+
+    #[test]
+    fn vram_transfer_final_chunk_stays_display_order_when_lcd_turns_off() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(1));
+
+        let mut expected = [0; SGB_VRAM_TRANSFER_BYTES];
+        for frame_index in 0..SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+            let payload = frame_payload(frame_index);
+            let (chunk_start, chunk_end) =
+                vram_transfer_chunk_range(frame_index, SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            expected[chunk_start..chunk_end].copy_from_slice(&payload[chunk_start..chunk_end]);
+            let display_lcdc = if frame_index + 1 == SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                SGB_LCDC_BG_ENABLE_BIT
+            } else {
+                SGB_LCDC_ENABLE_BIT | SGB_LCDC_BG_ENABLE_BIT
+            };
+            let result = host
+                .advance_frame_start(
+                    &signed_display_vram_from_payload(&payload),
+                    SgbVramTransferDisplayState::new(display_lcdc, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+                )
+                .expect("CHR_TRN capture should tolerate LCD-off tail while layout remains valid");
+            if frame_index + 1 < SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                assert_eq!(result, None);
+            } else {
+                assert_eq!(
+                    result,
+                    Some(SgbVramTransferTarget::Chr(SgbChrTransferSelection {
+                        tile_block: 1,
+                        tile_type: SgbChrTransferTileType::Bg,
+                    }))
+                );
+            }
+        }
+
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot
+                .video
+                .vram_transfer
+                .last_completed
+                .as_ref()
+                .expect("completed CHR_TRN should retain the display-ordered payload")
+                .payload
+                .bytes,
+            expected.to_vec()
+        );
+        assert_eq!(
+            snapshot.video.border.tile_data.bytes
+                [SGB_VRAM_TRANSFER_BYTES..SGB_VRAM_TRANSFER_BYTES * 2],
+            expected[..]
         );
     }
 
