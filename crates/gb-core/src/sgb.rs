@@ -551,6 +551,16 @@ pub enum SgbVramTransferPhase {
     Capturing,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SgbVramTransferSourceMode {
+    #[default]
+    Unresolved,
+    Raw,
+    DisplayOrder,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SgbPendingVramTransfer {
     pub command_id: u8,
@@ -559,6 +569,8 @@ pub struct SgbPendingVramTransfer {
     pub phase: SgbVramTransferPhase,
     pub frames_captured: u8,
     pub total_frames: u8,
+    #[serde(default)]
+    pub source_mode: SgbVramTransferSourceMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -579,8 +591,11 @@ impl SgbVramTransferDisplayState {
         }
     }
 
-    const fn can_extract_display_order(self) -> bool {
-        self.lcdc & SGB_LCDC_ENABLE_BIT != 0
+    const fn can_extract_display_order(self, allow_lcd_disabled_tail: bool) -> bool {
+        // The transfer source is the prepared BG layout, not the current LCD enable bit alone. Some
+        // software disables LCDC at the tail of the SGB transfer window after leaving VRAM and the
+        // layout registers intact; falling back to raw VRAM for that final chunk corrupts the payload.
+        (allow_lcd_disabled_tail || self.lcdc & SGB_LCDC_ENABLE_BIT != 0)
             && self.lcdc & SGB_LCDC_BG_ENABLE_BIT != 0
             && self.scy == 0
             && self.scx == 0
@@ -611,8 +626,33 @@ impl SgbVramTransferBuffer {
         vram_bytes: &[u8],
         display: SgbVramTransferDisplayState,
     ) -> Result<Self, SgbVramTransferError> {
-        if !display.can_extract_display_order() {
-            return Self::from_source_bytes(vram_bytes);
+        Self::from_display_memory_with_source_mode(
+            vram_bytes,
+            display,
+            SgbVramTransferSourceMode::Unresolved,
+        )
+        .map(|(payload, _source_mode)| payload)
+    }
+
+    fn from_display_memory_with_source_mode(
+        vram_bytes: &[u8],
+        display: SgbVramTransferDisplayState,
+        current_source_mode: SgbVramTransferSourceMode,
+    ) -> Result<(Self, SgbVramTransferSourceMode), SgbVramTransferError> {
+        if current_source_mode == SgbVramTransferSourceMode::Raw {
+            return Self::from_source_bytes(vram_bytes)
+                .map(|payload| (payload, SgbVramTransferSourceMode::Raw));
+        }
+        let allow_lcd_disabled_tail =
+            current_source_mode == SgbVramTransferSourceMode::DisplayOrder;
+        let frame_source_mode = if display.can_extract_display_order(allow_lcd_disabled_tail) {
+            SgbVramTransferSourceMode::DisplayOrder
+        } else {
+            SgbVramTransferSourceMode::Raw
+        };
+        if frame_source_mode == SgbVramTransferSourceMode::Raw {
+            return Self::from_source_bytes(vram_bytes)
+                .map(|payload| (payload, SgbVramTransferSourceMode::Raw));
         }
         if vram_bytes.len() < SGB_GB_VRAM_BYTES {
             return Err(SgbVramTransferError::SourceLength {
@@ -638,7 +678,7 @@ impl SgbVramTransferBuffer {
                 .copy_from_slice(&vram_bytes[source_offset..source_offset + SGB_GB_TILE_BYTES]);
         }
 
-        Ok(Self { bytes })
+        Ok((Self { bytes }, SgbVramTransferSourceMode::DisplayOrder))
     }
 
     fn dynamic_payload_bytes(&self) -> usize {
@@ -3446,6 +3486,7 @@ impl SgbVideoState {
             phase: SgbVramTransferPhase::WaitingForNextFrame,
             frames_captured: 0,
             total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
+            source_mode: SgbVramTransferSourceMode::Unresolved,
         });
         self.vram_transfer.partial_payload = Some(SgbVramTransferBuffer::default());
         self.vram_transfer.requested_transfer_count = self
@@ -3477,7 +3518,14 @@ impl SgbVideoState {
             self.vram_transfer.pending = Some(pending);
             return Ok(None);
         }
-        let payload = SgbVramTransferBuffer::from_display_memory(vram_bytes, display)?;
+        let (payload, source_mode) = SgbVramTransferBuffer::from_display_memory_with_source_mode(
+            vram_bytes,
+            display,
+            pending.source_mode,
+        )?;
+        if pending.source_mode == SgbVramTransferSourceMode::Unresolved {
+            pending.source_mode = source_mode;
+        }
         pending.frame_starts_until_capture = 0;
         pending.phase = SgbVramTransferPhase::Capturing;
         let frame_index = pending
@@ -3980,6 +4028,22 @@ mod tests {
         vram
     }
 
+    fn signed_display_vram_from_payload(
+        payload: &[u8; SGB_VRAM_TRANSFER_BYTES],
+    ) -> [u8; SGB_GB_VRAM_BYTES] {
+        let mut vram = [0xE7; SGB_GB_VRAM_BYTES];
+        let lcdc = SGB_LCDC_ENABLE_BIT | SGB_LCDC_BG_ENABLE_BIT;
+        for transfer_tile_index in 0..SGB_TRANSFER_DISPLAY_TILE_COUNT {
+            let tile_index = 0x80u8.wrapping_add(transfer_tile_index as u8);
+            write_transfer_screen_tile(&mut vram, transfer_tile_index, tile_index);
+            let tile_offset = gb_tile_data_offset(lcdc, tile_index);
+            let payload_offset = transfer_tile_index * SGB_GB_TILE_BYTES;
+            vram[tile_offset..tile_offset + SGB_GB_TILE_BYTES]
+                .copy_from_slice(&payload[payload_offset..payload_offset + SGB_GB_TILE_BYTES]);
+        }
+        vram
+    }
+
     fn frame_payload(frame_index: u8) -> [u8; SGB_VRAM_TRANSFER_BYTES] {
         let mut payload = [0; SGB_VRAM_TRANSFER_BYTES];
         for (byte_index, byte) in payload.iter_mut().enumerate() {
@@ -4375,6 +4439,45 @@ mod tests {
     }
 
     #[test]
+    fn vram_transfer_display_extraction_uses_prepared_layout_when_lcd_is_disabled() {
+        let payload = frame_payload(3);
+        let vram = signed_display_vram_from_payload(&payload);
+        let display = SgbVramTransferDisplayState::new(
+            SGB_LCDC_BG_ENABLE_BIT,
+            0,
+            0,
+            SGB_TRANSFER_REQUIRED_BGP,
+        );
+
+        let (extracted, source_mode) = SgbVramTransferBuffer::from_display_memory_with_source_mode(
+            &vram,
+            display,
+            SgbVramTransferSourceMode::DisplayOrder,
+        )
+        .expect("LCD-disabled transfer tail should still use the prepared BG layout");
+
+        assert_eq!(extracted.bytes, payload.to_vec());
+        assert_eq!(source_mode, SgbVramTransferSourceMode::DisplayOrder);
+    }
+
+    #[test]
+    fn vram_transfer_display_extraction_keeps_lcd_disabled_start_on_raw_path() {
+        let mut vram = signed_display_vram_from_payload(&frame_payload(3));
+        vram[0] = 0x5A;
+        let display = SgbVramTransferDisplayState::new(
+            SGB_LCDC_BG_ENABLE_BIT,
+            0,
+            0,
+            SGB_TRANSFER_REQUIRED_BGP,
+        );
+
+        let payload = SgbVramTransferBuffer::from_display_memory(&vram, display)
+            .expect("LCD-disabled unclassified transfer start should fall back to raw VRAM");
+
+        assert_eq!(payload.bytes[0], 0x5A);
+    }
+
+    #[test]
     fn vram_transfer_display_extraction_falls_back_to_raw_when_display_is_not_prepared() {
         let mut vram = vec![0; SGB_GB_VRAM_BYTES];
         vram[0] = 0x5A;
@@ -4625,6 +4728,7 @@ mod tests {
                 phase: SgbVramTransferPhase::WaitingForNextFrame,
                 frames_captured: 0,
                 total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
+                source_mode: SgbVramTransferSourceMode::Unresolved,
             })
         );
         assert!(snapshot.video.vram_transfer.last_completed.is_none());
@@ -4727,6 +4831,60 @@ mod tests {
         assert_eq!(
             snapshot.video.system_palettes.palette_wrapping(0).colors[0].raw(),
             u16::from_le_bytes([expected[0], expected[1]]) & SGB_RGB555_MASK
+        );
+    }
+
+    #[test]
+    fn vram_transfer_final_chunk_stays_display_order_when_lcd_turns_off() {
+        let mut host = accepted_sgb_host();
+        write_joyp_packet(&mut host, sgb_chr_trn_packet(1));
+
+        let mut expected = [0; SGB_VRAM_TRANSFER_BYTES];
+        for frame_index in 0..SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+            let payload = frame_payload(frame_index);
+            let (chunk_start, chunk_end) =
+                vram_transfer_chunk_range(frame_index, SGB_VRAM_TRANSFER_TOTAL_FRAMES);
+            expected[chunk_start..chunk_end].copy_from_slice(&payload[chunk_start..chunk_end]);
+            let display_lcdc = if frame_index + 1 == SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                SGB_LCDC_BG_ENABLE_BIT
+            } else {
+                SGB_LCDC_ENABLE_BIT | SGB_LCDC_BG_ENABLE_BIT
+            };
+            let result = host
+                .advance_frame_start(
+                    &signed_display_vram_from_payload(&payload),
+                    SgbVramTransferDisplayState::new(display_lcdc, 0, 0, SGB_TRANSFER_REQUIRED_BGP),
+                )
+                .expect("CHR_TRN capture should tolerate LCD-off tail while layout remains valid");
+            if frame_index + 1 < SGB_VRAM_TRANSFER_TOTAL_FRAMES {
+                assert_eq!(result, None);
+            } else {
+                assert_eq!(
+                    result,
+                    Some(SgbVramTransferTarget::Chr(SgbChrTransferSelection {
+                        tile_block: 1,
+                        tile_type: SgbChrTransferTileType::Bg,
+                    }))
+                );
+            }
+        }
+
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot
+                .video
+                .vram_transfer
+                .last_completed
+                .as_ref()
+                .expect("completed CHR_TRN should retain the display-ordered payload")
+                .payload
+                .bytes,
+            expected.to_vec()
+        );
+        assert_eq!(
+            snapshot.video.border.tile_data.bytes
+                [SGB_VRAM_TRANSFER_BYTES..SGB_VRAM_TRANSFER_BYTES * 2],
+            expected[..]
         );
     }
 
@@ -4880,6 +5038,7 @@ mod tests {
                 phase: SgbVramTransferPhase::WaitingForNextFrame,
                 frames_captured: 0,
                 total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
+                source_mode: SgbVramTransferSourceMode::Unresolved,
             })
         );
         host.capture_pending_vram_transfer(&[0x42; SGB_VRAM_TRANSFER_BYTES])
@@ -4926,6 +5085,7 @@ mod tests {
                 phase: SgbVramTransferPhase::WaitingForNextFrame,
                 frames_captured: 0,
                 total_frames: SGB_VRAM_TRANSFER_TOTAL_FRAMES,
+                source_mode: SgbVramTransferSourceMode::Unresolved,
             })
         );
 
