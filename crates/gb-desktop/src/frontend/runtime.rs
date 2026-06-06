@@ -320,16 +320,10 @@ const MASTER_NR52_ADDRESS: u16 = 0xFF26;
 const CH4_NR42_ADDRESS: u16 = 0xFF21;
 const CH4_NR43_ADDRESS: u16 = 0xFF22;
 const CH4_NR44_ADDRESS: u16 = 0xFF23;
-const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
-    DialogFileFilter {
-        name: "Game Boy ROMs",
-        pattern: "gb;gbc;bin",
-    },
-    DialogFileFilter {
-        name: "All files",
-        pattern: "*",
-    },
-];
+const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 1] = [DialogFileFilter {
+    name: "Game Boy ROMs",
+    pattern: "gb;gbc",
+}];
 const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "PNG images",
@@ -1067,10 +1061,11 @@ impl PathSelectionDialog {
         }
 
         let sender = self.sender.clone();
+        let default_location = sdl_dialog_default_location(default_location);
         map_display_result(
             show_open_file_dialog(
                 filters,
-                Some(default_location),
+                Some(&default_location),
                 false,
                 window,
                 Box::new(move |result, _| {
@@ -1094,10 +1089,11 @@ impl PathSelectionDialog {
         }
 
         let sender = self.sender.clone();
+        let default_location = sdl_dialog_default_location(default_location);
         map_display_result(
             show_save_file_dialog(
                 filters,
-                Some(default_location),
+                Some(&default_location),
                 window,
                 Box::new(move |result, _| {
                     let _ = sender.send(map_path_dialog_result(result));
@@ -1115,8 +1111,9 @@ impl PathSelectionDialog {
         }
 
         let sender = self.sender.clone();
+        let default_location = sdl_dialog_default_location(default_location);
         show_open_folder_dialog(
-            Some(default_location),
+            Some(&default_location),
             false,
             window,
             Box::new(move |result, _| {
@@ -1139,6 +1136,19 @@ impl PathSelectionDialog {
             }
         }
     }
+}
+
+fn sdl_dialog_default_location(default_location: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if default_location.is_dir() {
+            let mut directory = default_location.to_path_buf();
+            directory.push("");
+            return directory;
+        }
+    }
+
+    default_location.to_path_buf()
 }
 
 impl FrontendRuntime {
