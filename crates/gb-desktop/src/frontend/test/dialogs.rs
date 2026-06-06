@@ -21,8 +21,9 @@ fn open_rom_dialog_result_preserves_cancel_as_a_non_selection() {
 
 #[test]
 fn open_rom_dialog_filters_include_supported_game_boy_extensions() {
+    assert_eq!(ROM_FILE_DIALOG_FILTERS.len(), 1);
     assert_eq!(ROM_FILE_DIALOG_FILTERS[0].name, "Game Boy ROMs");
-    assert_eq!(ROM_FILE_DIALOG_FILTERS[0].pattern, "gb;gbc;bin");
+    assert_eq!(ROM_FILE_DIALOG_FILTERS[0].pattern, "gb;gbc");
 }
 
 #[test]
@@ -91,6 +92,33 @@ fn desktop_session_path_helpers_cover_linked_and_directory_fallbacks() {
         session.linked_secondary_rom_bytes(),
         Some([0x03, 0x04].as_slice())
     );
+}
+
+#[test]
+fn sdl_dialog_default_location_keeps_macos_directory_hints_inside_the_directory() {
+    let root = temp_test_root("sdl-dialog-default-location");
+    let directory = root.join("roms");
+    fs::create_dir_all(&directory).expect("dialog directory should be creatable");
+    let file_path = directory.join("tetris.gb");
+    fs::write(&file_path, b"rom").expect("dialog file should be writable");
+
+    let directory_location = super::super::sdl_dialog_default_location(&directory);
+    let file_location = super::super::sdl_dialog_default_location(&file_path);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut expected_directory = directory.clone();
+        expected_directory.push("");
+        assert_eq!(
+            directory_location.as_os_str(),
+            expected_directory.as_os_str()
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        assert_eq!(directory_location.as_os_str(), directory.as_os_str());
+    }
+    assert_eq!(file_location.as_os_str(), file_path.as_os_str());
 }
 
 #[test]
