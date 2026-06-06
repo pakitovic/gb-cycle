@@ -220,6 +220,42 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let borrowed_sgb_info = decode_png_info(&borrowed_sgb_png_artifact);
     assert_eq!(borrowed_sgb_info.width, SGB_HOST_FRAMEBUFFER_WIDTH as u32);
     assert_eq!(borrowed_sgb_info.height, SGB_HOST_FRAMEBUFFER_HEIGHT as u32);
+    let borrowed_sgb_palette_png_artifact = encode_framebuffer_artifact_with_borrowed_sgb_border(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
+        Some(&borrowed_sgb_border),
+        None,
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("borrowed SGB border PNG with DMG palette aperture should succeed");
+    let borrowed_sgb_palette_info = decode_png_info(&borrowed_sgb_palette_png_artifact);
+    assert_eq!(
+        borrowed_sgb_palette_info.width,
+        SGB_HOST_FRAMEBUFFER_WIDTH as u32
+    );
+    assert_eq!(
+        borrowed_sgb_palette_info.height,
+        SGB_HOST_FRAMEBUFFER_HEIGHT as u32
+    );
+    let borrowed_sgb_grayscale_png_artifact = encode_framebuffer_artifact_with_borrowed_sgb_border(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
+        Some(&borrowed_sgb_border),
+        None,
+        None,
+    )
+    .expect("borrowed SGB border PNG with grayscale aperture should succeed");
+    let borrowed_sgb_grayscale_info = decode_png_info(&borrowed_sgb_grayscale_png_artifact);
+    assert_eq!(
+        borrowed_sgb_grayscale_info.width,
+        SGB_HOST_FRAMEBUFFER_WIDTH as u32
+    );
+    assert_eq!(
+        borrowed_sgb_grayscale_info.height,
+        SGB_HOST_FRAMEBUFFER_HEIGHT as u32
+    );
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));
