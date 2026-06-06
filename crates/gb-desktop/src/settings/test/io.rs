@@ -94,10 +94,7 @@ fn persisting_machine_preferences_updates_the_saved_settings() {
         .expect("machine settings should persist");
 
     let reloaded = PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
-    assert_eq!(
-        reloaded.launch.console_model,
-        PersistedDesktopConsoleModel::GameBoy
-    );
+    assert_eq!(reloaded.launch.model, PersistedDesktopConsoleModel::GameBoy);
     assert_eq!(
         reloaded.launch.sgb_video_standard,
         PersistedSgbVideoStandard::Pal

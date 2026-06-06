@@ -4,7 +4,7 @@ use super::*;
 fn settings_store_base_config_applies_revision_for_cgb_model() {
     let path = unique_test_path("applies-cgb-revision");
     let mut settings = PersistedDesktopSettings::default();
-    settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyColor;
+    settings.launch.model = PersistedDesktopConsoleModel::GameBoyColor;
     settings.launch.revision = PersistedHardwareRevision::CpuCgbE;
     settings
         .save(&path)

@@ -948,7 +948,7 @@ fn execute_menu_actions_update_runtime_machine_and_persisted_settings() {
 
     let persisted =
         fs::read_to_string(&harness.settings_path).expect("actions test should persist settings");
-    assert!(persisted.contains("console_model = \"pocket\""));
+    assert!(persisted.contains("model = \"MGB\""));
     assert!(persisted.contains("revision = \"cpu-mgb\""));
     assert!(persisted.contains("startup_mode = \"skip-boot\""));
 }

@@ -125,7 +125,7 @@ Full-machine `.gbstate` files and rewind snapshots are separate from cartridge s
 
 Desktop settings are stored under the platform config directory unless `GB_CYCLE_DESKTOP_SETTINGS_PATH` points to a specific settings file.
 
-Persisted settings include launch model/startup/mode, boot-ROM path/verification, save policy/directory/enabled state, state autoload slot, rewind/Fast Forward policy, video presentation settings, audio device policy, input/gamepad bindings, preferred SDL gamepad identity, last opened directory, and recent-ROM history.
+Persisted settings include launch `model`/startup/mode, boot-ROM path/verification, save policy/directory/enabled state, state autoload slot, rewind/Fast Forward policy, video presentation settings, audio device policy, input/gamepad bindings, preferred SDL gamepad identity, last opened directory, and recent-ROM history. The persisted `model` key uses the same values as `--model`: `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`.
 
 Audio channel masks and automatic `RECORD` state are intentionally not persisted, so a fresh launch starts with the full mix selected and recording disabled unless CLI recording flags explicitly request otherwise. Pocket Camera still-image and live-camera state are also not persisted.
 

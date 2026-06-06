@@ -589,7 +589,7 @@ impl Default for PersistedDesktopSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct PersistedLaunchSettings {
-    console_model: PersistedDesktopConsoleModel,
+    model: PersistedDesktopConsoleModel,
     revision: PersistedHardwareRevision,
     sgb_video_standard: PersistedSgbVideoStandard,
     startup_mode: PersistedStartupMode,
@@ -599,7 +599,7 @@ struct PersistedLaunchSettings {
 impl PersistedLaunchSettings {
     fn from_config(config: &DesktopConfig) -> Self {
         Self {
-            console_model: PersistedDesktopConsoleModel::from_external(config.launch.console_model),
+            model: PersistedDesktopConsoleModel::from_external(config.launch.console_model),
             revision: PersistedHardwareRevision::from_external(config.launch.revision),
             sgb_video_standard: PersistedSgbVideoStandard::from_external(
                 config.launch.sgb_video_standard,
@@ -610,7 +610,7 @@ impl PersistedLaunchSettings {
     }
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
-        config.launch.console_model = self.console_model.to_external();
+        config.launch.console_model = self.model.to_external();
         config.launch.revision = self.revision.to_external();
         config.launch.normalize_revision_for_model();
         config.launch.sgb_video_standard = self.sgb_video_standard.to_external();
@@ -797,28 +797,20 @@ impl PersistedSaveDirectoryPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 enum PersistedDesktopConsoleModel {
     #[default]
-    #[serde(rename = "game-boy")]
+    #[serde(rename = "DMG")]
     GameBoy,
-    #[serde(rename = "pocket")]
+    #[serde(rename = "MGB")]
     GameBoyPocket,
-    #[serde(rename = "light")]
+    #[serde(rename = "LGB")]
     GameBoyLight,
-    #[serde(rename = "color")]
+    #[serde(rename = "CGB")]
     GameBoyColor,
-    #[serde(rename = "advance", alias = "agb")]
+    #[serde(rename = "AGB")]
     GameBoyAdvance,
-    #[serde(rename = "super-gb")]
+    #[serde(rename = "SGB")]
     SuperGameBoy,
-    #[serde(rename = "super-gb-2")]
+    #[serde(rename = "SGB2")]
     SuperGameBoy2,
-    #[serde(rename = "dmg0")]
-    LegacyDmg0,
-    #[serde(rename = "dmg")]
-    LegacyDmg,
-    #[serde(rename = "mgb")]
-    LegacyMgb,
-    #[serde(rename = "cgb")]
-    LegacyCgb,
 }
 
 impl PersistedDesktopConsoleModel {
@@ -836,12 +828,10 @@ impl PersistedDesktopConsoleModel {
 
     fn to_external(self) -> gb_desktop::DesktopConsoleModel {
         match self {
-            Self::GameBoy | Self::LegacyDmg0 | Self::LegacyDmg => {
-                gb_desktop::DesktopConsoleModel::GameBoy
-            }
-            Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
+            Self::GameBoy => gb_desktop::DesktopConsoleModel::GameBoy,
+            Self::GameBoyPocket => gb_desktop::DesktopConsoleModel::GameBoyPocket,
             Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
-            Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+            Self::GameBoyColor => gb_desktop::DesktopConsoleModel::GameBoyColor,
             Self::GameBoyAdvance => gb_desktop::DesktopConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy => gb_desktop::DesktopConsoleModel::SuperGameBoy,
             Self::SuperGameBoy2 => gb_desktop::DesktopConsoleModel::SuperGameBoy2,
