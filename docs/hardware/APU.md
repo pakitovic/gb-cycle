@@ -74,7 +74,7 @@ The master `Apu` owns power state, `NR50`, `NR51`, `NR52`, frame-sequencer state
 - CH3 digital output comes from the sample buffer after `NR32` attenuation, not from a fresh wave-RAM read at mix time. `NR32 = 00` mutes digitally; `01`, `10`, and `11` output unshifted, half, and quarter sample levels respectively.
 - CH3 trigger does not refill the sample buffer immediately. After APU power-on the buffer starts at digital `0`; the first post-trigger visible sample follows the hardware first-sample/startup delay rather than immediately replaying wave-table sample `0`.
 - CH3 fast timing runs at the wave-channel sample-fetch cadence and only reads wave RAM while the channel is active. Inactive timing must not preload the sample buffer.
-- DMG-family active wave-RAM reads/writes are only honored on the exact internal fetch T-cycle; outside that window reads return `0xFF` and writes are ignored. CGB-family active wave-RAM accesses redirect to the byte currently being read, while inactive access remains ordinary indexed wave RAM.
+- DMG-family active wave-RAM reads/writes are only honored on the exact internal fetch T-cycle; outside that window reads return `0xFF` and writes are ignored. CGB-family active wave-RAM accesses redirect to the byte currently being read, except for the AGB GB/C compatibility profile where active wave-RAM reads return `0xFF` and writes are ignored; inactive access remains ordinary indexed wave RAM.
 - DMG-family retrigger corruption is explicit and model-gated. It depends on the exact internal byte-read position: bytes `0..=3` use the special first-byte overwrite, while bytes `4..=15` copy the documented aligned 4-byte block into the first four wave-RAM bytes.
 
 ## CH4 noise channel

@@ -1065,9 +1065,11 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
 fn unusable_area_descriptor_is_model_aware() {
     let dmg_bus = Bus::new(ConsoleModel::GameBoy);
     let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let agb_bus = Bus::new(ConsoleModel::GameBoyAdvance);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
     let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+    let agb = agb_bus.describe_unusable_area(0xFEA0).unwrap();
 
     assert_eq!(dmg.address(), 0xFEA0);
     assert_eq!(
@@ -1090,8 +1092,21 @@ fn unusable_area_descriptor_is_model_aware() {
     assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
     assert!(cgb.runtime_fallback_writes_ignored());
 
+    assert_eq!(agb.address(), 0xFEA0);
+    assert_eq!(
+        agb.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(
+        agb.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
+    assert_eq!(agb.runtime_fallback_read_value(), 0xAA);
+    assert!(agb.runtime_fallback_writes_ignored());
+
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
     assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());
+    assert!(agb_bus.describe_unusable_area(0xFF00).is_none());
 }
 
 #[test]

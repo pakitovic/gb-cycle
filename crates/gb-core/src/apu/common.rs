@@ -167,6 +167,7 @@ pub(super) const PULSE_DUTY_PATTERNS: [[bool; 8]; 4] = [
 pub(super) enum WaveRamMmioPolicy {
     DmgCurrentByteDuringFetchOnly,
     CgbCurrentByteWhileActive,
+    AgbInaccessibleWhileActive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -299,6 +300,8 @@ impl EnvelopeState {
 pub(super) fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
     if console_model.is_dmg_family() {
         WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
+    } else if matches!(console_model, ConsoleModel::GameBoyAdvance) {
+        WaveRamMmioPolicy::AgbInaccessibleWhileActive
     } else {
         WaveRamMmioPolicy::CgbCurrentByteWhileActive
     }
