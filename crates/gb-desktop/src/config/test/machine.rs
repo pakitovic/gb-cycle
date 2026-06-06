@@ -34,6 +34,15 @@ fn machine_config_applies_revision_for_selected_model() {
     assert_eq!(cgb_config.console_model, ConsoleModel::GameBoyColor);
     assert_eq!(cgb_config.revision, HardwareRevision::CpuCgbE);
 
+    config.launch.console_model = DesktopConsoleModel::GameBoyAdvance;
+    config.launch.revision = HardwareRevision::CpuAgbA;
+    let agb_config = config
+        .machine_config()
+        .expect("skip-boot should not load firmware");
+    assert_eq!(agb_config.console_model, ConsoleModel::GameBoyAdvance);
+    assert_eq!(agb_config.revision, HardwareRevision::CpuAgbA);
+    assert_eq!(agb_config.boot_rom_asset_kind(), BootRomAssetKind::CgbAgb);
+
     config.launch.console_model = DesktopConsoleModel::GameBoy;
     let dmg_config = config
         .machine_config()

@@ -380,11 +380,11 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 - SameBoy and ares are recorded as corroborating implementation references because SameBoy exposes `KEY0`, `OPRI`, `PSM`, `PSWX`, `PSWY`, `PSW`, and PGB-adjacent register hooks while ares treats `KEY0` bit `3` as an `opriEnable` / PGB-like gate; these references do not replace hardware truth or broaden the gb-cycle model beyond the DocBoy-validated register subset.
 - Full PGB mode, PSM NMI behavior, boot-ROM remap side effects after normal handoff, external-LCD/PGB visual behavior, and undocumented live `KEY0` / `OPRI` interactions beyond the implemented latch/readback baseline remain deferred until hardware research, Pan Docs updates, and dedicated tests define a concrete model.
 
-## Post-Slice 10 — Out-of-scope AGB / GBA / GBP host behavior
+## Post-Slice 10 — AGB GB/C compatibility profile and remaining GBA / GBP host behavior
 
-- AGB/AGS/GBA and Game Boy Player host behavior is outside Phase 10; the Phase 10 CGB core must model CGB-family hardware, not a GBA running in CGB compatibility mode.
-- Commercial smoke titles that mention GBA detection are reference-only sanity cases; their GBA-specific branches, display correction, host BIOS behavior, and Game Boy Player integration must not become CGB acceptance criteria.
-- If a future AGB/GBP phase is opened, it must introduce explicit model axes, boot assets, post-boot register expectations, color-correction policy, and tests instead of overloading `ConsoleModel::GameBoyColor`.
+- Post-Phase 10 work now includes the explicit `GameBoyAdvance` / `CpuAgbA` GB/C compatibility profile: it is CGB-family for GB/C execution, selects `cgb_agb_boot.bin`, exposes the AGB post-boot detection fingerprint, and must not overload `ConsoleModel::GameBoyColor`.
+- Native GBA execution, `gba_bios.bin`, AGS/SP UI variants, Game Boy Player host behavior, display correction policy, and GameCube/Game Boy Player Start-up Disc integration remain outside Phase 10 and outside the current AGB GB/C compatibility profile.
+- Commercial smoke titles that mention GBA detection are reference sanity cases for the explicit AGB profile; their broader GBA-specific branches, host BIOS behavior, and Game Boy Player integration must not become CGB acceptance criteria.
 
 ## Cross-cutting CGB save-state and determinism rule
 
@@ -460,7 +460,7 @@ Practical header distinction: GB-compatible / CGB-enhanced dual-mode titles norm
 
 - SGB is out of scope for this roadmap.
 - CGB revision behavior remains scoped to concrete oracles: the active public CGB set is `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`, while unrelated CGB behavior must not branch on revision until a tested difference requires it.
-- AGB/AGS/GBA and Game Boy Player host behavior are out of scope for Phase 10 even when a reference-only smoke title contains GBA-detection logic.
+- Native GBA, AGS/SP-specific UI profiles, and Game Boy Player host behavior remain out of scope for Phase 10 even though the post-Phase 10 AGB GB/C compatibility profile now covers GBA-detection logic through `ConsoleModel::GameBoyAdvance`.
 - Full PGB mode, PSM NMI, boot-ROM remap side effects, external-LCD/PGB visuals, and unusual undocumented `KEY0` / `OPRI` flows remain out of scope beyond the experimental DocBoy-validated CGB DMG-ext register subset until a post-Slice 10 research effort defines dedicated hardware evidence and validation targets.
 - `cgb-acid-hell` is a closure gate, not an initial architecture gate.
 - ROM paths already passed on DMG may reappear as CGB-mode tests when they validate model/mode separation.

@@ -526,6 +526,7 @@ fn desktop_model_from_benchmark(model: BenchmarkModel) -> DesktopConsoleModel {
         BenchmarkModel::Mgb => DesktopConsoleModel::GameBoyPocket,
         BenchmarkModel::Lgb => DesktopConsoleModel::GameBoyLight,
         BenchmarkModel::Cgb => DesktopConsoleModel::GameBoyColor,
+        BenchmarkModel::Agb => DesktopConsoleModel::GameBoyAdvance,
     }
 }
 

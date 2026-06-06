@@ -669,6 +669,8 @@ enum PersistedHardwareRevision {
     CpuCgbD,
     #[serde(rename = "cpu-cgb-e")]
     CpuCgbE,
+    #[serde(rename = "cpu-agb-a")]
+    CpuAgbA,
 }
 
 impl PersistedHardwareRevision {
@@ -685,6 +687,7 @@ impl PersistedHardwareRevision {
             HardwareRevision::CpuCgbC => Self::CpuCgbC,
             HardwareRevision::CpuCgbD => Self::CpuCgbD,
             HardwareRevision::CpuCgbE => Self::CpuCgbE,
+            HardwareRevision::CpuAgbA => Self::CpuAgbA,
         }
     }
 
@@ -701,6 +704,7 @@ impl PersistedHardwareRevision {
             Self::CpuCgbC => HardwareRevision::CpuCgbC,
             Self::CpuCgbD => HardwareRevision::CpuCgbD,
             Self::CpuCgbE => HardwareRevision::CpuCgbE,
+            Self::CpuAgbA => HardwareRevision::CpuAgbA,
         }
     }
 }
@@ -801,6 +805,8 @@ enum PersistedDesktopConsoleModel {
     GameBoyLight,
     #[serde(rename = "color")]
     GameBoyColor,
+    #[serde(rename = "advance", alias = "agb")]
+    GameBoyAdvance,
     #[serde(rename = "super-gb")]
     SuperGameBoy,
     #[serde(rename = "super-gb-2")]
@@ -822,6 +828,7 @@ impl PersistedDesktopConsoleModel {
             gb_desktop::DesktopConsoleModel::GameBoyPocket => Self::GameBoyPocket,
             gb_desktop::DesktopConsoleModel::GameBoyLight => Self::GameBoyLight,
             gb_desktop::DesktopConsoleModel::GameBoyColor => Self::GameBoyColor,
+            gb_desktop::DesktopConsoleModel::GameBoyAdvance => Self::GameBoyAdvance,
             gb_desktop::DesktopConsoleModel::SuperGameBoy => Self::SuperGameBoy,
             gb_desktop::DesktopConsoleModel::SuperGameBoy2 => Self::SuperGameBoy2,
         }
@@ -835,6 +842,7 @@ impl PersistedDesktopConsoleModel {
             Self::GameBoyPocket | Self::LegacyMgb => gb_desktop::DesktopConsoleModel::GameBoyPocket,
             Self::GameBoyLight => gb_desktop::DesktopConsoleModel::GameBoyLight,
             Self::GameBoyColor | Self::LegacyCgb => gb_desktop::DesktopConsoleModel::GameBoyColor,
+            Self::GameBoyAdvance => gb_desktop::DesktopConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy => gb_desktop::DesktopConsoleModel::SuperGameBoy,
             Self::SuperGameBoy2 => gb_desktop::DesktopConsoleModel::SuperGameBoy2,
         }

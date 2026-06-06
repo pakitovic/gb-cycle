@@ -610,7 +610,7 @@ impl AddressRouter {
                     true,
                 )
             }
-            ConsoleModel::GameBoyColor => {
+            ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
                 let fallback_read_value = match revision {
                     HardwareRevision::CpuCgbE => cgb_e_extra_oam_read_value(address),
                     _ => BLOCKED_READ_VALUE,

@@ -16,12 +16,13 @@ pub enum ConsoleModel {
     GameBoyPocket,
     GameBoyLight,
     GameBoyColor,
+    GameBoyAdvance,
 }
 
 impl ConsoleModel {
     pub const fn family(self) -> ConsoleFamily {
         match self {
-            Self::GameBoyColor => ConsoleFamily::Cgb,
+            Self::GameBoyColor | Self::GameBoyAdvance => ConsoleFamily::Cgb,
             Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight => ConsoleFamily::Dmg,
         }
     }
@@ -32,6 +33,10 @@ impl ConsoleModel {
 
     pub const fn is_cgb_family(self) -> bool {
         matches!(self.family(), ConsoleFamily::Cgb)
+    }
+
+    pub const fn has_cgb_infrared_port(self) -> bool {
+        matches!(self, Self::GameBoyColor)
     }
 
     pub const fn default_operating_mode(self) -> OperatingMode {
@@ -46,6 +51,7 @@ impl ConsoleModel {
             Self::GameBoy => HardwareRevision::DmgCpuC,
             Self::GameBoyPocket | Self::GameBoyLight => HardwareRevision::CpuMgb,
             Self::GameBoyColor => HardwareRevision::CpuCgbE,
+            Self::GameBoyAdvance => HardwareRevision::CpuAgbA,
         }
     }
 
@@ -54,6 +60,7 @@ impl ConsoleModel {
             Self::GameBoy => &ACTIVE_DMG_REVISIONS,
             Self::GameBoyPocket | Self::GameBoyLight => &ACTIVE_MGB_REVISIONS,
             Self::GameBoyColor => &ACTIVE_CGB_REVISIONS,
+            Self::GameBoyAdvance => &ACTIVE_AGB_REVISIONS,
         }
     }
 
@@ -67,6 +74,7 @@ impl ConsoleModel {
                 revision,
                 HardwareRevision::CpuCgbC | HardwareRevision::CpuCgbD | HardwareRevision::CpuCgbE
             ),
+            Self::GameBoyAdvance => matches!(revision, HardwareRevision::CpuAgbA),
         }
     }
 
@@ -126,6 +134,7 @@ const ACTIVE_CGB_REVISIONS: [HardwareRevision; 3] = [
     HardwareRevision::CpuCgbD,
     HardwareRevision::CpuCgbE,
 ];
+const ACTIVE_AGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuAgbA];
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
@@ -143,6 +152,7 @@ pub enum HardwareRevision {
     CpuCgbC,
     CpuCgbD,
     CpuCgbE,
+    CpuAgbA,
 }
 
 impl HardwareRevision {
@@ -167,6 +177,7 @@ impl HardwareRevision {
                 | Self::CpuCgbC
                 | Self::CpuCgbD
                 | Self::CpuCgbE
+                | Self::CpuAgbA
         )
     }
 }

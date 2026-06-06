@@ -623,6 +623,11 @@ fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
             console_model: ConsoleModel::GameBoyColor,
             host_platform: HostPlatform::Handheld,
         }),
+        "agb" => Ok(ConsoleProfile {
+            report_console: ReportConsole::Agb,
+            console_model: ConsoleModel::GameBoyAdvance,
+            host_platform: HostPlatform::Handheld,
+        }),
         "sgb" => Ok(ConsoleProfile {
             report_console: ReportConsole::Sgb,
             console_model: ConsoleModel::GameBoy,
@@ -650,6 +655,7 @@ fn parse_hardware_revision(revision: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
         "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         other => Err(format!("unsupported revision {other:?}")),
     }
 }

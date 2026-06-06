@@ -10,6 +10,10 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::Light.console_model(), ConsoleModel::GameBoyLight);
     assert_eq!(RunModel::Color.console_model(), ConsoleModel::GameBoyColor);
     assert_eq!(
+        RunModel::Advance.console_model(),
+        ConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
         RunModel::SuperGameBoy.console_model(),
         ConsoleModel::GameBoy
     );
@@ -56,6 +60,11 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(
         RunModel::Color.console_model().default_revision(),
         HardwareRevision::CpuCgbE
+    );
+    assert_eq!(RunModel::Advance.name(), "AGB");
+    assert_eq!(
+        RunModel::Advance.console_model().default_revision(),
+        HardwareRevision::CpuAgbA
     );
     assert_eq!(RunModel::SuperGameBoy.name(), "SGB");
     assert_eq!(RunModel::SuperGameBoy2.name(), "SGB2");
@@ -112,6 +121,10 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         RunModel::Color
     );
     assert_eq!(
+        run_model_from_benchmark(BenchmarkModel::Agb),
+        RunModel::Advance
+    );
+    assert_eq!(
         startup_mode_from_benchmark(BenchmarkStartup::SkipBoot),
         StartupMode::SkipBoot
     );
@@ -144,6 +157,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(parse_run_model("MGB"), Ok(RunModel::Pocket));
     assert_eq!(parse_run_model("LGB"), Ok(RunModel::Light));
     assert_eq!(parse_run_model("CGB"), Ok(RunModel::Color));
+    assert_eq!(parse_run_model("AGB"), Ok(RunModel::Advance));
     assert_eq!(parse_run_model("SGB"), Ok(RunModel::SuperGameBoy));
     assert_eq!(parse_run_model("SGB2"), Ok(RunModel::SuperGameBoy2));
     assert_eq!(parse_sgb_video_standard("ntsc"), Ok(SgbVideoStandard::Ntsc));
@@ -158,7 +172,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     ] {
         let error = parse_run_model(previous).expect_err("previous models should fail");
         assert!(error.contains("unsupported --model value"));
-        assert!(error.contains("DMG, MGB, LGB, CGB, SGB, SGB2"));
+        assert!(error.contains("DMG, MGB, LGB, CGB, AGB, SGB, SGB2"));
         assert!(!error.contains("game-boy, pocket, light, color"));
     }
     assert!(
@@ -171,6 +185,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
     assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
     assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+    assert_eq!(parse_revision("cpu-agb-a"), Ok(HardwareRevision::CpuAgbA));
     assert!(
         parse_revision("cpu-cgb-b")
             .expect_err("inactive revisions should fail")
@@ -212,8 +227,16 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         "cpu-cgb-e"
     );
     assert_eq!(
+        revision_argument_name(HardwareRevision::CpuAgbA),
+        "cpu-agb-a"
+    );
+    assert_eq!(
         supported_revision_names(ConsoleModel::GameBoyColor),
         "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
+    );
+    assert_eq!(
+        supported_revision_names(ConsoleModel::GameBoyAdvance),
+        "cpu-agb-a"
     );
     assert_eq!(parse_display_palette("grey"), Ok(RunDisplayPalette::Grey));
     assert_eq!(
@@ -387,6 +410,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         HardwareRevision::CpuCgbC,
         HardwareRevision::CpuCgbD,
         HardwareRevision::CpuCgbE,
+        HardwareRevision::CpuAgbA,
     ] {
         assert_eq!(revision.boot_rom_expected_sha256().len(), 64);
     }

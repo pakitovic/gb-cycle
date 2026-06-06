@@ -334,6 +334,16 @@ fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
         presentation.item_label(MenuItem::ConsoleModel),
         "MODEL GB COLOR"
     );
+    presentation.console_model = DesktopConsoleModel::GameBoyAdvance;
+    presentation.revision = HardwareRevision::CpuAgbA;
+    assert_eq!(
+        presentation.item_label(MenuItem::ConsoleModel),
+        "MODEL GB ADVANCE"
+    );
+    assert_eq!(
+        presentation.item_label(MenuItem::HardwareRevision),
+        "REV CPU AGB A"
+    );
     presentation.console_model = DesktopConsoleModel::SuperGameBoy;
     assert_eq!(
         presentation.item_label(MenuItem::ConsoleModel),
@@ -521,6 +531,11 @@ fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
         );
     }
     presentation.console_model = DesktopConsoleModel::GameBoyColor;
+    assert_eq!(
+        presentation.item_label(MenuItem::DisplayPalette),
+        "PALETTE RGB555"
+    );
+    presentation.console_model = DesktopConsoleModel::GameBoyAdvance;
     assert_eq!(
         presentation.item_label(MenuItem::DisplayPalette),
         "PALETTE RGB555"

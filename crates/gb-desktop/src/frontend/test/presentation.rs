@@ -19,6 +19,10 @@ fn display_palette_selection_covers_visible_console_models() {
         DesktopDisplayPalette::Grey
     );
     assert_eq!(
+        DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyAdvance),
+        DesktopDisplayPalette::Grey
+    );
+    assert_eq!(
         super::super::display_palette_for_desktop_palette(DesktopDisplayPalette::Grey).shade_rgb(0),
         [super::super::DMG_GRAYSCALE_SHADES[0]; 3]
     );

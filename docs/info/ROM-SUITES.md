@@ -55,7 +55,7 @@ Rendered report files are derived from `.status`; regenerate them with `cargo ro
 - Every suite should declare common metadata once in the header and override only rows that differ.
 - `execution_mode` is omitted for default `Strict`; set it only for intentional `permissive` or `experimental` cases.
 - `disabled = true` requires a non-empty `comment = "..."`.
-- Use `report_console_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs console-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(SGB)`, or `(SGB2)`.
+- Use `report_console_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs console-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(AGB)`, `(SGB)`, or `(SGB2)`.
 - Do not add root-level legacy manifests, ad hoc suite copies, or direct upstream checkout paths.
 
 Linked manifests use `[[case]]` plus `[[case.participant]]`, explicit participant IDs, and `topology = "dmg04"`, `topology = "dmg07"`, or `topology = "cgb-ir"`.
@@ -115,7 +115,7 @@ Pass `--html` to also write `test/<report-store>/test-report.html` from the same
 
 `cargo rom-suite` and `cargo rom-suite-link` do not use startup or boot-ROM environment variables. Pass `--boot-rom-dir <dir>` explicitly to force all selected cases or participants through RealBoot.
 
-The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, or `cgbE_boot.bin`. The runner verifies only the assets required by the selected console/host profiles.
+The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected console/host profiles.
 
 Use RealBoot runs as local comparison evidence. Rerun the matching default startup command afterward when status/artifacts should represent the baseline lane again.
 
@@ -123,7 +123,7 @@ Use RealBoot runs as local comparison evidence. Rerun the matching default start
 
 For ROM-driven fixes or regressions, copy the relevant `/test/<report>/` status/artifact tree before the change, rerun the suite, copy the final tree, and compare changed rows explicitly.
 
-Same-ROM console variants are ordered DMG before GBC before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
+Same-ROM console variants are ordered DMG before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
 
 ## CI integration
 

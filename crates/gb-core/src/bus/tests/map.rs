@@ -365,6 +365,32 @@ fn native_cgb_rp_register_exposes_only_the_phase10_infrared_latches() {
 }
 
 #[test]
+fn agb_cgb_family_profile_does_not_expose_the_physical_cgb_ir_register() {
+    let mut native = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyAdvance,
+        crate::model::OperatingMode::Cgb,
+    );
+    let mut dmg_ext = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyAdvance,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+
+    for bus in [&mut native, &mut dmg_ext] {
+        assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+        bus.write_with_context(
+            0xFF56,
+            0x00,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoWriteView::default(),
+        );
+        assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+        assert_eq!(bus.cgb_infrared_status(), None);
+    }
+}
+
+#[test]
 fn cgb_infrared_status_is_available_for_native_cgb_and_dmg_ext_profiles() {
     const IR_WARMUP_T_CYCLES: usize = 19_900;
 

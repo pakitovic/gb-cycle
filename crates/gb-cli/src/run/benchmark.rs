@@ -85,6 +85,7 @@ pub(crate) fn run_model_from_benchmark(model: BenchmarkModel) -> RunModel {
         BenchmarkModel::Mgb => RunModel::Pocket,
         BenchmarkModel::Lgb => RunModel::Light,
         BenchmarkModel::Cgb => RunModel::Color,
+        BenchmarkModel::Agb => RunModel::Advance,
     }
 }
 

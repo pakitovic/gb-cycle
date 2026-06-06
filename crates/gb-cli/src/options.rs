@@ -26,6 +26,7 @@ pub(crate) enum RunModel {
     Pocket,
     Light,
     Color,
+    Advance,
     SuperGameBoy,
     SuperGameBoy2,
 }
@@ -37,6 +38,7 @@ impl RunModel {
             Self::Pocket => ConsoleModel::GameBoyPocket,
             Self::Light => ConsoleModel::GameBoyLight,
             Self::Color => ConsoleModel::GameBoyColor,
+            Self::Advance => ConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
         }
     }
@@ -46,7 +48,7 @@ impl RunModel {
         match self {
             Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
             Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
-            Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color | Self::Advance => None,
         }
     }
 
@@ -60,7 +62,7 @@ impl RunModel {
                 SgbVideoStandard::Pal => Some(SgbHostProfile::SgbPal),
             },
             Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
-            Self::GameBoy | Self::Pocket | Self::Light | Self::Color => None,
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color | Self::Advance => None,
         }
     }
 
@@ -70,6 +72,7 @@ impl RunModel {
             Self::Pocket => "MGB",
             Self::Light => "LGB",
             Self::Color => "CGB",
+            Self::Advance => "AGB",
             Self::SuperGameBoy => "SGB",
             Self::SuperGameBoy2 => "SGB2",
         }

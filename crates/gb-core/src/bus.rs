@@ -155,7 +155,8 @@ impl Bus {
     }
 
     pub fn cgb_infrared_register_enabled(&self) -> bool {
-        self.console_model.is_cgb_family() && self.operating_mode.enables_cgb_infrared_register()
+        self.console_model.has_cgb_infrared_port()
+            && self.operating_mode.enables_cgb_infrared_register()
     }
 
     pub(crate) fn io_register_info_is_live(&self, info: IoRegisterInfo) -> bool {

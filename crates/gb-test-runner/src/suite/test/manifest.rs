@@ -458,6 +458,34 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
     );
     assert_eq!(cgb_manifest.cases[0].report_console, ReportConsole::Cgb);
 
+    let agb_console = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-agb",
+        "cgb-acid2.gbc",
+    )
+    .replace("console = \"dmg\"", "console = \"agb\"");
+    let agb_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &agb_console,
+    )
+    .expect("agb should parse");
+    assert_eq!(
+        agb_manifest.cases[0].console_model,
+        gb_core::ConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
+        agb_manifest.cases[0].hardware_revision,
+        gb_core::HardwareRevision::CpuAgbA
+    );
+    assert_eq!(
+        agb_manifest.cases[0].host_platform,
+        gb_core::HostPlatform::Handheld
+    );
+    assert_eq!(agb_manifest.cases[0].report_console, ReportConsole::Agb);
+
     let sgb_console = basic_manifest(
         "gb-emulator-shootout",
         "samesuite",

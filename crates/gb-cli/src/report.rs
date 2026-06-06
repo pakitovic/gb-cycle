@@ -51,6 +51,7 @@ pub(crate) fn revision_argument_name(revision: HardwareRevision) -> &'static str
         HardwareRevision::CpuCgbC => "cpu-cgb-c",
         HardwareRevision::CpuCgbD => "cpu-cgb-d",
         HardwareRevision::CpuCgbE => "cpu-cgb-e",
+        HardwareRevision::CpuAgbA => "cpu-agb-a",
     }
 }
 

@@ -422,8 +422,8 @@ pub fn help_text() -> &'static str {
         "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
-        "  --model <DMG|MGB|LGB|CGB|SGB|SGB2>    Select the console model/profile (default: DMG)\n",
-        "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>\n",
+        "  --model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2> Select the console model/profile (default: DMG)\n",
+        "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>\n",
         "                                         Select the active hardware revision for --model\n",
         "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
@@ -489,10 +489,11 @@ fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
         "MGB" => Ok(DesktopConsoleModel::GameBoyPocket),
         "LGB" => Ok(DesktopConsoleModel::GameBoyLight),
         "CGB" => Ok(DesktopConsoleModel::GameBoyColor),
+        "AGB" => Ok(DesktopConsoleModel::GameBoyAdvance),
         "SGB" => Ok(DesktopConsoleModel::SuperGameBoy),
         "SGB2" => Ok(DesktopConsoleModel::SuperGameBoy2),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, SGB, SGB2"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, AGB, SGB, SGB2"
         )),
     }
 }
@@ -504,8 +505,9 @@ fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
         "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         _ => Err(format!(
-            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
         )),
     }
 }
@@ -566,6 +568,7 @@ fn revision_argument_name(revision: HardwareRevision) -> &'static str {
         HardwareRevision::CpuCgbC => "cpu-cgb-c",
         HardwareRevision::CpuCgbD => "cpu-cgb-d",
         HardwareRevision::CpuCgbE => "cpu-cgb-e",
+        HardwareRevision::CpuAgbA => "cpu-agb-a",
     }
 }
 

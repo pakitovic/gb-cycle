@@ -109,7 +109,8 @@ impl HpfChargeModel {
             ConsoleModel::GameBoy => Self::Dmg0Dmg,
             ConsoleModel::GameBoyPocket
             | ConsoleModel::GameBoyLight
-            | ConsoleModel::GameBoyColor => Self::MgbCgb,
+            | ConsoleModel::GameBoyColor
+            | ConsoleModel::GameBoyAdvance => Self::MgbCgb,
         }
     }
 

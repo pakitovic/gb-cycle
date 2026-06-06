@@ -2134,6 +2134,26 @@ fn cgb_infrared_sensor_observes_own_emitter_after_warmup() {
 }
 
 #[test]
+fn agb_model_keeps_cgb_infrared_register_unavailable() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyAdvance).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_cgb_native_test_rom(&[0xC3, 0x00, 0x01]))
+        .expect("CGB NoMBC test ROM should load");
+
+    assert_eq!(machine.read_bus(0xFF56), 0xFF);
+    machine.write_bus(0xFF56, 0x00);
+    assert_eq!(machine.read_bus(0xFF56), 0xFF);
+    machine.write_bus(0xFF56, 0xC1);
+    step_t_cycles(&mut machine, CGB_IR_SIGNAL_VISIBLE_T_CYCLES);
+
+    assert_eq!(machine.read_bus(0xFF56), 0xFF);
+    assert!(!machine.cgb_infrared_effective_signal_detected());
+    assert_eq!(machine.cgb_infrared_status(), None);
+}
+
+#[test]
 fn save_state_hardening_preserves_cgb_infrared_sensor_state() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),

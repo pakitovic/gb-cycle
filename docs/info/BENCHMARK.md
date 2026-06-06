@@ -81,7 +81,7 @@ hold_frames = 8
 | --- | --- |
 | `id` | Case artifact prefix; must contain only ASCII letters, digits, `-`, and `_`. |
 | `rom` | ROM path for the benchmark suite; relative paths are resolved from the TOML directory. |
-| `model` | One of `DMG`, `MGB`, `LGB`, or `CGB`. SGB/SGB2 benchmark cases are not part of this contract. |
+| `model` | One of `DMG`, `MGB`, `LGB`, `CGB`, or `AGB`. SGB/SGB2 benchmark cases are not part of this contract. |
 | `startup` | One of `skip-boot`, `custom-boot`, or `real-boot`. |
 | `mode` | One of `strict`, `permissive`, or `experimental`. |
 | `palette` | Optional; currently `grey` and only meaningful when `model = "DMG"`. |
