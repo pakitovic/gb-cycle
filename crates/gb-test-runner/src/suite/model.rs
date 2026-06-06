@@ -62,6 +62,7 @@ impl SuiteCase {
 pub(super) enum ReportConsole {
     Dmg,
     Cgb,
+    Agb,
     Sgb,
     Sgb2,
 }
@@ -71,6 +72,7 @@ impl ReportConsole {
         match self {
             Self::Dmg => "(DMG)",
             Self::Cgb => "(GBC)",
+            Self::Agb => "(AGB)",
             Self::Sgb => "(SGB)",
             Self::Sgb2 => "(SGB2)",
         }

@@ -633,6 +633,10 @@ fn cgb_io_register_is_available(
         return false;
     }
 
+    if matches!(kind, IoRegisterKind::Rp) && !console_model.has_cgb_infrared_port() {
+        return false;
+    }
+
     if operating_mode.enables_cgb_extensions() {
         return true;
     }

@@ -273,6 +273,27 @@ fn cgb_channel_3_active_wave_ram_access_redirects_to_the_current_byte() {
 }
 
 #[test]
+fn agb_channel_3_active_wave_ram_access_reads_ff_and_ignores_writes() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyAdvance);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF1A, 0x80);
+    apu.channels.channel_3.runtime.active = true;
+    apu.channels.channel_3.sample_index = 3;
+    apu.channels.channel_3.wave_ram[0] = 0x12;
+    apu.channels.channel_3.wave_ram[1] = 0x34;
+    apu.channels.channel_3.wave_ram[15] = 0xEF;
+
+    assert_eq!(apu.read_register(0xFF30), WAVE_RAM_INACCESSIBLE_READ_VALUE);
+    assert_eq!(apu.read_register(0xFF3F), WAVE_RAM_INACCESSIBLE_READ_VALUE);
+
+    apu.write_register(0xFF30, 0xAB);
+
+    assert_eq!(apu.channels.channel_3.wave_ram[0], 0x12);
+    assert_eq!(apu.channels.channel_3.wave_ram[1], 0x34);
+    assert_eq!(apu.channels.channel_3.wave_ram[15], 0xEF);
+}
+
+#[test]
 fn observed_register_write_captures_channel_3_dac_disable_before_and_after_state() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);

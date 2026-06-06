@@ -31,6 +31,7 @@ pub enum BootRomAssetKind {
     Cgb0,
     Cgb,
     CgbE,
+    CgbAgb,
 }
 
 impl BootRomAssetKind {
@@ -47,6 +48,7 @@ impl BootRomAssetKind {
             | HardwareRevision::CpuCgbC
             | HardwareRevision::CpuCgbD => Self::Cgb,
             HardwareRevision::CpuCgbE => Self::CgbE,
+            HardwareRevision::CpuAgbA => Self::CgbAgb,
         }
     }
 
@@ -77,20 +79,21 @@ impl BootRomAssetKind {
             Self::Cgb0 => "cgb0_boot.bin",
             Self::Cgb => "cgb_boot.bin",
             Self::CgbE => "cgbE_boot.bin",
+            Self::CgbAgb => "cgb_agb_boot.bin",
         }
     }
 
     pub const fn minimum_len(self) -> usize {
         match self {
             Self::Dmg0 | Self::Dmg | Self::Mgb | Self::Sgb | Self::Sgb2 => DMG_FAMILY_BOOT_ROM_LEN,
-            Self::Cgb0 | Self::Cgb | Self::CgbE => CGB_BOOT_ROM_RAW_LEN,
+            Self::Cgb0 | Self::Cgb | Self::CgbE | Self::CgbAgb => CGB_BOOT_ROM_RAW_LEN,
         }
     }
 
     pub const fn expected_size(self) -> usize {
         match self {
             Self::Dmg0 | Self::Dmg | Self::Mgb | Self::Sgb | Self::Sgb2 => DMG_FAMILY_BOOT_ROM_LEN,
-            Self::Cgb0 | Self::Cgb | Self::CgbE => CGB_BOOT_ROM_MAPPED_LEN,
+            Self::Cgb0 | Self::Cgb | Self::CgbE | Self::CgbAgb => CGB_BOOT_ROM_MAPPED_LEN,
         }
     }
 
@@ -104,11 +107,12 @@ impl BootRomAssetKind {
             Self::Cgb0 => "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45",
             Self::Cgb => "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7",
             Self::CgbE => "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9",
+            Self::CgbAgb => "fe3cceb79930c4cb6c6f62f742c2562fd4c96b827584ef8ea89d49b387bd6860",
         }
     }
 
     pub const fn uses_cgb_mapping(self) -> bool {
-        matches!(self, Self::Cgb0 | Self::Cgb | Self::CgbE)
+        matches!(self, Self::Cgb0 | Self::Cgb | Self::CgbE | Self::CgbAgb)
     }
 }
 
@@ -134,6 +138,7 @@ pub struct BootRomAssets {
     cgb0: Option<Vec<u8>>,
     cgb: Option<Vec<u8>>,
     cgb_e: Option<Vec<u8>>,
+    cgb_agb: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -212,6 +217,7 @@ impl BootRomAssets {
             cgb0: None,
             cgb: None,
             cgb_e: None,
+            cgb_agb: None,
         }
     }
 
@@ -237,6 +243,7 @@ impl BootRomAssets {
             cgb0: read_boot_rom_file(path, BootRomAssetKind::Cgb0)?,
             cgb: read_boot_rom_file(path, BootRomAssetKind::Cgb)?,
             cgb_e: read_boot_rom_file(path, BootRomAssetKind::CgbE)?,
+            cgb_agb: read_boot_rom_file(path, BootRomAssetKind::CgbAgb)?,
         })
     }
 
@@ -302,6 +309,7 @@ impl BootRomAssets {
             && self.cgb0.is_none()
             && self.cgb.is_none()
             && self.cgb_e.is_none()
+            && self.cgb_agb.is_none()
     }
 
     pub fn read_byte(&self, revision: HardwareRevision, address: u16) -> Option<u8> {
@@ -340,6 +348,7 @@ impl BootRomAssets {
             + self.cgb0.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb.as_ref().map(Vec::len).unwrap_or(0)
             + self.cgb_e.as_ref().map(Vec::len).unwrap_or(0)
+            + self.cgb_agb.as_ref().map(Vec::len).unwrap_or(0)
     }
 
     fn bytes_for(&self, asset: BootRomAssetKind) -> Option<&[u8]> {
@@ -352,6 +361,7 @@ impl BootRomAssets {
             BootRomAssetKind::Cgb0 => self.cgb0.as_deref(),
             BootRomAssetKind::Cgb => self.cgb.as_deref(),
             BootRomAssetKind::CgbE => self.cgb_e.as_deref(),
+            BootRomAssetKind::CgbAgb => self.cgb_agb.as_deref(),
         }
     }
 
@@ -365,6 +375,7 @@ impl BootRomAssets {
             BootRomAssetKind::Cgb0 => &mut self.cgb0,
             BootRomAssetKind::Cgb => &mut self.cgb,
             BootRomAssetKind::CgbE => &mut self.cgb_e,
+            BootRomAssetKind::CgbAgb => &mut self.cgb_agb,
         }
     }
 }
@@ -743,7 +754,9 @@ impl BootController {
         }
 
         match self.console_model {
-            ConsoleModel::GameBoyColor => BootRomBusState::map_cgb_windows(),
+            ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
+                BootRomBusState::map_cgb_windows()
+            }
             ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
                 BootRomBusState::map_dmg_low_bytes()
             }
@@ -977,23 +990,75 @@ fn build_skip_boot_cpu_state(
             sp: 0xFFFE,
             pc: 0x0100,
         },
-        ConsoleModel::GameBoyColor => {
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
             let cgb_native = header
                 .map(|header| header.cgb_flag.enables_cgb_native_mode())
                 .unwrap_or(false);
+            let agb = matches!(console_model, ConsoleModel::GameBoyAdvance);
+            let cgb_dmg_mode_b = cgb_dmg_mode_boot_b(header);
+            let b = cgb_family_boot_b(cgb_native, agb, cgb_dmg_mode_b);
+            let f = cgb_family_boot_f(cgb_native, agb, cgb_dmg_mode_b);
+            let (h, l) = cgb_family_boot_hl(cgb_native, agb, b);
             CpuStartupState {
                 a: 0x11,
-                f: 0x80,
-                b: 0x00,
+                f,
+                b,
                 c: 0x00,
                 d: if cgb_native { 0xFF } else { 0x00 },
                 e: if cgb_native { 0x56 } else { 0x08 },
-                h: 0x00,
-                l: if cgb_native { 0x0D } else { 0x7C },
+                h,
+                l,
                 sp: 0xFFFE,
                 pc: 0x0100,
             }
         }
+    }
+}
+
+fn cgb_dmg_mode_boot_b(header: Option<&CartridgeHeader>) -> u8 {
+    header
+        .and_then(CartridgeHeader::cgb_compatibility_title_checksum)
+        .unwrap_or(0)
+}
+
+const fn cgb_family_boot_b(cgb_native: bool, agb: bool, cgb_dmg_mode_b: u8) -> u8 {
+    match (cgb_native, agb) {
+        (true, true) => 0x01,
+        (true, false) => 0x00,
+        (false, true) => cgb_dmg_mode_b.wrapping_add(1),
+        (false, false) => cgb_dmg_mode_b,
+    }
+}
+
+const fn cgb_family_boot_f(cgb_native: bool, agb: bool, cgb_dmg_mode_b: u8) -> u8 {
+    match (cgb_native, agb) {
+        (true, true) => 0x00,
+        (true, false) | (false, false) => 0x80,
+        (false, true) => agb_dmg_mode_boot_f(cgb_dmg_mode_b),
+    }
+}
+
+const fn agb_dmg_mode_boot_f(cgb_dmg_mode_b: u8) -> u8 {
+    let result = cgb_dmg_mode_b.wrapping_add(1);
+    let zero_flag = if result == 0 { 0x80 } else { 0x00 };
+    let half_carry_flag = if cgb_dmg_mode_b & 0x0F == 0x0F {
+        0x20
+    } else {
+        0x00
+    };
+
+    zero_flag | half_carry_flag
+}
+
+const fn cgb_family_boot_hl(cgb_native: bool, agb: bool, b: u8) -> (u8, u8) {
+    if cgb_native {
+        return (0x00, 0x0D);
+    }
+
+    if (!agb && (b == 0x43 || b == 0x58)) || (agb && (b == 0x44 || b == 0x59)) {
+        (0x99, 0x1A)
+    } else {
+        (0x00, 0x7C)
     }
 }
 
@@ -1035,7 +1100,7 @@ const fn synthetic_skip_boot_io_snapshot(console_model: ConsoleModel) -> BootIoS
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             dmg_family_synthetic_skip_boot_io_snapshot()
         }
-        ConsoleModel::GameBoyColor => {
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
             let mut io = dmg_family_synthetic_skip_boot_io_snapshot();
             io.p1 = 0xFF;
             io.div = CGB_SKIP_BOOT_DIV;
@@ -1070,7 +1135,9 @@ const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoS
                 audio: dmg_family_skip_boot_audio_snapshot(),
             }
         }
-        ConsoleModel::GameBoyColor => synthetic_skip_boot_io_snapshot(console_model),
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
+            synthetic_skip_boot_io_snapshot(console_model)
+        }
     }
 }
 
@@ -1131,7 +1198,7 @@ fn build_skip_boot_apu_state(
         nr51: audio.nr51,
         channel_active_mask: audio.nr52 & 0x0F,
         div_apu: div_apu_phase_from_system_counter(system_counter),
-        wave_ram_startup_policy: if matches!(console_model, ConsoleModel::GameBoyColor) {
+        wave_ram_startup_policy: if console_model.is_cgb_family() {
             WaveRamStartupPolicy::CgbRealBootAlternating
         } else {
             WaveRamStartupPolicy::DeterministicZeroed
@@ -1207,7 +1274,9 @@ fn direct_start_system_counter(
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor => cgb_direct_start_system_counter(header),
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
+            cgb_direct_start_system_counter(header)
+        }
     }
 }
 
@@ -1259,7 +1328,9 @@ const fn div_from_system_counter(system_counter: u16) -> u8 {
 const fn verified_boot_entry_div_apu(console_model: ConsoleModel, system_counter: u16) -> u8 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
-        ConsoleModel::GameBoyColor => div_apu_phase_from_system_counter(system_counter),
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
+            div_apu_phase_from_system_counter(system_counter)
+        }
     }
 }
 
@@ -1268,7 +1339,9 @@ const fn real_boot_power_on_system_counter(console_model: ConsoleModel) -> u16 {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor => CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER,
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
+            CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER
+        }
     }
 }
 
@@ -1277,7 +1350,7 @@ const fn real_boot_power_on_serial_clock_counter(console_model: ConsoleModel) ->
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER
         }
-        ConsoleModel::GameBoyColor => 0,
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => 0,
     }
 }
 
@@ -1289,7 +1362,7 @@ const fn real_boot_power_on_joypad_state(console_model: ConsoleModel) -> JoypadS
                 pressed_mask: 0x00,
             }
         }
-        ConsoleModel::GameBoyColor => JoypadStartupState {
+        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => JoypadStartupState {
             selection_bits: 0x30,
             pressed_mask: 0x00,
         },

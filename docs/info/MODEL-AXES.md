@@ -33,6 +33,7 @@ Examples:
 - `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpu` = the same visible Game Boy product model with the earlier DMG0 firmware profile, modeled for future activation and local hardware validation
 - `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `HardwareRevision::CpuMgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot/direct-start profile
 - `ConsoleModel::GameBoyColor` + `HardwareRevision::CpuCgbE` + `OperatingMode::Cgb` = CGB-family silicon on the active CGB-E profile, with `cgbE_boot.bin` selected automatically for `RealBoot`
+- `ConsoleModel::GameBoyAdvance` + `HardwareRevision::CpuAgbA` + `OperatingMode::Cgb` = AGB CGB-compatible silicon on the active GBA-enhanced profile, with `cgb_agb_boot.bin` selected automatically for GB/C `RealBoot` and no native `gba_bios.bin` requirement in this core
 - `ConsoleModel::GameBoyColor` + `OperatingMode::GbCompatible` = CGB-family silicon running monochrome software-visible mode
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
 - `HostPlatform::Sgb` or `HostPlatform::Sgb2` = SGB shell around the shared GB core, not a different GB silicon family
@@ -42,7 +43,7 @@ Examples:
 
 ## Reference model profiles
 
-This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, and `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
+This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB/AGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`, and `CpuAgbA` for `GameBoyAdvance`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
 
 | Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
 |---:|---|---:|---|---|---|---|---|
@@ -60,13 +61,13 @@ This table is an informative reference for aligning the public axes with the har
 | true | Game Boy Color | Handheld | `CPU CGB E` | `cgbE_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB-E boot profile | Default CGB revision; CGB-CPU-06 integrates WRAM into the CPU, uses the distinct `cgbE_boot.bin`, and owns the CGB-E extra-OAM readback used by `which.gb`. |
 | true | Super Game Boy | Sgb | `SGB-CPU 01` | `sgb_boot.bin` | DMG-compatible hosted by SGB | SGB palettes + SNES/SFC border | SGB host; PAL/NTSC cases; DMG-class GB core with SGB boot/protocol handled through the SNES/SFC side; no physical Game Link port. |
 | false | Super Game Boy 2 | Sgb2 | `CPU SGB2` | `sgb2_boot.bin` | DMG-compatible hosted by SGB2 | SGB palettes + SNES/SFC border | SGB2 host; NTSC case; corrected clock versus SGB; physical Game Link support; boot identifies SGB2 separately. |
-| false | Game Boy Advance | Handheld | `CPU AGB` | `gba_bios.bin` + `cgb_agb0_boot.bin` | AGB; GB/GBC Compatible on AGB0 | AGB color; GB/GBC with AGB0 profile | Initial CPU without suffix; early AGB. `AGB0` refers to the CGB-compatible boot ROM variant, not a confirmed separate native GBA BIOS here. |
-| true | Game Boy Advance | Handheld | `CPU AGB A` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB color; GB/GBC with AGB profile | Common AGB revision; CGB-compatible boot fixes logo-swap behavior and exposes GBA compatibility mode to software. |
-| true | Game Boy Advance SP | Handheld | `CPU AGB B` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Early AGS/AGS-001 family. |
-| false | Game Boy Advance SP | Handheld | `CPU AGB B E` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Late AGS/AGS-101 family; keep full GBHWDB CPU label. |
-| true | Game Boy Micro | Handheld | `CPU AGB E` | `gba_bios.bin` | AGB | AGB/OXY color | OXY-family CPU; GBA-only cartridge compatibility, with no physical GB/GBC compatibility. |
-| true | Game Boy Player | Gbs | `CPU AGB A` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | AGB-family hardware inside DOL-GBS; GameCube and Game Boy Player Start-up Disc are host/UI path, not a separate CPU mode. |
-| false | Game Boy Player | Gbs | `CPU AGB A E` | `gba_bios.bin` + `cgb_agb_boot.bin` | AGB; GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | Late DOL-GBS revision; keep full GBHWDB CPU label. |
+| false | Game Boy Advance | Handheld | `CPU AGB` | `cgb_agb0_boot.bin` | GB/GBC Compatible on AGB0 | AGB color; GB/GBC with AGB0 profile | Initial CPU without suffix; early AGB CGB-compatible boot profile remains documentation-only until a concrete enum and dump hash are promoted. Native `gba_bios.bin` is outside the GB/C core startup path. |
+| true | Game Boy Advance | Handheld | `CPU AGB A` | `cgb_agb_boot.bin` | GB/GBC Compatible on AGB | AGB color; GB/GBC with AGB profile | Active `GB ADVANCE` model; CGB-compatible boot exposes GBA-enhanced detection to software through the AGB post-boot register fingerprint. Native `gba_bios.bin` is not loaded by this GB/C core path. |
+| false | Game Boy Advance SP | Handheld | `CPU AGB B` | `cgb_agb_boot.bin` | GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Documentation-only hardware row; gb-cycle intentionally exposes one `GB ADVANCE` UI model for GBA-enhanced GB/C behavior rather than separate SP UI variants. |
+| false | Game Boy Advance SP | Handheld | `CPU AGB B E` | `cgb_agb_boot.bin` | GB/GBC Compatible on AGB | AGB/AGS color; GB/GBC with AGB profile | Documentation-only late AGS/AGS-101 row; keep full GBHWDB CPU label without adding a separate frontend model. |
+| false | Game Boy Micro | Handheld | `CPU AGB E` | `gba_bios.bin` | AGB | AGB/OXY color | OXY-family CPU; GBA-only cartridge compatibility, with no physical GB/GBC compatibility and no GB/C core profile. |
+| false | Game Boy Player | Gbs | `CPU AGB A` | `cgb_agb_boot.bin` | GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | Documentation-only host row; gb-cycle does not expose a `GB PLAYER` UI model because the current GB/C core uses the same GBA-enhanced AGB-compatible register profile as `GB ADVANCE`. |
+| false | Game Boy Player | Gbs | `CPU AGB A E` | `cgb_agb_boot.bin` | GB/GBC Compatible on AGB | AGB/CGB color output via GameCube video path | Documentation-only late DOL-GBS row; keep full GBHWDB CPU label without adding a separate frontend model. |
 
 ## When to use each type
 
@@ -79,7 +80,8 @@ Typical uses:
 - default boot ROM kind and allowed firmware set
 - skip-boot power-up presets that differ by product model
 - silicon-family quirks such as DMG-family-only OAM corruption
-- product-specific desktop presentation such as DMG, MGB, or Game Boy Light display palette
+- product-specific desktop presentation such as DMG, MGB, Game Boy Light display palette, or the `GB ADVANCE` model label
+- physical product facts such as CGB infrared being present on `GameBoyColor` but absent from `GameBoyAdvance` even though both are CGB-family for GB/C execution
 - raw family classification when a subsystem is defining a derived capability
 
 Do not branch on a revision simply because it exists in the enum. A `HardwareRevision` branch should correspond to a modeled firmware/direct-start contract or a tested hardware behavior; otherwise prefer the derived capability or model-level default.
@@ -166,7 +168,7 @@ Use `CapabilitySet::dmg_family_quirks_enabled()` for:
 
 Use `ConsoleModel` directly for:
 
-- deriving the default and active `HardwareRevision` set
+- deriving the default and active `HardwareRevision` set, including `CpuAgbA` for the active `GameBoyAdvance` profile
 - product-specific skip-boot startup presets
 - product-specific desktop display palette selection
 

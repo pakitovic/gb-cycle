@@ -208,6 +208,28 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = ""
     );
 }
 
+#[test]
+fn parser_accepts_agb_participant_profile() {
+    let manifest =
+        basic_manifest_with_report("linked").replacen("console = \"dmg\"", "console = \"agb\"", 1);
+    let suite =
+        parse_link_suite_manifest_for_test(Path::new("agb.link.suite.toml"), "linked", &manifest)
+            .expect("AGB participant should parse");
+
+    assert_eq!(
+        suite.cases[0].participants[0].console_model,
+        gb_core::ConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
+        suite.cases[0].participants[0].hardware_revision,
+        gb_core::HardwareRevision::CpuAgbA
+    );
+    assert_eq!(
+        suite.cases[0].participants[0].host_platform,
+        gb_core::HostPlatform::Handheld
+    );
+}
+
 fn basic_manifest_without_report() -> &'static str {
     r#"suite_name = "basic"
 family = "linked"

@@ -82,6 +82,26 @@ impl CartridgeHeader {
         Self::parse_at_offset(rom_bytes, 0)
     }
 
+    pub(crate) fn cgb_compatibility_title_checksum(&self) -> Option<u8> {
+        if !self.uses_nintendo_licensee_for_cgb_compatibility() {
+            return None;
+        }
+
+        Some(
+            self.title_bytes
+                .iter()
+                .fold(0_u8, |checksum, byte| checksum.wrapping_add(*byte)),
+        )
+    }
+
+    pub(crate) fn uses_nintendo_licensee_for_cgb_compatibility(&self) -> bool {
+        if self.old_licensee_code == 0x33 {
+            self.new_licensee_code == *b"01"
+        } else {
+            self.old_licensee_code == 0x01
+        }
+    }
+
     pub(in crate::cartridge) fn parse_for_load(
         rom_bytes: &[u8],
     ) -> Result<Self, CartridgeHeaderParseError> {

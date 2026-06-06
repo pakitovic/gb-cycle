@@ -27,6 +27,7 @@ fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         ConsoleModel::GameBoyPocket,
         ConsoleModel::GameBoyLight,
         ConsoleModel::GameBoyColor,
+        ConsoleModel::GameBoyAdvance,
     ] {
         assert_eq!(
             decode_console_model(encode_console_model(value), "console_model")
@@ -71,6 +72,7 @@ fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         HardwareRevision::CpuCgbC,
         HardwareRevision::CpuCgbD,
         HardwareRevision::CpuCgbE,
+        HardwareRevision::CpuAgbA,
     ] {
         assert_eq!(
             decode_revision(encode_revision(value), "revision")

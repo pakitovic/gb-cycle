@@ -15,6 +15,13 @@ fn persisted_conversion_helpers_round_trip_external_values() {
         gb_desktop::DesktopConsoleModel::GameBoyPocket
     );
     assert_eq!(
+        PersistedDesktopConsoleModel::from_external(
+            gb_desktop::DesktopConsoleModel::GameBoyAdvance
+        )
+        .to_external(),
+        gb_desktop::DesktopConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
         PersistedDesktopConsoleModel::from_external(gb_desktop::DesktopConsoleModel::SuperGameBoy)
             .to_external(),
         gb_desktop::DesktopConsoleModel::SuperGameBoy
@@ -27,6 +34,10 @@ fn persisted_conversion_helpers_round_trip_external_values() {
     assert_eq!(
         PersistedHardwareRevision::from_external(HardwareRevision::CpuCgbE).to_external(),
         HardwareRevision::CpuCgbE
+    );
+    assert_eq!(
+        PersistedHardwareRevision::from_external(HardwareRevision::CpuAgbA).to_external(),
+        HardwareRevision::CpuAgbA
     );
     assert_eq!(
         PersistedSgbVideoStandard::from_external(SgbVideoStandard::Pal).to_external(),

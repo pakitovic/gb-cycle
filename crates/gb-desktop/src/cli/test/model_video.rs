@@ -193,6 +193,10 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
         Ok(DesktopConsoleModel::GameBoyColor)
     );
     assert_eq!(
+        parse_console_model("AGB"),
+        Ok(DesktopConsoleModel::GameBoyAdvance)
+    );
+    assert_eq!(
         parse_console_model("SGB"),
         Ok(DesktopConsoleModel::SuperGameBoy)
     );
@@ -205,7 +209,7 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     ] {
         let error = parse_console_model(previous).expect_err("previous models should fail");
         assert!(error.contains("unsupported --model value"));
-        assert!(error.contains("DMG, MGB, LGB, CGB, SGB, SGB2"));
+        assert!(error.contains("DMG, MGB, LGB, CGB, AGB, SGB, SGB2"));
         assert!(!error.contains("game-boy, pocket, light, color"));
     }
     assert!(parse_console_model("sgb").is_err());
@@ -215,14 +219,23 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
     assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
     assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+    assert_eq!(parse_revision("cpu-agb-a"), Ok(HardwareRevision::CpuAgbA));
     assert!(parse_revision("cpu-cgb-b").is_err());
     assert_eq!(
         revision_argument_name(HardwareRevision::CpuCgbE),
         "cpu-cgb-e"
     );
     assert_eq!(
+        revision_argument_name(HardwareRevision::CpuAgbA),
+        "cpu-agb-a"
+    );
+    assert_eq!(
         supported_revision_names(gb_core::ConsoleModel::GameBoyColor),
         "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
+    );
+    assert_eq!(
+        supported_revision_names(gb_core::ConsoleModel::GameBoyAdvance),
+        "cpu-agb-a"
     );
 
     assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));

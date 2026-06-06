@@ -101,6 +101,7 @@ pub enum DesktopConsoleModel {
     GameBoyPocket,
     GameBoyLight,
     GameBoyColor,
+    GameBoyAdvance,
     SuperGameBoy,
     SuperGameBoy2,
 }
@@ -112,6 +113,7 @@ impl DesktopConsoleModel {
             Self::GameBoyPocket => ConsoleModel::GameBoyPocket,
             Self::GameBoyLight => ConsoleModel::GameBoyLight,
             Self::GameBoyColor => ConsoleModel::GameBoyColor,
+            Self::GameBoyAdvance => ConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
         }
     }
@@ -120,7 +122,11 @@ impl DesktopConsoleModel {
         match self {
             Self::SuperGameBoy => Some(SgbHostProfile::SgbNtsc),
             Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
-            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+            Self::GameBoy
+            | Self::GameBoyPocket
+            | Self::GameBoyLight
+            | Self::GameBoyColor
+            | Self::GameBoyAdvance => None,
         }
     }
 
@@ -134,7 +140,11 @@ impl DesktopConsoleModel {
                 SgbVideoStandard::Pal => Some(SgbHostProfile::SgbPal),
             },
             Self::SuperGameBoy2 => Some(SgbHostProfile::Sgb2Ntsc),
-            Self::GameBoy | Self::GameBoyPocket | Self::GameBoyLight | Self::GameBoyColor => None,
+            Self::GameBoy
+            | Self::GameBoyPocket
+            | Self::GameBoyLight
+            | Self::GameBoyColor
+            | Self::GameBoyAdvance => None,
         }
     }
 
@@ -145,7 +155,7 @@ impl DesktopConsoleModel {
     pub const fn uses_rgb555_output(self) -> bool {
         matches!(
             self,
-            Self::GameBoyColor | Self::SuperGameBoy | Self::SuperGameBoy2
+            Self::GameBoyColor | Self::GameBoyAdvance | Self::SuperGameBoy | Self::SuperGameBoy2
         )
     }
 
@@ -163,6 +173,7 @@ impl DesktopConsoleModel {
             Self::GameBoyPocket => "MGB",
             Self::GameBoyLight => "LGB",
             Self::GameBoyColor => "CGB",
+            Self::GameBoyAdvance => "AGB",
             Self::SuperGameBoy => "SGB",
             Self::SuperGameBoy2 => "SGB2",
         }
@@ -186,6 +197,7 @@ impl DesktopDisplayPalette {
             DesktopConsoleModel::GameBoyPocket => Self::Pocket,
             DesktopConsoleModel::GameBoyLight => Self::Light,
             DesktopConsoleModel::GameBoyColor
+            | DesktopConsoleModel::GameBoyAdvance
             | DesktopConsoleModel::SuperGameBoy
             | DesktopConsoleModel::SuperGameBoy2 => Self::Grey,
         }
@@ -251,7 +263,8 @@ impl LaunchOptions {
             DesktopConsoleModel::GameBoy
             | DesktopConsoleModel::GameBoyPocket
             | DesktopConsoleModel::GameBoyLight
-            | DesktopConsoleModel::GameBoyColor => self.sgb_video_standard,
+            | DesktopConsoleModel::GameBoyColor
+            | DesktopConsoleModel::GameBoyAdvance => self.sgb_video_standard,
         }
     }
 

@@ -79,7 +79,7 @@ The scheduler coordinates ordering, cycle-local context, trace points, and synch
 
 The public model surface uses separate axes instead of one catch-all enum: `ConsoleModel` for silicon family/revision baseline, `OperatingMode` for software-visible GB/CGB compatibility mode, and `HostPlatform` for the surrounding shell such as handheld, `SGB`, or `SGB2`. `CapabilitySet` is the derived view shared subsystems may query for high-level facts such as CGB extensions, DMG-family silicon quirks, DMG software contract, or SGB host enhancements.
 
-`ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` represents CGB-family silicon running monochrome software; it is not the same hardware as DMG-family silicon. `SGB` and `SGB2` enter through `HostPlatform` around the shared GB core, not through a cloned DMG emulator path.
+`ConsoleModel::GameBoyColor` plus `OperatingMode::GbCompatible` represents CGB-family silicon running monochrome software; it is not the same hardware as DMG-family silicon. `ConsoleModel::GameBoyAdvance` is also CGB-family for GB/C compatibility but carries an AGB revision, AGB boot asset, and product facts such as no CGB infrared port. `SGB` and `SGB2` enter through `HostPlatform` around the shared GB core, not through a cloned DMG emulator path.
 
 The base core must preserve DMG-family closure while CGB behavior extends the same scheduler, bus, CPU, PPU, DMA, APU, timer, serial, cartridge, persistence, and save-state contracts. Implemented CGB behavior should live behind explicit subsystem ownership and capability gates; avoid ad hoc product-model checks that spread hardware policy across unrelated modules.
 

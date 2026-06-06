@@ -2591,7 +2591,8 @@ fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel
         DesktopConsoleModel::GameBoy => DesktopConsoleModel::GameBoyPocket,
         DesktopConsoleModel::GameBoyPocket => DesktopConsoleModel::GameBoyLight,
         DesktopConsoleModel::GameBoyLight => DesktopConsoleModel::GameBoyColor,
-        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::SuperGameBoy,
+        DesktopConsoleModel::GameBoyColor => DesktopConsoleModel::GameBoyAdvance,
+        DesktopConsoleModel::GameBoyAdvance => DesktopConsoleModel::SuperGameBoy,
         DesktopConsoleModel::SuperGameBoy => DesktopConsoleModel::SuperGameBoy2,
         DesktopConsoleModel::SuperGameBoy2 => DesktopConsoleModel::GameBoy,
     }

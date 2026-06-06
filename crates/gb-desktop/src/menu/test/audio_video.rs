@@ -105,6 +105,7 @@ fn video_submenu_disables_display_palette_for_rgb555_models() {
 
     for (console_model, expected_label) in [
         (DesktopConsoleModel::GameBoyColor, "PALETTE RGB555"),
+        (DesktopConsoleModel::GameBoyAdvance, "PALETTE RGB555"),
         (DesktopConsoleModel::SuperGameBoy, "PALETTE SGB"),
         (DesktopConsoleModel::SuperGameBoy2, "PALETTE SGB2"),
     ] {

@@ -288,6 +288,9 @@ impl Channel3State {
                 super::super::common::WaveRamMmioPolicy::CgbCurrentByteWhileActive => {
                     return self.wave_ram[self.current_wave_ram_byte_index()];
                 }
+                super::super::common::WaveRamMmioPolicy::AgbInaccessibleWhileActive => {
+                    return WAVE_RAM_INACCESSIBLE_READ_VALUE;
+                }
             }
         }
 
@@ -314,6 +317,7 @@ impl Channel3State {
                     self.wave_ram[self.current_wave_ram_byte_index()] = value;
                     return;
                 }
+                super::super::common::WaveRamMmioPolicy::AgbInaccessibleWhileActive => return,
             }
         }
 

@@ -176,6 +176,7 @@ pub(super) fn encode_console_model(value: ConsoleModel) -> u8 {
         ConsoleModel::GameBoyPocket => 2,
         ConsoleModel::GameBoyColor => 3,
         ConsoleModel::GameBoyLight => 4,
+        ConsoleModel::GameBoyAdvance => 5,
     }
 }
 
@@ -189,6 +190,7 @@ pub(super) fn decode_console_model(
         2 => Ok(ConsoleModel::GameBoyPocket),
         3 => Ok(ConsoleModel::GameBoyColor),
         4 => Ok(ConsoleModel::GameBoyLight),
+        5 => Ok(ConsoleModel::GameBoyAdvance),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }
@@ -228,6 +230,7 @@ pub(super) fn encode_revision(value: HardwareRevision) -> u8 {
         HardwareRevision::CpuCgbC => 8,
         HardwareRevision::CpuCgbD => 9,
         HardwareRevision::CpuCgbE => 10,
+        HardwareRevision::CpuAgbA => 11,
     }
 }
 
@@ -247,6 +250,7 @@ pub(super) fn decode_revision(
         8 => Ok(HardwareRevision::CpuCgbC),
         9 => Ok(HardwareRevision::CpuCgbD),
         10 => Ok(HardwareRevision::CpuCgbE),
+        11 => Ok(HardwareRevision::CpuAgbA),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }

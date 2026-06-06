@@ -37,13 +37,13 @@ Completed serial bytes can stream to stdout with `--serial-stdout`, be captured 
 
 ## Models, revisions, startup, and mode
 
-`--model` accepts only the public hardware-profile names `DMG`, `MGB`, `LGB`, `CGB`, `SGB`, and `SGB2`. Older aliases such as `game-boy`, `pocket`, `light`, `color`, `dmg`, `mgb`, or `cgb` are not accepted.
+`--model` accepts only the public hardware-profile names `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`. Older aliases such as `game-boy`, `pocket`, `light`, `color`, `advance`, `gba`, `dmg`, `mgb`, `cgb`, or `agb` are not accepted.
 
-`--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
+`--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `AGB` is the active `GB ADVANCE` GB/C compatibility profile and uses `cpu-agb-a`. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
 
 `--startup <skip-boot|custom-boot|real-boot>` selects the startup path. `skip-boot` is the fast direct-start tooling path; `custom-boot` adds reset/boot-facing direct-start behavior used by selected fixtures; `real-boot` executes a private firmware image and requires `--boot-rom-dir <dir>` unless verification is explicitly relaxed.
 
-`RealBoot` derives the firmware filename from the effective model/revision/profile. Examples include `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `sgb_boot.bin`, and `sgb2_boot.bin`. `--boot-rom` no longer exists; use `--boot-rom-dir <private-dir>` plus `--boot-rom-verify <off|warn|strict>` when overriding firmware lookup or verification.
+`RealBoot` derives the firmware filename from the effective model/revision/profile. Examples include `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `cgb_agb_boot.bin`, `sgb_boot.bin`, and `sgb2_boot.bin`. `AGB` GB/C real boot uses `cgb_agb_boot.bin`; `gba_bios.bin` is not used by this core path. `--boot-rom` no longer exists; use `--boot-rom-dir <private-dir>` plus `--boot-rom-verify <off|warn|strict>` when overriding firmware lookup or verification.
 
 `--mode <strict|permissive|experimental>` selects cartridge loader and compatibility policy around the same hardware model. `strict` is the default and the only mode suitable for oracle and accuracy claims; `permissive` is for tolerant tooling; `experimental` is for explicitly partial/research paths.
 
@@ -62,11 +62,11 @@ Benchmark cases use `[[run]]` plus `[[run.input]]` entries. `button` or `buttons
 ## Output artifacts
 
 - `--framebuffer-out <path>` writes the final `160x144` GB LCD framebuffer as PGM, or PNG when the path ends in `.png`.
-- `--model CGB` PNG output uses the CGB RGB555 framebuffer directly.
+- `--model CGB` and `--model AGB` PNG output use the CGB-family RGB555 framebuffer directly.
 - `--model SGB` and `--model SGB2` PNG output uses the `256x224` SGB host RGB555 frame by default.
 - `--border-off` is accepted for all models but only affects SGB/SGB2 PNG output, where it hides the host border and writes the SGB-colored `160x144` LCD RGB555 output instead.
 - Non-PNG SGB/SGB2 framebuffer artifacts keep the legacy `160x144` shade-index PGM path for automation compatibility.
-- `--palette grey` affects only final effective `--model DMG` output; for PGM it writes 8-bit grey values instead of raw shade indices, while CGB and SGB-family PNG output continues to use RGB555.
+- `--palette grey` affects only final effective `--model DMG` output; for PGM it writes 8-bit grey values instead of raw shade indices, while CGB, AGB, and SGB-family PNG output continues to use RGB555.
 - `--trace-out <path>` writes the in-memory scheduler trace text for the run.
 - `--state-in <path>` restores a full-machine `.gbstate` after loading the ROM, and `--state-out <path>` writes a full-machine `.gbstate` at the end of the run.
 

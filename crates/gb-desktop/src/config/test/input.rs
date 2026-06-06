@@ -60,6 +60,10 @@ fn console_model_helpers_cover_all_visible_product_models() {
         ConsoleModel::GameBoyColor
     );
     assert_eq!(
+        DesktopConsoleModel::GameBoyAdvance.console_model(),
+        ConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
         DesktopConsoleModel::SuperGameBoy.console_model(),
         ConsoleModel::GameBoy
     );
@@ -87,17 +91,20 @@ fn console_model_helpers_cover_all_visible_product_models() {
     assert!(!DesktopConsoleModel::SuperGameBoy2.allows_sgb_video_standard_selection());
     assert!(DesktopConsoleModel::GameBoy.allows_display_palette());
     assert!(!DesktopConsoleModel::GameBoyColor.allows_display_palette());
+    assert!(!DesktopConsoleModel::GameBoyAdvance.allows_display_palette());
     assert!(!DesktopConsoleModel::SuperGameBoy.allows_display_palette());
     assert!(DesktopConsoleModel::GameBoy.allows_ext_port_menu());
     assert!(DesktopConsoleModel::GameBoyPocket.allows_ext_port_menu());
     assert!(DesktopConsoleModel::GameBoyLight.allows_ext_port_menu());
     assert!(DesktopConsoleModel::GameBoyColor.allows_ext_port_menu());
+    assert!(DesktopConsoleModel::GameBoyAdvance.allows_ext_port_menu());
     assert!(!DesktopConsoleModel::SuperGameBoy.allows_ext_port_menu());
     assert!(DesktopConsoleModel::SuperGameBoy2.allows_ext_port_menu());
     assert_eq!(DesktopConsoleModel::GameBoy.name(), "DMG");
     assert_eq!(DesktopConsoleModel::GameBoyPocket.name(), "MGB");
     assert_eq!(DesktopConsoleModel::GameBoyLight.name(), "LGB");
     assert_eq!(DesktopConsoleModel::GameBoyColor.name(), "CGB");
+    assert_eq!(DesktopConsoleModel::GameBoyAdvance.name(), "AGB");
     assert_eq!(DesktopConsoleModel::SuperGameBoy.name(), "SGB");
     assert_eq!(DesktopConsoleModel::SuperGameBoy2.name(), "SGB2");
     assert_eq!(
@@ -114,6 +121,10 @@ fn console_model_helpers_cover_all_visible_product_models() {
     );
     assert_eq!(
         DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyColor),
+        DesktopDisplayPalette::Grey
+    );
+    assert_eq!(
+        DesktopDisplayPalette::default_for_console_model(DesktopConsoleModel::GameBoyAdvance),
         DesktopDisplayPalette::Grey
     );
     assert_eq!(

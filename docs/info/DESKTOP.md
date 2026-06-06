@@ -21,7 +21,7 @@ Run `gb-desktop --help` for the exhaustive flag list. The stable desktop-specifi
 
 | Area | Options |
 | --- | --- |
-| Hardware policy | `--model <DMG|MGB|LGB|CGB|SGB|SGB2>`, `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
+| Hardware policy | `--model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2>`, `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
 | Automation | `--test-runner`, `--benchmark <case.toml>`, `--exit-after-frames <n>` |
 | Local links | `--link-rom <path>` for a local 2-player `DMG-04` session only |
 | Cartridge saves | `--save-dir <dir>`, `--save-key <key>`, `--save-policy <manual|on-close|on-write|debounced>`, `--no-saves` |
@@ -39,13 +39,13 @@ Local `DMG-07` 4-Player Adapter sessions and CGB IR/accessory sessions are overl
 
 ## Model, startup, and mode
 
-The desktop model contract mirrors [`CLI.md`](CLI.md): public model names are `DMG`, `MGB`, `LGB`, `CGB`, `SGB`, and `SGB2`; old product names and lowercase legacy aliases are rejected. `SGB` and `SGB2` are frontend machine profiles that wrap the shared DMG-compatible GB core in an SGB host profile, not CGB mode and not a forked GB core.
+The desktop model contract mirrors [`CLI.md`](CLI.md): public model names are `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`; old product names and lowercase legacy aliases are rejected. `AGB` is displayed as `MODEL GB ADVANCE` and maps to the active AGB GB/C compatibility profile; there are intentionally no separate `GBA SP` or `GB PLAYER` UI models because the current core-visible GBA-enhanced behavior is the same. `SGB` and `SGB2` are frontend machine profiles that wrap the shared DMG-compatible GB core in an SGB host profile, not CGB mode and not a forked GB core.
 
-`--revision` and `CONFIG -> SYSTEM -> REV` select the active handheld revision for the chosen model. `CGB` cycles through `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `DMG`, `MGB`, and `LGB` currently expose one active revision each; `SGB` shows `SGB-CPU 01`; `SGB2` shows `CPU SGB2`.
+`--revision` and `CONFIG -> SYSTEM -> REV` select the active handheld revision for the chosen model. `CGB` cycles through `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `AGB` shows `CPU AGB A`; `DMG`, `MGB`, and `LGB` currently expose one active revision each; `SGB` shows `SGB-CPU 01`; `SGB2` shows `CPU SGB2`.
 
 `--sgb-standard <ntsc|pal>` and `CONFIG -> SYSTEM -> VIDEO NTSC/PAL` apply only to original `SGB`. `SGB2` is fixed to its corrected NTSC SGB2 host profile and shows the item disabled rather than pretending a PAL variant exists.
 
-`CONFIG -> SYSTEM -> BOOT ROM` owns firmware search path and verification policy only. `RealBoot` derives the concrete firmware image from the effective model/revision/host profile, for example `cgbE_boot.bin`, `sgb_boot.bin`, or `sgb2_boot.bin`; skip/custom boot still use the selected revision/profile for direct-start state but do not read boot-ROM bytes.
+`CONFIG -> SYSTEM -> BOOT ROM` owns firmware search path and verification policy only. `RealBoot` derives the concrete firmware image from the effective model/revision/host profile, for example `cgbE_boot.bin`, `cgb_agb_boot.bin`, `sgb_boot.bin`, or `sgb2_boot.bin`; skip/custom boot still use the selected revision/profile for direct-start state but do not read boot-ROM bytes. `AGB` uses `cgb_agb_boot.bin` for GB/C real boot and does not require or load `gba_bios.bin`.
 
 `--mode` and `CONFIG -> SYSTEM -> MODE` apply the complete `Strict`, `Permissive`, or `Experimental` compatibility preset. When a ROM is already loaded, cycling mode rebuilds the session under the next compatible preset; if the next preset would reject the cartridge metadata, desktop logs the skipped-mode reason to `stderr` and tries the following preset instead of interrupting the menu flow with a modal load error.
 
@@ -53,7 +53,7 @@ The desktop model contract mirrors [`CLI.md`](CLI.md): public model names are `D
 
 Single handheld sessions render a native `160x144` GB LCD framebuffer. Loaded `SGB`/`SGB2` sessions render the `256x224` SGB host frame when `CONFIG -> SYSTEM -> BORDER ON` is active and the SGB-colored `160x144` LCD framebuffer when `BORDER OFF` is active. Local linked layouts render native panels side by side for `DMG-04`, CGB IR, and 2-player `DMG-07`, or a `2x2` grid for 3-/4-player `DMG-07`.
 
-`--palette grey` and `CONFIG -> VIDEO -> PALETTE` are desktop presentation controls for DMG-family output only. The menu provides model-aware defaults for `GAME BOY`, `GB POCKET`, and `GB LIGHT`; CGB and SGB-family sessions render RGB555 output directly. These palette choices affect the live window and desktop screenshots, not `gb-core`, CLI artifacts, ROM-test oracles, or rank-normalized test output.
+`--palette grey` and `CONFIG -> VIDEO -> PALETTE` are desktop presentation controls for DMG-family output only. The menu provides model-aware defaults for `GAME BOY`, `GB POCKET`, and `GB LIGHT`; CGB, AGB, and SGB-family sessions render RGB555 output directly. These palette choices affect the live window and desktop screenshots, not `gb-core`, CLI artifacts, ROM-test oracles, or rank-normalized test output.
 
 `CONFIG -> VIDEO` owns host filtering, LCD frame blending, fullscreen/vsync/window scale/integer presentation, screenshot capture, stats HUD, and BG/WIN/OBJ debug masks. `CONFIG -> VIDEO -> SCREENSHOT` writes a native-size PNG under `screenshots/` next to the running ROM without host scaling, filtering, frame blending, HUD, or menu overlays; SGB/SGB2 screenshots follow the active border presentation.
 
@@ -105,7 +105,7 @@ The root overlay exposes ROM loading/recent history, single-machine `.gbstate` s
 
 `EXT. PORT` covers `NONE`, `PRINTER`, `GAME LINK`, and `4P ADAPTER`. `GAME LINK` can clone the current ROM into a local same-game `DMG-04` session or ask for a second ROM; `4P ADAPTER` rebuilds a local `DMG-07` session for 2, 3, or 4 players by cloning the current P1 ROM into the selected adapter slots. Original `SUPER GB` keeps `EXT. PORT` disabled because the hardware has no physical Game Link port; `SUPER GB2` retains its physical link support.
 
-The CGB `IR` menu is visible only for `CONFIG -> SYSTEM -> MODEL GB COLOR`. It supports `NONE`, CGB-to-CGB `SAME GAME`, CGB-to-CGB `SELECT GAME`, `PIKACHU 2`, and `MYSTERY GIFT`; accessory modes expose gift selectors and an optional `IR -> HELPER ON/OFF` overlay status. CGB IR keeps serial `EXT. PORT` attachments at `NONE` and treats optical sessions as separate from cable-link mode.
+The CGB `IR` menu is visible only for `CONFIG -> SYSTEM -> MODEL GB COLOR`; `MODEL GB ADVANCE` remains CGB-family for GB/C execution but has no physical CGB infrared port and does not show the IR menu. It supports `NONE`, CGB-to-CGB `SAME GAME`, CGB-to-CGB `SELECT GAME`, `PIKACHU 2`, and `MYSTERY GIFT`; accessory modes expose gift selectors and an optional `IR -> HELPER ON/OFF` overlay status. CGB IR keeps serial `EXT. PORT` attachments at `NONE` and treats optical sessions as separate from cable-link mode.
 
 Pocket Camera controls are frontend-owned. `CAM LIVE` opens the first SDL3 camera, converts frames to grayscale, mirrors live frames for self-facing orientation, and feeds the same core API used by `CAM IMAGE`; `CAM RESET` stops live capture, clears the session image, and restores the deterministic placeholder. Still-image path and live-camera state are session-scoped and are not persisted.
 

@@ -6,6 +6,7 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
     assert!(ConsoleModel::GameBoyPocket.is_dmg_family());
     assert!(ConsoleModel::GameBoyLight.is_dmg_family());
     assert!(ConsoleModel::GameBoyColor.is_cgb_family());
+    assert!(ConsoleModel::GameBoyAdvance.is_cgb_family());
     assert_eq!(
         ConsoleModel::GameBoy.default_operating_mode(),
         OperatingMode::Dmg
@@ -18,8 +19,20 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
         ConsoleModel::GameBoyColor.default_revision(),
         HardwareRevision::CpuCgbE
     );
+    assert_eq!(
+        ConsoleModel::GameBoyAdvance.default_operating_mode(),
+        OperatingMode::Cgb
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyAdvance.default_revision(),
+        HardwareRevision::CpuAgbA
+    );
     assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::GbCompatible));
     assert!(ConsoleModel::GameBoyColor.supports_operating_mode(OperatingMode::CgbDmgExt));
+    assert!(ConsoleModel::GameBoyAdvance.supports_operating_mode(OperatingMode::GbCompatible));
+    assert!(ConsoleModel::GameBoyAdvance.supports_operating_mode(OperatingMode::CgbDmgExt));
+    assert!(ConsoleModel::GameBoyColor.has_cgb_infrared_port());
+    assert!(!ConsoleModel::GameBoyAdvance.has_cgb_infrared_port());
     assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::GbCompatible));
     assert!(!ConsoleModel::GameBoy.supports_operating_mode(OperatingMode::CgbDmgExt));
 }
@@ -50,8 +63,14 @@ fn console_models_publish_default_and_active_revisions() {
             HardwareRevision::CpuCgbE
         ]
     );
+    assert_eq!(
+        ConsoleModel::GameBoyAdvance.active_revisions(),
+        &[HardwareRevision::CpuAgbA]
+    );
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
+    assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgbA));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
+    assert!(!ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuAgbA));
 }
 
 #[test]
@@ -224,8 +243,14 @@ fn hardware_revisions_derive_real_boot_images() {
         HardwareRevision::CpuCgbE.boot_rom_filename(),
         "cgbE_boot.bin"
     );
+    assert_eq!(
+        HardwareRevision::CpuAgbA.boot_rom_filename(),
+        "cgb_agb_boot.bin"
+    );
     assert_eq!(HardwareRevision::DmgCpuC.boot_rom_expected_size(), 0x0100);
     assert_eq!(HardwareRevision::CpuCgbE.boot_rom_expected_size(), 0x0900);
+    assert_eq!(HardwareRevision::CpuAgbA.boot_rom_expected_size(), 0x0900);
+    assert!(HardwareRevision::CpuAgbA.uses_cgb_boot_rom());
 }
 
 #[test]

@@ -1012,6 +1012,7 @@ impl MenuPresentation {
                 DesktopConsoleModel::GameBoyPocket => "MODEL GB POCKET".to_string(),
                 DesktopConsoleModel::GameBoyLight => "MODEL GB LIGHT".to_string(),
                 DesktopConsoleModel::GameBoyColor => "MODEL GB COLOR".to_string(),
+                DesktopConsoleModel::GameBoyAdvance => "MODEL GB ADVANCE".to_string(),
                 DesktopConsoleModel::SuperGameBoy => "MODEL SUPER GB".to_string(),
                 DesktopConsoleModel::SuperGameBoy2 => "MODEL SUPER GB2".to_string(),
             },
@@ -1145,7 +1146,10 @@ impl MenuPresentation {
             MenuItem::DisplayPalette => {
                 if let Some(profile) = self.console_model.sgb_profile() {
                     format!("PALETTE {}", profile.machine_profile_name())
-                } else if self.console_model == DesktopConsoleModel::GameBoyColor {
+                } else if matches!(
+                    self.console_model,
+                    DesktopConsoleModel::GameBoyColor | DesktopConsoleModel::GameBoyAdvance
+                ) {
                     "PALETTE RGB555".to_string()
                 } else {
                     match self.display_palette {
@@ -3152,6 +3156,7 @@ fn hardware_revision_menu_name(revision: HardwareRevision) -> &'static str {
         HardwareRevision::CpuCgbC => "CPU CGB C",
         HardwareRevision::CpuCgbD => "CPU CGB D",
         HardwareRevision::CpuCgbE => "CPU CGB E",
+        HardwareRevision::CpuAgbA => "CPU AGB A",
     }
 }
 

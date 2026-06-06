@@ -429,10 +429,11 @@ pub(crate) fn parse_run_model(value: &str) -> Result<RunModel, String> {
         "MGB" => Ok(RunModel::Pocket),
         "LGB" => Ok(RunModel::Light),
         "CGB" => Ok(RunModel::Color),
+        "AGB" => Ok(RunModel::Advance),
         "SGB" => Ok(RunModel::SuperGameBoy),
         "SGB2" => Ok(RunModel::SuperGameBoy2),
         _ => Err(format!(
-            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, SGB, SGB2"
+            "unsupported --model value {value:?}; expected one of: DMG, MGB, LGB, CGB, AGB, SGB, SGB2"
         )),
     }
 }
@@ -444,8 +445,9 @@ pub(crate) fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
         "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         _ => Err(format!(
-            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, or cpu-cgb-e"
+            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
         )),
     }
 }

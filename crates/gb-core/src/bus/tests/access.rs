@@ -140,6 +140,22 @@ fn cgb_e_unusable_extra_oam_reads_address_derived_values_and_ignores_writes() {
 }
 
 #[test]
+fn agb_unusable_extra_oam_reads_use_the_cgb_e_address_derived_values() {
+    let mut bus = Bus::new(ConsoleModel::GameBoyAdvance);
+
+    for (address, value) in [
+        (0xFEA0, 0xAA),
+        (0xFEA1, 0xAA),
+        (0xFEB8, 0xBB),
+        (0xFEC0, 0xCC),
+        (0xFEFF, 0xFF),
+    ] {
+        bus.write(address, 0x55);
+        assert_eq!(bus.read(address), value, "address {address:#06x}");
+    }
+}
+
+#[test]
 fn cgb_c_unusable_extra_oam_keeps_deferred_revision_placeholder() {
     let mut bus = Bus::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbC);
 

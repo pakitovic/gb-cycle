@@ -122,6 +122,19 @@ fn benchmark_helpers_apply_cases_and_write_artifacts() {
     );
     assert!(!cgb_options.config.video.show_sgb_border);
 
+    let mut agb_options = options.clone();
+    let mut agb_case = dmg_case.clone();
+    agb_case.model = BenchmarkModel::Agb;
+    super::super::apply_benchmark_case_to_desktop_options(&mut agb_options, &agb_case);
+    assert_eq!(
+        agb_options.config.launch.console_model,
+        DesktopConsoleModel::GameBoyAdvance
+    );
+    assert_eq!(
+        agb_options.config.launch.revision,
+        HardwareRevision::CpuAgbA
+    );
+
     let machine = super::super::DesktopEmulationSession::new_single(
         super::super::load_machine_for_rom(&options.config, &root, &rom_bytes)
             .expect("benchmark machine should load")

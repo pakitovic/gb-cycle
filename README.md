@@ -1,6 +1,6 @@
 # gb-cycle
 
-A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling.
+A hardware-accuracy-focused Game Boy / Game Boy Color / Game Boy Advance GB/C compatibility / Super Game Boy emulator written in Rust, developed with support from AI-assisted tooling.
 
 ## Implementation highlights
 
@@ -14,7 +14,7 @@ A hardware-accuracy-focused Game Boy / Game Boy Color / Super Game Boy emulator 
 | APU | Shared-timeline four-channel audio core with `DIV-APU` / frame-sequencer timing, DMG and CGB channel quirks, CGB `PCM12` / `PCM34` taps, HPF. |
 | Joypad / serial / external I/O | `JOYP`, `SB`, `SC` and CGB `RP` semantics with visible-edge interrupts, DMG and native-CGB serial timing including `SC.1` high speed, `DMG-04` game link, `DMG-07` 2/3/4-player adapter, SGB `MLT_REQ`, CGB-to-CGB infrared sessions. |
 | Cartridges | `NoMBC`, `MBC1`, `MBC2`, `MBC3` / `MBC30`, `MBC5`, `MBC6`, `MBC7`, `MMM01`, `M161`, `HuC1`, `HuC3`, `Pocket Camera`, `RTC`, flash / EEPROM / accelerometer paths, rumble-capable metadata. |
-| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`, Game Boy Printer, [Pokémon Pikachu Color](docs/info/INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/info/INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
+| Features | Frontend-agnostic `gb-core`, battery saves, save states, rewind, fast forward, real boot-ROM `DMG`/`CGB`/`SGB`/`SGB2`/`AGB` GB/C compatibility for GBA Enhanced, Game Boy Printer, [Pokémon Pikachu Color](docs/info/INFRARED.md#pok%C3%A9mon-pikachu-color), [Custom GSC Mystery Gift IR Sender](docs/info/INFRARED.md#custom-gsc-mystery-gift-ir-sender) |
 | Validation | [ROM-test reports](https://pakitovic.github.io/gb-cycle/) publish browsable snapshots for the maintained report lanes; the [GBEmulatorShootout fork](https://pakitovic.github.io/GBEmulatorShootout/) currently reports `gb-cycle` green on every counted row (`264/264` in the latest generated dashboard). |
 
 ## Current structure
@@ -52,6 +52,12 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 # Force the Game Boy Color model and export the final RGB555 framebuffer as PNG
 cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
 
+# Run a GBA Enhanced GB/C title on the AGB / GB ADVANCE compatibility profile
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup skip-boot
+
+# Execute the AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
 # Run an SGB-enhanced game and export the native 256x224 SGB host frame
 cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
 
@@ -74,6 +80,9 @@ cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 # Launch a CGB ROM with direct RGB555 presentation
 cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
+
+# Launch the GB ADVANCE / AGB GB/C compatibility profile for GBA Enhanced detection
+cargo run --release -p gb-desktop -- path/to/gba-enhanced.gbc --model AGB
 
 # Launch an SGB/SGB2 profile; CONFIG -> SYSTEM exposes MODEL, REV, VIDEO, START, and BORDER
 cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB

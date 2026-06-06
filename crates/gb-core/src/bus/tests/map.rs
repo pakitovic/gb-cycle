@@ -365,6 +365,32 @@ fn native_cgb_rp_register_exposes_only_the_phase10_infrared_latches() {
 }
 
 #[test]
+fn agb_cgb_family_profile_does_not_expose_the_physical_cgb_ir_register() {
+    let mut native = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyAdvance,
+        crate::model::OperatingMode::Cgb,
+    );
+    let mut dmg_ext = Bus::new_with_operating_mode(
+        ConsoleModel::GameBoyAdvance,
+        crate::model::OperatingMode::CgbDmgExt,
+    );
+
+    for bus in [&mut native, &mut dmg_ext] {
+        assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+        bus.write_with_context(
+            0xFF56,
+            0x00,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoWriteView::default(),
+        );
+        assert_eq!(bus.read_io_target(0xFF56, BusIoReadView::default()), 0xFF);
+        assert_eq!(bus.cgb_infrared_status(), None);
+    }
+}
+
+#[test]
 fn cgb_infrared_status_is_available_for_native_cgb_and_dmg_ext_profiles() {
     const IR_WARMUP_T_CYCLES: usize = 19_900;
 
@@ -1039,9 +1065,11 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
 fn unusable_area_descriptor_is_model_aware() {
     let dmg_bus = Bus::new(ConsoleModel::GameBoy);
     let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let agb_bus = Bus::new(ConsoleModel::GameBoyAdvance);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
     let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+    let agb = agb_bus.describe_unusable_area(0xFEA0).unwrap();
 
     assert_eq!(dmg.address(), 0xFEA0);
     assert_eq!(
@@ -1064,8 +1092,21 @@ fn unusable_area_descriptor_is_model_aware() {
     assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
     assert!(cgb.runtime_fallback_writes_ignored());
 
+    assert_eq!(agb.address(), 0xFEA0);
+    assert_eq!(
+        agb.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(
+        agb.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
+    assert_eq!(agb.runtime_fallback_read_value(), 0xAA);
+    assert!(agb.runtime_fallback_writes_ignored());
+
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
     assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());
+    assert!(agb_bus.describe_unusable_area(0xFF00).is_none());
 }
 
 #[test]

@@ -86,6 +86,10 @@ fn cycling_console_model_resets_the_runtime_display_palette_to_the_model_default
             DesktopDisplayPalette::Grey,
         ),
         (
+            DesktopConsoleModel::GameBoyAdvance,
+            DesktopDisplayPalette::Grey,
+        ),
+        (
             DesktopConsoleModel::SuperGameBoy,
             DesktopDisplayPalette::Grey,
         ),

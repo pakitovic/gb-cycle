@@ -10,6 +10,8 @@ pub enum BenchmarkModel {
     Lgb,
     #[serde(rename = "CGB", alias = "cgb")]
     Cgb,
+    #[serde(rename = "AGB", alias = "agb")]
+    Agb,
 }
 
 impl BenchmarkModel {
@@ -19,6 +21,7 @@ impl BenchmarkModel {
             Self::Mgb => "MGB",
             Self::Lgb => "LGB",
             Self::Cgb => "CGB",
+            Self::Agb => "AGB",
         }
     }
 }
