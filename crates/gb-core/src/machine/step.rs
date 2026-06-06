@@ -31,6 +31,7 @@ const CPU_OAM_ADDRESS_END: u16 = 0xFE9F;
 const CPU_MMIO_ADDRESS_START: u16 = 0xFF00;
 const CPU_MMIO_ADDRESS_END: u16 = 0xFF7F;
 const INTERRUPT_FLAG_ADDRESS: u16 = 0xFF0F;
+const SGB_HOST_FRAME_T_CYCLES: u64 = 456 * 154;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PendingPpuMmioWrite {
@@ -660,7 +661,11 @@ impl MachinePhaseRunner<'_> {
         if records_ppu_regions {
             observer.end_ppu_region(PpuStepRegion::BusSync);
         }
-        if self.ppu.ly() == 0 && self.ppu.line_dot() == 0 {
+        if context
+            .t_cycle()
+            .get()
+            .is_multiple_of(SGB_HOST_FRAME_T_CYCLES)
+        {
             let sgb_transfer_display = SgbVramTransferDisplayState::new(
                 self.ppu.read_register(0xFF40),
                 self.ppu.read_register(0xFF42),

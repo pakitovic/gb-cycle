@@ -76,7 +76,7 @@ fn step_scheduler_cycle(machine: &mut Machine) {
 }
 
 fn step_until_sgb_transfer_count(machine: &mut Machine, expected_count: u64) {
-    for _ in 0..80_000 {
+    for _ in 0..600_000 {
         if machine
             .snapshot()
             .sgb_host
