@@ -28,8 +28,20 @@ fn test_rom_with_cgb_header(
     old_licensee_code: u8,
     new_licensee_code: [u8; 2],
 ) -> Vec<u8> {
+    let mut title = [0; 16];
+    title[..b"BULLYGB".len()].copy_from_slice(b"BULLYGB");
+
+    test_rom_with_cgb_header_and_title(title, cgb_flag, old_licensee_code, new_licensee_code)
+}
+
+fn test_rom_with_cgb_header_and_title(
+    title_bytes: [u8; 16],
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> Vec<u8> {
     let mut rom = vec![0x00; 32 * 1024];
-    rom[0x0134..0x013B].copy_from_slice(b"BULLYGB");
+    rom[0x0134..0x0144].copy_from_slice(&title_bytes);
     rom[0x0143] = cgb_flag;
     rom[0x0144..0x0146].copy_from_slice(&new_licensee_code);
     rom[0x0147] = 0x00;
@@ -52,6 +64,21 @@ fn test_header_with_cgb_header(
     .expect("test ROM header should parse")
 }
 
+fn test_header_with_cgb_header_and_title(
+    title_bytes: [u8; 16],
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> CartridgeHeader {
+    CartridgeHeader::parse(&test_rom_with_cgb_header_and_title(
+        title_bytes,
+        cgb_flag,
+        old_licensee_code,
+        new_licensee_code,
+    ))
+    .expect("test ROM header should parse")
+}
+
 fn loaded_test_cartridge_with_cgb_header(
     cgb_flag: u8,
     old_licensee_code: u8,
@@ -59,6 +86,25 @@ fn loaded_test_cartridge_with_cgb_header(
 ) -> CartridgeSlot {
     let report = CartridgeSlot::load(
         test_rom_with_cgb_header(cgb_flag, old_licensee_code, new_licensee_code),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("test ROM should load as a NoMBC cartridge");
+    report.into_parts().0
+}
+
+fn loaded_test_cartridge_with_cgb_header_and_title(
+    title_bytes: [u8; 16],
+    cgb_flag: u8,
+    old_licensee_code: u8,
+    new_licensee_code: [u8; 2],
+) -> CartridgeSlot {
+    let report = CartridgeSlot::load(
+        test_rom_with_cgb_header_and_title(
+            title_bytes,
+            cgb_flag,
+            old_licensee_code,
+            new_licensee_code,
+        ),
         &CompatibilityPolicy::strict(),
     )
     .expect("test ROM should load as a NoMBC cartridge");
@@ -502,10 +548,93 @@ fn agb_skip_boot_cpu_state_exposes_gba_enhanced_detection_registers() {
         .direct_boot_state(Some(&dmg_compatible_cartridge))
         .expect("AGB SkipBoot should expose a direct-boot state");
     assert_eq!(dmg_compatible.cpu.a, 0x11);
-    assert_eq!(dmg_compatible.cpu.f, 0x80);
+    assert_eq!(dmg_compatible.cpu.f, 0x00);
     assert_eq!(dmg_compatible.cpu.b, 0x01);
     assert_eq!(dmg_compatible.cpu.d, 0x00);
     assert_eq!(dmg_compatible.cpu.e, 0x08);
+}
+
+#[test]
+fn cgb_family_dmg_mode_boot_b_uses_nintendo_title_checksum() {
+    let mut title = [0; 16];
+    title[0] = 0x88;
+    let cartridge = loaded_test_cartridge_with_cgb_header_and_title(title, 0x00, 0x01, *b"00");
+
+    let cgb = boot(
+        ConsoleModel::GameBoyColor,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    )
+    .direct_boot_state(Some(&cartridge))
+    .expect("CGB SkipBoot should expose a direct-boot state");
+    assert_eq!(cgb.cpu.f, 0x80);
+    assert_eq!(cgb.cpu.b, 0x88);
+    assert_eq!(cgb.cpu.h, 0x00);
+    assert_eq!(cgb.cpu.l, 0x7C);
+
+    let agb = boot(
+        ConsoleModel::GameBoyAdvance,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    )
+    .direct_boot_state(Some(&cartridge))
+    .expect("AGB SkipBoot should expose a direct-boot state");
+    assert_eq!(agb.cpu.f, 0x00);
+    assert_eq!(agb.cpu.b, 0x89);
+    assert_eq!(agb.cpu.h, 0x00);
+    assert_eq!(agb.cpu.l, 0x7C);
+}
+
+#[test]
+fn agb_dmg_mode_boot_flags_follow_the_final_b_increment() {
+    let mut half_carry_title = [0; 16];
+    half_carry_title[0] = 0x0F;
+    let half_carry_header =
+        test_header_with_cgb_header_and_title(half_carry_title, 0x00, 0x01, *b"00");
+    let half_carry =
+        build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&half_carry_header));
+    assert_eq!(half_carry.b, 0x10);
+    assert_eq!(half_carry.f, 0x20);
+
+    let mut zero_title = [0; 16];
+    zero_title[0] = 0xFF;
+    let zero_header = test_header_with_cgb_header_and_title(zero_title, 0x00, 0x01, *b"00");
+    let zero = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&zero_header));
+    assert_eq!(zero.b, 0x00);
+    assert_eq!(zero.f, 0xA0);
+}
+
+#[test]
+fn cgb_family_dmg_mode_boot_hl_tracks_logo_tilemap_checksum_cases() {
+    for (title_checksum, cgb_b, agb_b) in [(0x43, 0x43, 0x44), (0x58, 0x58, 0x59)] {
+        let mut title = [0; 16];
+        title[0] = title_checksum;
+        let header = test_header_with_cgb_header_and_title(title, 0x00, 0x01, *b"00");
+
+        let cgb = build_skip_boot_cpu_state(ConsoleModel::GameBoyColor, None, Some(&header));
+        assert_eq!(cgb.b, cgb_b);
+        assert_eq!(cgb.h, 0x99);
+        assert_eq!(cgb.l, 0x1A);
+
+        let agb = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&header));
+        assert_eq!(agb.b, agb_b);
+        assert_eq!(agb.h, 0x99);
+        assert_eq!(agb.l, 0x1A);
+    }
+
+    let mut title = [0; 16];
+    title[0] = 0x42;
+    let header = test_header_with_cgb_header_and_title(title, 0x00, 0x01, *b"00");
+
+    let cgb = build_skip_boot_cpu_state(ConsoleModel::GameBoyColor, None, Some(&header));
+    assert_eq!(cgb.b, 0x42);
+    assert_eq!(cgb.h, 0x00);
+    assert_eq!(cgb.l, 0x7C);
+
+    let agb = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&header));
+    assert_eq!(agb.b, 0x43);
+    assert_eq!(agb.h, 0x00);
+    assert_eq!(agb.l, 0x7C);
 }
 
 #[test]

@@ -195,14 +195,9 @@ fn resolve_lookup_index(header: Option<&CartridgeHeader>) -> u8 {
         return CGB_COMPATIBILITY_DEFAULT_LOOKUP_INDEX;
     };
 
-    if !made_by_nintendo(header) {
+    let Some(checksum) = header.cgb_compatibility_title_checksum() else {
         return CGB_COMPATIBILITY_DEFAULT_LOOKUP_INDEX;
-    }
-
-    let checksum = header
-        .title_bytes
-        .iter()
-        .fold(0_u8, |checksum, byte| checksum.wrapping_add(*byte));
+    };
     let Some(index) = TITLE_CHECKSUMS
         .iter()
         .position(|candidate| *candidate == checksum)
@@ -216,14 +211,6 @@ fn resolve_lookup_index(header: Option<&CartridgeHeader>) -> u8 {
 
     resolve_ambiguous_lookup_index(index, header.title_bytes[3])
         .unwrap_or(CGB_COMPATIBILITY_DEFAULT_LOOKUP_INDEX)
-}
-
-fn made_by_nintendo(header: &CartridgeHeader) -> bool {
-    if header.old_licensee_code == 0x33 {
-        header.new_licensee_code == *b"01"
-    } else {
-        header.old_licensee_code == 0x01
-    }
 }
 
 fn resolve_ambiguous_lookup_index(checksum_index: usize, fourth_title_byte: u8) -> Option<u8> {

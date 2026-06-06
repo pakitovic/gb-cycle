@@ -995,19 +995,70 @@ fn build_skip_boot_cpu_state(
                 .map(|header| header.cgb_flag.enables_cgb_native_mode())
                 .unwrap_or(false);
             let agb = matches!(console_model, ConsoleModel::GameBoyAdvance);
+            let cgb_dmg_mode_b = cgb_dmg_mode_boot_b(header);
+            let b = cgb_family_boot_b(cgb_native, agb, cgb_dmg_mode_b);
+            let f = cgb_family_boot_f(cgb_native, agb, cgb_dmg_mode_b);
+            let (h, l) = cgb_family_boot_hl(cgb_native, agb, b);
             CpuStartupState {
                 a: 0x11,
-                f: if agb && cgb_native { 0x00 } else { 0x80 },
-                b: if agb { 0x01 } else { 0x00 },
+                f,
+                b,
                 c: 0x00,
                 d: if cgb_native { 0xFF } else { 0x00 },
                 e: if cgb_native { 0x56 } else { 0x08 },
-                h: 0x00,
-                l: if cgb_native { 0x0D } else { 0x7C },
+                h,
+                l,
                 sp: 0xFFFE,
                 pc: 0x0100,
             }
         }
+    }
+}
+
+fn cgb_dmg_mode_boot_b(header: Option<&CartridgeHeader>) -> u8 {
+    header
+        .and_then(CartridgeHeader::cgb_compatibility_title_checksum)
+        .unwrap_or(0)
+}
+
+const fn cgb_family_boot_b(cgb_native: bool, agb: bool, cgb_dmg_mode_b: u8) -> u8 {
+    match (cgb_native, agb) {
+        (true, true) => 0x01,
+        (true, false) => 0x00,
+        (false, true) => cgb_dmg_mode_b.wrapping_add(1),
+        (false, false) => cgb_dmg_mode_b,
+    }
+}
+
+const fn cgb_family_boot_f(cgb_native: bool, agb: bool, cgb_dmg_mode_b: u8) -> u8 {
+    match (cgb_native, agb) {
+        (true, true) => 0x00,
+        (true, false) | (false, false) => 0x80,
+        (false, true) => agb_dmg_mode_boot_f(cgb_dmg_mode_b),
+    }
+}
+
+const fn agb_dmg_mode_boot_f(cgb_dmg_mode_b: u8) -> u8 {
+    let result = cgb_dmg_mode_b.wrapping_add(1);
+    let zero_flag = if result == 0 { 0x80 } else { 0x00 };
+    let half_carry_flag = if cgb_dmg_mode_b & 0x0F == 0x0F {
+        0x20
+    } else {
+        0x00
+    };
+
+    zero_flag | half_carry_flag
+}
+
+const fn cgb_family_boot_hl(cgb_native: bool, agb: bool, b: u8) -> (u8, u8) {
+    if cgb_native {
+        return (0x00, 0x0D);
+    }
+
+    if (!agb && (b == 0x43 || b == 0x58)) || (agb && (b == 0x44 || b == 0x59)) {
+        (0x99, 0x1A)
+    } else {
+        (0x00, 0x7C)
     }
 }
 
