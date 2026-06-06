@@ -39,7 +39,7 @@ fn runtime_updates_persist_muted_fullscreen_and_last_open_directory() {
         .set_show_performance_hud(true)
         .expect("performance HUD visibility should persist");
     store
-        .set_show_sgb_border(false)
+        .set_sgb_border(SgbBorderPresentationMode::Off)
         .expect("SGB border visibility should persist");
     store
         .set_show_cgb_infrared_helper(true)
@@ -104,6 +104,9 @@ fn runtime_updates_persist_muted_fullscreen_and_last_open_directory() {
         .expect("keyboard hotkey bindings should persist");
 
     let reloaded = PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+    let persisted_text = fs::read_to_string(&path).expect("persisted settings text should reload");
+    assert!(persisted_text.contains("sgb_border = \"off\""));
+    assert!(!persisted_text.contains("show_sgb_border"));
     assert!(reloaded.video.fullscreen);
     assert_eq!(reloaded.video.window_scale, 6);
     assert!(!reloaded.video.integer_scale);
@@ -113,7 +116,7 @@ fn runtime_updates_persist_muted_fullscreen_and_last_open_directory() {
     assert!(!reloaded.video.show_background);
     assert!(!reloaded.video.show_window);
     assert!(!reloaded.video.show_objects);
-    assert!(!reloaded.video.show_sgb_border);
+    assert_eq!(reloaded.video.sgb_border, SgbBorderPresentationMode::Off);
     assert!(reloaded.video.show_performance_hud);
     assert!(reloaded.video.show_cgb_infrared_helper);
     assert!(!reloaded.video.vsync);
@@ -186,7 +189,7 @@ fn reset_helpers_restore_default_video_audio_and_input_preferences() {
         .set_show_performance_hud(true)
         .expect("HUD visibility should persist");
     store
-        .set_show_sgb_border(false)
+        .set_sgb_border(SgbBorderPresentationMode::Off)
         .expect("SGB border visibility should persist");
     store
         .set_show_cgb_infrared_helper(true)

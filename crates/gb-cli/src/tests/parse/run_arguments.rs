@@ -106,7 +106,7 @@ fn parse_run_arguments_accepts_the_full_option_matrix() {
                 options.framebuffer_out,
                 Some(PathBuf::from("framebuffer.png"))
             );
-            assert!(!options.show_sgb_border);
+            assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
             assert_eq!(options.display_palette, None);
             assert_eq!(options.effective_display_palette(), None);
             assert_eq!(options.trace_out, Some(PathBuf::from("trace.txt")));
@@ -140,7 +140,7 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
         Some(SgbHostProfile::SgbNtsc)
     );
     assert_eq!(options.revision, HardwareRevision::DmgCpuC);
-    assert!(options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Auto);
 
     let action = parse_run_arguments(["demo.gb", "--model", "SGB", "--sgb-standard", "pal"])
         .expect("SGB PAL should parse");
@@ -165,7 +165,7 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
     assert_eq!(options.model.console_model(), ConsoleModel::GameBoy);
     assert_eq!(options.model.sgb_profile(), Some(SgbHostProfile::Sgb2Ntsc));
     assert_eq!(options.revision, HardwareRevision::DmgCpuC);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
 
     let action = parse_run_arguments(["demo.gb", "--border-off", "--model", "SGB"])
         .expect("SGB model should accept order-independent border disabling");
@@ -173,15 +173,15 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
         panic!("expected run action");
     };
     assert_eq!(options.model, RunModel::SuperGameBoy);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
 
     let action = parse_run_arguments(["demo.gb", "--border-off"])
-        .expect("border disabling should be accepted and ignored outside SGB-family output");
+        .expect("border disabling should be accepted for handheld borrowed-border output");
     let CliAction::Run(options) = action else {
         panic!("expected run action");
     };
     assert_eq!(options.model, RunModel::GameBoy);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
 
     let action = parse_run_arguments(["demo.gb", "--model", "CGB", "--border-off"])
         .expect("border disabling should not reject non-SGB models");
@@ -189,7 +189,7 @@ fn parse_run_arguments_accepts_sgb_profiles_as_dmg_core_models() {
         panic!("expected run action");
     };
     assert_eq!(options.model, RunModel::Color);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
 
     let sgb2_standard_error =
         parse_run_arguments(["demo.gb", "--model", "SGB2", "--sgb-standard", "ntsc"])
@@ -216,7 +216,7 @@ fn parse_run_arguments_applies_test_runner_defaults_without_changing_emulated_li
     assert!(options.test_runner);
     assert_eq!(options.startup_mode, StartupMode::SkipBoot);
     assert_eq!(options.execution_mode, ExecutionMode::Permissive);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
     assert_eq!(options.display_palette, Some(RunDisplayPalette::Grey));
     assert_eq!(
         options.effective_display_palette(),
@@ -246,7 +246,7 @@ fn parse_run_arguments_applies_test_runner_defaults_without_changing_emulated_li
     assert!(options.test_runner);
     assert_eq!(options.model, RunModel::Color);
     assert_eq!(options.execution_mode, ExecutionMode::Permissive);
-    assert!(!options.show_sgb_border);
+    assert_eq!(options.sgb_border, SgbBorderPresentationMode::Off);
     assert_eq!(options.display_palette, None);
     assert_eq!(options.effective_display_palette(), None);
 }

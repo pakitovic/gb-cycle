@@ -9,6 +9,7 @@ use gb_desktop::{
     FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
     GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
     HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+    SgbBorderPresentationMode,
 };
 use std::time::{Duration, Instant};
 
@@ -602,7 +603,7 @@ pub struct MenuPresentation {
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
-    pub show_sgb_border: bool,
+    pub sgb_border: SgbBorderPresentationMode,
     pub show_performance_hud: bool,
     pub muted: bool,
     pub audio_available: bool,
@@ -671,9 +672,8 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => self.recent_rom_count >= 11,
             MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
-            MenuItem::SgbVideoStandard | MenuItem::SgbBorder => {
-                self.console_model.sgb_profile().is_some()
-            }
+            MenuItem::SgbVideoStandard => self.console_model.sgb_profile().is_some(),
+            MenuItem::SgbBorder => true,
             MenuItem::CgbInfrared
             | MenuItem::CgbInfraredNone
             | MenuItem::CgbInfraredSameGame
@@ -1029,8 +1029,8 @@ impl MenuPresentation {
                 format!("VIDEO {}", video_standard.menu_name())
             }
             MenuItem::SgbBorder => {
-                if self.show_sgb_border {
-                    "BORDER ON".to_string()
+                if self.sgb_border.is_auto() {
+                    "BORDER AUTO".to_string()
                 } else {
                     "BORDER OFF".to_string()
                 }

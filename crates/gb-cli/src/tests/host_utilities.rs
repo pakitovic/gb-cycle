@@ -207,6 +207,19 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let sgb_lcd_info = decode_png_info(&sgb_lcd_rgb555_png_artifact);
     assert_eq!(sgb_lcd_info.width, FRAMEBUFFER_WIDTH as u32);
     assert_eq!(sgb_lcd_info.height, FRAMEBUFFER_HEIGHT as u32);
+    let borrowed_sgb_border = SgbBorrowedBorder::new(SgbBorderState::default());
+    let borrowed_sgb_png_artifact = encode_framebuffer_artifact_with_borrowed_sgb_border(
+        Path::new("framebuffer.png"),
+        &vec![3; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT],
+        None,
+        Some(&borrowed_sgb_border),
+        Some(&vec![0x001F; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT]),
+        Some(DMG_GREY_DISPLAY_PALETTE),
+    )
+    .expect("borrowed SGB border PNG encoding should succeed");
+    let borrowed_sgb_info = decode_png_info(&borrowed_sgb_png_artifact);
+    assert_eq!(borrowed_sgb_info.width, SGB_HOST_FRAMEBUFFER_WIDTH as u32);
+    assert_eq!(borrowed_sgb_info.height, SGB_HOST_FRAMEBUFFER_HEIGHT as u32);
     let direct_png = encode_framebuffer_png(&vec![0; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT])
         .expect("direct PNG encoding should succeed");
     assert!(direct_png.starts_with(b"\x89PNG\r\n\x1A\n"));

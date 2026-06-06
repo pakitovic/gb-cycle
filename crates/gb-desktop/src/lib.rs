@@ -13,7 +13,8 @@ pub use config::{
     GamepadGyroMode, GamepadMenuBindings, GamepadOptions, GamepadRumbleMode, HotkeyBindings,
     InputOptions, JoypadKeyboardBindings, KeyboardBindings, LaunchOptions, MachineStateOptions,
     MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions, SaveDirectoryPolicy,
-    SaveKeyPolicy, SaveOptions, VideoOptions, fast_forward_display_speed_multiplier,
+    SaveKeyPolicy, SaveOptions, SgbBorderPresentationMode, VideoOptions,
+    fast_forward_display_speed_multiplier,
 };
 
 pub use external_port::DesktopExternalPortSelection;

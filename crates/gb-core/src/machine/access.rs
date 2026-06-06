@@ -224,6 +224,7 @@ impl<S: TraceSink> Machine<S> {
         self.timer = Timer::new(console_model);
         self.serial = Serial::new_with_operating_mode(console_model, operating_mode);
         self.sgb_host = SgbHost::new_with_profile(host_platform, sgb_profile, startup_mode);
+        self.borrowed_sgb_border = None;
         self.speed = SpeedController::new(console_model, operating_mode);
         self.external_port = external_port;
         self.boot = BootController::new_with_sgb_profile(

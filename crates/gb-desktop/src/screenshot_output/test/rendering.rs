@@ -20,6 +20,7 @@ fn render_screenshot_uses_same_dmg_display_palette_as_desktop_presentation() {
             display_palette: crate::DMG_DISPLAY_PALETTE,
             cgb_framebuffer_rgb555: None,
             sgb_framebuffer_rgb555: None,
+            borrowed_sgb_border: None,
         }),
         &crate::VideoOptions::default(),
     );
@@ -55,6 +56,7 @@ fn render_screenshot_uses_cgb_rgb555_framebuffer_for_color_models() {
             display_palette: crate::DMG_DISPLAY_PALETTE,
             cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
             sgb_framebuffer_rgb555: None,
+            borrowed_sgb_border: None,
         }),
         &crate::VideoOptions {
             display_palette: crate::DesktopDisplayPalette::Light,
@@ -103,6 +105,7 @@ fn render_screenshot_uses_sgb_rgb555_host_frame_dimensions() {
                     display_palette: crate::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: Some(sgb_framebuffer_rgb555),
+                    borrowed_sgb_border: None,
                 }),
                 None,
                 None,
@@ -149,6 +152,7 @@ fn render_screenshot_places_the_linked_secondary_panel_to_the_right() {
                     display_palette: crate::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 Some(crate::FramebufferPanelInput {
                     dimensions: crate::FramebufferDimensions {
@@ -163,6 +167,7 @@ fn render_screenshot_places_the_linked_secondary_panel_to_the_right() {
                     display_palette: crate::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 None,
                 None,

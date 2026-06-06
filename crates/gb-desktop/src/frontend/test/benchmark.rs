@@ -50,7 +50,10 @@ fn benchmark_helpers_apply_cases_and_write_artifacts() {
         options.config.video.display_palette,
         DesktopDisplayPalette::Grey
     );
-    assert!(!options.config.video.show_sgb_border);
+    assert_eq!(
+        options.config.video.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
 
     assert_eq!(
         super::super::desktop_model_from_benchmark(BenchmarkModel::Dmg),
@@ -120,7 +123,10 @@ fn benchmark_helpers_apply_cases_and_write_artifacts() {
         cgb_options.config.launch.execution_mode,
         ExecutionMode::Permissive
     );
-    assert!(!cgb_options.config.video.show_sgb_border);
+    assert_eq!(
+        cgb_options.config.video.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
 
     let mut agb_options = options.clone();
     let mut agb_case = dmg_case.clone();

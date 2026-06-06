@@ -29,8 +29,9 @@ use gb_core::{
     MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame,
     PokemonMysteryGiftCode, PokemonMysteryGiftKind, PokemonPikachuColorGift,
     PokemonPikachuColorRegion, PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot,
-    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SerialTickTelemetry, SgbClockRate,
-    SgbVideoStandard, StartupMode, TraceSummaryBuffer,
+    PpuStepRegion, SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SGB_LCD_FRAME_ORIGIN_X,
+    SGB_LCD_FRAME_ORIGIN_Y, SerialTickTelemetry, SgbBorrowedBorder, SgbClockRate,
+    SgbVideoStandard, StartupMode, TraceSummaryBuffer, extract_initial_sgb_borrowed_border,
 };
 use gb_desktop::{
     BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopDisplayPalette,
@@ -39,7 +40,7 @@ use gb_desktop::{
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
     GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
     KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, VideoOptions,
+    SaveDirectoryPolicy, SgbBorderPresentationMode, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveFileExtension, CartridgeSaveKey, CartridgeSaveTimeSource,
@@ -143,6 +144,7 @@ pub(crate) struct FramebufferPanelInput<'a> {
     pub(crate) display_palette: DisplayPalette,
     pub(crate) cgb_framebuffer_rgb555: Option<&'a [u16]>,
     pub(crate) sgb_framebuffer_rgb555: Option<Vec<u16>>,
+    pub(crate) borrowed_sgb_border: Option<&'a SgbBorrowedBorder>,
 }
 
 #[derive(Debug, Clone)]

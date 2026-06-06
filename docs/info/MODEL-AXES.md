@@ -124,6 +124,8 @@ Typical uses:
 
 `HostPlatform` should not decide CPU, PPU, DMA, timer, or APU truth directly unless a subsystem handbook later documents a real host-platform-visible effect.
 
+Borrowed SGB border presentation for handheld models is not a `HostPlatform` change. The live DMG/MGB/LGB/CGB/AGB machine remains `HostPlatform::Handheld`; frontends may attach a presentation-only borrowed border extracted by a temporary SGB NTSC machine, and the 160×144 aperture must continue to come from the active handheld model.
+
 Use `SgbHostProfile` when the host-shell question needs the specific SGB profile rather than merely "is this SGB?". Typical uses include choosing SGB NTSC versus SGB PAL presentation, identifying SGB2 corrected-clock behavior, selecting the SGB/SGB2 real-boot asset intent, and gating the physical Game Link port. `MachineConfig::with_sgb_profile` is the preferred profile-selection entry point because it keeps the host platform coherent with the profile.
 
 ### Use `CapabilitySet` by default for subsystem behavior gates

@@ -3,6 +3,7 @@ use crate::framebuffer::RunDisplayPalette;
 use crate::host_io::resolve_path;
 use crate::options::{
     BenchmarkRunOptions, BootRomVerificationMode, RunModel, RunOptions, SavePolicy,
+    SgbBorderPresentationMode,
 };
 use crate::run::execution::run_command;
 use gb_benchmark::{
@@ -58,7 +59,7 @@ pub(crate) fn run_benchmark_case(
         serial_stdout: false,
         serial_out: None,
         framebuffer_out,
-        show_sgb_border: true,
+        sgb_border: SgbBorderPresentationMode::Auto,
         display_palette: benchmark_case.palette.map(display_palette_from_benchmark),
         trace_out: None,
         state_in: None,

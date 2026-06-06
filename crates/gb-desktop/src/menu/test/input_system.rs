@@ -69,17 +69,17 @@ fn system_submenu_cycles_model_revision_startup_and_execution_mode() {
         ..presentation
     };
     open_system_menu(&mut menu, cgb_presentation);
-    assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
+    select_visible_item(&mut menu, cgb_presentation, MenuItem::HardwareRevision);
     assert_eq!(
         menu.handle_input(MenuInput::Confirm, cgb_presentation),
         Some(MenuAction::CycleHardwareRevision)
     );
-    assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
+    select_visible_item(&mut menu, cgb_presentation, MenuItem::StartupMode);
     assert_eq!(
         menu.handle_input(MenuInput::Confirm, cgb_presentation),
         Some(MenuAction::CycleStartupMode)
     );
-    assert_eq!(menu.handle_input(MenuInput::Down, cgb_presentation), None);
+    select_visible_item(&mut menu, cgb_presentation, MenuItem::ExecutionMode);
     assert_eq!(
         menu.handle_input(MenuInput::Confirm, cgb_presentation),
         Some(MenuAction::CycleExecutionMode)
@@ -87,9 +87,10 @@ fn system_submenu_cycles_model_revision_startup_and_execution_mode() {
 }
 
 #[test]
-fn system_submenu_toggles_sgb_border_only_for_sgb_profiles() {
+fn system_submenu_toggles_sgb_border_for_sgb_and_handheld_profiles() {
     let presentation = test_presentation();
-    assert!(!presentation.item_visible(MenuItem::SgbBorder));
+    assert!(presentation.item_visible(MenuItem::SgbBorder));
+    assert_eq!(presentation.item_label(MenuItem::SgbBorder), "BORDER AUTO");
 
     let mut sgb_presentation = MenuPresentation {
         console_model: DesktopConsoleModel::SuperGameBoy,
@@ -98,9 +99,9 @@ fn system_submenu_toggles_sgb_border_only_for_sgb_profiles() {
     assert!(sgb_presentation.item_visible(MenuItem::SgbBorder));
     assert_eq!(
         sgb_presentation.item_label(MenuItem::SgbBorder),
-        "BORDER ON"
+        "BORDER AUTO"
     );
-    sgb_presentation.show_sgb_border = false;
+    sgb_presentation.sgb_border = SgbBorderPresentationMode::Off;
     assert_eq!(
         sgb_presentation.item_label(MenuItem::SgbBorder),
         "BORDER OFF"
@@ -119,6 +120,20 @@ fn system_submenu_toggles_sgb_border_only_for_sgb_profiles() {
         ..presentation
     };
     assert!(sgb2_presentation.item_visible(MenuItem::SgbBorder));
+
+    for console_model in [
+        DesktopConsoleModel::GameBoy,
+        DesktopConsoleModel::GameBoyPocket,
+        DesktopConsoleModel::GameBoyLight,
+        DesktopConsoleModel::GameBoyColor,
+        DesktopConsoleModel::GameBoyAdvance,
+    ] {
+        let handheld_presentation = MenuPresentation {
+            console_model,
+            ..presentation
+        };
+        assert!(handheld_presentation.item_visible(MenuItem::SgbBorder));
+    }
 }
 
 #[test]

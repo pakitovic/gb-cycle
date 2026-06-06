@@ -5,7 +5,7 @@ use gb_desktop::{
     GamepadActionBindings, GamepadButtonBindings, GamepadDirectionalSource, GamepadGyroMode,
     GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
     MachineStateOptions, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, VideoOptions,
+    SaveDirectoryPolicy, SgbBorderPresentationMode, VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -171,12 +171,12 @@ impl DesktopSettingsStore {
         self.save()
     }
 
-    pub fn set_show_sgb_border(&mut self, show_sgb_border: bool) -> Result<(), String> {
-        if self.settings.video.show_sgb_border == show_sgb_border {
+    pub fn set_sgb_border(&mut self, sgb_border: SgbBorderPresentationMode) -> Result<(), String> {
+        if self.settings.video.sgb_border == sgb_border {
             return Ok(());
         }
 
-        self.settings.video.show_sgb_border = show_sgb_border;
+        self.settings.video.sgb_border = sgb_border;
         self.save()
     }
 

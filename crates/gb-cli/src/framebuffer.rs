@@ -1,5 +1,9 @@
+use crate::options::SgbBorderPresentationMode;
 use crate::run::machine::CliMachine;
-use gb_core::{SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH};
+use gb_core::{
+    SGB_FRAME_HEIGHT, SGB_FRAME_WIDTH, SGB_LCD_FRAME_ORIGIN_X, SGB_LCD_FRAME_ORIGIN_Y,
+    SgbBorrowedBorder,
+};
 use std::io;
 use std::path::Path;
 
@@ -73,27 +77,45 @@ pub(crate) fn framebuffer_output_format(path: &Path) -> FramebufferOutputFormat 
 
 pub(crate) fn sgb_framebuffer_artifact_for_output(
     machine: &CliMachine,
-    show_sgb_border: bool,
+    sgb_border: SgbBorderPresentationMode,
 ) -> Option<(usize, usize, Vec<u16>)> {
-    if show_sgb_border {
-        machine.sgb_framebuffer_rgb555().map(|pixels| {
+    match sgb_border {
+        SgbBorderPresentationMode::Auto => machine.sgb_framebuffer_rgb555().map(|pixels| {
             (
                 SGB_HOST_FRAMEBUFFER_WIDTH,
                 SGB_HOST_FRAMEBUFFER_HEIGHT,
                 pixels,
             )
-        })
-    } else {
-        machine
+        }),
+        SgbBorderPresentationMode::Off => machine
             .sgb_lcd_framebuffer_rgb555()
-            .map(|pixels| (FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, pixels))
+            .map(|pixels| (FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, pixels)),
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn encode_framebuffer_artifact(
     path: &Path,
     framebuffer: &[u8],
     sgb_framebuffer_rgb555: Option<(usize, usize, &[u16])>,
+    cgb_framebuffer_rgb555: Option<&[u16]>,
+    display_palette: Option<DisplayPalette>,
+) -> io::Result<Vec<u8>> {
+    encode_framebuffer_artifact_with_borrowed_sgb_border(
+        path,
+        framebuffer,
+        sgb_framebuffer_rgb555,
+        None,
+        cgb_framebuffer_rgb555,
+        display_palette,
+    )
+}
+
+pub(crate) fn encode_framebuffer_artifact_with_borrowed_sgb_border(
+    path: &Path,
+    framebuffer: &[u8],
+    sgb_framebuffer_rgb555: Option<(usize, usize, &[u16])>,
+    borrowed_sgb_border: Option<&SgbBorrowedBorder>,
     cgb_framebuffer_rgb555: Option<&[u16]>,
     display_palette: Option<DisplayPalette>,
 ) -> io::Result<Vec<u8>> {
@@ -108,6 +130,13 @@ pub(crate) fn encode_framebuffer_artifact(
         FramebufferOutputFormat::Png => {
             if let Some((width, height, sgb_framebuffer_rgb555)) = sgb_framebuffer_rgb555 {
                 encode_rgb555_framebuffer_png(width, height, sgb_framebuffer_rgb555)
+            } else if let Some(borrowed_sgb_border) = borrowed_sgb_border {
+                encode_borrowed_sgb_border_png(
+                    framebuffer,
+                    borrowed_sgb_border,
+                    cgb_framebuffer_rgb555,
+                    display_palette,
+                )
             } else if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
                 encode_rgb555_framebuffer_png(
                     FRAMEBUFFER_WIDTH,
@@ -121,6 +150,53 @@ pub(crate) fn encode_framebuffer_artifact(
             }
         }
     }
+}
+
+fn encode_borrowed_sgb_border_png(
+    framebuffer: &[u8],
+    borrowed_sgb_border: &SgbBorrowedBorder,
+    cgb_framebuffer_rgb555: Option<&[u16]>,
+    display_palette: Option<DisplayPalette>,
+) -> io::Result<Vec<u8>> {
+    let mut pixels = Vec::with_capacity(SGB_HOST_FRAMEBUFFER_WIDTH * SGB_HOST_FRAMEBUFFER_HEIGHT);
+    for y in 0..SGB_HOST_FRAMEBUFFER_HEIGHT {
+        for x in 0..SGB_HOST_FRAMEBUFFER_WIDTH {
+            let rgb = if let Some(rgb555) = borrowed_sgb_border.pixel_rgb555_outside_lcd(x, y) {
+                rgb555_to_rgb888(rgb555)
+            } else {
+                let lcd_x = x.saturating_sub(SGB_LCD_FRAME_ORIGIN_X);
+                let lcd_y = y.saturating_sub(SGB_LCD_FRAME_ORIGIN_Y);
+                if lcd_x >= FRAMEBUFFER_WIDTH || lcd_y >= FRAMEBUFFER_HEIGHT {
+                    [0, 0, 0]
+                } else {
+                    let lcd_index = lcd_y * FRAMEBUFFER_WIDTH + lcd_x;
+                    if let Some(cgb_framebuffer_rgb555) = cgb_framebuffer_rgb555 {
+                        cgb_framebuffer_rgb555
+                            .get(lcd_index)
+                            .copied()
+                            .map(rgb555_to_rgb888)
+                            .unwrap_or([0, 0, 0])
+                    } else {
+                        framebuffer
+                            .get(lcd_index)
+                            .copied()
+                            .map(|shade| {
+                                display_palette
+                                    .map(|palette| palette.shade_rgb(shade))
+                                    .unwrap_or_else(|| [framebuffer_pixel_to_grayscale(shade); 3])
+                            })
+                            .unwrap_or([0, 0, 0])
+                    }
+                }
+            };
+            pixels.push(rgb);
+        }
+    }
+    encode_rgb_png(
+        SGB_HOST_FRAMEBUFFER_WIDTH,
+        SGB_HOST_FRAMEBUFFER_HEIGHT,
+        &pixels,
+    )
 }
 
 pub(crate) fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {

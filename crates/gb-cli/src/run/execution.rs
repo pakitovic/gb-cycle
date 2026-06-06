@@ -1,5 +1,7 @@
 use crate::boot_rom::load_boot_rom_assets;
-use crate::framebuffer::{encode_framebuffer_artifact, sgb_framebuffer_artifact_for_output};
+use crate::framebuffer::{
+    encode_framebuffer_artifact_with_borrowed_sgb_border, sgb_framebuffer_artifact_for_output,
+};
 use crate::host_io::{
     resolve_path, validate_directory_input, write_bytes_with_parent, write_text_file_with_parent,
     writeln_checked,
@@ -17,7 +19,7 @@ use gb_benchmark::{
     BenchmarkStats, BenchmarkStimulusRuntime, GB_CLI_FRONTEND, encode_stats_toml,
     frontend_screenshot_path, frontend_stats_path,
 };
-use gb_core::MachineConfig;
+use gb_core::{MachineConfig, extract_initial_sgb_borrowed_border};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -34,11 +36,22 @@ pub(crate) fn run_command(
     let rom_bytes = fs::read(&rom_path)
         .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
 
+    let compatibility = compatibility_for_execution_mode(options.execution_mode);
+    let borrowed_sgb_border = if options.sgb_border.is_auto()
+        && options
+            .model
+            .sgb_profile_for_standard(options.sgb_video_standard)
+            .is_none()
+    {
+        extract_initial_sgb_borrowed_border(&rom_bytes, &compatibility)
+    } else {
+        None
+    };
     let boot_rom_assets = load_boot_rom_assets(&options, &current_dir, stderr)?;
     let mut config = MachineConfig::new(options.model.console_model())
         .with_startup_mode(options.startup_mode)
         .with_revision(options.effective_revision())
-        .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
+        .with_compatibility(compatibility)
         .with_boot_rom_assets(boot_rom_assets);
     if let Some(profile) = options
         .model
@@ -160,14 +173,15 @@ pub(crate) fn run_command(
     }
     if let Some(framebuffer_out) = &options.framebuffer_out {
         let sgb_framebuffer_rgb555 =
-            sgb_framebuffer_artifact_for_output(&machine, options.show_sgb_border);
+            sgb_framebuffer_artifact_for_output(&machine, options.sgb_border);
         let sgb_framebuffer_rgb555 = sgb_framebuffer_rgb555
             .as_ref()
             .map(|(width, height, pixels)| (*width, *height, pixels.as_slice()));
-        let framebuffer_image = encode_framebuffer_artifact(
+        let framebuffer_image = encode_framebuffer_artifact_with_borrowed_sgb_border(
             framebuffer_out,
             machine.framebuffer(),
             sgb_framebuffer_rgb555,
+            borrowed_sgb_border.as_ref(),
             machine.cgb_framebuffer_rgb555(),
             options.effective_display_palette(),
         )

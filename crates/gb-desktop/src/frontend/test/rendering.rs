@@ -250,6 +250,7 @@ fn render_frame_draws_corner_indicators_without_stats_hud() {
                 display_palette: super::super::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
                 sgb_framebuffer_rgb555: None,
+                borrowed_sgb_border: None,
             }),
             None,
             None,
@@ -760,6 +761,7 @@ fn render_frame_places_p2_output_in_the_right_panel() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 Some(super::super::FramebufferPanelInput {
                     dimensions: super::super::FramebufferDimensions {
@@ -774,6 +776,7 @@ fn render_frame_places_p2_output_in_the_right_panel() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 None,
                 None,
@@ -860,6 +863,7 @@ fn render_frame_places_dmg07_outputs_in_a_two_by_two_grid() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 Some(super::super::FramebufferPanelInput {
                     dimensions: super::super::FramebufferDimensions {
@@ -874,6 +878,7 @@ fn render_frame_places_dmg07_outputs_in_a_two_by_two_grid() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 Some(super::super::FramebufferPanelInput {
                     dimensions: super::super::FramebufferDimensions {
@@ -888,6 +893,7 @@ fn render_frame_places_dmg07_outputs_in_a_two_by_two_grid() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 Some(super::super::FramebufferPanelInput {
                     dimensions: super::super::FramebufferDimensions {
@@ -902,6 +908,7 @@ fn render_frame_places_dmg07_outputs_in_a_two_by_two_grid() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
             ],
         },
@@ -979,6 +986,7 @@ fn render_frame_reveals_bgwin_pixels_when_objects_are_hidden() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 None,
                 None,
@@ -1079,6 +1087,7 @@ fn render_frame_uses_dynamic_backdrop_when_bgwin_layers_are_hidden() {
                     display_palette: super::super::DMG_DISPLAY_PALETTE,
                     cgb_framebuffer_rgb555: None,
                     sgb_framebuffer_rgb555: None,
+                    borrowed_sgb_border: None,
                 }),
                 None,
                 None,
@@ -1143,6 +1152,7 @@ fn render_frame_applies_the_selected_presentation_filter_to_the_texture() {
                 display_palette: super::super::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
                 sgb_framebuffer_rgb555: None,
+                borrowed_sgb_border: None,
             }),
             None,
             None,

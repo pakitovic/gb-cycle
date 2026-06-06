@@ -1896,22 +1896,20 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::ToggleSgbBorder => {
-            if context
-                .session
-                .config
-                .launch
-                .console_model
-                .sgb_profile()
-                .is_none()
-            {
-                return Ok(None);
+            context.runtime.video_options.sgb_border = context.runtime.video_options.sgb_border.next();
+            context.session.config.video.sgb_border = context.runtime.video_options.sgb_border;
+            if context.runtime.video_options.sgb_border.is_auto() {
+                refresh_borrowed_sgb_borders_for_session(
+                    context.machine,
+                    &context.session.config,
+                    context.session.rom_bytes(),
+                    context.session.linked_secondary_rom_bytes(),
+                );
             }
-            context.runtime.video_options.show_sgb_border =
-                !context.runtime.video_options.show_sgb_border;
             context.runtime.frame_blending_state.reset();
             context
                 .settings_store
-                .set_show_sgb_border(context.runtime.video_options.show_sgb_border)?;
+                .set_sgb_border(context.runtime.video_options.sgb_border)?;
             Ok(None)
         }
         MenuAction::ToggleBackgroundLayer => {
@@ -2500,7 +2498,7 @@ fn current_menu_presentation(
         show_background: runtime.video_options.show_background,
         show_window: runtime.video_options.show_window,
         show_objects: runtime.video_options.show_objects,
-        show_sgb_border: runtime.video_options.show_sgb_border,
+        sgb_border: runtime.video_options.sgb_border,
         show_performance_hud: runtime.video_options.show_performance_hud,
         show_cgb_infrared_helper: runtime.video_options.show_cgb_infrared_helper,
         muted: runtime
