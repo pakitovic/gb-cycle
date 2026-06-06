@@ -219,6 +219,65 @@ fn chr_trn_starts_fallback_fade_before_game_pct() {
 }
 
 #[test]
+fn shell_black_transition_owns_transparent_lcd_window() {
+    let mut host = accepted_sgb_host();
+    write_joyp_packet(&mut host, sgb_pal01_packet());
+
+    let lcd = vec![1; SGB_LCD_PIXELS];
+    let lcd_window_index = SGB_LCD_FRAME_ORIGIN_Y * SGB_FRAME_WIDTH + SGB_LCD_FRAME_ORIGIN_X;
+    let live_lcd_color = host.video.lcd_pixel_for_shade(1);
+    assert_ne!(
+        live_lcd_color.raw(),
+        0,
+        "the test LCD shade must be non-black to catch shell-window leaks"
+    );
+    assert_eq!(
+        host.compose_frame_rgb555(&lcd)
+            .expect("fallback border should compose before CHR_TRN")[lcd_window_index],
+        live_lcd_color.raw(),
+        "idle fallback transparency should still show the live LCD"
+    );
+
+    let vram = transfer_vram_from_payload(&solid_tile_color_1_transfer());
+    write_joyp_packet(&mut host, sgb_chr_trn_packet(0));
+    assert_eq!(
+        host.compose_frame_rgb555(&lcd)
+            .expect("first fade frame should compose")[lcd_window_index],
+        live_lcd_color.raw(),
+        "fade-out starts from the live LCD before the host frame advances"
+    );
+
+    host.advance_frame_start(&vram, fallback_transfer_display())
+        .expect("CHR_TRN should advance through the shared frame path");
+    let faded_lcd_color = shell::scale_rgb555(
+        live_lcd_color,
+        shell::SGB_SHELL_BORDER_FADE_FRAMES.saturating_sub(1),
+    )
+    .raw();
+    assert_eq!(
+        host.compose_frame_rgb555(&lcd)
+            .expect("advanced fade frame should compose")[lcd_window_index],
+        faded_lcd_color,
+        "transparent LCD-window pixels must fade with the shell instead of leaking live LCD"
+    );
+
+    for _ in 1..usize::from(shell::SGB_SHELL_BORDER_FADE_FRAMES) {
+        host.advance_frame_start(&vram, fallback_transfer_display())
+            .expect("fade-out should continue while waiting for PCT_TRN");
+    }
+    assert_eq!(
+        host.snapshot().shell.border_transition.phase,
+        shell::SgbShellBorderTransitionPhase::HoldBlackUntilGameBorder
+    );
+    assert_eq!(
+        host.compose_frame_rgb555(&lcd)
+            .expect("black hold frame should compose")[lcd_window_index],
+        0,
+        "black shell hold must cover the transparent LCD aperture until PCT_TRN is ready"
+    );
+}
+
+#[test]
 fn pct_transfer_fades_from_shell_fallback_to_game_border() {
     let mut host = accepted_sgb_host();
     let before_count = host.snapshot().video.border.pct_transfer_count;

@@ -32,7 +32,7 @@ pub enum SgbShellBorderTransitionPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SgbShellBorderPixel {
     pub color: SgbRgb555Color,
-    pub color_index: u8,
+    pub lcd_scale: Option<u8>,
 }
 
 impl SgbShellState {
@@ -140,7 +140,7 @@ impl SgbShellState {
                 let (color, color_index) = border.pixel_color(x, y);
                 SgbShellBorderPixel {
                     color: border_presentation_color(color, color_index, backdrop_color),
-                    color_index,
+                    lcd_scale: (color_index == 0).then_some(SGB_SHELL_BORDER_FADE_FRAMES),
                 }
             }
             SgbShellBorderTransitionPhase::FadeFallbackToBlack => {
@@ -156,12 +156,12 @@ impl SgbShellState {
                     .min(SGB_SHELL_BORDER_FADE_FRAMES);
                 SgbShellBorderPixel {
                     color: scale_rgb555(color, scale),
-                    color_index,
+                    lcd_scale: (color_index == 0).then_some(scale),
                 }
             }
             SgbShellBorderTransitionPhase::HoldBlackUntilGameBorder => SgbShellBorderPixel {
                 color: SgbRgb555Color::new(0),
-                color_index: 0,
+                lcd_scale: None,
             },
             SgbShellBorderTransitionPhase::FadeBlackToGame => {
                 let (color, color_index) = game_border.pixel_color(x, y);
@@ -173,7 +173,7 @@ impl SgbShellState {
                     .min(SGB_SHELL_BORDER_FADE_FRAMES);
                 SgbShellBorderPixel {
                     color: scale_rgb555(color, scale),
-                    color_index,
+                    lcd_scale: (color_index == 0).then_some(scale),
                 }
             }
         }
@@ -222,7 +222,7 @@ pub fn load_default_border(border: &mut SgbBorderState) {
     border.pct_loaded = true;
 }
 
-fn scale_rgb555(color: SgbRgb555Color, scale: u8) -> SgbRgb555Color {
+pub(in crate::sgb) fn scale_rgb555(color: SgbRgb555Color, scale: u8) -> SgbRgb555Color {
     let scale = u16::from(scale.min(SGB_SHELL_BORDER_FADE_FRAMES));
     let denominator = u16::from(SGB_SHELL_BORDER_FADE_FRAMES);
     let raw = color.raw();

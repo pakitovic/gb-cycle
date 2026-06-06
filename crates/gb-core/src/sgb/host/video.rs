@@ -104,16 +104,15 @@ impl SgbHost {
                     x,
                     y,
                 );
-                if in_lcd_window && border_pixel.color_index == 0 {
+                if in_lcd_window && let Some(lcd_scale) = border_pixel.lcd_scale {
                     let lcd_x = x - SGB_LCD_FRAME_ORIGIN_X;
                     let lcd_y = y - SGB_LCD_FRAME_ORIGIN_Y;
-                    output[output_index] = self
+                    let lcd_index = lcd_y * SGB_LCD_WIDTH + lcd_x;
+                    let lcd_pixel = self
                         .video
-                        .lcd_pixel_for_framebuffer_index(
-                            lcd_y * SGB_LCD_WIDTH + lcd_x,
-                            dmg_framebuffer[lcd_y * SGB_LCD_WIDTH + lcd_x],
-                        )
-                        .raw();
+                        .lcd_pixel_for_framebuffer_index(lcd_index, dmg_framebuffer[lcd_index]);
+                    output[output_index] =
+                        super::super::shell::scale_rgb555(lcd_pixel, lcd_scale).raw();
                 } else {
                     output[output_index] = border_pixel.color.raw();
                 }
