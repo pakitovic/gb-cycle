@@ -61,7 +61,7 @@ cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-b
 # Run an SGB-enhanced game and export the native 256x224 SGB host frame
 cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
 
-# Select original SGB PAL, or export SGB/SGB2 LCD-only PNG without the host border
+# Select original SGB PAL, or force LCD-only PNG output without SGB/SGB2 or handheld borrowed borders
 cargo run -p gb-cli -- run path/to/rom.gb --model SGB --sgb-standard pal --framebuffer-out .artifacts/sgb-pal.png
 cargo run -p gb-cli -- run path/to/rom.gb --model SGB2 --border-off --framebuffer-out .artifacts/sgb2-lcd.png
 

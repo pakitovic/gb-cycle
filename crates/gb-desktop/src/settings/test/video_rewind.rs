@@ -110,7 +110,7 @@ fn settings_store_base_config_applies_persisted_host_preferences() {
     settings.video.show_background = false;
     settings.video.show_window = false;
     settings.video.show_objects = false;
-    settings.video.show_sgb_border = false;
+    settings.video.sgb_border = SgbBorderPresentationMode::Off;
     settings.video.fullscreen = true;
     settings.video.show_performance_hud = false;
     settings.video.show_cgb_infrared_helper = true;
@@ -182,7 +182,7 @@ fn settings_store_base_config_applies_persisted_host_preferences() {
     assert!(!config.video.show_background);
     assert!(!config.video.show_window);
     assert!(!config.video.show_objects);
-    assert!(!config.video.show_sgb_border);
+    assert_eq!(config.video.sgb_border, SgbBorderPresentationMode::Off);
     assert!(config.video.fullscreen);
     assert!(!config.video.show_performance_hud);
     assert!(config.video.show_cgb_infrared_helper);

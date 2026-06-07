@@ -107,7 +107,7 @@ fn framebuffer_render_input_uses_sgb_host_frame_dimensions_and_rgb555_output() {
     );
 
     let hidden_border_options = gb_desktop::VideoOptions {
-        show_sgb_border: false,
+        sgb_border: SgbBorderPresentationMode::Off,
         ..gb_desktop::VideoOptions::default()
     };
     let hidden_dimensions =
@@ -140,15 +140,70 @@ fn framebuffer_render_input_uses_sgb_host_frame_dimensions_and_rgb555_output() {
 }
 
 #[test]
+fn framebuffer_render_input_uses_borrowed_sgb_border_without_changing_handheld_host() {
+    let mut handheld = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    handheld.set_borrowed_sgb_border(Some(gb_core::SgbBorrowedBorder::new(
+        gb_core::SgbBorderState::default(),
+    )));
+    let machine = super::super::DesktopEmulationSession::new_single(handheld);
+    let video_options = gb_desktop::VideoOptions::default();
+
+    let dimensions =
+        super::super::framebuffer_dimensions_for_session(&machine, &video_options, true);
+    let render_input = super::super::framebuffer_render_input_for_session(
+        &machine,
+        dimensions,
+        &video_options,
+        true,
+    );
+
+    assert_eq!(
+        machine.primary_machine().config().host_platform,
+        gb_core::HostPlatform::Handheld
+    );
+    assert_eq!(
+        dimensions,
+        super::super::FramebufferDimensions {
+            width: super::super::SGB_HOST_FRAMEBUFFER_WIDTH,
+            height: super::super::SGB_HOST_FRAMEBUFFER_HEIGHT,
+        }
+    );
+    assert!(
+        render_input.panels[0]
+            .as_ref()
+            .expect("borrowed-border panel should be populated")
+            .borrowed_sgb_border
+            .is_some()
+    );
+
+    let border_off_options = gb_desktop::VideoOptions {
+        sgb_border: SgbBorderPresentationMode::Off,
+        ..gb_desktop::VideoOptions::default()
+    };
+    assert_eq!(
+        super::super::framebuffer_dimensions_for_session(&machine, &border_off_options, true),
+        super::super::FramebufferDimensions {
+            width: super::super::FRAMEBUFFER_WIDTH,
+            height: super::super::FRAMEBUFFER_HEIGHT,
+        }
+    );
+}
+
+#[test]
 fn launcher_sgb_profile_uses_handheld_dimensions_until_a_rom_is_loaded() {
     let machine = super::super::DesktopEmulationSession::new_single(Machine::new_summary(
         MachineConfig::new(ConsoleModel::GameBoy)
             .with_startup_mode(StartupMode::SkipBoot)
             .with_sgb_profile(SgbHostProfile::Sgb2Ntsc),
     ));
-    for show_sgb_border in [true, false] {
+    for sgb_border in [
+        SgbBorderPresentationMode::Auto,
+        SgbBorderPresentationMode::Off,
+    ] {
         let video_options = gb_desktop::VideoOptions {
-            show_sgb_border,
+            sgb_border,
             ..gb_desktop::VideoOptions::default()
         };
         let dimensions =
@@ -214,6 +269,7 @@ fn cgb_framebuffer_rendering_uses_rgb555_without_desktop_display_palette() {
             display_palette: super::super::GBL_DISPLAY_PALETTE,
             cgb_framebuffer_rgb555: Some(&cgb_framebuffer_rgb555),
             sgb_framebuffer_rgb555: None,
+            borrowed_sgb_border: None,
         },
         &gb_desktop::VideoOptions {
             display_palette: DesktopDisplayPalette::Light,

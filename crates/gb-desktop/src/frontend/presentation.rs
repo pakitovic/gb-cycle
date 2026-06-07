@@ -665,8 +665,8 @@ fn framebuffer_panel_dimensions_for_machine(
     session_has_loaded_rom: bool,
 ) -> FramebufferDimensions {
     if session_has_loaded_rom
-        && machine.sgb_host().profile().is_some()
-        && video_options.show_sgb_border
+        && video_options.sgb_border.is_auto()
+        && (machine.sgb_host().profile().is_some() || machine.borrowed_sgb_border().is_some())
     {
         FramebufferDimensions {
             width: SGB_HOST_FRAMEBUFFER_WIDTH,
@@ -709,15 +709,19 @@ fn framebuffer_panel_input_for_player_slot<'a>(
     let machine = machine.machine_for_player_slot(slot)?;
     let sgb_framebuffer_rgb555 = if session_has_loaded_rom && machine.sgb_host().profile().is_some()
     {
-        if video_options.show_sgb_border {
-            machine.sgb_framebuffer_rgb555()
-        } else {
-            machine.sgb_lcd_framebuffer_rgb555()
+        match video_options.sgb_border {
+            SgbBorderPresentationMode::Auto => machine.sgb_framebuffer_rgb555(),
+            SgbBorderPresentationMode::Off => machine.sgb_lcd_framebuffer_rgb555(),
         }
     } else {
         None
     };
-    let dimensions = if sgb_framebuffer_rgb555.is_some() {
+    let borrowed_sgb_border = if session_has_loaded_rom && video_options.sgb_border.is_auto() {
+        machine.borrowed_sgb_border()
+    } else {
+        None
+    };
+    let dimensions = if sgb_framebuffer_rgb555.is_some() || borrowed_sgb_border.is_some() {
         framebuffer_panel_dimensions_for_machine(machine, video_options, session_has_loaded_rom)
     } else {
         FramebufferDimensions {
@@ -735,6 +739,7 @@ fn framebuffer_panel_input_for_player_slot<'a>(
         display_palette,
         cgb_framebuffer_rgb555: machine.ppu().cgb_framebuffer_rgb555(),
         sgb_framebuffer_rgb555,
+        borrowed_sgb_border,
     })
 }
 
@@ -968,6 +973,18 @@ pub(crate) fn write_framebuffer_region(
         return;
     }
 
+    if source_panel.borrowed_sgb_border.is_some() {
+        write_borrowed_sgb_border_framebuffer_region(
+            target_rgb_frame,
+            target_dimensions,
+            target_origin_x,
+            target_origin_y,
+            source_panel,
+            video_options,
+        );
+        return;
+    }
+
     if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
         write_rgb555_framebuffer_region(
             target_rgb_frame,
@@ -1024,6 +1041,101 @@ fn write_rgb555_framebuffer_region(
             target_rgb_frame[target_pixel_index + 2] = b;
         }
     }
+}
+
+fn write_borrowed_sgb_border_framebuffer_region(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    target_origin_x: usize,
+    target_origin_y: usize,
+    source_panel: FramebufferPanelInput<'_>,
+    video_options: &VideoOptions,
+) {
+    let Some(borrowed_sgb_border) = source_panel.borrowed_sgb_border else {
+        return;
+    };
+    let target_width = target_dimensions.width as usize;
+    let target_height = target_dimensions.height as usize;
+    let source_width = source_panel.dimensions.width as usize;
+    let source_height = source_panel.dimensions.height as usize;
+    for y in 0..source_height {
+        if target_origin_y + y >= target_height {
+            break;
+        }
+        for x in 0..source_width {
+            if target_origin_x + x >= target_width {
+                break;
+            }
+
+            let rgb = if let Some(rgb555) = borrowed_sgb_border.pixel_rgb555_outside_lcd(x, y) {
+                rgb555_to_rgb888(rgb555)
+            } else {
+                let lcd_x = x.saturating_sub(SGB_LCD_FRAME_ORIGIN_X);
+                let lcd_y = y.saturating_sub(SGB_LCD_FRAME_ORIGIN_Y);
+                if lcd_x >= FRAMEBUFFER_WIDTH as usize || lcd_y >= FRAMEBUFFER_HEIGHT as usize {
+                    continue;
+                }
+                let lcd_index = lcd_y * FRAMEBUFFER_WIDTH as usize + lcd_x;
+                if let Some(cgb_framebuffer_rgb555) = source_panel.cgb_framebuffer_rgb555 {
+                    let Some(&rgb555) = cgb_framebuffer_rgb555.get(lcd_index) else {
+                        continue;
+                    };
+                    rgb555_to_rgb888(rgb555)
+                } else {
+                    let Some(&framebuffer_shade) = source_panel.framebuffer.get(lcd_index) else {
+                        continue;
+                    };
+                    let Some(&framebuffer_source) =
+                        source_panel.framebuffer_layer_sources.get(lcd_index)
+                    else {
+                        continue;
+                    };
+                    let Some(&bgwin_shade) = source_panel.bgwin_framebuffer.get(lcd_index) else {
+                        continue;
+                    };
+                    let Some(&bgwin_source) =
+                        source_panel.bgwin_framebuffer_layer_sources.get(lcd_index)
+                    else {
+                        continue;
+                    };
+                    let Some(&backdrop_shade) = source_panel.backdrop_framebuffer.get(lcd_index)
+                    else {
+                        continue;
+                    };
+                    let panel_shade = composite_framebuffer_panel_shade(
+                        framebuffer_shade,
+                        framebuffer_source,
+                        bgwin_shade,
+                        bgwin_source,
+                        backdrop_shade,
+                        video_options,
+                    );
+                    source_panel.display_palette.shade_rgb(panel_shade)
+                }
+            };
+            write_rgb_pixel(
+                target_rgb_frame,
+                target_dimensions,
+                target_origin_x + x,
+                target_origin_y + y,
+                rgb,
+            );
+        }
+    }
+}
+
+fn write_rgb_pixel(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    x: usize,
+    y: usize,
+    rgb: [u8; 3],
+) {
+    let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
+    let target_pixel_index = y * target_pitch_bytes + x * 3;
+    target_rgb_frame[target_pixel_index] = rgb[0];
+    target_rgb_frame[target_pixel_index + 1] = rgb[1];
+    target_rgb_frame[target_pixel_index + 2] = rgb[2];
 }
 
 fn rgb555_to_rgb888(color: u16) -> [u8; 3] {

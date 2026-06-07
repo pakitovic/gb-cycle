@@ -179,12 +179,52 @@ fn load_machine_for_rom(
             ));
         }
     };
+    install_borrowed_sgb_border_if_available(
+        &mut machine,
+        &prepared.effective_config,
+        rom_bytes,
+    );
     Ok(LoadedMachine {
         effective_config: prepared.effective_config,
         machine,
         diagnostics,
         boot_rom_fallback_warning: prepared.boot_rom_fallback_warning,
     })
+}
+
+fn install_borrowed_sgb_border_if_available(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    config: &DesktopConfig,
+    rom_bytes: &[u8],
+) {
+    if !config.video.sgb_border.is_auto() || config.launch.console_model.sgb_profile().is_some() {
+        machine.set_borrowed_sgb_border(None);
+        return;
+    }
+
+    machine.set_borrowed_sgb_border(extract_initial_sgb_borrowed_border(
+        rom_bytes,
+        &config.launch.compatibility_policy(),
+    ));
+}
+
+fn refresh_borrowed_sgb_borders_for_session(
+    machine: &mut DesktopEmulationSession,
+    config: &DesktopConfig,
+    primary_rom_bytes: Option<&[u8]>,
+    secondary_rom_bytes: Option<&[u8]>,
+) {
+    for slot in PlayerSlot::ALL {
+        let rom_bytes = match slot {
+            PlayerSlot::P1 | PlayerSlot::P3 | PlayerSlot::P4 => primary_rom_bytes,
+            PlayerSlot::P2 => secondary_rom_bytes.or(primary_rom_bytes),
+        };
+        let (Some(machine), Some(rom_bytes)) = (machine.machine_for_player_slot_mut(slot), rom_bytes)
+        else {
+            continue;
+        };
+        install_borrowed_sgb_border_if_available(machine, config, rom_bytes);
+    }
 }
 
 fn load_dmg07_machines_for_rom(
@@ -484,7 +524,7 @@ fn apply_benchmark_case_to_desktop_options(
         if options.config.launch.console_model == DesktopConsoleModel::GameBoy {
             options.config.video.display_palette = DesktopDisplayPalette::Grey;
         }
-        options.config.video.show_sgb_border = false;
+        options.config.video.sgb_border = SgbBorderPresentationMode::Off;
     }
 }
 

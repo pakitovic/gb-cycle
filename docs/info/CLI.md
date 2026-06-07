@@ -61,10 +61,11 @@ Benchmark cases use `[[run]]` plus `[[run.input]]` entries. `button` or `buttons
 
 ## Output artifacts
 
-- `--framebuffer-out <path>` writes the final `160x144` GB LCD framebuffer as PGM, or PNG when the path ends in `.png`.
+- `--framebuffer-out <path>` writes the final GB LCD framebuffer as PGM, or PNG when the path ends in `.png`; PNG output can be `256x224` when `BORDER AUTO` has an SGB/SGB2 host frame or a handheld borrowed SGB border.
 - `--model CGB` and `--model AGB` PNG output use the CGB-family RGB555 framebuffer directly.
-- `--model SGB` and `--model SGB2` PNG output uses the `256x224` SGB host RGB555 frame by default.
-- `--border-off` is accepted for all models but only affects SGB/SGB2 PNG output, where it hides the host border and writes the SGB-colored `160x144` LCD RGB555 output instead.
+- `--model SGB` and `--model SGB2` PNG output uses the `256x224` SGB host RGB555 frame by default; `--border-off` writes the SGB-colored `160x144` LCD RGB555 output instead.
+- Handheld `--model DMG`, `MGB`, `LGB`, `CGB`, and `AGB` PNG output defaults to `BORDER AUTO`: it remains `160x144` unless the ROM header accepts SGB (`$0146 = $03`, `$014B = $33`) and the bounded SGB extraction path obtains an initial `PCT_TRN` border, in which case the border is composed at `256x224` while the LCD aperture still uses the real handheld framebuffer.
+- `--border-off` is accepted for all models and forces `160x144` output by hiding both SGB/SGB2 host borders and handheld borrowed SGB borders.
 - Non-PNG SGB/SGB2 framebuffer artifacts keep the legacy `160x144` shade-index PGM path for automation compatibility.
 - `--palette grey` affects only final effective `--model DMG` output; for PGM it writes 8-bit grey values instead of raw shade indices, while CGB, AGB, and SGB-family PNG output continues to use RGB555.
 - `--trace-out <path>` writes the in-memory scheduler trace text for the run.

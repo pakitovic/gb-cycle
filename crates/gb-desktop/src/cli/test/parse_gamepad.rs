@@ -129,7 +129,10 @@ fn parse_test_runner_applies_host_light_defaults_without_changing_hardware_axes(
         options.config.video.display_palette,
         DesktopDisplayPalette::Grey
     );
-    assert!(!options.config.video.show_sgb_border);
+    assert_eq!(
+        options.config.video.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
 
     let action = parse_cli_arguments(["demo.gb", "--model", "MGB", "--test-runner"])
         .expect("test-runner should not force the DMG grey palette on non-DMG desktop models");
@@ -144,5 +147,8 @@ fn parse_test_runner_applies_host_light_defaults_without_changing_hardware_axes(
         options.config.launch.execution_mode,
         ExecutionMode::Permissive
     );
-    assert!(!options.config.video.show_sgb_border);
+    assert_eq!(
+        options.config.video.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
 }

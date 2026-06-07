@@ -230,6 +230,27 @@ impl DesktopFrameBlendingMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SgbBorderPresentationMode {
+    #[default]
+    Auto,
+    Off,
+}
+
+impl SgbBorderPresentationMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::Off,
+            Self::Off => Self::Auto,
+        }
+    }
+
+    pub const fn is_auto(self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchOptions {
     pub console_model: DesktopConsoleModel,
@@ -554,7 +575,7 @@ pub struct VideoOptions {
     pub show_background: bool,
     pub show_window: bool,
     pub show_objects: bool,
-    pub show_sgb_border: bool,
+    pub sgb_border: SgbBorderPresentationMode,
     pub vsync: bool,
     pub fullscreen: bool,
     pub show_performance_hud: bool,
@@ -581,7 +602,7 @@ impl Default for VideoOptions {
             show_background: true,
             show_window: true,
             show_objects: true,
-            show_sgb_border: true,
+            sgb_border: SgbBorderPresentationMode::Auto,
             vsync: true,
             fullscreen: false,
             show_performance_hud: false,

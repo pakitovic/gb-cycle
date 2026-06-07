@@ -158,8 +158,56 @@ show_performance_hud = true
         DesktopDisplayPalette::GameBoy
     );
     assert_eq!(settings.video.frame_blending, DesktopFrameBlendingMode::Off);
-    assert!(settings.video.show_sgb_border);
+    assert_eq!(settings.video.sgb_border, SgbBorderPresentationMode::Auto);
     assert!(!settings.video.show_cgb_infrared_helper);
+}
+
+#[test]
+fn sgb_border_settings_accept_only_auto_or_off() {
+    for (label, value, expected) in [
+        ("auto", "auto", SgbBorderPresentationMode::Auto),
+        ("off", "off", SgbBorderPresentationMode::Off),
+    ] {
+        let path = unique_test_path(&format!("sgb-border-{label}"));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("settings parent should be creatable");
+        }
+        fs::write(
+            &path,
+            format!(
+                "\
+version = 1
+
+[video]
+sgb_border = \"{value}\"
+"
+            ),
+        )
+        .expect("settings with SGB border mode should be writable");
+
+        let settings =
+            PersistedDesktopSettings::load(&path).expect("SGB border mode should reload");
+        assert_eq!(settings.video.sgb_border, expected);
+    }
+
+    let path = unique_test_path("sgb-border-on");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("settings parent should be creatable");
+    }
+    fs::write(
+        &path,
+        "\
+version = 1
+
+[video]
+sgb_border = \"on\"
+",
+    )
+    .expect("settings with rejected SGB border mode should be writable");
+
+    let error =
+        PersistedDesktopSettings::load(&path).expect_err("ON must not be accepted as an alias");
+    assert!(error.contains("failed to parse desktop settings"));
 }
 
 #[test]

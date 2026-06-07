@@ -55,6 +55,7 @@ use gb_desktop::{
     DesktopExternalPortSelection, DesktopFrameBlendingMode, DesktopKey, DesktopSaveFlushPolicy,
     GamepadButtonBinding, GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings,
     GamepadRumbleMode, MenuKeyboardBindings, RewindOptions, SaveKeyPolicy,
+    SgbBorderPresentationMode,
 };
 use gb_persistence::{
     CartridgeSaveKey, FilesystemCartridgeSaveStore, decode_machine_save_state_envelope,
@@ -156,6 +157,7 @@ fn single_panel_render_input<'a>(
                 display_palette: super::DMG_DISPLAY_PALETTE,
                 cgb_framebuffer_rgb555: None,
                 sgb_framebuffer_rgb555: None,
+                borrowed_sgb_border: None,
             }),
             None,
             None,

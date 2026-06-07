@@ -1,5 +1,5 @@
 use super::*;
-use gb_desktop::{DesktopFrameBlendingMode, PreferredGamepadIdentity};
+use gb_desktop::{DesktopFrameBlendingMode, PreferredGamepadIdentity, SgbBorderPresentationMode};
 
 #[path = "test/benchmark.rs"]
 mod benchmark;
