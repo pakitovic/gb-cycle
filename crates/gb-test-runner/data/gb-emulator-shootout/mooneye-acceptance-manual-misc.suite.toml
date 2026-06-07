@@ -1,7 +1,7 @@
 family = "mooneye"
 suite_name = "mooneye-acceptance-manual-misc"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 180
 oracle = { type = "fibonacci-result" }
 
@@ -279,9 +279,9 @@ oracle = { type = "framebuffer", fixture = "manual-only/sprite_priority.png" }
 [[case]]
 id = "mooneye-misc-boot-div-cgbabcde"
 rom = "misc/boot_div-cgbABCDE.gb"
-console = "cgb"
+model = "cgb"
 
 [[case]]
 id = "mooneye-misc-boot-regs-cgb"
 rom = "misc/boot_regs-cgb.gb"
-console = "cgb"
+model = "cgb"

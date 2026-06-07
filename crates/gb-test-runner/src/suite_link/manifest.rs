@@ -74,7 +74,7 @@ struct LinkCaseFile {
 struct LinkParticipantFile {
     id: String,
     rom: PathBuf,
-    console: String,
+    model: String,
     revision: Option<String>,
     startup: Option<String>,
     adapter_port: Option<String>,
@@ -239,6 +239,7 @@ fn parse_link_suite_manifest(
     family_target_roots: &FamilyTargetRoots,
     text: &str,
 ) -> Result<LinkSuiteManifest, String> {
+    validate_link_suite_manifest_keys(path, text)?;
     let parsed: LinkSuiteManifestFile = toml::from_str(text).map_err(|error| {
         format!(
             "failed to parse linked suite manifest {}: {error}",
@@ -293,6 +294,102 @@ fn parse_link_suite_manifest(
         topology,
         cases,
     })
+}
+
+fn validate_link_suite_manifest_keys(path: &Path, text: &str) -> Result<(), String> {
+    let parsed: toml::Value = toml::from_str(text).map_err(|error| {
+        format!(
+            "failed to parse linked suite manifest {}: {error}",
+            path.display()
+        )
+    })?;
+    let Some(table) = parsed.as_table() else {
+        return Ok(());
+    };
+
+    validate_link_manifest_table_keys(
+        path,
+        "linked suite manifest",
+        table,
+        &[
+            "report",
+            "suite_name",
+            "family",
+            "topology",
+            "startup",
+            "timeout_tcycles",
+            "oracle",
+            "case",
+        ],
+    )?;
+
+    let Some(toml::Value::Array(cases)) = table.get("case") else {
+        return Ok(());
+    };
+    for case in cases {
+        let toml::Value::Table(case) = case else {
+            continue;
+        };
+        let case_owner = case
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .map(|id| format!("case {id:?}"))
+            .unwrap_or_else(|| "case".to_string());
+        validate_link_manifest_table_keys(
+            path,
+            &case_owner,
+            case,
+            &[
+                "id",
+                "topology",
+                "startup",
+                "timeout_tcycles",
+                "disabled",
+                "comment",
+                "oracle",
+                "participant",
+            ],
+        )?;
+
+        let Some(toml::Value::Array(participants)) = case.get("participant") else {
+            continue;
+        };
+        for participant in participants {
+            let toml::Value::Table(participant) = participant else {
+                continue;
+            };
+            let participant_owner = participant
+                .get("id")
+                .and_then(toml::Value::as_str)
+                .map(|id| format!("participant {id:?} in {case_owner}"))
+                .unwrap_or_else(|| format!("participant in {case_owner}"));
+            validate_link_manifest_table_keys(
+                path,
+                &participant_owner,
+                participant,
+                &["id", "rom", "model", "revision", "startup", "adapter_port"],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_link_manifest_table_keys(
+    path: &Path,
+    owner: &str,
+    table: &toml::Table,
+    supported_keys: &[&str],
+) -> Result<(), String> {
+    for key in table.keys() {
+        if !supported_keys.contains(&key.as_str()) {
+            return Err(format!(
+                "{owner} in {} uses unsupported key {key:?}",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_link_suite_report(
@@ -436,7 +533,7 @@ fn parse_participant(
             path.display()
         )
     })?;
-    let console_profile = parse_console_profile(&participant.console).map_err(|error| {
+    let model_profile = parse_model_profile(&participant.model).map_err(|error| {
         format!(
             "participant {:?} in case {case_id:?} in {}: {error}",
             participant.id,
@@ -451,17 +548,17 @@ fn parse_participant(
                 path.display()
             )
         })?,
-        None => console_profile.console_model.default_revision(),
+        None => model_profile.console_model.default_revision(),
     };
-    if !console_profile
+    if !model_profile
         .console_model
         .supports_revision(hardware_revision)
     {
         return Err(format!(
-            "participant {:?} in case {case_id:?} in {}: console {:?} does not support revision {:?}",
+            "participant {:?} in case {case_id:?} in {}: model {:?} does not support revision {:?}",
             participant.id,
             path.display(),
-            participant.console,
+            participant.model,
             hardware_revision
         ));
     }
@@ -493,9 +590,9 @@ fn parse_participant(
     Ok(LinkParticipant {
         id: participant.id,
         rom: participant.rom,
-        console_model: console_profile.console_model,
+        console_model: model_profile.console_model,
         hardware_revision,
-        host_platform: console_profile.host_platform,
+        host_platform: model_profile.host_platform,
         startup_mode,
         adapter_port,
     })
@@ -536,7 +633,7 @@ fn validate_topology_participants(
             for participant in participants {
                 if participant.console_model != ConsoleModel::GameBoyColor {
                     return Err(format!(
-                        "participant {:?} in case {case_id:?} in {} topology \"cgb-ir\" requires console \"cgb\"",
+                        "participant {:?} in case {case_id:?} in {} topology \"cgb-ir\" requires model \"cgb\"",
                         participant.id,
                         path.display()
                     ));
@@ -594,34 +691,34 @@ fn parse_topology(topology: &str) -> Result<LinkTopology, String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ConsoleProfile {
+struct ModelProfile {
     console_model: ConsoleModel,
     host_platform: HostPlatform,
 }
 
-fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
-    match console {
-        "dmg" => Ok(ConsoleProfile {
+fn parse_model_profile(model: &str) -> Result<ModelProfile, String> {
+    match model {
+        "dmg" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Handheld,
         }),
-        "cgb" => Ok(ConsoleProfile {
+        "cgb" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoyColor,
             host_platform: HostPlatform::Handheld,
         }),
-        "agb" => Ok(ConsoleProfile {
+        "agb" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoyAdvance,
             host_platform: HostPlatform::Handheld,
         }),
-        "sgb" => Ok(ConsoleProfile {
+        "sgb" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb,
         }),
-        "sgb2" => Ok(ConsoleProfile {
+        "sgb2" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb2,
         }),
-        other => Err(format!("unsupported console {other:?}")),
+        other => Err(format!("unsupported model {other:?}")),
     }
 }
 

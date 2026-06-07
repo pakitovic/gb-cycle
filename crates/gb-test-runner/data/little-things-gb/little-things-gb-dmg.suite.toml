@@ -1,7 +1,7 @@
 family = "little-things-gb"
 suite_name = "little-things-gb-dmg"
 report = "little-things-gb"
-console = "dmg"
+model = "dmg"
 timeout_frames = 180
 oracle = { type = "framebuffer" }
 

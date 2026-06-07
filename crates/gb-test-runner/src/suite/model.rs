@@ -35,8 +35,8 @@ pub(super) struct SuiteCase {
     pub(super) family: String,
     pub(super) rom: PathBuf,
     pub(super) target_root: PathBuf,
-    pub(super) report_console: ReportConsole,
-    pub(super) report_console_suffix: bool,
+    pub(super) report_model: ReportModel,
+    pub(super) report_model_suffix: bool,
     pub(super) console_model: ConsoleModel,
     pub(super) hardware_revision: HardwareRevision,
     pub(super) host_platform: HostPlatform,
@@ -50,8 +50,8 @@ pub(super) struct SuiteCase {
 impl SuiteCase {
     pub(super) fn report_rom(&self) -> String {
         let rom = self.rom.to_string_lossy();
-        if self.report_console_suffix {
-            format!("{rom} {}", self.report_console.report_suffix())
+        if self.report_model_suffix {
+            format!("{rom} {}", self.report_model.report_suffix())
         } else {
             rom.into_owned()
         }
@@ -59,7 +59,7 @@ impl SuiteCase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ReportConsole {
+pub(super) enum ReportModel {
     Dmg,
     Cgb,
     Agb,
@@ -67,7 +67,7 @@ pub(super) enum ReportConsole {
     Sgb2,
 }
 
-impl ReportConsole {
+impl ReportModel {
     pub(super) const fn report_suffix(self) -> &'static str {
         match self {
             Self::Dmg => "(DMG)",

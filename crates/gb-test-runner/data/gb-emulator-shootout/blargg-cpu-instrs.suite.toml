@@ -1,7 +1,7 @@
 family = "blargg"
 suite_name = "blargg-cpu-instrs"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1200
 oracle = { type = "serial-contains", expected = "Passed" }
 

@@ -12,12 +12,12 @@ oracle = { target_participant = "master" }
   [[case.participant]]
   id = "master"
   rom = "serial/serial_two_players_basic_transfer_master.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "slave"
   rom = "serial/serial_two_players_basic_transfer_slave.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "docboy-serial-two-players-01-serial-serial-two-players-basic-transfer-slave-slave-framebuffer"
@@ -26,12 +26,12 @@ oracle = { target_participant = "slave" }
   [[case.participant]]
   id = "master"
   rom = "serial/serial_two_players_basic_transfer_master.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "slave"
   rom = "serial/serial_two_players_basic_transfer_slave.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-master-framebuffer"
@@ -42,12 +42,12 @@ oracle = { target_participant = "master" }
   [[case.participant]]
   id = "master"
   rom = "serial/serial_two_players_basic_transfer_master.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "slave"
   rom = "serial/serial_two_players_basic_transfer_slave_sc_00.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "docboy-serial-two-players-02-serial-serial-two-players-basic-transfer-slave-sc-00-slave-framebuffer"
@@ -58,9 +58,9 @@ oracle = { target_participant = "slave" }
   [[case.participant]]
   id = "master"
   rom = "serial/serial_two_players_basic_transfer_master.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "slave"
   rom = "serial/serial_two_players_basic_transfer_slave_sc_00.gb"
-  console = "dmg"
+  model = "dmg"

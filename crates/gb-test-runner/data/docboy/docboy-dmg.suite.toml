@@ -1,7 +1,7 @@
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "docboy"
-console = "dmg"
+model = "dmg"
 timeout_frames = 72
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
 

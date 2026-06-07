@@ -1,7 +1,7 @@
 family = "mooneye"
 suite_name = "mooneye-cgb"
 report = "mooneye"
-console = "cgb"
+model = "cgb"
 timeout_frames = 180
 oracle = { type = "fibonacci-result" }
 

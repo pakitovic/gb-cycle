@@ -80,7 +80,7 @@ family_order = ["sample"]
         r#"report = "sample-report"
 suite_name = "sample-suite"
 family = "sample"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "serial-contains", expected = "Passed" }
 

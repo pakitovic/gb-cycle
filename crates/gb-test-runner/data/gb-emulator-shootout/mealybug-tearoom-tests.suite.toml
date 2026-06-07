@@ -1,8 +1,8 @@
 family = "mealybug-tearoom-tests"
 suite_name = "mealybug-tearoom-tests"
 report = "gb-emulator-shootout"
-console = "dmg"
-report_console_suffix = true
+model = "dmg"
+report_model_suffix = true
 timeout_frames = 30
 oracle = { type = "framebuffer" }
 

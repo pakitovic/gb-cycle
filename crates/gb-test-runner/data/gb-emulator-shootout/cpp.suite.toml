@@ -1,7 +1,7 @@
 family = "cpp"
 suite_name = "cpp"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 30
 oracle = { type = "framebuffer" }
 
@@ -23,6 +23,6 @@ oracle = { fixture = "ramg-mbc3-test.png" }
 [[case]]
 id = "cpp-sgb-ext-test"
 rom = "sgb-ext-test.gb"
-console = "sgb"
+model = "sgb"
 timeout_frames = 240
 oracle = { fixture = "sgb-ext-test.png" }

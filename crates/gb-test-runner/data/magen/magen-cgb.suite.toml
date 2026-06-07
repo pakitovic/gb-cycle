@@ -1,7 +1,7 @@
 family = "magen"
 suite_name = "magen-cgb"
 report = "magen"
-console = "cgb"
+model = "cgb"
 timeout_frames = 72
 oracle = { type = "framebuffer", source = "cgb" }
 

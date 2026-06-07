@@ -11,9 +11,9 @@ oracle = { type = "serial-hex-exact", target_participant = "receiver", expected 
   [[case.participant]]
   id = "emitter"
   rom = "fixtures/cgb-ir/emitter.gb"
-  console = "cgb"
+  model = "cgb"
 
   [[case.participant]]
   id = "receiver"
   rom = "fixtures/cgb-ir/receiver.gb"
-  console = "cgb"
+  model = "cgb"

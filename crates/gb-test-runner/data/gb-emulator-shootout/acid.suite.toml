@@ -1,25 +1,25 @@
 family = "acid"
 suite_name = "acid"
 report = "gb-emulator-shootout"
-console = "cgb"
+model = "cgb"
 timeout_frames = 180
 oracle = { type = "framebuffer", mode = "info" }
 
 [[case]]
 id = "acid-which-dmg"
 rom = "which.gb"
-console = "dmg"
-report_console_suffix = true
+model = "dmg"
+report_model_suffix = true
 
 [[case]]
 id = "acid-which-cgb"
 rom = "which.gb"
-report_console_suffix = true
+report_model_suffix = true
 
 [[case]]
 id = "acid-dmg-acid2"
 rom = "dmg-acid2.gb"
-console = "dmg"
+model = "dmg"
 oracle = { type = "framebuffer", fixture = "dmg-acid2.png" }
 
 [[case]]

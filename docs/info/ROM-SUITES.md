@@ -53,9 +53,10 @@ Rendered report files are derived from `.status`; regenerate them with `cargo ro
 - Linked-session suites live as `crates/gb-test-runner/data/<report>/*.link.suite.toml`.
 - Every suite manifest must declare `report = "<report-id>"`; mismatches are rejected.
 - Every suite should declare common metadata once in the header and override only rows that differ.
+- Unknown manifest keys are rejected so typos and stale per-case overrides cannot silently fall back to header defaults.
 - `execution_mode` is omitted for default `Strict`; set it only for intentional `permissive` or `experimental` cases.
 - `disabled = true` requires a non-empty `comment = "..."`.
-- Use `report_console_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs console-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(AGB)`, `(SGB)`, or `(SGB2)`.
+- Use `report_model_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs model-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(AGB)`, `(SGB)`, or `(SGB2)`.
 - Do not add root-level legacy manifests, ad hoc suite copies, or direct upstream checkout paths.
 
 Linked manifests use `[[case]]` plus `[[case.participant]]`, explicit participant IDs, and `topology = "dmg04"`, `topology = "dmg07"`, or `topology = "cgb-ir"`.
@@ -94,7 +95,7 @@ cargo rom-suite-link docboy --suite docboy-dmg-link
 
 Cases run in parallel by default through Rayon. Use `--threads <n>` to cap local parallelism; CI matrix jobs normally omit it.
 
-Supported `console` values are `dmg`, `cgb`, `sgb`, and `sgb2`. Supported `startup` values are `skip-boot`, `custom-boot`, and `real-boot`; omitted startup defaults to `skip-boot`.
+Supported `model` values are `dmg`, `cgb`, `agb`, `sgb`, and `sgb2`. Supported `startup` values are `skip-boot`, `custom-boot`, and `real-boot`; omitted startup defaults to `skip-boot`.
 
 ## Rendering reports
 
@@ -105,7 +106,7 @@ cargo rom-report gb-emulator-shootout --html
 
 `cargo rom-report <report>` renders the report-local single-machine `.status` files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
 
-Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM console variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
+Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM model variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
 
 If `test/<report-store>/.status` is missing or contains no `*.toml` status files, `cargo rom-report <report>` first runs `cargo rom-suite <report>` and then renders any status written by that run. Suite failures still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
 
@@ -115,7 +116,7 @@ Pass `--html` to also write `test/<report-store>/test-report.html` from the same
 
 `cargo rom-suite` and `cargo rom-suite-link` do not use startup or boot-ROM environment variables. Pass `--boot-rom-dir <dir>` explicitly to force all selected cases or participants through RealBoot.
 
-The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected console/host profiles.
+The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected model/host profiles.
 
 Use RealBoot runs as local comparison evidence. Rerun the matching default startup command afterward when status/artifacts should represent the baseline lane again.
 
@@ -123,7 +124,7 @@ Use RealBoot runs as local comparison evidence. Rerun the matching default start
 
 For ROM-driven fixes or regressions, copy the relevant `/test/<report>/` status/artifact tree before the change, rerun the suite, copy the final tree, and compare changed rows explicitly.
 
-Same-ROM console variants are ordered DMG before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
+Same-ROM model variants are ordered DMG before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
 
 ## CI integration
 

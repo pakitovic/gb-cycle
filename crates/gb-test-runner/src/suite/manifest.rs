@@ -11,8 +11,8 @@ use gb_core::{
 use crate::oracle::{Oracle, OracleConfig, OracleFixtureRoots};
 
 use super::model::{
-    DATA_DIR, REPORTS_MANIFEST_PATH, Report, ReportConsole, SuiteCase, SuiteManifest,
-    SuiteStimulus, SuiteStimulusTime, TEST_ROM_STORE_DIR,
+    DATA_DIR, REPORTS_MANIFEST_PATH, Report, ReportModel, SuiteCase, SuiteManifest, SuiteStimulus,
+    SuiteStimulusTime, TEST_ROM_STORE_DIR,
 };
 use super::source::{FamilyTargetRoots, load_family_target_roots};
 
@@ -38,12 +38,12 @@ struct ReportFile {
 #[derive(Debug, Clone, Default, Deserialize)]
 struct SuiteCaseDefaultsFile {
     family: Option<String>,
-    console: Option<String>,
+    model: Option<String>,
     revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
-    report_console_suffix: Option<bool>,
+    report_model_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -68,7 +68,7 @@ struct SuiteCaseFile {
     family: Option<String>,
     id: String,
     rom: PathBuf,
-    console: Option<String>,
+    model: Option<String>,
     revision: Option<String>,
     startup: Option<String>,
     execution_mode: Option<String>,
@@ -78,7 +78,7 @@ struct SuiteCaseFile {
     #[serde(default)]
     disabled: bool,
     comment: Option<String>,
-    report_console_suffix: Option<bool>,
+    report_model_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -202,6 +202,7 @@ pub(super) fn load_selected_suite_families(
     let mut selected_family_set = BTreeSet::new();
     for path in manifest_paths {
         let text = read_suite_manifest_text(&path)?;
+        validate_suite_manifest_keys(&path, &text)?;
         let parsed: SuiteManifestFile = toml::from_str(&text).map_err(|error| {
             format!("failed to parse suite manifest {}: {error}", path.display())
         })?;
@@ -322,6 +323,7 @@ fn parse_suite_manifest(
     family_target_roots: &FamilyTargetRoots,
     text: &str,
 ) -> Result<SuiteManifest, String> {
+    validate_suite_manifest_keys(path, text)?;
     let parsed: SuiteManifestFile = toml::from_str(text)
         .map_err(|error| format!("failed to parse suite manifest {}: {error}", path.display()))?;
     validate_suite_report(path, report, parsed.report.as_ref())?;
@@ -391,6 +393,101 @@ fn validate_suite_report(
     Ok(())
 }
 
+fn validate_suite_manifest_keys(path: &Path, text: &str) -> Result<(), String> {
+    let parsed: toml::Value = toml::from_str(text)
+        .map_err(|error| format!("failed to parse suite manifest {}: {error}", path.display()))?;
+    let Some(table) = parsed.as_table() else {
+        return Ok(());
+    };
+
+    validate_manifest_table_keys(
+        path,
+        "suite manifest",
+        table,
+        &[
+            "family",
+            "suite_name",
+            "report",
+            "model",
+            "revision",
+            "startup",
+            "execution_mode",
+            "timeout_frames",
+            "report_model_suffix",
+            "oracle",
+            "case",
+        ],
+    )?;
+
+    let Some(toml::Value::Array(cases)) = table.get("case") else {
+        return Ok(());
+    };
+    for case in cases {
+        let toml::Value::Table(case) = case else {
+            continue;
+        };
+        let owner = case
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .map(|id| format!("case {id:?}"))
+            .unwrap_or_else(|| "case".to_string());
+        validate_manifest_table_keys(
+            path,
+            &owner,
+            case,
+            &[
+                "family",
+                "id",
+                "rom",
+                "model",
+                "revision",
+                "startup",
+                "execution_mode",
+                "timeout_frames",
+                "stimulus",
+                "disabled",
+                "comment",
+                "report_model_suffix",
+                "oracle",
+            ],
+        )?;
+
+        let Some(toml::Value::Array(stimuli)) = case.get("stimulus") else {
+            continue;
+        };
+        for stimulus in stimuli {
+            let toml::Value::Table(stimulus) = stimulus else {
+                continue;
+            };
+            validate_manifest_table_keys(
+                path,
+                &format!("{owner} stimulus"),
+                stimulus,
+                &["tcycle", "frame", "button", "pressed"],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_manifest_table_keys(
+    path: &Path,
+    owner: &str,
+    table: &toml::Table,
+    supported_keys: &[&str],
+) -> Result<(), String> {
+    for key in table.keys() {
+        if !supported_keys.contains(&key.as_str()) {
+            return Err(format!(
+                "{owner} in {} uses unsupported key {key:?}",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_disabled_case_comment(path: &Path, case: &SuiteCaseFile) -> Result<(), String> {
     if case
         .comment
@@ -420,17 +517,11 @@ fn parse_case(
         .family
         .or_else(|| defaults.family.clone())
         .unwrap_or_else(|| manifest_family.to_string());
-    let console = case
-        .console
-        .or_else(|| defaults.console.clone())
-        .ok_or_else(|| {
-            format!(
-                "case {:?} in {} must define console",
-                case.id,
-                path.display()
-            )
-        })?;
-    let console_profile = parse_console_profile(&console)
+    let model = case
+        .model
+        .or_else(|| defaults.model.clone())
+        .ok_or_else(|| format!("case {:?} in {} must define model", case.id, path.display()))?;
+    let model_profile = parse_model_profile(&model)
         .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?;
     let hardware_revision = match case
         .revision
@@ -439,17 +530,17 @@ fn parse_case(
     {
         Some(revision) => parse_hardware_revision(revision)
             .map_err(|error| format!("case {:?} in {}: {error}", case.id, path.display()))?,
-        None => console_profile.console_model.default_revision(),
+        None => model_profile.console_model.default_revision(),
     };
-    if !console_profile
+    if !model_profile
         .console_model
         .supports_revision(hardware_revision)
     {
         return Err(format!(
-            "case {:?} in {}: console {:?} does not support revision {:?}",
+            "case {:?} in {}: model {:?} does not support revision {:?}",
             case.id,
             path.display(),
-            console,
+            model,
             hardware_revision
         ));
     }
@@ -510,14 +601,14 @@ fn parse_case(
         family,
         rom: case.rom,
         target_root,
-        report_console: console_profile.report_console,
-        report_console_suffix: case
-            .report_console_suffix
-            .or(defaults.report_console_suffix)
+        report_model: model_profile.report_model,
+        report_model_suffix: case
+            .report_model_suffix
+            .or(defaults.report_model_suffix)
             .unwrap_or(false),
-        console_model: console_profile.console_model,
+        console_model: model_profile.console_model,
         hardware_revision,
-        host_platform: console_profile.host_platform,
+        host_platform: model_profile.host_platform,
         execution_mode,
         startup_mode,
         timeout_frames,
@@ -605,40 +696,40 @@ fn fixture_root_for_case(workspace_root: &Path, report: &Report, target_root: &P
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ConsoleProfile {
-    report_console: ReportConsole,
+struct ModelProfile {
+    report_model: ReportModel,
     console_model: ConsoleModel,
     host_platform: HostPlatform,
 }
 
-fn parse_console_profile(console: &str) -> Result<ConsoleProfile, String> {
-    match console {
-        "dmg" => Ok(ConsoleProfile {
-            report_console: ReportConsole::Dmg,
+fn parse_model_profile(model: &str) -> Result<ModelProfile, String> {
+    match model {
+        "dmg" => Ok(ModelProfile {
+            report_model: ReportModel::Dmg,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Handheld,
         }),
-        "cgb" => Ok(ConsoleProfile {
-            report_console: ReportConsole::Cgb,
+        "cgb" => Ok(ModelProfile {
+            report_model: ReportModel::Cgb,
             console_model: ConsoleModel::GameBoyColor,
             host_platform: HostPlatform::Handheld,
         }),
-        "agb" => Ok(ConsoleProfile {
-            report_console: ReportConsole::Agb,
+        "agb" => Ok(ModelProfile {
+            report_model: ReportModel::Agb,
             console_model: ConsoleModel::GameBoyAdvance,
             host_platform: HostPlatform::Handheld,
         }),
-        "sgb" => Ok(ConsoleProfile {
-            report_console: ReportConsole::Sgb,
+        "sgb" => Ok(ModelProfile {
+            report_model: ReportModel::Sgb,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb,
         }),
-        "sgb2" => Ok(ConsoleProfile {
-            report_console: ReportConsole::Sgb2,
+        "sgb2" => Ok(ModelProfile {
+            report_model: ReportModel::Sgb2,
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Sgb2,
         }),
-        other => Err(format!("unsupported console {other:?}")),
+        other => Err(format!("unsupported model {other:?}")),
     }
 }
 

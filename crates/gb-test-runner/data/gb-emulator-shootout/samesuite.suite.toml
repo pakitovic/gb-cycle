@@ -1,21 +1,21 @@
 family = "samesuite"
 suite_name = "samesuite"
 report = "gb-emulator-shootout"
-console = "cgb"
+model = "cgb"
 timeout_frames = 180
 oracle = { type = "framebuffer", source = "cgb" }
 
 [[case]]
 id = "samesuite-sgb-command-mlt-req"
 rom = "sgb/command_mlt_req.gb"
-console = "sgb"
+model = "sgb"
 timeout_frames = 300
 oracle = { type = "framebuffer", fixture = "sgb/command_mlt_req.png" }
 
 [[case]]
 id = "samesuite-sgb-command-mlt-req-1-incrementing"
 rom = "sgb/command_mlt_req_1_incrementing.gb"
-console = "sgb"
+model = "sgb"
 oracle = { type = "framebuffer", fixture = "sgb/command_mlt_req_1_incrementing.png" }
 
 [[case]]

@@ -72,12 +72,12 @@ oracle = {{ type = "serial-hex-exact", target_participant = "left", expected = {
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/basic-right.gb"
-  console = "dmg"
+  model = "dmg"
 "#
         ),
     )

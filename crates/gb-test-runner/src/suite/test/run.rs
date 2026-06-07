@@ -32,8 +32,8 @@ fn command_runs_serial_suite_and_writes_status() {
             "cpu_instrs/01-special.gb",
         )
         .replace(
-            "console = \"dmg\"",
-            "console = \"dmg\"\nreport_console_suffix = true",
+            "model = \"dmg\"",
+            "model = \"dmg\"\nreport_model_suffix = true",
         ),
     );
     write_manifest(
@@ -46,7 +46,7 @@ fn command_runs_serial_suite_and_writes_status() {
             "acid-cgb-acid2",
             "cgb-acid2.gbc",
         )
-        .replace("console = \"dmg\"", "console = \"cgb\"")
+        .replace("model = \"dmg\"", "model = \"cgb\"")
         .replace("serial-contains", "framebuffer-fixture"),
     );
     let rom_path = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
@@ -325,7 +325,7 @@ fn command_auto_fetches_missing_framebuffer_fixture_before_manifest_oracle_load(
 family = "ax6"
 suite_name = "ax6"
 report = "sample-report"
-console = "cgb"
+model = "cgb"
 timeout_frames = 1
 oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "rtc3test-1.png" }
 
@@ -418,7 +418,7 @@ fn command_case_selection_auto_fetches_only_selected_case_family() {
 family = "blargg"
 suite_name = "mixed"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "serial-contains", expected = "Passed" }
 
@@ -516,7 +516,7 @@ fn command_runs_with_explicit_threads_and_preserves_status_order() {
 family = "blargg"
 suite_name = "threaded"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "serial-contains", expected = "Passed" }
 
@@ -750,8 +750,8 @@ fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
             "case.gbc",
         )
         .replace(
-            "console = \"dmg\"",
-            "console = \"cgb\"\nrevision = \"cpu-cgb-d\"",
+            "model = \"dmg\"",
+            "model = \"cgb\"\nrevision = \"cpu-cgb-d\"",
         ),
     );
     let rom_path = workspace.join("test/sample-report/samesuite/case.gbc");
@@ -800,7 +800,7 @@ fn run_suite_real_boot_handoff_does_not_consume_case_timeout() {
 family = "blargg"
 suite_name = "real-boot"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 startup = "real-boot"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
@@ -855,7 +855,7 @@ fn command_advances_mbc3_rtc_during_suite_execution() {
 family = "blargg"
 suite_name = "rtc"
 report = "sample-report"
-console = "cgb"
+model = "cgb"
 execution_mode = "permissive"
 timeout_frames = 80
 oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
@@ -911,7 +911,7 @@ fn command_writes_framebuffer_failure_artifacts() {
 family = "ax6"
 suite_name = "ax6"
 report = "sample-report"
-console = "cgb"
+model = "cgb"
 timeout_frames = 1
 oracle = { type = "framebuffer", source = "cgb", projection = "grayscale", fixture = "rtc3test-1.png" }
 
@@ -1105,7 +1105,7 @@ fn command_runs_fibonacci_result_suite_as_ci_friendly_pass() {
 family = "mooneye"
 suite_name = "mooneye"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "fibonacci-result" }
 
@@ -1164,7 +1164,7 @@ fn command_runs_sgb_suite_with_handheld_core_and_sgb_host() {
 family = "samesuite"
 suite_name = "samesuite"
 report = "sample-report"
-console = "sgb"
+model = "sgb"
 timeout_frames = 1
 oracle = { type = "framebuffer", mode = "info" }
 
@@ -1231,7 +1231,7 @@ target_root = ""
 family = "gbmicrotest"
 suite_name = "gbmicrotest"
 report = "gbmicrotest"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65410, value = 1 }
 
@@ -1297,7 +1297,7 @@ target_root = "dmg"
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "docboy"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 49152, value = 1 }
 
@@ -1361,7 +1361,7 @@ fn command_reports_memory_byte_fail_value_as_failed_case() {
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
 
@@ -1420,7 +1420,7 @@ fn command_reports_memory_byte_timeout_as_failed_case() {
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
 
@@ -1478,7 +1478,7 @@ fn command_reports_fibonacci_failure_signature_as_failed_case() {
 family = "mooneye"
 suite_name = "mooneye"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "fibonacci-result" }
 
@@ -1537,7 +1537,7 @@ fn command_reports_fibonacci_timeout_without_result_as_failed_case() {
 family = "mooneye"
 suite_name = "mooneye"
 report = "sample-report"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1
 oracle = { type = "fibonacci-result" }
 

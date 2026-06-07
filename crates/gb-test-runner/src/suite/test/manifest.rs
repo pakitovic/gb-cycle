@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::oracle::Oracle;
 
 use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
-use super::super::model::{ReportConsole, SuiteStimulusTime};
+use super::super::model::{ReportModel, SuiteStimulusTime};
 use super::common::{
     basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
 };
@@ -251,7 +251,7 @@ fn disabled_cases_are_cataloged_with_comments_and_skipped() {
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "docboy"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
 
@@ -373,7 +373,7 @@ fn parses_joypad_stimuli_and_rejects_unsupported_stimulus_shape() {
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "docboy"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
 
@@ -433,19 +433,19 @@ pressed = false
 }
 
 #[test]
-fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
-    let cgb_console = basic_manifest(
+fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
+    let cgb_model = basic_manifest(
         "gb-emulator-shootout",
         "acid",
         "acid",
         "acid-cgb",
         "cgb-acid2.gbc",
     )
-    .replace("console = \"dmg\"", "console = \"cgb\"");
+    .replace("model = \"dmg\"", "model = \"cgb\"");
     let cgb_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
-        &cgb_console,
+        &cgb_model,
     )
     .expect("cgb should parse");
     assert_eq!(
@@ -456,20 +456,20 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         cgb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Handheld
     );
-    assert_eq!(cgb_manifest.cases[0].report_console, ReportConsole::Cgb);
+    assert_eq!(cgb_manifest.cases[0].report_model, ReportModel::Cgb);
 
-    let agb_console = basic_manifest(
+    let agb_model = basic_manifest(
         "gb-emulator-shootout",
         "acid",
         "acid",
         "acid-agb",
         "cgb-acid2.gbc",
     )
-    .replace("console = \"dmg\"", "console = \"agb\"");
+    .replace("model = \"dmg\"", "model = \"agb\"");
     let agb_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
-        &agb_console,
+        &agb_model,
     )
     .expect("agb should parse");
     assert_eq!(
@@ -484,20 +484,20 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         agb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Handheld
     );
-    assert_eq!(agb_manifest.cases[0].report_console, ReportConsole::Agb);
+    assert_eq!(agb_manifest.cases[0].report_model, ReportModel::Agb);
 
-    let sgb_console = basic_manifest(
+    let sgb_model = basic_manifest(
         "gb-emulator-shootout",
         "samesuite",
         "samesuite",
         "samesuite-sgb",
         "sgb/test.gb",
     )
-    .replace("console = \"dmg\"", "console = \"sgb\"");
+    .replace("model = \"dmg\"", "model = \"sgb\"");
     let sgb_manifest = parse_suite_manifest_for_test(
         Path::new("samesuite.suite.toml"),
         "gb-emulator-shootout",
-        &sgb_console,
+        &sgb_model,
     )
     .expect("sgb should parse");
     assert_eq!(
@@ -508,20 +508,20 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         sgb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Sgb
     );
-    assert_eq!(sgb_manifest.cases[0].report_console, ReportConsole::Sgb);
+    assert_eq!(sgb_manifest.cases[0].report_model, ReportModel::Sgb);
 
-    let sgb2_console = basic_manifest(
+    let sgb2_model = basic_manifest(
         "gb-emulator-shootout",
         "samesuite",
         "samesuite",
         "samesuite-sgb2",
         "sgb/test.gb",
     )
-    .replace("console = \"dmg\"", "console = \"sgb2\"");
+    .replace("model = \"dmg\"", "model = \"sgb2\"");
     let sgb2_manifest = parse_suite_manifest_for_test(
         Path::new("samesuite.suite.toml"),
         "gb-emulator-shootout",
-        &sgb2_console,
+        &sgb2_model,
     )
     .expect("sgb2 should parse");
     assert_eq!(
@@ -532,7 +532,7 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         sgb2_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Sgb2
     );
-    assert_eq!(sgb2_manifest.cases[0].report_console, ReportConsole::Sgb2);
+    assert_eq!(sgb2_manifest.cases[0].report_model, ReportModel::Sgb2);
 
     let report_suffix = basic_manifest(
         "gb-emulator-shootout",
@@ -543,19 +543,19 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
     )
     .replace(
         "rom = \"which.gb\"",
-        "rom = \"which.gb\"\nreport_console_suffix = true",
+        "rom = \"which.gb\"\nreport_model_suffix = true",
     );
     let report_suffix_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
         &report_suffix,
     )
-    .expect("case-level report console suffix should parse");
+    .expect("case-level report model suffix should parse");
     assert_eq!(
-        report_suffix_manifest.cases[0].report_console,
-        ReportConsole::Dmg
+        report_suffix_manifest.cases[0].report_model,
+        ReportModel::Dmg
     );
-    assert!(report_suffix_manifest.cases[0].report_console_suffix);
+    assert!(report_suffix_manifest.cases[0].report_model_suffix);
 
     let inherited_report_suffix = basic_manifest(
         "gb-emulator-shootout",
@@ -565,28 +565,28 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         "which.gb",
     )
     .replace(
-        "console = \"dmg\"",
-        "console = \"dmg\"\nreport_console_suffix = true",
+        "model = \"dmg\"",
+        "model = \"dmg\"\nreport_model_suffix = true",
     );
     let inherited_report_suffix_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
         &inherited_report_suffix,
     )
-    .expect("header report console suffix should parse");
-    assert!(inherited_report_suffix_manifest.cases[0].report_console_suffix);
+    .expect("header report model suffix should parse");
+    assert!(inherited_report_suffix_manifest.cases[0].report_model_suffix);
 
     let overridden_report_suffix = inherited_report_suffix.replace(
         "rom = \"which.gb\"",
-        "rom = \"which.gb\"\nreport_console_suffix = false",
+        "rom = \"which.gb\"\nreport_model_suffix = false",
     );
     let overridden_report_suffix_manifest = parse_suite_manifest_for_test(
         Path::new("acid.suite.toml"),
         "gb-emulator-shootout",
         &overridden_report_suffix,
     )
-    .expect("case-level report console suffix override should parse");
-    assert!(!overridden_report_suffix_manifest.cases[0].report_console_suffix);
+    .expect("case-level report model suffix override should parse");
+    assert!(!overridden_report_suffix_manifest.cases[0].report_model_suffix);
 
     let unsupported_alias = basic_manifest(
         "gb-emulator-shootout",
@@ -595,7 +595,7 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
         "acid-gb",
         "which.gb",
     )
-    .replace("console = \"dmg\"", "console = \"gb\"");
+    .replace("model = \"dmg\"", "model = \"gb\"");
     assert!(
         parse_suite_manifest_for_test(
             Path::new("acid.suite.toml"),
@@ -603,7 +603,7 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
             &unsupported_alias
         )
         .expect_err("gb alias should fail")
-        .contains("unsupported console")
+        .contains("unsupported model")
     );
 
     let unsupported_oracle = basic_manifest(
@@ -647,6 +647,45 @@ fn parses_console_profiles_and_rejects_unsupported_console_and_oracle() {
 }
 
 #[test]
+fn parser_rejects_unknown_manifest_keys() {
+    let unknown_header_key = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace("model = \"dmg\"", "model = \"dmg\"\nmodel_typo = \"dmg\"");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("acid.suite.toml"),
+            "gb-emulator-shootout",
+            &unknown_header_key,
+        )
+        .expect_err("unknown header key should fail")
+        .contains("uses unsupported key \"model_typo\"")
+    );
+
+    let unknown_case_key = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace("rom = \"which.gb\"", "rom = \"which.gb\"\ncase_typo = true");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("acid.suite.toml"),
+            "gb-emulator-shootout",
+            &unknown_case_key,
+        )
+        .expect_err("unknown case key should fail")
+        .contains("uses unsupported key \"case_typo\"")
+    );
+}
+
+#[test]
 fn framebuffer_fixtures_are_resolved_from_case_family_store_root() {
     let workspace = unique_temp_dir("suite-fixture-root");
     write_reports(
@@ -661,7 +700,7 @@ fn framebuffer_fixtures_are_resolved_from_case_family_store_root() {
 family = "blargg"
 suite_name = "fixture-root"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", fixture = "screens/pass.png" }
 
@@ -708,7 +747,7 @@ fn framebuffer_local_fixtures_are_resolved_from_report_data_dir() {
 family = "cpp"
 suite_name = "local-fixture-root"
 report = "gb-emulator-shootout"
-console = "sgb"
+model = "sgb"
 timeout_frames = 2
 oracle = { type = "framebuffer", local = true, fixture = "fixtures/cpp/pass.png" }
 
@@ -759,7 +798,7 @@ fn framebuffer_local_fixture_flag_is_inherited_by_partial_case_oracle() {
 family = "samesuite"
 suite_name = "local-fixture-inheritance"
 report = "gb-emulator-shootout"
-console = "sgb"
+model = "sgb"
 timeout_frames = 2
 oracle = { type = "framebuffer", local = true }
 
@@ -826,7 +865,7 @@ target_root = "dmg"
 family = "docboy-dmg"
 suite_name = "docboy-dmg"
 report = "docboy"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "memory-byte-equals", address = 65520, value = 1 }
 
@@ -856,7 +895,7 @@ fn partial_case_oracle_inherits_global_type_and_parameters() {
 family = "blargg"
 suite_name = "oracle-inheritance"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", mode = "until-match", source = "invalid-source" }
 
@@ -892,7 +931,7 @@ fn partial_case_oracle_overrides_global_parameter_values() {
 family = "blargg"
 suite_name = "oracle-overrides"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", mode = "until-match", fixture = "screens/missing.png" }
 
@@ -931,7 +970,7 @@ fn case_oracle_with_type_replaces_global_oracle() {
 family = "blargg"
 suite_name = "oracle-replacement"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { type = "framebuffer", source = "invalid-source", fixture = "screens/missing.png" }
 
@@ -956,7 +995,7 @@ fn partial_case_oracle_requires_global_oracle_with_type() {
 family = "blargg"
 suite_name = "oracle-no-global"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 
 [[case]]
@@ -978,7 +1017,7 @@ oracle = { fixture = "screens/pass.png" }
 family = "blargg"
 suite_name = "oracle-global-without-type"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 2
 oracle = { fixture = "screens/pass.png" }
 
@@ -1691,7 +1730,7 @@ fn real_linked_draft_manifests_use_case_schema_and_repo_local_paths() {
             for participant in case.participants {
                 assert!(!participant.id.is_empty());
                 validate_relative_repo_local_path(&participant.rom);
-                assert!(matches!(participant.console.as_str(), "dmg" | "cgb"));
+                assert!(matches!(participant.model.as_str(), "dmg" | "cgb"));
             }
         }
     }
@@ -1806,7 +1845,7 @@ struct LinkedDraftCaseFile {
 struct LinkedDraftParticipantFile {
     id: String,
     rom: PathBuf,
-    console: String,
+    model: String,
 }
 
 fn validate_linked_fixture_paths(oracle: &Option<toml::Value>) {

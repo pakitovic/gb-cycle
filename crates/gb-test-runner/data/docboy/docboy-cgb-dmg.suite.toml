@@ -1,7 +1,7 @@
 family = "docboy-cgb-dmg"
 suite_name = "docboy-cgb-dmg"
 report = "docboy"
-console = "cgb"
+model = "cgb"
 timeout_frames = 72
 oracle = { type = "framebuffer", mode = "until-match" }
 

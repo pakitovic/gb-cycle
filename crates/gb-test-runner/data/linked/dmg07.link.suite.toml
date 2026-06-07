@@ -11,13 +11,13 @@ oracle = { type = "serial-hex-exact", target_participant = "p4", expected = "888
   [[case.participant]]
   id = "p1"
   rom = "fixtures/dmg07/p1-basic.gb"
-  console = "dmg"
+  model = "dmg"
   adapter_port = "p1"
 
   [[case.participant]]
   id = "p4"
   rom = "fixtures/dmg07/p4-basic.gb"
-  console = "dmg"
+  model = "dmg"
   adapter_port = "p4"
 
 [[case]]
@@ -27,11 +27,11 @@ oracle = { type = "serial-hex-exact", target_participant = "p1", expected = "888
   [[case.participant]]
   id = "p1"
   rom = "fixtures/dmg07/p1-basic.gb"
-  console = "dmg"
+  model = "dmg"
   adapter_port = "p1"
 
   [[case.participant]]
   id = "p4"
   rom = "fixtures/dmg07/p4-basic.gb"
-  console = "dmg"
+  model = "dmg"
   adapter_port = "p4"
