@@ -30,6 +30,7 @@ fn render_screenshot_uses_dynamic_backdrop_when_bgwin_layers_are_hidden() {
             display_palette: crate::DMG_DISPLAY_PALETTE,
             cgb_framebuffer_rgb555: None,
             sgb_framebuffer_rgb555: None,
+            borrowed_sgb_border: None,
         }),
         &video_options,
     );

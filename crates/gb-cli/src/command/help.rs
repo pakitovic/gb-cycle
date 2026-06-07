@@ -21,7 +21,7 @@ pub(crate) const RUN_HELP_TEXT: &str = concat!(
     "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
     "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
     "  --framebuffer-out <path>               Save the final framebuffer as PGM, or PNG when <path> ends in .png (SGB PNG uses 256x224 RGB555)\n",
-    "  --border-off                           Hide the SGB/SGB2 host border for PNG framebuffer artifacts; ignored by other models\n",
+    "  --border-off                           Hide SGB/SGB2 borders and handheld borrowed SGB borders for PNG framebuffer artifacts\n",
     "  --palette <grey>                       Use the DMG grey framebuffer palette when --model DMG is active\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --state-in <path>                      Restore a full-machine .gbstate after loading the ROM\n",

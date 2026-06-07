@@ -122,6 +122,18 @@ impl DefaultRunBudget {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SgbBorderPresentationMode {
+    Auto,
+    Off,
+}
+
+impl SgbBorderPresentationMode {
+    pub(crate) const fn is_auto(self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RunOptions {
     pub(crate) rom_path: PathBuf,
@@ -138,7 +150,7 @@ pub(crate) struct RunOptions {
     pub(crate) serial_stdout: bool,
     pub(crate) serial_out: Option<PathBuf>,
     pub(crate) framebuffer_out: Option<PathBuf>,
-    pub(crate) show_sgb_border: bool,
+    pub(crate) sgb_border: SgbBorderPresentationMode,
     pub(crate) display_palette: Option<RunDisplayPalette>,
     pub(crate) trace_out: Option<PathBuf>,
     pub(crate) state_in: Option<PathBuf>,
@@ -167,7 +179,7 @@ impl RunOptions {
             serial_stdout: false,
             serial_out: None,
             framebuffer_out: None,
-            show_sgb_border: true,
+            sgb_border: SgbBorderPresentationMode::Auto,
             display_palette: None,
             trace_out: None,
             state_in: None,

@@ -28,6 +28,7 @@ use gb_desktop::{
     FastForwardOptions, GamepadActionBindings, GamepadButtonBinding, GamepadButtonBindings,
     GamepadDirectionalSource, GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode,
     HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings, RewindOptions,
+    SgbBorderPresentationMode,
 };
 use std::time::Duration;
 
@@ -64,7 +65,7 @@ fn test_presentation() -> MenuPresentation {
         show_background: true,
         show_window: true,
         show_objects: true,
-        show_sgb_border: true,
+        sgb_border: SgbBorderPresentationMode::Auto,
         show_performance_hud: true,
         muted: false,
         audio_available: false,

@@ -18,7 +18,7 @@ fn default_desktop_config_matches_the_dmg_interactive_baseline() {
     assert!(config.video.show_background);
     assert!(config.video.show_window);
     assert!(config.video.show_objects);
-    assert!(config.video.show_sgb_border);
+    assert_eq!(config.video.sgb_border, SgbBorderPresentationMode::Auto);
     assert!(config.video.vsync);
     assert!(!config.video.show_performance_hud);
     assert!(!config.video.show_cgb_infrared_helper);

@@ -27,7 +27,7 @@ use crate::save_state::{
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTickTelemetry, SerialTransferState};
-use crate::sgb::{SGB_CONTROLLER_COUNT, SgbHost, SgbScreenPalette};
+use crate::sgb::{SGB_CONTROLLER_COUNT, SgbBorrowedBorder, SgbHost, SgbScreenPalette};
 use crate::speed::SpeedController;
 use crate::timer::Timer;
 
@@ -200,6 +200,7 @@ pub struct Machine<S = TraceBuffer> {
     timer: Timer,
     serial: Serial,
     sgb_host: SgbHost,
+    borrowed_sgb_border: Option<SgbBorrowedBorder>,
     speed: SpeedController,
     external_port: ExternalPort,
     boot: BootController,
@@ -224,6 +225,7 @@ pub struct MachineParts<S = TraceBuffer> {
     pub timer: Timer,
     pub serial: Serial,
     pub sgb_host: SgbHost,
+    pub borrowed_sgb_border: Option<SgbBorrowedBorder>,
     pub speed: SpeedController,
     pub external_port: ExternalPort,
     pub boot: BootController,
@@ -350,6 +352,7 @@ impl<S: TraceSink> Machine<S> {
             timer: Timer::new(console_model),
             serial: Serial::new_with_operating_mode(console_model, operating_mode),
             sgb_host: SgbHost::new_with_profile(host_platform, sgb_profile, startup_mode),
+            borrowed_sgb_border: None,
             speed: SpeedController::new(console_model, operating_mode),
             external_port: ExternalPort::new(),
             boot: BootController::new_with_sgb_profile(
@@ -463,6 +466,14 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn sgb_host(&self) -> &SgbHost {
         &self.sgb_host
+    }
+
+    pub fn borrowed_sgb_border(&self) -> Option<&SgbBorrowedBorder> {
+        self.borrowed_sgb_border.as_ref()
+    }
+
+    pub fn set_borrowed_sgb_border(&mut self, borrowed_sgb_border: Option<SgbBorrowedBorder>) {
+        self.borrowed_sgb_border = borrowed_sgb_border;
     }
 
     pub fn sgb_lcd_framebuffer_rgb555(&self) -> Option<Vec<u16>> {
@@ -813,6 +824,7 @@ impl<S: TraceSink> Machine<S> {
             timer: self.timer,
             serial: self.serial,
             sgb_host: self.sgb_host,
+            borrowed_sgb_border: self.borrowed_sgb_border,
             speed: self.speed,
             external_port: self.external_port,
             boot: self.boot,

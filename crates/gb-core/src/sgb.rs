@@ -1,4 +1,5 @@
 mod border;
+mod borrowed;
 mod host;
 mod protocol;
 mod shell;
@@ -6,6 +7,10 @@ mod shell;
 #[cfg(test)]
 mod test;
 
+pub use borrowed::{
+    SGB_BORROWED_BORDER_EXTRACTION_FRAME_LIMIT, SgbBorrowedBorder,
+    extract_initial_sgb_borrowed_border, sgb_header_accepts_borrowed_border,
+};
 pub use host::{
     DeterministicHleSgbHostBackend, SgbAudioState, SgbCommandState, SgbHost, SgbHostBackend,
     SgbHostBackendKind, SgbHostBackendRequest, SgbHostBackendRequestKind, SgbHostBackendResponse,

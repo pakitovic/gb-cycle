@@ -6,7 +6,7 @@ use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
     DesktopDisplayPalette, DesktopFrameBlendingMode, DesktopSaveFlushPolicy, GamepadButtonBinding,
     GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout, SaveDirectoryPolicy,
-    SaveKeyPolicy,
+    SaveKeyPolicy, SgbBorderPresentationMode,
 };
 use gb_persistence::CartridgeSaveKey;
 use std::path::PathBuf;
@@ -386,7 +386,7 @@ fn apply_test_runner_defaults(config: &mut DesktopConfig, explicit: TestRunnerEx
     if config.launch.console_model == DesktopConsoleModel::GameBoy {
         config.video.display_palette = DesktopDisplayPalette::Grey;
     }
-    config.video.show_sgb_border = false;
+    config.video.sgb_border = SgbBorderPresentationMode::Off;
     if !explicit.saves {
         config.saves.enabled = false;
     } else if !explicit.saves_disabled {
@@ -430,7 +430,7 @@ pub fn help_text() -> &'static str {
         "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control boot ROM SHA-256 verification (default: strict)\n",
-        "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and no SGB border\n",
+        "  --test-runner                          Use host-light runner defaults: permissive mode, DMG grey palette, and BORDER OFF\n",
         "  --benchmark <path>                     Run one portable benchmark case TOML\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",

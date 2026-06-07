@@ -11,7 +11,7 @@ use gb_desktop::{
     DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
     GamepadGyroMode, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
     JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, RewindOptions,
-    SaveDirectoryPolicy, VideoOptions,
+    SaveDirectoryPolicy, SgbBorderPresentationMode, VideoOptions,
 };
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -499,15 +499,24 @@ fn execute_menu_actions_update_runtime_machine_and_persisted_settings() {
     harness.session.config.launch.console_model = DesktopConsoleModel::SuperGameBoy;
     harness.runtime.frame_blending_state.previous_rgb_frame = vec![4, 5, 6];
     harness.runtime.frame_blending_state.has_previous_frame = true;
-    assert!(harness.runtime.video_options.show_sgb_border);
+    assert_eq!(
+        harness.runtime.video_options.sgb_border,
+        SgbBorderPresentationMode::Auto
+    );
     assert!(
         harness
             .execute_action(super::super::MenuAction::ToggleSgbBorder)
             .unwrap()
             .is_none()
     );
-    assert!(!harness.runtime.video_options.show_sgb_border);
-    assert!(!harness.settings_store.base_config().video.show_sgb_border);
+    assert_eq!(
+        harness.runtime.video_options.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
+    assert_eq!(
+        harness.settings_store.base_config().video.sgb_border,
+        SgbBorderPresentationMode::Off
+    );
     assert!(
         harness
             .runtime

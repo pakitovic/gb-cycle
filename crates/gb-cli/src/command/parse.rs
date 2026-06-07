@@ -2,7 +2,7 @@ use super::CliAction;
 use crate::framebuffer::RunDisplayPalette;
 use crate::options::{
     BenchmarkRunOptions, BootRomVerificationMode, DefaultRunBudget, InspectRomOptions, RunModel,
-    RunOptions, SavePolicy, SavesDirection, SavesOptions,
+    RunOptions, SavePolicy, SavesDirection, SavesOptions, SgbBorderPresentationMode,
 };
 use crate::report::{revision_argument_name, supported_revision_names};
 use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
@@ -154,7 +154,7 @@ where
             }
             "--border-off" => {
                 ensure_run_options_initialized(&mut options, &rom_path)?;
-                options.as_mut().unwrap().show_sgb_border = false;
+                options.as_mut().unwrap().sgb_border = SgbBorderPresentationMode::Off;
             }
             "--palette" => {
                 let Some(value) = arguments.next() else {
@@ -270,7 +270,7 @@ where
 pub(crate) fn apply_test_runner_defaults(options: &mut RunOptions) {
     options.test_runner = true;
     options.execution_mode = ExecutionMode::Permissive;
-    options.show_sgb_border = false;
+    options.sgb_border = SgbBorderPresentationMode::Off;
     options.display_palette = Some(RunDisplayPalette::Grey);
 }
 
