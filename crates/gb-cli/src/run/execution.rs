@@ -1,6 +1,7 @@
 use crate::boot_rom::load_boot_rom_assets;
 use crate::framebuffer::{
-    encode_framebuffer_artifact_with_borrowed_sgb_border, sgb_framebuffer_artifact_for_output,
+    FramebufferOutputFormat, encode_framebuffer_artifact_with_borrowed_sgb_border,
+    framebuffer_output_format, sgb_framebuffer_artifact_for_output,
 };
 use crate::host_io::{
     resolve_path, validate_directory_input, write_bytes_with_parent, write_text_file_with_parent,
@@ -37,7 +38,11 @@ pub(crate) fn run_command(
         .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
 
     let compatibility = compatibility_for_execution_mode(options.execution_mode);
-    let borrowed_sgb_border = if options.sgb_border.is_auto()
+    let borrowed_sgb_border = if options
+        .framebuffer_out
+        .as_ref()
+        .is_some_and(|path| framebuffer_output_format(path) == FramebufferOutputFormat::Png)
+        && options.sgb_border.is_auto()
         && options
             .model
             .sgb_profile_for_standard(options.sgb_video_standard)
