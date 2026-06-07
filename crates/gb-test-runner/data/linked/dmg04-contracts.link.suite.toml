@@ -11,12 +11,12 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = "A
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/basic-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-right-serial-hex"
@@ -25,12 +25,12 @@ oracle = { type = "serial-hex-exact", target_participant = "right", expected = "
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/basic-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-left-snapshot"
@@ -39,12 +39,12 @@ oracle = { type = "snapshot", target_participant = "left", fixture = "fixtures/d
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/basic-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-stale-left-serial-hex"
@@ -54,12 +54,12 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = "A
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/stale-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/stale-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-stale-right-serial-hex"
@@ -69,12 +69,12 @@ oracle = { type = "serial-hex-exact", target_participant = "right", expected = "
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/stale-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/stale-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-double-master-left-snapshot"
@@ -83,12 +83,12 @@ oracle = { type = "snapshot", target_participant = "left", fixture = "fixtures/d
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/double-master-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/double-master-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-double-master-right-snapshot"
@@ -97,12 +97,12 @@ oracle = { type = "snapshot", target_participant = "right", fixture = "fixtures/
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/double-master-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/double-master-right.gb"
-  console = "dmg"
+  model = "dmg"
 
 [[case]]
 id = "dmg04-open-line-left-snapshot"
@@ -111,9 +111,9 @@ oracle = { type = "snapshot", target_participant = "left", fixture = "fixtures/d
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/open-line-right.gb"
-  console = "dmg"
+  model = "dmg"

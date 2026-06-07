@@ -10,8 +10,13 @@ use super::model::{
     is_non_failing_status, report_status_display,
 };
 
-const REPORT_CONSOLE_SUFFIXES: [(&str, usize); 4] =
-    [(" (DMG)", 0), (" (GBC)", 1), (" (SGB)", 2), (" (SGB2)", 3)];
+const REPORT_MODEL_SUFFIXES: [(&str, usize); 5] = [
+    (" (DMG)", 0),
+    (" (GBC)", 1),
+    (" (AGB)", 2),
+    (" (SGB)", 3),
+    (" (SGB2)", 4),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct SourceManifestFile {
@@ -158,7 +163,7 @@ fn compare_report_rows(
                     right_source_rank.unwrap_or(usize::MAX),
                 ))
         })
-        .then_with(|| compare_report_console_variant(left, right))
+        .then_with(|| compare_report_model_variant(left, right))
         .then_with(|| left.suite_name.cmp(&right.suite_name))
         .then_with(|| left.case_index.cmp(&right.case_index))
         .then_with(|| left.rom.cmp(&right.rom))
@@ -217,15 +222,15 @@ impl ReportSourceOrder {
     }
 }
 
-fn compare_report_console_variant(left: &ReportRow, right: &ReportRow) -> Ordering {
+fn compare_report_model_variant(left: &ReportRow, right: &ReportRow) -> Ordering {
     if report_rom_key(&left.rom) != report_rom_key(&right.rom) {
         return Ordering::Equal;
     }
-    report_console_variant_rank(&left.rom).cmp(&report_console_variant_rank(&right.rom))
+    report_model_variant_rank(&left.rom).cmp(&report_model_variant_rank(&right.rom))
 }
 
 fn report_rom_key(rom: &str) -> &str {
-    for (suffix, _) in REPORT_CONSOLE_SUFFIXES {
+    for (suffix, _) in REPORT_MODEL_SUFFIXES {
         if let Some(base) = rom.strip_suffix(suffix) {
             return base;
         }
@@ -233,8 +238,8 @@ fn report_rom_key(rom: &str) -> &str {
     rom
 }
 
-fn report_console_variant_rank(rom: &str) -> usize {
-    REPORT_CONSOLE_SUFFIXES
+fn report_model_variant_rank(rom: &str) -> usize {
+    REPORT_MODEL_SUFFIXES
         .iter()
         .find_map(|(suffix, rank)| rom.ends_with(suffix).then_some(*rank))
         .unwrap_or(usize::MAX)

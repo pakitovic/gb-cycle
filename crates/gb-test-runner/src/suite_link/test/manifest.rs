@@ -111,6 +111,24 @@ fn parser_rejects_unknown_topology_and_escaped_paths() {
 }
 
 #[test]
+fn parser_rejects_unknown_participant_keys() {
+    let unknown_participant_key = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"dmg\"\n  participant_typo = true",
+        1,
+    );
+    assert!(
+        parse_link_suite_manifest_for_test(
+            Path::new("unknown-participant-key.link.suite.toml"),
+            "linked",
+            &unknown_participant_key,
+        )
+        .expect_err("unknown participant key should fail")
+        .contains("uses unsupported key \"participant_typo\"")
+    );
+}
+
+#[test]
 fn disabled_cases_require_comments_and_are_skipped() {
     let manifest = r#"report = "linked"
 suite_name = "disabled"
@@ -131,12 +149,12 @@ id = "enabled-case"
   [[case.participant]]
   id = "left"
   rom = "left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "right.gb"
-  console = "dmg"
+  model = "dmg"
 "#;
 
     let suite = parse_link_suite_manifest_for_test(
@@ -182,12 +200,12 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = ""
   [[case.participant]]
   id = "left"
   rom = "left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "right.gb"
-  console = "dmg"
+  model = "dmg"
   startup = "skip-boot"
 "#;
 
@@ -211,7 +229,7 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = ""
 #[test]
 fn parser_accepts_agb_participant_profile() {
     let manifest =
-        basic_manifest_with_report("linked").replacen("console = \"dmg\"", "console = \"agb\"", 1);
+        basic_manifest_with_report("linked").replacen("model = \"dmg\"", "model = \"agb\"", 1);
     let suite =
         parse_link_suite_manifest_for_test(Path::new("agb.link.suite.toml"), "linked", &manifest)
             .expect("AGB participant should parse");
@@ -243,12 +261,12 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = ""
   [[case.participant]]
   id = "left"
   rom = "left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "right.gb"
-  console = "dmg"
+  model = "dmg"
 "#
 }
 

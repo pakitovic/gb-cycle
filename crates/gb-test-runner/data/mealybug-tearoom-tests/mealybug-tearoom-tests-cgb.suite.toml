@@ -1,7 +1,7 @@
 family = "mealybug-tearoom-tests"
 suite_name = "mealybug-tearoom-tests-cgb"
 report = "mealybug-tearoom-tests"
-console = "cgb"
+model = "cgb"
 timeout_frames = 30
 oracle = { type = "framebuffer", source = "cgb" }
 

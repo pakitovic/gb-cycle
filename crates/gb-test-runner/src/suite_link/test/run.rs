@@ -85,12 +85,12 @@ oracle = { type = "serial-hex-exact", target_participant = "left", expected = ""
   [[case.participant]]
   id = "left"
   rom = "fixtures/dmg04/basic-left.gb"
-  console = "dmg"
+  model = "dmg"
 
   [[case.participant]]
   id = "right"
   rom = "fixtures/dmg04/basic-right.gb"
-  console = "dmg"
+  model = "dmg"
 "#,
     )
     .expect("manifest should be written");
@@ -157,13 +157,13 @@ oracle = { type = "serial-hex-exact", target_participant = "receiver", expected 
   [[case.participant]]
   id = "emitter"
   rom = "fixtures/cgb-ir/emitter.gbc"
-  console = "cgb"
+  model = "cgb"
   revision = "cpu-cgb-d"
 
   [[case.participant]]
   id = "receiver"
   rom = "fixtures/cgb-ir/receiver.gbc"
-  console = "cgb"
+  model = "cgb"
   revision = "cpu-cgb-e"
 "#,
     )

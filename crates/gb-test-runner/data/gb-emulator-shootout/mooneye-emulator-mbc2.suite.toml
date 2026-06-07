@@ -1,7 +1,7 @@
 family = "mooneye"
 suite_name = "mooneye-emulator-mbc2"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 180
 oracle = { type = "fibonacci-result" }
 

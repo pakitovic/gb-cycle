@@ -1,7 +1,7 @@
 family = "blargg"
 suite_name = "blargg-timing-memory-oam"
 report = "gb-emulator-shootout"
-console = "dmg"
+model = "dmg"
 timeout_frames = 1200
 oracle = { type = "framebuffer", mode = "until-match" }
 
@@ -19,7 +19,7 @@ oracle = { type = "serial-contains", expected = "Passed" }
 [[case]]
 id = "blargg-interrupt-time"
 rom = "interrupt_time.gb"
-console = "cgb"
+model = "cgb"
 execution_mode = "permissive"
 timeout_frames = 1200
 oracle = { source = "cgb", fixture = "interrupt_time.png" }

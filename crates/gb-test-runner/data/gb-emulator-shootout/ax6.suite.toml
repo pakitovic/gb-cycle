@@ -1,7 +1,7 @@
 family = "ax6"
 suite_name = "ax6"
 report = "gb-emulator-shootout"
-console = "cgb"
+model = "cgb"
 oracle = { type = "framebuffer", source = "cgb" }
 
 [[case]]

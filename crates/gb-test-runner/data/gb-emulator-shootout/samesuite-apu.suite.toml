@@ -1,7 +1,7 @@
 family = "samesuite"
 suite_name = "samesuite-apu"
 report = "gb-emulator-shootout"
-console = "cgb"
+model = "cgb"
 timeout_frames = 180
 oracle = { type = "framebuffer", source = "cgb" }
 

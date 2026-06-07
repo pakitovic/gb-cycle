@@ -1,7 +1,7 @@
 family = "ax6"
 suite_name = "ax6-dmg"
 report = "ax6"
-console = "dmg"
+model = "dmg"
 oracle = { type = "framebuffer" }
 
 [[case]]

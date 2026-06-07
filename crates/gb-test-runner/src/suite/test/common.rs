@@ -404,7 +404,7 @@ pub(super) fn basic_manifest(
             "family = \"{}\"\n",
             "suite_name = \"{}\"\n",
             "report = \"{}\"\n",
-            "console = \"dmg\"\n",
+            "model = \"dmg\"\n",
             "timeout_frames = 2\n",
             "oracle = {{ type = \"serial-contains\", expected = \"Passed\" }}\n",
             "\n",
