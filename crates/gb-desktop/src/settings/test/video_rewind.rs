@@ -83,7 +83,7 @@ max_memory_mib = 128
 fn settings_store_base_config_applies_persisted_host_preferences() {
     let path = unique_test_path("applies-settings");
     let mut settings = PersistedDesktopSettings::default();
-    settings.launch.console_model = PersistedDesktopConsoleModel::GameBoyPocket;
+    settings.launch.model = PersistedDesktopConsoleModel::GameBoyPocket;
     settings.launch.revision = PersistedHardwareRevision::CpuCgbE;
     settings.launch.sgb_video_standard = PersistedSgbVideoStandard::Pal;
     settings.launch.startup_mode = PersistedStartupMode::Real;
