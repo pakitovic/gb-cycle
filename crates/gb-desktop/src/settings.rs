@@ -587,7 +587,7 @@ impl Default for PersistedDesktopSettings {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 struct PersistedLaunchSettings {
     model: PersistedDesktopConsoleModel,
     revision: PersistedHardwareRevision,
