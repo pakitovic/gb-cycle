@@ -40,7 +40,7 @@ pub(crate) fn compatibility_for_execution_mode(
 
 pub(crate) fn revision_argument_name(revision: HardwareRevision) -> &'static str {
     match revision {
-        HardwareRevision::DmgCpu => "dmg-cpu",
+        HardwareRevision::DmgCpu0 => "dmg-cpu-0",
         HardwareRevision::DmgCpuA => "dmg-cpu-a",
         HardwareRevision::DmgCpuB => "dmg-cpu-b",
         HardwareRevision::DmgCpuC => "dmg-cpu-c",

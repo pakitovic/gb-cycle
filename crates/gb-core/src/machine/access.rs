@@ -12,7 +12,7 @@ use crate::debugger::TraceSink;
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::model::OperatingMode;
+use crate::model::{ConsoleModel, HardwareRevision, OperatingMode, StartupMode};
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
@@ -254,12 +254,17 @@ impl<S: TraceSink> Machine<S> {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);
-            if self.config.startup_mode == crate::model::StartupMode::CustomBoot {
+            if matches!(
+                (self.config.console_model, self.config.revision),
+                (ConsoleModel::GameBoy, HardwareRevision::DmgCpu0)
+            ) {
+                self.ppu.apply_dmg0_direct_boot_handoff_stat_phase();
+            } else if self.config.startup_mode == StartupMode::CustomBoot {
                 // DMG-family CustomBoot exposes reset-facing PPU publication only through CPU-bus reads; ordinary SkipBoot keeps the plain cartridge-entry HWIO snapshot used by Mooneye boot_hwio.
                 self.ppu.apply_dmg_skip_boot_stat_irq_startup_phase();
             }
             if self.config.console_model.is_cgb_family()
-                && self.config.startup_mode == crate::model::StartupMode::CustomBoot
+                && self.config.startup_mode == StartupMode::CustomBoot
             {
                 self.ppu.apply_cgb_custom_boot_entry_phase();
             }

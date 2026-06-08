@@ -28,6 +28,14 @@ fn resolves_required_assets_for_console_and_host_profiles() {
     assert_eq!(
         asset_for_profile(
             ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpu0,
+            HostPlatform::Handheld
+        ),
+        BootRomAssetKind::Dmg0
+    );
+    assert_eq!(
+        asset_for_profile(
+            ConsoleModel::GameBoy,
             HardwareRevision::DmgCpuC,
             HostPlatform::Handheld
         ),
@@ -80,6 +88,11 @@ fn deduplicates_required_assets_and_does_not_require_unselected_profiles() {
     let profiles = [
         BootRomProfile::new(
             ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpu0,
+            HostPlatform::Handheld,
+        ),
+        BootRomProfile::new(
+            ConsoleModel::GameBoy,
             HardwareRevision::DmgCpuC,
             HostPlatform::Handheld,
         ),
@@ -108,6 +121,7 @@ fn deduplicates_required_assets_and_does_not_require_unselected_profiles() {
     assert_eq!(
         required_assets_for_test(&profiles),
         vec![
+            BootRomAssetKind::Dmg0,
             BootRomAssetKind::Dmg,
             BootRomAssetKind::Cgb,
             BootRomAssetKind::CgbE,

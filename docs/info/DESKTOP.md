@@ -21,7 +21,7 @@ Run `gb-desktop --help` for the exhaustive flag list. The stable desktop-specifi
 
 | Area | Options |
 | --- | --- |
-| Hardware policy | `--model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2>`, `--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
+| Hardware policy | `--model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2>`, `--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
 | Automation | `--test-runner`, `--benchmark <case.toml>`, `--exit-after-frames <n>` |
 | Local links | `--link-rom <path>` for a local 2-player `DMG-04` session only |
 | Cartridge saves | `--save-dir <dir>`, `--save-key <key>`, `--save-policy <manual|on-close|on-write|debounced>`, `--no-saves` |

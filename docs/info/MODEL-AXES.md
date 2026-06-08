@@ -30,7 +30,7 @@ SgbHostProfile   = which SGB/SGB2 host shell timing/link profile applies when Ho
 Examples:
 
 - `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpuC` + `OperatingMode::Dmg` + `HostPlatform::Handheld` = active ordinary Game Boy profile with the standard DMG boot ROM derived for `RealBoot`
-- `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpu` = the same visible Game Boy product model with the earlier DMG0 firmware profile, modeled for future activation and local hardware validation
+- `ConsoleModel::GameBoy` + `HardwareRevision::DmgCpu0` = the same visible Game Boy product model with the active earlier DMG0 firmware profile for targeted boot-register and DIV validation
 - `ConsoleModel::GameBoyPocket` or `ConsoleModel::GameBoyLight` + `HardwareRevision::CpuMgb` + `OperatingMode::Dmg` = DMG-family handheld product using the MGB boot/direct-start profile
 - `ConsoleModel::GameBoyColor` + `HardwareRevision::CpuCgbE` + `OperatingMode::Cgb` = CGB-family silicon on the active CGB-E profile, with `cgbE_boot.bin` selected automatically for `RealBoot`
 - `ConsoleModel::GameBoyAdvance` + `HardwareRevision::CpuAgbA` + `OperatingMode::Cgb` = AGB CGB-compatible silicon on the active GBA-enhanced profile, with `cgb_agb_boot.bin` selected automatically for GB/C `RealBoot` and no native `gba_bios.bin` requirement in this core
@@ -43,11 +43,11 @@ Examples:
 
 ## Reference model profiles
 
-This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB/AGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`, and `CpuAgbA` for `GameBoyAdvance`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
+This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB/AGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpu0` and `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`, and `CpuAgbA` for `GameBoyAdvance`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
 
 | Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
 |---:|---|---:|---|---|---|---|---|
-| false | Game Boy | Handheld | `DMG-CPU` | `dmg0_boot.bin` | DMG | DMG green palette | Initial CPU without suffix; early DMG/DMG0-class unit. |
+| false | Game Boy | Handheld | `DMG-CPU 0` | `dmg0_boot.bin` | DMG | DMG green palette | Initial DMG-CPU 0 unit; active for explicit `dmg-cpu-0` boot validation but not the default Game Boy revision. |
 | false | Game Boy | Handheld | `DMG-CPU A` | `dmg_boot.bin` | DMG | DMG green palette | Later DMG revision; standard DMG boot ROM. |
 | false | Game Boy | Handheld | `DMG-CPU B` | `dmg_boot.bin` | DMG | DMG green palette | Common DMG revision; standard DMG boot ROM. |
 | true | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |

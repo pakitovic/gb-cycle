@@ -180,6 +180,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
             .expect_err("unsupported models should fail")
             .contains("unsupported --model value")
     );
+    assert_eq!(parse_revision("dmg-cpu-0"), Ok(HardwareRevision::DmgCpu0));
     assert_eq!(parse_revision("dmg-cpu-c"), Ok(HardwareRevision::DmgCpuC));
     assert_eq!(parse_revision("cpu-mgb"), Ok(HardwareRevision::CpuMgb));
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
@@ -191,7 +192,10 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
             .expect_err("inactive revisions should fail")
             .contains("unsupported --revision value")
     );
-    assert_eq!(revision_argument_name(HardwareRevision::DmgCpu), "dmg-cpu");
+    assert_eq!(
+        revision_argument_name(HardwareRevision::DmgCpu0),
+        "dmg-cpu-0"
+    );
     assert_eq!(
         revision_argument_name(HardwareRevision::DmgCpuA),
         "dmg-cpu-a"
@@ -399,7 +403,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(optional_usize_name(Some(8)), "8");
     assert_eq!(optional_usize_name(None), "unknown");
     for revision in [
-        HardwareRevision::DmgCpu,
+        HardwareRevision::DmgCpu0,
         HardwareRevision::DmgCpuA,
         HardwareRevision::DmgCpuB,
         HardwareRevision::DmgCpuC,

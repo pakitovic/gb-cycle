@@ -66,7 +66,10 @@ impl ConsoleModel {
 
     pub const fn supports_revision(self, revision: HardwareRevision) -> bool {
         match self {
-            Self::GameBoy => matches!(revision, HardwareRevision::DmgCpuC),
+            Self::GameBoy => matches!(
+                revision,
+                HardwareRevision::DmgCpu0 | HardwareRevision::DmgCpuC
+            ),
             Self::GameBoyPocket | Self::GameBoyLight => {
                 matches!(revision, HardwareRevision::CpuMgb)
             }
@@ -127,7 +130,8 @@ impl ConsoleModel {
     }
 }
 
-const ACTIVE_DMG_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::DmgCpuC];
+const ACTIVE_DMG_REVISIONS: [HardwareRevision; 2] =
+    [HardwareRevision::DmgCpu0, HardwareRevision::DmgCpuC];
 const ACTIVE_MGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuMgb];
 const ACTIVE_CGB_REVISIONS: [HardwareRevision; 3] = [
     HardwareRevision::CpuCgbC,
@@ -140,7 +144,7 @@ const ACTIVE_AGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuAgbA];
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 pub enum HardwareRevision {
-    DmgCpu,
+    DmgCpu0,
     DmgCpuA,
     DmgCpuB,
     #[default]

@@ -184,8 +184,12 @@ fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         HardwareRevision::CpuAgbA
     );
     assert_eq!(
-        next_revision(DesktopConsoleModel::GameBoy, HardwareRevision::DmgCpuC),
+        next_revision(DesktopConsoleModel::GameBoy, HardwareRevision::DmgCpu0),
         HardwareRevision::DmgCpuC
+    );
+    assert_eq!(
+        next_revision(DesktopConsoleModel::GameBoy, HardwareRevision::DmgCpuC),
+        HardwareRevision::DmgCpu0
     );
     assert_eq!(
         next_revision(DesktopConsoleModel::GameBoyPocket, HardwareRevision::CpuMgb),

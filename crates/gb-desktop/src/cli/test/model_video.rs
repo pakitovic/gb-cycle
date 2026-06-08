@@ -214,6 +214,7 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     }
     assert!(parse_console_model("sgb").is_err());
 
+    assert_eq!(parse_revision("dmg-cpu-0"), Ok(HardwareRevision::DmgCpu0));
     assert_eq!(parse_revision("dmg-cpu-c"), Ok(HardwareRevision::DmgCpuC));
     assert_eq!(parse_revision("cpu-mgb"), Ok(HardwareRevision::CpuMgb));
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));

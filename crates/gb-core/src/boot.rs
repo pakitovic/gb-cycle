@@ -37,7 +37,7 @@ pub enum BootRomAssetKind {
 impl BootRomAssetKind {
     pub const fn from_revision(revision: HardwareRevision) -> Self {
         match revision {
-            HardwareRevision::DmgCpu => Self::Dmg0,
+            HardwareRevision::DmgCpu0 => Self::Dmg0,
             HardwareRevision::DmgCpuA | HardwareRevision::DmgCpuB | HardwareRevision::DmgCpuC => {
                 Self::Dmg
             }
@@ -803,10 +803,15 @@ impl BootController {
         }
 
         let header = cartridge.and_then(CartridgeSlot::header);
-        let system_counter = direct_start_system_counter(self.console_model, header);
-        let mut io = verified_boot_entry_io_snapshot(self.console_model);
+        let system_counter = direct_start_system_counter(self.console_model, self.revision, header);
+        let mut io = verified_boot_entry_io_snapshot(self.console_model, self.revision);
         io.div = div_from_system_counter(system_counter);
-        let apu = build_verified_boot_entry_apu_state(self.console_model, system_counter, io);
+        let apu = build_verified_boot_entry_apu_state(
+            self.console_model,
+            self.revision,
+            system_counter,
+            io,
+        );
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
@@ -818,13 +823,17 @@ impl BootController {
 
         Some(BootRealBootPowerOnState {
             timer: TimerStartupState {
-                system_counter: real_boot_power_on_system_counter(self.console_model),
+                system_counter: real_boot_power_on_system_counter(
+                    self.console_model,
+                    self.revision,
+                ),
                 tima: 0x00,
                 tma: 0x00,
                 tac: 0x00,
             },
-            serial: SerialStartupState::from_registers(0x00, 0x00)
-                .with_clock_counter(real_boot_power_on_serial_clock_counter(self.console_model)),
+            serial: SerialStartupState::from_registers(0x00, 0x00).with_clock_counter(
+                real_boot_power_on_serial_clock_counter(self.console_model, self.revision),
+            ),
             dma: DmaStartupState {
                 source_page_latch: 0xFF,
             },
@@ -841,10 +850,10 @@ impl BootController {
         }
 
         let header = cartridge.and_then(CartridgeSlot::header);
-        let system_counter = direct_start_system_counter(self.console_model, header);
-        let mut io = synthetic_skip_boot_io_snapshot(self.console_model);
+        let system_counter = direct_start_system_counter(self.console_model, self.revision, header);
+        let mut io = synthetic_skip_boot_io_snapshot(self.console_model, self.revision);
         io.div = div_from_system_counter(system_counter);
-        let apu = build_skip_boot_apu_state(self.console_model, system_counter, io);
+        let apu = build_skip_boot_apu_state(self.console_model, self.revision, system_counter, io);
 
         Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
@@ -886,6 +895,7 @@ impl BootController {
         BootDirectBootState {
             cpu: build_skip_boot_cpu_state(
                 self.console_model,
+                self.revision,
                 self.sgb_profile,
                 cartridge.and_then(CartridgeSlot::header),
             ),
@@ -933,6 +943,7 @@ const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
 
 fn build_skip_boot_cpu_state(
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     sgb_profile: Option<SgbHostProfile>,
     header: Option<&CartridgeHeader>,
 ) -> CpuStartupState {
@@ -966,17 +977,45 @@ fn build_skip_boot_cpu_state(
     }
 
     match console_model {
-        ConsoleModel::GameBoy => CpuStartupState {
-            a: 0x01,
-            f: dmg_family_skip_boot_flags(header.map(|header| header.header_checksum)),
-            b: 0x00,
-            c: 0x13,
-            d: 0x00,
-            e: 0xD8,
-            h: 0x01,
-            l: 0x4D,
-            sp: 0xFFFE,
-            pc: 0x0100,
+        ConsoleModel::GameBoy => match revision {
+            HardwareRevision::DmgCpu0 => CpuStartupState {
+                a: 0x01,
+                f: 0x00,
+                b: 0xFF,
+                c: 0x13,
+                d: 0x00,
+                e: 0xC1,
+                h: 0x84,
+                l: 0x03,
+                sp: 0xFFFE,
+                pc: 0x0100,
+            },
+            HardwareRevision::DmgCpuA | HardwareRevision::DmgCpuB | HardwareRevision::DmgCpuC => {
+                CpuStartupState {
+                    a: 0x01,
+                    f: dmg_family_skip_boot_flags(header.map(|header| header.header_checksum)),
+                    b: 0x00,
+                    c: 0x13,
+                    d: 0x00,
+                    e: 0xD8,
+                    h: 0x01,
+                    l: 0x4D,
+                    sp: 0xFFFE,
+                    pc: 0x0100,
+                }
+            }
+            _ => CpuStartupState {
+                a: 0x01,
+                f: dmg_family_skip_boot_flags(header.map(|header| header.header_checksum)),
+                b: 0x00,
+                c: 0x13,
+                d: 0x00,
+                e: 0xD8,
+                h: 0x01,
+                l: 0x4D,
+                sp: 0xFFFE,
+                pc: 0x0100,
+            },
         },
         ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => CpuStartupState {
             a: 0xFF,
@@ -1095,8 +1134,39 @@ const fn dmg_family_synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
     }
 }
 
-const fn synthetic_skip_boot_io_snapshot(console_model: ConsoleModel) -> BootIoSnapshot {
+const fn dmg0_synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
+    BootIoSnapshot {
+        p1: 0xCF,
+        sb: 0x00,
+        sc: 0x7E,
+        div: 0x18,
+        tima: 0x00,
+        tma: 0x00,
+        tac: 0xF8,
+        interrupt_flag: 0xE1,
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x01,
+        lyc: 0x00,
+        dma: 0xFF,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        interrupt_enable: 0x00,
+        audio: dmg_family_skip_boot_audio_snapshot(),
+    }
+}
+
+const fn synthetic_skip_boot_io_snapshot(
+    console_model: ConsoleModel,
+    revision: HardwareRevision,
+) -> BootIoSnapshot {
     match console_model {
+        ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
+            dmg0_synthetic_skip_boot_io_snapshot()
+        }
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             dmg_family_synthetic_skip_boot_io_snapshot()
         }
@@ -1109,8 +1179,14 @@ const fn synthetic_skip_boot_io_snapshot(console_model: ConsoleModel) -> BootIoS
     }
 }
 
-const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoSnapshot {
+const fn verified_boot_entry_io_snapshot(
+    console_model: ConsoleModel,
+    revision: HardwareRevision,
+) -> BootIoSnapshot {
     match console_model {
+        ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
+            dmg0_synthetic_skip_boot_io_snapshot()
+        }
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             BootIoSnapshot {
                 p1: 0xCF,
@@ -1136,7 +1212,7 @@ const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoS
             }
         }
         ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
-            synthetic_skip_boot_io_snapshot(console_model)
+            synthetic_skip_boot_io_snapshot(console_model, revision)
         }
     }
 }
@@ -1169,6 +1245,7 @@ const fn dmg_family_skip_boot_audio_snapshot() -> BootAudioSnapshot {
 
 fn build_skip_boot_apu_state(
     console_model: ConsoleModel,
+    _revision: HardwareRevision,
     system_counter: u16,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
@@ -1208,11 +1285,12 @@ fn build_skip_boot_apu_state(
 
 fn build_verified_boot_entry_apu_state(
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     system_counter: u16,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
-    let mut startup_state = build_skip_boot_apu_state(console_model, system_counter, io);
-    startup_state.div_apu = verified_boot_entry_div_apu(console_model, system_counter);
+    let mut startup_state = build_skip_boot_apu_state(console_model, revision, system_counter, io);
+    startup_state.div_apu = verified_boot_entry_div_apu(console_model, revision, system_counter);
     startup_state
 }
 
@@ -1248,6 +1326,7 @@ fn validate_boot_rom_len(
 }
 
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
+const DMG0_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0x2C;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 // Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
@@ -1265,12 +1344,19 @@ const CGB_REAL_BOOT_POWER_ON_SYSTEM_COUNTER: u16 = 0xFFFB;
 const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
     ((dmg_family_synthetic_skip_boot_io_snapshot().div as u16) << 8)
         | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+const DMG0_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
+    ((dmg0_synthetic_skip_boot_io_snapshot().div as u16) << 8)
+        | (DMG0_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
 
 fn direct_start_system_counter(
     console_model: ConsoleModel,
+    revision: HardwareRevision,
     header: Option<&CartridgeHeader>,
 ) -> u16 {
     match console_model {
+        ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
+            DMG0_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
+        }
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
         }
@@ -1278,6 +1364,10 @@ fn direct_start_system_counter(
             cgb_direct_start_system_counter(header)
         }
     }
+}
+
+pub(crate) const fn dmg0_direct_boot_system_counter() -> u16 {
+    DMG0_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
 }
 
 fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
@@ -1325,8 +1415,15 @@ const fn div_from_system_counter(system_counter: u16) -> u8 {
     (system_counter >> 8) as u8
 }
 
-const fn verified_boot_entry_div_apu(console_model: ConsoleModel, system_counter: u16) -> u8 {
+const fn verified_boot_entry_div_apu(
+    console_model: ConsoleModel,
+    revision: HardwareRevision,
+    system_counter: u16,
+) -> u8 {
     match console_model {
+        ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
+            div_apu_phase_from_system_counter(system_counter)
+        }
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => 0x01,
         ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
             div_apu_phase_from_system_counter(system_counter)
@@ -1334,7 +1431,10 @@ const fn verified_boot_entry_div_apu(console_model: ConsoleModel, system_counter
     }
 }
 
-const fn real_boot_power_on_system_counter(console_model: ConsoleModel) -> u16 {
+const fn real_boot_power_on_system_counter(
+    console_model: ConsoleModel,
+    _revision: HardwareRevision,
+) -> u16 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_REAL_BOOT_POWER_ON_SYSTEM_COUNTER
@@ -1345,7 +1445,10 @@ const fn real_boot_power_on_system_counter(console_model: ConsoleModel) -> u16 {
     }
 }
 
-const fn real_boot_power_on_serial_clock_counter(console_model: ConsoleModel) -> u16 {
+const fn real_boot_power_on_serial_clock_counter(
+    console_model: ConsoleModel,
+    _revision: HardwareRevision,
+) -> u16 {
     match console_model {
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_REAL_BOOT_POWER_ON_SERIAL_CLOCK_COUNTER

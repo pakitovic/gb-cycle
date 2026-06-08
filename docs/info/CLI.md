@@ -39,7 +39,7 @@ Completed serial bytes can stream to stdout with `--serial-stdout`, be captured 
 
 `--model` accepts only the public hardware-profile names `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`. Older aliases such as `game-boy`, `pocket`, `light`, `color`, `advance`, `gba`, `dmg`, `mgb`, `cgb`, or `agb` are not accepted.
 
-`--revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `AGB` is the active `GB ADVANCE` GB/C compatibility profile and uses `cpu-agb-a`. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
+`--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `AGB` is the active `GB ADVANCE` GB/C compatibility profile and uses `cpu-agb-a`. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
 
 `--startup <skip-boot|custom-boot|real-boot>` selects the startup path. `skip-boot` is the fast direct-start tooling path; `custom-boot` adds reset/boot-facing direct-start behavior used by selected fixtures; `real-boot` executes a private firmware image and requires `--boot-rom-dir <dir>` unless verification is explicitly relaxed.
 

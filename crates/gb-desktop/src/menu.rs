@@ -3145,7 +3145,7 @@ fn checked_menu_label(label: &str) -> String {
 
 fn hardware_revision_menu_name(revision: HardwareRevision) -> &'static str {
     match revision {
-        HardwareRevision::DmgCpu => "DMG-CPU",
+        HardwareRevision::DmgCpu0 => "DMG-CPU 0",
         HardwareRevision::DmgCpuA => "DMG-CPU A",
         HardwareRevision::DmgCpuB => "DMG-CPU B",
         HardwareRevision::DmgCpuC => "DMG-CPU C",
